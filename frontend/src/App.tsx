@@ -3,6 +3,7 @@ import { Link, Route, Switch } from "wouter";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Shell } from "./components/Shell";
 import { OverviewPage } from "./features/data-console/pages/OverviewPage";
+import { GraphEvidencePage } from "./features/data-console/pages/GraphEvidencePage";
 
 
 function NotFoundPage() {
@@ -58,6 +59,11 @@ export function App() {
           <Route
             path="/overview"
             component={OverviewPage}
+          />
+
+          <Route
+            path="/data-console/graph-evidence"
+            component={GraphEvidencePage}
           />
 
           <Route>

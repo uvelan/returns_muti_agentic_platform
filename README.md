@@ -27,7 +27,9 @@ The repository currently includes:
 - A sandbox-only Customer graph validation and idempotency runner.
 - Immutable Customer graph evidence persisted in Platform MongoDB.
 - Read-only Graph Validation and Graph Inspection APIs.
-- A prepared Data Console Customer Graph Evidence frontend slice awaiting repository integration and validation.
+- A contract-tested Data Console Customer Graph Evidence frontend with live Docker proxy validation.
+- A contract-tested deterministic Temporal Return workflow execution core.
+- A provider-neutral eligibility gateway boundary with deterministic fail-safe review.
 
 No production source asset, production Customer lookup, production graph write, or production deployment is claimed as validated unless corresponding evidence is explicitly recorded below.
 
@@ -63,9 +65,15 @@ No production source asset, production Customer lookup, production graph write, 
 | Platform MongoDB graph-evidence persistence | **SANDBOX_VALIDATED** | Immutable evidence document created and read back successfully |
 | Graph Validation API | **SANDBOX_VALIDATED** | Live latest/list/exact lookup routes validated |
 | Graph Inspection APIs | **SANDBOX_VALIDATED** | Document, sync-run, report-digest, and admin full-evidence routes validated |
-| Data Console Customer Graph Evidence screens | **IMPLEMENTED; INTEGRATION PENDING** | Frontend source and tests prepared; repository lint, typecheck, tests, build, and live browser validation remain the active step |
+| Data Console Customer Graph Evidence screens | **CONTRACT_TESTED; LIVE API PROXY VERIFIED** | Lint, strict TypeScript, 19 tests, production build, and six Docker proxy routes passed; screenshots are deferred to hardening |
 | Live Customer source lookup | **BLOCKED_EXTERNAL_DEPENDENCY** | Production catalog intentionally has no approved Customer CDM source asset |
-| Temporal return workflow | **NOT IMPLEMENTED** | Begins after the data and graph foundation and current Data Console slice are complete |
+| Temporal return workflow | **LIVE SANDBOX VALIDATED** | Dedicated worker completed all seven ordered updates, query, replay, result, and MongoDB session/audit/outbox read-back |
+| Intake and order-discovery contexts | **LIVE SANDBOX VALIDATED** | Strict stage results survived Temporal conversion and persisted digest-bound canonical snapshots in MongoDB |
+| Eligibility and AI Gateway boundary | **CONTRACT_TESTED; LIVE PERSISTENCE VALIDATED** | Persisted-context-only input, one-attempt gateway port, deterministic `REVIEW_REQUIRED` fallback, and atomic decision evidence; live provider remains disabled |
+| Deterministic RETURN_REQUEST context | **LIVE SANDBOX VALIDATED** | Eligibility-bound outcomes and digest consistency passed Temporal conversion and atomic MongoDB persistence; production return creation remains disabled |
+| Deterministic FULFILLMENT_TRACKING context | **LIVE SANDBOX VALIDATED** | Return-request-bound tracking states and reference consistency passed Temporal conversion and atomic MongoDB persistence; production providers remain disabled |
+| Deterministic BAY_ASSIGNMENT context | **LIVE SANDBOX VALIDATED** | Fulfillment-bound assignment states and warehouse/bay reference consistency passed Temporal conversion and atomic MongoDB persistence; warehouse mutation remains disabled |
+| Deterministic FEEDBACK_LEARNING context | **LIVE SANDBOX VALIDATED** | Bay-bound feedback dispositions and complete learning-reference rules passed Temporal conversion and atomic MongoDB persistence; training and external sinks remain disabled |
 | Scenario runner | **NOT IMPLEMENTED** | At least five positive and five negative end-to-end return scenarios remain pending |
 | Customer-facing return UI | **NOT IMPLEMENTED** | Remains the primary eventual demo experience |
 
@@ -92,10 +100,10 @@ controlled Customer fixture
 The active bounded step is:
 
 ```text
-Stage 3 — Data Console Customer Graph Synchronization and Evidence Screens
+Temporal Return workflow — end-to-end scenario matrix
 ```
 
-The frontend implementation must still be integrated into the real repository and pass:
+The integrated frontend currently passes:
 
 ```text
 ESLint
@@ -106,6 +114,8 @@ Vite production build
 live browser/backend integration
 README evidence capture
 ```
+
+Visual screenshot capture remains deferred to hardening.
 
 ---
 
@@ -1096,7 +1106,7 @@ The active frontend step is a read-only screen at:
 /data-console/graph-evidence
 ```
 
-Prepared capabilities:
+Implemented capabilities:
 
 - Latest `SANDBOX_VALIDATED` Customer graph run.
 - Execution timestamp.
@@ -1157,10 +1167,17 @@ The validated backend currently exposes read-only evidence APIs only. A future m
 ### Current frontend classification
 
 ```text
-Frontend source implementation:       IMPLEMENTED
-Frontend tests:                       IMPLEMENTED
-Frontend lint/typecheck/build:        PENDING
-Live browser/backend integration:     NOT VALIDATED
+Frontend source implementation:       CONTRACT_TESTED
+Frontend tests:                       CONTRACT_TESTED (19/19)
+Frontend lint/typecheck/build:        PASS
+Live Docker frontend/backend API:     PASS (six routes through Vite proxy)
+Live visual browser integration:      DEFERRED TO HARDENING
+```
+
+Docker commands, request IDs, and the deferred screenshot work are in:
+
+```text
+frontend/docs/evidence/graph_evidence_ui/validation_summary.md
 ```
 
 ---
@@ -1427,6 +1444,33 @@ Latest status:
 PASS
 ```
 
+### Focused Temporal Return workflow core gate
+
+Run in the Python 3.13 backend Docker container:
+
+```bash
+ruff format --check src/return_platform/workflows tests/test_return_workflow.py
+ruff check src/return_platform/workflows tests/test_return_workflow.py
+python -m mypy --no-incremental src/return_platform/workflows tests/test_return_workflow.py
+python -m pytest -vv tests/test_return_workflow.py
+```
+
+Observed on July 22, 2026:
+
+```text
+Focused format: PASS
+Focused lint:   PASS
+Focused mypy:   PASS
+Focused tests:  PASS (10/10)
+Complete lint:  PASS (107 source files)
+Complete mypy:  PASS (107 source files)
+Complete tests: PASS (862/862)
+```
+
+The full repository format check reports 12 pre-existing files outside the
+workflow slice that would be reformatted. They were preserved; all new workflow
+files pass the focused format check.
+
 ### Live Graph Evidence API validation
 
 ```bash
@@ -1620,6 +1664,81 @@ Evidence:
 docs/evidence/graph_evidence_api/validation_summary.json
 ```
 
+### Data Console Customer Graph Evidence frontend
+
+Observed on July 22, 2026 using Docker for both frontend and backend:
+
+```text
+ESLint:                   PASS
+Strict TypeScript:        PASS
+Focused frontend tests:   PASS (19/19)
+Complete frontend tests:  PASS (19/19)
+Vite production build:    PASS
+Live Vite-proxied routes: PASS (6/6 HTTP 200)
+Visual screenshots:       DEFERRED TO HARDENING
+```
+
+Evidence:
+
+```text
+frontend/docs/evidence/graph_evidence_ui/validation_summary.md
+```
+
+### Temporal Return workflow deterministic core
+
+The first Temporal slice defines execution coordination only. It does not own
+business return state and performs no external I/O.
+
+Implemented contracts:
+
+```text
+ReturnWorkflowInput
+ReturnWorkflowConfigurationVersion
+ReturnWorkflowAdvanceCommand
+AppliedStageCommand
+ReturnWorkflowExecutionState
+ReturnWorkflowTransitionError
+```
+
+The workflow uses the fixed stage order:
+
+```text
+INTAKE
+→ ORDER_DISCOVERY
+→ ELIGIBILITY_EVALUATION
+→ RETURN_REQUEST
+→ FULFILLMENT_TRACKING
+→ BAY_ASSIGNMENT
+→ FEEDBACK_LEARNING
+→ COMPLETED
+```
+
+`complete_stage` is an ordered, idempotent Temporal update. Identical command
+replay returns the existing execution state. Reusing a command ID with different
+stage evidence, skipping a stage, or advancing a completed execution fails with
+a stable safe code. `execution_state` is an execution-observability query, not a
+business-state API.
+
+Platform MongoDB remains authoritative for `ReturnSession`, audit, decision,
+and outbox state. The repository and Temporal persistence activities atomically
+write session, audit, and outbox evidence with idempotent command replay and no
+hidden write retry. Eligibility transitions also write the canonical
+`AgentDecision` in that same transaction.
+
+Evidence:
+
+```text
+backend/docs/evidence/return_workflow_core/validation_summary.md
+backend/docs/evidence/return_session_persistence/validation_summary.md
+backend/docs/evidence/return_workflow_live/validation_summary.md
+backend/docs/evidence/return_stage_contexts/validation_summary.md
+backend/docs/evidence/return_eligibility_gateway/validation_summary.md
+backend/docs/evidence/return_request_context/validation_summary.md
+backend/docs/evidence/fulfillment_tracking_context/validation_summary.md
+backend/docs/evidence/bay_assignment_context/validation_summary.md
+backend/docs/evidence/feedback_learning_context/validation_summary.md
+```
+
 ---
 
 ## 23. Security Rules
@@ -1763,7 +1882,7 @@ http://localhost:5173/data-console/graph-evidence
 - No production Customer source document has been fetched through the source adapter.
 - Customer graph write/read-back evidence is sandbox-only, not production validation.
 - Graph Evidence API evidence is sandbox-only, not production validation.
-- The Data Console Customer Graph Evidence frontend has not yet passed repository lint, typecheck, tests, build, or live browser validation.
+- The Data Console Customer Graph Evidence frontend passed lint, strict typecheck, 19 focused/complete tests, production build, and all six live Docker frontend-proxy API checks. Desktop and mobile screenshots are explicitly deferred to hardening.
 - No governed graph synchronization mutation API exists.
 - No Temporal activity owns source/graph timeout and retry policy.
 - No cross-document Customer or CustomerAccount collision detector exists.
@@ -1810,10 +1929,18 @@ Second-run idempotency:                        SANDBOX_VALIDATED
 Platform graph-evidence persistence:           SANDBOX_VALIDATED
 Graph Validation API:                          SANDBOX_VALIDATED
 Graph Inspection APIs:                         SANDBOX_VALIDATED
-Data Console Customer Graph Evidence screens: IMPLEMENTED; VALIDATION PENDING
+Data Console Customer Graph Evidence screens: CONTRACT_TESTED; LIVE API PROXY VERIFIED; SCREENSHOTS DEFERRED TO HARDENING
 
 Live production Customer source lookup:        BLOCKED_EXTERNAL_DEPENDENCY
-Temporal return workflow:                      NOT IMPLEMENTED
+Temporal return workflow deterministic core:   CONTRACT_TESTED
+ReturnSession persistence activities:          LIVE SANDBOX VALIDATED
+Temporal worker and live workflow execution:   LIVE SANDBOX VALIDATED
+Intake and discovery context persistence:      LIVE SANDBOX VALIDATED
+Eligibility and AI Gateway boundary:           CONTRACT_TESTED; LIVE PERSISTENCE VALIDATED
+Deterministic RETURN_REQUEST context:          LIVE SANDBOX VALIDATED
+Deterministic FULFILLMENT_TRACKING context:    LIVE SANDBOX VALIDATED
+Deterministic BAY_ASSIGNMENT context:          LIVE SANDBOX VALIDATED
+Deterministic FEEDBACK_LEARNING context:       LIVE SANDBOX VALIDATED
 Customer return frontend:                      NOT IMPLEMENTED
 Scenario runner:                               NOT IMPLEMENTED
 ```
@@ -1823,25 +1950,17 @@ Scenario runner:                               NOT IMPLEMENTED
 Continue in Codex from:
 
 ```text
-Stage 3 — Data Console Customer Graph Synchronization and Evidence Screens
+Temporal Return workflow — end-to-end scenario matrix
 ```
 
-Codex must:
+All seven deterministic stage contexts and their atomic persistence boundaries are
+validated. The next bounded slice is:
 
-1. Inspect the actual frontend repository structure and worktree.
-2. Reconcile the prepared source with the actual API contracts, routing, shell, Tailwind configuration, package scripts, and test setup.
-3. Integrate or correct the frontend files.
-4. Add `/data-console/graph-evidence` routing and navigation.
-5. Run ESLint.
-6. Run strict TypeScript.
-7. Run focused Graph Evidence tests.
-8. Run complete frontend tests.
-9. Run the Vite production build.
-10. Start the backend and frontend.
-11. Validate the page against the retained sandbox evidence.
-12. Capture request IDs, screenshots, commands, outputs, and exit codes.
-13. Update this README with exact evidence.
-14. Stop after this bounded step is accepted.
+1. Define at least five positive and five negative end-to-end scenarios.
+2. Exercise approval, rejection, review, replay, and tamper/conflict paths.
+3. Verify final session contexts, decision evidence, audit, and outbox counts.
+4. Produce a deterministic scenario report suitable for hardening evidence.
+5. Keep screenshot capture deferred until the hardening page.
 
 ### The current step must not
 
@@ -1853,11 +1972,15 @@ add automatic retries
 add arbitrary MongoDB filters
 add arbitrary Cypher
 add SalesOrder graph execution
-add Temporal workflows
+enable production business-source workflow activities
+enable unvalidated workflow decisions or eligibility policy
+add customer-facing workflow APIs
 add Package
 add PPLTracking
 start the customer-facing return UI
 begin the hardening phase
 ```
 
-After the Data Console Graph Evidence screen passes all frontend and live integration gates, stop and request the next bounded instruction.
+Do not enable a live model provider or customer-facing return UI. The gateway
+boundary is validated, but an approved provider adapter and production eligibility
+policy/configuration have not been selected.

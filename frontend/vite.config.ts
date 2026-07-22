@@ -14,8 +14,15 @@ export default defineConfig(({ mode }) => {
     "FRONTEND_",
   );
 
-  const backendTarget =
-  env.FRONTEND_BACKEND_TARGET.trim();
+  const loadedBackendTarget: unknown = Reflect.get(
+    env,
+    "FRONTEND_BACKEND_TARGET",
+  );
+  const backendTarget = (
+    typeof loadedBackendTarget === "string"
+      ? loadedBackendTarget
+      : process.env.FRONTEND_BACKEND_TARGET ?? ""
+  ).trim();
 
   if (!backendTarget) {
     throw new Error(

@@ -219,6 +219,7 @@ class ReturnSession(CanonicalBaseModel):
     status: NonBlankText
     intake_context: ContextSnapshot | None = None
     discovery_context: ContextSnapshot | None = None
+    eligibility_context: ContextSnapshot | None = None
     return_request_context: ContextSnapshot | None = None
     fulfillment_tracking_context: ContextSnapshot | None = None
     bay_staging_context: ContextSnapshot | None = None

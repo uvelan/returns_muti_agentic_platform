@@ -166,6 +166,16 @@ function isAbortError(
 }
 
 
+function isTimeoutError(
+  error: unknown,
+): boolean {
+  return (
+    error instanceof DOMException
+    && error.name === "TimeoutError"
+  );
+}
+
+
 /**
  * Execute a request against the Return Platform API.
  *
@@ -187,6 +197,17 @@ export async function apiClient<T>(
       headers,
     });
   } catch (error) {
+    if (isTimeoutError(error)) {
+      throw new APIError(
+        "The API request timed out.",
+        0,
+        undefined,
+        {
+          cause: error,
+        },
+      );
+    }
+
     if (isAbortError(error)) {
       throw new APIError(
         "The API request was cancelled.",

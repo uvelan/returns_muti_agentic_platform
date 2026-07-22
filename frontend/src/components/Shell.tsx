@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import {
   Activity,
+  FileCheck2,
   LayoutDashboard,
 } from "lucide-react";
 import {
@@ -19,6 +20,7 @@ export function Shell({
 }: ShellProps) {
   const [isOverviewRoute] = useRoute("/overview");
   const [isRootRoute] = useRoute("/");
+  const [isGraphEvidenceRoute] = useRoute("/data-console/graph-evidence");
 
   const isOverviewActive =
     isOverviewRoute || isRootRoute;
@@ -126,6 +128,15 @@ export function Shell({
               <span className="hidden sm:inline">
                 Overview
               </span>
+            </Link>
+
+            <Link
+              href="/data-console/graph-evidence"
+              className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 ${isGraphEvidenceRoute ? "bg-slate-100 text-slate-950" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"}`}
+              aria-current={isGraphEvidenceRoute ? "page" : undefined}
+            >
+              <FileCheck2 size={16} aria-hidden="true" />
+              <span className="hidden sm:inline">Graph evidence</span>
             </Link>
           </nav>
         </div>

@@ -181,13 +181,13 @@ services:
     entrypoint: ["bash", "-c"]
     command:
       - |
-        # Explicitly declare --plugin postgres and --port 5432 to prevent MySQL defaults
-        temporal-sql-tool --plugin postgres --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal create &&
-        temporal-sql-tool --plugin postgres --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal setup-schema -v 0.0 &&
-        temporal-sql-tool --plugin postgres --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal update-schema -d /etc/temporal/schema/postgresql/v12/temporal/versioned &&
-        temporal-sql-tool --plugin postgres --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal_visibility create &&
-        temporal-sql-tool --plugin postgres --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal_visibility setup-schema -v 0.0 &&
-        temporal-sql-tool --plugin postgres --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal_visibility update-schema -d /etc/temporal/schema/postgresql/v12/visibility/versioned
+        # Temporal 1.25 names its PostgreSQL 12+ plugin postgres12.
+        temporal-sql-tool --plugin postgres12 --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal create &&
+        temporal-sql-tool --plugin postgres12 --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal setup-schema -v 0.0 &&
+        temporal-sql-tool --plugin postgres12 --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal update-schema -d /etc/temporal/schema/postgresql/v12/temporal/versioned &&
+        temporal-sql-tool --plugin postgres12 --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal_visibility create &&
+        temporal-sql-tool --plugin postgres12 --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal_visibility setup-schema -v 0.0 &&
+        temporal-sql-tool --plugin postgres12 --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal_visibility update-schema -d /etc/temporal/schema/postgresql/v12/visibility/versioned
     deploy:
       resources:
         limits:
@@ -195,17 +195,18 @@ services:
 
   # 6. Workflow Orchestration Engine (Locked to Admin Tools version for schema parity)
   temporal:
-    image: temporalio/server:${TEMPORAL_ADMIN_TOOLS_VERSION}
+    image: temporalio/auto-setup:${TEMPORAL_ADMIN_TOOLS_VERSION}
     env_file: .env
     depends_on:
       temporal-schema-setup:
         condition: service_completed_successfully
     environment:
-      DB: postgresql
+      DB: postgres12
       DB_PORT: 5432
       POSTGRES_USER: temporal
       POSTGRES_PWD: ${TEMPORAL_DB_PASSWORD}
       POSTGRES_SEEDS: temporal-postgresql
+      SKIP_SCHEMA_SETUP: "true"
     ports:
       - "127.0.0.1:7233:7233"
     restart: unless-stopped
