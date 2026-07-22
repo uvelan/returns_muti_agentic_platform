@@ -1,0 +1,44 @@
+schema_version: "1.0"
+
+graph_nodes:
+  - node_mapping_id: graph.customer.v1
+    canonical_mapping_id: canonical.customer.v1
+    label: Customer
+    key_field: customer_key
+    properties:
+      - canonical_field: customer_key
+        graph_property: customer_key
+      - canonical_field: party_id
+        graph_property: party_id
+      - canonical_field: source_system
+        graph_property: source_system
+      - canonical_field: source_record_id
+        graph_property: source_record_id
+
+  - node_mapping_id: graph.customer_account.v1
+    canonical_mapping_id: canonical.customer_account.v1
+    label: CustomerAccount
+    key_field: account_key
+    properties:
+      - canonical_field: account_key
+        graph_property: account_key
+      - canonical_field: customer_key
+        graph_property: customer_key
+      - canonical_field: account_number
+        graph_property: account_number
+      - canonical_field: customer_id
+        graph_property: customer_id
+
+graph_relationships:
+  - relationship_mapping_id: graph.customer.has_account.v1
+    relationship_type: HAS_ACCOUNT
+
+    # CustomerAccount owns customer_key, which references Customer.customer_key.
+    source_node_mapping_id: graph.customer_account.v1
+    target_node_mapping_id: graph.customer.v1
+    source_reference_field: customer_key
+    target_key_field: customer_key
+
+    # Emit Customer -> CustomerAccount while matching from the reference holder.
+    direction: TARGET_TO_SOURCE
+    required: true

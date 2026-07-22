@@ -1,0 +1,209 @@
+"""Shared fixtures and environment configuration for backend tests."""
+
+import os
+from pathlib import Path
+from urllib.parse import quote
+
+import pytest
+from dotenv import load_dotenv
+from pydantic import AnyHttpUrl, SecretStr
+
+from return_platform.configuration.settings import Settings
+from return_platform.data_governance import (
+    LoadedAssetCatalog,
+    load_asset_catalog,
+)
+from return_platform.resources import RuntimeResources
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+ROOT_ENV_FILE = REPOSITORY_ROOT / ".env"
+
+
+def pytest_configure(
+    config: pytest.Config,
+) -> None:
+    """Load the repository environment before tests execute."""
+
+    del config
+
+    if not ROOT_ENV_FILE.is_file():
+        raise RuntimeError(
+            "Required repository environment file was not found: "
+            f"{ROOT_ENV_FILE}"
+        )
+
+    loaded = load_dotenv(
+        dotenv_path=ROOT_ENV_FILE,
+        override=False,
+    )
+
+    if not loaded:
+        raise RuntimeError(
+            "The repository environment file could not be loaded."
+        )
+
+def _required_environment_variable(
+    name: str,
+) -> str:
+    """Return a required environment variable without exposing its value."""
+
+    value = os.getenv(name)
+
+    if value is None or not value.strip():
+        raise RuntimeError(
+            "Required test environment variable is not set: "
+            f"{name}"
+        )
+
+    return value
+
+
+@pytest.fixture
+def empty_catalog_path(
+    tmp_path: Path,
+) -> Path:
+    """Create a valid empty governance catalog."""
+
+    catalog_path = tmp_path / "data_assets.yaml"
+
+    catalog_path.write_text(
+        'version: "1.0"\nassets: []\n',
+        encoding="utf-8",
+    )
+
+    return catalog_path.resolve()
+
+
+@pytest.fixture
+def loaded_empty_catalog(
+    empty_catalog_path: Path,
+) -> LoadedAssetCatalog:
+    """Load an isolated empty governance catalog."""
+
+    return load_asset_catalog(
+        empty_catalog_path
+    )
+
+
+@pytest.fixture
+def test_settings(
+    empty_catalog_path: Path,
+) -> Settings:
+    """Provide valid test settings using root environment secrets."""
+
+    mongo_username = quote(
+        _required_environment_variable(
+            "MONGO_ROOT_USERNAME"
+        ),
+        safe="",
+    )
+
+    mongo_password = quote(
+        _required_environment_variable(
+            "MONGO_ROOT_PASSWORD"
+        ),
+        safe="",
+    )
+
+    return Settings(
+        catalog_path=empty_catalog_path,
+        environment="test",
+        frontend_cors_origin=AnyHttpUrl(
+            "http://localhost:5173"
+        ),
+        mongo_dsn=SecretStr(
+            f"mongodb://{mongo_username}:{mongo_password}"
+            "@localhost:27017/return_platform"
+            "?authSource=admin"
+        ),
+        neo4j_uri="bolt://localhost:7687",
+        neo4j_user="neo4j",
+        neo4j_password=SecretStr(
+            _required_environment_variable(
+                "GRAPH_PASSWORD"
+            )
+        ),
+        valkey_host="localhost",
+        valkey_password=SecretStr(
+            _required_environment_variable(
+                "VALKEY_PASSWORD"
+            )
+        ),
+        temporal_target="localhost:7233",
+        sqlserver_host="localhost",
+        sqlserver_user="sa",
+        sqlserver_password=SecretStr(
+            _required_environment_variable(
+                "MSSQL_SA_PASSWORD"
+            )
+        ),
+        sqlserver_database="test_db",
+    )
+
+
+@pytest.fixture
+def isolated_lifespan_dependencies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prevent lifespan unit tests from opening external connections."""
+
+    def initialize_mongodb(
+        settings: Settings,
+        resources: RuntimeResources,
+    ) -> None:
+        del settings
+        del resources
+
+    def initialize_neo4j(
+        settings: Settings,
+        resources: RuntimeResources,
+    ) -> None:
+        del settings
+        del resources
+
+    def initialize_valkey(
+        settings: Settings,
+        resources: RuntimeResources,
+    ) -> None:
+        del settings
+        del resources
+
+    async def initialize_temporal(
+        settings: Settings,
+        resources: RuntimeResources,
+    ) -> None:
+        del settings
+        del resources
+
+    async def close_test_resources(
+        resources: RuntimeResources,
+    ) -> None:
+        resources.sql_manager.executor.shutdown(
+            wait=False,
+            cancel_futures=True,
+        )
+
+    monkeypatch.setattr(
+        "return_platform.main._initialize_mongodb",
+        initialize_mongodb,
+    )
+
+    monkeypatch.setattr(
+        "return_platform.main._initialize_neo4j",
+        initialize_neo4j,
+    )
+
+    monkeypatch.setattr(
+        "return_platform.main._initialize_valkey",
+        initialize_valkey,
+    )
+
+    monkeypatch.setattr(
+        "return_platform.main._initialize_temporal",
+        initialize_temporal,
+    )
+
+    monkeypatch.setattr(
+        "return_platform.main.close_resources",
+        close_test_resources,
+    )

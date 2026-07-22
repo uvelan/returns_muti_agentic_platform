@@ -1,0 +1,86 @@
+schema_version: "1.0"
+
+canonical_mappings:
+  - mapping_id: canonical.customer.v1
+    version: "1.0"
+    source_id: source.customer_cdm.v1
+    entity_type: Customer
+    fields:
+      - canonical_field: party_id
+        path_scope: RECORD
+        source_paths:
+          - partyId
+        required: true
+
+      # These standard source-evidence fields are created by code-owned handlers.
+      # Handler existence and output typing are validated by the future compiler.
+      - canonical_field: source_system
+        path_scope: RECORD
+        source_paths:
+          - partyId
+        required: true
+        handler: customer_cdm_source_system_v1
+
+      - canonical_field: source_record_id
+        path_scope: RECORD
+        source_paths:
+          - partyId
+        required: true
+        handler: source_record_id_from_party_id_v1
+
+      - canonical_field: provenance
+        path_scope: RECORD
+        source_paths:
+          - partyId
+        required: true
+        handler: customer_cdm_document_provenance_v1
+
+    identity:
+      key_field: customer_key
+      handler: customer_key_v1
+      component_fields:
+        - party_id
+      identity_quality: VERIFIED
+    depends_on: []
+
+  - mapping_id: canonical.customer_account.v1
+    version: "1.0"
+    source_id: source.customer_cdm.v1
+    entity_type: CustomerAccount
+    record_path: custAccts[]
+    fields:
+      - canonical_field: account_number
+        path_scope: RECORD
+        source_paths:
+          - accountNumber
+        required: true
+
+      - canonical_field: customer_id
+        path_scope: RECORD
+        source_paths:
+          - accountNumber
+        required: true
+        handler: account_number_customer_id_v1
+
+      - canonical_field: customer_key
+        path_scope: DOCUMENT
+        source_paths:
+          - partyId
+        required: true
+        handler: customer_reference_key_v1
+
+      - canonical_field: provenance
+        path_scope: RECORD
+        source_paths:
+          - accountNumber
+        required: true
+        handler: customer_account_provenance_v1
+
+    identity:
+      key_field: account_key
+      handler: customer_account_key_v1
+      component_fields:
+        - account_number
+      identity_quality: VERIFIED
+    depends_on:
+      - canonical.customer.v1

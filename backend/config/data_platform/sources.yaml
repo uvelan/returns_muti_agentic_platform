@@ -1,0 +1,11 @@
+schema_version: "1.0"
+
+# This profile binds to the approved logical Customer CDM source location.
+# It is intentionally non-executable until the matching governance catalog
+# asset is declared in the target environment's data_assets.yaml.
+source_assets:
+  - source_id: source.customer_cdm.v1
+    catalog_asset_id: source.mongodb.customer_outbound_cdm
+    source_system: CUSTOMER_CDM
+    lifecycle: ACTIVE
+    required_for_sync: true

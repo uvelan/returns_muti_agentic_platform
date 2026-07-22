@@ -1,0 +1,11 @@
+{
+    "partyId": "P100",
+    "custAccts": [
+        {
+            "accountNumber": "202*C001"
+        },
+        {
+            "accountNumber": "203*C002"
+        }
+    ]
+}

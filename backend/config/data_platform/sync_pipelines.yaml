@@ -1,0 +1,23 @@
+schema_version: "1.0"
+
+sync_pipelines:
+  - pipeline_id: pipeline.customer_foundation.v1
+    version: "1.0"
+    stages:
+      - stage_id: stage.customer.v1
+        canonical_mapping_ids:
+          - canonical.customer.v1
+        node_mapping_ids:
+          - graph.customer.v1
+        relationship_mapping_ids: []
+        depends_on: []
+
+      - stage_id: stage.customer_account.v1
+        canonical_mapping_ids:
+          - canonical.customer_account.v1
+        node_mapping_ids:
+          - graph.customer_account.v1
+        relationship_mapping_ids:
+          - graph.customer.has_account.v1
+        depends_on:
+          - stage.customer.v1

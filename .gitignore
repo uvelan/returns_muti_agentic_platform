@@ -1,0 +1,22 @@
+# Node & Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+.tmp/
+coverage/
+
+# Python & Backend
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.env
+
+# OS & Editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

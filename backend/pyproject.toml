@@ -1,0 +1,85 @@
+[project]
+name = "return-platform-backend"
+version = "0.1.0"
+description = "Return Platform API and Data Console"
+requires-python = ">=3.13,<3.14"
+
+authors = [
+    { name = "Platform Engineering" }
+]
+
+dependencies = [
+    "fastapi==0.139.1",
+    "uvicorn[standard]==0.51.0",
+    "pydantic==2.13.0",
+    "pydantic-settings==2.14.2",
+    "pymongo==4.17.0",
+    "neo4j==6.2.0",
+    "pymssql==2.3.13",
+    "redis==8.0.1",
+    "temporalio==1.30.0",
+    "pyyaml (>=6.0.3,<7.0)",
+]
+
+[tool.poetry]
+package-mode = true
+
+packages = [
+    { include = "return_platform", from = "src" }
+]
+
+include = [
+    { path = "src/return_platform/py.typed", format = ["sdist", "wheel"] }
+]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "9.1.1"
+pytest-asyncio = "1.4.0"
+ruff = "0.15.21"
+mypy = "2.3.0"
+httpx2 = "^2.7.0"
+types-pyyaml = "^6.0.12.20260518"
+pytest-cov = ">=7.1,<8.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unused_configs = true
+show_error_codes = true
+pretty = true
+mypy_path = "$MYPY_CONFIG_FILE_DIR/src"
+explicit_package_bases = true
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "W",
+    "I",
+    "B",
+    "UP",
+    "ASYNC",
+    "RUF",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+testpaths = ["tests"]
+addopts = [
+    "--strict-config",
+    "--strict-markers",
+]

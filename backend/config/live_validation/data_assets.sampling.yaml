@@ -1,0 +1,42 @@
+version: "1.0"
+
+# Live-validation catalog only.
+#
+# This file is never loaded by the production FastAPI lifespan and must not be
+# assigned to PLATFORM_CATALOG_PATH. The live sampling validator explicitly
+# loads this catalog after creating its controlled sandbox fixtures and removes
+# those fixtures before exiting.
+assets:
+  - asset_id: source.sqlserver.governance_sampling_fixture
+    store: SQLSERVER
+    database: return_platform
+    namespace: dbo
+    object_name: governance_sampling_fixture
+    object_kind: TABLE
+    ownership: SOURCE_SYSTEM
+    authoritative: true
+    allowed_operations:
+      - READ
+    sampling:
+      enabled: true
+      max_rows: 2
+      redact_fields:
+        - email
+        - secret_note
+
+  - asset_id: source.mongodb.governance_sampling_fixture
+    store: MONGODB
+    database: return_platform
+    namespace: null
+    object_name: governance_sampling_fixture
+    object_kind: COLLECTION
+    ownership: SOURCE_SYSTEM
+    authoritative: true
+    allowed_operations:
+      - READ
+    sampling:
+      enabled: true
+      max_rows: 2
+      redact_fields:
+        - email
+        - secret_note

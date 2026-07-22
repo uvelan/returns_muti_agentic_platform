@@ -1,0 +1,10 @@
+version: "1.0"
+
+# The catalog is intentionally empty.
+#
+# Assets are added only after:
+# 1. The physical table, view, or collection exists.
+# 2. Its ownership has been explicitly approved.
+# 3. Its permitted operations have been defined.
+# 4. Its identity has been verified against the live database.
+assets: []

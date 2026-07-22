@@ -1,0 +1,244 @@
+services:
+  # 1. Authoritative Business State
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:${MSSQL_VERSION}
+    env_file: .env
+    environment:
+      ACCEPT_EULA: 'Y'
+      MSSQL_PID: 'Developer'
+      MSSQL_MEMORY_LIMIT_MB: 2048
+    ports:
+      - "127.0.0.1:1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -No -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+
+  sqlserver-init:
+    image: mcr.microsoft.com/mssql/server:${MSSQL_VERSION}
+    env_file: .env
+    user: root
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    command: >
+      bash -c '
+      /opt/mssql-tools18/bin/sqlcmd -No -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD" -Q "
+      IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = '\''return_platform'\'')
+      BEGIN
+          CREATE DATABASE return_platform;
+      END"
+      '
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # 2. Knowledge Graph & Primary Read Layer
+  neo4j:
+    image: neo4j:${NEO4J_VERSION}
+    env_file: .env
+    environment:
+      NEO4J_AUTH: neo4j/${GRAPH_PASSWORD}
+      NEO4J_server_memory_heap_initial__size: 512M
+      NEO4J_server_memory_heap_max__size: 1G
+      NEO4J_server_memory_pagecache_size: 512M
+      NEO4J_server_config_strict__validation_enabled: "false"
+    ports:
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p \"$$GRAPH_PASSWORD\" 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
+    deploy:
+      resources:
+        limits:
+          memory: 2.5G
+
+  # 3. Durable Audit & Event History (Self-Initializing Replica Set)
+  mongodb:
+    image: mongo:${MONGO_VERSION}
+    env_file: .env
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongoadmin
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    entrypoint:
+      - bash
+      - -c
+      - |
+        if [ ! -f /data/configdb/keyfile ]; then
+          echo "R2VuZXJhdGVkUmVwbGljYVNldEtleUZvck1vbmdvREIyMDI2" > /data/configdb/keyfile
+          chmod 400 /data/configdb/keyfile
+        fi
+        
+        mongod --replSet rs0 --bind_ip_all --wiredTigerCacheSizeGB 1 --keyFile /data/configdb/keyfile &
+        PID=$$!
+        
+        until mongosh --quiet --eval "db.adminCommand('ping').ok" > /dev/null 2>&1; do sleep 1; done
+        
+        if [ "$$(mongosh --quiet --eval 'rs.status().ok || 0')" != "1" ]; then
+          mongosh --quiet --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: '127.0.0.1:27017'}]})"
+          sleep 2
+          mongosh admin --quiet --eval "db.createUser({user: 'mongoadmin', pwd: '${MONGO_ROOT_PASSWORD}', roles: [{role: 'root', db: 'admin'}]})"
+        fi
+        
+        wait $$PID
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh -u mongoadmin -p \"$$MONGO_INITDB_ROOT_PASSWORD\" --eval \"db.adminCommand('ping')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  # 4. Live Event Transport (SSE) & Rate Limiting
+  valkey:
+    image: valkey/valkey:${VALKEY_VERSION}
+    env_file: .env
+    command: valkey-server --requirepass ${VALKEY_PASSWORD} --maxmemory 256mb --maxmemory-policy noeviction --appendonly yes
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli -a \"$$VALKEY_PASSWORD\" ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # 5. Temporal Internal Persistence (Isolated)
+  temporal-postgresql:
+    image: postgres:${POSTGRES_VERSION}
+    env_file: .env
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: ${TEMPORAL_DB_PASSWORD}
+      POSTGRES_DB: temporal
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - temporal_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  temporal-schema-setup:
+    image: temporalio/admin-tools:${TEMPORAL_ADMIN_TOOLS_VERSION}
+    env_file: .env
+    depends_on:
+      temporal-postgresql:
+        condition: service_healthy
+    environment:
+      SECURE_PWD: ${TEMPORAL_DB_PASSWORD}
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        # Explicitly declare --plugin postgres and --port 5432 to prevent MySQL defaults
+        temporal-sql-tool --plugin postgres --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal create &&
+        temporal-sql-tool --plugin postgres --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal setup-schema -v 0.0 &&
+        temporal-sql-tool --plugin postgres --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal update-schema -d /etc/temporal/schema/postgresql/v12/temporal/versioned &&
+        temporal-sql-tool --plugin postgres --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal_visibility create &&
+        temporal-sql-tool --plugin postgres --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal_visibility setup-schema -v 0.0 &&
+        temporal-sql-tool --plugin postgres --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal_visibility update-schema -d /etc/temporal/schema/postgresql/v12/visibility/versioned
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # 6. Workflow Orchestration Engine (Locked to Admin Tools version for schema parity)
+  temporal:
+    image: temporalio/server:${TEMPORAL_ADMIN_TOOLS_VERSION}
+    env_file: .env
+    depends_on:
+      temporal-schema-setup:
+        condition: service_completed_successfully
+    environment:
+      DB: postgresql
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: ${TEMPORAL_DB_PASSWORD}
+      POSTGRES_SEEDS: temporal-postgresql
+    ports:
+      - "127.0.0.1:7233:7233"
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+
+  temporal-ui:
+    image: temporalio/ui:${TEMPORAL_UI_VERSION}
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+volumes:
+  sqlserver_data:
+  neo4j_data:
+  neo4j_logs:
+  mongo_data:
+  valkey_data:
+  temporal_pg_data:
