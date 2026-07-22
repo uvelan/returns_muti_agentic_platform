@@ -1,212 +1,119 @@
-Return Platform — Data Console and Customer Graph Foundation
+# Return Platform — Data Console and Customer Graph Foundation
 
 The Return Platform is a backend-first Sales Order Return platform with a separate operational Data Console.
 
-The customer return process is the primary end-to-end product experience. The Data Console is a developer and operator control plane used to create and inspect supporting data, validate infrastructure, observe synchronization, inspect evidence, and diagnose failures. It is not the primary customer demo.
+The **customer return process** is the primary end-to-end product experience. The **Data Console** is a developer and operator control plane used to inspect supporting data, validate infrastructure, observe graph synchronization, review immutable evidence, and diagnose failures. It is not the primary customer demo.
+
+The repository currently includes:
+
+- FastAPI and React/Vite application foundations.
+- Live dependency health visibility.
+- Immutable data-governance and asset-catalog contracts.
+- SQL Server and MongoDB metadata inventory.
+- Declared-versus-observed drift analysis.
+- Bounded sampling contracts.
+- The complete canonical domain-model layer.
+- Versioned physical-to-canonical mapping contracts.
+- The first Customer and CustomerAccount mapping profile.
+- A code-owned mapping-handler registry.
+- A bounded multi-file mapping loader.
+- An immutable Customer-profile compiler.
+- Deterministic in-memory Customer normalization.
+- A read-only exact-ID MongoDB Customer source adapter.
+- Deterministic Customer graph-projection materialization.
+- Fixed parameterized Customer Neo4j commands.
+- An explicit no-hidden-retry Neo4j writer.
+- Fixed Customer graph read-back contracts.
+- A sandbox-only Customer graph validation and idempotency runner.
+- Immutable Customer graph evidence persisted in Platform MongoDB.
+- Read-only Graph Validation and Graph Inspection APIs.
+- A prepared Data Console Customer Graph Evidence frontend slice awaiting repository integration and validation.
+
+No production source asset, production Customer lookup, production graph write, or production deployment is claimed as validated unless corresponding evidence is explicitly recorded below.
+
+---
+
+## 1. Current Status
+
+| Area | Status | Notes |
+|---|---|---|
+| Stage 1 — Frontend/API foundation | **COMPLETE** | FastAPI application shell, React/Vite shell, typed API client, routing, lifecycle resources, and baseline quality gates |
+| Stage 2 — Infrastructure visibility | **BASIC ACCEPTANCE PASSED** | Five dependency probes, concurrent aggregation, partial responses, correlation IDs, safe errors, and live healthy/degraded evidence |
+| Stage 3 — Governance and catalog | **COMPLETE** | Immutable governance contracts, strict YAML catalog loading, startup registration, and intentionally empty production catalog |
+| Stage 3 — SQL Server inventory | **SANDBOX_VALIDATED** | Metadata-only live inventory completed against the configured sandbox database |
+| Stage 3 — MongoDB inventory | **SANDBOX_VALIDATED** | Metadata-only live inventory completed against the configured sandbox database |
+| Stage 3 — Drift | **IMPLEMENTED; LIVE OUTPUT OBSERVED** | Empty declared and observed state produced zero confirmed drift; the original run did not capture a process exit code |
+| Stage 3 — Bounded sampling | **CONTRACT_TESTED** | Live sampling remains deliberately deferred |
+| Stage 3 — Inventory API/UI | **NOT IMPLEMENTED** | Data Ownership inventory pages remain pending |
+| Canonical domain model | **COMPLETE** | Customer, order, product, warehouse, shipment, return, bay, session, audit, decision, and graph-evidence contracts |
+| Mapping configuration language | **COMPLETE** | Source, canonical, graph, relationship-direction, physical-scope, and pipeline contracts |
+| Customer mapping profile | **COMPLETE** | Customer and CustomerAccount profile across four versioned YAML files |
+| Mapping handler registry | **COMPLETE** | Code-owned field and identity handlers with purpose, arity, output, version, and determinism metadata |
+| Multi-file mapping loader | **COMPLETE** | Bounded UTF-8 YAML loading, duplicate-key and alias rejection, schema agreement, and digest evidence |
+| Customer mapping compiler | **COMPLETE** | Governance, canonical-model, handler, graph, and pipeline validation into an immutable execution plan |
+| Customer in-memory normalization | **COMPLETE** | Deterministic document and nested-account normalization with safe record-rejection evidence |
+| Customer MongoDB source adapter | **COMPLETE** | Exact governed `_id` lookup contract; production live lookup remains blocked |
+| Customer graph materialization | **COMPLETE** | Immutable Customer, CustomerAccount, and `HAS_ACCOUNT` parameter materialization |
+| Customer Neo4j command builder | **COMPLETE** | Fixed uniqueness constraints and parameterized node/relationship commands |
+| Customer Neo4j writer | **CONTRACT_TESTED** | Focused and complete repository gates passed after strict typing and Neo4j Driver 6.2 corrections |
+| Customer graph sandbox runner | **SANDBOX_VALIDATED** | Controlled source fixture normalized, written, read back, and replayed successfully |
+| Live Neo4j Customer graph write | **SANDBOX_VALIDATED** | Constraints, nodes, relationships, bookmarks, and returned-key validation completed |
+| Customer graph read-back | **SANDBOX_VALIDATED** | Customer, CustomerAccount, and `HAS_ACCOUNT` were read back through fixed parameterized queries |
+| Second-run graph idempotency | **SANDBOX_VALIDATED** | Identical replay produced equivalent graph and evidence results |
+| Platform MongoDB graph-evidence persistence | **SANDBOX_VALIDATED** | Immutable evidence document created and read back successfully |
+| Graph Validation API | **SANDBOX_VALIDATED** | Live latest/list/exact lookup routes validated |
+| Graph Inspection APIs | **SANDBOX_VALIDATED** | Document, sync-run, report-digest, and admin full-evidence routes validated |
+| Data Console Customer Graph Evidence screens | **IMPLEMENTED; INTEGRATION PENDING** | Frontend source and tests prepared; repository lint, typecheck, tests, build, and live browser validation remain the active step |
+| Live Customer source lookup | **BLOCKED_EXTERNAL_DEPENDENCY** | Production catalog intentionally has no approved Customer CDM source asset |
+| Temporal return workflow | **NOT IMPLEMENTED** | Begins after the data and graph foundation and current Data Console slice are complete |
+| Scenario runner | **NOT IMPLEMENTED** | At least five positive and five negative end-to-end return scenarios remain pending |
+| Customer-facing return UI | **NOT IMPLEMENTED** | Remains the primary eventual demo experience |
+
+### Immediate truth boundary
+
+The Customer graph backend path is validated through:
+
+```text
+controlled Customer fixture
+→ mapping profile load
+→ mapping compilation
+→ in-memory normalization
+→ graph materialization
+→ fixed Neo4j command construction
+→ uniqueness-constraint preparation
+→ atomic Neo4j write
+→ deterministic graph read-back
+→ second-run idempotency proof
+→ Platform MongoDB evidence persistence
+→ read-only Graph Evidence APIs
+→ six-route live API validation
+```
+
+The active bounded step is:
+
+```text
+Stage 3 — Data Console Customer Graph Synchronization and Evidence Screens
+```
+
+The frontend implementation must still be integrated into the real repository and pass:
+
+```text
+ESLint
+strict TypeScript
+focused Vitest
+complete frontend tests
+Vite production build
+live browser/backend integration
+README evidence capture
+```
 
-The current repository includes:
+---
 
-FastAPI and React application foundations.
+## 2. Locked Architecture and Ownership
 
-Live dependency health visibility.
+### Canonical workflow
 
-Immutable data-governance and asset-catalog contracts.
-
-SQL Server and MongoDB metadata inventory.
-
-Declared-versus-observed drift analysis.
-
-Bounded sampling contracts.
-
-The complete canonical domain-model layer.
-
-Versioned physical-to-canonical mapping contracts.
-
-The first Customer and CustomerAccount mapping profile.
-
-A code-owned mapping-handler registry.
-
-A bounded multi-file mapping loader.
-
-An immutable Customer-profile compiler.
-
-Deterministic in-memory Customer normalization.
-
-A read-only exact-ID MongoDB Customer source adapter.
-
-Deterministic Customer graph-projection materialization.
-
-Fixed parameterized Customer Neo4j command contracts.
-
-An explicit no-hidden-retry Customer Neo4j writer implementation.
-
-No production source asset, live Customer source lookup, or live Neo4j graph write is claimed as validated unless the corresponding evidence is explicitly recorded below.
-
-1. Current Status
-
-Area
-
-Status
-
-Notes
-
-Stage 1 — Frontend/API foundation
-
-Complete
-
-FastAPI application shell, React/Vite shell, typed API client, routing, lifecycle resources, and baseline quality gates
-
-Stage 2 — Infrastructure visibility
-
-Basic acceptance passed
-
-Five dependency probes, concurrent aggregation, partial responses, correlation IDs, safe errors, and live healthy/degraded evidence
-
-Stage 3 — Governance and catalog
-
-Complete
-
-Immutable governance contracts, strict YAML catalog loading, startup registration, and empty production catalog
-
-Stage 3 — SQL Server inventory
-
-SANDBOX_VALIDATED
-
-Metadata-only live inventory completed against the configured sandbox database
-
-Stage 3 — MongoDB inventory
-
-SANDBOX_VALIDATED
-
-Metadata-only live inventory completed against the configured sandbox database
-
-Stage 3 — Drift
-
-Implemented; live output observed
-
-Empty declared and observed state produced zero confirmed drift; process exit code was not captured
-
-Stage 3 — Bounded sampling
-
-CONTRACT_TESTED
-
-Live sampling deliberately deferred
-
-Stage 3 — Inventory API/UI
-
-Not implemented
-
-Data Ownership inventory pages remain pending
-
-Canonical domain model
-
-Complete
-
-Customer, order, product, warehouse, shipment, return, bay, session, audit, decision, and graph-evidence contracts
-
-Mapping configuration language
-
-Complete
-
-Source, canonical, graph, relationship-direction, physical-scope, and pipeline contracts
-
-Customer mapping profile
-
-Complete
-
-Customer and CustomerAccount profile across four versioned YAML files
-
-Mapping handler registry
-
-Complete
-
-Code-owned field and identity handlers with purpose, arity, output, version, and determinism metadata
-
-Multi-file mapping loader
-
-Complete
-
-Bounded UTF-8 YAML loading, duplicate-key and alias rejection, schema agreement, and digest evidence
-
-Customer mapping compiler
-
-Complete
-
-Governance, canonical-model, handler, graph, and pipeline validation into an immutable execution plan
-
-Customer in-memory normalization
-
-Complete
-
-Deterministic document and nested-account normalization with safe record rejection evidence
-
-Customer MongoDB source adapter
-
-Complete
-
-Exact governed _id lookup contract; live lookup remains blocked
-
-Customer graph materialization
-
-Complete
-
-Immutable Customer, CustomerAccount, and HAS_ACCOUNT parameter materialization
-
-Customer Neo4j command builder
-
-Complete
-
-Fixed constraints and parameterized node/relationship commands
-
-Customer Neo4j writer
-
-Implemented; repository revalidation pending
-
-Latest Ruff, strict mypy, and Neo4j 6.2 test corrections are supplied; complete repository gates must be rerun
-
-Live Customer source lookup
-
-BLOCKED_EXTERNAL_DEPENDENCY
-
-The production catalog intentionally has no approved Customer CDM source asset
-
-Live Neo4j Customer write
-
-Not validated
-
-No constraint, node, relationship, or read-back evidence has been captured
-
-Temporal return workflow
-
-Not implemented
-
-Workflow orchestration begins after the basic data and graph foundation is reliable
-
-Scenario runner
-
-Not implemented
-
-Positive and negative end-to-end return scenarios remain pending
-
-Immediate truth boundary
-
-The latest Customer Neo4j writer correction has focused validation evidence:
-
-Customer command-builder + writer focused tests: 53 passed
-
-The following must still be run in the actual repository before the writer is marked CONTRACT_TESTED:
-
-poetry run ruff format --check src tests
-poetry run ruff check src tests
-poetry run mypy --no-incremental src tests
-poetry run pytest -vv
-
-Do not report repository-wide writer success until those commands pass after the latest correction.
-
-2. Locked Architecture and Ownership
-
-Canonical workflow
-
+```text
 IntakeContext
   → DiscoveryContext
   → ReturnRequestContext
@@ -214,92 +121,63 @@ IntakeContext
   → BayStagingContext
   → LearningFeedbackContext
   → ReturnSessionContext
+```
 
 Canonical module flow:
 
+```text
 Order Discovery
   → Return Workflow
   → Return Fulfillment
   → Bay Assignment
   → Feedback Learning
+```
 
-Data ownership
+### Data ownership
 
-System
+| System | Ownership and responsibility |
+|---|---|
+| Platform MongoDB | Authoritative internal platform state: sessions, audits, configurations, outbox, decisions, evidence, and later operator state |
+| SQL Server / OMC | Authoritative business facts for returns, RMA, fulfillment, and tracking; read-only from the platform |
+| Source MongoDB | Read-only discovery and Customer CDM source data; no workflow-owned fields |
+| Neo4j | Derived and rebuildable graph projection only; never authoritative business state |
+| Temporal | Durable execution, timers, retries, and workflow coordination; not business-state ownership |
+| Valkey | Transient coordination, caching, rate limiting, and SSE support |
+| Temporal PostgreSQL | Internal Temporal persistence; never accessed directly by the Return Platform |
 
-Ownership and responsibility
+### Configuration rule
 
-Platform MongoDB
+Configuration defines values expected to vary:
 
-Authoritative internal platform state: sessions, audits, configurations, outbox, decisions, evidence, and later operator state
+- Approved source assets.
+- Physical paths and aliases.
+- Canonical target fields.
+- Mapping and pipeline versions.
+- Graph labels, relationship types, and property names within strict allow-lists.
+- Environment-specific values.
 
-SQL Server / OMC
+Code defines stable safety and domain behavior:
 
-Authoritative business facts for return, RMA, and fulfillment data; read-only from the platform
-
-Source MongoDB
-
-Read-only discovery and Customer CDM source data; no workflow-owned fields
-
-Neo4j
-
-Derived and rebuildable graph projection only; never authoritative business state
-
-Temporal
-
-Durable execution, timers, retries, and workflow coordination; not business-state ownership
-
-Valkey
-
-Transient coordination, caching, rate limiting, and SSE support
-
-Temporal PostgreSQL
-
-Internal Temporal persistence; not accessed directly by the Return Platform
-
-Configuration rule
-
-Configuration defines what varies:
-
-Approved source assets.
-
-Physical paths and aliases.
-
-Canonical target fields.
-
-Mapping and pipeline versions.
-
-Graph labels, relationship types, and property names within strict allow-lists.
-
-Environment-specific values.
-
-Code defines how execution remains safe:
-
-Identity algorithms.
-
-Handler implementation.
-
-Canonical validation.
-
-Alias-conflict policy.
-
-Retry ownership.
-
-Transaction behavior.
-
-Security boundaries.
-
-Cypher templates.
-
-Source and graph adapter behavior.
+- Identity algorithms.
+- Handler implementations.
+- Canonical validation.
+- Alias-conflict policy.
+- Retry ownership.
+- Transaction behavior.
+- Security boundaries.
+- Cypher templates.
+- Source and graph adapter behavior.
+- Evidence validation.
+- API query shapes and authorization.
 
 Configuration must never contain arbitrary SQL, MongoDB filters, Cypher, Python, import paths, or executable handler arguments.
 
-3. Current End-to-End Customer Data Path
+---
 
-The implemented Customer foundation is:
+## 3. Current End-to-End Customer Data Path
 
-Versioned YAML files
+```text
+Versioned YAML mapping files
   │
   ▼
 Bounded multi-file loader
@@ -318,7 +196,7 @@ Customer mapping compiler
 MappingExecutionPlan
   │
   ├── exact-ID MongoDB source adapter
-  │       └── raw immutable document + SourceDocumentEvidence
+  │       └── immutable source document + SourceDocumentEvidence
   │
   └── deterministic in-memory normalizer
           ├── Customer
@@ -345,13 +223,47 @@ MappingExecutionPlan
           ├── atomic data transaction
           ├── returned-key verification
           └── immutable write evidence
+                  │
+                  ▼
+        fixed graph read-back validator
+          ├── Customer query
+          ├── CustomerAccount query
+          ├── HAS_ACCOUNT query
+          ├── exact key comparison
+          └── mandatory provenance comparison
+                  │
+                  ▼
+        second-run idempotency validation
+                  │
+                  ▼
+        immutable sandbox report
+          ├── local JSON evidence
+          └── Platform MongoDB evidence document
+                  │
+                  ▼
+        read-only Graph Evidence APIs
+          ├── newest-first bounded listing
+          ├── latest validation
+          ├── document lookup
+          ├── admin full evidence
+          ├── sync-run lookup
+          └── report-digest lookup
+                  │
+                  ▼
+        Data Console Graph Evidence screens
+          └── current frontend integration step
+```
 
-The final writer layer is not yet live validated.
+---
 
-4. Repository Structure
+## 4. Repository Structure
 
+The following structure reflects the current backend and the active frontend step. Inspect the actual repository before assuming every prepared frontend file has already been integrated.
+
+```text
 .
 ├── .env
+├── .env.example
 ├── .gitignore
 ├── docker-compose.yml
 ├── README.md
@@ -367,6 +279,20 @@ The final writer layer is not yet live validated.
 │   │       ├── graph_projection.yaml
 │   │       └── sync_pipelines.yaml
 │   │
+│   ├── docs/
+│   │   └── evidence/
+│   │       ├── customer_graph_sandbox_validation.json
+│   │       └── graph_evidence_api/
+│   │           ├── validation_summary.json
+│   │           ├── list.json
+│   │           ├── latest.json
+│   │           ├── document_summary.json
+│   │           ├── document_full.json
+│   │           ├── sync_run.json
+│   │           └── report_digest.json
+│   │
+│   ├── scripts/
+│   │   └── validate_graph_evidence_api.sh
 │   ├── pyproject.toml
 │   ├── poetry.lock
 │   ├── run_live_drift.py
@@ -380,120 +306,39 @@ The final writer layer is not yet live validated.
 │   │       ├── asgi.py
 │   │       ├── main.py
 │   │       ├── resources.py
-│   │       │
 │   │       ├── canonical/
-│   │       │   ├── __init__.py
-│   │       │   ├── base.py
-│   │       │   ├── customer.py
-│   │       │   ├── order.py
-│   │       │   ├── product.py
-│   │       │   ├── warehouse.py
-│   │       │   ├── shipment.py
-│   │       │   ├── return_models.py
-│   │       │   ├── bay.py
-│   │       │   └── operations.py
-│   │       │
 │   │       ├── configuration/
-│   │       │   ├── __init__.py
 │   │       │   └── settings.py
-│   │       │
 │   │       ├── data_console/
-│   │       │   ├── __init__.py
 │   │       │   ├── api/
-│   │       │   │   ├── __init__.py
-│   │       │   │   └── router.py
+│   │       │   │   ├── router.py
+│   │       │   │   └── graph_evidence.py
 │   │       │   └── infrastructure/
-│   │       │       ├── __init__.py
 │   │       │       └── probes.py
-│   │       │
 │   │       ├── data_governance/
-│   │       │   ├── __init__.py
-│   │       │   ├── catalog_loader.py
-│   │       │   ├── drift.py
-│   │       │   ├── inventory/
-│   │       │   │   ├── __init__.py
-│   │       │   │   ├── mongodb.py
-│   │       │   │   ├── sqlserver.py
-│   │       │   │   └── contracts/
-│   │       │   │       ├── __init__.py
-│   │       │   │       ├── base_contracts.py
-│   │       │   │       ├── mongodb_contracts.py
-│   │       │   │       └── sqlserver_contracts.py
-│   │       │   └── sampling/
-│   │       │       ├── __init__.py
-│   │       │       ├── authorization.py
-│   │       │       ├── contracts.py
-│   │       │       ├── mongodb.py
-│   │       │       ├── sanitization.py
-│   │       │       └── sqlserver.py
-│   │       │
 │   │       ├── data_platform/
-│   │       │   ├── __init__.py
 │   │       │   ├── mapping/
-│   │       │   │   ├── __init__.py
-│   │       │   │   ├── contracts.py
-│   │       │   │   ├── loader.py
-│   │       │   │   ├── compiler.py
-│   │       │   │   ├── normalizer.py
-│   │       │   │   ├── projection.py
-│   │       │   │   └── handlers/
-│   │       │   │       ├── __init__.py
-│   │       │   │       ├── contracts.py
-│   │       │   │       └── customer.py
 │   │       │   ├── sources/
-│   │       │   │   ├── __init__.py
-│   │       │   │   └── mongodb/
-│   │       │   │       ├── __init__.py
-│   │       │   │       └── customer.py
 │   │       │   └── graph/
 │   │       │       ├── __init__.py
 │   │       │       ├── commands.py
-│   │       │       └── writer.py
-│   │       │
+│   │       │       ├── writer.py
+│   │       │       ├── readback.py
+│   │       │       ├── sandbox.py
+│   │       │       ├── sandbox_runner.py
+│   │       │       ├── evidence_repository.py
+│   │       │       └── evidence_query.py
 │   │       ├── security/
-│   │       │   ├── __init__.py
-│   │       │   └── principal.py
-│   │       │
 │   │       └── shared/
-│   │           ├── __init__.py
-│   │           ├── contracts.py
-│   │           └── governance.py
 │   │
 │   └── tests/
-│       ├── conftest.py
-│       ├── test_canonical_base.py
-│       ├── test_canonical_customer.py
-│       ├── test_canonical_order.py
-│       ├── test_canonical_product.py
-│       ├── test_canonical_warehouse.py
-│       ├── test_canonical_shipment.py
-│       ├── test_canonical_return_models.py
-│       ├── test_canonical_bay.py
-│       ├── test_canonical_operations.py
-│       ├── test_governance.py
-│       ├── test_catalog_loader.py
-│       ├── test_catalog_lifespan.py
-│       ├── test_health.py
-│       ├── test_probes.py
-│       ├── test_inventory_sqlserver.py
-│       ├── test_inventory_mongodb.py
-│       ├── test_drift.py
-│       ├── test_sampling_authorization.py
-│       ├── test_sampling_sanitization.py
-│       ├── test_sampling_sqlserver.py
-│       ├── test_sampling_mongodb.py
-│       ├── test_mapping_contracts.py
-│       ├── test_mapping_relationship_direction.py
-│       ├── test_mapping_physical_path_scope.py
-│       ├── test_mapping_configuration_loader.py
-│       ├── test_mapping_handler_registry.py
-│       ├── test_customer_mapping_handlers.py
-│       ├── test_mapping_compiler.py
-│       ├── test_customer_document_normalizer.py
-│       ├── test_customer_mongodb_source_adapter.py
-│       ├── test_customer_graph_projection_materializer.py
 │       ├── test_customer_neo4j_command_builder.py
-│       └── test_customer_neo4j_writer.py
+│       ├── test_customer_neo4j_writer.py
+│       ├── test_customer_graph_readback.py
+│       ├── test_customer_graph_sandbox.py
+│       ├── test_graph_evidence_settings.py
+│       ├── test_graph_evidence_api.py
+│       └── ...
 │
 └── frontend/
     ├── .nvmrc
@@ -514,69 +359,80 @@ The final writer layer is not yet live validated.
         ├── App.tsx
         ├── index.css
         ├── api/
+        │   ├── graphEvidence.ts
+        │   ├── graphEvidenceQueries.ts
+        │   └── graphEvidence.test.ts
         ├── contracts/
-        ├── test/
+        │   └── graphEvidence.ts
         ├── components/
-        └── features/data-console/
+        │   └── Shell.tsx
+        ├── test/
+        └── features/
+            └── data-console/
+                ├── components/
+                │   └── graph-evidence/
+                │       ├── GraphEvidenceStatusCard.tsx
+                │       ├── GraphEvidenceTable.tsx
+                │       └── GraphEvidenceInspector.tsx
+                └── pages/
+                    ├── GraphEvidencePage.tsx
+                    └── GraphEvidencePage.test.tsx
+```
 
-5. Backend Foundations
+---
 
-Application construction
+## 5. Backend Foundations
 
-return_platform.main.create_app() is the application factory.
+### Application construction
 
-return_platform.asgi is the production ASGI entry point:
+`return_platform.main.create_app()` is the application factory.
 
+`return_platform.asgi` is the production ASGI entry point:
+
+```python
 from return_platform.main import create_app
 
 app = create_app()
+```
 
-main.py must not expose a module-level app.
+`main.py` must not expose a module-level `app`.
 
 The FastAPI lifespan:
 
-Validates settings.
+1. Validates settings.
+2. Loads the immutable asset catalog.
+3. Constructs `RuntimeResources`.
+4. Initializes external clients.
+5. Attaches resources to `app.state`.
+6. Closes lifespan-owned resources in reverse order.
 
-Loads the immutable asset catalog.
+Functions decorated with `contextlib.asynccontextmanager` must return:
 
-Constructs RuntimeResources.
-
-Initializes external clients.
-
-Attaches resources to app.state.
-
-Closes lifespan-owned resources in reverse order.
-
-Functions decorated with contextlib.asynccontextmanager must use:
-
+```python
 AsyncGenerator[YieldType, None]
+```
 
-Deprecation warnings are treated as failures.
+Deprecation warnings are treated as build failures.
 
-Runtime resources
+### Runtime resources
 
-RuntimeResources owns references to:
+`RuntimeResources` owns references to:
 
-Settings.
+- `Settings`.
+- Loaded governance catalog.
+- PyMongo asynchronous client.
+- Neo4j asynchronous driver.
+- Valkey asynchronous client.
+- Temporal client.
+- Bounded one-worker SQL Server executor.
 
-Loaded governance catalog.
+Source adapters, graph writers, evidence repositories, and API query repositories reuse injected lifespan-owned clients and never close them.
 
-PyMongo asynchronous client.
-
-Neo4j asynchronous driver.
-
-Valkey asynchronous client.
-
-Temporal client.
-
-The bounded one-worker SQL Server executor.
-
-The Customer MongoDB adapter and Customer Neo4j writer reuse injected lifespan-owned clients. They must never close those clients.
-
-Error and response contracts
+### Error and response contracts
 
 Backend API responses use the shared strict envelope:
 
+```json
 {
   "data": {},
   "page": null,
@@ -589,17 +445,21 @@ Backend API responses use the shared strict envelope:
     "warnings": []
   }
 }
+```
 
 Raw credentials, driver messages, stack traces, source values, and infrastructure addresses must not be returned through public errors.
 
-6. Data Governance and Catalog
+---
 
-Production catalog
+## 6. Data Governance and Catalog
 
-backend/config/data_assets.yaml is the version-controlled declaration of approved physical assets.
+### Production catalog
+
+`backend/config/data_assets.yaml` is the version-controlled declaration of approved physical assets.
 
 Current required state:
 
+```yaml
 version: "1.0"
 
 # The production catalog is intentionally empty.
@@ -610,68 +470,54 @@ version: "1.0"
 # 3. Allowed operations are approved.
 # 4. The live identity is verified.
 assets: []
+```
 
 The production catalog must not be changed merely to unblock tests.
 
-Governance invariants
+### Governance invariants
 
-Empty catalogs are valid.
+- Empty catalogs are valid.
+- Duplicate asset IDs are rejected.
+- Duplicate physical assets are rejected.
+- Source-system assets are read-only.
+- SQL Server objects require a namespace and must be tables or views.
+- MongoDB objects must be collections and must not use SQL-style namespaces.
+- Derived projections cannot be authoritative.
+- Ownership must match the `asset_id` prefix.
+- Sampling is bounded and requires explicit `READ` permission.
 
-Duplicate asset IDs are rejected.
+### Catalog loader protections
 
-Duplicate physical assets are rejected.
+- `.yaml` and `.yml` extension allow-list.
+- Resolved regular-file checks.
+- File-size bound.
+- UTF-8 and UTF-8 BOM handling.
+- Safe YAML parsing.
+- Duplicate-key rejection at every mapping depth.
+- Empty-document rejection.
+- Root-mapping enforcement.
+- Strict governance validation.
+- SHA-256, byte-size, path, and asset-count evidence.
+- Startup failure for missing or invalid catalogs.
 
-Source-system assets are read-only.
+The catalog is loaded once per application lifespan. Request handlers use `RuntimeResources.catalog`.
 
-SQL Server objects require a namespace and must be tables or views.
+---
 
-MongoDB objects must be collections and must not use SQL-style namespaces.
+## 7. Canonical Domain Model
 
-Derived projections cannot be authoritative.
+All canonical models inherit from `CanonicalBaseModel`:
 
-Ownership must match the asset_id prefix.
+- Strict scalar validation.
+- Frozen instances.
+- Unknown-field rejection.
+- Validated defaults.
+- Hidden raw input values in validation errors.
+- UTC timestamp normalization.
 
-Sampling is bounded and requires explicit READ permission.
+### Shared contracts
 
-Catalog loader protections
-
-.yaml and .yml extension allow-list.
-
-Resolved regular-file checks.
-
-File-size bound.
-
-UTF-8 and UTF-8 BOM handling.
-
-Safe YAML parsing.
-
-Duplicate-key rejection at every mapping depth.
-
-Empty-document rejection.
-
-Root-mapping enforcement.
-
-Strict governance validation.
-
-SHA-256, byte-size, path, and asset-count evidence.
-
-Startup failure for missing or invalid catalogs.
-
-The catalog is loaded once per application lifespan. Request handlers must use RuntimeResources.catalog.
-
-7. Canonical Domain Model
-
-All canonical models inherit from CanonicalBaseModel:
-
-strict scalar validation
-frozen instances
-unknown-field rejection
-validated defaults
-hidden raw input values in validation errors
-UTC timestamp normalization
-
-Shared contracts
-
+```text
 IdentityQuality
 CanonicalIdentifier
 NonBlankText
@@ -680,32 +526,40 @@ Sha256Digest
 UtcDateTime
 CanonicalBaseModel
 SourceProvenance
+```
 
-Customer foundation
+### Customer foundation
 
+```text
 Customer
 CustomerAccount
 ContactPoint
 Address
+```
 
 Identity:
 
+```text
 Customer.customer_key =
 "CUSTOMER_CDM:" + party_id
 
 CustomerAccount.account_key =
 "CUSTOMER_CDM:" + account_number
+```
 
-ContactPoint and Address are canonical value objects, not graph nodes in graph model v1.
+`ContactPoint` and `Address` are canonical value objects, not graph nodes in graph model v1.
 
-Order and Product
+### Order and Product
 
+```text
 SalesOrder
 OrderLine
 Product
+```
 
 Identity:
 
+```text
 SalesOrder.source_document_id =
 account_id + "*" + order_id
 
@@ -717,26 +571,30 @@ sales_order_key + ":LINE:" + source_line_number
 
 Product.product_key =
 "STEP:" + master_product_id
+```
 
 Order-line identity remains conditional until line-number immutability is confirmed.
 
-Warehouse and Shipment
+### Warehouse and Shipment
 
+```text
 Warehouse
 WarehouseProduct
 Shipment
 ShipmentItem
 TrackingEvent
 CarrierTrackingReference
+```
 
-bin_location remains inventory location and is never interpreted as a Return Bay.
+`bin_location` remains an inventory location and is never interpreted as a Return Bay.
 
 Actual carrier tracking remains optional legacy evidence.
 
-Package and PPLTracking remain excluded from graph v1.
+`Package` and `PPLTracking` remain excluded from graph v1.
 
-Return, Bay, session, and evidence
+### Return, Bay, session, and evidence
 
+```text
 Return
 ReturnItem
 FreightShipment
@@ -755,22 +613,28 @@ GraphValidationResult
 GraphSyncSafeError
 GraphProjectionEvidence
 GraphProjectionStatus
+```
 
 Platform-owned Bay identity remains separate from warehouse inventory location.
 
-The model layer does not perform database I/O, graph I/O, workflow transitions, or cross-record uniqueness enforcement.
+The canonical model layer performs no database I/O, graph I/O, workflow transitions, or cross-record uniqueness enforcement.
 
-8. Versioned Mapping Configuration
+---
 
-Configuration files
+## 8. Versioned Mapping Configuration
 
+### Configuration files
+
+```text
 backend/config/data_platform/sources.yaml
 backend/config/data_platform/canonical_mappings.yaml
 backend/config/data_platform/graph_projection.yaml
 backend/config/data_platform/sync_pipelines.yaml
+```
 
-Mapping contracts
+### Mapping contracts
 
+```text
 SourceAssetDefinition
 PhysicalFieldMapping
 IdentityMapping
@@ -785,192 +649,187 @@ CanonicalEntityType
 SourceLifecycle
 PhysicalPathScope
 RelationshipDirection
+```
 
-Relationship direction
+### Relationship direction
 
 The mapping language distinguishes:
 
-reference-holder match direction
-emitted graph edge direction
+- Reference-holder match direction.
+- Emitted graph-edge direction.
 
 For the Customer profile:
 
+```text
 CustomerAccount.customer_key holds the reference
 Customer → CustomerAccount is the emitted edge
+```
 
 Resolved graph direction:
 
+```text
 (Customer)-[:HAS_ACCOUNT]->(CustomerAccount)
+```
 
-Physical path scope
+### Physical path scope
 
+```text
 RECORD   → resolve from the current nested selected record
 DOCUMENT → resolve from the original source document
+```
 
 No implicit fallback exists between scopes.
 
-Handler registry
+### Handler registry
 
 Handlers are code-owned and registered with:
 
+```text
 purpose
 input arity
 output type
 contract version
 deterministic flag
+```
 
 Customer handlers include separate roles:
 
+```text
 customer_key_v1
   purpose = IDENTITY
 
 customer_reference_key_v1
   purpose = FIELD
+```
 
 The compiler rejects identity handlers used in ordinary field positions.
 
-Multi-file loader
+### Multi-file loader
 
 The loader enforces:
 
-fixed filenames and load order
-regular-file and symlink protections
-1 MiB per file
-4 MiB total
-UTF-8 with BOM support
-duplicate YAML-key rejection
-YAML alias rejection
-exact root keys
-exact schema-version agreement
-immutable bundle validation
-per-file SHA-256
-domain-separated multi-file digest
+- Fixed filenames and load order.
+- Regular-file and symlink protections.
+- 1 MiB per file.
+- 4 MiB total.
+- UTF-8 with BOM support.
+- Duplicate YAML-key rejection.
+- YAML alias rejection.
+- Exact root keys.
+- Exact schema-version agreement.
+- Immutable bundle validation.
+- Per-file SHA-256.
+- Domain-separated multi-file digest.
 
-Customer compiler
+### Customer compiler
 
-The compiler resolves the loaded configuration against:
+The compiler resolves loaded configuration against:
 
+```text
 AssetCatalog
 CanonicalModelRegistry
 HandlerRegistry
+```
 
 It validates:
 
-Approved catalog asset existence.
-
-Source ownership, authority, store, object kind, and allowed operations.
-
-Canonical entity registration.
-
-Configured canonical fields.
-
-Required canonical field coverage.
-
-Handler existence, purpose, arity, output type, version, and determinism.
-
-Graph property sources.
-
-Relationship direction.
-
-Pipeline dependency order.
+- Approved catalog asset existence.
+- Source ownership, authority, store, object kind, and allowed operations.
+- Canonical entity registration.
+- Configured canonical fields.
+- Required canonical field coverage.
+- Handler existence, purpose, arity, output type, version, and determinism.
+- Graph property sources.
+- Relationship direction.
+- Pipeline dependency order.
 
 It performs no file, database, handler-execution, Cypher, or graph I/O.
 
-The production catalog intentionally does not yet contain the referenced Customer CDM source asset. Production compilation therefore remains blocked until approval.
+The production catalog intentionally does not contain the Customer CDM source asset. Production compilation remains blocked until approval. Sandbox compilation uses an explicit sandbox-only governance catalog and never mutates the production catalog.
 
-9. Customer In-Memory Normalization
+---
 
-normalize_customer_source_document() consumes:
+## 9. Customer In-Memory Normalization
 
+`normalize_customer_source_document()` consumes:
+
+```text
 MappingExecutionPlan
 SourceDocumentEvidence
 one supplied source document
+```
 
 It implements:
 
-DOCUMENT and RECORD scope resolution.
-
-Deterministic nested custAccts[] iteration.
-
-Ordered aliases.
-
-Null-as-absent fallback.
-
-Type-strict alias conflict detection.
-
-Required and optional field handling.
-
-Code-owned field and identity handler invocation.
-
-Runtime handler-output verification.
-
-Canonical Customer and CustomerAccount validation.
-
-Parent Customer dependency validation.
-
-Duplicate CustomerAccount identity rejection.
-
-Safe per-record rejection evidence.
-
-Bounded depth and structural-node limits.
-
-Cycle and malformed-structure rejection.
-
-Immutable output detached from caller mutation.
+- `DOCUMENT` and `RECORD` scope resolution.
+- Deterministic nested `custAccts[]` iteration.
+- Ordered aliases.
+- Null-as-absent fallback.
+- Type-strict alias-conflict detection.
+- Required and optional field handling.
+- Code-owned field and identity handler invocation.
+- Runtime handler-output verification.
+- Canonical Customer and CustomerAccount validation.
+- Parent Customer dependency validation.
+- Duplicate CustomerAccount identity rejection.
+- Safe per-record rejection evidence.
+- Bounded depth and structural-node limits.
+- Cycle and malformed-structure rejection.
+- Immutable output detached from caller mutation.
 
 The normalizer performs no MongoDB or Neo4j I/O.
 
-10. Customer MongoDB Source Adapter
+---
 
-CustomerMongoSourceAdapter:
+## 10. Customer MongoDB Source Adapter
 
-Reuses an injected AsyncMongoClient.
+`CustomerMongoSourceAdapter`:
 
-Never creates or closes the client.
+- Reuses an injected `AsyncMongoClient`.
+- Never creates or closes the client.
+- Resolves database and collection only from `CompiledSourceAssetPlan`.
+- Revalidates governance constraints.
+- Executes exactly:
 
-Resolves database and collection only from CompiledSourceAssetPlan.
-
-Revalidates governance constraints.
-
-Executes exactly:
-
+```python
 find_one({"_id": source_document_id})
+```
 
-Accepts no caller-defined filters, projection, sort, aggregation, JavaScript, regex, database name, or collection name.
+- Accepts no caller-defined filter, projection, sort, aggregation, JavaScript, regex, database name, or collection name.
+- Applies server-side `max_time_ms` and an outer `asyncio.timeout`.
+- Preserves caller cancellation.
+- Performs no internal retry.
+- Requires returned `_id` to exactly match the requested string ID.
+- Calculates SHA-256 over exact BSON bytes.
+- Returns a detached recursively immutable document.
+- Rejects cycles, invalid keys, invalid BSON, and structural overflow.
 
-Applies both server-side max_time_ms and an outer asyncio.timeout.
+Production live lookup remains blocked because the production governance catalog has no approved Customer CDM source asset.
 
-Preserves caller cancellation.
+---
 
-Performs no internal retry.
+## 11. Customer Graph Materialization
 
-Requires the returned _id to exactly match the requested string ID.
+`materialize_customer_graph_projection()` consumes:
 
-Calculates SHA-256 over exact BSON bytes.
-
-Returns a detached recursively immutable document.
-
-Rejects cycles, invalid keys, invalid BSON, and structural overflow.
-
-Live lookup remains blocked because the production governance catalog has no approved Customer CDM source asset.
-
-11. Customer Graph Materialization
-
-materialize_customer_graph_projection() consumes:
-
+```text
 MappingExecutionPlan
 CustomerNormalizationResult
 sync_run_id
 graph_synced_at
+```
 
 It emits immutable parameter contracts for:
 
+```text
 Customer node
 CustomerAccount nodes
 Customer → CustomerAccount HAS_ACCOUNT relationships
+```
 
 Mandatory graph evidence:
 
+```text
 source_system
 source_database
 source_asset
@@ -982,183 +841,374 @@ mapping_version
 configuration_digest
 sync_run_id
 graph_synced_at
+```
 
-Missing mandatory source_updated_at fails closed:
+Missing mandatory `source_updated_at` fails closed:
 
-Customer:        REJECTED
-CustomerAccount: UNRESOLVED
-Node parameters: 0
+```text
+Customer:         REJECTED
+CustomerAccount:  UNRESOLVED
+Node parameters:  0
 Relationship parameters: 0
+```
 
-PROJECTED at this layer means graph parameters were successfully materialized. It does not prove persistence.
+`PROJECTED` at this layer means graph parameters were materialized successfully. It does not independently prove persistence.
 
-12. Customer Neo4j Command Builder
+---
 
-The graph package owns fixed Neo4j-specific command construction.
+## 12. Customer Neo4j Command Builder and Writer
+
+### Command builder
 
 Supported schema and data commands:
 
+```text
 Customer.customer_key uniqueness constraint
 CustomerAccount.account_key uniqueness constraint
 Customer node MERGE
 CustomerAccount node MERGE
 Customer-[:HAS_ACCOUNT]->CustomerAccount MERGE
+```
 
 The builder:
 
-Accepts only CustomerGraphProjectionMaterialization.
+- Accepts only `CustomerGraphProjectionMaterialization`.
+- Uses code-owned labels, relationship types, properties, and full Cypher templates.
+- Rejects arbitrary Cypher.
+- Binds all values through parameters.
+- Preserves Customer-to-CustomerAccount direction.
+- Orders constraints before nodes and nodes before relationships.
+- Rejects duplicate node keys and relationship endpoints.
+- Produces deterministic UUIDv5 command IDs.
+- Produces a deterministic SHA-256 command-batch digest.
+- Returns detached driver-parameter dictionaries.
+- Performs no Neo4j I/O.
 
-Uses code-owned labels, relationship types, properties, and full Cypher templates.
+### Writer
 
-Rejects arbitrary Cypher.
+`CustomerNeo4jWriter` reuses an injected lifespan-owned `AsyncDriver`.
 
-Binds all values through parameters.
+#### Phase 1 — schema preparation
 
-Preserves Customer-to-CustomerAccount direction.
+- Explicit database selection.
+- Write-access routing.
+- One explicit unmanaged transaction.
+- Both fixed uniqueness constraints.
+- Server transaction timeout.
+- Outer operation timeout.
+- No hidden retries.
+- Causal bookmark capture after commit.
+- Immutable schema evidence.
 
-Orders constraints before nodes and nodes before relationships.
+#### Phase 2 — data transaction
 
-Rejects duplicate node keys and relationship endpoints.
+- Matching committed schema evidence required.
+- Schema bookmarks passed into the data session.
+- One explicit unmanaged transaction.
+- Customer node first.
+- CustomerAccount nodes second.
+- `HAS_ACCOUNT` relationships last.
+- Exactly one returned key verified for every node.
+- Exactly one returned endpoint pair verified for every relationship.
+- Known failures rolled back.
+- Caller cancellation preserved.
+- `IncompleteCommit` classified as `COMMIT_OUTCOME_UNKNOWN`.
+- Immutable data-write evidence returned.
 
-Produces deterministic UUIDv5 command IDs.
-
-Produces a deterministic SHA-256 command-batch digest.
-
-Returns detached driver-parameter dictionaries.
-
-It performs no Neo4j I/O.
-
-13. Customer Neo4j Writer
-
-CustomerNeo4jWriter reuses an injected lifespan-owned AsyncDriver.
-
-Phase 1 — schema preparation
-
-Explicit database selection.
-
-Write access routing.
-
-One explicit unmanaged transaction.
-
-Execute both fixed uniqueness constraints.
-
-Server transaction timeout.
-
-Outer operation timeout.
-
-No hidden retries.
-
-Capture causal bookmarks after commit.
-
-Return immutable schema evidence.
-
-Phase 2 — data transaction
-
-Require matching committed schema evidence.
-
-Pass schema bookmarks into the data session.
-
-Open one explicit unmanaged transaction.
-
-Execute Customer node first.
-
-Execute CustomerAccount nodes second.
-
-Execute HAS_ACCOUNT relationships last.
-
-Verify exactly one returned key for every node.
-
-Verify exactly one returned endpoint pair for every relationship.
-
-Roll back known failures.
-
-Preserve caller cancellation.
-
-Classify IncompleteCommit as COMMIT_OUTCOME_UNKNOWN.
-
-Return immutable data-write evidence.
-
-No-hidden-retry rule
+### No-hidden-retry rule
 
 The writer does not use:
 
+```text
 AsyncDriver.execute_query
 AsyncSession.execute_write
 AsyncSession.execute_read
-
-Those managed APIs may retry transient failures.
+```
 
 The writer uses:
 
+```text
 session.begin_transaction
 transaction.run
 transaction.commit
 transaction.rollback
+```
 
 Session auto-commit retries are disabled defensively.
 
-Latest correction
+---
 
-The latest repository correction addresses:
+## 13. Customer Graph Read-Back and Sandbox Validation
 
-Ruff import ordering.
+The sandbox-only runner:
 
-An unused test import.
+1. Loads the approved Customer mapping profile.
+2. Compiles it against an explicit sandbox-only catalog.
+3. Loads one controlled source fixture.
+4. Normalizes it in memory.
+5. Materializes graph parameters.
+6. Builds fixed commands.
+7. Prepares constraints.
+8. Executes the atomic Customer graph transaction.
+9. Reads back Customer, CustomerAccount, and `HAS_ACCOUNT`.
+10. Compares exact canonical keys and mandatory provenance.
+11. Runs the same input again.
+12. Proves second-run idempotency.
+13. Produces a validated immutable report.
+14. Persists the report to Platform MongoDB.
+15. Reads persisted evidence back.
+16. Emits a safe JSON result and process exit code.
 
-Ruff ASYNC109 in the typed fake transaction API.
+### Sandbox validation evidence
 
-mypy loop-variable type leakage between node and relationship commands.
+```json
+{
+  "evidence_output": "docs/evidence/customer_graph_sandbox_validation.json",
+  "platform_evidence_document_digest": "6ce23e2568171b3f53827dfb8b822f4c4cd2cec60080a6c959326136bdb81f5b",
+  "platform_evidence_document_id": "CUSTOMER_GRAPH_SANDBOX:d084d10c-5bdf-4002-befb-8ccb9948f9e7",
+  "platform_evidence_status": "CREATED",
+  "process_exit_code": 0,
+  "report_digest": "75b63cf87a1742e93dd05eb2542d6bfe17f3b345ffe3542d73fac32d664b33c8",
+  "status": "SANDBOX_VALIDATED"
+}
+```
 
-Unsupported Neo4jError(..., code=...) test construction under Neo4j Driver 6.2.
+Shell exit code:
 
-Focused evidence after correction:
+```text
+0
+```
 
-Customer command-builder + writer tests: 53 passed
+This evidence is sandbox evidence, not production validation.
 
-Repository-wide Ruff, strict mypy, and pytest must be rerun before changing writer status to CONTRACT_TESTED.
+---
 
-14. Infrastructure Visibility
+## 14. Platform MongoDB Graph-Evidence Persistence
+
+Graph evidence is stored in Platform MongoDB because it is authoritative internal platform evidence.
+
+Persistence rules:
+
+- One immutable aggregate per `sync_run_id`.
+- Deterministic document ID:
+
+```text
+CUSTOMER_GRAPH_SANDBOX:<sync-run-uuid>
+```
+
+- `$setOnInsert` persistence.
+- Exact replay is accepted.
+- Conflicting replay fails closed.
+- Majority write concern with journal acknowledgement.
+- Majority read concern.
+- Primary read preference.
+- `retryReads=False`.
+- `retryWrites=False`.
+- No hidden transaction retry.
+- Unknown write outcomes remain unknown and require deterministic reconciliation.
+
+Indexes include:
+
+```text
+unique report_digest
+unique sync_run_id
+executed_at_epoch_microseconds descending
+source_document_id + execution time
+executed_at_epoch_microseconds + _id for seek pagination
+```
+
+---
+
+## 15. Graph Validation and Inspection APIs
+
+The Data Console backend exposes six read-only routes:
+
+```text
+GET /data-console/v1/graph-evidence
+GET /data-console/v1/graph-evidence/validation/latest
+GET /data-console/v1/graph-evidence/documents/{document_id}
+GET /data-console/v1/graph-evidence/documents/{document_id}/full
+GET /data-console/v1/graph-evidence/sync-runs/{sync_run_id}
+GET /data-console/v1/graph-evidence/reports/{report_digest}
+```
+
+### Query behavior
+
+Listing uses bounded seek pagination ordered by:
+
+```text
+executed_at_epoch_microseconds DESC
+_id DESC
+```
+
+The API does not accept caller-provided:
+
+```text
+MongoDB filters
+projections
+sort definitions
+collection names
+aggregation pipelines
+Cypher
+```
+
+### Authorization
+
+```text
+console_viewer:
+  summary listing
+  latest validation
+  exact summary lookups
+
+console_admin:
+  all summary operations
+  full embedded evidence inspection
+```
+
+No graph-evidence mutation route exists.
+
+### Live six-route validation evidence
+
+```json
+{
+  "evidence_output": "docs/evidence/graph_evidence_api/validation_summary.json",
+  "process_exit_code": 0,
+  "routes_validated": 6,
+  "status": "SANDBOX_VALIDATED"
+}
+```
+
+Shell exit code:
+
+```text
+0
+```
+
+The validator confirmed HTTP success, envelope integrity, request IDs, exact identity, cross-route digest consistency, idempotency evidence, admin full-access behavior, and absence of known secret/configuration field names.
+
+---
+
+## 16. Data Console Customer Graph Evidence Screens
+
+The active frontend step is a read-only screen at:
+
+```text
+/data-console/graph-evidence
+```
+
+Prepared capabilities:
+
+- Latest `SANDBOX_VALIDATED` Customer graph run.
+- Execution timestamp.
+- Expected Customer count.
+- Expected CustomerAccount count.
+- Expected `HAS_ACCOUNT` relationship count.
+- Immutable sync-run and source-document identity.
+- Manual refresh.
+- Newest-first immutable evidence history.
+- Bounded seek-pagination controls.
+- Exact lookup by document ID.
+- Exact lookup by sync-run ID.
+- Exact lookup by report digest.
+- Summary evidence inspection.
+- Admin-only full evidence inspection.
+- Safe viewer `403` state while preserving summary visibility.
+- Loading, empty, backend-unavailable, malformed-contract, lookup-failure, and timeout states.
+- Request/correlation ID display.
+- Strict Zod network-boundary validation.
+- Relative API paths through the existing Vite proxy.
+- No graph or evidence mutation.
+
+### Required files
+
+```text
+frontend/src/contracts/graphEvidence.ts
+frontend/src/api/graphEvidence.ts
+frontend/src/api/graphEvidenceQueries.ts
+frontend/src/features/data-console/components/graph-evidence/GraphEvidenceStatusCard.tsx
+frontend/src/features/data-console/components/graph-evidence/GraphEvidenceTable.tsx
+frontend/src/features/data-console/components/graph-evidence/GraphEvidenceInspector.tsx
+frontend/src/features/data-console/pages/GraphEvidencePage.tsx
+frontend/src/api/graphEvidence.test.ts
+frontend/src/features/data-console/pages/GraphEvidencePage.test.tsx
+```
+
+Integration points:
+
+```text
+frontend/src/App.tsx
+frontend/src/components/Shell.tsx
+README.md
+```
+
+### UX boundary
+
+Do not add:
+
+```text
+Run synchronization
+Sync now
+Rebuild graph
+Write to Neo4j
+```
+
+The validated backend currently exposes read-only evidence APIs only. A future mutation endpoint must be separately designed, authorized, tested, and sandbox-validated before any operator mutation control appears.
+
+### Current frontend classification
+
+```text
+Frontend source implementation:       IMPLEMENTED
+Frontend tests:                       IMPLEMENTED
+Frontend lint/typecheck/build:        PENDING
+Live browser/backend integration:     NOT VALIDATED
+```
+
+---
+
+## 17. Infrastructure Visibility
 
 The Data Console exposes:
 
+```text
 GET /health/live
 GET /health/ready
 GET /data-console/v1/overview
+```
 
-Five dependency probes:
+Dependency probes:
 
+```text
 MongoDB
 Neo4j
 SQL Server
 Temporal
 Valkey
+```
 
 Behavior:
 
-Concurrent execution.
-
-Bounded timeouts.
-
-Safe error mapping.
-
-Short-lived cache.
-
-Single-flight coordination.
-
-Healthy results preserved when another dependency fails.
-
-meta.partial and safe warnings.
-
-Correlation-ID propagation.
+- Concurrent execution.
+- Bounded timeouts.
+- Safe error mapping.
+- Short-lived cache.
+- Single-flight coordination.
+- Healthy results preserved when another dependency fails.
+- `meta.partial` and safe warnings.
+- Correlation-ID propagation.
 
 Stage 2 remains accepted for the basic implementation. Exhaustive timeout, recovery, restart-durability, and every driver-error classification remain hardening work.
 
-15. Environment Configuration
+---
 
-Use one repository-root .env.
+## 18. Environment Configuration
+
+Use one repository-root `.env`.
+
+Do not create `backend/.env`.
 
 Passwords are defined exactly once and referenced by application variables.
 
+```dotenv
 # Infrastructure credentials
 MONGO_ROOT_USERNAME=<USERNAME>
 MONGO_ROOT_PASSWORD=<SECRET>
@@ -1184,10 +1234,19 @@ PLATFORM_PROBE_TIMEOUT_SECONDS=5
 PLATFORM_DEPENDENCY_CONNECT_TIMEOUT_SECONDS=10
 
 PLATFORM_MONGO_DSN=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@localhost:27017/return_platform?authSource=admin
+PLATFORM_MONGO_DATABASE=return_platform
+PLATFORM_GRAPH_EVIDENCE_COLLECTION=graph_evidence_runs
+PLATFORM_GRAPH_EVIDENCE_QUERY_TIMEOUT_SECONDS=5.0
+PLATFORM_MONGO_CONNECTIVITY_TIMEOUT_SECONDS=10
+PLATFORM_MONGO_OPERATION_TIMEOUT_SECONDS=10
 
 PLATFORM_NEO4J_URI=bolt://localhost:7687
 PLATFORM_NEO4J_USER=neo4j
 PLATFORM_NEO4J_PASSWORD=${GRAPH_PASSWORD}
+PLATFORM_NEO4J_DATABASE=neo4j
+PLATFORM_NEO4J_CONNECTIVITY_TIMEOUT_SECONDS=10
+PLATFORM_NEO4J_TRANSACTION_TIMEOUT_SECONDS=5
+PLATFORM_NEO4J_OPERATION_TIMEOUT_SECONDS=10
 
 PLATFORM_VALKEY_HOST=localhost
 PLATFORM_VALKEY_PORT=6379
@@ -1203,236 +1262,316 @@ PLATFORM_SQLSERVER_DATABASE=return_platform
 
 # Vite development proxy
 FRONTEND_BACKEND_TARGET=http://localhost:8000
+```
 
 Rules:
 
-Never commit .env.
+- Never commit `.env`.
+- Keep a sanitized `.env.example`.
+- Never place secrets in source, tests, README examples, frontend bundles, logs, or public errors.
+- URI-reserved characters in credentials must be URL-encoded.
+- Real environment variables may override root `.env`.
+- Local environment vocabulary is `development`, `test`, `staging`, or `production`.
+- `PLATFORM_ENVIRONMENT=dev` is invalid for the current Settings contract.
 
-Never place secrets in source, tests, README examples, frontend bundles, logs, or public errors.
+---
 
-URI-reserved characters in credentials must be URL-encoded.
+## 19. Installation
 
-PLATFORM_CATALOG_PATH is optional because the default resolves to backend/config/data_assets.yaml from the documented backend working directory.
+### Prerequisites
 
-16. Installation
-
-Prerequisites
-
+```text
 Ubuntu 22.04 or compatible
 Docker and Docker Compose
 Python >=3.13,<3.14
 Poetry 2.4 or compatible
 NVM
 Node.js version from frontend/.nvmrc
-npm version compatible with the lock file
+npm compatible with package-lock.json
+```
 
-Backend
+### Backend
 
+```bash
 cd backend
 poetry install
+```
 
-Frontend
+### Frontend
 
+```bash
 cd frontend
 nvm use
 npm ci
+```
 
-Use the lock files. Do not manually install project packages with ad hoc pip or npm install commands.
+Use lock files. Do not install project dependencies through ad hoc `pip install` or unpinned `npm install` commands.
 
-17. Start the Platform
+---
 
-Terminal 1 — infrastructure
+## 20. Start the Platform
+
+### Terminal 1 — infrastructure
 
 From the repository root:
 
+```bash
 docker compose up -d
 docker compose ps
+```
 
-Terminal 2 — backend
+### Terminal 2 — backend
 
+```bash
 cd backend
 
 poetry run uvicorn return_platform.asgi:app \
-  --env-file ../.env \
+  --host 0.0.0.0 \
+  --port 8000
+```
+
+For development-only hot reload:
+
+```bash
+poetry run uvicorn return_platform.asgi:app \
   --host 0.0.0.0 \
   --port 8000 \
   --reload
+```
 
-Terminal 3 — frontend
+Do not use `--reload` when capturing reproducible validation evidence.
 
+### Terminal 3 — frontend
+
+```bash
 cd frontend
 nvm use
 npm run dev -- --host 0.0.0.0
+```
 
 Endpoints:
 
-Backend liveness:  http://localhost:8000/health/live
-Backend readiness: http://localhost:8000/health/ready
-Data Console API:  http://localhost:8000/data-console/v1/overview
-Frontend:          http://localhost:5173
+```text
+Backend liveness:   http://localhost:8000/health/live
+Backend readiness:  http://localhost:8000/health/ready
+Data Console API:   http://localhost:8000/data-console/v1/overview
+Graph Evidence API: http://localhost:8000/data-console/v1/graph-evidence
+Frontend:           http://localhost:5173
+Graph Evidence UI:  http://localhost:5173/data-console/graph-evidence
+```
 
-18. Quality Gates
+---
 
-Required backend gate
+## 21. Quality Gates
 
-Run from backend/:
+### Required backend gate
 
+Run from `backend/`:
+
+```bash
 poetry run ruff format --check src tests
 poetry run ruff check src tests
 poetry run mypy --no-incremental src tests
 poetry run pytest -vv
+```
 
-Do not weaken Ruff, mypy, Pydantic strictness, or tests to force a pass.
+Latest status:
 
-Focused latest writer gate
+```text
+PASS
+```
 
+The exact test count and command transcript were not included in this README update context and should be appended when the repository evidence is captured.
+
+Do not weaken Ruff, strict mypy, Pydantic strictness, or tests.
+
+### Focused Graph Evidence backend gate
+
+```bash
 poetry run ruff format --check \
-  src/return_platform/data_platform/graph/commands.py \
-  src/return_platform/data_platform/graph/writer.py \
-  tests/test_customer_neo4j_command_builder.py \
-  tests/test_customer_neo4j_writer.py
+  src/return_platform/configuration/settings.py \
+  src/return_platform/data_platform/graph/evidence_repository.py \
+  src/return_platform/data_platform/graph/evidence_query.py \
+  src/return_platform/data_console/api/graph_evidence.py \
+  tests/test_customer_graph_sandbox.py \
+  tests/test_graph_evidence_settings.py \
+  tests/test_graph_evidence_api.py
 
 poetry run ruff check \
-  src/return_platform/data_platform/graph/commands.py \
-  src/return_platform/data_platform/graph/writer.py \
-  tests/test_customer_neo4j_command_builder.py \
-  tests/test_customer_neo4j_writer.py
+  src/return_platform/configuration/settings.py \
+  src/return_platform/data_platform/graph/evidence_repository.py \
+  src/return_platform/data_platform/graph/evidence_query.py \
+  src/return_platform/data_console/api/graph_evidence.py \
+  tests/test_customer_graph_sandbox.py \
+  tests/test_graph_evidence_settings.py \
+  tests/test_graph_evidence_api.py
 
 poetry run mypy --no-incremental \
-  src/return_platform/data_platform/graph/commands.py \
-  src/return_platform/data_platform/graph/writer.py \
-  tests/test_customer_neo4j_command_builder.py \
-  tests/test_customer_neo4j_writer.py
+  src/return_platform/configuration/settings.py \
+  src/return_platform/data_platform/graph/evidence_repository.py \
+  src/return_platform/data_platform/graph/evidence_query.py \
+  src/return_platform/data_console/api/graph_evidence.py \
+  tests/test_customer_graph_sandbox.py \
+  tests/test_graph_evidence_settings.py \
+  tests/test_graph_evidence_api.py
 
-poetry run pytest \
-  tests/test_customer_neo4j_command_builder.py \
-  tests/test_customer_neo4j_writer.py \
-  -vv
+poetry run pytest -vv \
+  tests/test_customer_graph_sandbox.py \
+  tests/test_graph_evidence_settings.py \
+  tests/test_graph_evidence_api.py
+```
 
-Focused data-platform gate
+Latest status:
 
-poetry run pytest \
-  tests/test_mapping_contracts.py \
-  tests/test_mapping_relationship_direction.py \
-  tests/test_mapping_physical_path_scope.py \
-  tests/test_mapping_configuration_loader.py \
-  tests/test_mapping_handler_registry.py \
-  tests/test_customer_mapping_handlers.py \
-  tests/test_mapping_compiler.py \
-  tests/test_customer_document_normalizer.py \
-  tests/test_customer_mongodb_source_adapter.py \
-  tests/test_customer_graph_projection_materializer.py \
-  tests/test_customer_neo4j_command_builder.py \
-  tests/test_customer_neo4j_writer.py \
-  -vv
+```text
+PASS
+```
 
-Frontend
+### Live Graph Evidence API validation
 
+```bash
+cd backend
+
+chmod +x scripts/validate_graph_evidence_api.sh
+./scripts/validate_graph_evidence_api.sh
+
+echo $?
+```
+
+Latest result:
+
+```json
+{
+  "evidence_output": "docs/evidence/graph_evidence_api/validation_summary.json",
+  "process_exit_code": 0,
+  "routes_validated": 6,
+  "status": "SANDBOX_VALIDATED"
+}
+```
+
+### Frontend
+
+First inspect actual scripts:
+
+```bash
 cd frontend
+cat package.json
+```
+
+Expected focused gate:
+
+```bash
 nvm use
+npm ci
 
 npm run lint
 npm run typecheck
+
+npm run test -- \
+  src/api/graphEvidence.test.ts \
+  src/features/data-console/pages/GraphEvidencePage.test.tsx
+
 npm run build
-npm run test
+```
 
-Full frontend gate:
+Expected complete gate:
 
+```bash
 npm run check
+```
 
-Coverage is diagnostic and must not be reported without the exact current command output:
+If `npm run check` does not include all tests:
 
+```bash
+npm run test
+```
+
+Current frontend status:
+
+```text
+PENDING
+```
+
+Coverage is diagnostic and must not be reported without exact current output:
+
+```bash
 poetry run pytest \
   --cov=return_platform \
   --cov-report=term-missing \
   --cov-report=html \
   -vv
+```
 
 Broader coverage expansion is deferred until the planned implementation sequence is complete. Ruff, strict mypy, and existing pytest gates remain mandatory for every module.
 
-19. Recorded Evidence
+---
 
-Stage 2 infrastructure
+## 22. Recorded Evidence
+
+### Stage 2 infrastructure
 
 Observed on July 18, 2026:
 
-Dependency
+| Dependency | Status | Observed latency |
+|---|---:|---:|
+| MongoDB | Healthy | 3 ms |
+| Neo4j | Healthy | 0 ms |
+| SQL Server | Healthy | 68 ms |
+| Temporal | Healthy | 4 ms |
+| Valkey | Healthy | 0 ms |
 
-Status
+Partial-degradation evidence:
 
-Observed latency
-
-MongoDB
-
-Healthy
-
-3 ms
-
-Neo4j
-
-Healthy
-
-0 ms
-
-SQL Server
-
-Healthy
-
-68 ms
-
-Temporal
-
-Healthy
-
-4 ms
-
-Valkey
-
-Healthy
-
-0 ms
-
-Partial degradation evidence:
-
+```text
 Valkey status = UNAVAILABLE
 error_code = CONNECTION_REFUSED
 meta.partial = true
+```
 
 Healthy dependency results remained visible.
 
-SQL Server inventory
+### SQL Server inventory
 
 Observed on July 20, 2026:
 
+```text
 Database:       return_platform
 Observed at:    2026-07-20T04:31:06.907334+00:00
 Visible empty:  True
 Visible tables: 0
 Visible views:  0
 Schemas:        0
+```
 
 Classification:
 
+```text
 SANDBOX_VALIDATED
+```
 
-MongoDB inventory
+### MongoDB inventory
 
 Observed on July 20, 2026:
 
+```text
 Database:            return_platform
 Observed at:         2026-07-20T05:20:35.748940+00:00
 Visible empty:       True
 Visible collections: 0
 Visible indexes:     0
+```
 
 Classification:
 
+```text
 SANDBOX_VALIDATED
+```
 
-Drift
+### Drift
 
 Observed output:
 
+```text
 Catalog version:        1.0
 Analyzed at:            2026-07-20T05:50:18.209858+00:00
 Complete evidence:      True
@@ -1440,79 +1579,99 @@ Drift free:             True
 Confirmed drift count:  0
 Not evaluated count:    0
 Total records:          0
+```
 
 Classification:
 
+```text
 IMPLEMENTED; LIVE OUTPUT OBSERVED
+```
 
-The exit code was not captured.
+The process exit code was not captured.
 
-Customer graph writer correction
+### Customer graph sandbox
 
-Focused suite:
+```text
+Status: SANDBOX_VALIDATED
+Process exit code: 0
+Local evidence:
+docs/evidence/customer_graph_sandbox_validation.json
 
-Customer Neo4j command-builder + writer: 53 passed
+Report digest:
+75b63cf87a1742e93dd05eb2542d6bfe17f3b345ffe3542d73fac32d664b33c8
 
-Classification:
+Platform evidence document:
+CUSTOMER_GRAPH_SANDBOX:d084d10c-5bdf-4002-befb-8ccb9948f9e7
 
-FOCUSED_PYTEST_VALIDATED
-REPOSITORY RUFF/MYPY/FULL PYTEST PENDING
-LIVE NEO4J EXECUTION NOT VALIDATED
+Platform evidence digest:
+6ce23e2568171b3f53827dfb8b822f4c4cd2cec60080a6c959326136bdb81f5b
 
-20. Security Rules
+Platform persistence status:
+CREATED
+```
 
-Never commit .env.
+### Graph Evidence APIs
 
-Never repeat password values in tests or documentation.
+```text
+Status: SANDBOX_VALIDATED
+Process exit code: 0
+Routes validated: 6
+Evidence:
+docs/evidence/graph_evidence_api/validation_summary.json
+```
 
-Never expose raw driver errors.
+---
 
-Never log SecretStr.get_secret_value().
+## 23. Security Rules
 
-Never place production credential defaults in settings.
+- Never commit `.env`.
+- Never repeat real password values in tests or documentation.
+- Never expose raw driver errors.
+- Never log `SecretStr.get_secret_value()`.
+- Never place production credential defaults in settings.
+- Never expose infrastructure credentials or DSNs to the frontend.
+- Never accept arbitrary SQL, MongoDB filters, Cypher, Python, or import paths from configuration.
+- Never infer ownership from a physical database object.
+- Never write to source-system assets.
+- Never treat Neo4j as authoritative business state.
+- Never use display names, list positions, or mutable attributes as identity.
+- Never treat inventory `bin_location` as a Return Bay.
+- Never add `Package` or `PPLTracking` to graph v1 without approved identity and join evidence.
+- Preserve `asyncio.CancelledError`.
+- Treat unknown commit or write outcomes as unknown; never retry blindly.
+- Treat deprecation warnings as failures.
+- Keep Graph Evidence APIs and the current frontend screen read-only.
+- Do not expose full graph evidence to `console_viewer`; full evidence requires `console_admin`.
 
-Never expose infrastructure credentials or DSNs to the frontend.
+---
 
-Never accept arbitrary SQL, MongoDB filters, Cypher, Python, or import paths from configuration.
-
-Never infer ownership from a physical database object.
-
-Never write to source-system assets.
-
-Never treat Neo4j as authoritative business state.
-
-Never use display names, list positions, or mutable attributes as identity.
-
-Never treat inventory bin_location as a Return Bay.
-
-Never add Package or PPLTracking to graph v1 without approved identity and join evidence.
-
-Preserve asyncio.CancelledError.
-
-Treat unknown commit outcomes as unknown; do not retry blindly.
-
-Treat deprecation warnings as failures.
-
-21. Reconstruction Procedure
+## 24. Reconstruction Procedure
 
 From a clean clone:
 
+```bash
 git clone <repository-url>
 cd <repository-directory>
+```
 
-Create the root .env using the safe blueprint.
+Create the root `.env` from the safe blueprint.
 
 Confirm the production catalog remains truthful:
 
+```bash
 cat backend/config/data_assets.yaml
+```
 
 Start infrastructure:
 
+```bash
 docker compose up -d
 docker compose ps
+```
 
 Install and validate backend:
 
+```bash
 cd backend
 poetry install
 
@@ -1520,149 +1679,185 @@ poetry run ruff format --check src tests
 poetry run ruff check src tests
 poetry run mypy --no-incremental src tests
 poetry run pytest -vv
+```
 
 Run live metadata validation only against the intended sandbox:
 
+```bash
 poetry run python run_live_sql_inventory.py
 poetry run python run_live_mongo_inventory.py
 poetry run python run_live_drift.py
 printf "drift_exit_code=%s\n" "$?"
+```
+
+Run the controlled Customer graph sandbox:
+
+```bash
+poetry run python -m return_platform.data_platform.graph.sandbox_runner \
+  --source-file tests/fixtures/customer_graph_sandbox/customer_p100.json \
+  --source-document-id P100 \
+  --source-updated-at 2026-07-22T04:00:00Z \
+  --source-version 17 \
+  --source-event-id evt-100 \
+  --evidence-output docs/evidence/customer_graph_sandbox_validation.json
+
+printf "sandbox_exit_code=%s\n" "$?"
+```
 
 Start backend:
 
+```bash
 poetry run uvicorn return_platform.asgi:app \
-  --env-file ../.env \
   --host 0.0.0.0 \
   --port 8000
+```
+
+Validate all Graph Evidence API routes:
+
+```bash
+chmod +x scripts/validate_graph_evidence_api.sh
+./scripts/validate_graph_evidence_api.sh
+printf "graph_api_exit_code=%s\n" "$?"
+```
 
 Install and validate frontend:
 
+```bash
 cd ../frontend
 nvm use
 npm ci
+npm run lint
+npm run typecheck
+npm run test
+npm run build
 npm run check
+```
+
+Start frontend:
+
+```bash
 npm run dev -- --host 0.0.0.0
+```
 
 Verify:
 
-curl -s http://localhost:8000/health/live
-curl -s http://localhost:8000/health/ready
-curl -s http://localhost:8000/data-console/v1/overview
+```bash
+curl --fail-with-body http://localhost:8000/health/live
+curl --fail-with-body http://localhost:8000/health/ready
+curl --fail-with-body http://localhost:8000/data-console/v1/overview
+curl --fail-with-body http://localhost:8000/data-console/v1/graph-evidence
+```
 
-22. Known Limitations
+Open:
 
-The production asset catalog is intentionally empty.
+```text
+http://localhost:5173/data-console/graph-evidence
+```
 
-The Customer mapping profile references a future approved Customer CDM asset that is not yet in the production catalog.
+---
 
-No live Customer source document has been fetched through the new adapter.
+## 25. Known Limitations
 
-No graph constraints, nodes, or relationships have been live validated through the new writer.
+- The production asset catalog is intentionally empty.
+- The Customer mapping profile references a future approved Customer CDM asset that is not yet in the production catalog.
+- No production Customer source document has been fetched through the source adapter.
+- Customer graph write/read-back evidence is sandbox-only, not production validation.
+- Graph Evidence API evidence is sandbox-only, not production validation.
+- The Data Console Customer Graph Evidence frontend has not yet passed repository lint, typecheck, tests, build, or live browser validation.
+- No governed graph synchronization mutation API exists.
+- No Temporal activity owns source/graph timeout and retry policy.
+- No cross-document Customer or CustomerAccount collision detector exists.
+- Order-line immutability remains unconfirmed.
+- OMC product bridging remains unresolved when source evidence is missing.
+- Actual carrier tracking remains optional legacy evidence.
+- `Package` and `PPLTracking` remain excluded from graph v1.
+- Inventory API and Data Ownership frontend pages remain unimplemented.
+- The complete customer return workflow and customer-facing return UI remain unimplemented.
+- The scenario runner remains unimplemented.
+- Restart durability, failover, multi-region, load, security, and broader hardening evidence remain deferred.
 
-No graph read-back validator exists.
+---
 
-No second-run idempotency proof exists.
+## 26. Current Phase and Immediate Next Step
 
-Writer evidence is returned but not yet persisted to Platform MongoDB.
+### Current phase
 
-No Temporal activity owns source/graph timeout and retry policy.
+```text
+Stage 1 — Frontend/API foundation:             COMPLETE
+Stage 2 — Infrastructure visibility:           BASIC ACCEPTANCE PASSED
+Stage 3 — Governance/catalog:                  COMPLETE
+Stage 3 — SQL inventory:                       SANDBOX_VALIDATED
+Stage 3 — Mongo inventory:                     SANDBOX_VALIDATED
+Stage 3 — Drift:                               IMPLEMENTED; LIVE OUTPUT OBSERVED
+Stage 3 — Bounded sampling:                    CONTRACT_TESTED
+Stage 3 — Inventory API/UI:                    NOT IMPLEMENTED
 
-No cross-document Customer or CustomerAccount collision detector exists.
+Canonical data-model implementation:           COMPLETE
+Versioned mapping contracts:                   COMPLETE
+Customer mapping configuration:               COMPLETE
+Handler registry:                             COMPLETE
+Multi-file mapping loader:                    COMPLETE
+Customer mapping compiler:                    COMPLETE
+Customer in-memory normalization:              COMPLETE
+Customer MongoDB source adapter:               COMPLETE
+Customer graph materialization:                COMPLETE
+Customer Neo4j command builder:                COMPLETE
+Customer Neo4j writer:                         CONTRACT_TESTED
+Customer graph sandbox:                        SANDBOX_VALIDATED
+Live sandbox Neo4j write:                      SANDBOX_VALIDATED
+Graph read-back validation:                    SANDBOX_VALIDATED
+Second-run idempotency:                        SANDBOX_VALIDATED
+Platform graph-evidence persistence:           SANDBOX_VALIDATED
+Graph Validation API:                          SANDBOX_VALIDATED
+Graph Inspection APIs:                         SANDBOX_VALIDATED
+Data Console Customer Graph Evidence screens: IMPLEMENTED; VALIDATION PENDING
 
-Order-line immutability remains unconfirmed.
+Live production Customer source lookup:        BLOCKED_EXTERNAL_DEPENDENCY
+Temporal return workflow:                      NOT IMPLEMENTED
+Customer return frontend:                      NOT IMPLEMENTED
+Scenario runner:                               NOT IMPLEMENTED
+```
 
-OMC product bridging remains unresolved when source evidence is missing.
+### Immediate execution target
 
-Actual carrier tracking remains optional legacy evidence.
+Continue in Codex from:
 
-Package and PPLTracking remain excluded from graph v1.
+```text
+Stage 3 — Data Console Customer Graph Synchronization and Evidence Screens
+```
 
-Inventory API and Data Ownership frontend pages remain unimplemented.
+Codex must:
 
-The customer return workflow and customer-facing return UI remain unimplemented.
+1. Inspect the actual frontend repository structure and worktree.
+2. Reconcile the prepared source with the actual API contracts, routing, shell, Tailwind configuration, package scripts, and test setup.
+3. Integrate or correct the frontend files.
+4. Add `/data-console/graph-evidence` routing and navigation.
+5. Run ESLint.
+6. Run strict TypeScript.
+7. Run focused Graph Evidence tests.
+8. Run complete frontend tests.
+9. Run the Vite production build.
+10. Start the backend and frontend.
+11. Validate the page against the retained sandbox evidence.
+12. Capture request IDs, screenshots, commands, outputs, and exit codes.
+13. Update this README with exact evidence.
+14. Stop after this bounded step is accepted.
 
-Restart-durability and broader hardening evidence remain deferred.
+### The current step must not
 
-23. Current Phase and Next Step
-
-Current phase
-
-Stage 1 — Frontend/API foundation:            COMPLETE
-Stage 2 — Infrastructure visibility:          BASIC ACCEPTANCE PASSED
-Stage 3 — Governance/catalog:                 COMPLETE
-Stage 3 — SQL inventory:                      SANDBOX_VALIDATED
-Stage 3 — Mongo inventory:                    SANDBOX_VALIDATED
-Stage 3 — Drift:                              IMPLEMENTED; LIVE OUTPUT OBSERVED
-Stage 3 — Bounded sampling:                   CONTRACT_TESTED
-Stage 3 — Inventory API/UI:                   NOT IMPLEMENTED
-
-Canonical data-model implementation:          COMPLETE
-Versioned mapping contracts:                  COMPLETE
-Customer mapping configuration:              COMPLETE
-Handler registry:                            COMPLETE
-Multi-file mapping loader:                   COMPLETE
-Customer mapping compiler:                   COMPLETE
-Customer in-memory normalization:             COMPLETE
-Customer MongoDB source adapter:              COMPLETE
-Customer graph materialization:               COMPLETE
-Customer Neo4j command builder:               COMPLETE
-Customer Neo4j writer implementation:         COMPLETE
-Latest writer repository revalidation:        PENDING
-Live Customer source lookup:                  BLOCKED_EXTERNAL_DEPENDENCY
-Live Neo4j graph write:                       NOT VALIDATED
-Graph read-back validation:                   NOT IMPLEMENTED
-Platform graph-evidence persistence:          NOT IMPLEMENTED
-Temporal return workflow:                     NOT IMPLEMENTED
-Customer return frontend:                     NOT IMPLEMENTED
-Scenario runner:                              NOT IMPLEMENTED
-
-Immediate execution target
-
-First, integrate the latest writer correction and run:
-
-cd backend
-
-poetry run ruff format --check src tests
-poetry run ruff check src tests
-poetry run mypy --no-incremental src tests
-poetry run pytest -vv
-
-Record the exact outputs and exit codes in this README.
-
-Only after those gates pass, implement a sandbox-only Customer graph validation runner and deterministic read-back contracts.
-
-The next step must:
-
-Load the approved Customer mapping profile.
-
-Compile it against an explicit sandbox-only governance catalog.
-
-Accept one controlled Customer source document.
-
-Normalize it in memory.
-
-Materialize graph parameters.
-
-Build fixed commands.
-
-Prepare constraints.
-
-Execute the atomic Customer graph transaction.
-
-Read back Customer, CustomerAccount, and HAS_ACCOUNT through fixed parameterized validation queries.
-
-Compare exact canonical keys and mandatory provenance.
-
-Prove second-run idempotency.
-
-Emit safe evidence and a process exit code.
-
-The next step must not:
-
+```text
+add graph mutation APIs
+add a synchronization run button
 mutate the production asset catalog
-persist evidence to Platform MongoDB
-introduce Temporal orchestration
 add automatic retries
+add arbitrary MongoDB filters
+add arbitrary Cypher
 add SalesOrder graph execution
+add Temporal workflows
 add Package
 add PPLTracking
+start the customer-facing return UI
+begin the hardening phase
+```
+
+After the Data Console Graph Evidence screen passes all frontend and live integration gates, stop and request the next bounded instruction.
