@@ -1,16 +1,13 @@
 from pathlib import Path
 
 # List of files containing nested paths
-file_list = """backend/src/return_platform/data_platform/graph/readback.py
-backend/src/return_platform/data_platform/graph/sandbox.py
-backend/src/return_platform/data_platform/graph/sandbox_runner.py
-backend/tests/test_customer_neo4j_readback.py
-backend/tests/test_customer_graph_sandbox.py
-backend/tests/fixtures/customer_graph_sandbox/customer_p100.json""".split("\n")
+file_list = """backend/src/return_platform/data_platform/graph/evidence_query.py
+backend/src/return_platform/data_console/api/graph_evidence.py
+backend/tests/test_graph_evidence_api.py""".split("\n")
 
 for file_path_str in file_list:
     # Convert string to a Path object
-    file_path = Path(file_path_str)
+    file_path = Path(file_path_str.strip())
 
     # 1. Automatically create all missing parent folders
     # parents=True creates nested folders; exist_ok=True prevents errors if they exist

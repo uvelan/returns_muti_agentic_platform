@@ -1,0 +1,57 @@
+{
+  "base_url": "http://127.0.0.1:8000",
+  "document_digest": "6ce23e2568171b3f53827dfb8b822f4c4cd2cec60080a6c959326136bdb81f5b",
+  "document_id": "CUSTOMER_GRAPH_SANDBOX:d084d10c-5bdf-4002-befb-8ccb9948f9e7",
+  "process_exit_code": 0,
+  "report_digest": "75b63cf87a1742e93dd05eb2542d6bfe17f3b345ffe3542d73fac32d664b33c8",
+  "responses": [
+    {
+      "http_status": 200,
+      "name": "list",
+      "request_id": "d372d12f-7997-4bac-a81b-244795e0c4b9",
+      "response_byte_size": 1249,
+      "response_sha256": "9faf06367e7050da6488d91f0ee6d61903bf81fc062b3819652cd698f3feb300"
+    },
+    {
+      "http_status": 200,
+      "name": "latest",
+      "request_id": "810504e9-1871-4569-8e9c-66e5dc684ae0",
+      "response_byte_size": 1199,
+      "response_sha256": "7e3f4a43cc2ed9b8b1d3409465c073973eb0c81540197dac7139e21af9048d24"
+    },
+    {
+      "http_status": 200,
+      "name": "document_summary",
+      "request_id": "302c07d3-8ff3-4c48-aa24-dee47166605a",
+      "response_byte_size": 1199,
+      "response_sha256": "b83b0762ea64d7ca8c3f80730d37614dd9e5ce8c1fd075a5b849bbd492afadf1"
+    },
+    {
+      "http_status": 200,
+      "name": "document_full",
+      "request_id": "9690b144-f1cc-402d-8214-00831aa06d5f",
+      "response_byte_size": 9479,
+      "response_sha256": "a1584527b3b4e6234857035c770775a6fbba1820187604cb8af3a910c32fec91"
+    },
+    {
+      "http_status": 200,
+      "name": "sync_run",
+      "request_id": "7ab6cdbc-46b0-4c25-961c-36abcf5d10e3",
+      "response_byte_size": 1199,
+      "response_sha256": "6915a207262d1994b1a623fa452e0931ee6bf2105a1bc302eed9892efd30ff0c"
+    },
+    {
+      "http_status": 200,
+      "name": "report_digest",
+      "request_id": "bbdd647e-ec8a-4f53-b071-49b6fe994d30",
+      "response_byte_size": 1199,
+      "response_sha256": "5bb87c4748dc079219133914be434555acf7f14dd8cc1c3989b7de07cdf98cc6"
+    }
+  ],
+  "routes_validated": 6,
+  "schema_version": "1.0",
+  "status": "SANDBOX_VALIDATED",
+  "sync_run_id": "d084d10c-5bdf-4002-befb-8ccb9948f9e7",
+  "validated_at": "2026-07-22T13:10:27.542874+00:00",
+  "validation_type": "GRAPH_EVIDENCE_API_SANDBOX"
+}

@@ -82,6 +82,23 @@ class Settings(BaseSettings):
     )
     sqlserver_password: SecretStr = Field(min_length=1)
     sqlserver_database: str = Field(min_length=1)
+    mongo_database: str = Field(
+        default="return_platform",
+        min_length=1,
+        max_length=63,
+        pattern=r"^[A-Za-z][A-Za-z0-9_-]{0,62}$",
+    )
+    graph_evidence_collection: str = Field(
+        default="graph_evidence_runs",
+        min_length=1,
+        max_length=127,
+        pattern=r"^[A-Za-z][A-Za-z0-9_.-]{0,126}$",
+    )
+    graph_evidence_query_timeout_seconds: float = Field(
+        default=5.0,
+        ge=0.05,
+        le=30.0,
+    )
 
     @field_validator("catalog_path")
     @classmethod

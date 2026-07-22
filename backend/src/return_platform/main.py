@@ -13,6 +13,9 @@ from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
 from return_platform.configuration.settings import Settings
+from return_platform.data_console.api.graph_evidence import (
+    router as graph_evidence_router,
+)
 from return_platform.data_console.api.router import router as console_router
 from return_platform.data_governance import load_asset_catalog
 from return_platform.resources import (
@@ -113,9 +116,7 @@ def _initialize_mongodb(
     """Create the asynchronous MongoDB client."""
 
     try:
-        mongo_client: AsyncMongoClient[
-            dict[str, object]
-        ] = AsyncMongoClient(
+        mongo_client: AsyncMongoClient[dict[str, object]] = AsyncMongoClient(
             settings.mongo_dsn.get_secret_value()
         )
 
@@ -158,12 +159,8 @@ def _initialize_valkey(
         valkey_client: redis.Redis = redis.Redis(
             host=settings.valkey_host,
             port=settings.valkey_port,
-            password=(
-                settings.valkey_password.get_secret_value()
-            ),
-            socket_connect_timeout=(
-                settings.probe_timeout_seconds
-            ),
+            password=(settings.valkey_password.get_secret_value()),
+            socket_connect_timeout=(settings.probe_timeout_seconds),
             socket_timeout=settings.probe_timeout_seconds,
             decode_responses=True,
         )
@@ -186,12 +183,8 @@ async def _initialize_temporal(
     """Connect to Temporal within the configured timeout."""
 
     try:
-        async with asyncio.timeout(
-            settings.dependency_connect_timeout_seconds
-        ):
-            resources.temporal = await Client.connect(
-                settings.temporal_target
-            )
+        async with asyncio.timeout(settings.dependency_connect_timeout_seconds):
+            resources.temporal = await Client.connect(settings.temporal_target)
     except Exception as exc:
         _log_initialization_failure(
             "temporal",
@@ -213,12 +206,10 @@ async def lifespan(
 
     settings = _get_settings(app)
 
-    loaded_catalog = load_asset_catalog(
-        settings.catalog_path
-    )
+    loaded_catalog = load_asset_catalog(settings.catalog_path)
 
     resources = RuntimeResources(
-            settings=settings,
+        settings=settings,
         catalog=loaded_catalog,
     )
 
@@ -248,15 +239,9 @@ async def lifespan(
         logger.info(
             "application_resources_initialized",
             extra={
-                "catalog_version": (
-                    loaded_catalog.catalog.version
-                ),
-                "catalog_asset_count": (
-                    loaded_catalog.asset_count
-                ),
-                "catalog_sha256": (
-                    loaded_catalog.sha256_hex
-                ),
+                "catalog_version": (loaded_catalog.catalog.version),
+                "catalog_asset_count": (loaded_catalog.asset_count),
+                "catalog_sha256": (loaded_catalog.sha256_hex),
             },
         )
 
@@ -287,9 +272,7 @@ def _resolve_principal_provider(
     if settings.environment in _DEVELOPMENT_ENVIRONMENTS:
         return get_development_principal
 
-    raise RuntimeError(
-        "A production principal provider is required."
-    )
+    raise RuntimeError("A production principal provider is required.")
 
 
 def create_app(
@@ -314,11 +297,7 @@ def create_app(
 
     fastapi_app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            str(
-                app_settings.frontend_cors_origin
-            ).rstrip("/")
-        ],
+        allow_origins=[str(app_settings.frontend_cors_origin).rstrip("/")],
         allow_credentials=True,
         allow_methods=[
             "GET",
@@ -335,30 +314,18 @@ def create_app(
             Awaitable[Response],
         ],
     ) -> Response:
-        correlation_id = validate_correlation_id(
-            request.headers.get(
-                "X-Correlation-ID"
-            )
-        )
+        correlation_id = validate_correlation_id(request.headers.get("X-Correlation-ID"))
 
-        request.state.correlation_id = (
-            correlation_id
-        )
+        request.state.correlation_id = correlation_id
 
-        normalized_path = (
-            request.url.path.rstrip("/") or "/"
-        )
+        normalized_path = request.url.path.rstrip("/") or "/"
 
         if normalized_path not in _HEALTH_PATHS:
             try:
-                request.state.principal = (
-                    await provider(request)
-                )
+                request.state.principal = await provider(request)
             except AuthorizationError:
                 return _create_error_response(
-                    status_code=(
-                        status.HTTP_403_FORBIDDEN
-                    ),
+                    status_code=(status.HTTP_403_FORBIDDEN),
                     correlation_id=correlation_id,
                     source="AUTH",
                     code="FORBIDDEN",
@@ -368,32 +335,22 @@ def create_app(
                 logger.exception(
                     "principal_provider_failed",
                     extra={
-                        "error_type": (
-                            type(exc).__name__
-                        ),
-                        "correlation_id": (
-                            correlation_id
-                        ),
+                        "error_type": (type(exc).__name__),
+                        "correlation_id": (correlation_id),
                     },
                 )
 
                 return _create_error_response(
-                    status_code=(
-                        status.HTTP_500_INTERNAL_SERVER_ERROR
-                    ),
+                    status_code=(status.HTTP_500_INTERNAL_SERVER_ERROR),
                     correlation_id=correlation_id,
                     source="AUTH",
                     code="PROVIDER_FAILURE",
-                    message=(
-                        "Principal resolution failed."
-                    ),
+                    message=("Principal resolution failed."),
                 )
 
         response = await call_next(request)
 
-        response.headers[
-            "X-Correlation-ID"
-        ] = correlation_id
+        response.headers["X-Correlation-ID"] = correlation_id
 
         return response
 
@@ -420,15 +377,11 @@ def create_app(
         )
 
         return _create_error_response(
-            status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
-            ),
+            status_code=(status.HTTP_500_INTERNAL_SERVER_ERROR),
             correlation_id=correlation_id,
             source="SYSTEM",
             code="INTERNAL_ERROR",
-            message=(
-                "An unexpected system error occurred."
-            ),
+            message=("An unexpected system error occurred."),
         )
 
     @fastapi_app.get(
@@ -462,9 +415,7 @@ def create_app(
             RuntimeResources,
         ):
             return JSONResponse(
-                status_code=(
-                    status.HTTP_503_SERVICE_UNAVAILABLE
-                ),
+                status_code=(status.HTTP_503_SERVICE_UNAVAILABLE),
                 content={
                     "status": "not initialized",
                 },
@@ -475,18 +426,13 @@ def create_app(
             content={
                 "status": "ready",
                 "catalog": {
-                    "version": (
-                        resources.catalog.catalog.version
-                    ),
-                    "asset_count": (
-                        resources.catalog.asset_count
-                    ),
+                    "version": (resources.catalog.catalog.version),
+                    "asset_count": (resources.catalog.asset_count),
                 },
             },
         )
 
-    fastapi_app.include_router(
-        console_router
-    )
+    fastapi_app.include_router(console_router)
+    fastapi_app.include_router(graph_evidence_router)
 
     return fastapi_app

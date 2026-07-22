@@ -1,0 +1,7 @@
+HTTP/1.1 200 OK
+date: Wed, 22 Jul 2026 13:10:26 GMT
+server: uvicorn
+content-length: 1249
+content-type: application/json
+x-correlation-id: d372d12f-7997-4bac-a81b-244795e0c4b9
+

@@ -27,7 +27,15 @@ from pydantic import (
     field_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pymongo import AsyncMongoClient
+from pymongo.errors import PyMongoError
 
+from return_platform.data_platform.graph.evidence_repository import (
+    CustomerGraphEvidenceDocument,
+    CustomerGraphEvidencePersistenceError,
+    CustomerGraphEvidencePersistenceReceipt,
+    CustomerGraphEvidenceRepository,
+)
 from return_platform.data_platform.graph.readback import (
     CustomerGraphReadbackError,
     CustomerGraphReadbackValidator,
@@ -50,13 +58,16 @@ __all__ = [
     "LoadedCustomerGraphSourceDocument",
     "SandboxRunnerError",
     "SandboxRunnerErrorCode",
+    "load_customer_graph_sandbox_settings",
     "load_customer_graph_source_document",
     "main",
+    "repository_dotenv_file",
 ]
 
 _MAX_SOURCE_FILE_BYTES: Final = 1_048_576
 _DEFAULT_CONFIG_DIR: Final = Path("config/data_platform")
 _DEFAULT_EVIDENCE_FILE: Final = Path("docs/evidence/customer_graph_sandbox_validation.json")
+_REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[5]
 
 
 class SandboxExitCode(IntEnum):
@@ -68,17 +79,20 @@ class SandboxExitCode(IntEnum):
     NEO4J_WRITE = 4
     READBACK_OR_IDEMPOTENCY = 5
     CONNECTIVITY = 6
+    PLATFORM_EVIDENCE_PERSISTENCE = 7
 
 
 class SandboxRunnerErrorCode(StrEnum):
     """Stable safe runner-boundary error codes."""
 
     INPUT_INVALID = "INPUT_INVALID"
+    CONFIGURATION_INVALID = "CONFIGURATION_INVALID"
     SOURCE_FILE_INVALID = "SOURCE_FILE_INVALID"
     SOURCE_JSON_INVALID = "SOURCE_JSON_INVALID"
     SOURCE_UPDATED_AT_INVALID = "SOURCE_UPDATED_AT_INVALID"
     EVIDENCE_OUTPUT_INVALID = "EVIDENCE_OUTPUT_INVALID"
     CONNECTIVITY_FAILED = "CONNECTIVITY_FAILED"
+    PLATFORM_MONGODB_CONNECTIVITY_FAILED = "PLATFORM_MONGODB_CONNECTIVITY_FAILED"
 
 
 class SandboxRunnerError(RuntimeError):
@@ -96,10 +110,11 @@ def _raise_runner_error(code: SandboxRunnerErrorCode) -> Never:
 
 
 class CustomerGraphSandboxSettings(BaseSettings):
-    """Strict environment-only Neo4j sandbox settings."""
+    """Strict environment-only Neo4j and Platform MongoDB settings."""
 
     model_config = SettingsConfigDict(
         env_prefix="PLATFORM_",
+        env_file_encoding="utf-8",
         extra="ignore",
         frozen=True,
         strict=True,
@@ -131,6 +146,23 @@ class CustomerGraphSandboxSettings(BaseSettings):
         le=600.0,
         allow_inf_nan=False,
     )
+    mongo_dsn: SecretStr
+    mongo_database: str = "return_platform"
+    graph_evidence_collection: str = "graph_evidence_runs"
+    mongo_connectivity_timeout_seconds: float = Field(
+        default=10.0,
+        strict=True,
+        ge=0.05,
+        le=60.0,
+        allow_inf_nan=False,
+    )
+    mongo_operation_timeout_seconds: float = Field(
+        default=10.0,
+        strict=True,
+        ge=0.05,
+        le=300.0,
+        allow_inf_nan=False,
+    )
 
     @field_validator("neo4j_uri")
     @classmethod
@@ -143,7 +175,12 @@ class CustomerGraphSandboxSettings(BaseSettings):
             raise ValueError(msg)
         return value
 
-    @field_validator("neo4j_user", "neo4j_database")
+    @field_validator(
+        "neo4j_user",
+        "neo4j_database",
+        "mongo_database",
+        "graph_evidence_collection",
+    )
     @classmethod
     def validate_non_blank(cls, value: str) -> str:
         """Reject blank or whitespace-normalized identifiers."""
@@ -158,6 +195,20 @@ class CustomerGraphSandboxSettings(BaseSettings):
         if self.neo4j_operation_timeout_seconds <= self.neo4j_transaction_timeout_seconds:
             msg = "operation timeout must exceed transaction timeout"
             raise ValueError(msg)
+
+
+def repository_dotenv_file() -> Path:
+    """Return the canonical repository-root dotenv path."""
+    return _REPOSITORY_ROOT / ".env"
+
+
+def load_customer_graph_sandbox_settings(
+    *,
+    dotenv_file: Path | None = None,
+) -> CustomerGraphSandboxSettings:
+    """Load strict runner settings from the repository-root dotenv file."""
+    selected_dotenv = repository_dotenv_file() if dotenv_file is None else dotenv_file
+    return CustomerGraphSandboxSettings(_env_file=selected_dotenv)
 
 
 class LoadedCustomerGraphSourceDocument:
@@ -270,6 +321,39 @@ def _emit_failure(
         },
     )
     return int(exit_code)
+
+
+def _configuration_error_fields(
+    error: ValidationError,
+) -> tuple[str, ...]:
+    """Return only safe top-level setting names from validation errors."""
+    fields: set[str] = set()
+    for item in error.errors(
+        include_url=False,
+        include_context=False,
+        include_input=False,
+    ):
+        location = item["loc"]
+        if not location:
+            fields.add("__settings__")
+            continue
+        first = location[0]
+        fields.add(first if isinstance(first, str) else "__settings__")
+    return tuple(sorted(fields))
+
+
+def _emit_configuration_failure(error: ValidationError) -> int:
+    """Emit safe configuration diagnostics without values or secrets."""
+    _write_json_line(
+        sys.stderr,
+        {
+            "status": "FAILED",
+            "error_code": SandboxRunnerErrorCode.CONFIGURATION_INVALID.value,
+            "process_exit_code": int(SandboxExitCode.INPUT_OR_CONFIGURATION),
+            "invalid_fields": _configuration_error_fields(error),
+        },
+    )
+    return int(SandboxExitCode.INPUT_OR_CONFIGURATION)
 
 
 def _write_evidence_atomically(
@@ -387,12 +471,20 @@ def _parse_arguments(argv: list[str] | None) -> _Arguments:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class _RunOutcome:
+    """Successful graph validation and Platform MongoDB persistence outcome."""
+
+    report: CustomerGraphSandboxReport
+    persistence: CustomerGraphEvidencePersistenceReceipt
+
+
 async def _run(
     *,
     settings: CustomerGraphSandboxSettings,
     args: _Arguments,
-) -> CustomerGraphSandboxReport:
-    """Own the live driver and execute one complete sandbox validation run."""
+) -> _RunOutcome:
+    """Own live clients, validate the graph, and persist immutable evidence."""
     source = load_customer_graph_source_document(args.source_file)
     source_updated_at = _parse_utc_datetime(args.source_updated_at)
     observed_at = datetime.now(UTC)
@@ -404,64 +496,100 @@ async def _run(
         source_hash=source.source_hash,
         observed_at=observed_at,
     )
+    mongo_client: AsyncMongoClient[dict[str, object]] = AsyncMongoClient(
+        settings.mongo_dsn.get_secret_value(),
+        appname="return-platform-customer-graph-sandbox",
+        connectTimeoutMS=int(settings.mongo_connectivity_timeout_seconds * 1_000),
+        serverSelectionTimeoutMS=int(settings.mongo_connectivity_timeout_seconds * 1_000),
+        socketTimeoutMS=int(settings.mongo_operation_timeout_seconds * 1_000),
+        retryReads=False,
+        retryWrites=False,
+    )
     try:
-        driver = AsyncGraphDatabase.driver(
-            settings.neo4j_uri,
-            auth=(
-                settings.neo4j_user,
-                settings.neo4j_password.get_secret_value(),
-            ),
-            connection_timeout=settings.neo4j_connectivity_timeout_seconds,
-            connection_acquisition_timeout=(settings.neo4j_connectivity_timeout_seconds),
-            max_connection_pool_size=4,
-            disable_auto_commit_retries=True,
+        repository = CustomerGraphEvidenceRepository.from_client(
+            mongo_client,
+            database=settings.mongo_database,
+            collection=settings.graph_evidence_collection,
+            operation_timeout_seconds=settings.mongo_operation_timeout_seconds,
         )
-    except (DriverError, Neo4jError, ValueError) as error:
-        raise SandboxRunnerError(SandboxRunnerErrorCode.CONNECTIVITY_FAILED) from error
-    try:
         try:
-            async with asyncio.timeout(settings.neo4j_connectivity_timeout_seconds):
-                await driver.verify_connectivity()
-        except (TimeoutError, DriverError, Neo4jError) as error:
+            async with asyncio.timeout(settings.mongo_connectivity_timeout_seconds):
+                await mongo_client.admin.command("ping")
+        except (TimeoutError, PyMongoError) as error:
+            raise SandboxRunnerError(
+                SandboxRunnerErrorCode.PLATFORM_MONGODB_CONNECTIVITY_FAILED
+            ) from error
+        await repository.prepare_indexes()
+        try:
+            driver = AsyncGraphDatabase.driver(
+                settings.neo4j_uri,
+                auth=(
+                    settings.neo4j_user,
+                    settings.neo4j_password.get_secret_value(),
+                ),
+                connection_timeout=settings.neo4j_connectivity_timeout_seconds,
+                connection_acquisition_timeout=(settings.neo4j_connectivity_timeout_seconds),
+                max_connection_pool_size=4,
+                disable_auto_commit_retries=True,
+            )
+        except (DriverError, Neo4jError, ValueError) as error:
             raise SandboxRunnerError(SandboxRunnerErrorCode.CONNECTIVITY_FAILED) from error
-        writer = CustomerNeo4jWriter(driver)
-        readback = CustomerGraphReadbackValidator(driver)
-        executor = CustomerGraphSandboxExecutor(writer, readback)
-        service = CustomerGraphSandboxService(executor)
-        return await service.validate(
-            config_dir=args.config_dir,
-            source_document=source.document,
-            source_evidence=source_evidence,
-            source_hash=source.source_hash,
-            sync_run_id=uuid4(),
-            graph_synced_at=datetime.now(UTC),
-            database=settings.neo4j_database,
-            transaction_timeout_seconds=(settings.neo4j_transaction_timeout_seconds),
-            operation_timeout_seconds=settings.neo4j_operation_timeout_seconds,
+        try:
+            try:
+                async with asyncio.timeout(settings.neo4j_connectivity_timeout_seconds):
+                    await driver.verify_connectivity()
+            except (TimeoutError, DriverError, Neo4jError) as error:
+                raise SandboxRunnerError(SandboxRunnerErrorCode.CONNECTIVITY_FAILED) from error
+            writer = CustomerNeo4jWriter(driver)
+            readback = CustomerGraphReadbackValidator(driver)
+            executor = CustomerGraphSandboxExecutor(writer, readback)
+            service = CustomerGraphSandboxService(executor)
+            report = await service.validate(
+                config_dir=args.config_dir,
+                source_document=source.document,
+                source_evidence=source_evidence,
+                source_hash=source.source_hash,
+                sync_run_id=uuid4(),
+                graph_synced_at=datetime.now(UTC),
+                database=settings.neo4j_database,
+                transaction_timeout_seconds=(settings.neo4j_transaction_timeout_seconds),
+                operation_timeout_seconds=(settings.neo4j_operation_timeout_seconds),
+            )
+        finally:
+            await driver.close()
+        await asyncio.to_thread(
+            _write_evidence_atomically,
+            args.evidence_output,
+            report,
         )
+        evidence_document = CustomerGraphEvidenceDocument.create(report)
+        persistence = await repository.persist(evidence_document)
+        return _RunOutcome(report=report, persistence=persistence)
     finally:
-        await driver.close()
+        await mongo_client.close()
 
 
 def main(argv: list[str] | None = None) -> int:
     """Execute the sandbox validator and return a stable process exit code."""
     try:
         args = _parse_arguments(argv)
-        settings = CustomerGraphSandboxSettings()
-        report = asyncio.run(_run(settings=settings, args=args))
-        _write_evidence_atomically(args.evidence_output, report)
-    except ValidationError:
-        return _emit_failure(
-            SandboxRunnerErrorCode.INPUT_INVALID,
-            SandboxExitCode.INPUT_OR_CONFIGURATION,
-        )
+        settings = load_customer_graph_sandbox_settings()
+        outcome = asyncio.run(_run(settings=settings, args=args))
+    except ValidationError as error:
+        return _emit_configuration_failure(error)
     except SandboxRunnerError as error:
-        exit_code = (
-            SandboxExitCode.CONNECTIVITY
-            if error.code is SandboxRunnerErrorCode.CONNECTIVITY_FAILED
-            else SandboxExitCode.INPUT_OR_CONFIGURATION
-        )
+        if error.code is SandboxRunnerErrorCode.CONNECTIVITY_FAILED:
+            exit_code = SandboxExitCode.CONNECTIVITY
+        elif error.code is SandboxRunnerErrorCode.PLATFORM_MONGODB_CONNECTIVITY_FAILED:
+            exit_code = SandboxExitCode.PLATFORM_EVIDENCE_PERSISTENCE
+        else:
+            exit_code = SandboxExitCode.INPUT_OR_CONFIGURATION
         return _emit_failure(error.code, exit_code)
+    except CustomerGraphEvidencePersistenceError as error:
+        return _emit_failure(
+            error.code,
+            SandboxExitCode.PLATFORM_EVIDENCE_PERSISTENCE,
+        )
     except CustomerGraphSandboxError as error:
         exit_code = (
             SandboxExitCode.READBACK_OR_IDEMPOTENCY
@@ -487,7 +615,10 @@ def main(argv: list[str] | None = None) -> int:
             "status": "SANDBOX_VALIDATED",
             "process_exit_code": 0,
             "evidence_output": str(args.evidence_output),
-            "report_digest": report.report_digest,
+            "report_digest": outcome.report.report_digest,
+            "platform_evidence_document_id": (outcome.persistence.document_id),
+            "platform_evidence_document_digest": (outcome.persistence.document_digest),
+            "platform_evidence_status": outcome.persistence.status.value,
         },
     )
     return int(SandboxExitCode.SUCCESS)
