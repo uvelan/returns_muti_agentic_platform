@@ -1,5 +1,5 @@
 import { lazy } from "react";
-import { LayoutDashboard, Database, FileCheck2 } from "lucide-react";
+import { LayoutDashboard, Database, FileCheck2, HardDrive, Search } from "lucide-react";
 
 export type RouteCapability = 
   | "LIVE"
@@ -39,5 +39,42 @@ export const routes: RouteDefinition[] = [
     capability: "LIVE",
     navigable: true,
     component: lazy(() => import("./features/data-console/pages/GraphEvidencePage").then(m => ({ default: m.GraphEvidencePage }))),
+  },
+  {
+    path: "/data-console/sources",
+    name: "Data Sources",
+    icon: HardDrive,
+    capability: "FIXTURE",
+    navigable: true,
+    component: lazy(() => import("./features/data-console/pages/SourcesPage").then(m => ({ default: m.SourcesPage }))),
+  },
+  {
+    path: "/data-console/sources/:sourceId",
+    name: "Source Detail",
+    capability: "FIXTURE",
+    navigable: false,
+    component: lazy(() => import("./features/data-console/pages/SourceDetailPage").then(m => ({ default: m.SourceDetailPage }))),
+  },
+  {
+    path: "/data-console/browser",
+    name: "Data Browser",
+    icon: Search,
+    capability: "FIXTURE",
+    navigable: true,
+    component: lazy(() => import("./features/data-console/pages/BrowserLandingPage").then(m => ({ default: m.BrowserLandingPage }))),
+  },
+  {
+    path: "/data-console/browser/:engine/:assetId",
+    name: "Asset Browser",
+    capability: "FIXTURE",
+    navigable: false,
+    component: lazy(() => import("./features/data-console/pages/AssetBrowserPage").then(m => ({ default: m.AssetBrowserPage }))),
+  },
+  {
+    path: "/data-console/browser/:engine/:assetId/records/:recordId",
+    name: "Record Detail",
+    capability: "FIXTURE",
+    navigable: false,
+    component: lazy(() => import("./features/data-console/pages/RecordDetailPage").then(m => ({ default: m.RecordDetailPage }))),
   }
 ];

@@ -47,7 +47,7 @@ export function Shell({ children }: ShellProps) {
       {mobileMenuOpen && (
         <div className="md:hidden fixed inset-0 z-30 bg-slate-900/50 backdrop-blur-sm" onClick={() => { setMobileMenuOpen(false); }}>
           <div className="fixed inset-y-0 left-0 w-64 bg-white shadow-xl flex flex-col" onClick={e => { e.stopPropagation(); }}>
-            <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto mt-14">
+            <nav aria-label="Mobile Navigation" className="flex-1 px-4 py-6 space-y-1 overflow-y-auto mt-14">
               {navigation.map((item) => {
                 const isActive = location === item.path || (item.path === '/overview' && location === '/');
                 return (

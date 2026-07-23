@@ -10,11 +10,35 @@ test.describe('E2E Navigation', () => {
     
     await page.click('text=Graph evidence');
     await expect(page.locator('h1').first()).toHaveText('Customer graph evidence');
+
+    await page.click('text=Data Sources');
+    await expect(page.locator('h1').first()).toHaveText('Data Sources');
+    
+    await page.click('text=Data Browser');
+    await expect(page.locator('h1').first()).toHaveText('Governed Data Browser');
+  });
+
+  test('Navigates Data Console dynamic routes', async ({ page }) => {
+    // Navigate from sources list to source detail
+    await page.goto('/data-console/sources');
+    await page.click('text=OMC SQL Server');
+    await expect(page.locator('h1').first()).toHaveText('OMC SQL Server');
+    await expect(page.locator('text=src-sql-omc').first()).toBeVisible();
+
+    // Navigate from browser landing to asset browser
+    await page.goto('/data-console/browser');
+    await page.click('text=SalesOrders');
+    await expect(page.locator('h1').first()).toHaveText('SalesOrders');
+    
+    // Navigate from asset browser to record detail
+    await page.click('text=Details');
+    await expect(page.locator('h1').first()).toContainText('Record: SO-1001');
   });
 
 
   test('Keyboard navigation works', async ({ page }) => {
     await page.goto('/');
+    await expect(page.locator('a[aria-label="Return Platform overview"]')).toBeVisible();
     // Press tab to hit "Skip to main content"
     await page.keyboard.press('Tab');
     await expect(page.locator('text=Skip to main content')).toBeFocused();

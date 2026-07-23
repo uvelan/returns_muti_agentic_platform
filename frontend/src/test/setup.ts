@@ -1,6 +1,13 @@
-import { afterEach, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  vi,
+} from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
+
+import { fixtureServer } from "./server";
 
 
 class ResizeObserverMock implements ResizeObserver {
@@ -57,8 +64,20 @@ vi.stubGlobal(
   vi.fn(createMediaQueryList),
 );
 
+beforeAll(() => {
+  fixtureServer.listen({
+    onUnhandledRequest: "bypass",
+  });
+});
+
 
 afterEach(() => {
+  fixtureServer.resetHandlers();
   cleanup();
   vi.clearAllMocks();
+});
+
+
+afterAll(() => {
+  fixtureServer.close();
 });

@@ -1,0 +1,36 @@
+# Route Capability Matrix
+
+| Route | Navigation Label | Feature Owner | Data Owner | Access | Backend Endpoint | OpenAPI Operation | Capability | Validation | Pagination | Loading | Empty | Partial | Error | Unauthorized | Not Found | Mutations | E2E ID | Evidence Path |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `/` | Overview | Platform | Platform | Read | `/data-console/v1/overview` | `getOverview` | LIVE | CONTRACT_TESTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-OVERVIEW` | `docs/evidence/` |
+| `/overview` | Overview | Platform | Platform | Read | `/data-console/v1/overview` | `getOverview` | LIVE | CONTRACT_TESTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-OVERVIEW` | `docs/evidence/` |
+| `/data-console/inventory` | Inventory | Inventory | Multi | Read | `/data-console/v1/inventory` | `getInventory` | LIVE | CONTRACT_TESTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-INVENTORY` | `docs/evidence/` |
+| `/data-console/graph-evidence` | Graph Evidence | Evidence | Neo4j | Read | `/data-console/v1/graph-evidence` | `getGraphEvidence` | LIVE | SANDBOX_VALIDATED | Seek | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-EVIDENCE` | `docs/evidence/` |
+| `/data-console/sources` | Data Sources | Sources | Multi | Read | BLOCKED | `getSources` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-SOURCES` | `docs/evidence/` |
+| `/data-console/sources/:sourceId` | Source Detail | Sources | Multi | Read | BLOCKED | `getSource` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-SOURCE-DETAIL` | `docs/evidence/` |
+| `/data-console/browser` | Data Browser | Browser | Multi | Read | BLOCKED | `getBrowserAssets` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-BROWSER` | `docs/evidence/` |
+| `/data-console/browser/:engine/:assetId` | Asset Records | Browser | Multi | Read | BLOCKED | `getRecords` | FIXTURE | IMPLEMENTED | Page | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-RECORDS` | `docs/evidence/` |
+| `/data-console/browser/:engine/:assetId/records/:recordId` | Record Detail | Browser | Multi | Read | BLOCKED | `getRecord` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-RECORD-DETAIL` | `docs/evidence/` |
+| `/data-console/workspaces` | Workspaces | Sandbox | Sandbox | Write | BLOCKED | `getWorkspaces` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | `createWorkspace` | `E2E-WORKSPACES` | `docs/evidence/` |
+| `/data-console/workspaces/:workspaceId` | Workspace | Sandbox | Sandbox | Write | BLOCKED | `getWorkspace` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | `updateWorkspace`, `deleteWorkspace` | `E2E-WORKSPACE-DETAIL` | `docs/evidence/` |
+| `/data-console/workspaces/:workspaceId/new` | New Record | Sandbox | Sandbox | Write | BLOCKED | `createRecord` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | `createRecord` | `E2E-NEW-RECORD` | `docs/evidence/` |
+| `/data-console/workspaces/:workspaceId/records/:recordId/edit` | Edit Record | Sandbox | Sandbox | Write | BLOCKED | `updateRecord` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | `updateRecord`, `deleteRecord` | `E2E-EDIT-RECORD` | `docs/evidence/` |
+| `/data-console/graph` | Graph Explorer | Graph | Neo4j | Read | BLOCKED | `searchGraph` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-GRAPH` | `docs/evidence/` |
+| `/data-console/graph/nodes/:nodeId` | Node | Graph | Neo4j | Read | BLOCKED | `getNode` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-GRAPH-NODE` | `docs/evidence/` |
+| `/data-console/graph/relationships/:relationshipId` | Relationship | Graph | Neo4j | Read | BLOCKED | `getRelationship` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-GRAPH-REL` | `docs/evidence/` |
+| `/data-console/imports` | Imports | IO | Platform | Read | BLOCKED | `getImports` | FIXTURE | IMPLEMENTED | Page | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-IMPORTS` | `docs/evidence/` |
+| `/data-console/imports/new` | New Import | IO | Platform | Write | BLOCKED | `createImport` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | `createImport` | `E2E-NEW-IMPORT` | `docs/evidence/` |
+| `/data-console/imports/:importId` | Import | IO | Platform | Read | BLOCKED | `getImport` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-IMPORT-DETAIL` | `docs/evidence/` |
+| `/data-console/exports` | Exports | IO | Platform | Read | BLOCKED | `getExports` | FIXTURE | IMPLEMENTED | Page | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-EXPORTS` | `docs/evidence/` |
+| `/data-console/exports/new` | New Export | IO | Platform | Write | BLOCKED | `createExport` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | `createExport` | `E2E-NEW-EXPORT` | `docs/evidence/` |
+| `/data-console/exports/:exportId` | Export | IO | Platform | Read | BLOCKED | `getExport` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-EXPORT-DETAIL` | `docs/evidence/` |
+| `/data-console/jobs` | Jobs | Jobs | Platform | Read | BLOCKED | `getJobs` | FIXTURE | IMPLEMENTED | Page | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-JOBS` | `docs/evidence/` |
+| `/data-console/jobs/:jobId` | Job | Jobs | Platform | Read | BLOCKED | `getJob` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | `cancelJob` | `E2E-JOB-DETAIL` | `docs/evidence/` |
+| `/data-console/scenarios` | Scenarios | Scenarios | Sandbox | Read | BLOCKED | `getScenarios` | FIXTURE | IMPLEMENTED | Page | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-SCENARIOS` | `docs/evidence/` |
+| `/data-console/scenarios/new` | New Scenario | Scenarios | Sandbox | Write | BLOCKED | `createScenario` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | `createScenario` | `E2E-NEW-SCENARIO` | `docs/evidence/` |
+| `/data-console/scenarios/:scenarioId` | Scenario | Scenarios | Sandbox | Read | BLOCKED | `getScenario` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-SCENARIO-DETAIL` | `docs/evidence/` |
+| `/data-console/scenarios/:scenarioId/preview` | Preview | Scenarios | Sandbox | Read | BLOCKED | `previewScenario` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | `approveScenario` | `E2E-SCENARIO-PREVIEW` | `docs/evidence/` |
+| `/data-console/audit` | Audit | Gov | Platform | Read | BLOCKED | `getAudits` | FIXTURE | IMPLEMENTED | Page | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-AUDIT` | `docs/evidence/` |
+| `/data-console/governance` | Governance | Gov | Platform | Read | BLOCKED | `getGovernance` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-GOV` | `docs/evidence/` |
+| `/data-console/settings` | Settings | Gov | Platform | Read | BLOCKED | `getSettings` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-SETTINGS` | `docs/evidence/` |
+| `/data-console/hardening` | Hardening | Gov | Platform | Read | BLOCKED | `getHardening` | FIXTURE | IMPLEMENTED | N/A | Yes | Yes | Yes | Yes | Yes | Yes | None | `E2E-HARDENING` | `docs/evidence/` |

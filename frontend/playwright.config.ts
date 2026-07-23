@@ -8,7 +8,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'list',
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://localhost:5174',
     trace: 'on-first-retry',
   },
   projects: [
@@ -18,8 +18,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev:mock',
-    url: 'http://localhost:5173',
+    command: 'npm run dev:mock -- --port 5174 --force',
+    url: 'http://localhost:5174',
     reuseExistingServer: !process.env.CI,
   },
 });

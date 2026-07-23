@@ -14,7 +14,13 @@ export function Breadcrumbs() {
     if (routeDef) {
       crumbs.push({ path: routeDef.path, name: routeDef.name });
     } else {
-      crumbs.push({ path: currentPath, name: segment });
+      let decodedName = segment;
+      try {
+        decodedName = decodeURIComponent(segment);
+      } catch {
+        // ignore
+      }
+      crumbs.push({ path: currentPath, name: decodedName });
     }
   }
 

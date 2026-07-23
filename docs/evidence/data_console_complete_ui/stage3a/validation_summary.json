@@ -1,0 +1,11 @@
+{
+  "stage": "3A",
+  "status": "ACCEPTED",
+  "process_exit_code": 0,
+  "route_rows_complete": true,
+  "wildcard_routes_remaining": 0,
+  "api_gaps_have_exact_methods_and_paths": true,
+  "ownership_policy_complete": true,
+  "openapi_export_reproducible": true,
+  "package_decisions_recorded": true
+}

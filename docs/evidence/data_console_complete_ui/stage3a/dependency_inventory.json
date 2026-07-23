@@ -1,0 +1,68 @@
+[
+  {
+    "package": "msw",
+    "installed_version": "2.15.0",
+    "latest_stable_version": "2.15.0",
+    "classification": "devDependency",
+    "first_use_stage": "3B",
+    "license": "MIT",
+    "peer_requirements": "typescript >= 4.4.x",
+    "reason": "Network-level request interception for explicit mock mode and integration tests",
+    "evidence_path": "docs/evidence/data_console_complete_ui/stage3a/dependency_inventory.json"
+  },
+  {
+    "package": "openapi-typescript",
+    "installed_version": "7.13.0",
+    "latest_stable_version": "7.13.0",
+    "classification": "devDependency",
+    "first_use_stage": "3B",
+    "license": "MIT",
+    "peer_requirements": "typescript >= 5.x",
+    "reason": "Generates compile-time TypeScript types from the backend OpenAPI document",
+    "evidence_path": "docs/evidence/data_console_complete_ui/stage3a/dependency_inventory.json"
+  },
+  {
+    "package": "openapi-fetch",
+    "installed_version": "0.17.0",
+    "latest_stable_version": "0.17.0",
+    "classification": "dependency",
+    "first_use_stage": "3B",
+    "license": "MIT",
+    "peer_requirements": "typescript >= 5.x",
+    "reason": "Official companion client for path-, parameter-, request-, and response-typed fetch calls",
+    "evidence_path": "docs/evidence/data_console_complete_ui/stage3a/dependency_inventory.json"
+  },
+  {
+    "package": "@playwright/test",
+    "installed_version": "1.61.1",
+    "latest_stable_version": "1.61.1",
+    "classification": "devDependency",
+    "first_use_stage": "3B",
+    "license": "Apache-2.0",
+    "peer_requirements": "none",
+    "reason": "Route smoke and browser E2E starting with the shell",
+    "evidence_path": "docs/evidence/data_console_complete_ui/stage3a/dependency_inventory.json"
+  },
+  {
+    "package": "@axe-core/playwright",
+    "installed_version": "4.12.1",
+    "latest_stable_version": "4.12.1",
+    "classification": "devDependency",
+    "first_use_stage": "3B",
+    "license": "MPL-2.0",
+    "peer_requirements": "@playwright/test >= 1.x",
+    "reason": "Required for automated accessibility scans",
+    "evidence_path": "docs/evidence/data_console_complete_ui/stage3a/dependency_inventory.json"
+  },
+  {
+    "package": "@xyflow/react",
+    "installed_version": "not_installed_yet",
+    "latest_stable_version": "12.11.0",
+    "classification": "dependency",
+    "first_use_stage": "3D",
+    "license": "MIT",
+    "peer_requirements": "react >= 17",
+    "reason": "Interactive graph explorer canvas",
+    "evidence_path": "docs/evidence/data_console_complete_ui/stage3a/dependency_inventory.json"
+  }
+]

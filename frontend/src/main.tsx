@@ -39,11 +39,17 @@ if (rootElement === null) {
 }
 
 async function enableMocking() {
-  if (import.meta.env.VITE_MOCK_MODE !== "true" || !import.meta.env.DEV) {
+  if (import.meta.env.MODE !== "mock" && import.meta.env.VITE_MOCK_MODE !== "true") {
     return;
   }
   const { worker } = await import("./mocks/browser");
-  return worker.start({ onUnhandledRequest: "error" });
+  return worker.start({ 
+    onUnhandledRequest(request, print) {
+      if (request.url.includes("/data-console/v1/")) {
+        print.error();
+      }
+    } 
+  });
 }
 
 void enableMocking().then(() => {
