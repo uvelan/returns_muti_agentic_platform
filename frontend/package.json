@@ -10,26 +10,37 @@
   "packageManager": "npm@11.16.0",
   "scripts": {
     "dev": "vite",
+    "dev:mock": "vite --mode mock",
     "typecheck": "tsc -b --pretty false",
-    "build": "npm run typecheck && vite build",
+    "build": "npm run typecheck && vite build && npm run check:bundle",
     "lint": "eslint . --max-warnings=0",
     "preview": "vite preview",
+    "check:bundle": "node scripts/check-bundle.js",
     "check": "npm run lint && npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test tests/e2e.spec.ts",
+    "test:a11y": "playwright test tests/a11y.spec.ts",
+    "contracts:export": "cd ../backend && poetry run python -c \"import json; from return_platform.main import create_app; print(json.dumps(create_app().openapi(), indent=2))\" > ../frontend/openapi/return-platform.openapi.json",
+    "contracts:generate": "npm run contracts:export && openapi-typescript openapi/return-platform.openapi.json -o src/api/generated/return-platform.d.ts",
+    "contracts:check": "npm run contracts:generate && git diff --exit-code openapi/return-platform.openapi.json src/api/generated/return-platform.d.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.50.0",
     "@tanstack/react-table": "^8.19.0",
     "lucide-react": "^0.400.0",
+    "openapi-fetch": "^0.17.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "wouter": "^3.3.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.61.1",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -44,11 +55,18 @@
     "eslint-plugin-react-refresh": "^0.5.3",
     "globals": "^17.7.0",
     "jsdom": "29.1.1",
+    "msw": "^2.15.0",
+    "openapi-typescript": "^7.13.0",
     "postcss": "^8.4.39",
     "tailwindcss": "^3.4.4",
-    "typescript": "~6.0.2",
+    "typescript": "~5.6.2",
     "typescript-eslint": "^8.62.0",
     "vite": "^8.1.1",
     "vitest": "4.1.10"
+  },
+  "msw": {
+    "workerDirectory": [
+      "public"
+    ]
   }
 }

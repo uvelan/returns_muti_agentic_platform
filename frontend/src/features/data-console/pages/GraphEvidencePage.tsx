@@ -73,7 +73,7 @@ export function GraphEvidencePage() {
       </header>
 
       {latest.isPending ? <div role="status" className="h-56 animate-pulse rounded-2xl bg-slate-200"><span className="sr-only">Loading latest graph validation</span></div> : latest.data?.data ? <GraphEvidenceStatusCard evidence={latest.data.data} /> : <div role="status" className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-500">No latest validation evidence is available.</div>}
-      {latest.data ? <p className="text-right font-mono text-[11px] text-slate-400">Latest request ID: {latest.data.meta.request_id}</p> : null}
+      {latest.data ? <p className="text-right font-mono text-[11px] text-slate-500">Latest request ID: {latest.data.meta.request_id}</p> : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="lookup-heading">
         <h2 id="lookup-heading" className="text-lg font-semibold text-slate-950">Exact evidence lookup</h2>
@@ -83,10 +83,10 @@ export function GraphEvidencePage() {
           <button type="submit" disabled={isLookingUp} className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-medium text-white disabled:opacity-50"><Search size={16} aria-hidden="true" />Look up</button>
         </form>
         {lookupError ? <p role="alert" className="mt-3 text-sm text-red-700">{lookupError}</p> : null}
-        {lookupRequestId ? <p className="mt-2 font-mono text-[11px] text-slate-400">Lookup request ID: {lookupRequestId}</p> : null}
+        {lookupRequestId ? <p className="mt-2 font-mono text-[11px] text-slate-500">Lookup request ID: {lookupRequestId}</p> : null}
       </section>
 
-      {history.isPending ? <div role="status" className="h-64 animate-pulse rounded-2xl bg-slate-200"><span className="sr-only">Loading evidence history</span></div> : history.isError ? <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{errorDetail(history.error).message}<button type="button" onClick={() => { void history.refetch(); }} className="ml-3 underline">Retry</button></div> : <><GraphEvidenceTable items={history.data.data} canPrevious={cursorHistory.length > 0} canNext={history.data.page.has_more} onInspect={setSelected} onPrevious={() => { const prior = cursorHistory.at(-1); setCursorHistory((items) => items.slice(0, -1)); setCursor(prior); }} onNext={() => { const next = history.data.page.next_cursor; if (next) { setCursorHistory((items) => [...items, cursor]); setCursor(next); } }} /><p className="text-right font-mono text-[11px] text-slate-400">History request ID: {history.data.meta.request_id}</p></>}
+      {history.isPending ? <div role="status" className="h-64 animate-pulse rounded-2xl bg-slate-200"><span className="sr-only">Loading evidence history</span></div> : history.isError ? <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{errorDetail(history.error).message}<button type="button" onClick={() => { void history.refetch(); }} className="ml-3 underline">Retry</button></div> : <><GraphEvidenceTable items={history.data.data} canPrevious={cursorHistory.length > 0} canNext={history.data.page.has_more} onInspect={setSelected} onPrevious={() => { const prior = cursorHistory.at(-1); setCursorHistory((items) => items.slice(0, -1)); setCursor(prior); }} onNext={() => { const next = history.data.page.next_cursor; if (next) { setCursorHistory((items) => [...items, cursor]); setCursor(next); } }} /><p className="text-right font-mono text-[11px] text-slate-500">History request ID: {history.data.meta.request_id}</p></>}
 
       {selected ? <GraphEvidenceInspector evidence={selected} onClose={() => { setSelected(null); }} /> : null}
     </div>

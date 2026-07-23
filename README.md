@@ -46,7 +46,9 @@ No production source asset, production Customer lookup, production graph write, 
 | Stage 3 — MongoDB inventory | **SANDBOX_VALIDATED** | Metadata-only live inventory completed against the configured sandbox database |
 | Stage 3 — Drift | **IMPLEMENTED; LIVE OUTPUT OBSERVED** | Empty declared and observed state produced zero confirmed drift; the original run did not capture a process exit code |
 | Stage 3 — Bounded sampling | **CONTRACT_TESTED** | Live sampling remains deliberately deferred |
-| Stage 3 — Inventory API/UI | **NOT IMPLEMENTED** | Data Ownership inventory pages remain pending |
+| Stage 3 — Inventory API/UI | **CONTRACT_TESTED; LIVE PARTIAL VALIDATED** | Unified SQL Server, MongoDB, and Neo4j metadata API plus Inventory page; MongoDB, Neo4j, and frontend proxy passed live while SQL Server returned a safe timeout warning |
+| Stage 3A — Data Console Plan | **COMPLETE** | Explicit API gap register, wildcard-free route capability matrix, exact mock strategy, openapi-typescript code generation, and package selection |
+| Stage 3B — Data Console Foundation | **COMPLETE** | Shared components, shell/navigation, Wouter routing, typed API client with openapi-fetch, QueryKey factory, MSW fixture mode bounded to development |
 | Canonical domain model | **COMPLETE** | Customer, order, product, warehouse, shipment, return, bay, session, audit, decision, and graph-evidence contracts |
 | Mapping configuration language | **COMPLETE** | Source, canonical, graph, relationship-direction, physical-scope, and pipeline contracts |
 | Customer mapping profile | **COMPLETE** | Customer and CustomerAccount profile across four versioned YAML files |
@@ -116,6 +118,18 @@ README evidence capture
 ```
 
 Visual screenshot capture remains deferred to hardening.
+
+### Stage 3A Evidence Reconstruction
+
+To regenerate the Stage 3A OpenAPI and TypeScript contracts:
+
+```bash
+cd frontend
+npm run contracts:generate
+npm run contracts:check
+```
+
+The matrix files and API gaps are governed in `docs/evidence/data_console_complete_ui/stage3a/`.
 
 ---
 

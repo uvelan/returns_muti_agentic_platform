@@ -10,12 +10,19 @@ import "./env";
 import "./index.css";
 
 
+import { APIError } from "./api/client";
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,
       refetchOnWindowFocus: false,
-      retry: 1,
+      retry: (failureCount, error) => {
+        if (error instanceof APIError && error.status >= 400 && error.status < 500) {
+          return false;
+        }
+        return failureCount < 1;
+      },
     },
     mutations: {
       retry: false,
@@ -31,10 +38,20 @@ if (rootElement === null) {
   );
 }
 
-createRoot(rootElement).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
-  </StrictMode>,
-);
+async function enableMocking() {
+  if (import.meta.env.VITE_MOCK_MODE !== "true" || !import.meta.env.DEV) {
+    return;
+  }
+  const { worker } = await import("./mocks/browser");
+  return worker.start({ onUnhandledRequest: "error" });
+}
+
+void enableMocking().then(() => {
+  createRoot(rootElement).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+});

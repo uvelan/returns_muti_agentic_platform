@@ -10,6 +10,8 @@ export default defineConfig(
     "dist/**",
     "node_modules/**",
     ".tmp/**",
+    "src/api/generated/**",
+    "public/mockServiceWorker.js",
   ]),
 
   {

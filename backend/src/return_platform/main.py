@@ -16,6 +16,7 @@ from return_platform.configuration.settings import Settings
 from return_platform.data_console.api.graph_evidence import (
     router as graph_evidence_router,
 )
+from return_platform.data_console.api.inventory import router as inventory_router
 from return_platform.data_console.api.router import router as console_router
 from return_platform.data_governance import load_asset_catalog
 from return_platform.resources import (
@@ -434,5 +435,6 @@ def create_app(
 
     fastapi_app.include_router(console_router)
     fastapi_app.include_router(graph_evidence_router)
+    fastapi_app.include_router(inventory_router)
 
     return fastapi_app

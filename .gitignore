@@ -20,3 +20,6 @@ __pycache__/
 .idea/
 .vscode/
 *.swp
+
+#others
+docs/

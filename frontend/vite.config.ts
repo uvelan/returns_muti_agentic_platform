@@ -1,4 +1,6 @@
 import { fileURLToPath, URL } from "node:url";
+import fs from "node:fs";
+import path from "node:path";
 
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
@@ -7,7 +9,7 @@ const repositoryRoot = fileURLToPath(
   new URL("../", import.meta.url),
 );
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   const env = loadEnv(
     mode,
     repositoryRoot,
@@ -30,8 +32,24 @@ export default defineConfig(({ mode }) => {
     );
   }
 
+  if (command === "build" && (process.env.VITE_MOCK_MODE === "true" || mode === "mock")) {
+    throw new Error("Production build rejects mock mode.");
+  }
+
   return {
-    plugins: [react()],
+    plugins: [
+      react(),
+      {
+        name: "remove-msw-worker",
+        apply: "build",
+        closeBundle() {
+          const workerPath = path.resolve(process.cwd(), 'dist', 'mockServiceWorker.js');
+          if (fs.existsSync(workerPath)) {
+            fs.unlinkSync(workerPath);
+          }
+        }
+      }
+    ],
 
     envDir: repositoryRoot,
 
