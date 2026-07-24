@@ -35,9 +35,9 @@ export function ScenarioDetailPage() {
       </PageHeader>
 
       <div className="mb-6 flex flex-wrap gap-3">
-        <button type="button" onClick={() => generate.mutate(scenario.id)} disabled={generate.isPending || scenario.status === "APPROVED"} className="rounded bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50">{generate.isPending ? "Generating..." : "Generate"}</button>
-        <button type="button" onClick={() => validate.mutate(scenario.id)} disabled={validate.isPending || !scenario.generatedDigest || scenario.status === "APPROVED"} className="rounded bg-purple-600 px-4 py-2 text-sm text-white disabled:opacity-50">{validate.isPending ? "Validating..." : "Validate digest"}</button>
-        <button type="button" onClick={() => approve.mutate(scenario.id)} disabled={approve.isPending || !validated || scenario.status === "APPROVED"} className="rounded bg-green-600 px-4 py-2 text-sm text-white disabled:opacity-50">{approve.isPending ? "Approving..." : "Approve"}</button>
+        <button type="button" onClick={() => { generate.mutate(scenario.id); }} disabled={generate.isPending || scenario.status === "APPROVED"} className="rounded bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50">{generate.isPending ? "Generating..." : "Generate"}</button>
+        <button type="button" onClick={() => { validate.mutate(scenario.id); }} disabled={validate.isPending || !scenario.generatedDigest || scenario.status === "APPROVED"} className="rounded bg-purple-600 px-4 py-2 text-sm text-white disabled:opacity-50">{validate.isPending ? "Validating..." : "Validate digest"}</button>
+        <button type="button" onClick={() => { approve.mutate(scenario.id); }} disabled={approve.isPending || !validated || scenario.status === "APPROVED"} className="rounded bg-green-600 px-4 py-2 text-sm text-white disabled:opacity-50">{approve.isPending ? "Approving..." : "Approve"}</button>
         <Link href={`/data-console/scenarios/${scenario.id}/preview`} className="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">Preview</Link>
         <Link href={`/data-console/scenarios/${scenario.id}/compare`} className="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">Compare</Link>
       </div>

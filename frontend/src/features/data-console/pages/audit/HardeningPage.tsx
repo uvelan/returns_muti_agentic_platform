@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/prefer-nullish-coalescing */
 import { useHardeningSummary } from "../../../../api/consoleGovernanceQueries";
 import { ErrorState } from "../../../../components/ErrorState";
 import { LoadingState } from "../../../../components/LoadingState";

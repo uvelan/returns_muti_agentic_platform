@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime
-from typing import Final
+from typing import Any, Final
 
 from temporalio.client import Client, WorkflowHandle
 from temporalio.exceptions import WorkflowAlreadyStartedError
@@ -13,7 +13,12 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 from return_platform.ai_gateway.service import AIGatewayService
 from return_platform.canonical.operations import ContextSnapshot, WorkflowStage
 from return_platform.configuration.settings import Settings
-from return_platform.operations.models import AIDecision, AIRequestStatus, ReturnSessionView, ReturnStatus
+from return_platform.operations.models import (
+    AIDecision,
+    AIRequestStatus,
+    ReturnSessionView,
+    ReturnStatus,
+)
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
 from return_platform.workflows.bay_assignment import build_bay_assignment_result
@@ -134,7 +139,9 @@ class ReturnOrchestrator:
             deduplication_key=f"flow-failed:{session.id}:{code}",
         )
 
-    async def _handle(self, session: ReturnSessionView) -> WorkflowHandle[ReturnWorkflowExecutionState, ReturnWorkflowExecutionState]:
+    async def _handle(
+        self, session: ReturnSessionView
+    ) -> WorkflowHandle[Any, Any]:
         workflow_id = session.workflowId or f"return-{session.id}"
         handle = self._temporal.get_workflow_handle(workflow_id)
         if session.workflowId is None:
@@ -177,7 +184,7 @@ class ReturnOrchestrator:
 
     async def _complete(
         self,
-        handle: WorkflowHandle[ReturnWorkflowExecutionState, ReturnWorkflowExecutionState],
+        handle: WorkflowHandle[Any, Any],
         session: ReturnSessionView,
         stage: WorkflowStage,
         binding: StageContextBinding,
@@ -191,7 +198,8 @@ class ReturnOrchestrator:
             completed_stage=stage,
             context_binding=binding,
         )
-        state = await handle.execute_update(ReturnWorkflow.complete_stage, command)
+        from typing import cast
+        state = cast(ReturnWorkflowExecutionState, await handle.execute_update(ReturnWorkflow.complete_stage, command))
         await self._repository.update_return(
             session.id,
             {
@@ -217,7 +225,8 @@ class ReturnOrchestrator:
         if session.status is ReturnStatus.CANCELLED:
             return "CANCELLED"
         handle = await self._handle(session)
-        state = await handle.query(ReturnWorkflow.execution_state)
+        from typing import cast
+        state = cast(ReturnWorkflowExecutionState, await handle.query(ReturnWorkflow.execution_state))
         observed_at = _observed_at(session)
 
         intake = bind_stage_activity_result(
@@ -275,13 +284,20 @@ class ReturnOrchestrator:
                 WorkflowStage.ORDER_DISCOVERY,
                 discovery,
                 event_type="ORDER_DISCOVERED",
-                event_payload={"orderReference": session.orderReference, "itemCount": len(session.itemReferences)},
+                event_payload={
+                    "orderReference": session.orderReference,
+                    "itemCount": len(session.itemReferences),
+                },
                 updates={},
             )
 
         session = await self._repository.get_return(session.id) or session
         if state.current_stage is WorkflowStage.ELIGIBILITY_EVALUATION:
-            trace = await self._repository.get_ai_trace(session.aiRequestId) if session.aiRequestId else None
+            trace = (
+                await self._repository.get_ai_trace(session.aiRequestId)
+                if session.aiRequestId
+                else None
+            )
             if trace is None:
                 delivered_at = order.get("deliveredAt")
                 days_since_delivery = None
@@ -339,7 +355,10 @@ class ReturnOrchestrator:
                 return "WAITING_INTERCEPTION"
             if trace.decision is None:
                 return "WAITING_INTERCEPTION"
-            if trace.decision is AIDecision.REVIEW_REQUIRED and trace.status is not AIRequestStatus.MANUAL_OVERRIDE:
+            if (
+                trace.decision is AIDecision.REVIEW_REQUIRED
+                and trace.status is not AIRequestStatus.MANUAL_OVERRIDE
+            ):
                 case = await self._repository.create_support_case(
                     session_id=session.id,
                     case_type="ELIGIBILITY_REVIEW",
@@ -368,7 +387,10 @@ class ReturnOrchestrator:
                     decision=_eligibility_decision(trace.decision),
                     explanation=trace.explanation or "Eligibility decision recorded.",
                     confidence_millionths=trace.confidenceMillionths or 0,
-                    evidence_references=(f"AI_TRACE:{trace.id}", f"AI_REQUEST_SHA256:{trace.requestDigest}"),
+                    evidence_references=(
+                        f"AI_TRACE:{trace.id}",
+                        f"AI_REQUEST_SHA256:{trace.requestDigest}",
+                    ),
                     model_provider=trace.provider or "MANUAL",
                     model_name=trace.model or "manual-override-v1",
                     configuration_version=_CONFIGURATION_VERSION,
@@ -392,7 +414,11 @@ class ReturnOrchestrator:
                 },
             )
         else:
-            trace = await self._repository.get_ai_trace(session.aiRequestId) if session.aiRequestId else None
+            trace = (
+                await self._repository.get_ai_trace(session.aiRequestId)
+                if session.aiRequestId
+                else None
+            )
             if trace is None or trace.decision is None:
                 raise ValueError("ELIGIBILITY_TRACE_MISSING")
             eligibility = bind_stage_activity_result(
@@ -402,7 +428,10 @@ class ReturnOrchestrator:
                     decision=_eligibility_decision(trace.decision),
                     explanation=trace.explanation or "Eligibility decision recorded.",
                     confidence_millionths=trace.confidenceMillionths or 0,
-                    evidence_references=(f"AI_TRACE:{trace.id}", f"AI_REQUEST_SHA256:{trace.requestDigest}"),
+                    evidence_references=(
+                        f"AI_TRACE:{trace.id}",
+                        f"AI_REQUEST_SHA256:{trace.requestDigest}",
+                    ),
                     model_provider=trace.provider or "MANUAL",
                     model_name=trace.model or "manual-override-v1",
                     configuration_version=_CONFIGURATION_VERSION,
@@ -411,7 +440,9 @@ class ReturnOrchestrator:
             )
 
         assert trace is not None and trace.decision is not None
-        return_reference = f"RMA-{session.id[:8].upper()}" if trace.decision is AIDecision.APPROVE else None
+        return_reference = (
+            f"RMA-{session.id[:8].upper()}" if trace.decision is AIDecision.APPROVE else None
+        )
         return_result = build_return_request_result(
             eligibility=_binding_snapshot(eligibility),
             request_reference=f"REQ-{session.id}",
@@ -437,7 +468,10 @@ class ReturnOrchestrator:
                 WorkflowStage.RETURN_REQUEST,
                 return_binding,
                 event_type="RETURN_REQUEST_PROCESSED",
-                event_payload={"outcome": return_result.outcome.value, "returnReference": return_reference},
+                event_payload={
+                    "outcome": return_result.outcome.value,
+                    "returnReference": return_reference,
+                },
                 updates={"returnReference": return_reference},
             )
 
@@ -469,7 +503,10 @@ class ReturnOrchestrator:
                 WorkflowStage.FULFILLMENT_TRACKING,
                 fulfillment_binding,
                 event_type="FULFILLMENT_TRACKING_CREATED",
-                event_payload={"status": fulfillment_result.status.value, "trackingReference": tracking_reference},
+                event_payload={
+                    "status": fulfillment_result.status.value,
+                    "trackingReference": tracking_reference,
+                },
                 updates={"trackingReference": tracking_reference},
             )
 
@@ -511,7 +548,9 @@ class ReturnOrchestrator:
             configuration_version=_CONFIGURATION_VERSION,
             observed_at=observed_at,
         )
-        feedback_binding = bind_stage_activity_result(WorkflowStage.FEEDBACK_LEARNING, feedback_result)
+        feedback_binding = bind_stage_activity_result(
+            WorkflowStage.FEEDBACK_LEARNING, feedback_result
+        )
         if state.current_stage is WorkflowStage.FEEDBACK_LEARNING:
             state = await self._complete(
                 handle,

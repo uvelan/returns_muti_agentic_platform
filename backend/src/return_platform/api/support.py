@@ -32,7 +32,9 @@ async def support_returns(
     _actor_id: str = Depends(require_read_roles),
 ) -> APIResponse[list[ReturnSessionView]]:
     repository = resolve_operational_repository(request)
-    return APIResponse(data=await repository.list_returns(status=return_status), meta=_meta(request))
+    return APIResponse(
+        data=await repository.list_returns(status=return_status), meta=_meta(request)
+    )
 
 
 @router.get("/cases", response_model=APIResponse[list[SupportCaseView]])

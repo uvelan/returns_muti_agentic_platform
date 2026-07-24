@@ -129,7 +129,9 @@ class WorkspaceService:
         )
 
     async def list_workspaces(self) -> list[Workspace]:
-        cursor = self._workspaces.find(self._active_filter()).sort("createdAt", DESCENDING).limit(500)
+        cursor = (
+            self._workspaces.find(self._active_filter()).sort("createdAt", DESCENDING).limit(500)
+        )
         return [self._workspace(cast(dict[str, Any], document)) async for document in cursor]
 
     async def get_workspace(self, workspace_id: str) -> Workspace | None:
@@ -174,11 +176,17 @@ class WorkspaceService:
     async def list_records(self, workspace_id: str) -> list[SandboxRecord]:
         if await self.get_workspace(workspace_id) is None:
             raise KeyError(workspace_id)
-        cursor = self._records.find({"workspaceId": workspace_id, **self._active_filter()}).sort("createdAt", DESCENDING).limit(10_000)
+        cursor = (
+            self._records.find({"workspaceId": workspace_id, **self._active_filter()})
+            .sort("createdAt", DESCENDING)
+            .limit(10_000)
+        )
         return [self._record(cast(dict[str, Any], document)) async for document in cursor]
 
     async def get_record(self, workspace_id: str, record_id: str) -> SandboxRecord | None:
-        document = await self._records.find_one({"_id": record_id, "workspaceId": workspace_id, **self._active_filter()})
+        document = await self._records.find_one(
+            {"_id": record_id, "workspaceId": workspace_id, **self._active_filter()}
+        )
         return None if document is None else self._record(cast(dict[str, Any], document))
 
     @staticmethod
@@ -187,10 +195,14 @@ class WorkspaceService:
         if not data:
             issues.append({"message": "Record data must not be empty.", "field": None})
         if any(str(key).startswith("$") or "." in str(key) for key in data):
-            issues.append({"message": "MongoDB operator and dotted keys are not allowed.", "field": None})
+            issues.append(
+                {"message": "MongoDB operator and dotted keys are not allowed.", "field": None}
+            )
         return ("INVALID" if issues else "VALID", issues)
 
-    async def create_record(self, workspace_id: str, payload: RecordPayload, actor: str) -> SandboxRecord:
+    async def create_record(
+        self, workspace_id: str, payload: RecordPayload, actor: str
+    ) -> SandboxRecord:
         await self.ensure_indexes()
         validation_status, issues = self._validate_record(payload.data)
         now = datetime.now(UTC)
@@ -249,7 +261,7 @@ class WorkspaceService:
             return document
 
         try:
-            async with await self._client.start_session() as mongo_session:
+            async with self._client.start_session() as mongo_session:
                 created = await mongo_session.with_transaction(transaction)
         except DuplicateKeyError:
             if payload.idempotencyKey is None:
@@ -264,7 +276,7 @@ class WorkspaceService:
             if existing is None:
                 raise
             created = cast(dict[str, Any], existing)
-        return self._record(cast(dict[str, Any], created))
+        return self._record(created)
 
     async def update_record(
         self,
@@ -276,7 +288,12 @@ class WorkspaceService:
     ) -> SandboxRecord | None:
         validation_status, issues = self._validate_record(payload.data)
         document = await self._records.find_one_and_update(
-            {"_id": record_id, "workspaceId": workspace_id, "version": expected_version, **self._active_filter()},
+            {
+                "_id": record_id,
+                "workspaceId": workspace_id,
+                "version": expected_version,
+                **self._active_filter(),
+            },
             {
                 "$set": {
                     "data": payload.data,
@@ -289,7 +306,9 @@ class WorkspaceService:
             return_document=ReturnDocument.AFTER,
         )
         if document is not None:
-            await self.audit("UPDATE_WORKSPACE_RECORD", actor, record_id, {"workspaceId": workspace_id})
+            await self.audit(
+                "UPDATE_WORKSPACE_RECORD", actor, record_id, {"workspaceId": workspace_id}
+            )
         return None if document is None else self._record(cast(dict[str, Any], document))
 
     async def delete_record(
@@ -335,18 +354,16 @@ class WorkspaceService:
             )
             return True
 
-        async with await self._client.start_session() as mongo_session:
+        async with self._client.start_session() as mongo_session:
             deleted = await mongo_session.with_transaction(transaction)
         return bool(deleted)
 
 
-
 def resolve_workspace_service(request: Request) -> WorkspaceService:
     resources = getattr(request.app.state, "resources", None)
-    settings = getattr(request.app.state, "settings", None)
     if not isinstance(resources, RuntimeResources) or resources.mongo is None:
         raise HTTPException(status_code=503, detail="Platform MongoDB is unavailable")
-    return WorkspaceService(resources.mongo, settings.mongo_database)
+    return WorkspaceService(resources.mongo, resources.settings.mongo_database)
 
 
 def _meta(request: Request) -> ResponseMeta:
@@ -354,12 +371,18 @@ def _meta(request: Request) -> ResponseMeta:
 
 
 @router.get("", response_model=APIResponse[list[Workspace]])
-async def list_workspaces(request: Request, _user_id: str = Depends(require_read_roles)) -> APIResponse[list[Workspace]]:
-    return APIResponse(data=await resolve_workspace_service(request).list_workspaces(), meta=_meta(request))
+async def list_workspaces(
+    request: Request, _user_id: str = Depends(require_read_roles)
+) -> APIResponse[list[Workspace]]:
+    return APIResponse(
+        data=await resolve_workspace_service(request).list_workspaces(), meta=_meta(request)
+    )
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=APIResponse[Workspace])
-async def create_workspace(request: Request, payload: CreateWorkspacePayload, user_id: str = Depends(require_write_roles)) -> APIResponse[Workspace]:
+async def create_workspace(
+    request: Request, payload: CreateWorkspacePayload, user_id: str = Depends(require_write_roles)
+) -> APIResponse[Workspace]:
     try:
         data = await resolve_workspace_service(request).create_workspace(payload, user_id)
     except ValueError as error:
@@ -368,7 +391,9 @@ async def create_workspace(request: Request, payload: CreateWorkspacePayload, us
 
 
 @router.get("/{workspace_id}", response_model=APIResponse[Workspace])
-async def get_workspace(request: Request, workspace_id: str, _user_id: str = Depends(require_read_roles)) -> APIResponse[Workspace]:
+async def get_workspace(
+    request: Request, workspace_id: str, _user_id: str = Depends(require_read_roles)
+) -> APIResponse[Workspace]:
     data = await resolve_workspace_service(request).get_workspace(workspace_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -382,14 +407,18 @@ async def delete_workspace(
     expected_version: int = Query(default=0, alias="expectedVersion", ge=0),
     user_id: str = Depends(require_write_roles),
 ) -> APIResponse[dict[str, bool]]:
-    deleted = await resolve_workspace_service(request).delete_workspace(workspace_id, expected_version, user_id)
+    deleted = await resolve_workspace_service(request).delete_workspace(
+        workspace_id, expected_version, user_id
+    )
     if not deleted:
         raise HTTPException(status_code=409, detail="Workspace not found or version conflict")
     return APIResponse(data={"deleted": True}, meta=_meta(request))
 
 
 @router.get("/{workspace_id}/records", response_model=APIResponse[list[SandboxRecord]])
-async def list_records(request: Request, workspace_id: str, _user_id: str = Depends(require_read_roles)) -> APIResponse[list[SandboxRecord]]:
+async def list_records(
+    request: Request, workspace_id: str, _user_id: str = Depends(require_read_roles)
+) -> APIResponse[list[SandboxRecord]]:
     try:
         data = await resolve_workspace_service(request).list_records(workspace_id)
     except KeyError as error:
@@ -397,17 +426,30 @@ async def list_records(request: Request, workspace_id: str, _user_id: str = Depe
     return APIResponse(data=data, meta=_meta(request))
 
 
-@router.post("/{workspace_id}/records", status_code=status.HTTP_201_CREATED, response_model=APIResponse[SandboxRecord])
-async def create_record(request: Request, workspace_id: str, payload: RecordPayload, user_id: str = Depends(require_write_roles)) -> APIResponse[SandboxRecord]:
+@router.post(
+    "/{workspace_id}/records",
+    status_code=status.HTTP_201_CREATED,
+    response_model=APIResponse[SandboxRecord],
+)
+async def create_record(
+    request: Request,
+    workspace_id: str,
+    payload: RecordPayload,
+    user_id: str = Depends(require_write_roles),
+) -> APIResponse[SandboxRecord]:
     try:
-        data = await resolve_workspace_service(request).create_record(workspace_id, payload, user_id)
+        data = await resolve_workspace_service(request).create_record(
+            workspace_id, payload, user_id
+        )
     except KeyError as error:
         raise HTTPException(status_code=404, detail="Workspace not found") from error
     return APIResponse(data=data, meta=_meta(request))
 
 
 @router.get("/{workspace_id}/records/{record_id}", response_model=APIResponse[SandboxRecord])
-async def get_record(request: Request, workspace_id: str, record_id: str, _user_id: str = Depends(require_read_roles)) -> APIResponse[SandboxRecord]:
+async def get_record(
+    request: Request, workspace_id: str, record_id: str, _user_id: str = Depends(require_read_roles)
+) -> APIResponse[SandboxRecord]:
     data = await resolve_workspace_service(request).get_record(workspace_id, record_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Record not found")
@@ -423,7 +465,9 @@ async def update_record(
     expected_version: int = Query(default=0, alias="expectedVersion", ge=0),
     user_id: str = Depends(require_write_roles),
 ) -> APIResponse[SandboxRecord]:
-    data = await resolve_workspace_service(request).update_record(workspace_id, record_id, payload, expected_version, user_id)
+    data = await resolve_workspace_service(request).update_record(
+        workspace_id, record_id, payload, expected_version, user_id
+    )
     if data is None:
         raise HTTPException(status_code=409, detail="Record not found or version conflict")
     return APIResponse(data=data, meta=_meta(request))
@@ -437,7 +481,9 @@ async def delete_record(
     expected_version: int = Query(default=0, alias="expectedVersion", ge=0),
     user_id: str = Depends(require_write_roles),
 ) -> APIResponse[dict[str, bool]]:
-    deleted = await resolve_workspace_service(request).delete_record(workspace_id, record_id, expected_version, user_id)
+    deleted = await resolve_workspace_service(request).delete_record(
+        workspace_id, record_id, expected_version, user_id
+    )
     if not deleted:
         raise HTTPException(status_code=409, detail="Record not found or version conflict")
     return APIResponse(data={"deleted": True}, meta=_meta(request))

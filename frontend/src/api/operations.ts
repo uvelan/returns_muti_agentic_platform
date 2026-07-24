@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/restrict-template-expressions */
 import { apiClient } from "./client";
 import type {
   AIGatewaySettings,

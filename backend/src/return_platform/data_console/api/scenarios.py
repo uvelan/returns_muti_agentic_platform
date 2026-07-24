@@ -86,7 +86,9 @@ class ScenarioService:
     def _active_filter() -> dict[str, Any]:
         return {"$or": [{"deletedAt": None}, {"deletedAt": {"$exists": False}}]}
 
-    async def _write_audit(self, action: str, actor: str, target: str, details: dict[str, Any]) -> None:
+    async def _write_audit(
+        self, action: str, actor: str, target: str, details: dict[str, Any]
+    ) -> None:
         await self._audit_collection.insert_one(
             {
                 "_id": str(uuid.uuid4()),
@@ -99,7 +101,11 @@ class ScenarioService:
         )
 
     async def list_scenarios(self) -> list[Scenario]:
-        cursor = self._scenarios.find({"status": {"$ne": "ARCHIVED"}}).sort("createdAt", DESCENDING).limit(500)
+        cursor = (
+            self._scenarios.find({"status": {"$ne": "ARCHIVED"}})
+            .sort("createdAt", DESCENDING)
+            .limit(500)
+        )
         return [self._view(cast(dict[str, Any], document)) async for document in cursor]
 
     async def get_scenario(self, scenario_id: str) -> Scenario | None:
@@ -107,7 +113,9 @@ class ScenarioService:
         return None if document is None else self._view(cast(dict[str, Any], document))
 
     async def create_scenario(self, payload: CreateScenarioPayload, owner: str) -> Scenario:
-        workspace = await self._workspaces.find_one({"_id": payload.baseWorkspaceId, **self._active_filter()})
+        workspace = await self._workspaces.find_one(
+            {"_id": payload.baseWorkspaceId, **self._active_filter()}
+        )
         if workspace is None:
             raise ValueError("Base workspace does not exist.")
         now = datetime.now(UTC)
@@ -126,7 +134,9 @@ class ScenarioService:
             "validationIssues": [],
         }
         await self._scenarios.insert_one(document)
-        await self._write_audit("CREATE_SCENARIO", owner, document["_id"], {"baseWorkspaceId": payload.baseWorkspaceId})
+        await self._write_audit(
+            "CREATE_SCENARIO", owner, document["_id"], {"baseWorkspaceId": payload.baseWorkspaceId}
+        )
         return self._view(document)
 
     @staticmethod
@@ -143,7 +153,9 @@ class ScenarioService:
                 if isinstance(field, str):
                     result.pop(field, None)
         numeric_multiplier = parameters.get("numericMultiplier")
-        if isinstance(numeric_multiplier, (int, float)) and not isinstance(numeric_multiplier, bool):
+        if isinstance(numeric_multiplier, (int, float)) and not isinstance(
+            numeric_multiplier, bool
+        ):
             for key, value in tuple(result.items()):
                 if isinstance(value, (int, float)) and not isinstance(value, bool):
                     result[key] = value * numeric_multiplier
@@ -156,11 +168,17 @@ class ScenarioService:
         if scenario.status == "APPROVED":
             raise ValueError("Approved scenarios are immutable.")
         await self._scenario_records.delete_many({"scenarioId": scenario_id})
-        cursor = self._records.find({"workspaceId": scenario.baseWorkspaceId, **self._active_filter()}).sort("createdAt", 1).limit(10_000)
+        cursor = (
+            self._records.find({"workspaceId": scenario.baseWorkspaceId, **self._active_filter()})
+            .sort("createdAt", 1)
+            .limit(10_000)
+        )
         generated: list[dict[str, Any]] = []
         async for document in cursor:
             record = cast(dict[str, Any], document)
-            generated_data = self._apply_parameters(cast(dict[str, Any], record.get("data", {})), scenario.parameters)
+            generated_data = self._apply_parameters(
+                cast(dict[str, Any], record.get("data", {})), scenario.parameters
+            )
             generated.append(
                 {
                     "_id": f"{scenario_id}:{record['_id']}",
@@ -175,13 +193,16 @@ class ScenarioService:
         if generated:
             await self._scenario_records.insert_many(generated, ordered=True)
         canonical = json.dumps(
-            [{"recordId": item["recordId"], "scenarioData": item["scenarioData"]} for item in generated],
+            [
+                {"recordId": item["recordId"], "scenarioData": item["scenarioData"]}
+                for item in generated
+            ],
             default=str,
             separators=(",", ":"),
             sort_keys=True,
         )
         digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-        document = await self._scenarios.find_one_and_update(
+        updated_document = await self._scenarios.find_one_and_update(
             {"_id": scenario_id, "version": scenario.version},
             {
                 "$set": {
@@ -194,10 +215,15 @@ class ScenarioService:
             },
             return_document=ReturnDocument.AFTER,
         )
-        if document is None:
+        if updated_document is None:
             raise ValueError("Scenario version conflict.")
-        await self._write_audit("GENERATE_SCENARIO", actor, scenario_id, {"recordCount": len(generated), "digest": digest})
-        return self._view(cast(dict[str, Any], document))
+        await self._write_audit(
+            "GENERATE_SCENARIO",
+            actor,
+            scenario_id,
+            {"recordCount": len(generated), "digest": digest},
+        )
+        return self._view(cast(dict[str, Any], updated_document))
 
     async def validate(self, scenario_id: str, actor: str) -> Scenario:
         scenario = await self.get_scenario(scenario_id)
@@ -218,15 +244,24 @@ class ScenarioService:
         if count == 0:
             issues.append("Scenario contains no records.")
         status = "FAILED" if issues else "READY"
-        document = await self._scenarios.find_one_and_update(
+        updated_document = await self._scenarios.find_one_and_update(
             {"_id": scenario_id, "version": scenario.version},
-            {"$set": {"status": status, "validationIssues": issues, "validatedDigest": scenario.generatedDigest if not issues else None}, "$inc": {"version": 1}},
+            {
+                "$set": {
+                    "status": status,
+                    "validationIssues": issues,
+                    "validatedDigest": scenario.generatedDigest if not issues else None,
+                },
+                "$inc": {"version": 1},
+            },
             return_document=ReturnDocument.AFTER,
         )
-        if document is None:
+        if updated_document is None:
             raise ValueError("Scenario version conflict.")
-        await self._write_audit("VALIDATE_SCENARIO", actor, scenario_id, {"issueCount": len(issues)})
-        return self._view(cast(dict[str, Any], document))
+        await self._write_audit(
+            "VALIDATE_SCENARIO", actor, scenario_id, {"issueCount": len(issues)}
+        )
+        return self._view(cast(dict[str, Any], updated_document))
 
     async def approve(self, scenario_id: str, actor: str) -> Scenario:
         scenario = await self.get_scenario(scenario_id)
@@ -238,21 +273,35 @@ class ScenarioService:
             or not scenario.generatedDigest
             or scenario.validatedDigest != scenario.generatedDigest
         ):
-            raise ValueError("Only generated scenarios validated against the current digest can be approved.")
-        document = await self._scenarios.find_one_and_update(
+            raise ValueError(
+                "Only generated scenarios validated against the current digest can be approved."
+            )
+        document = cast(dict[str, Any] | None, await self._scenarios.find_one_and_update(
             {"_id": scenario_id, "version": scenario.version, "status": "READY"},
-            {"$set": {"status": "APPROVED", "approvedAt": datetime.now(UTC), "approvedBy": actor}, "$inc": {"version": 1}},
+            {
+                "$set": {
+                    "status": "APPROVED",
+                    "approvedAt": datetime.now(UTC),
+                    "approvedBy": actor,
+                },
+                "$inc": {"version": 1},
+            },
             return_document=ReturnDocument.AFTER,
-        )
+        ))
         if document is None:
             raise ValueError("Scenario version conflict.")
-        await self._write_audit("APPROVE_SCENARIO", actor, scenario_id, {"digest": scenario.generatedDigest})
-        return self._view(cast(dict[str, Any], document))
+        await self._write_audit(
+            "APPROVE_SCENARIO", actor, scenario_id, {"digest": scenario.generatedDigest}
+        )
+        return self._view(document)
 
     async def archive(self, scenario_id: str, actor: str) -> bool:
         result = await self._scenarios.update_one(
             {"_id": scenario_id, "status": {"$ne": "ARCHIVED"}},
-            {"$set": {"status": "ARCHIVED", "archivedAt": datetime.now(UTC)}, "$inc": {"version": 1}},
+            {
+                "$set": {"status": "ARCHIVED", "archivedAt": datetime.now(UTC)},
+                "$inc": {"version": 1},
+            },
         )
         if result.modified_count:
             await self._write_audit("ARCHIVE_SCENARIO", actor, scenario_id, {})
@@ -261,7 +310,11 @@ class ScenarioService:
     async def diffs(self, scenario_id: str) -> list[ScenarioDiff]:
         if await self.get_scenario(scenario_id) is None:
             raise KeyError(scenario_id)
-        cursor = self._scenario_records.find({"scenarioId": scenario_id}).sort("recordId", 1).limit(10_000)
+        cursor = (
+            self._scenario_records.find({"scenarioId": scenario_id})
+            .sort("recordId", 1)
+            .limit(10_000)
+        )
         result: list[ScenarioDiff] = []
         async for document in cursor:
             base = cast(dict[str, Any], document.get("baseData", {}))
@@ -282,7 +335,9 @@ class ScenarioService:
     async def preview(self, scenario_id: str) -> list[dict[str, Any]]:
         if await self.get_scenario(scenario_id) is None:
             raise KeyError(scenario_id)
-        cursor = self._scenario_records.find({"scenarioId": scenario_id}).sort("recordId", 1).limit(100)
+        cursor = (
+            self._scenario_records.find({"scenarioId": scenario_id}).sort("recordId", 1).limit(100)
+        )
         return [
             {
                 "recordId": str(document["recordId"]),
@@ -295,10 +350,9 @@ class ScenarioService:
 
 def resolve_scenario_service(request: Request) -> ScenarioService:
     resources = getattr(request.app.state, "resources", None)
-    settings = getattr(request.app.state, "settings", None)
     if not isinstance(resources, RuntimeResources) or resources.mongo is None:
         raise HTTPException(status_code=503, detail="Platform MongoDB is unavailable")
-    return ScenarioService(resources.mongo, settings.mongo_database)
+    return ScenarioService(resources.mongo, resources.settings.mongo_database)
 
 
 def _meta(request: Request) -> ResponseMeta:
@@ -306,12 +360,18 @@ def _meta(request: Request) -> ResponseMeta:
 
 
 @router.get("", response_model=APIResponse[list[Scenario]])
-async def list_scenarios(request: Request, _user_id: str = Depends(require_read_roles)) -> APIResponse[list[Scenario]]:
-    return APIResponse(data=await resolve_scenario_service(request).list_scenarios(), meta=_meta(request))
+async def list_scenarios(
+    request: Request, _user_id: str = Depends(require_read_roles)
+) -> APIResponse[list[Scenario]]:
+    return APIResponse(
+        data=await resolve_scenario_service(request).list_scenarios(), meta=_meta(request)
+    )
 
 
 @router.post("", response_model=APIResponse[Scenario])
-async def create_scenario(request: Request, payload: CreateScenarioPayload, user_id: str = Depends(require_write_roles)) -> APIResponse[Scenario]:
+async def create_scenario(
+    request: Request, payload: CreateScenarioPayload, user_id: str = Depends(require_write_roles)
+) -> APIResponse[Scenario]:
     try:
         data = await resolve_scenario_service(request).create_scenario(payload, user_id)
     except ValueError as error:
@@ -320,7 +380,9 @@ async def create_scenario(request: Request, payload: CreateScenarioPayload, user
 
 
 @router.get("/{scenario_id}", response_model=APIResponse[Scenario])
-async def get_scenario(request: Request, scenario_id: str, _user_id: str = Depends(require_read_roles)) -> APIResponse[Scenario]:
+async def get_scenario(
+    request: Request, scenario_id: str, _user_id: str = Depends(require_read_roles)
+) -> APIResponse[Scenario]:
     data = await resolve_scenario_service(request).get_scenario(scenario_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Scenario not found")
@@ -328,14 +390,18 @@ async def get_scenario(request: Request, scenario_id: str, _user_id: str = Depen
 
 
 @router.delete("/{scenario_id}", response_model=APIResponse[dict[str, bool]])
-async def delete_scenario(request: Request, scenario_id: str, user_id: str = Depends(require_write_roles)) -> APIResponse[dict[str, bool]]:
+async def delete_scenario(
+    request: Request, scenario_id: str, user_id: str = Depends(require_write_roles)
+) -> APIResponse[dict[str, bool]]:
     if not await resolve_scenario_service(request).archive(scenario_id, user_id):
         raise HTTPException(status_code=404, detail="Scenario not found")
     return APIResponse(data={"archived": True}, meta=_meta(request))
 
 
 @router.post("/{scenario_id}/generate", response_model=APIResponse[Scenario])
-async def generate_scenario(request: Request, scenario_id: str, user_id: str = Depends(require_write_roles)) -> APIResponse[Scenario]:
+async def generate_scenario(
+    request: Request, scenario_id: str, user_id: str = Depends(require_write_roles)
+) -> APIResponse[Scenario]:
     try:
         data = await resolve_scenario_service(request).generate(scenario_id, user_id)
     except KeyError as error:
@@ -346,7 +412,9 @@ async def generate_scenario(request: Request, scenario_id: str, user_id: str = D
 
 
 @router.post("/{scenario_id}/validate", response_model=APIResponse[Scenario])
-async def validate_scenario(request: Request, scenario_id: str, user_id: str = Depends(require_write_roles)) -> APIResponse[Scenario]:
+async def validate_scenario(
+    request: Request, scenario_id: str, user_id: str = Depends(require_write_roles)
+) -> APIResponse[Scenario]:
     try:
         data = await resolve_scenario_service(request).validate(scenario_id, user_id)
     except KeyError as error:
@@ -357,7 +425,9 @@ async def validate_scenario(request: Request, scenario_id: str, user_id: str = D
 
 
 @router.post("/{scenario_id}/approve", response_model=APIResponse[Scenario])
-async def approve_scenario(request: Request, scenario_id: str, user_id: str = Depends(require_write_roles)) -> APIResponse[Scenario]:
+async def approve_scenario(
+    request: Request, scenario_id: str, user_id: str = Depends(require_write_roles)
+) -> APIResponse[Scenario]:
     try:
         data = await resolve_scenario_service(request).approve(scenario_id, user_id)
     except KeyError as error:
@@ -368,7 +438,9 @@ async def approve_scenario(request: Request, scenario_id: str, user_id: str = De
 
 
 @router.get("/{scenario_id}/diffs", response_model=APIResponse[list[ScenarioDiff]])
-async def get_scenario_diffs(request: Request, scenario_id: str, _user_id: str = Depends(require_read_roles)) -> APIResponse[list[ScenarioDiff]]:
+async def get_scenario_diffs(
+    request: Request, scenario_id: str, _user_id: str = Depends(require_read_roles)
+) -> APIResponse[list[ScenarioDiff]]:
     try:
         data = await resolve_scenario_service(request).diffs(scenario_id)
     except KeyError as error:
@@ -377,7 +449,9 @@ async def get_scenario_diffs(request: Request, scenario_id: str, _user_id: str =
 
 
 @router.get("/{scenario_id}/preview", response_model=APIResponse[list[dict[str, Any]]])
-async def preview_scenario(request: Request, scenario_id: str, _user_id: str = Depends(require_read_roles)) -> APIResponse[list[dict[str, Any]]]:
+async def preview_scenario(
+    request: Request, scenario_id: str, _user_id: str = Depends(require_read_roles)
+) -> APIResponse[list[dict[str, Any]]]:
     try:
         data = await resolve_scenario_service(request).preview(scenario_id)
     except KeyError as error:

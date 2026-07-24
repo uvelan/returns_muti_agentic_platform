@@ -312,7 +312,7 @@ async def search_graph(
     q: Annotated[str, Query(min_length=1, max_length=128)],
     expansionDepth: Annotated[int, Query(ge=0, le=3)] = 1,
     user_id: str = Depends(require_roles(_READ_ROLES)),
-) -> APIResponse[GraphSearchResultData] | JSONResponse:
+) -> GraphSearchResult | JSONResponse:
     try:
         service = resolve_graph_explorer_service(request)
         data = await service.search_exact_id(q, expansionDepth)
@@ -385,7 +385,7 @@ async def expand_graph_neighborhood(
     node_id: Annotated[str, Path(min_length=1, max_length=256)],
     expansionDepth: Annotated[int, Query(ge=1, le=3)] = 1,
     user_id: str = Depends(require_roles(_READ_ROLES)),
-) -> APIResponse[GraphSearchResultData] | JSONResponse:
+) -> GraphSearchResult | JSONResponse:
     try:
         service = resolve_graph_explorer_service(request)
         data = await service.expand_neighborhood(node_id, expansionDepth)

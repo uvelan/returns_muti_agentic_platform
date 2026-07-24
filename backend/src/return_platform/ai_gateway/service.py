@@ -14,11 +14,16 @@ from return_platform.configuration.settings import Settings
 from return_platform.operations.models import AIDecision, AIRequestStatus, AITraceView
 from return_platform.operations.repository import OperationalRepository
 
-_SYSTEM_PROMPT = """You are the Return Platform eligibility policy evaluator.
-Use only the supplied redacted operational facts. Never infer identity or protected attributes.
-Return exactly one JSON object with keys decision, explanation, confidenceMillionths.
-decision must be APPROVE, REJECT, or REVIEW_REQUIRED. confidenceMillionths must be 0..1000000.
-Use REVIEW_REQUIRED when evidence is incomplete, conflicting, or policy confidence is insufficient."""
+_SYSTEM_PROMPT = (
+    "You are the Return Platform eligibility policy evaluator.\n"
+    "Use only the supplied redacted operational facts. Never infer identity or protected "
+    "attributes.\n"
+    "Return exactly one JSON object with keys decision, explanation, confidenceMillionths.\n"
+    "decision must be APPROVE, REJECT, or REVIEW_REQUIRED. confidenceMillionths must be "
+    "0..1000000.\n"
+    "Use REVIEW_REQUIRED when evidence is incomplete, conflicting, or policy confidence is "
+    "insufficient."
+)
 _ALLOWED_INPUT_KEYS = frozenset(
     {
         "requestReference",
@@ -78,31 +83,46 @@ class AIGatewayService:
     @staticmethod
     def _validate_scalar(value: Any, *, depth: int = 0) -> Any:
         if depth > 4:
-            raise _PayloadPolicyError(AIRequestStatus.POLICY_BLOCKED, "AI input nesting exceeds policy limit.")
+            raise _PayloadPolicyError(
+                AIRequestStatus.POLICY_BLOCKED, "AI input nesting exceeds policy limit."
+            )
         if value is None or isinstance(value, (bool, int, float)):
             return value
         if isinstance(value, str):
             normalized = value.strip()
             if len(normalized) > 512:
-                raise _PayloadPolicyError(AIRequestStatus.POLICY_BLOCKED, "AI input string exceeds policy limit.")
+                raise _PayloadPolicyError(
+                    AIRequestStatus.POLICY_BLOCKED, "AI input string exceeds policy limit."
+                )
             return normalized
         if isinstance(value, list):
             if len(value) > 50:
-                raise _PayloadPolicyError(AIRequestStatus.POLICY_BLOCKED, "AI input list exceeds policy limit.")
+                raise _PayloadPolicyError(
+                    AIRequestStatus.POLICY_BLOCKED, "AI input list exceeds policy limit."
+                )
             return [AIGatewayService._validate_scalar(item, depth=depth + 1) for item in value]
         if isinstance(value, dict):
             if len(value) > 50:
-                raise _PayloadPolicyError(AIRequestStatus.POLICY_BLOCKED, "AI input object exceeds policy limit.")
+                raise _PayloadPolicyError(
+                    AIRequestStatus.POLICY_BLOCKED, "AI input object exceeds policy limit."
+                )
             result: dict[str, Any] = {}
             for raw_key, nested in value.items():
                 if not isinstance(raw_key, str):
-                    raise _PayloadPolicyError(AIRequestStatus.POLICY_BLOCKED, "AI input keys must be strings.")
+                    raise _PayloadPolicyError(
+                        AIRequestStatus.POLICY_BLOCKED, "AI input keys must be strings."
+                    )
                 normalized_key = raw_key.lower().replace("_", "").replace("-", "")
                 if any(fragment in normalized_key for fragment in _SENSITIVE_KEY_FRAGMENTS):
-                    raise _PayloadPolicyError(AIRequestStatus.REDACTION_FAILED, "Sensitive field was blocked by redaction policy.")
+                    raise _PayloadPolicyError(
+                        AIRequestStatus.REDACTION_FAILED,
+                        "Sensitive field was blocked by redaction policy.",
+                    )
                 result[raw_key] = AIGatewayService._validate_scalar(nested, depth=depth + 1)
             return result
-        raise _PayloadPolicyError(AIRequestStatus.POLICY_BLOCKED, "AI input contains an unsupported value type.")
+        raise _PayloadPolicyError(
+            AIRequestStatus.POLICY_BLOCKED, "AI input contains an unsupported value type."
+        )
 
     def _redact_and_validate(self, payload: dict[str, Any]) -> dict[str, Any]:
         unknown = sorted(set(payload) - _ALLOWED_INPUT_KEYS)
@@ -114,19 +134,27 @@ class AIGatewayService:
         sanitized = {key: self._validate_scalar(value) for key, value in payload.items()}
         encoded = json.dumps(sanitized, separators=(",", ":"), sort_keys=True).encode("utf-8")
         if len(encoded) > self._settings.ai_max_payload_bytes:
-            raise _PayloadPolicyError(AIRequestStatus.POLICY_BLOCKED, "AI input exceeds the maximum payload size.")
+            raise _PayloadPolicyError(
+                AIRequestStatus.POLICY_BLOCKED, "AI input exceeds the maximum payload size."
+            )
         return sanitized
 
     @staticmethod
     def _parse_response(text: str) -> tuple[AIDecision, str, int]:
         stripped = text.strip()
         if stripped.startswith("```"):
-            stripped = stripped.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            stripped = (
+                stripped.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            )
         try:
             data = json.loads(stripped)
         except (ValueError, TypeError) as error:
             raise ProviderError("RESPONSE_INVALID") from error
-        if not isinstance(data, dict) or set(data) != {"decision", "explanation", "confidenceMillionths"}:
+        if not isinstance(data, dict) or set(data) != {
+            "decision",
+            "explanation",
+            "confidenceMillionths",
+        }:
             raise ProviderError("RESPONSE_INVALID")
         try:
             decision = AIDecision(data["decision"])
@@ -285,7 +313,9 @@ class AIGatewayService:
                             {
                                 "status": AIRequestStatus.RESPONSE_RECEIVED.value,
                                 "responseText": response.text,
-                                "responseDigest": hashlib.sha256(response.text.encode("utf-8")).hexdigest(),
+                                "responseDigest": hashlib.sha256(
+                                    response.text.encode("utf-8")
+                                ).hexdigest(),
                                 "latencyMs": latency,
                                 "inputTokens": response.input_tokens,
                                 "outputTokens": response.output_tokens,
@@ -309,7 +339,7 @@ class AIGatewayService:
                             },
                         )
                         return GatewayEvaluation(trace=trace, pending_interception=False)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         last_error = AIRequestStatus.TIMEOUT.value
                     except ProviderError as error:
                         last_error = error.code
@@ -330,6 +360,9 @@ class AIGatewayService:
             trace,
             status=AIRequestStatus.DECISION_PERSISTED,
             error_code=last_error,
-            explanation="All configured AI providers were unavailable or returned an untrusted response; manual review is required.",
+            explanation=(
+                "All configured AI providers were unavailable or returned an untrusted response; "
+                "manual review is required."
+            ),
             attempts=attempts,
         )

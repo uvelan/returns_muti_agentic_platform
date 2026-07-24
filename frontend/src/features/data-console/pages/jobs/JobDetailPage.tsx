@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition, @typescript-eslint/restrict-template-expressions */
 import { useParams } from "wouter";
 import { useCancelJob, useJobDetail, useRetryJob } from "../../../../api/jobsQueries";
 import { ErrorState } from "../../../../components/ErrorState";

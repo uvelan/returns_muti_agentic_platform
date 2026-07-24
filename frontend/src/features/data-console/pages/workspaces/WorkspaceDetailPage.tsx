@@ -80,7 +80,7 @@ export function WorkspaceDetailPage() {
                             <Link href={`/data-console/workspaces/${workspace.id}/records/${record.id}/edit`} className="text-blue-600 hover:underline">Edit</Link>
                             <button
                               type="button"
-                              onClick={() => handleDelete(record.id, record.version)}
+                              onClick={() => { handleDelete(record.id, record.version); }}
                               disabled={deleteRecord.isPending}
                               className="inline-flex items-center gap-1 text-red-600 hover:text-red-800 disabled:opacity-50"
                             >

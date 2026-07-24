@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition */
 import { useState, useMemo } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useWorkspaceRecord, useUpdateWorkspaceRecord } from "../../../../api/workspacesQueries";

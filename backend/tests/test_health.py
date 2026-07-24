@@ -2,8 +2,8 @@
 
 import os
 import uuid
-from datetime import UTC, datetime
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -170,10 +170,7 @@ def test_readiness_endpoint_succeeds_with_resources(
             "valkey",
             "temporal",
         }
-        assert all(
-            item["status"] == "HEALTHY"
-            for item in body["dependencies"].values()
-        )
+        assert all(item["status"] == "HEALTHY" for item in body["dependencies"].values())
     finally:
         resources.sql_manager.executor.shutdown(
             wait=False,

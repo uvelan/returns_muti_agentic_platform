@@ -189,7 +189,9 @@ class AICompareRequest(MutableContract):
     def validate_providers(cls, value: list[str]) -> list[str]:
         allowed = {"GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC", "OLLAMA", "SIMULATOR"}
         normalized = [provider.strip().upper() for provider in value]
-        if len(set(normalized)) != len(normalized) or any(provider not in allowed for provider in normalized):
+        if len(set(normalized)) != len(normalized) or any(
+            provider not in allowed for provider in normalized
+        ):
             raise ValueError("providers are invalid")
         return normalized
 
@@ -227,7 +229,9 @@ class AIGatewaySettingsUpdate(MutableContract):
     def validate_provider_order(cls, value: list[str]) -> list[str]:
         allowed = {"GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC", "OLLAMA", "SIMULATOR"}
         normalized = [provider.strip().upper() for provider in value]
-        if len(set(normalized)) != len(normalized) or any(provider not in allowed for provider in normalized):
+        if len(set(normalized)) != len(normalized) or any(
+            provider not in allowed for provider in normalized
+        ):
             raise ValueError("providerOrder is invalid")
         return normalized
 

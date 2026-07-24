@@ -55,4 +55,6 @@ async def reset_seed(
     request: Request,
     actor_id: str = Depends(require_write_roles),
 ) -> APIResponse[SeedStatusView]:
-    return APIResponse(data=await _coordinator(request).reset_and_apply(actor_id), meta=_meta(request))
+    return APIResponse(
+        data=await _coordinator(request).reset_and_apply(actor_id), meta=_meta(request)
+    )

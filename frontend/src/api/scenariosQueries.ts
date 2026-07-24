@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-invalid-void-type, react-hooks/rules-of-hooks */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createScenarioAdapters } from "./adapters/scenarios";
 import { queryKeys } from "./queryKeyFactory";

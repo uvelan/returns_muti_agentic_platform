@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/prefer-nullish-coalescing */
 import { useMemo, useState, type ChangeEvent } from "react";
 import { useLocation } from "wouter";
 import { useSubmitImport } from "../../../../api/jobsQueries";

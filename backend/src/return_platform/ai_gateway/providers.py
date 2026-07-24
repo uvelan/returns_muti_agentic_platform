@@ -118,7 +118,9 @@ class GeminiProvider(_HTTPProvider):
             headers={"x-goog-api-key": self._api_key, "Content-Type": "application/json"},
             payload={
                 "systemInstruction": {"parts": [{"text": request.system_prompt}]},
-                "contents": [{"role": "user", "parts": [{"text": json.dumps(request.user_payload)}]}],
+                "contents": [
+                    {"role": "user", "parts": [{"text": json.dumps(request.user_payload)}]}
+                ],
                 "generationConfig": {
                     "temperature": 0,
                     "responseMimeType": "application/json",
@@ -216,7 +218,10 @@ class OpenAIResponsesProvider(_HTTPProvider):
             raise ProviderError("AUTH_FAILED")
         data = await self._post(
             f"{self._base_url}/responses",
-            headers={"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+            },
             payload={
                 "model": self.model,
                 "instructions": request.system_prompt,

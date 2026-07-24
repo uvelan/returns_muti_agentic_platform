@@ -116,7 +116,9 @@ class JobService:
         await self._jobs.create_index([("createdAt", DESCENDING)])
         await self._jobs.create_index([("status", ASCENDING), ("leaseUntil", ASCENDING)])
         await self._jobs.create_index("idempotencyKey", unique=True, sparse=True)
-        await self._records.create_index([("workspaceId", ASCENDING), ("recordKey", ASCENDING)], unique=True)
+        await self._records.create_index(
+            [("workspaceId", ASCENDING), ("recordKey", ASCENDING)], unique=True
+        )
 
     async def list_jobs(self, job_type: str | None, job_status: str | None) -> list[Job]:
         query: dict[str, Any] = {}
@@ -161,6 +163,7 @@ class JobService:
             "leaseUntil": None,
             "idempotencyKey": idempotency_key,
         }
+
         async def transaction(session: Any) -> None:
             await self._jobs.insert_one(document, session=session)
             await self._commands.insert_one(
@@ -185,7 +188,7 @@ class JobService:
             )
 
         try:
-            async with await self._client.start_session() as mongo_session:
+            async with self._client.start_session() as mongo_session:
                 await mongo_session.with_transaction(transaction)
         except DuplicateKeyError:
             if idempotency_key is None:
@@ -270,7 +273,9 @@ class JobService:
             raise KeyError(job_id)
         if document.get("status") not in {"FAILED", "CANCELLED"}:
             raise ValueError("Only failed or cancelled jobs can be retried.")
-        if int(document.get("attempts", 0)) >= int(document.get("maxAttempts", _DEFAULT_MAX_ATTEMPTS)):
+        if int(str(document.get("attempts", 0))) >= int(
+            str(document.get("maxAttempts", _DEFAULT_MAX_ATTEMPTS))
+        ):
             raise ValueError("Job retry limit has been reached.")
         updated = await self._jobs.find_one_and_update(
             {"_id": job_id, "status": document["status"], "attempts": document.get("attempts", 0)},
@@ -444,12 +449,20 @@ class JobService:
         payload: CreateImportPayload,
     ) -> None:
         workspace = await self._workspaces.find_one(
-            {"$and": [{"$or": [{"_id": payload.target}, {"name": payload.target}]}, self._active_filter()]}
+            {
+                "$and": [
+                    {"$or": [{"_id": payload.target}, {"name": payload.target}]},
+                    self._active_filter(),
+                ]
+            }
         )
         if workspace is None:
             raise ValueError("Target workspace does not exist.")
         records = self._parse_import(payload)
-        keys = [str(record.get("id") or record.get("_id") or f"row-{index + 1}") for index, record in enumerate(records)]
+        keys = [
+            str(record.get("id") or record.get("_id") or f"row-{index + 1}")
+            for index, record in enumerate(records)
+        ]
         if len(set(keys)) != len(keys):
             raise ValueError("Import contains duplicate record identifiers.")
         existing_documents = self._records.find(
@@ -470,7 +483,9 @@ class JobService:
                     if await self.cancellation_requested(job.id, worker_id):
                         cancelled = True
                         break
-                    await self._set_progress(job.id, worker_id, total=len(records), processed=processed)
+                    await self._set_progress(
+                        job.id, worker_id, total=len(records), processed=processed
+                    )
                 if record_key in existing_keys and payload.duplicatePolicy == "SKIP":
                     issues.append(
                         {
@@ -547,13 +562,20 @@ class JobService:
         payload: CreateExportPayload,
     ) -> None:
         workspace = await self._workspaces.find_one(
-            {"$and": [{"$or": [{"_id": payload.source}, {"name": payload.source}]}, self._active_filter()]}
+            {
+                "$and": [
+                    {"$or": [{"_id": payload.source}, {"name": payload.source}]},
+                    self._active_filter(),
+                ]
+            }
         )
         if workspace is None:
             raise ValueError("Source workspace does not exist.")
-        cursor = self._records.find(
-            {"workspaceId": workspace["_id"], **self._active_filter()}
-        ).sort("createdAt", ASCENDING).limit(_MAX_RECORDS)
+        cursor = (
+            self._records.find({"workspaceId": workspace["_id"], **self._active_filter()})
+            .sort("createdAt", ASCENDING)
+            .limit(_MAX_RECORDS)
+        )
         rows = [cast(dict[str, Any], document).get("data", {}) async for document in cursor]
         rows = [cast(dict[str, Any], row) for row in rows if isinstance(row, dict)]
         if payload.fields:
@@ -624,9 +646,13 @@ class JobService:
         try:
             payload = cast(dict[str, Any], command_document["payload"])
             if job.type == "IMPORT":
-                await self._execute_import(job, worker_id, CreateImportPayload.model_validate(payload))
+                await self._execute_import(
+                    job, worker_id, CreateImportPayload.model_validate(payload)
+                )
             elif job.type == "EXPORT":
-                await self._execute_export(job, worker_id, CreateExportPayload.model_validate(payload))
+                await self._execute_export(
+                    job, worker_id, CreateExportPayload.model_validate(payload)
+                )
             else:
                 raise ValueError(f"Unsupported job type {job.type}.")
         except (ValueError, json.JSONDecodeError, csv.Error) as error:
@@ -662,10 +688,9 @@ class JobService:
 
 def resolve_job_service(request: Request) -> JobService:
     resources = getattr(request.app.state, "resources", None)
-    settings = getattr(request.app.state, "settings", None)
     if not isinstance(resources, RuntimeResources) or resources.mongo is None:
         raise HTTPException(status_code=503, detail="Platform MongoDB is unavailable")
-    return JobService(resources.mongo, settings.mongo_database)
+    return JobService(resources.mongo, resources.settings.mongo_database)
 
 
 def _meta(request: Request) -> ResponseMeta:
@@ -679,11 +704,15 @@ async def list_jobs(
     job_status: str | None = Query(default=None, alias="status"),
     _user_id: str = Depends(require_read_roles),
 ) -> APIResponse[list[Job]]:
-    return APIResponse(data=await resolve_job_service(request).list_jobs(job_type, job_status), meta=_meta(request))
+    return APIResponse(
+        data=await resolve_job_service(request).list_jobs(job_type, job_status), meta=_meta(request)
+    )
 
 
 @router.get("/jobs/{job_id}", response_model=APIResponse[Job])
-async def get_job(request: Request, job_id: str, _user_id: str = Depends(require_read_roles)) -> APIResponse[Job]:
+async def get_job(
+    request: Request, job_id: str, _user_id: str = Depends(require_read_roles)
+) -> APIResponse[Job]:
     data = await resolve_job_service(request).get_job(job_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -721,12 +750,18 @@ async def retry_job(
 
 
 @router.get("/imports", response_model=APIResponse[list[Job]])
-async def list_imports(request: Request, _user_id: str = Depends(require_read_roles)) -> APIResponse[list[Job]]:
-    return APIResponse(data=await resolve_job_service(request).list_jobs("IMPORT", None), meta=_meta(request))
+async def list_imports(
+    request: Request, _user_id: str = Depends(require_read_roles)
+) -> APIResponse[list[Job]]:
+    return APIResponse(
+        data=await resolve_job_service(request).list_jobs("IMPORT", None), meta=_meta(request)
+    )
 
 
 @router.get("/imports/{job_id}", response_model=APIResponse[Job])
-async def get_import(request: Request, job_id: str, user_id: str = Depends(require_read_roles)) -> APIResponse[Job]:
+async def get_import(
+    request: Request, job_id: str, user_id: str = Depends(require_read_roles)
+) -> APIResponse[Job]:
     return await get_job(request, job_id, user_id)
 
 
@@ -745,12 +780,18 @@ async def create_import(
 
 
 @router.get("/exports", response_model=APIResponse[list[Job]])
-async def list_exports(request: Request, _user_id: str = Depends(require_read_roles)) -> APIResponse[list[Job]]:
-    return APIResponse(data=await resolve_job_service(request).list_jobs("EXPORT", None), meta=_meta(request))
+async def list_exports(
+    request: Request, _user_id: str = Depends(require_read_roles)
+) -> APIResponse[list[Job]]:
+    return APIResponse(
+        data=await resolve_job_service(request).list_jobs("EXPORT", None), meta=_meta(request)
+    )
 
 
 @router.get("/exports/{job_id}", response_model=APIResponse[Job])
-async def get_export(request: Request, job_id: str, user_id: str = Depends(require_read_roles)) -> APIResponse[Job]:
+async def get_export(
+    request: Request, job_id: str, user_id: str = Depends(require_read_roles)
+) -> APIResponse[Job]:
     return await get_job(request, job_id, user_id)
 
 
@@ -766,7 +807,9 @@ async def create_export(
 
 
 @router.get("/exports/{job_id}/download")
-async def download_export(request: Request, job_id: str, _user_id: str = Depends(require_read_roles)) -> StreamingResponse:
+async def download_export(
+    request: Request, job_id: str, _user_id: str = Depends(require_read_roles)
+) -> StreamingResponse:
     artifact = await resolve_job_service(request).artifact(job_id)
     if artifact is None:
         raise HTTPException(status_code=404, detail="Completed export artifact not found")

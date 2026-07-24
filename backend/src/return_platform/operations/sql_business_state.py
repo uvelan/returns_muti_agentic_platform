@@ -169,7 +169,9 @@ class SQLBusinessStateRepository:
         def operation() -> int:
             with self._connect() as connection:
                 with connection.cursor() as cursor:
-                    cursor.execute("DELETE FROM dbo.e2e_seed_scenarios WHERE seed_version=%s", (seed_version,))
+                    cursor.execute(
+                        "DELETE FROM dbo.e2e_seed_scenarios WHERE seed_version=%s", (seed_version,)
+                    )
                     cursor.executemany(
                         """
                         INSERT INTO dbo.e2e_seed_scenarios (
@@ -214,7 +216,9 @@ class SQLBusinessStateRepository:
         def operation() -> None:
             with self._connect() as connection:
                 with connection.cursor() as cursor:
-                    cursor.execute("DELETE FROM dbo.e2e_seed_scenarios WHERE seed_version=%s", (seed_version,))
+                    cursor.execute(
+                        "DELETE FROM dbo.e2e_seed_scenarios WHERE seed_version=%s", (seed_version,)
+                    )
                 connection.commit()
 
         await self._run(operation)

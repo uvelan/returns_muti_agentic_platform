@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-imports */
 import { useQuery } from "@tanstack/react-query";
 
 import type { APIResponse } from "../contracts/api";

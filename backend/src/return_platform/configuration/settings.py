@@ -137,9 +137,13 @@ class Settings(BaseSettings):
         normalized = value.strip()
         if not normalized:
             raise ValueError("Value must not be blank.")
-        return normalized.rstrip("/") if normalized.startswith(("http://", "https://")) else normalized
+        return (
+            normalized.rstrip("/") if normalized.startswith(("http://", "https://")) else normalized
+        )
 
-    @field_validator("google_api_key", "nvidia_api_key", "openai_api_key", "anthropic_api_key", mode="before")
+    @field_validator(
+        "google_api_key", "nvidia_api_key", "openai_api_key", "anthropic_api_key", mode="before"
+    )
     @classmethod
     def normalize_optional_secrets(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
@@ -215,7 +219,11 @@ class Settings(BaseSettings):
     def validate_provider_order(cls, value: str) -> str:
         allowed = {"GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC", "OLLAMA", "SIMULATOR"}
         providers = tuple(part.strip().upper() for part in value.split(",") if part.strip())
-        if not providers or len(set(providers)) != len(providers) or any(p not in allowed for p in providers):
+        if (
+            not providers
+            or len(set(providers)) != len(providers)
+            or any(p not in allowed for p in providers)
+        ):
             raise ValueError("ai_provider_order is invalid")
         return ",".join(providers)
 

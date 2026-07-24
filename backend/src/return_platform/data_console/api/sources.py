@@ -1,6 +1,7 @@
 """API routes for configured data sources and inventory details."""
 
 from datetime import UTC, datetime
+from typing import Any
 from typing import Final
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -8,7 +9,7 @@ from pydantic import BaseModel
 
 from return_platform.data_console.api.auth import require_read_roles
 from return_platform.resources import RuntimeResources
-from return_platform.shared.contracts import APIResponse, ResponseMeta, WarningMeta
+from return_platform.shared.contracts import APIResponse, PageMeta, ResponseMeta, WarningMeta
 
 router = APIRouter(prefix="/data-console/v1", tags=["Sources", "Inventory"])
 
@@ -47,7 +48,7 @@ class InventoryDetail(BaseModel):
     recordCount: int | None
     schemaVersion: str
     operations: list[str]
-    metadata: dict
+    metadata: dict[str, Any]
 
 
 def _request_id(request: Request) -> str:
@@ -88,13 +89,13 @@ async def get_sources(
     if not isinstance(resources_value, RuntimeResources):
         raise HTTPException(status_code=500, detail="Resources unavailable")
 
-    sources = []
+    views = []
     # Identify unique stores in catalog
     catalog_stores = {asset.store.value for asset in resources_value.catalog.catalog.assets}
 
     for s in _STATIC_SOURCES:
         if s["engine"] in catalog_stores:
-            sources.append(
+            views.append(
                 SourceItem(
                     id=s["id"],
                     name=s["name"],
@@ -108,9 +109,9 @@ async def get_sources(
             )
 
     return APIResponse(
-        data=sources,
+        data=views,
         meta=_response_meta(request),
-        page={"next_cursor": None, "has_more": False, "page_size": len(sources) or 10},
+        page=PageMeta(next_cursor=None, has_more=False, page_size=len(views) or 10),
     )
 
 
@@ -152,7 +153,7 @@ async def get_source(
     return APIResponse(
         data=detail,
         meta=_response_meta(request),
-        page={"next_cursor": None, "has_more": False, "page_size": 1},
+        page=PageMeta(next_cursor=None, has_more=False, page_size=1),
     )
 
 
@@ -201,5 +202,5 @@ async def get_inventory_detail(
     return APIResponse(
         data=detail,
         meta=_response_meta(request),
-        page={"next_cursor": None, "has_more": False, "page_size": 1},
+        page=PageMeta(next_cursor=None, has_more=False, page_size=1),
     )

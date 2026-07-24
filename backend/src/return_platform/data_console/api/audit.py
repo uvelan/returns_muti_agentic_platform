@@ -117,7 +117,9 @@ class AuditService:
         violations: list[str] = []
         for asset in assets:
             operations = set(asset.allowed_operations)
-            if asset.ownership is OwnershipClass.SOURCE_SYSTEM and operations != {AllowedOperation.READ}:
+            if asset.ownership is OwnershipClass.SOURCE_SYSTEM and operations != {
+                AllowedOperation.READ
+            }:
                 violations.append(f"{asset.asset_id}: source-system asset is not read-only")
             if asset.ownership is OwnershipClass.DERIVED_PROJECTION and asset.authoritative:
                 violations.append(f"{asset.asset_id}: derived projection is marked authoritative")
@@ -141,9 +143,7 @@ class AuditService:
             strictMode=self._settings.environment in {"staging", "production"},
             eventStreamRetention=self._settings.event_stream_retention,
             aiProviderOrder=[
-                item.strip()
-                for item in self._settings.ai_provider_order.split(",")
-                if item.strip()
+                item.strip() for item in self._settings.ai_provider_order.split(",") if item.strip()
             ],
             aiInterceptionEnabled=self._settings.ai_interception_default,
             seedVersion=self._settings.seed_version,
@@ -166,7 +166,8 @@ class AuditService:
                 status="WARN" if self._settings.environment in {"development", "test"} else "PASS",
                 evidence=f"environment:{self._settings.environment}",
                 details=(
-                    "Development principal is enabled; production must inject an external principal provider."
+                    "Development principal is enabled; production must inject an external "
+                    "principal provider."
                     if self._settings.environment in {"development", "test"}
                     else "Application startup requires an external principal provider."
                 ),
@@ -184,7 +185,9 @@ class AuditService:
                 id="dependency-initialization",
                 status="PASS" if not missing else "FAIL",
                 evidence="runtime-resources",
-                details="All runtime clients initialized." if not missing else f"Missing clients: {', '.join(missing)}.",
+                details="All runtime clients initialized."
+                if not missing
+                else f"Missing clients: {', '.join(missing)}.",
             )
         )
         cutoff = datetime.now(UTC) - timedelta(seconds=self._settings.worker_readiness_ttl_seconds)
@@ -199,7 +202,9 @@ class AuditService:
                 id="background-workers",
                 status="PASS" if not missing_workers else "WARN",
                 evidence=f"worker_heartbeats newer than {cutoff.isoformat()}",
-                details="All required workers are reporting." if not missing_workers else f"Missing heartbeats: {', '.join(missing_workers)}.",
+                details="All required workers are reporting."
+                if not missing_workers
+                else f"Missing heartbeats: {', '.join(missing_workers)}.",
             )
         )
         checks.append(
@@ -211,7 +216,11 @@ class AuditService:
             )
         )
         validated = [check for check in checks if check.status != "NOT_VALIDATED"]
-        score = round(100 * sum(check.status == "PASS" for check in validated) / len(validated)) if validated else None
+        score = (
+            round(100 * sum(check.status == "PASS" for check in validated) / len(validated))
+            if validated
+            else None
+        )
         if any(check.status == "FAIL" for check in checks):
             overall: Literal["PASS", "DEGRADED", "FAIL", "NOT_VALIDATED"] = "FAIL"
         elif any(check.status == "WARN" for check in checks):
@@ -232,7 +241,11 @@ class AuditService:
 def resolve_audit_service(request: Request) -> AuditService:
     resources = getattr(request.app.state, "resources", None)
     settings = getattr(request.app.state, "settings", None)
-    if not isinstance(resources, RuntimeResources) or resources.mongo is None or not isinstance(settings, Settings):
+    if (
+        not isinstance(resources, RuntimeResources)
+        or resources.mongo is None
+        or not isinstance(settings, Settings)
+    ):
         raise HTTPException(status_code=503, detail="Platform MongoDB is unavailable")
     return AuditService(resources.mongo, settings.mongo_database, resources, settings)
 
@@ -247,7 +260,9 @@ async def list_audit_logs(
     request: Request,
     _user_id: str = Depends(require_read_roles),
 ) -> APIResponse[list[AuditLog]]:
-    return APIResponse(data=await resolve_audit_service(request).list_logs(), meta=_response_meta(request))
+    return APIResponse(
+        data=await resolve_audit_service(request).list_logs(), meta=_response_meta(request)
+    )
 
 
 @router.get("/audit/{audit_id}", response_model=APIResponse[AuditLog])
@@ -267,7 +282,9 @@ async def get_governance(
     request: Request,
     _user_id: str = Depends(require_read_roles),
 ) -> APIResponse[GovernanceSummary]:
-    return APIResponse(data=resolve_audit_service(request).governance(), meta=_response_meta(request))
+    return APIResponse(
+        data=resolve_audit_service(request).governance(), meta=_response_meta(request)
+    )
 
 
 @router.get("/settings", response_model=APIResponse[ConsoleSettingsView])
@@ -275,7 +292,9 @@ async def get_settings(
     request: Request,
     _user_id: str = Depends(require_read_roles),
 ) -> APIResponse[ConsoleSettingsView]:
-    return APIResponse(data=resolve_audit_service(request).settings_view(), meta=_response_meta(request))
+    return APIResponse(
+        data=resolve_audit_service(request).settings_view(), meta=_response_meta(request)
+    )
 
 
 @router.get("/hardening", response_model=APIResponse[HardeningSummary])
@@ -283,4 +302,6 @@ async def get_hardening(
     request: Request,
     _user_id: str = Depends(require_read_roles),
 ) -> APIResponse[HardeningSummary]:
-    return APIResponse(data=await resolve_audit_service(request).hardening(), meta=_response_meta(request))
+    return APIResponse(
+        data=await resolve_audit_service(request).hardening(), meta=_response_meta(request)
+    )

@@ -12,12 +12,12 @@ from neo4j import AsyncGraphDatabase
 from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
-from return_platform.configuration.settings import Settings
 from return_platform.api.ai_gateway import router as ai_gateway_router
 from return_platform.api.dependencies import router as dependencies_router
 from return_platform.api.returns import router as returns_router
 from return_platform.api.seed import router as seed_router
 from return_platform.api.support import router as support_router
+from return_platform.configuration.settings import Settings
 from return_platform.data_console.api.audit import router as audit_router
 from return_platform.data_console.api.browser import router as browser_router
 from return_platform.data_console.api.graph import router as graph_router
@@ -489,11 +489,7 @@ def create_app(
         }
         ready = all(result.status is DependencyStatus.HEALTHY for result in probe_results)
         return JSONResponse(
-            status_code=(
-                status.HTTP_200_OK
-                if ready
-                else status.HTTP_503_SERVICE_UNAVAILABLE
-            ),
+            status_code=(status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE),
             content={
                 "status": "ready" if ready else "not ready",
                 "catalog": {

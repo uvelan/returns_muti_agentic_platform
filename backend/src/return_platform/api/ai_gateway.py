@@ -39,7 +39,9 @@ async def list_requests(
     _actor_id: str = Depends(require_read_roles),
 ) -> APIResponse[list[AITraceView]]:
     repository = resolve_operational_repository(request)
-    return APIResponse(data=await repository.list_ai_traces(status=trace_status), meta=_meta(request))
+    return APIResponse(
+        data=await repository.list_ai_traces(status=trace_status), meta=_meta(request)
+    )
 
 
 @router.get("/requests/{trace_id}", response_model=APIResponse[AITraceView])
@@ -82,7 +84,9 @@ async def update_settings(
             actor_id=actor_id,
         )
     except ConcurrencyConflictError as error:
-        raise HTTPException(status_code=409, detail="AI gateway settings version conflict") from error
+        raise HTTPException(
+            status_code=409, detail="AI gateway settings version conflict"
+        ) from error
     return APIResponse(data=data, meta=_meta(request))
 
 
@@ -94,7 +98,9 @@ async def simulate(
 ) -> APIResponse[AITraceView]:
     settings = request.app.state.settings
     if settings.environment not in {"development", "test"}:
-        raise HTTPException(status_code=403, detail="AI simulator is disabled outside development and test")
+        raise HTTPException(
+            status_code=403, detail="AI simulator is disabled outside development and test"
+        )
     repository = resolve_operational_repository(request)
     evaluation = await AIGatewayService(repository, settings).evaluate(
         session_id=None,
@@ -203,7 +209,9 @@ async def intercept(
     try:
         if payload.action == "EDIT_AND_DISPATCH":
             if payload.editedSystemPrompt is None:
-                raise HTTPException(status_code=422, detail="EDIT_AND_DISPATCH requires editedSystemPrompt")
+                raise HTTPException(
+                    status_code=422, detail="EDIT_AND_DISPATCH requires editedSystemPrompt"
+                )
             await repository.update_ai_trace(
                 trace.id,
                 {
@@ -214,7 +222,9 @@ async def intercept(
                 expected_version=payload.expectedVersion,
             )
             gateway_settings = await repository.get_ai_settings()
-            force_provider = next((p for p in gateway_settings.providerOrder if p != "SIMULATOR"), "SIMULATOR")
+            force_provider = next(
+                (p for p in gateway_settings.providerOrder if p != "SIMULATOR"), "SIMULATOR"
+            )
             evaluation = await AIGatewayService(repository, request.app.state.settings).evaluate(
                 session_id=trace.sessionId,
                 redacted_input=trace.redactedInput,
@@ -225,7 +235,11 @@ async def intercept(
             if trace.sessionId is not None:
                 await repository.update_return(
                     trace.sessionId,
-                    {"aiRequestId": evaluation.trace.id, "status": "QUEUED", "orchestrationState": "QUEUED"},
+                    {
+                        "aiRequestId": evaluation.trace.id,
+                        "status": "QUEUED",
+                        "orchestrationState": "QUEUED",
+                    },
                 )
             await repository.append_audit(
                 action="AI_EDIT_AND_DISPATCH",

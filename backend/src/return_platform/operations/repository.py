@@ -11,16 +11,7 @@ from pymongo import ASCENDING, DESCENDING, AsyncMongoClient, ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from return_platform.configuration.settings import Settings
-from return_platform.operations.seed_manifest import (
-    SEED_CUSTOMERS,
-    SEED_PRODUCTS,
-    SEED_SCENARIOS,
-    manifest_digest,
-    materialize_seed,
-    scenario_counts,
-)
 from return_platform.operations.models import (
-    AIDecision,
     AIGatewaySettingsView,
     AIRequestStatus,
     AITraceView,
@@ -33,6 +24,14 @@ from return_platform.operations.models import (
     SupportOperationRequest,
     TimelineEvent,
     utc_now,
+)
+from return_platform.operations.seed_manifest import (
+    SEED_CUSTOMERS,
+    SEED_PRODUCTS,
+    SEED_SCENARIOS,
+    manifest_digest,
+    materialize_seed,
+    scenario_counts,
 )
 from return_platform.resources import RuntimeResources
 
@@ -80,14 +79,18 @@ class OperationalRepository:
         await self.returns.create_index([("createdAt", DESCENDING)])
         await self.returns.create_index([("status", ASCENDING), ("updatedAt", ASCENDING)])
         await self.returns.create_index("idempotencyKey", unique=True, sparse=True)
-        await self.events.create_index([("streamId", ASCENDING), ("sequence", ASCENDING)], unique=True)
+        await self.events.create_index(
+            [("streamId", ASCENDING), ("sequence", ASCENDING)], unique=True
+        )
         await self.events.create_index(
             [("streamId", ASCENDING), ("deduplicationKey", ASCENDING)],
             unique=True,
             sparse=True,
         )
         await self.events.create_index([("publishedAt", ASCENDING), ("occurredAt", ASCENDING)])
-        await self.support_cases.create_index([("status", ASCENDING), ("priorityRank", ASCENDING), ("slaDueAt", ASCENDING)])
+        await self.support_cases.create_index(
+            [("status", ASCENDING), ("priorityRank", ASCENDING), ("slaDueAt", ASCENDING)]
+        )
         await self.support_cases.create_index("sessionId", unique=True, sparse=True)
         await self.ai_traces.create_index([("createdAt", DESCENDING)])
         await self.ai_traces.create_index([("sessionId", ASCENDING), ("createdAt", DESCENDING)])
@@ -97,9 +100,7 @@ class OperationalRepository:
     @staticmethod
     def _return_view(document: dict[str, Any]) -> ReturnSessionView:
         payload = {
-            key: value
-            for key, value in document.items()
-            if key in ReturnSessionView.model_fields
+            key: value for key, value in document.items() if key in ReturnSessionView.model_fields
         }
         payload["id"] = str(document["_id"])
         return ReturnSessionView.model_validate(payload)
@@ -107,9 +108,7 @@ class OperationalRepository:
     @staticmethod
     def _event_view(document: dict[str, Any]) -> TimelineEvent:
         payload = {
-            key: value
-            for key, value in document.items()
-            if key in TimelineEvent.model_fields
+            key: value for key, value in document.items() if key in TimelineEvent.model_fields
         }
         payload["id"] = str(document["_id"])
         return TimelineEvent.model_validate(payload)
@@ -117,9 +116,7 @@ class OperationalRepository:
     @staticmethod
     def _support_view(document: dict[str, Any]) -> SupportCaseView:
         payload = {
-            key: value
-            for key, value in document.items()
-            if key in SupportCaseView.model_fields
+            key: value for key, value in document.items() if key in SupportCaseView.model_fields
         }
         payload["id"] = str(document["_id"])
         status = str(document.get("status", ""))
@@ -134,11 +131,7 @@ class OperationalRepository:
 
     @staticmethod
     def _trace_view(document: dict[str, Any]) -> AITraceView:
-        payload = {
-            key: value
-            for key, value in document.items()
-            if key in AITraceView.model_fields
-        }
+        payload = {key: value for key, value in document.items() if key in AITraceView.model_fields}
         payload["id"] = str(document["_id"])
         return AITraceView.model_validate(payload)
 
@@ -243,12 +236,20 @@ class OperationalRepository:
             raise ConcurrencyConflictError(session_id)
         return self._return_view(cast(dict[str, Any], document))
 
-    async def claim_next_return(self, worker_id: str, lease_seconds: int = 30) -> ReturnSessionView | None:
+    async def claim_next_return(
+        self, worker_id: str, lease_seconds: int = 30
+    ) -> ReturnSessionView | None:
         now = utc_now()
         lease_until = now + timedelta(seconds=lease_seconds)
         document = await self.returns.find_one_and_update(
             {
-                "status": {"$nin": [ReturnStatus.COMPLETED.value, ReturnStatus.CANCELLED.value, ReturnStatus.FAILED.value]},
+                "status": {
+                    "$nin": [
+                        ReturnStatus.COMPLETED.value,
+                        ReturnStatus.CANCELLED.value,
+                        ReturnStatus.FAILED.value,
+                    ]
+                },
                 "orchestrationState": {"$in": ["QUEUED", "RUNNING"]},
                 "$or": [
                     {"orchestrationLeaseUntil": None},
@@ -308,7 +309,7 @@ class OperationalRepository:
         )
         if owner is None:
             raise KeyError(stream_id)
-        sequence = int(owner["lastEventSequence"])
+        sequence = int(str(owner["lastEventSequence"]))
         event_id = f"{stream_id}:{sequence}"
         document: dict[str, Any] = {
             "_id": event_id,
@@ -355,8 +356,9 @@ class OperationalRepository:
         return [self._event_view(cast(dict[str, Any], document)) async for document in cursor]
 
     async def mark_event_published(self, event_id: str) -> None:
-        await self.events.update_one({"_id": event_id, "publishedAt": None}, {"$set": {"publishedAt": utc_now()}})
-
+        await self.events.update_one(
+            {"_id": event_id, "publishedAt": None}, {"$set": {"publishedAt": utc_now()}}
+        )
 
     async def consume_ai_quota(self, bucket: str) -> bool:
         now = utc_now()
@@ -428,7 +430,9 @@ class OperationalRepository:
         document = await self.ai_traces.find_one({"_id": trace_id})
         return None if document is None else self._trace_view(cast(dict[str, Any], document))
 
-    async def list_ai_traces(self, *, status: str | None = None, limit: int = 200) -> list[AITraceView]:
+    async def list_ai_traces(
+        self, *, status: str | None = None, limit: int = 200
+    ) -> list[AITraceView]:
         query: dict[str, Any] = {} if status is None else {"status": status}
         cursor = self.ai_traces.find(query).sort("createdAt", DESCENDING).limit(limit)
         return [self._trace_view(cast(dict[str, Any], document)) async for document in cursor]
@@ -512,7 +516,7 @@ class OperationalRepository:
                 return_document=ReturnDocument.AFTER,
             )
             if reopened is None:
-                raise ConcurrencyConflictError(session_id)
+                raise ConcurrencyConflictError(session_id) from None
             await self.update_return(session_id, {"supportCaseId": str(reopened["_id"])})
             return self._support_view(cast(dict[str, Any], reopened))
         await self.update_return(session_id, {"supportCaseId": case_id})
@@ -526,9 +530,15 @@ class OperationalRepository:
         document = await self.support_cases.find_one({"sessionId": session_id})
         return None if document is None else self._support_view(cast(dict[str, Any], document))
 
-    async def list_support_cases(self, status: str | None = None, limit: int = 200) -> list[SupportCaseView]:
+    async def list_support_cases(
+        self, status: str | None = None, limit: int = 200
+    ) -> list[SupportCaseView]:
         query: dict[str, Any] = {} if status is None else {"status": status}
-        cursor = self.support_cases.find(query).sort([("priorityRank", ASCENDING), ("slaDueAt", ASCENDING)]).limit(limit)
+        cursor = (
+            self.support_cases.find(query)
+            .sort([("priorityRank", ASCENDING), ("slaDueAt", ASCENDING)])
+            .limit(limit)
+        )
         return [self._support_view(cast(dict[str, Any], document)) async for document in cursor]
 
     async def update_support_case(
@@ -550,7 +560,6 @@ class OperationalRepository:
             raise ConcurrencyConflictError(case_id)
         return self._support_view(cast(dict[str, Any], document))
 
-
     async def operate_support_case(
         self,
         case_id: str,
@@ -566,7 +575,9 @@ class OperationalRepository:
                 session=session,
             )
             if case_document is None:
-                exists = await self.support_cases.find_one({"_id": case_id}, {"_id": 1}, session=session)
+                exists = await self.support_cases.find_one(
+                    {"_id": case_id}, {"_id": 1}, session=session
+                )
                 if exists is None:
                     raise KeyError(case_id)
                 raise ConcurrencyConflictError(case_id)
@@ -653,7 +664,10 @@ class OperationalRepository:
                     },
                     session=session,
                 )
-                case_updates = {"status": SupportCaseStatus.RESOLVED.value, "resolution": payload.reason}
+                case_updates = {
+                    "status": SupportCaseStatus.RESOLVED.value,
+                    "resolution": payload.reason,
+                }
             elif operation == "CANCEL":
                 await self.returns.update_one(
                     {"_id": session_id},
@@ -667,7 +681,10 @@ class OperationalRepository:
                     },
                     session=session,
                 )
-                case_updates = {"status": SupportCaseStatus.CANCELLED.value, "resolution": payload.reason}
+                case_updates = {
+                    "status": SupportCaseStatus.CANCELLED.value,
+                    "resolution": payload.reason,
+                }
             else:
                 raise ValueError("Unsupported operation")
 
@@ -689,7 +706,7 @@ class OperationalRepository:
             )
             if owner is None:
                 raise KeyError(session_id)
-            sequence = int(owner["lastEventSequence"])
+            sequence = int(str(owner["lastEventSequence"]))
             await self.events.insert_one(
                 {
                     "_id": f"{session_id}:{sequence}",
@@ -717,7 +734,7 @@ class OperationalRepository:
             )
             return cast(dict[str, Any], updated_case)
 
-        async with await self._client.start_session() as mongo_session:
+        async with self._client.start_session() as mongo_session:
             updated = await mongo_session.with_transaction(transaction)
         return self._support_view(updated)
 
@@ -738,7 +755,9 @@ class OperationalRepository:
             except DuplicateKeyError:
                 document = await self.ai_settings.find_one({"_id": "global"})
                 assert document is not None
-        return AIGatewaySettingsView.model_validate({key: value for key, value in document.items() if key != "_id"})
+        return AIGatewaySettingsView.model_validate(
+            {key: value for key, value in document.items() if key != "_id"}
+        )
 
     async def update_ai_settings(
         self,
@@ -763,7 +782,9 @@ class OperationalRepository:
         )
         if document is None:
             raise ConcurrencyConflictError("global")
-        return AIGatewaySettingsView.model_validate({key: value for key, value in document.items() if key != "_id"})
+        return AIGatewaySettingsView.model_validate(
+            {key: value for key, value in document.items() if key != "_id"}
+        )
 
     async def append_audit(
         self,
@@ -815,7 +836,9 @@ class OperationalRepository:
             "customers": await self._source_db[SOURCE_CUSTOMERS].count_documents({}),
             "orders": await self._source_db[SOURCE_ORDERS].count_documents({}),
             "products": await self._source_db[SOURCE_PRODUCTS].count_documents({}),
-            "seededCustomers": await self._source_db[SOURCE_CUSTOMERS].count_documents(seeded_query),
+            "seededCustomers": await self._source_db[SOURCE_CUSTOMERS].count_documents(
+                seeded_query
+            ),
             "seededOrders": await self._source_db[SOURCE_ORDERS].count_documents(seeded_query),
             "seededProducts": await self._source_db[SOURCE_PRODUCTS].count_documents(seeded_query),
             "returns": await self.returns.count_documents({}),
@@ -834,14 +857,16 @@ class OperationalRepository:
         ]
         metadata_digest = str(metadata.get("digest", "")) if metadata is not None else ""
         if metadata_digest != expected_digest:
-            errors.append("Seed metadata digest is absent or does not match the canonical manifest.")
+            errors.append(
+                "Seed metadata digest is absent or does not match the canonical manifest."
+            )
         applied_at = metadata.get("appliedAt") if metadata is not None else None
         applied_by = metadata.get("appliedBy") if metadata is not None else None
         return SeedStatusView(
             version=seed_version,
             digest=metadata_digest,
-            appliedAt=applied_at,
-            appliedBy=applied_by,
+            appliedAt=cast(datetime | None, applied_at),
+            appliedBy=cast(str | None, applied_by),
             ready=not errors,
             counts=counts,
             scenarioCounts=scenario_counts(),
@@ -895,6 +920,10 @@ class OperationalRepository:
 def resolve_operational_repository(request: Request) -> OperationalRepository:
     resources = getattr(request.app.state, "resources", None)
     settings = getattr(request.app.state, "settings", None)
-    if not isinstance(resources, RuntimeResources) or resources.mongo is None or not isinstance(settings, Settings):
+    if (
+        not isinstance(resources, RuntimeResources)
+        or resources.mongo is None
+        or not isinstance(settings, Settings)
+    ):
         raise HTTPException(status_code=503, detail="Platform MongoDB is unavailable")
     return OperationalRepository(resources.mongo, settings, resources.source_mongo)

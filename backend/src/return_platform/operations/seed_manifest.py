@@ -17,8 +17,18 @@ SEED_CUSTOMERS: Final[tuple[dict[str, object], ...]] = (
 
 SEED_PRODUCTS: Final[tuple[dict[str, object], ...]] = (
     {"_id": "SKU-100", "name": "Smart Thermostat", "returnWindowDays": 30, "category": "HVAC"},
-    {"_id": "SKU-200", "name": "Water Filter Cartridge", "returnWindowDays": 15, "category": "PLUMBING"},
-    {"_id": "SKU-300", "name": "Industrial Valve", "returnWindowDays": 45, "category": "INDUSTRIAL"},
+    {
+        "_id": "SKU-200",
+        "name": "Water Filter Cartridge",
+        "returnWindowDays": 15,
+        "category": "PLUMBING",
+    },
+    {
+        "_id": "SKU-300",
+        "name": "Industrial Valve",
+        "returnWindowDays": 45,
+        "category": "INDUSTRIAL",
+    },
     {"_id": "SKU-400", "name": "Safety Sensor", "returnWindowDays": 30, "category": "SAFETY"},
     {"_id": "SKU-500", "name": "Pump Controller", "returnWindowDays": 45, "category": "CONTROLS"},
 )
@@ -144,11 +154,17 @@ def manifest_digest(seed_version: str) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def materialize_seed(seed_version: str, applied_at: datetime) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+def materialize_seed(
+    seed_version: str, applied_at: datetime
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     """Materialize source documents while keeping the manifest digest stable."""
     digest = manifest_digest(seed_version)
-    customers = [{**item, "seedVersion": seed_version, "seedDigest": digest} for item in SEED_CUSTOMERS]
-    products = [{**item, "seedVersion": seed_version, "seedDigest": digest} for item in SEED_PRODUCTS]
+    customers = [
+        {**item, "seedVersion": seed_version, "seedDigest": digest} for item in SEED_CUSTOMERS
+    ]
+    products = [
+        {**item, "seedVersion": seed_version, "seedDigest": digest} for item in SEED_PRODUCTS
+    ]
     orders: list[dict[str, Any]] = []
     for scenario in SEED_SCENARIOS:
         days = scenario["daysSinceDelivery"]

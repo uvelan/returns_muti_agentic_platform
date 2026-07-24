@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from typing import Any
 
 from fastapi import Request
 
@@ -76,7 +75,7 @@ def sse_message(event: TimelineEvent) -> bytes:
         f"id: {event.sequence}\n"
         "event: return-event\n"
         f"data: {json.dumps(payload, separators=(',', ':'), sort_keys=True)}\n\n"
-    ).encode("utf-8")
+    ).encode()
 
 
 async def event_stream(

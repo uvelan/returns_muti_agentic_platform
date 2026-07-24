@@ -29,7 +29,7 @@ export function WorkspaceRecordCreatePage() {
             idempotencyKey: crypto.randomUUID(),
           },
         },
-        { onSuccess: () => setLocation(`/data-console/workspaces/${workspaceId}`) },
+        { onSuccess: () => { setLocation(`/data-console/workspaces/${workspaceId}`); } },
       );
     } catch (error) {
       setJsonError(error instanceof SyntaxError ? "Invalid JSON format." : "Unable to parse record.");
@@ -47,11 +47,11 @@ export function WorkspaceRecordCreatePage() {
         <textarea
           className="w-full flex-1 resize-none p-4 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
           value={json}
-          onChange={(event) => setJson(event.target.value)}
+          onChange={(event) => { setJson(event.target.value); }}
           spellCheck={false}
         />
         <div className="flex justify-end gap-3 border-t border-gray-200 bg-gray-50 p-4">
-          <button type="button" onClick={() => setLocation(`/data-console/workspaces/${workspaceId}`)} className="rounded border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Cancel</button>
+          <button type="button" onClick={() => { setLocation(`/data-console/workspaces/${workspaceId}`); }} className="rounded border border-gray-300 bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Cancel</button>
           <button type="button" onClick={handleSubmit} disabled={createRecord.isPending} className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50">
             {createRecord.isPending ? "Creating..." : "Create record"}
           </button>

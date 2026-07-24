@@ -96,7 +96,9 @@ class SeedCoordinator:
         except Exception:
             counts["graphSeedOrders"] = 0
             errors.append("Neo4j seed projection could not be validated.")
-        return base.model_copy(update={"ready": not errors, "counts": counts, "validationErrors": errors})
+        return base.model_copy(
+            update={"ready": not errors, "counts": counts, "validationErrors": errors}
+        )
 
     async def apply(self, actor_id: str) -> SeedStatusView:
         applied_at = utc_now()

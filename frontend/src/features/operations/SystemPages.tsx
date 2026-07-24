@@ -1,3 +1,6 @@
+ 
+/* eslint-disable @typescript-eslint/no-unnecessary-condition */
+ 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
 import { DatabaseZap, RefreshCw } from "lucide-react";

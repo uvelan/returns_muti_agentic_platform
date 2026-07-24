@@ -16,7 +16,9 @@ from return_platform.resources import AsyncValkeyClient
 
 async def _run() -> None:
     settings = Settings()
-    mongo: AsyncMongoClient[dict[str, object]] = AsyncMongoClient(settings.mongo_dsn.get_secret_value())
+    mongo: AsyncMongoClient[dict[str, object]] = AsyncMongoClient(
+        settings.mongo_dsn.get_secret_value()
+    )
     valkey = redis.Redis(
         host=settings.valkey_host,
         port=settings.valkey_port,

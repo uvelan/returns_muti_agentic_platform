@@ -2,14 +2,14 @@
 
 import asyncio
 import re
-from typing import Final
+from typing import Any, Final
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from return_platform.data_console.api.auth import require_read_roles
 from return_platform.resources import RuntimeResources
-from return_platform.shared.contracts import APIResponse, ResponseMeta, WarningMeta
+from return_platform.shared.contracts import APIResponse, PageMeta, ResponseMeta, WarningMeta
 from return_platform.shared.governance import AssetCatalogEntry, DataStoreType
 
 router = APIRouter(prefix="/data-console/v1/browser", tags=["Data Browser"])
@@ -90,14 +90,14 @@ async def get_browser_assets(
     return APIResponse(
         data=assets,
         meta=_response_meta(request),
-        page={"next_cursor": None, "has_more": False, "page_size": len(assets) or 10},
+        page=PageMeta(next_cursor=None, has_more=False, page_size=len(assets) or 10),
     )
 
 
 @router.get("/{engine}/{asset_id}/records")
 async def get_records(
     request: Request, engine: str, asset_id: str, user_id: str = Depends(require_read_roles)
-) -> APIResponse[list[dict]]:
+) -> APIResponse[list[dict[str, Any]]]:
     resources_value: object = getattr(request.app.state, "resources", None)
     if not isinstance(resources_value, RuntimeResources):
         raise HTTPException(status_code=500, detail="Resources unavailable")
@@ -150,11 +150,11 @@ async def get_records(
     return APIResponse(
         data=records,
         meta=_response_meta(request, warnings=warnings),
-        page={"next_cursor": None, "has_more": False, "page_size": len(records) or 10},
+        page=PageMeta(next_cursor=None, has_more=False, page_size=len(records) or 10),
     )
 
 
-async def _get_sql_records(resources: RuntimeResources, entry: AssetCatalogEntry) -> list[dict]:
+async def _get_sql_records(resources: RuntimeResources, entry: AssetCatalogEntry) -> list[dict[str, Any]]:
     try:
         db = _validate_sql_identifier(entry.database)
         ns = _validate_sql_identifier(entry.namespace)
@@ -165,7 +165,7 @@ async def _get_sql_records(resources: RuntimeResources, entry: AssetCatalogEntry
     # Build safe query with TOP 50 (Bounded Pagination)
     query = f"SELECT TOP 50 * FROM {db}.{ns}.{obj}"
 
-    def fetch():
+    def fetch() -> list[dict[str, Any]]:
         import pymssql
 
         with pymssql.connect(
@@ -178,7 +178,7 @@ async def _get_sql_records(resources: RuntimeResources, entry: AssetCatalogEntry
         ) as conn:
             with conn.cursor() as cursor:
                 cursor.execute(query)
-                columns = [column[0] for column in cursor.description]
+                columns = [column[0] for column in cursor.description] if cursor.description else []
                 rows = cursor.fetchall()
                 result = []
                 for idx, row in enumerate(rows):
@@ -202,7 +202,7 @@ async def _get_sql_records(resources: RuntimeResources, entry: AssetCatalogEntry
     return await asyncio.to_thread(fetch)
 
 
-async def _get_mongo_records(resources: RuntimeResources, entry: AssetCatalogEntry) -> list[dict]:
+async def _get_mongo_records(resources: RuntimeResources, entry: AssetCatalogEntry) -> list[dict[str, Any]]:
     if not resources.mongo:
         raise RuntimeError("MongoDB not configured")
     db = resources.mongo[entry.database]
@@ -227,7 +227,7 @@ async def _get_mongo_records(resources: RuntimeResources, entry: AssetCatalogEnt
     return result
 
 
-async def _get_neo4j_records(resources: RuntimeResources, entry: AssetCatalogEntry) -> list[dict]:
+async def _get_neo4j_records(resources: RuntimeResources, entry: AssetCatalogEntry) -> list[dict[str, Any]]:
     # Placeholder for Neo4j. Graph primarily defines via direct queries in graph_evidence
     return []
 
@@ -239,7 +239,7 @@ async def get_record(
     asset_id: str,
     record_id: str,
     user_id: str = Depends(require_read_roles),
-) -> APIResponse[dict]:
+) -> APIResponse[dict[str, Any]]:
     response = await get_records(request, engine, asset_id, user_id)
     record = next((r for r in (response.data or []) if r["identity"]["id"] == record_id), None)
     if not record:

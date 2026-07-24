@@ -25,7 +25,7 @@ export function AuditLogsPage() {
       </PageHeader>
       <input
         value={filter}
-        onChange={(event) => setFilter(event.target.value)}
+        onChange={(event) => { setFilter(event.target.value); }}
         placeholder="Filter by action, actor, target, or details"
         className="mb-4 w-full max-w-xl rounded border border-gray-300 px-3 py-2 text-sm"
       />

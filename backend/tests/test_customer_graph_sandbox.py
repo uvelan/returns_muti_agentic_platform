@@ -379,12 +379,21 @@ def test_runner_rejects_symlink_and_oversized_source_files(tmp_path: Path) -> No
     """Prevent path substitution and unbounded source-document loading."""
     target = tmp_path / "target.json"
     target.write_text(json.dumps(_document()), encoding="utf-8")
+    
+    paths_to_test = []
     link = tmp_path / "link.json"
-    link.symlink_to(target)
+    try:
+        link.symlink_to(target)
+        paths_to_test.append(link)
+    except OSError as e:
+        if getattr(e, "winerror", None) != 1314:
+            raise
+
     oversized = tmp_path / "oversized.json"
     oversized.write_bytes(b"{" + b" " * 1_048_576 + b"}")
+    paths_to_test.append(oversized)
 
-    for path in (link, oversized):
+    for path in paths_to_test:
         with pytest.raises(sandbox_runner.SandboxRunnerError) as exc_info:
             sandbox_runner.load_customer_graph_source_document(path)
         assert exc_info.value.code is (sandbox_runner.SandboxRunnerErrorCode.SOURCE_FILE_INVALID)

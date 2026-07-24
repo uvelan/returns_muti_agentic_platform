@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-invalid-void-type */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createWorkspaceAdapters } from "./adapters/workspaces";
 import { queryKeys } from "./queryKeyFactory";

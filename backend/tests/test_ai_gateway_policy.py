@@ -15,15 +15,17 @@ def test_ai_payload_rejects_sensitive_nested_key() -> None:
 
 
 def test_ai_response_requires_exact_schema() -> None:
-    with pytest.raises(ProviderError, match="RESPONSE_INVALID"):
+    with pytest.raises(ProviderError) as captured:
         AIGatewayService._parse_response(
             '{"decision":"APPROVE","explanation":"ok","confidenceMillionths":900000,"extra":true}'
         )
+    assert captured.value.code == "RESPONSE_INVALID"
 
 
 def test_ai_response_accepts_bounded_exact_json() -> None:
     decision, explanation, confidence = AIGatewayService._parse_response(
-        '{"decision":"REVIEW_REQUIRED","explanation":"Evidence conflicts.","confidenceMillionths":500000}'
+        '{"decision":"REVIEW_REQUIRED","explanation":"Evidence conflicts.",'
+        '"confidenceMillionths":500000}'
     )
 
     assert decision is AIDecision.REVIEW_REQUIRED

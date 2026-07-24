@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any, Awaitable, Callable, cast
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -123,7 +124,9 @@ async def _cards(request: Request) -> list[dict[str, Any]]:
         if isinstance(oldest_at, datetime)
         else 0
     )
-    outbox_healthy = unpublished == 0 or oldest_age_seconds <= settings.worker_readiness_ttl_seconds * 2
+    outbox_healthy = (
+        unpublished == 0 or oldest_age_seconds <= settings.worker_readiness_ttl_seconds * 2
+    )
     cards.append(
         {
             "id": "operational-outbox",
@@ -178,12 +181,15 @@ async def _cards(request: Request) -> list[dict[str, Any]]:
                 "id": f"ai-{provider.lower()}",
                 "name": f"AI Provider {provider}",
                 "category": "AI_PROVIDER",
-                "status": "HEALTHY" if configured and is_simulator else ("UNKNOWN" if configured else "UNAVAILABLE"),
+                "status": "HEALTHY"
+                if configured and is_simulator
+                else ("UNKNOWN" if configured else "UNAVAILABLE"),
                 "message": (
                     "Deterministic simulator is available in this non-production environment."
                     if configured and is_simulator
                     else (
-                        "Provider is configured; use the AI comparison/replay screen for live validation."
+                        "Provider is configured; use the AI comparison/replay screen for "
+                        "live validation."
                         if configured
                         else "Provider credentials or model are not configured."
                     )
@@ -193,7 +199,9 @@ async def _cards(request: Request) -> list[dict[str, Any]]:
                     "provider": provider,
                     "configured": configured,
                     "interceptMode": ai_settings.interceptMode,
-                    "validationLevel": "CONFIGURED_NOT_CALLED" if configured and not is_simulator else "LOCAL_POLICY_CHECK",
+                    "validationLevel": "CONFIGURED_NOT_CALLED"
+                    if configured and not is_simulator
+                    else "LOCAL_POLICY_CHECK",
                 },
             }
         )
