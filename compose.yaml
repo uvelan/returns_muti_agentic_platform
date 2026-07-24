@@ -227,7 +227,7 @@ services:
     mem_limit: 1g
 
   temporal:
-    image: temporalio/auto-setup:${TEMPORAL_VERSION:-1.30.6}
+    image: temporalio/auto-setup:${TEMPORAL_VERSION:-1.29.7}
     environment:
       DB: postgres12
       DB_PORT: 5432
