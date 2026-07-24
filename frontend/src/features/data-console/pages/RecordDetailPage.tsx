@@ -122,7 +122,7 @@ export function RecordDetailPage() {
           <h2 className="text-lg leading-6 font-medium text-gray-900">Activity Timeline (Fixture)</h2>
         </div>
         <div className="border-t border-gray-200 p-8 text-center text-gray-500">
-          Activity timeline will show deterministic fixture events here.
+          Source records are read-only. Mutations must occur in an isolated workspace.
         </div>
       </div>
     </div>

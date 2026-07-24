@@ -71,9 +71,7 @@ async def get_development_principal(request: Request) -> Principal:
     settings = cast(Settings, request.app.state.settings)
 
     if settings.environment not in _ALLOWED_DEVELOPMENT_ENVIRONMENTS:
-        raise AuthorizationError(
-            "Development principal provider is disabled in this environment."
-        )
+        raise AuthorizationError("Development principal provider is disabled in this environment.")
 
     return Principal(
         subject="dev-operator",

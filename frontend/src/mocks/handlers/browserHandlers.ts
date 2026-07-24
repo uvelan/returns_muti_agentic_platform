@@ -2,7 +2,7 @@ import { http, HttpResponse, delay } from "msw";
 import { FIXTURE_BROWSER_ASSETS, FIXTURE_BROWSER_RECORDS } from "../../fixtures/browser";
 
 export const browserHandlers = [
-  http.get("/data-console/v1/browser", async () => {
+  http.get("/data-console/v1/browser/assets", async () => {
     await delay(300);
     return new HttpResponse(JSON.stringify({
       data: FIXTURE_BROWSER_ASSETS,

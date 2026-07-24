@@ -100,24 +100,17 @@ class SamplingConfig(GovernanceModel):
         value: tuple[FieldPath, ...],
     ) -> tuple[FieldPath, ...]:
         if len(value) != len(set(value)):
-            raise ValueError(
-                "redact_fields must not contain duplicates"
-            )
+            raise ValueError("redact_fields must not contain duplicates")
 
         return value
 
     @model_validator(mode="after")
     def validate_sampling_configuration(self) -> Self:
         if self.enabled and self.max_rows == 0:
-            raise ValueError(
-                "max_rows must be between 1 and 25 "
-                "when sampling is enabled"
-            )
+            raise ValueError("max_rows must be between 1 and 25 when sampling is enabled")
 
         if not self.enabled and self.max_rows != 0:
-            raise ValueError(
-                "max_rows must be 0 when sampling is disabled"
-            )
+            raise ValueError("max_rows must be 0 when sampling is disabled")
 
         return self
 
@@ -133,12 +126,8 @@ class AssetCatalogEntry(GovernanceModel):
     object_kind: ObjectKind
     ownership: OwnershipClass
     authoritative: bool = False
-    allowed_operations: tuple[AllowedOperation, ...] = Field(
-        min_length=1
-    )
-    sampling: SamplingConfig = Field(
-        default_factory=SamplingConfig
-    )
+    allowed_operations: tuple[AllowedOperation, ...] = Field(min_length=1)
+    sampling: SamplingConfig = Field(default_factory=SamplingConfig)
 
     @field_validator(
         "database",
@@ -154,9 +143,7 @@ class AssetCatalogEntry(GovernanceModel):
             return None
 
         if any(ord(character) < 32 for character in value):
-            raise ValueError(
-                "catalog names must not contain control characters"
-            )
+            raise ValueError("catalog names must not contain control characters")
 
         return value
 
@@ -167,9 +154,7 @@ class AssetCatalogEntry(GovernanceModel):
         value: tuple[AllowedOperation, ...],
     ) -> tuple[AllowedOperation, ...]:
         if len(value) != len(set(value)):
-            raise ValueError(
-                "allowed_operations must not contain duplicates"
-            )
+            raise ValueError("allowed_operations must not contain duplicates")
 
         return value
 
@@ -213,8 +198,7 @@ class AssetCatalogEntry(GovernanceModel):
 
         if not self.asset_id.startswith(expected_prefix):
             raise ValueError(
-                f"asset_id for {self.ownership.value} must "
-                f"start with {expected_prefix!r}"
+                f"asset_id for {self.ownership.value} must start with {expected_prefix!r}"
             )
 
     def _validate_store_object_compatibility(self) -> None:
@@ -223,67 +207,38 @@ class AssetCatalogEntry(GovernanceModel):
                 ObjectKind.TABLE,
                 ObjectKind.VIEW,
             }:
-                raise ValueError(
-                    "SQLSERVER assets must be TABLE or VIEW objects"
-                )
+                raise ValueError("SQLSERVER assets must be TABLE or VIEW objects")
 
             if self.namespace is None:
-                raise ValueError(
-                    "SQLSERVER assets must declare a schema namespace"
-                )
+                raise ValueError("SQLSERVER assets must declare a schema namespace")
 
             return
 
         if self.object_kind is not ObjectKind.COLLECTION:
-            raise ValueError(
-                "MONGODB assets must use object_kind COLLECTION"
-            )
+            raise ValueError("MONGODB assets must use object_kind COLLECTION")
 
         if self.namespace is not None:
-            raise ValueError(
-                "MONGODB assets must not declare a schema namespace"
-            )
+            raise ValueError("MONGODB assets must not declare a schema namespace")
 
     def _validate_ownership_permissions(
         self,
         operations: set[AllowedOperation],
     ) -> None:
-        if (
-            self.ownership is OwnershipClass.SOURCE_SYSTEM
-            and operations != {AllowedOperation.READ}
-        ):
-            raise ValueError(
-                "SOURCE_SYSTEM assets are strictly read-only"
-            )
+        if self.ownership is OwnershipClass.SOURCE_SYSTEM and operations != {AllowedOperation.READ}:
+            raise ValueError("SOURCE_SYSTEM assets are strictly read-only")
 
-        if (
-            self.object_kind is ObjectKind.VIEW
-            and operations != {AllowedOperation.READ}
-        ):
-            raise ValueError(
-                "VIEW assets are strictly read-only"
-            )
+        if self.object_kind is ObjectKind.VIEW and operations != {AllowedOperation.READ}:
+            raise ValueError("VIEW assets are strictly read-only")
 
-        if (
-            self.ownership
-            is OwnershipClass.DERIVED_PROJECTION
-            and self.authoritative
-        ):
-            raise ValueError(
-                "DERIVED_PROJECTION assets cannot be authoritative"
-            )
+        if self.ownership is OwnershipClass.DERIVED_PROJECTION and self.authoritative:
+            raise ValueError("DERIVED_PROJECTION assets cannot be authoritative")
 
     def _validate_sampling_permissions(
         self,
         operations: set[AllowedOperation],
     ) -> None:
-        if (
-            self.sampling.enabled
-            and AllowedOperation.READ not in operations
-        ):
-            raise ValueError(
-                "sampling requires the READ operation"
-            )
+        if self.sampling.enabled and AllowedOperation.READ not in operations:
+            raise ValueError("sampling requires the READ operation")
 
 
 class AssetCatalog(GovernanceModel):
@@ -307,9 +262,7 @@ class AssetCatalog(GovernanceModel):
 
         for asset in self.assets:
             if asset.asset_id in asset_ids:
-                raise ValueError(
-                    f"duplicate asset_id: {asset.asset_id}"
-                )
+                raise ValueError(f"duplicate asset_id: {asset.asset_id}")
 
             asset_ids.add(asset.asset_id)
 

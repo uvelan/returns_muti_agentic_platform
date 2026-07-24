@@ -1,54 +1,173 @@
+name: return-multi-agent-platform
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+x-platform-environment: &platform-environment
+  PLATFORM_ENVIRONMENT: ${PLATFORM_ENVIRONMENT:-development}
+  PLATFORM_FRONTEND_CORS_ORIGIN: ${PLATFORM_FRONTEND_CORS_ORIGIN:-http://localhost:3000}
+  PLATFORM_CATALOG_PATH: /app/config/data_assets.yaml
+  PLATFORM_PROBE_TIMEOUT_SECONDS: ${PLATFORM_PROBE_TIMEOUT_SECONDS:-5}
+  PLATFORM_DEPENDENCY_CONNECT_TIMEOUT_SECONDS: ${PLATFORM_DEPENDENCY_CONNECT_TIMEOUT_SECONDS:-10}
+  PLATFORM_OPERATION_TIMEOUT_SECONDS: ${PLATFORM_OPERATION_TIMEOUT_SECONDS:-15}
+  PLATFORM_MONGO_DSN: mongodb://${MONGO_ROOT_USERNAME:-mongoadmin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/return_platform?authSource=admin&replicaSet=rs0
+  PLATFORM_MONGO_DATABASE: ${PLATFORM_MONGO_DATABASE:-return_platform}
+  PLATFORM_SOURCE_MONGO_DSN: mongodb://${MONGO_ROOT_USERNAME:-mongoadmin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/return_source?authSource=admin&replicaSet=rs0
+  PLATFORM_SOURCE_MONGO_DATABASE: ${PLATFORM_SOURCE_MONGO_DATABASE:-return_source}
+  PLATFORM_GRAPH_EVIDENCE_COLLECTION: ${PLATFORM_GRAPH_EVIDENCE_COLLECTION:-graph_evidence_runs}
+  PLATFORM_GRAPH_EVIDENCE_QUERY_TIMEOUT_SECONDS: ${PLATFORM_GRAPH_EVIDENCE_QUERY_TIMEOUT_SECONDS:-5}
+  PLATFORM_NEO4J_URI: bolt://neo4j:7687
+  PLATFORM_NEO4J_USER: neo4j
+  PLATFORM_NEO4J_PASSWORD: ${GRAPH_PASSWORD}
+  PLATFORM_NEO4J_DATABASE: ${PLATFORM_NEO4J_DATABASE:-neo4j}
+  PLATFORM_VALKEY_HOST: valkey
+  PLATFORM_VALKEY_PORT: 6379
+  PLATFORM_VALKEY_PASSWORD: ${VALKEY_PASSWORD}
+  PLATFORM_EVENT_STREAM_RETENTION: ${PLATFORM_EVENT_STREAM_RETENTION:-10000}
+  PLATFORM_SSE_HEARTBEAT_SECONDS: ${PLATFORM_SSE_HEARTBEAT_SECONDS:-15}
+  PLATFORM_SSE_REPLAY_LIMIT: ${PLATFORM_SSE_REPLAY_LIMIT:-1000}
+  PLATFORM_TEMPORAL_TARGET: temporal:7233
+  PLATFORM_RETURN_WORKFLOW_TASK_QUEUE: ${PLATFORM_RETURN_WORKFLOW_TASK_QUEUE:-return-platform-return-v1}
+  PLATFORM_ORCHESTRATION_POLL_SECONDS: ${PLATFORM_ORCHESTRATION_POLL_SECONDS:-1}
+  PLATFORM_WORKER_READINESS_TTL_SECONDS: ${PLATFORM_WORKER_READINESS_TTL_SECONDS:-30}
+  PLATFORM_SQLSERVER_HOST: sqlserver
+  PLATFORM_SQLSERVER_PORT: 1433
+  PLATFORM_SQLSERVER_USER: sa
+  PLATFORM_SQLSERVER_PASSWORD: ${MSSQL_SA_PASSWORD}
+  PLATFORM_SQLSERVER_DATABASE: ${PLATFORM_SQLSERVER_DATABASE:-return_platform}
+  PLATFORM_AI_PROVIDER_ORDER: ${PLATFORM_AI_PROVIDER_ORDER:-GOOGLE,NVIDIA,SIMULATOR}
+  PLATFORM_AI_TIMEOUT_SECONDS: ${PLATFORM_AI_TIMEOUT_SECONDS:-12}
+  PLATFORM_AI_GLOBAL_TIMEOUT_SECONDS: ${PLATFORM_AI_GLOBAL_TIMEOUT_SECONDS:-30}
+  PLATFORM_AI_MAX_ATTEMPTS_PER_PROVIDER: ${PLATFORM_AI_MAX_ATTEMPTS_PER_PROVIDER:-2}
+  PLATFORM_AI_MAX_CONCURRENCY: ${PLATFORM_AI_MAX_CONCURRENCY:-16}
+  PLATFORM_AI_REQUESTS_PER_MINUTE: ${PLATFORM_AI_REQUESTS_PER_MINUTE:-120}
+  PLATFORM_AI_MAX_PAYLOAD_BYTES: ${PLATFORM_AI_MAX_PAYLOAD_BYTES:-16384}
+  PLATFORM_AI_INTERCEPTION_DEFAULT: ${PLATFORM_AI_INTERCEPTION_DEFAULT:-false}
+  PLATFORM_AI_PROMPT_VERSION: ${PLATFORM_AI_PROMPT_VERSION:-return-eligibility-v1}
+  PLATFORM_GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+  PLATFORM_GOOGLE_BASE_URL: ${PLATFORM_GOOGLE_BASE_URL:-https://generativelanguage.googleapis.com/v1beta}
+  PLATFORM_GOOGLE_MODEL: ${PLATFORM_GOOGLE_MODEL:-gemini-3.6-flash}
+  PLATFORM_NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+  PLATFORM_NVIDIA_BASE_URL: ${PLATFORM_NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
+  PLATFORM_NVIDIA_MODEL: ${PLATFORM_NVIDIA_MODEL:-nvidia/nemotron-3.5-nano-30b-a3b}
+  PLATFORM_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  PLATFORM_OPENAI_BASE_URL: ${PLATFORM_OPENAI_BASE_URL:-https://api.openai.com/v1}
+  PLATFORM_OPENAI_MODEL: ${PLATFORM_OPENAI_MODEL:-}
+  PLATFORM_ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  PLATFORM_ANTHROPIC_BASE_URL: ${PLATFORM_ANTHROPIC_BASE_URL:-https://api.anthropic.com/v1}
+  PLATFORM_ANTHROPIC_MODEL: ${PLATFORM_ANTHROPIC_MODEL:-}
+  PLATFORM_ANTHROPIC_VERSION: ${PLATFORM_ANTHROPIC_VERSION:-2023-06-01}
+  PLATFORM_OLLAMA_BASE_URL: ${PLATFORM_OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
+  PLATFORM_OLLAMA_MODEL: ${PLATFORM_OLLAMA_MODEL:-}
+  PLATFORM_SEED_VERSION: ${PLATFORM_SEED_VERSION:-e2e-v2}
+  PLATFORM_AUDIT_RETENTION_DAYS: ${PLATFORM_AUDIT_RETENTION_DAYS:-90}
+
+x-backend-base: &backend-base
+  image: return-platform-backend:local
+  build:
+    context: ./backend
+    dockerfile: Dockerfile
+  environment: *platform-environment
+  restart: unless-stopped
+  init: true
+  networks: [platform]
+  logging: *default-logging
+
 services:
-  # 1. Authoritative Business State
   sqlserver:
-    image: mcr.microsoft.com/mssql/server:${MSSQL_VERSION}
-    env_file: .env
+    image: mcr.microsoft.com/mssql/server:${MSSQL_VERSION:-2025-CU4-ubuntu-22.04}
     environment:
-      ACCEPT_EULA: 'Y'
-      MSSQL_PID: 'Developer'
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
       MSSQL_MEMORY_LIMIT_MB: 2048
     ports:
-      - "127.0.0.1:1433:1433"
+      - "127.0.0.1:14330:1433"
     volumes:
       - sqlserver_data:/var/opt/mssql
     healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -No -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' || exit 1"]
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' >/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 30s
     restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options: { max-size: "10m", max-file: "3" }
-    deploy:
-      resources:
-        limits:
-          memory: 3G
+    networks: [platform]
+    logging: *default-logging
+    mem_limit: 3g
 
   sqlserver-init:
-    image: mcr.microsoft.com/mssql/server:${MSSQL_VERSION}
-    env_file: .env
+    image: mcr.microsoft.com/mssql/server:${MSSQL_VERSION:-2025-CU4-ubuntu-22.04}
     user: root
+    environment:
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
     depends_on:
       sqlserver:
         condition: service_healthy
-    command: >
-      bash -c '
-      /opt/mssql-tools18/bin/sqlcmd -No -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD" -Q "
-      IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = '\''return_platform'\'')
-      BEGIN
-          CREATE DATABASE return_platform;
-      END"
-      '
-    deploy:
-      resources:
-        limits:
-          memory: 256M
+    volumes:
+      - ./infra/sqlserver/init:/init:ro
+    command:
+      - /bin/bash
+      - -ec
+      - |
+        /opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -Q "IF DB_ID(N'return_platform') IS NULL CREATE DATABASE [return_platform]"
+        /opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -b -i /init/001_return_business_state.sql
+    restart: "no"
+    networks: [platform]
+    logging: *default-logging
 
-  # 2. Knowledge Graph & Primary Read Layer
+  mongodb:
+    image: mongo:${MONGO_VERSION:-8.0.26-noble}
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-mongoadmin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--wiredTigerCacheSizeGB", "1"]
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo_data:/data/db
+      - mongo_config:/data/configdb
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet -u \"$$MONGO_INITDB_ROOT_USERNAME\" -p \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval \"db.adminCommand('ping').ok\" | grep 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    networks: [platform]
+    logging: *default-logging
+    mem_limit: 2g
+
+  mongodb-rs-init:
+    image: mongo:${MONGO_VERSION:-8.0.26-noble}
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-mongoadmin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    command:
+      - /bin/bash
+      - -ec
+      - |
+        mongosh --host mongodb --quiet -u "$${MONGO_INITDB_ROOT_USERNAME}" -p "$${MONGO_INITDB_ROOT_PASSWORD}" --authenticationDatabase admin --eval '
+          try {
+            const status = rs.status();
+            if (status.ok !== 1) { quit(2); }
+          } catch (error) {
+            rs.initiate({_id: "rs0", members: [{_id: 0, host: "mongodb:27017"}]});
+          }
+        '
+        until mongosh --host mongodb --quiet -u "$${MONGO_INITDB_ROOT_USERNAME}" -p "$${MONGO_INITDB_ROOT_PASSWORD}" --authenticationDatabase admin --eval 'db.hello().isWritablePrimary' | grep true; do sleep 2; done
+    restart: "no"
+    networks: [platform]
+    logging: *default-logging
+
   neo4j:
-    image: neo4j:${NEO4J_VERSION}
-    env_file: .env
+    image: neo4j:${NEO4J_VERSION:-5.26.28-community}
     environment:
       NEO4J_AUTH: neo4j/${GRAPH_PASSWORD}
       NEO4J_server_memory_heap_initial__size: 512M
@@ -62,184 +181,184 @@ services:
       - neo4j_data:/data
       - neo4j_logs:/logs
     healthcheck:
-      test: ["CMD-SHELL", "cypher-shell -u neo4j -p \"$$GRAPH_PASSWORD\" 'RETURN 1' || exit 1"]
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p \"$$NEO4J_AUTH\" 'RETURN 1' >/dev/null 2>&1 || cypher-shell -u neo4j -p '${GRAPH_PASSWORD}' 'RETURN 1' >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 20s
     restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options: { max-size: "10m", max-file: "3" }
-    deploy:
-      resources:
-        limits:
-          memory: 2.5G
+    networks: [platform]
+    logging: *default-logging
+    mem_limit: 2500m
 
-  # 3. Durable Audit & Event History (Self-Initializing Replica Set)
-  mongodb:
-    image: mongo:${MONGO_VERSION}
-    env_file: .env
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: mongoadmin
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
-    entrypoint:
-      - bash
-      - -c
-      - |
-        if [ ! -f /data/configdb/keyfile ]; then
-          echo "R2VuZXJhdGVkUmVwbGljYVNldEtleUZvck1vbmdvREIyMDI2" > /data/configdb/keyfile
-          chmod 400 /data/configdb/keyfile
-        fi
-        
-        mongod --replSet rs0 --bind_ip_all --wiredTigerCacheSizeGB 1 --keyFile /data/configdb/keyfile &
-        PID=$$!
-        
-        until mongosh --quiet --eval "db.adminCommand('ping').ok" > /dev/null 2>&1; do sleep 1; done
-        
-        if [ "$$(mongosh --quiet --eval 'rs.status().ok || 0')" != "1" ]; then
-          mongosh --quiet --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: '127.0.0.1:27017'}]})"
-          sleep 2
-          mongosh admin --quiet --eval "db.createUser({user: 'mongoadmin', pwd: '${MONGO_ROOT_PASSWORD}', roles: [{role: 'root', db: 'admin'}]})"
-        fi
-        
-        wait $$PID
-    ports:
-      - "127.0.0.1:27017:27017"
-    volumes:
-      - mongo_data:/data/db
-    healthcheck:
-      test: ["CMD-SHELL", "mongosh -u mongoadmin -p \"$$MONGO_INITDB_ROOT_PASSWORD\" --eval \"db.adminCommand('ping')\" || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options: { max-size: "10m", max-file: "3" }
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-
-  # 4. Live Event Transport (SSE) & Rate Limiting
   valkey:
-    image: valkey/valkey:${VALKEY_VERSION}
-    env_file: .env
-    command: valkey-server --requirepass ${VALKEY_PASSWORD} --maxmemory 256mb --maxmemory-policy noeviction --appendonly yes
+    image: valkey/valkey:${VALKEY_VERSION:-8.0.2-alpine}
+    command: ["valkey-server", "--requirepass", "${VALKEY_PASSWORD}", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction", "--appendonly", "yes"]
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
       - valkey_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "valkey-cli -a \"$$VALKEY_PASSWORD\" ping | grep PONG"]
+      test: ["CMD-SHELL", "valkey-cli -a \"${VALKEY_PASSWORD}\" ping 2>/dev/null | grep PONG"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
     restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options: { max-size: "10m", max-file: "3" }
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    networks: [platform]
+    logging: *default-logging
+    mem_limit: 512m
 
-  # 5. Temporal Internal Persistence (Isolated)
   temporal-postgresql:
-    image: postgres:${POSTGRES_VERSION}
-    env_file: .env
+    image: postgres:${POSTGRES_VERSION:-17.10-alpine}
     environment:
       POSTGRES_USER: temporal
       POSTGRES_PASSWORD: ${TEMPORAL_DB_PASSWORD}
       POSTGRES_DB: temporal
-    ports:
-      - "127.0.0.1:5432:5432"
     volumes:
       - temporal_pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
     restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options: { max-size: "10m", max-file: "3" }
-    deploy:
-      resources:
-        limits:
-          memory: 1G
+    networks: [platform]
+    logging: *default-logging
+    mem_limit: 1g
 
-  temporal-schema-setup:
-    image: temporalio/admin-tools:${TEMPORAL_ADMIN_TOOLS_VERSION}
-    env_file: .env
-    depends_on:
-      temporal-postgresql:
-        condition: service_healthy
-    environment:
-      SECURE_PWD: ${TEMPORAL_DB_PASSWORD}
-    entrypoint: ["bash", "-c"]
-    command:
-      - |
-        # Temporal 1.25 names its PostgreSQL 12+ plugin postgres12.
-        temporal-sql-tool --plugin postgres12 --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal create &&
-        temporal-sql-tool --plugin postgres12 --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal setup-schema -v 0.0 &&
-        temporal-sql-tool --plugin postgres12 --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal update-schema -d /etc/temporal/schema/postgresql/v12/temporal/versioned &&
-        temporal-sql-tool --plugin postgres12 --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal_visibility create &&
-        temporal-sql-tool --plugin postgres12 --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal_visibility setup-schema -v 0.0 &&
-        temporal-sql-tool --plugin postgres12 --endpoint temporal-postgresql --port 5432 -u temporal --pw "$$SECURE_PWD" --db temporal_visibility update-schema -d /etc/temporal/schema/postgresql/v12/visibility/versioned
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-
-  # 6. Workflow Orchestration Engine (Locked to Admin Tools version for schema parity)
   temporal:
-    image: temporalio/auto-setup:${TEMPORAL_ADMIN_TOOLS_VERSION}
-    env_file: .env
-    depends_on:
-      temporal-schema-setup:
-        condition: service_completed_successfully
+    image: temporalio/auto-setup:${TEMPORAL_VERSION:-1.30.6}
     environment:
       DB: postgres12
       DB_PORT: 5432
       POSTGRES_USER: temporal
       POSTGRES_PWD: ${TEMPORAL_DB_PASSWORD}
       POSTGRES_SEEDS: temporal-postgresql
-      SKIP_SCHEMA_SETUP: "true"
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+    depends_on:
+      temporal-postgresql:
+        condition: service_healthy
     ports:
       - "127.0.0.1:7233:7233"
+    healthcheck:
+      test: ["CMD-SHELL", "temporal operator cluster health --address 127.0.0.1:7233 >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
     restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options: { max-size: "10m", max-file: "3" }
-    deploy:
-      resources:
-        limits:
-          memory: 1.5G
+    networks: [platform]
+    logging: *default-logging
+    mem_limit: 1500m
 
   temporal-ui:
-    image: temporalio/ui:${TEMPORAL_UI_VERSION}
-    depends_on:
-      - temporal
+    image: temporalio/ui:${TEMPORAL_UI_VERSION:-2.51.1}
     environment:
       TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+      TEMPORAL_CORS_ORIGINS: ${PLATFORM_FRONTEND_CORS_ORIGIN:-http://localhost:3000}
+    depends_on:
+      temporal:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8080:8080"
     restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options: { max-size: "10m", max-file: "3" }
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    networks: [platform]
+    logging: *default-logging
+    mem_limit: 512m
+
+  seed-runner:
+    <<: *backend-base
+    command: ["python", "/app/scripts/seed_e2e_data.py"]
+    depends_on:
+      mongodb-rs-init:
+        condition: service_completed_successfully
+      sqlserver-init:
+        condition: service_completed_successfully
+      neo4j:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    <<: *backend-base
+    command: ["uvicorn", "return_platform.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      seed-runner:
+        condition: service_completed_successfully
+      temporal:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3).read()"]
+      interval: 10s
+      timeout: 8s
+      retries: 12
+      start_period: 20s
+
+  return-workflow-worker:
+    <<: *backend-base
+    command: ["python", "/app/scripts/run_return_workflow_worker.py"]
+    depends_on:
+      seed-runner:
+        condition: service_completed_successfully
+      temporal:
+        condition: service_healthy
+
+  return-orchestrator:
+    <<: *backend-base
+    command: ["python", "/app/scripts/run_return_orchestrator.py"]
+    depends_on:
+      seed-runner:
+        condition: service_completed_successfully
+      temporal:
+        condition: service_healthy
+      return-workflow-worker:
+        condition: service_started
+
+  outbox-publisher:
+    <<: *backend-base
+    command: ["python", "/app/scripts/run_outbox_publisher.py"]
+    depends_on:
+      mongodb-rs-init:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+
+  data-job-worker:
+    <<: *backend-base
+    command: ["python", "/app/scripts/run_data_job_worker.py"]
+    depends_on:
+      mongodb-rs-init:
+        condition: service_completed_successfully
+
+  frontend:
+    image: return-platform-frontend:local
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        FRONTEND_BACKEND_TARGET: http://backend:8000
+    ports:
+      - "127.0.0.1:3000:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [platform]
+    logging: *default-logging
+    mem_limit: 512m
+
+networks:
+  platform:
+    driver: bridge
 
 volumes:
   sqlserver_data:
   neo4j_data:
   neo4j_logs:
   mongo_data:
+  mongo_config:
   valkey_data:
   temporal_pg_data:

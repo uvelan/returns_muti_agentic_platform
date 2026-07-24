@@ -70,14 +70,9 @@ def _warning_for_result(
     return WarningMeta(
         source=dependency_name.upper(),
         code=(
-            error_code.value
-            if error_code is not None
-            else DependencyErrorCode.UNKNOWN_ERROR.value
+            error_code.value if error_code is not None else DependencyErrorCode.UNKNOWN_ERROR.value
         ),
-        message=(
-            result.safe_message
-            or "Dependency is degraded or unavailable."
-        ),
+        message=(result.safe_message or "Dependency is degraded or unavailable."),
     )
 
 

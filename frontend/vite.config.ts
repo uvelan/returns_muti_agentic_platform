@@ -58,6 +58,10 @@ export default defineConfig(({ mode, command }) => {
       port: 5173,
       strictPort: true,
       proxy: {
+        "/api/v1": {
+          target: backendTarget,
+          changeOrigin: true,
+        },
         "/data-console/v1": {
           target: backendTarget,
           changeOrigin: true,

@@ -38,3 +38,16 @@ export function useUnifiedInventory() {
     staleTime: 30_000,
   });
 }
+
+export function useInventoryAsset(engine: string, assetId: string) {
+  return useQuery({
+    queryKey: [...inventoryKeys.all, "asset", engine, assetId] as const,
+    queryFn: ({ signal }) => apiClient<import("../contracts/inventory").InventoryDetail>(
+      `/data-console/v1/inventory/${encodeURIComponent(engine)}/${encodeURIComponent(assetId)}`,
+      { signal },
+    ),
+    select: (response) => response.data,
+    enabled: engine.length > 0 && assetId.length > 0,
+    staleTime: 30_000,
+  });
+}

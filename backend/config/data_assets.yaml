@@ -1,10 +1,15 @@
 version: "1.0"
-
-# The catalog is intentionally empty.
-#
-# Add an asset only after:
-# 1. The physical table, view, or collection exists.
-# 2. Ownership has been approved.
-# 3. Permitted operations have been defined.
-# 4. The identity has been verified against the live database.
-assets: []
+assets:
+  - asset_id: "source.sales-orders"
+    store: "SQLSERVER"
+    database: "return_platform"
+    namespace: "dbo"
+    object_name: "SalesOrders"
+    object_kind: "TABLE"
+    ownership: "SOURCE_SYSTEM"
+    authoritative: false
+    allowed_operations:
+      - "READ"
+    sampling:
+      enabled: false
+      max_rows: 0

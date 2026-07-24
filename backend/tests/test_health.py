@@ -2,6 +2,7 @@
 
 import os
 import uuid
+from datetime import UTC, datetime
 from collections.abc import Iterator
 from pathlib import Path
 from urllib.parse import quote
@@ -15,6 +16,7 @@ from return_platform.configuration.settings import Settings
 from return_platform.data_governance import LoadedAssetCatalog
 from return_platform.main import create_app
 from return_platform.resources import RuntimeResources
+from return_platform.shared.contracts import DependencyProbeResult, DependencyStatus
 
 
 def _required_environment_variable(
@@ -30,10 +32,7 @@ def _required_environment_variable(
     value = os.getenv(name)
 
     if value is None or not value.strip():
-        raise RuntimeError(
-            "Required test environment variable is not set: "
-            f"{name}"
-        )
+        raise RuntimeError(f"Required test environment variable is not set: {name}")
 
     return value
 
@@ -45,25 +44,19 @@ def test_settings(
     """Provide valid test settings using environment-backed secrets."""
 
     mongo_username = quote(
-        _required_environment_variable(
-            "MONGO_ROOT_USERNAME"
-        ),
+        _required_environment_variable("MONGO_ROOT_USERNAME"),
         safe="",
     )
 
     mongo_password = quote(
-        _required_environment_variable(
-            "MONGO_ROOT_PASSWORD"
-        ),
+        _required_environment_variable("MONGO_ROOT_PASSWORD"),
         safe="",
     )
 
     return Settings(
         catalog_path=empty_catalog_path,
         environment="test",
-        frontend_cors_origin=AnyHttpUrl(
-            "http://localhost:5173"
-        ),
+        frontend_cors_origin=AnyHttpUrl("http://localhost:5173"),
         mongo_dsn=SecretStr(
             f"mongodb://{mongo_username}:{mongo_password}"
             "@localhost:27017/return_platform"
@@ -71,25 +64,13 @@ def test_settings(
         ),
         neo4j_uri="bolt://localhost:7687",
         neo4j_user="neo4j",
-        neo4j_password=SecretStr(
-            _required_environment_variable(
-                "GRAPH_PASSWORD"
-            )
-        ),
+        neo4j_password=SecretStr(_required_environment_variable("GRAPH_PASSWORD")),
         valkey_host="localhost",
-        valkey_password=SecretStr(
-            _required_environment_variable(
-                "VALKEY_PASSWORD"
-            )
-        ),
+        valkey_password=SecretStr(_required_environment_variable("VALKEY_PASSWORD")),
         temporal_target="localhost:7233",
         sqlserver_host="localhost",
         sqlserver_user="sa",
-        sqlserver_password=SecretStr(
-            _required_environment_variable(
-                "MSSQL_SA_PASSWORD"
-            )
-        ),
+        sqlserver_password=SecretStr(_required_environment_variable("MSSQL_SA_PASSWORD")),
         sqlserver_database="test_db",
     )
 
@@ -100,9 +81,7 @@ def test_app(
 ) -> FastAPI:
     """Create an application using isolated test settings."""
 
-    return create_app(
-        custom_settings=test_settings
-    )
+    return create_app(custom_settings=test_settings)
 
 
 @pytest.fixture
@@ -126,9 +105,7 @@ def client(
 def test_liveness_endpoint_returns_200(
     client: TestClient,
 ) -> None:
-    response = client.get(
-        "/health/live"
-    )
+    response = client.get("/health/live")
 
     assert response.status_code == 200
     assert response.json() == {
@@ -139,9 +116,7 @@ def test_liveness_endpoint_returns_200(
 def test_readiness_endpoint_fails_without_lifespan(
     client: TestClient,
 ) -> None:
-    response = client.get(
-        "/health/ready"
-    )
+    response = client.get("/health/ready")
 
     assert response.status_code == 503
     assert response.json() == {
@@ -154,6 +129,7 @@ def test_readiness_endpoint_succeeds_with_resources(
     test_app: FastAPI,
     client: TestClient,
     loaded_empty_catalog: LoadedAssetCatalog,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     resources = RuntimeResources(
         settings=test_settings,
@@ -162,19 +138,42 @@ def test_readiness_endpoint_succeeds_with_resources(
 
     test_app.state.resources = resources
 
-    try:
-        response = client.get(
-            "/health/ready"
+    async def healthy_probe(*_args: object, **_kwargs: object) -> DependencyProbeResult:
+        return DependencyProbeResult(
+            status=DependencyStatus.HEALTHY,
+            latency_ms=1,
+            checked_at=datetime.now(UTC),
         )
 
+    for name in (
+        "probe_mongodb",
+        "probe_source_mongodb",
+        "probe_sqlserver",
+        "probe_neo4j",
+        "probe_valkey",
+        "probe_temporal",
+    ):
+        monkeypatch.setattr(f"return_platform.main.{name}", healthy_probe)
+
+    try:
+        response = client.get("/health/ready")
+
         assert response.status_code == 200
-        assert response.json() == {
-            "status": "ready",
-            "catalog": {
-                "version": "1.0",
-                "asset_count": 0,
-            },
+        body = response.json()
+        assert body["status"] == "ready"
+        assert body["catalog"] == {"version": "1.0", "asset_count": 0}
+        assert set(body["dependencies"]) == {
+            "mongodb",
+            "source_mongodb",
+            "sqlserver",
+            "neo4j",
+            "valkey",
+            "temporal",
         }
+        assert all(
+            item["status"] == "HEALTHY"
+            for item in body["dependencies"].values()
+        )
     finally:
         resources.sql_manager.executor.shutdown(
             wait=False,
@@ -191,9 +190,7 @@ def test_readiness_endpoint_succeeds_with_resources(
 def test_correlation_id_is_preserved(
     client: TestClient,
 ) -> None:
-    correlation_id = (
-        "12345678-1234-5678-1234-567812345678"
-    )
+    correlation_id = "12345678-1234-5678-1234-567812345678"
 
     response = client.get(
         "/health/live",
@@ -203,10 +200,7 @@ def test_correlation_id_is_preserved(
     )
 
     assert response.status_code == 200
-    assert (
-        response.headers["X-Correlation-ID"]
-        == correlation_id
-    )
+    assert response.headers["X-Correlation-ID"] == correlation_id
 
 
 def test_invalid_correlation_id_is_replaced(
@@ -221,42 +215,19 @@ def test_invalid_correlation_id_is_replaced(
         },
     )
 
-    generated_correlation_id = response.headers[
-        "X-Correlation-ID"
-    ]
+    generated_correlation_id = response.headers["X-Correlation-ID"]
 
     assert response.status_code == 200
-    assert (
-        generated_correlation_id
-        != invalid_correlation_id
-    )
-    assert (
-        str(
-            uuid.UUID(
-                generated_correlation_id
-            )
-        )
-        == generated_correlation_id
-    )
+    assert generated_correlation_id != invalid_correlation_id
+    assert str(uuid.UUID(generated_correlation_id)) == generated_correlation_id
 
 
 def test_missing_correlation_id_is_generated(
     client: TestClient,
 ) -> None:
-    response = client.get(
-        "/health/live"
-    )
+    response = client.get("/health/live")
 
-    generated_correlation_id = response.headers[
-        "X-Correlation-ID"
-    ]
+    generated_correlation_id = response.headers["X-Correlation-ID"]
 
     assert response.status_code == 200
-    assert (
-        str(
-            uuid.UUID(
-                generated_correlation_id
-            )
-        )
-        == generated_correlation_id
-    )
+    assert str(uuid.UUID(generated_correlation_id)) == generated_correlation_id

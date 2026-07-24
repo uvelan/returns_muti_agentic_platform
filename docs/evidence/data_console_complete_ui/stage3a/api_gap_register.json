@@ -88,6 +88,17 @@
     "closure_condition": "Backend implements /data-console/v1/graph/relationships/{relationshipId}"
   },
   {
+    "id": "DC-API-GRAPH-EXPAND",
+    "method": "GET",
+    "exact_path": "/data-console/v1/graph/nodes/{nodeId}/neighborhood",
+    "owning_module": "data_console",
+    "required_stage": "3D",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_expandNeighborhood",
+    "closure_condition": "Backend implements /data-console/v1/graph/nodes/{nodeId}/neighborhood"
+  },
+  {
     "id": "DC-API-WORKSPACES-LIST",
     "method": "GET",
     "exact_path": "/data-console/v1/workspaces",
@@ -110,6 +121,83 @@
     "closure_condition": "Backend implements POST /data-console/v1/workspaces"
   },
   {
+    "id": "DC-API-WORKSPACES-DETAIL",
+    "method": "GET",
+    "exact_path": "/data-console/v1/workspaces/{workspaceId}",
+    "owning_module": "data_console",
+    "required_stage": "3F",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_getWorkspace",
+    "closure_condition": "Backend implements /data-console/v1/workspaces/{workspaceId}"
+  },
+  {
+    "id": "DC-API-WORKSPACES-UPDATE",
+    "method": "PATCH",
+    "exact_path": "/data-console/v1/workspaces/{workspaceId}",
+    "owning_module": "data_console",
+    "required_stage": "3F",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_updateWorkspace",
+    "closure_condition": "Backend implements PATCH /data-console/v1/workspaces/{workspaceId}"
+  },
+  {
+    "id": "DC-API-WORKSPACES-DELETE",
+    "method": "DELETE",
+    "exact_path": "/data-console/v1/workspaces/{workspaceId}",
+    "owning_module": "data_console",
+    "required_stage": "3F",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_deleteWorkspace",
+    "closure_condition": "Backend implements DELETE /data-console/v1/workspaces/{workspaceId}"
+  },
+  {
+    "id": "DC-API-WORKSPACE-RECORDS-CREATE",
+    "method": "POST",
+    "exact_path": "/data-console/v1/workspaces/{workspaceId}/records",
+    "owning_module": "data_console",
+    "required_stage": "3F",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_createWorkspaceRecord",
+    "closure_condition": "Backend implements POST /data-console/v1/workspaces/{workspaceId}/records"
+  },
+  {
+    "id": "DC-API-WORKSPACE-RECORDS-DETAIL",
+    "method": "GET",
+    "exact_path": "/data-console/v1/workspaces/{workspaceId}/records/{recordId}",
+    "owning_module": "data_console",
+    "required_stage": "3F",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_getWorkspaceRecord",
+    "closure_condition": "Backend implements GET /data-console/v1/workspaces/{workspaceId}/records/{recordId}"
+  },
+  {
+    "id": "DC-API-WORKSPACE-RECORDS-UPDATE",
+    "method": "PATCH",
+    "exact_path": "/data-console/v1/workspaces/{workspaceId}/records/{recordId}",
+    "owning_module": "data_console",
+    "required_stage": "3F",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_updateWorkspaceRecord",
+    "closure_condition": "Backend implements PATCH /data-console/v1/workspaces/{workspaceId}/records/{recordId}"
+  },
+  {
+    "id": "DC-API-WORKSPACE-RECORDS-DELETE",
+    "method": "DELETE",
+    "exact_path": "/data-console/v1/workspaces/{workspaceId}/records/{recordId}",
+    "owning_module": "data_console",
+    "required_stage": "3F",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_deleteWorkspaceRecord",
+    "closure_condition": "Backend implements DELETE /data-console/v1/workspaces/{workspaceId}/records/{recordId}"
+  },
+  {
     "id": "DC-API-IMPORTS-LIST",
     "method": "GET",
     "exact_path": "/data-console/v1/imports",
@@ -119,6 +207,28 @@
     "ui_behavior": "FIXTURE_MODE",
     "mock_handler_id": "mock_getImports",
     "closure_condition": "Backend implements /data-console/v1/imports"
+  },
+  {
+    "id": "DC-API-IMPORTS-CREATE",
+    "method": "POST",
+    "exact_path": "/data-console/v1/imports",
+    "owning_module": "data_console",
+    "required_stage": "3E",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_createImport",
+    "closure_condition": "Backend implements POST /data-console/v1/imports"
+  },
+  {
+    "id": "DC-API-IMPORTS-DETAIL",
+    "method": "GET",
+    "exact_path": "/data-console/v1/imports/{jobId}",
+    "owning_module": "data_console",
+    "required_stage": "3E",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_getImport",
+    "closure_condition": "Backend implements GET /data-console/v1/imports/{jobId}"
   },
   {
     "id": "DC-API-EXPORTS-LIST",
@@ -132,6 +242,39 @@
     "closure_condition": "Backend implements /data-console/v1/exports"
   },
   {
+    "id": "DC-API-EXPORTS-CREATE",
+    "method": "POST",
+    "exact_path": "/data-console/v1/exports",
+    "owning_module": "data_console",
+    "required_stage": "3E",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_createExport",
+    "closure_condition": "Backend implements POST /data-console/v1/exports"
+  },
+  {
+    "id": "DC-API-EXPORTS-DETAIL",
+    "method": "GET",
+    "exact_path": "/data-console/v1/exports/{jobId}",
+    "owning_module": "data_console",
+    "required_stage": "3E",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_getExport",
+    "closure_condition": "Backend implements GET /data-console/v1/exports/{jobId}"
+  },
+  {
+    "id": "DC-API-EXPORTS-DOWNLOAD",
+    "method": "GET",
+    "exact_path": "/data-console/v1/exports/{jobId}/download",
+    "owning_module": "data_console",
+    "required_stage": "3E",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_downloadExport",
+    "closure_condition": "Backend implements GET /data-console/v1/exports/{jobId}/download"
+  },
+  {
     "id": "DC-API-JOBS-LIST",
     "method": "GET",
     "exact_path": "/data-console/v1/jobs",
@@ -143,6 +286,17 @@
     "closure_condition": "Backend implements /data-console/v1/jobs"
   },
   {
+    "id": "DC-API-JOBS-DETAIL",
+    "method": "GET",
+    "exact_path": "/data-console/v1/jobs/{jobId}",
+    "owning_module": "data_console",
+    "required_stage": "3E",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_getJob",
+    "closure_condition": "Backend implements GET /data-console/v1/jobs/{jobId}"
+  },
+  {
     "id": "DC-API-SCENARIOS-LIST",
     "method": "GET",
     "exact_path": "/data-console/v1/scenarios",
@@ -152,5 +306,126 @@
     "ui_behavior": "FIXTURE_MODE",
     "mock_handler_id": "mock_getScenarios",
     "closure_condition": "Backend implements /data-console/v1/scenarios"
+  },
+  {
+    "id": "DC-API-SCENARIOS-CREATE",
+    "method": "POST",
+    "exact_path": "/data-console/v1/scenarios",
+    "owning_module": "data_console",
+    "required_stage": "3G",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_createScenario",
+    "closure_condition": "Backend implements POST /data-console/v1/scenarios"
+  },
+  {
+    "id": "DC-API-SCENARIOS-DETAIL",
+    "method": "GET",
+    "exact_path": "/data-console/v1/scenarios/{scenarioId}",
+    "owning_module": "data_console",
+    "required_stage": "3G",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_getScenario",
+    "closure_condition": "Backend implements GET /data-console/v1/scenarios/{scenarioId}"
+  },
+  {
+    "id": "DC-API-SCENARIOS-GENERATE",
+    "method": "POST",
+    "exact_path": "/data-console/v1/scenarios/{scenarioId}/generate",
+    "owning_module": "data_console",
+    "required_stage": "3G",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_generateScenario",
+    "closure_condition": "Backend implements POST /data-console/v1/scenarios/{scenarioId}/generate"
+  },
+  {
+    "id": "DC-API-SCENARIOS-VALIDATE",
+    "method": "POST",
+    "exact_path": "/data-console/v1/scenarios/{scenarioId}/validate",
+    "owning_module": "data_console",
+    "required_stage": "3G",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_validateScenario",
+    "closure_condition": "Backend implements POST /data-console/v1/scenarios/{scenarioId}/validate"
+  },
+  {
+    "id": "DC-API-SCENARIOS-APPROVE",
+    "method": "POST",
+    "exact_path": "/data-console/v1/scenarios/{scenarioId}/approve",
+    "owning_module": "data_console",
+    "required_stage": "3G",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_approveScenario",
+    "closure_condition": "Backend implements POST /data-console/v1/scenarios/{scenarioId}/approve"
+  },
+  {
+    "id": "DC-API-SCENARIOS-PREVIEW",
+    "method": "GET",
+    "exact_path": "/data-console/v1/scenarios/{scenarioId}/preview",
+    "owning_module": "data_console",
+    "required_stage": "3G",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_previewScenario",
+    "closure_condition": "Backend implements GET /data-console/v1/scenarios/{scenarioId}/preview"
+  },
+  {
+    "id": "DC-API-AUDIT-LIST",
+    "method": "GET",
+    "exact_path": "/data-console/v1/audit",
+    "owning_module": "data_console",
+    "required_stage": "3H",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_getAuditList",
+    "closure_condition": "Backend implements GET /data-console/v1/audit"
+  },
+  {
+    "id": "DC-API-AUDIT-DETAIL",
+    "method": "GET",
+    "exact_path": "/data-console/v1/audit/{auditId}",
+    "owning_module": "data_console",
+    "required_stage": "3H",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_getAuditDetail",
+    "closure_condition": "Backend implements GET /data-console/v1/audit/{auditId}"
+  },
+  {
+    "id": "DC-API-GOVERNANCE",
+    "method": "GET",
+    "exact_path": "/data-console/v1/governance",
+    "owning_module": "data_console",
+    "required_stage": "3H",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_getGovernance",
+    "closure_condition": "Backend implements GET /data-console/v1/governance"
+  },
+  {
+    "id": "DC-API-SETTINGS",
+    "method": "GET",
+    "exact_path": "/data-console/v1/settings",
+    "owning_module": "data_console",
+    "required_stage": "3H",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_getSettings",
+    "closure_condition": "Backend implements GET /data-console/v1/settings"
+  },
+  {
+    "id": "DC-API-HARDENING",
+    "method": "GET",
+    "exact_path": "/data-console/v1/hardening",
+    "owning_module": "data_console",
+    "required_stage": "3H",
+    "current_validation": "UNAVAILABLE",
+    "ui_behavior": "FIXTURE_MODE",
+    "mock_handler_id": "mock_getHardening",
+    "closure_condition": "Backend implements GET /data-console/v1/hardening"
   }
 ]

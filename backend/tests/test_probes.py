@@ -83,18 +83,12 @@ async def test_single_flight_probe_executes_only_once(
     assert len(results) == 10
 
     for result in results:
-        assert (
-            result.status
-            is DependencyStatus.HEALTHY
-        )
+        assert result.status is DependencyStatus.HEALTHY
         assert result.latency_ms == 15
 
     first_result = results[0]
 
-    assert all(
-        result is first_result
-        for result in results
-    )
+    assert all(result is first_result for result in results)
 
 
 @pytest.mark.asyncio
@@ -109,24 +103,20 @@ async def test_probe_cache_expires_after_ttl(
 
         return _healthy_probe_result()
 
-    first_result = (
-        await resources.execute_single_flight_probe(
-            key="mock_database",
-            probe_coro=mock_probe,
-            ttl_seconds=0.01,
-        )
+    first_result = await resources.execute_single_flight_probe(
+        key="mock_database",
+        probe_coro=mock_probe,
+        ttl_seconds=0.01,
     )
 
     assert call_count == 1
 
     await asyncio.sleep(0.02)
 
-    second_result = (
-        await resources.execute_single_flight_probe(
-            key="mock_database",
-            probe_coro=mock_probe,
-            ttl_seconds=0.01,
-        )
+    second_result = await resources.execute_single_flight_probe(
+        key="mock_database",
+        probe_coro=mock_probe,
+        ttl_seconds=0.01,
     )
 
     assert call_count == 2
@@ -145,12 +135,10 @@ async def test_explicit_cache_clearing(
 
         return _healthy_probe_result()
 
-    first_result = (
-        await resources.execute_single_flight_probe(
-            key="mock_database",
-            probe_coro=mock_probe,
-            ttl_seconds=5.0,
-        )
+    first_result = await resources.execute_single_flight_probe(
+        key="mock_database",
+        probe_coro=mock_probe,
+        ttl_seconds=5.0,
     )
 
     assert call_count == 1
@@ -159,12 +147,10 @@ async def test_explicit_cache_clearing(
         key="mock_database",
     )
 
-    second_result = (
-        await resources.execute_single_flight_probe(
-            key="mock_database",
-            probe_coro=mock_probe,
-            ttl_seconds=5.0,
-        )
+    second_result = await resources.execute_single_flight_probe(
+        key="mock_database",
+        probe_coro=mock_probe,
+        ttl_seconds=5.0,
     )
 
     assert call_count == 2
@@ -183,20 +169,16 @@ async def test_probe_result_is_reused_before_ttl_expires(
 
         return _healthy_probe_result()
 
-    first_result = (
-        await resources.execute_single_flight_probe(
-            key="mock_database",
-            probe_coro=mock_probe,
-            ttl_seconds=5.0,
-        )
+    first_result = await resources.execute_single_flight_probe(
+        key="mock_database",
+        probe_coro=mock_probe,
+        ttl_seconds=5.0,
     )
 
-    second_result = (
-        await resources.execute_single_flight_probe(
-            key="mock_database",
-            probe_coro=mock_probe,
-            ttl_seconds=5.0,
-        )
+    second_result = await resources.execute_single_flight_probe(
+        key="mock_database",
+        probe_coro=mock_probe,
+        ttl_seconds=5.0,
     )
 
     assert call_count == 1
@@ -215,20 +197,16 @@ async def test_probe_keys_are_normalized(
 
         return _healthy_probe_result()
 
-    first_result = (
-        await resources.execute_single_flight_probe(
-            key="  MOCK_DATABASE  ",
-            probe_coro=mock_probe,
-            ttl_seconds=5.0,
-        )
+    first_result = await resources.execute_single_flight_probe(
+        key="  MOCK_DATABASE  ",
+        probe_coro=mock_probe,
+        ttl_seconds=5.0,
     )
 
-    second_result = (
-        await resources.execute_single_flight_probe(
-            key="mock_database",
-            probe_coro=mock_probe,
-            ttl_seconds=5.0,
-        )
+    second_result = await resources.execute_single_flight_probe(
+        key="mock_database",
+        probe_coro=mock_probe,
+        ttl_seconds=5.0,
     )
 
     assert call_count == 1
@@ -270,9 +248,7 @@ async def test_non_positive_ttl_is_rejected(
 
     with pytest.raises(
         ValueError,
-        match=(
-            "Probe cache TTL must be greater than zero"
-        ),
+        match=("Probe cache TTL must be greater than zero"),
     ):
         await resources.execute_single_flight_probe(
             key="mock_database",
@@ -291,9 +267,7 @@ async def test_failed_probe_is_not_cached(
         nonlocal call_count
         call_count += 1
 
-        raise RuntimeError(
-            "simulated probe failure"
-        )
+        raise RuntimeError("simulated probe failure")
 
     for _ in range(2):
         with pytest.raises(
@@ -307,7 +281,4 @@ async def test_failed_probe_is_not_cached(
             )
 
     assert call_count == 2
-    assert (
-        "mock_database"
-        not in resources.probe_cache
-    )
+    assert "mock_database" not in resources.probe_cache

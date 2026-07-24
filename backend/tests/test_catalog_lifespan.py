@@ -38,10 +38,7 @@ def test_valid_catalog_is_registered_in_runtime_resources(
         assert resources.settings is settings
         assert resources.catalog.asset_count == 0
         assert resources.catalog.catalog.version == "1.0"
-        assert (
-            resources.catalog.source_path
-            == empty_catalog_path
-        )
+        assert resources.catalog.source_path == empty_catalog_path
 
 
 def test_missing_catalog_prevents_startup(
@@ -50,9 +47,7 @@ def test_missing_catalog_prevents_startup(
 ) -> None:
     settings = test_settings.model_copy(
         update={
-            "catalog_path": (
-                tmp_path / "missing.yaml"
-            ).resolve(),
+            "catalog_path": (tmp_path / "missing.yaml").resolve(),
         }
     )
 
@@ -65,9 +60,8 @@ def test_missing_catalog_prevents_startup(
         match="catalog file does not exist",
     ):
         with TestClient(app):
-            pytest.fail(
-                "Application startup unexpectedly succeeded."
-            )
+            pytest.fail("Application startup unexpectedly succeeded.")
+
 
 def test_invalid_catalog_prevents_startup(
     test_settings: Settings,
@@ -99,7 +93,4 @@ assets:
         match="failed governance validation",
     ):
         with TestClient(app):
-            pytest.fail(
-                "Application startup unexpectedly succeeded."
-            )
-
+            pytest.fail("Application startup unexpectedly succeeded.")

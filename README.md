@@ -4,6 +4,20 @@ The Return Platform is a backend-first Sales Order Return platform with a separa
 
 The **customer return process** is the primary end-to-end product experience. The **Data Console** is a developer and operator control plane used to inspect supporting data, validate infrastructure, observe graph synchronization, review immutable evidence, and diagnose failures. It is not the primary customer demo.
 
+
+> [!IMPORTANT]
+> **Authoritative Stage 4 status — July 24, 2026**
+>
+> The audit remediation is **source implemented and source validated**, not production validated.
+> The repository now contains customer return screens and APIs, support operations, AI Gateway
+> inspection/simulation/interception, resumable SSE, seed data, dependency visibility, Data Console
+> operations, workers, and the complete Compose topology. The remaining release gates are documented
+> in `STAGE_4_E2E_IMPLEMENTATION_HANDOFF_AND_REMAINING_WORK.md`.
+>
+> Historical stage sections below remain as evidence of the implementation sequence. Where they state
+> that the customer UI, scenario runner, support operations, or AI Gateway console are not implemented,
+> this Stage 4 status supersedes them.
+
 The repository currently includes:
 
 - FastAPI and React/Vite application foundations.
@@ -76,8 +90,8 @@ No production source asset, production Customer lookup, production graph write, 
 | Deterministic FULFILLMENT_TRACKING context | **LIVE SANDBOX VALIDATED** | Return-request-bound tracking states and reference consistency passed Temporal conversion and atomic MongoDB persistence; production providers remain disabled |
 | Deterministic BAY_ASSIGNMENT context | **LIVE SANDBOX VALIDATED** | Fulfillment-bound assignment states and warehouse/bay reference consistency passed Temporal conversion and atomic MongoDB persistence; warehouse mutation remains disabled |
 | Deterministic FEEDBACK_LEARNING context | **LIVE SANDBOX VALIDATED** | Bay-bound feedback dispositions and complete learning-reference rules passed Temporal conversion and atomic MongoDB persistence; training and external sinks remain disabled |
-| Scenario runner | **NOT IMPLEMENTED** | At least five positive and five negative end-to-end return scenarios remain pending |
-| Customer-facing return UI | **NOT IMPLEMENTED** | Remains the primary eventual demo experience |
+| Scenario runner | **SOURCE_IMPLEMENTED; RUNTIME VALIDATION PENDING** | Deterministic seed matrix includes five approval and five reject/review scenarios; live Compose execution evidence remains pending |
+| Customer-facing return UI | **SOURCE_IMPLEMENTED; RUNTIME VALIDATION PENDING** | Create, list, detail, timeline, cancellation, and resumable SSE screens are routed as live capabilities |
 
 ### Immediate truth boundary
 
@@ -1905,8 +1919,8 @@ http://localhost:5173/data-console/graph-evidence
 - Actual carrier tracking remains optional legacy evidence.
 - `Package` and `PPLTracking` remain excluded from graph v1.
 - Inventory API and Data Ownership frontend pages remain unimplemented.
-- The complete customer return workflow and customer-facing return UI remain unimplemented.
-- The scenario runner remains unimplemented.
+- Customer workflow APIs and UI are source implemented; full dependency-backed Compose execution remains unvalidated.
+- The deterministic scenario seed matrix is source implemented; live execution receipts remain pending.
 - Restart durability, failover, multi-region, load, security, and broader hardening evidence remain deferred.
 
 ---
@@ -1916,85 +1930,38 @@ http://localhost:5173/data-console/graph-evidence
 ### Current phase
 
 ```text
-Stage 1 — Frontend/API foundation:             COMPLETE
-Stage 2 — Infrastructure visibility:           BASIC ACCEPTANCE PASSED
-Stage 3 — Governance/catalog:                  COMPLETE
-Stage 3 — SQL inventory:                       SANDBOX_VALIDATED
-Stage 3 — Mongo inventory:                     SANDBOX_VALIDATED
-Stage 3 — Drift:                               IMPLEMENTED; LIVE OUTPUT OBSERVED
-Stage 3 — Bounded sampling:                    CONTRACT_TESTED
-Stage 3 — Inventory API/UI:                    NOT IMPLEMENTED
-
-Canonical data-model implementation:           COMPLETE
-Versioned mapping contracts:                   COMPLETE
-Customer mapping configuration:               COMPLETE
-Handler registry:                             COMPLETE
-Multi-file mapping loader:                    COMPLETE
-Customer mapping compiler:                    COMPLETE
-Customer in-memory normalization:              COMPLETE
-Customer MongoDB source adapter:               COMPLETE
-Customer graph materialization:                COMPLETE
-Customer Neo4j command builder:                COMPLETE
-Customer Neo4j writer:                         CONTRACT_TESTED
-Customer graph sandbox:                        SANDBOX_VALIDATED
-Live sandbox Neo4j write:                      SANDBOX_VALIDATED
-Graph read-back validation:                    SANDBOX_VALIDATED
-Second-run idempotency:                        SANDBOX_VALIDATED
-Platform graph-evidence persistence:           SANDBOX_VALIDATED
-Graph Validation API:                          SANDBOX_VALIDATED
-Graph Inspection APIs:                         SANDBOX_VALIDATED
-Data Console Customer Graph Evidence screens: CONTRACT_TESTED; LIVE API PROXY VERIFIED; SCREENSHOTS DEFERRED TO HARDENING
-
-Live production Customer source lookup:        BLOCKED_EXTERNAL_DEPENDENCY
-Temporal return workflow deterministic core:   CONTRACT_TESTED
-ReturnSession persistence activities:          LIVE SANDBOX VALIDATED
-Temporal worker and live workflow execution:   LIVE SANDBOX VALIDATED
-Intake and discovery context persistence:      LIVE SANDBOX VALIDATED
-Eligibility and AI Gateway boundary:           CONTRACT_TESTED; LIVE PERSISTENCE VALIDATED
-Deterministic RETURN_REQUEST context:          LIVE SANDBOX VALIDATED
-Deterministic FULFILLMENT_TRACKING context:    LIVE SANDBOX VALIDATED
-Deterministic BAY_ASSIGNMENT context:          LIVE SANDBOX VALIDATED
-Deterministic FEEDBACK_LEARNING context:       LIVE SANDBOX VALIDATED
-Customer return frontend:                      NOT IMPLEMENTED
-Scenario runner:                               NOT IMPLEMENTED
+Stage 4 audit remediation:                    SOURCE_IMPLEMENTED
+Python source compilation:                   PASSED
+Frontend TypeScript syntax parsing:          PASSED (142 files)
+Dependency-free Stage 4 completion gate:     PASSED
+Frontend live route inventory:               48 LIVE routes
+Compose runtime topology:                    16 services declared
+Seed scenario matrix:                        5 APPROVE + 5 REJECT/REVIEW
+Backend Ruff/mypy/pytest:                     NOT EXECUTED — dependency installation blocked
+Frontend lint/typecheck/test/build/E2E/a11y:  NOT EXECUTED — Node 24 dependencies unavailable
+Docker Compose live E2E:                     NOT EXECUTED — Docker unavailable in audit host
+Live Google/NVIDIA provider validation:       NOT EXECUTED
+Release classification:                      SOURCE_VALIDATED, NOT PRODUCTION_VALIDATED
 ```
 
 ### Immediate execution target
 
-Continue in Codex from:
+Execute the release gates in:
 
 ```text
-Temporal Return workflow — end-to-end scenario matrix
+STAGE_4_E2E_IMPLEMENTATION_HANDOFF_AND_REMAINING_WORK.md
 ```
 
-All seven deterministic stage contexts and their atomic persistence boundaries are
-validated. The next bounded slice is:
+The next bounded step is not additional page creation. It is dependency-backed validation:
 
-1. Define at least five positive and five negative end-to-end scenarios.
-2. Exercise approval, rejection, review, replay, and tamper/conflict paths.
-3. Verify final session contexts, decision evidence, audit, and outbox counts.
-4. Produce a deterministic scenario report suitable for hardening evidence.
-5. Keep screenshot capture deferred until the hardening page.
+1. Restore the backend lock file and install the pinned backend dependency graph.
+2. Run Ruff, strict mypy, pytest, and coverage gates.
+3. Use Node 24/npm 11 to run frontend lint, typecheck, unit, build, E2E, and accessibility gates.
+4. Build and start the 16-service Compose topology.
+5. Execute and record all ten seeded approval/rejection/review scenarios.
+6. Validate Google and NVIDIA adapters with currently available approved model IDs.
+7. Capture restart durability, SSE replay, support interception, audit, outbox, and cross-store evidence.
+8. Regenerate OpenAPI contracts and fail the build on drift.
+9. Commit from a clean working tree only after every required gate passes.
 
-### The current step must not
-
-```text
-add graph mutation APIs
-add a synchronization run button
-mutate the production asset catalog
-add automatic retries
-add arbitrary MongoDB filters
-add arbitrary Cypher
-add SalesOrder graph execution
-enable production business-source workflow activities
-enable unvalidated workflow decisions or eligibility policy
-add customer-facing workflow APIs
-add Package
-add PPLTracking
-start the customer-facing return UI
-begin the hardening phase
-```
-
-Do not enable a live model provider or customer-facing return UI. The gateway
-boundary is validated, but an approved provider adapter and production eligibility
-policy/configuration have not been selected.
+Do not label the repository production complete until the live receipts above exist.

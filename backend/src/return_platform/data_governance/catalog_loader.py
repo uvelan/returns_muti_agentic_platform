@@ -80,11 +80,13 @@ class LoadedAssetCatalog:
 class _UniqueKeySafeLoader(yaml.SafeLoader):
     """Safe YAML loader that rejects duplicate mapping keys."""
 
+
 class _DisposableYamlLoader(Protocol):
     """Typed boundary for PyYAML's untyped dispose method."""
 
     def dispose(self) -> None:
         """Release parser and composer state."""
+
 
 def _construct_unique_mapping(
     loader: yaml.SafeLoader,
@@ -150,10 +152,7 @@ def _resolve_catalog_path(
         raise CatalogLoadError(
             code=CatalogLoadErrorCode.UNSUPPORTED_EXTENSION,
             path=requested_path,
-            message=(
-                "The data asset catalog must use a "
-                ".yaml or .yml extension."
-            ),
+            message=("The data asset catalog must use a .yaml or .yml extension."),
         )
 
     try:
@@ -168,18 +167,14 @@ def _resolve_catalog_path(
         raise CatalogLoadError(
             code=CatalogLoadErrorCode.READ_FAILED,
             path=requested_path,
-            message=(
-                "The data asset catalog path could not be resolved."
-            ),
+            message=("The data asset catalog path could not be resolved."),
         ) from error
 
     if not resolved_path.is_file():
         raise CatalogLoadError(
             code=CatalogLoadErrorCode.PATH_NOT_FILE,
             path=resolved_path,
-            message=(
-                "The data asset catalog path is not a regular file."
-            ),
+            message=("The data asset catalog path is not a regular file."),
         )
 
     return resolved_path
@@ -196,19 +191,14 @@ def _read_catalog_bytes(
         raise CatalogLoadError(
             code=CatalogLoadErrorCode.READ_FAILED,
             path=path,
-            message=(
-                "The data asset catalog metadata could not be read."
-            ),
+            message=("The data asset catalog metadata could not be read."),
         ) from error
 
     if declared_size > max_bytes:
         raise CatalogLoadError(
             code=CatalogLoadErrorCode.FILE_TOO_LARGE,
             path=path,
-            message=(
-                "The data asset catalog exceeds the configured "
-                "maximum size."
-            ),
+            message=("The data asset catalog exceeds the configured maximum size."),
         )
 
     try:
@@ -224,10 +214,7 @@ def _read_catalog_bytes(
         raise CatalogLoadError(
             code=CatalogLoadErrorCode.FILE_TOO_LARGE,
             path=path,
-            message=(
-                "The data asset catalog exceeds the configured "
-                "maximum size."
-            ),
+            message=("The data asset catalog exceeds the configured maximum size."),
         )
 
     return content
@@ -244,9 +231,7 @@ def _decode_catalog(
         raise CatalogLoadError(
             code=CatalogLoadErrorCode.INVALID_ENCODING,
             path=path,
-            message=(
-                "The data asset catalog must be valid UTF-8."
-            ),
+            message=("The data asset catalog must be valid UTF-8."),
         ) from error
 
 
@@ -263,9 +248,7 @@ def _parse_yaml_document(
         raise CatalogLoadError(
             code=CatalogLoadErrorCode.INVALID_YAML,
             path=path,
-            message=(
-                "The data asset catalog contains invalid YAML."
-            ),
+            message=("The data asset catalog contains invalid YAML."),
         ) from error
     finally:
         cast(_DisposableYamlLoader, loader).dispose()
@@ -274,18 +257,14 @@ def _parse_yaml_document(
         raise CatalogLoadError(
             code=CatalogLoadErrorCode.EMPTY_DOCUMENT,
             path=path,
-            message=(
-                "The data asset catalog document must not be empty."
-            ),
+            message=("The data asset catalog document must not be empty."),
         )
 
     if not isinstance(document, Mapping):
         raise CatalogLoadError(
             code=CatalogLoadErrorCode.INVALID_ROOT,
             path=path,
-            message=(
-                "The data asset catalog root must be a mapping."
-            ),
+            message=("The data asset catalog root must be a mapping."),
         )
 
     return document
@@ -302,9 +281,7 @@ def _validate_catalog_document(
         raise CatalogLoadError(
             code=CatalogLoadErrorCode.VALIDATION_FAILED,
             path=path,
-            message=(
-                "The data asset catalog failed governance validation."
-            ),
+            message=("The data asset catalog failed governance validation."),
         ) from error
 
 

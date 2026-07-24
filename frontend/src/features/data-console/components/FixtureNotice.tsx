@@ -1,12 +1,9 @@
-import { AlertTriangle } from "lucide-react";
-
 export function FixtureNotice() {
+  const fixtureMode = import.meta.env.MODE === "mock" || import.meta.env.VITE_MOCK_MODE === "true";
+  if (!fixtureMode) return null;
   return (
-    <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 p-4 mb-4 flex items-center" role="alert" aria-live="polite">
-      <AlertTriangle className="h-5 w-5 mr-2" />
-      <div>
-        <span className="font-bold">FIXTURE — NON-DURABLE:</span> This data is powered by development fixtures. Changes are simulated and will not be persisted to the backend.
-      </div>
+    <div className="mb-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="status">
+      <span className="font-bold">FIXTURE — NON-DURABLE:</span> This development-only mode uses deterministic network fixtures.
     </div>
   );
 }

@@ -106,7 +106,7 @@ export function AssetBrowserPage() {
 
       <div className="bg-white shadow sm:rounded-lg">
         <div className="px-4 py-5 flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0 sm:space-x-4 border-b border-gray-200">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search records (simulated)..." className="w-full max-w-md" />
+          <SearchInput value={search} onChange={setSearch} placeholder="Search loaded records..." className="w-full max-w-md" />
           <div className="flex space-x-2">
             {asset?.capability === "WRITABLE" ? (
               <button className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none">

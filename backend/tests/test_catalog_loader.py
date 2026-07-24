@@ -46,9 +46,7 @@ assets: []
     assert loaded_catalog.asset_count == 0
     assert loaded_catalog.source_path == catalog_path.resolve()
     assert loaded_catalog.byte_size == len(expected_bytes)
-    assert loaded_catalog.sha256_hex == sha256(
-        expected_bytes
-    ).hexdigest()
+    assert loaded_catalog.sha256_hex == sha256(expected_bytes).hexdigest()
 
 
 def test_loads_valid_catalog_entry(
@@ -82,9 +80,7 @@ assets:
 
     asset = loaded_catalog.catalog.assets[0]
 
-    assert asset.asset_id == (
-        "platform.mongodb.return_sessions"
-    )
+    assert asset.asset_id == ("platform.mongodb.return_sessions")
     assert asset.database == "return_platform"
     assert asset.object_name == "return_sessions"
 
@@ -97,9 +93,7 @@ def test_missing_catalog_is_rejected(
     with pytest.raises(CatalogLoadError) as error_info:
         load_asset_catalog(catalog_path)
 
-    assert error_info.value.code is (
-        CatalogLoadErrorCode.PATH_NOT_FOUND
-    )
+    assert error_info.value.code is (CatalogLoadErrorCode.PATH_NOT_FOUND)
 
 
 def test_directory_is_rejected(
@@ -111,9 +105,7 @@ def test_directory_is_rejected(
     with pytest.raises(CatalogLoadError) as error_info:
         load_asset_catalog(catalog_path)
 
-    assert error_info.value.code is (
-        CatalogLoadErrorCode.PATH_NOT_FILE
-    )
+    assert error_info.value.code is (CatalogLoadErrorCode.PATH_NOT_FILE)
 
 
 def test_non_yaml_extension_is_rejected(
@@ -127,9 +119,7 @@ def test_non_yaml_extension_is_rejected(
     with pytest.raises(CatalogLoadError) as error_info:
         load_asset_catalog(catalog_path)
 
-    assert error_info.value.code is (
-        CatalogLoadErrorCode.UNSUPPORTED_EXTENSION
-    )
+    assert error_info.value.code is (CatalogLoadErrorCode.UNSUPPORTED_EXTENSION)
 
 
 def test_empty_document_is_rejected(
@@ -143,9 +133,7 @@ def test_empty_document_is_rejected(
     with pytest.raises(CatalogLoadError) as error_info:
         load_asset_catalog(catalog_path)
 
-    assert error_info.value.code is (
-        CatalogLoadErrorCode.EMPTY_DOCUMENT
-    )
+    assert error_info.value.code is (CatalogLoadErrorCode.EMPTY_DOCUMENT)
 
 
 def test_invalid_utf8_is_rejected(
@@ -160,9 +148,7 @@ def test_invalid_utf8_is_rejected(
     with pytest.raises(CatalogLoadError) as error_info:
         load_asset_catalog(catalog_path)
 
-    assert error_info.value.code is (
-        CatalogLoadErrorCode.INVALID_ENCODING
-    )
+    assert error_info.value.code is (CatalogLoadErrorCode.INVALID_ENCODING)
 
 
 def test_malformed_yaml_is_rejected(
@@ -180,9 +166,7 @@ assets:
     with pytest.raises(CatalogLoadError) as error_info:
         load_asset_catalog(catalog_path)
 
-    assert error_info.value.code is (
-        CatalogLoadErrorCode.INVALID_YAML
-    )
+    assert error_info.value.code is (CatalogLoadErrorCode.INVALID_YAML)
 
 
 def test_duplicate_yaml_keys_are_rejected(
@@ -200,9 +184,7 @@ assets: []
     with pytest.raises(CatalogLoadError) as error_info:
         load_asset_catalog(catalog_path)
 
-    assert error_info.value.code is (
-        CatalogLoadErrorCode.INVALID_YAML
-    )
+    assert error_info.value.code is (CatalogLoadErrorCode.INVALID_YAML)
 
     assert isinstance(
         error_info.value.__cause__,
@@ -224,9 +206,7 @@ def test_non_mapping_root_is_rejected(
     with pytest.raises(CatalogLoadError) as error_info:
         load_asset_catalog(catalog_path)
 
-    assert error_info.value.code is (
-        CatalogLoadErrorCode.INVALID_ROOT
-    )
+    assert error_info.value.code is (CatalogLoadErrorCode.INVALID_ROOT)
 
 
 def test_unknown_catalog_field_is_rejected(
@@ -244,9 +224,7 @@ unexpected: true
     with pytest.raises(CatalogLoadError) as error_info:
         load_asset_catalog(catalog_path)
 
-    assert error_info.value.code is (
-        CatalogLoadErrorCode.VALIDATION_FAILED
-    )
+    assert error_info.value.code is (CatalogLoadErrorCode.VALIDATION_FAILED)
 
 
 def test_invalid_governance_entry_is_rejected(
@@ -274,9 +252,7 @@ assets:
     with pytest.raises(CatalogLoadError) as error_info:
         load_asset_catalog(catalog_path)
 
-    assert error_info.value.code is (
-        CatalogLoadErrorCode.VALIDATION_FAILED
-    )
+    assert error_info.value.code is (CatalogLoadErrorCode.VALIDATION_FAILED)
 
 
 def test_file_size_limit_is_enforced(
@@ -296,9 +272,7 @@ assets: []
             max_bytes=4,
         )
 
-    assert error_info.value.code is (
-        CatalogLoadErrorCode.FILE_TOO_LARGE
-    )
+    assert error_info.value.code is (CatalogLoadErrorCode.FILE_TOO_LARGE)
 
 
 def test_non_positive_size_limit_is_rejected(

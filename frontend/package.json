@@ -22,19 +22,20 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test tests/e2e.spec.ts",
     "test:a11y": "playwright test tests/a11y.spec.ts",
-    "contracts:export": "cd ../backend && poetry run python -c \"import json; from return_platform.main import create_app; print(json.dumps(create_app().openapi(), indent=2))\" > ../frontend/openapi/return-platform.openapi.json",
+    "contracts:export": "cd .. && docker compose run --rm -e PYTHONPATH=src backend poetry run python -c \"import json; from return_platform.main import create_app; print(json.dumps(create_app().openapi(), indent=2))\" > frontend/openapi/return-platform.openapi.json",
     "contracts:generate": "npm run contracts:export && openapi-typescript openapi/return-platform.openapi.json -o src/api/generated/return-platform.d.ts",
     "contracts:check": "npm run contracts:generate && git diff --exit-code openapi/return-platform.openapi.json src/api/generated/return-platform.d.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.50.0",
     "@tanstack/react-table": "^8.19.0",
+    "@xyflow/react": "^12.11.2",
     "lucide-react": "^0.400.0",
     "openapi-fetch": "^0.17.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "wouter": "^3.3.0",
-    "zod": "^3.23.0"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

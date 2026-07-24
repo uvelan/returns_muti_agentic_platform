@@ -27,10 +27,7 @@ def pytest_configure(
     del config
 
     if not ROOT_ENV_FILE.is_file():
-        raise RuntimeError(
-            "Required repository environment file was not found: "
-            f"{ROOT_ENV_FILE}"
-        )
+        raise RuntimeError(f"Required repository environment file was not found: {ROOT_ENV_FILE}")
 
     loaded = load_dotenv(
         dotenv_path=ROOT_ENV_FILE,
@@ -38,9 +35,8 @@ def pytest_configure(
     )
 
     if not loaded:
-        raise RuntimeError(
-            "The repository environment file could not be loaded."
-        )
+        raise RuntimeError("The repository environment file could not be loaded.")
+
 
 def _required_environment_variable(
     name: str,
@@ -50,10 +46,7 @@ def _required_environment_variable(
     value = os.getenv(name)
 
     if value is None or not value.strip():
-        raise RuntimeError(
-            "Required test environment variable is not set: "
-            f"{name}"
-        )
+        raise RuntimeError(f"Required test environment variable is not set: {name}")
 
     return value
 
@@ -80,9 +73,7 @@ def loaded_empty_catalog(
 ) -> LoadedAssetCatalog:
     """Load an isolated empty governance catalog."""
 
-    return load_asset_catalog(
-        empty_catalog_path
-    )
+    return load_asset_catalog(empty_catalog_path)
 
 
 @pytest.fixture
@@ -92,25 +83,19 @@ def test_settings(
     """Provide valid test settings using root environment secrets."""
 
     mongo_username = quote(
-        _required_environment_variable(
-            "MONGO_ROOT_USERNAME"
-        ),
+        _required_environment_variable("MONGO_ROOT_USERNAME"),
         safe="",
     )
 
     mongo_password = quote(
-        _required_environment_variable(
-            "MONGO_ROOT_PASSWORD"
-        ),
+        _required_environment_variable("MONGO_ROOT_PASSWORD"),
         safe="",
     )
 
     return Settings(
         catalog_path=empty_catalog_path,
         environment="test",
-        frontend_cors_origin=AnyHttpUrl(
-            "http://localhost:5173"
-        ),
+        frontend_cors_origin=AnyHttpUrl("http://localhost:5173"),
         mongo_dsn=SecretStr(
             f"mongodb://{mongo_username}:{mongo_password}"
             "@localhost:27017/return_platform"
@@ -118,25 +103,13 @@ def test_settings(
         ),
         neo4j_uri="bolt://localhost:7687",
         neo4j_user="neo4j",
-        neo4j_password=SecretStr(
-            _required_environment_variable(
-                "GRAPH_PASSWORD"
-            )
-        ),
+        neo4j_password=SecretStr(_required_environment_variable("GRAPH_PASSWORD")),
         valkey_host="localhost",
-        valkey_password=SecretStr(
-            _required_environment_variable(
-                "VALKEY_PASSWORD"
-            )
-        ),
+        valkey_password=SecretStr(_required_environment_variable("VALKEY_PASSWORD")),
         temporal_target="localhost:7233",
         sqlserver_host="localhost",
         sqlserver_user="sa",
-        sqlserver_password=SecretStr(
-            _required_environment_variable(
-                "MSSQL_SA_PASSWORD"
-            )
-        ),
+        sqlserver_password=SecretStr(_required_environment_variable("MSSQL_SA_PASSWORD")),
         sqlserver_database="test_db",
     )
 

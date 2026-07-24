@@ -4,14 +4,18 @@
  */
 
 export interface paths {
-    "/data-console/v1/overview": {
+    "/health/live": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["getOverview"];
+        /**
+         * Liveness
+         * @description Confirm that the API process is running.
+         */
+        get: operations["liveness_health_live_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -20,14 +24,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/data-console/v1/inventory": {
+    "/health/ready": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["getInventory"];
+        /**
+         * Readiness
+         * @description Confirm that application resources were initialized.
+         */
+        get: operations["readiness_health_ready_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Infrastructure Overview
+         * @description Return health and latency details for core infrastructure.
+         */
+        get: operations["get_infrastructure_overview_data_console_v1_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/graph/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search Graph */
+        get: operations["search_graph_data_console_v1_graph_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/graph/nodes/{node_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Graph Node */
+        get: operations["get_graph_node_data_console_v1_graph_nodes__node_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/graph/relationships/{relationship_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Graph Relationship */
+        get: operations["get_graph_relationship_data_console_v1_graph_relationships__relationship_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/graph/nodes/{node_id}/neighborhood": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Expand Graph Neighborhood */
+        get: operations["expand_graph_neighborhood_data_console_v1_graph_nodes__node_id__neighborhood_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -43,7 +139,599 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getGraphEvidence"];
+        /**
+         * List Customer Graph Evidence
+         * @description List newest Customer graph evidence through bounded seek pagination.
+         */
+        get: operations["list_customer_graph_evidence_data_console_v1_graph_evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/graph-evidence/validation/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Latest Customer Graph Validation
+         * @description Return the latest successful Customer graph validation evidence.
+         */
+        get: operations["get_latest_customer_graph_validation_data_console_v1_graph_evidence_validation_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/graph-evidence/documents/{document_id}/full": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Full Customer Graph Evidence
+         * @description Return complete evidence for an authorized developer inspection.
+         */
+        get: operations["get_full_customer_graph_evidence_data_console_v1_graph_evidence_documents__document_id__full_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/graph-evidence/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Customer Graph Evidence By Document Id
+         * @description Return one graph-evidence summary by canonical document ID.
+         */
+        get: operations["get_customer_graph_evidence_by_document_id_data_console_v1_graph_evidence_documents__document_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/graph-evidence/sync-runs/{sync_run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Customer Graph Evidence By Sync Run Id
+         * @description Return one graph-evidence summary by sync-run identity.
+         */
+        get: operations["get_customer_graph_evidence_by_sync_run_id_data_console_v1_graph_evidence_sync_runs__sync_run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/graph-evidence/reports/{report_digest}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Customer Graph Evidence By Report Digest
+         * @description Return one graph-evidence summary by immutable report digest.
+         */
+        get: operations["get_customer_graph_evidence_by_report_digest_data_console_v1_graph_evidence_reports__report_digest__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Unified Inventory
+         * @description Return metadata only, preserving healthy engines when another fails.
+         */
+        get: operations["get_unified_inventory_data_console_v1_inventory_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Sources */
+        get: operations["get_sources_data_console_v1_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Source */
+        get: operations["get_source_data_console_v1_sources__source_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/browser/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Browser Assets */
+        get: operations["get_browser_assets_data_console_v1_browser_assets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/browser/{engine}/{asset_id}/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Records */
+        get: operations["get_records_data_console_v1_browser__engine___asset_id__records_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/browser/{engine}/{asset_id}/records/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Record */
+        get: operations["get_record_data_console_v1_browser__engine___asset_id__records__record_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Workspaces */
+        get: operations["list_workspaces_data_console_v1_workspaces_get"];
+        put?: never;
+        /** Create Workspace */
+        post: operations["create_workspace_data_console_v1_workspaces_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/workspaces/{workspace_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workspace */
+        get: operations["get_workspace_data_console_v1_workspaces__workspace_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Workspace */
+        delete: operations["delete_workspace_data_console_v1_workspaces__workspace_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Workspace */
+        patch: operations["update_workspace_data_console_v1_workspaces__workspace_id__patch"];
+        trace?: never;
+    };
+    "/data-console/v1/workspaces/{workspace_id}/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Workspace Records */
+        get: operations["list_workspace_records_data_console_v1_workspaces__workspace_id__records_get"];
+        put?: never;
+        /** Create Workspace Record */
+        post: operations["create_workspace_record_data_console_v1_workspaces__workspace_id__records_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/workspaces/{workspace_id}/records/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workspace Record */
+        get: operations["get_workspace_record_data_console_v1_workspaces__workspace_id__records__record_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Workspace Record */
+        delete: operations["delete_workspace_record_data_console_v1_workspaces__workspace_id__records__record_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Workspace Record */
+        patch: operations["update_workspace_record_data_console_v1_workspaces__workspace_id__records__record_id__patch"];
+        trace?: never;
+    };
+    "/data-console/v1/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Jobs */
+        get: operations["list_jobs_data_console_v1_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Job */
+        get: operations["get_job_data_console_v1_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Imports */
+        get: operations["list_imports_data_console_v1_imports_get"];
+        put?: never;
+        /** Create Import */
+        post: operations["create_import_data_console_v1_imports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/imports/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Import */
+        get: operations["get_import_data_console_v1_imports__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Exports */
+        get: operations["list_exports_data_console_v1_exports_get"];
+        put?: never;
+        /** Create Export */
+        post: operations["create_export_data_console_v1_exports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/exports/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Export */
+        get: operations["get_export_data_console_v1_exports__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/exports/{job_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Export */
+        get: operations["download_export_data_console_v1_exports__job_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/scenarios": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Scenarios */
+        get: operations["list_scenarios_data_console_v1_scenarios_get"];
+        put?: never;
+        /** Create Scenario */
+        post: operations["create_scenario_data_console_v1_scenarios_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/scenarios/{scenario_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Scenario */
+        get: operations["get_scenario_data_console_v1_scenarios__scenario_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/scenarios/{scenario_id}/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Scenario */
+        post: operations["generate_scenario_data_console_v1_scenarios__scenario_id__generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/scenarios/{scenario_id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate Scenario */
+        post: operations["validate_scenario_data_console_v1_scenarios__scenario_id__validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/scenarios/{scenario_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Scenario */
+        post: operations["approve_scenario_data_console_v1_scenarios__scenario_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/scenarios/{scenario_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Scenario */
+        get: operations["preview_scenario_data_console_v1_scenarios__scenario_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Audit Logs */
+        get: operations["list_audit_logs_data_console_v1_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/audit/{audit_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Audit Log */
+        get: operations["get_audit_log_data_console_v1_audit__audit_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/governance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Governance */
+        get: operations["get_governance_data_console_v1_governance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_data_console_v1_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/hardening": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Hardening */
+        get: operations["get_hardening_data_console_v1_hardening_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -56,25 +744,872 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        OverviewResponse: {
-            data: Record<string, never>;
+        /** APIResponse[AuditLog] */
+        APIResponse_AuditLog_: {
+            data?: components["schemas"]["AuditLog"] | null;
+            page?: components["schemas"]["PageMeta"] | null;
             meta: components["schemas"]["ResponseMeta"];
         };
-        InventoryResponse: {
-            data: Record<string, never>;
+        /** APIResponse[CustomerGraphEvidenceFullView] */
+        APIResponse_CustomerGraphEvidenceFullView_: {
+            data?: components["schemas"]["CustomerGraphEvidenceFullView"] | null;
+            page?: components["schemas"]["PageMeta"] | null;
             meta: components["schemas"]["ResponseMeta"];
         };
-        GraphEvidenceResponse: {
-            data: Record<string, never>;
+        /** APIResponse[CustomerGraphEvidenceSummary] */
+        APIResponse_CustomerGraphEvidenceSummary_: {
+            data?: components["schemas"]["CustomerGraphEvidenceSummary"] | null;
+            page?: components["schemas"]["PageMeta"] | null;
             meta: components["schemas"]["ResponseMeta"];
         };
-        ResponseMeta: {
+        /** APIResponse[GraphNode] */
+        APIResponse_GraphNode_: {
+            data?: components["schemas"]["GraphNode"] | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** APIResponse[GraphRelationship] */
+        APIResponse_GraphRelationship_: {
+            data?: components["schemas"]["GraphRelationship"] | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** APIResponse[Job] */
+        APIResponse_Job_: {
+            data?: components["schemas"]["Job"] | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** APIResponse[SandboxRecord] */
+        APIResponse_SandboxRecord_: {
+            data?: components["schemas"]["SandboxRecord"] | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** APIResponse[Scenario] */
+        APIResponse_Scenario_: {
+            data?: components["schemas"]["Scenario"] | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** APIResponse[SourceDetail] */
+        APIResponse_SourceDetail_: {
+            data?: components["schemas"]["SourceDetail"] | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** APIResponse[UnifiedInventory] */
+        APIResponse_UnifiedInventory_: {
+            data?: components["schemas"]["UnifiedInventory"] | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** APIResponse[Workspace] */
+        APIResponse_Workspace_: {
+            data?: components["schemas"]["Workspace"] | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** APIResponse[dict] */
+        APIResponse_dict_: {
+            /** Data */
+            data?: {
+                [key: string]: unknown;
+            } | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** APIResponse[dict[str, DependencyProbeResult]] */
+        APIResponse_dict_str__DependencyProbeResult__: {
+            /** Data */
+            data?: {
+                [key: string]: components["schemas"]["DependencyProbeResult"];
+            } | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** APIResponse[list[AuditLog]] */
+        APIResponse_list_AuditLog__: {
+            /** Data */
+            data?: components["schemas"]["AuditLog"][] | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** APIResponse[list[BrowserAsset]] */
+        APIResponse_list_BrowserAsset__: {
+            /** Data */
+            data?: components["schemas"]["BrowserAsset"][] | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** APIResponse[list[Job]] */
+        APIResponse_list_Job__: {
+            /** Data */
+            data?: components["schemas"]["Job"][] | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** APIResponse[list[SandboxRecord]] */
+        APIResponse_list_SandboxRecord__: {
+            /** Data */
+            data?: components["schemas"]["SandboxRecord"][] | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** APIResponse[list[Scenario]] */
+        APIResponse_list_Scenario__: {
+            /** Data */
+            data?: components["schemas"]["Scenario"][] | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** APIResponse[list[SourceItem]] */
+        APIResponse_list_SourceItem__: {
+            /** Data */
+            data?: components["schemas"]["SourceItem"][] | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** APIResponse[list[Workspace]] */
+        APIResponse_list_Workspace__: {
+            /** Data */
+            data?: components["schemas"]["Workspace"][] | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** APIResponse[list[dict]] */
+        APIResponse_list_dict__: {
+            /** Data */
+            data?: {
+                [key: string]: unknown;
+            }[] | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** APIResponse[tuple[CustomerGraphEvidenceSummary, ...]] */
+        APIResponse_tuple_CustomerGraphEvidenceSummary__________: {
+            /** Data */
+            data?: components["schemas"]["CustomerGraphEvidenceSummary"][] | null;
+            page?: components["schemas"]["PageMeta"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+        };
+        /** AuditLog */
+        AuditLog: {
+            /** Id */
+            id: string;
+            /** Action */
+            action: string;
+            /** Actor */
+            actor: string;
+            /** Target */
+            target: string;
+            /** Timestamp */
+            timestamp: string;
+            /** Details */
+            details: {
+                [key: string]: unknown;
+            };
+        };
+        /** BrowserAsset */
+        BrowserAsset: {
+            /** Assetid */
+            assetId: string;
+            /** Sourceid */
+            sourceId: string;
+            /** Engine */
+            engine: string;
+            /** Name */
+            name: string;
+            /** Ownership */
+            ownership: string;
+            /** Capability */
+            capability: string;
+            /** Recordcount */
+            recordCount: number | null;
+            /** Schemaversion */
+            schemaVersion: string;
+        };
+        /** CreateExportPayload */
+        CreateExportPayload: {
+            /** Workspaceid */
+            workspaceId: string;
+            /** Targetsystem */
+            targetSystem: string;
+            /** Exportformat */
+            exportFormat: string;
+        };
+        /** CreateImportPayload */
+        CreateImportPayload: {
+            /** Sourceid */
+            sourceId: string;
+            /** Assetids */
+            assetIds: string[];
+        };
+        /** CreateScenarioPayload */
+        CreateScenarioPayload: {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Baseworkspaceid */
+            baseWorkspaceId: string;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+        };
+        /** CreateWorkspacePayload */
+        CreateWorkspacePayload: {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+        };
+        /**
+         * CustomerGraphEvidenceFullView
+         * @description Complete validated evidence view for developer inspection.
+         */
+        CustomerGraphEvidenceFullView: {
+            summary: components["schemas"]["CustomerGraphEvidenceSummary"];
+            /** Schema Evidence Digest */
+            schema_evidence_digest: string;
+            /** First Write Evidence Digest */
+            first_write_evidence_digest: string;
+            /** Second Write Evidence Digest */
+            second_write_evidence_digest: string;
+            /** First Readback Evidence Digest */
+            first_readback_evidence_digest: string;
+            /** Second Readback Evidence Digest */
+            second_readback_evidence_digest: string;
+            /** Idempotency Evidence Digest */
+            idempotency_evidence_digest: string;
+            /** Report Payload */
+            report_payload: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+        };
+        /**
+         * CustomerGraphEvidenceSummary
+         * @description Safe bounded graph-evidence summary for operator inspection.
+         */
+        CustomerGraphEvidenceSummary: {
+            /** Schema Version */
             schema_version: string;
+            /**
+             * Evidence Type
+             * @constant
+             */
+            evidence_type: "CUSTOMER_GRAPH_SANDBOX_RUN";
+            /** Document Id */
+            document_id: string;
+            /** Report Digest */
+            report_digest: string;
+            /** Document Digest */
+            document_digest: string;
+            /**
+             * Sync Run Id
+             * Format: uuid
+             */
+            sync_run_id: string;
+            /**
+             * Executed At
+             * Format: date-time
+             */
+            executed_at: string;
+            /** Executed At Epoch Microseconds */
+            executed_at_epoch_microseconds: number;
+            /** Source Document Id */
+            source_document_id: string;
+            /** Source Hash */
+            source_hash: string;
+            /** Configuration Digest */
+            configuration_digest: string;
+            /** Execution Plan Digest */
+            execution_plan_digest: string;
+            /** Command Batch Digest */
+            command_batch_digest: string;
+            /**
+             * Evidence Classification
+             * @constant
+             */
+            evidence_classification: "SANDBOX_VALIDATED";
+            /** Expected Customer Count */
+            expected_customer_count: number;
+            /** Expected Customer Account Count */
+            expected_customer_account_count: number;
+            /** Expected Relationship Count */
+            expected_relationship_count: number;
+            /** Idempotent */
+            idempotent: boolean;
+        };
+        /**
+         * DependencyErrorCode
+         * @enum {string}
+         */
+        DependencyErrorCode: "TIMEOUT" | "CONNECTION_REFUSED" | "AUTH_FAILED" | "HEALTH_CHECK_FAILED" | "QUERY_FAILED" | "UNINITIALIZED" | "QUEUE_SATURATED" | "UNKNOWN_ERROR";
+        /** DependencyProbeResult */
+        DependencyProbeResult: {
+            status: components["schemas"]["DependencyStatus"];
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            error_code?: components["schemas"]["DependencyErrorCode"] | null;
+            /** Safe Message */
+            safe_message?: string | null;
+        };
+        /**
+         * DependencyStatus
+         * @enum {string}
+         */
+        DependencyStatus: "HEALTHY" | "DEGRADED" | "UNAVAILABLE" | "STARTING" | "UNKNOWN";
+        /**
+         * FreshnessStatus
+         * @enum {string}
+         */
+        FreshnessStatus: "LIVE" | "CACHED" | "STALE";
+        /**
+         * GraphExpansionLimit
+         * @description Metadata about graph expansion limits.
+         */
+        GraphExpansionLimit: {
+            /** Maxnodes */
+            maxNodes: number;
+            /** Maxrelationships */
+            maxRelationships: number;
+            /** Maxdepth */
+            maxDepth: number;
+            /** Expansionlimit */
+            expansionLimit: number;
+        };
+        /**
+         * GraphNode
+         * @description Canonical representation of a Graph Node.
+         */
+        GraphNode: {
+            /** Id */
+            id: string;
+            /** Labels */
+            labels: string[];
+            /** Properties */
+            properties: {
+                [key: string]: unknown;
+            };
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            } | null;
+            /** Ownership */
+            ownership?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * GraphRelationship
+         * @description Canonical representation of a Graph Relationship.
+         */
+        GraphRelationship: {
+            /** Id */
+            id: string;
+            /** Type */
+            type: string;
+            /** Startnodeid */
+            startNodeId: string;
+            /** Endnodeid */
+            endNodeId: string;
+            /** Properties */
+            properties: {
+                [key: string]: unknown;
+            };
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        };
+        /**
+         * GraphSearchMeta
+         * @description Metadata for Graph Search Results.
+         */
+        GraphSearchMeta: {
+            /**
+             * Schema Version
+             * @default 1.0
+             */
+            schema_version: string;
+            /** Request Id */
             request_id: string;
-            generated_at: string;
-            freshness: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at?: string;
+            /** @default LIVE */
+            freshness: components["schemas"]["FreshnessStatus"];
+            /**
+             * Partial
+             * @default false
+             */
             partial: boolean;
-            warnings: string[];
+            /** Warnings */
+            warnings?: components["schemas"]["WarningMeta"][];
+            limits?: components["schemas"]["GraphExpansionLimit"] | null;
+            /**
+             * Istruncated
+             * @default false
+             */
+            isTruncated: boolean;
+            /**
+             * Ispartial
+             * @default false
+             */
+            isPartial: boolean;
+        };
+        /**
+         * GraphSearchResult
+         * @description Top-level Graph Search Result.
+         */
+        GraphSearchResult: {
+            data: components["schemas"]["GraphSearchResultData"];
+            meta: components["schemas"]["GraphSearchMeta"];
+        };
+        /**
+         * GraphSearchResultData
+         * @description Payload for Graph Search Results.
+         */
+        GraphSearchResultData: {
+            /** Nodes */
+            nodes: components["schemas"]["GraphNode"][];
+            /** Relationships */
+            relationships: components["schemas"]["GraphRelationship"][];
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
+        /** InventoryTotals */
+        InventoryTotals: {
+            /** Assets */
+            assets: number;
+            /** Records */
+            records: number;
+        };
+        /** Job */
+        Job: {
+            /** Id */
+            id: string;
+            /** Type */
+            type: string;
+            /** Status */
+            status: string;
+            /** Progress */
+            progress: number;
+            /** Createdat */
+            createdAt: string;
+            /** Startedat */
+            startedAt?: string | null;
+            /** Completedat */
+            completedAt?: string | null;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+            /** Error */
+            error?: string | null;
+            /** Resulturl */
+            resultUrl?: string | null;
+            /** Owner */
+            owner: string;
+        };
+        JsonValue: unknown;
+        /**
+         * MongoCollectionMetadata
+         * @description Observed physical metadata for one MongoDB collection.
+         */
+        MongoCollectionMetadata: {
+            /** Name */
+            name: string;
+            /** Approximate Document Count */
+            approximate_document_count: number;
+            /** @default ESTIMATED_DOCUMENT_COUNT */
+            document_count_source: components["schemas"]["MongoDocumentCountSource"];
+            /**
+             * Indexes
+             * @default []
+             */
+            indexes: components["schemas"]["MongoIndexMetadata"][];
+        };
+        /**
+         * MongoDBInventory
+         * @description Visible collections in the configured MongoDB database.
+         */
+        MongoDBInventory: {
+            /** Database Name */
+            database_name: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /**
+             * Collections
+             * @default []
+             */
+            collections: components["schemas"]["MongoCollectionMetadata"][];
+        };
+        /**
+         * MongoDocumentCountSource
+         * @description Metadata operation used for an approximate document count.
+         * @enum {string}
+         */
+        MongoDocumentCountSource: "ESTIMATED_DOCUMENT_COUNT";
+        /**
+         * MongoIndexKeyMetadata
+         * @description Observed field and direction within a MongoDB index.
+         */
+        MongoIndexKeyMetadata: {
+            /** Field Name */
+            field_name: string;
+            /**
+             * Direction
+             * @enum {unknown}
+             */
+            direction: -1 | 1 | "2d" | "2dsphere" | "hashed" | "text";
+        };
+        /**
+         * MongoIndexMetadata
+         * @description Observed physical metadata for one MongoDB index.
+         */
+        MongoIndexMetadata: {
+            /** Name */
+            name: string;
+            /** Is Unique */
+            is_unique: boolean;
+            /** Is Sparse */
+            is_sparse: boolean;
+            /** Is Hidden */
+            is_hidden: boolean;
+            /** Expire After Seconds */
+            expire_after_seconds?: number | null;
+            /** Has Partial Filter */
+            has_partial_filter: boolean;
+            /** Keys */
+            keys: components["schemas"]["MongoIndexKeyMetadata"][];
+        };
+        /**
+         * Neo4jInventory
+         * @description Bounded graph structure observed through fixed metadata procedures.
+         */
+        Neo4jInventory: {
+            /** Labels */
+            labels?: string[];
+            /** Relationship Types */
+            relationship_types?: string[];
+        };
+        /** PageMeta */
+        PageMeta: {
+            /** Next Cursor */
+            next_cursor?: string | null;
+            /**
+             * Has More
+             * @default false
+             */
+            has_more: boolean;
+            /**
+             * Page Size
+             * @default 50
+             */
+            page_size: number;
+        };
+        /** ResponseMeta */
+        ResponseMeta: {
+            /**
+             * Schema Version
+             * @default 1.0
+             */
+            schema_version: string;
+            /** Request Id */
+            request_id: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at?: string;
+            /** @default LIVE */
+            freshness: components["schemas"]["FreshnessStatus"];
+            /**
+             * Partial
+             * @default false
+             */
+            partial: boolean;
+            /** Warnings */
+            warnings?: components["schemas"]["WarningMeta"][];
+        };
+        /**
+         * SQLServerColumnMetadata
+         * @description Observed metadata for one SQL Server column.
+         */
+        SQLServerColumnMetadata: {
+            /** Column Id */
+            column_id: number;
+            /** Name */
+            name: string;
+            data_type: components["schemas"]["SQLServerDataTypeMetadata"];
+            /** Is Nullable */
+            is_nullable: boolean;
+            /** Is Identity */
+            is_identity: boolean;
+            /** Is Computed */
+            is_computed: boolean;
+            /** Collation Name */
+            collation_name?: string | null;
+        };
+        /**
+         * SQLServerDataTypeMetadata
+         * @description Observed SQL Server type identity and storage attributes.
+         */
+        SQLServerDataTypeMetadata: {
+            /** Schema Name */
+            schema_name: string;
+            /** Name */
+            name: string;
+            /** Is User Defined */
+            is_user_defined: boolean;
+            /** Max Length Bytes */
+            max_length_bytes: number;
+            /** Precision */
+            precision: number;
+            /** Scale */
+            scale: number;
+        };
+        /**
+         * SQLServerInventory
+         * @description Caller-visible metadata observed in one SQL Server database.
+         */
+        SQLServerInventory: {
+            /** Database Name */
+            database_name: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /**
+             * Schemas
+             * @default []
+             */
+            schemas: components["schemas"]["SQLServerSchemaMetadata"][];
+        };
+        /**
+         * SQLServerRowCountSource
+         * @description Metadata source used for approximate SQL Server row counts.
+         * @enum {string}
+         */
+        SQLServerRowCountSource: "SYS_PARTITIONS";
+        /**
+         * SQLServerSchemaMetadata
+         * @description Observed SQL Server schema containing user tables and views.
+         */
+        SQLServerSchemaMetadata: {
+            /** Schema Id */
+            schema_id: number;
+            /** Name */
+            name: string;
+            /**
+             * Tables
+             * @default []
+             */
+            tables: components["schemas"]["SQLServerTableMetadata"][];
+            /**
+             * Views
+             * @default []
+             */
+            views: components["schemas"]["SQLServerViewMetadata"][];
+        };
+        /**
+         * SQLServerTableMetadata
+         * @description Observed physical metadata for one SQL Server user table.
+         */
+        SQLServerTableMetadata: {
+            /** Object Id */
+            object_id: number;
+            /** Name */
+            name: string;
+            /** Approximate Row Count */
+            approximate_row_count: number;
+            /** @default SYS_PARTITIONS */
+            row_count_source: components["schemas"]["SQLServerRowCountSource"];
+            /**
+             * Columns
+             * @default []
+             */
+            columns: components["schemas"]["SQLServerColumnMetadata"][];
+        };
+        /**
+         * SQLServerViewMetadata
+         * @description Observed physical metadata for one SQL Server user view.
+         */
+        SQLServerViewMetadata: {
+            /** Object Id */
+            object_id: number;
+            /** Name */
+            name: string;
+            /**
+             * Columns
+             * @default []
+             */
+            columns: components["schemas"]["SQLServerColumnMetadata"][];
+        };
+        /** SandboxRecord */
+        SandboxRecord: {
+            /** Id */
+            id: string;
+            /** Data */
+            data: {
+                [key: string]: unknown;
+            };
+            /** Createdat */
+            createdAt: string;
+            /** Updatedat */
+            updatedAt: string;
+            /** Validationstatus */
+            validationStatus?: string | null;
+            /** Issues */
+            issues?: {
+                [key: string]: unknown;
+            }[] | null;
+        };
+        /** Scenario */
+        Scenario: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Baseworkspaceid */
+            baseWorkspaceId: string;
+            /** Status */
+            status: string;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+            /** Createdat */
+            createdAt: string;
+            /** Owner */
+            owner: string;
+        };
+        /** SourceDetail */
+        SourceDetail: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Engine */
+            engine: string;
+            /** Environment */
+            environment: string;
+            /** Ownership */
+            ownership: string;
+            /** Health */
+            health: string;
+            /** Capability */
+            capability: string;
+            /** Lastinventorytime */
+            lastInventoryTime: string | null;
+            /** Connectionidentity */
+            connectionIdentity: string;
+            inventoryTotals: components["schemas"]["InventoryTotals"];
+            /** Lastmetadatarefresh */
+            lastMetadataRefresh: string | null;
+            /** Dependencywarnings */
+            dependencyWarnings: string[];
+        };
+        /** SourceItem */
+        SourceItem: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Engine */
+            engine: string;
+            /** Environment */
+            environment: string;
+            /** Ownership */
+            ownership: string;
+            /** Health */
+            health: string;
+            /** Capability */
+            capability: string;
+            /** Lastinventorytime */
+            lastInventoryTime: string | null;
+        };
+        /**
+         * UnifiedInventory
+         * @description Partial-capable inventory across configured database engines.
+         */
+        UnifiedInventory: {
+            sqlserver?: components["schemas"]["SQLServerInventory"] | null;
+            mongodb?: components["schemas"]["MongoDBInventory"] | null;
+            neo4j?: components["schemas"]["Neo4jInventory"] | null;
+        };
+        /** UpdateRecordPayload */
+        UpdateRecordPayload: {
+            /** Data */
+            data: {
+                [key: string]: unknown;
+            };
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
+        };
+        /** WarningMeta */
+        WarningMeta: {
+            /** Source */
+            source: string;
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /** Workspace */
+        Workspace: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Issandbox */
+            isSandbox: boolean;
+            /** Owner */
+            owner: string;
+            /** Createdat */
+            createdAt: string;
+            /** Schemaid */
+            schemaId?: string | null;
+            /** Recordcount */
+            recordCount: number;
         };
     };
     responses: never;
@@ -85,7 +1620,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    getOverview: {
+    liveness_health_live_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -94,18 +1629,20 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful response */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OverviewResponse"];
+                    "application/json": {
+                        [key: string]: string;
+                    };
                 };
             };
         };
     };
-    getInventory: {
+    readiness_health_ready_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -114,18 +1651,18 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful response */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["InventoryResponse"];
+                    "application/json": unknown;
                 };
             };
         };
     };
-    getGraphEvidence: {
+    get_infrastructure_overview_data_console_v1_overview_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -134,13 +1671,1357 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful response */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GraphEvidenceResponse"];
+                    "application/json": components["schemas"]["APIResponse_dict_str__DependencyProbeResult__"];
+                };
+            };
+        };
+    };
+    search_graph_data_console_v1_graph_search_get: {
+        parameters: {
+            query: {
+                q: string;
+                expansionDepth?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphSearchResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_graph_node_data_console_v1_graph_nodes__node_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                node_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_GraphNode_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_graph_relationship_data_console_v1_graph_relationships__relationship_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                relationship_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_GraphRelationship_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    expand_graph_neighborhood_data_console_v1_graph_nodes__node_id__neighborhood_get: {
+        parameters: {
+            query?: {
+                expansionDepth?: number;
+            };
+            header?: never;
+            path: {
+                node_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphSearchResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_customer_graph_evidence_data_console_v1_graph_evidence_get: {
+        parameters: {
+            query?: {
+                page_size?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_tuple_CustomerGraphEvidenceSummary__________"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_latest_customer_graph_validation_data_console_v1_graph_evidence_validation_latest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_CustomerGraphEvidenceSummary_"];
+                };
+            };
+        };
+    };
+    get_full_customer_graph_evidence_data_console_v1_graph_evidence_documents__document_id__full_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_CustomerGraphEvidenceFullView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_customer_graph_evidence_by_document_id_data_console_v1_graph_evidence_documents__document_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_CustomerGraphEvidenceSummary_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_customer_graph_evidence_by_sync_run_id_data_console_v1_graph_evidence_sync_runs__sync_run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sync_run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_CustomerGraphEvidenceSummary_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_customer_graph_evidence_by_report_digest_data_console_v1_graph_evidence_reports__report_digest__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_digest: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_CustomerGraphEvidenceSummary_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_unified_inventory_data_console_v1_inventory_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_UnifiedInventory_"];
+                };
+            };
+        };
+    };
+    get_sources_data_console_v1_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_SourceItem__"];
+                };
+            };
+        };
+    };
+    get_source_data_console_v1_sources__source_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_SourceDetail_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_browser_assets_data_console_v1_browser_assets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_BrowserAsset__"];
+                };
+            };
+        };
+    };
+    get_records_data_console_v1_browser__engine___asset_id__records_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engine: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_dict__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_record_data_console_v1_browser__engine___asset_id__records__record_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                engine: string;
+                asset_id: string;
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workspaces_data_console_v1_workspaces_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_Workspace__"];
+                };
+            };
+        };
+    };
+    create_workspace_data_console_v1_workspaces_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWorkspacePayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_Workspace_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workspace_data_console_v1_workspaces__workspace_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_Workspace_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_workspace_data_console_v1_workspaces__workspace_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_workspace_data_console_v1_workspaces__workspace_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWorkspacePayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_Workspace_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workspace_records_data_console_v1_workspaces__workspace_id__records_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_SandboxRecord__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_workspace_record_data_console_v1_workspaces__workspace_id__records_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRecordPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_SandboxRecord_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workspace_record_data_console_v1_workspaces__workspace_id__records__record_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_SandboxRecord_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_workspace_record_data_console_v1_workspaces__workspace_id__records__record_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_workspace_record_data_console_v1_workspaces__workspace_id__records__record_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRecordPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_SandboxRecord_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_jobs_data_console_v1_jobs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_Job__"];
+                };
+            };
+        };
+    };
+    get_job_data_console_v1_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_Job_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_imports_data_console_v1_imports_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_Job__"];
+                };
+            };
+        };
+    };
+    create_import_data_console_v1_imports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateImportPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_Job_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_import_data_console_v1_imports__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_Job_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_exports_data_console_v1_exports_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_Job__"];
+                };
+            };
+        };
+    };
+    create_export_data_console_v1_exports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateExportPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_Job_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_export_data_console_v1_exports__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_Job_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_export_data_console_v1_exports__job_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_scenarios_data_console_v1_scenarios_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_Scenario__"];
+                };
+            };
+        };
+    };
+    create_scenario_data_console_v1_scenarios_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateScenarioPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_Scenario_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_scenario_data_console_v1_scenarios__scenario_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scenario_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_Scenario_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_scenario_data_console_v1_scenarios__scenario_id__generate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scenario_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_Scenario_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_scenario_data_console_v1_scenarios__scenario_id__validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scenario_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_Scenario_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_scenario_data_console_v1_scenarios__scenario_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scenario_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_Scenario_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_scenario_data_console_v1_scenarios__scenario_id__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scenario_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_audit_logs_data_console_v1_audit_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_AuditLog__"];
+                };
+            };
+        };
+    };
+    get_audit_log_data_console_v1_audit__audit_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                audit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AuditLog_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_governance_data_console_v1_governance_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_settings_data_console_v1_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_hardening_data_console_v1_hardening_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

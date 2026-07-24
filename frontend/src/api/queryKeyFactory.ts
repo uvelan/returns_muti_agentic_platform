@@ -21,4 +21,25 @@ export const queryKeys = {
     records: (engine: EngineType, assetId: string) => ["browser", "records", engine, assetId] as const,
     record: (engine: EngineType, assetId: string, recordId: string) => ["browser", "record", engine, assetId, recordId] as const,
   },
+  graphExplorer: {
+    search: (id: string, depth?: number) => ["graphExplorer", "search", id, depth] as const,
+    node: (nodeId: string) => ["graphExplorer", "node", nodeId] as const,
+    relationship: (relationshipId: string) => ["graphExplorer", "relationship", relationshipId] as const,
+    neighborhood: (nodeId: string, depth?: number) => ["graphExplorer", "neighborhood", nodeId, depth] as const,
+  },
+  jobs: {
+    list: (type?: string, status?: string) => ["jobs", "list", type, status] as const,
+    detail: (jobId: string) => ["jobs", "detail", jobId] as const,
+  },
+  workspaces: {
+    list: () => ["workspaces", "list"] as const,
+    detail: (workspaceId: string) => ["workspaces", "detail", workspaceId] as const,
+    records: (workspaceId: string) => ["workspaces", "records", workspaceId] as const,
+    record: (workspaceId: string, recordId: string) => ["workspaces", "record", workspaceId, recordId] as const,
+  },
+  scenarios: {
+    list: () => ["scenarios", "list"] as const,
+    detail: (scenarioId: string) => ["scenarios", "detail", scenarioId] as const,
+    diffs: (scenarioId: string) => ["scenarios", "diffs", scenarioId] as const,
+  }
 } as const;

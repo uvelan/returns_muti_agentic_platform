@@ -18,7 +18,8 @@ dependencies = [
     "pymssql==2.3.13",
     "redis==8.0.1",
     "temporalio==1.30.0",
-    "pyyaml (>=6.0.3,<7.0)",
+    "httpx==0.28.1",
+    "pyyaml==6.0.3",
 ]
 
 [tool.poetry]
@@ -37,7 +38,6 @@ pytest = "9.1.1"
 pytest-asyncio = "1.4.0"
 ruff = "0.15.21"
 mypy = "2.3.0"
-httpx2 = "^2.7.0"
 types-pyyaml = "^6.0.12.20260518"
 pytest-cov = ">=7.1,<8.0"
 

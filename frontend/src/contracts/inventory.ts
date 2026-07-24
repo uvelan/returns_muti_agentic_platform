@@ -55,3 +55,15 @@ export type UnifiedInventory = {
   readonly mongodb: MongoInventory | null;
   readonly neo4j: Neo4jInventory | null;
 };
+
+export type InventoryDetail = {
+  readonly assetId: string;
+  readonly engine: string;
+  readonly name: string;
+  readonly ownership: string;
+  readonly capability: string;
+  readonly recordCount: number | null;
+  readonly schemaVersion: string;
+  readonly operations: readonly string[];
+  readonly metadata: Record<string, unknown>;
+};

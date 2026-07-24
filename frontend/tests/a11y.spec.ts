@@ -58,6 +58,25 @@ test.describe('Accessibility', () => {
     expect(accessibilityScanResults.violations).toEqual([]);
   });
 
+  test('Graph Explorer page should not have any automatically detectable accessibility issues', async ({ page }) => {
+    await page.goto('/data-console/graph');
+    await page.locator('h1').first().waitFor();
+    // Simulate entering a valid search to render the graph/table
+    await page.fill('input[placeholder="Enter Exact Node ID..."]', 'node-123');
+    await page.click('button:has-text("Search")');
+    await page.click('button:has-text("Table")');
+    await page.click('a:has-text("Inspect")');
+    await page.locator('h2').filter({ hasText: 'Node: node-123' }).waitFor();
+    const accessibilityScanResults = await new AxeBuilder({ page }).analyze();
+    expect(accessibilityScanResults.violations).toEqual([]);
+
+    // Switch to table and run a11y check again
+    await page.click('button:has-text("Table")');
+    await page.locator('table').first().waitFor();
+    const tableA11yResults = await new AxeBuilder({ page }).analyze();
+    expect(tableA11yResults.violations).toEqual([]);
+  });
+
   test('404 page should not have any automatically detectable accessibility issues', async ({ page }) => {
     await page.goto('/does-not-exist');
     await page.locator('h1').first().waitFor();

@@ -14,6 +14,7 @@ export function Shell({ children }: ShellProps) {
   const isMockMode = import.meta.env.VITE_MOCK_MODE === "true";
 
   const navigation = routes.filter(r => r.navigable);
+  const groups = ["Customer", "Support", "AI Gateway", "Explore", "Data Operations", "Sandbox & AI", "Governance", "System"] as const;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">
@@ -48,19 +49,28 @@ export function Shell({ children }: ShellProps) {
         <div className="md:hidden fixed inset-0 z-30 bg-slate-900/50 backdrop-blur-sm" onClick={() => { setMobileMenuOpen(false); }}>
           <div className="fixed inset-y-0 left-0 w-64 bg-white shadow-xl flex flex-col" onClick={e => { e.stopPropagation(); }}>
             <nav aria-label="Mobile Navigation" className="flex-1 px-4 py-6 space-y-1 overflow-y-auto mt-14">
-              {navigation.map((item) => {
-                const isActive = location === item.path || (item.path === '/overview' && location === '/');
+              {groups.map(group => {
+                const groupItems = navigation.filter(item => item.group === group);
+                if (groupItems.length === 0) return null;
                 return (
-                  <Link
-                    key={item.name}
-                    href={item.path}
-                    className={`group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${isActive ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
-                    onClick={() => { setMobileMenuOpen(false); }}
-                    aria-current={isActive ? 'page' : undefined}
-                  >
-                    {item.icon && <item.icon className="h-5 w-5 shrink-0" aria-hidden="true" />}
-                    {item.name}
-                  </Link>
+                  <div key={group} className="mb-4">
+                    <h3 className="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">{group}</h3>
+                    {groupItems.map((item) => {
+                      const isActive = location === item.path || (item.path === '/overview' && location === '/');
+                      return (
+                        <Link
+                          key={item.name}
+                          href={item.path}
+                          className={`group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${isActive ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
+                          onClick={() => { setMobileMenuOpen(false); }}
+                          aria-current={isActive ? 'page' : undefined}
+                        >
+                          {item.icon && <item.icon className="h-5 w-5 shrink-0" aria-hidden="true" />}
+                          {item.name}
+                        </Link>
+                      );
+                    })}
+                  </div>
                 );
               })}
             </nav>
@@ -82,18 +92,27 @@ export function Shell({ children }: ShellProps) {
           </Link>
         </div>
         <nav className="flex-1 overflow-y-auto px-4 py-4 space-y-1" aria-label="Sidebar">
-          {navigation.map((item) => {
-            const isActive = location === item.path || (item.path === '/overview' && location === '/');
+          {groups.map(group => {
+            const groupItems = navigation.filter(item => item.group === group);
+            if (groupItems.length === 0) return null;
             return (
-              <Link
-                key={item.name}
-                href={item.path}
-                className={`group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 ${isActive ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
-                aria-current={isActive ? 'page' : undefined}
-              >
-                {item.icon && <item.icon className="h-5 w-5 shrink-0" aria-hidden="true" />}
-                {item.name}
-              </Link>
+              <div key={group} className="mb-6">
+                <h3 className="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">{group}</h3>
+                {groupItems.map((item) => {
+                  const isActive = location === item.path || (item.path === '/overview' && location === '/');
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.path}
+                      className={`group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 ${isActive ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
+                      aria-current={isActive ? 'page' : undefined}
+                    >
+                      {item.icon && <item.icon className="h-5 w-5 shrink-0" aria-hidden="true" />}
+                      {item.name}
+                    </Link>
+                  );
+                })}
+              </div>
             );
           })}
         </nav>

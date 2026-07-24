@@ -8,6 +8,8 @@ export default defineConfig({
 
   test: {
     environment: "jsdom",
+    pool: "forks",
+    isolate: true,
 
     setupFiles: [
       "./src/test/setup.ts",

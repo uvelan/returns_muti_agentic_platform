@@ -111,7 +111,6 @@ function isApiResponseEnvelope(
     && typeof meta.partial === "boolean"
     && Array.isArray(meta.warnings)
     && Object.hasOwn(payload, "data")
-    && Object.hasOwn(payload, "page")
   );
 }
 

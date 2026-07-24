@@ -102,9 +102,7 @@ class ResponseMeta(ContractModel):
         min_length=1,
         max_length=64,
     )
-    generated_at: AwareDatetime = Field(
-        default_factory=lambda: datetime.now(UTC)
-    )
+    generated_at: AwareDatetime = Field(default_factory=lambda: datetime.now(UTC))
     freshness: FreshnessStatus = FreshnessStatus.LIVE
     partial: bool = False
     warnings: tuple[WarningMeta, ...] = Field(default_factory=tuple)

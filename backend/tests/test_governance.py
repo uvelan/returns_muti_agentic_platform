@@ -308,9 +308,8 @@ def test_catalog_is_immutable() -> None:
         ValidationError,
         match="Instance is frozen",
     ):
-
         setattr(
             catalog,
-           field_name,
+            field_name,
             (create_source_asset(),),
         )

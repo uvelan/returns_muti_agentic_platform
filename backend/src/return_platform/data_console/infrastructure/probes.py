@@ -187,6 +187,30 @@ async def probe_mongodb(request: Request) -> DependencyProbeResult:
     )
 
 
+async def probe_source_mongodb(request: Request) -> DependencyProbeResult:
+    resources = _get_resources(request)
+    settings = _get_settings(request)
+
+    async def ping() -> None:
+        source_mongo = resources.source_mongo
+        if source_mongo is None:
+            raise DependencyNotInitializedError
+        await source_mongo[settings.source_mongo_database].command("ping")
+
+    async def execute() -> DependencyProbeResult:
+        return await _measure_probe(
+            ping,
+            "source_mongodb",
+            settings.probe_timeout_seconds,
+        )
+
+    return await resources.execute_single_flight_probe(
+        key="source_mongodb",
+        probe_coro=execute,
+        ttl_seconds=2.0,
+    )
+
+
 async def probe_sqlserver(request: Request) -> DependencyProbeResult:
     resources = _get_resources(request)
     settings = _get_settings(request)
@@ -361,9 +385,7 @@ async def probe_temporal(request: Request) -> DependencyProbeResult:
         )
 
         if not healthy:
-            raise DependencyHealthCheckFailedError(
-                "Temporal reported an unhealthy status."
-            )
+            raise DependencyHealthCheckFailedError("Temporal reported an unhealthy status.")
 
     async def execute() -> DependencyProbeResult:
         return await _measure_probe(

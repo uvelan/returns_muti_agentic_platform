@@ -13,12 +13,31 @@ from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
 from return_platform.configuration.settings import Settings
-from return_platform.data_console.api.graph_evidence import (
-    router as graph_evidence_router,
-)
+from return_platform.api.ai_gateway import router as ai_gateway_router
+from return_platform.api.dependencies import router as dependencies_router
+from return_platform.api.returns import router as returns_router
+from return_platform.api.seed import router as seed_router
+from return_platform.api.support import router as support_router
+from return_platform.data_console.api.audit import router as audit_router
+from return_platform.data_console.api.browser import router as browser_router
+from return_platform.data_console.api.graph import router as graph_router
+from return_platform.data_console.api.graph_evidence import router as graph_evidence_router
 from return_platform.data_console.api.inventory import router as inventory_router
+from return_platform.data_console.api.jobs import router as jobs_router
 from return_platform.data_console.api.router import router as console_router
+from return_platform.data_console.api.scenarios import router as scenarios_router
+from return_platform.data_console.api.sources import router as sources_router
+from return_platform.data_console.api.workspaces import router as workspaces_router
+from return_platform.data_console.infrastructure.probes import (
+    probe_mongodb,
+    probe_neo4j,
+    probe_source_mongodb,
+    probe_sqlserver,
+    probe_temporal,
+    probe_valkey,
+)
 from return_platform.data_governance import load_asset_catalog
+from return_platform.operations.repository import OperationalRepository
 from return_platform.resources import (
     AsyncValkeyClient,
     RuntimeResources,
@@ -32,6 +51,7 @@ from return_platform.security.principal import (
 )
 from return_platform.shared.contracts import (
     APIResponse,
+    DependencyStatus,
     ResponseMeta,
     WarningMeta,
 )
@@ -122,6 +142,16 @@ def _initialize_mongodb(
         )
 
         resources.mongo = mongo_client
+        source_dsn = (
+            settings.source_mongo_dsn.get_secret_value()
+            if settings.source_mongo_dsn is not None
+            else settings.mongo_dsn.get_secret_value()
+        )
+        resources.source_mongo = (
+            mongo_client
+            if source_dsn == settings.mongo_dsn.get_secret_value()
+            else AsyncMongoClient[dict[str, object]](source_dsn)
+        )
     except Exception as exc:
         _log_initialization_failure(
             "mongodb",
@@ -236,6 +266,8 @@ async def lifespan(
         )
 
         app.state.resources = resources
+        if resources.mongo is not None:
+            await OperationalRepository(resources.mongo, settings).ensure_indexes()
 
         logger.info(
             "application_resources_initialized",
@@ -300,10 +332,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=[str(app_settings.frontend_cors_origin).rstrip("/")],
         allow_credentials=True,
-        allow_methods=[
-            "GET",
-            "OPTIONS",
-        ],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
 
@@ -354,6 +383,29 @@ def create_app(
         response.headers["X-Correlation-ID"] = correlation_id
 
         return response
+
+    from fastapi.exceptions import HTTPException
+
+    @fastapi_app.exception_handler(HTTPException)
+    async def http_exception_handler(
+        request: Request,
+        exc: HTTPException,
+    ) -> JSONResponse:
+        correlation_id = cast(
+            str,
+            getattr(
+                request.state,
+                "correlation_id",
+                "unknown",
+            ),
+        )
+        return _create_error_response(
+            status_code=exc.status_code,
+            correlation_id=correlation_id,
+            source="API",
+            code="CLIENT_ERROR" if exc.status_code < 500 else "INTERNAL_ERROR",
+            message=exc.detail if isinstance(exc.detail, str) else "Request failed.",
+        )
 
     @fastapi_app.exception_handler(Exception)
     async def global_exception_handler(
@@ -422,19 +474,50 @@ def create_app(
                 },
             )
 
+        probe_names = ("mongodb", "source_mongodb", "sqlserver", "neo4j", "valkey", "temporal")
+        probe_results = await asyncio.gather(
+            probe_mongodb(request),
+            probe_source_mongodb(request),
+            probe_sqlserver(request),
+            probe_neo4j(request),
+            probe_valkey(request),
+            probe_temporal(request),
+        )
+        dependencies = {
+            name: result.model_dump(mode="json")
+            for name, result in zip(probe_names, probe_results, strict=True)
+        }
+        ready = all(result.status is DependencyStatus.HEALTHY for result in probe_results)
         return JSONResponse(
-            status_code=status.HTTP_200_OK,
+            status_code=(
+                status.HTTP_200_OK
+                if ready
+                else status.HTTP_503_SERVICE_UNAVAILABLE
+            ),
             content={
-                "status": "ready",
+                "status": "ready" if ready else "not ready",
                 "catalog": {
-                    "version": (resources.catalog.catalog.version),
-                    "asset_count": (resources.catalog.asset_count),
+                    "version": resources.catalog.catalog.version,
+                    "asset_count": resources.catalog.asset_count,
                 },
+                "dependencies": dependencies,
             },
         )
 
     fastapi_app.include_router(console_router)
+    fastapi_app.include_router(graph_router)
     fastapi_app.include_router(graph_evidence_router)
     fastapi_app.include_router(inventory_router)
+    fastapi_app.include_router(sources_router)
+    fastapi_app.include_router(browser_router)
+    fastapi_app.include_router(workspaces_router)
+    fastapi_app.include_router(jobs_router)
+    fastapi_app.include_router(scenarios_router)
+    fastapi_app.include_router(audit_router)
+    fastapi_app.include_router(returns_router)
+    fastapi_app.include_router(support_router)
+    fastapi_app.include_router(ai_gateway_router)
+    fastapi_app.include_router(seed_router)
+    fastapi_app.include_router(dependencies_router)
 
     return fastapi_app

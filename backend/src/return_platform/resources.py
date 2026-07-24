@@ -3,7 +3,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 from neo4j import AsyncDriver
 from pymongo import AsyncMongoClient
@@ -29,6 +29,42 @@ class AsyncValkeyClient(Protocol):
 
     async def ping(self) -> bool:
         """Check whether Valkey is available."""
+        ...
+
+    async def xadd(
+        self,
+        name: str,
+        fields: dict[str, str],
+        *,
+        id: str = "*",
+        maxlen: int | None = None,
+        approximate: bool = True,
+    ) -> str:
+        """Append one event to a Valkey stream."""
+        ...
+
+    async def xread(
+        self,
+        streams: dict[str, str],
+        *,
+        count: int | None = None,
+        block: int | None = None,
+    ) -> list[tuple[str, list[tuple[str, dict[str, str]]]]]:
+        """Read events newer than the supplied stream IDs."""
+        ...
+
+    async def set(
+        self,
+        name: str,
+        value: str,
+        *,
+        ex: int | None = None,
+    ) -> Any:
+        """Set a bounded readiness marker."""
+        ...
+
+    async def get(self, name: str) -> str | None:
+        """Read a readiness marker."""
         ...
 
     async def aclose(self) -> None:
@@ -65,6 +101,7 @@ class RuntimeResources:
     settings: Settings
     catalog: LoadedAssetCatalog
     mongo: AsyncMongoClient[dict[str, object]] | None = None
+    source_mongo: AsyncMongoClient[dict[str, object]] | None = None
     neo4j: AsyncDriver | None = None
     valkey: AsyncValkeyClient | None = None
     temporal: Client | None = None
@@ -131,21 +168,21 @@ class RuntimeResources:
 
 
 async def _close_mongodb(resources: RuntimeResources) -> None:
-    mongo = resources.mongo
-
-    if mongo is None:
-        return
-
-    try:
-        await mongo.close()
-    except Exception as exc:
-        logger.exception(
-            "dependency_shutdown_failed",
-            extra={
-                "dependency": "mongodb",
-                "error_type": type(exc).__name__,
-            },
-        )
+    clients: list[AsyncMongoClient[dict[str, object]]] = []
+    for client in (resources.mongo, resources.source_mongo):
+        if client is not None and all(existing is not client for existing in clients):
+            clients.append(client)
+    for client in clients:
+        try:
+            await client.close()
+        except Exception as exc:
+            logger.exception(
+                "dependency_shutdown_failed",
+                extra={
+                    "dependency": "mongodb",
+                    "error_type": type(exc).__name__,
+                },
+            )
 
 
 async def _close_neo4j(resources: RuntimeResources) -> None:

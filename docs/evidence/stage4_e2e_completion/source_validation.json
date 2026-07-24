@@ -1,0 +1,127 @@
+{
+  "stage": "Stage 4 \u2014 E2E Completion",
+  "validationLevel": "SOURCE_VALIDATED",
+  "environment": {
+    "python": "3.13.5",
+    "platform": "linux",
+    "dockerAvailable": false
+  },
+  "command": "python3 scripts/validate_stage4_source.py",
+  "generatedAt": "2026-07-24T06:00:41.751953+00:00",
+  "exitCode": 0,
+  "status": "PASSED",
+  "checks": [
+    {
+      "name": "python_source_compiles",
+      "status": "PASS",
+      "evidence": "All Python source files compiled and parsed."
+    },
+    {
+      "name": "required_frontend_routes",
+      "status": "PASS",
+      "evidence": {
+        "missing": [],
+        "routeCount": 48
+      }
+    },
+    {
+      "name": "frontend_routes_live_only",
+      "status": "PASS",
+      "evidence": {
+        "liveCapabilityCount": 48
+      }
+    },
+    {
+      "name": "required_backend_routes",
+      "status": "PASS",
+      "evidence": {
+        "missingFragments": []
+      }
+    },
+    {
+      "name": "runtime_topology",
+      "status": "PASS",
+      "evidence": {
+        "services": [
+          "backend",
+          "data-job-worker",
+          "frontend",
+          "mongodb",
+          "mongodb-rs-init",
+          "neo4j",
+          "outbox-publisher",
+          "return-orchestrator",
+          "return-workflow-worker",
+          "seed-runner",
+          "sqlserver",
+          "sqlserver-init",
+          "temporal",
+          "temporal-postgresql",
+          "temporal-ui",
+          "valkey"
+        ],
+        "missing": []
+      }
+    },
+    {
+      "name": "seed_scenario_matrix",
+      "status": "PASS",
+      "evidence": {
+        "counts": {
+          "APPROVE": 5,
+          "REJECT": 3,
+          "REVIEW_REQUIRED": 2
+        },
+        "positive": 5,
+        "negativeOrReview": 5
+      }
+    },
+    {
+      "name": "ai_provider_registry",
+      "status": "PASS",
+      "evidence": {
+        "providers": [
+          "ANTHROPIC",
+          "GOOGLE",
+          "NVIDIA",
+          "OLLAMA",
+          "OPENAI",
+          "SIMULATOR"
+        ]
+      }
+    },
+    {
+      "name": "ai_gateway_policy_controls",
+      "status": "PASS",
+      "evidence": {
+        "missing": []
+      }
+    },
+    {
+      "name": "forbidden_runtime_patterns_absent",
+      "status": "PASS",
+      "evidence": "No forbidden patterns found."
+    },
+    {
+      "name": "explicit_placeholder_pages_absent",
+      "status": "PASS",
+      "evidence": "No explicit placeholder pages found."
+    },
+    {
+      "name": "integrity_and_concurrency_guards",
+      "status": "PASS",
+      "evidence": {
+        "paused_sessions_not_claimed": true,
+        "support_transaction": true,
+        "job_transaction": true,
+        "job_cancel_retry": true,
+        "scenario_digest_approval": true,
+        "cors_mutation_methods": true
+      }
+    }
+  ],
+  "limitations": [
+    "This gate does not replace Ruff, strict mypy, pytest, frontend dependency-backed builds, Docker Compose startup, or live provider validation.",
+    "Those gates require dependencies and runtime infrastructure unavailable in the audit host."
+  ]
+}
