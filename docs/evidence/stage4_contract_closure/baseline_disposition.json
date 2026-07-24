@@ -1,0 +1,1727 @@
+{
+  "backend/src/return_platform/data_console/api/router.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/jobs/ImportsListPage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/operations/feedback_service.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/scripts/check-bundle.js": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_console/api/graph_evidence.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/review/verdict/stage3b_fixes_rereview_verdict.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/sources/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/workspaces/WorkspaceRecordEditPage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/ai_gateway/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/operations/seed_manifest.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/run_live_mongo_inventory.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/.coverage": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/postcss.config.js": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/mocks/browser.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/scripts/validate_return_session_persistence.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/canonical/base.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/review/verdict/address_phases_1_3_remediation_plan_verdict.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/tsconfig.app.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/mocks/handlers/sourcesHandlers.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "scripts/validate_stage4_source.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/evidence/stage4_delivery/delivery_gate_summary.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_governance/sampling/sqlserver.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/review/status/stage3d_status.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_canonical_order.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/canonical/return_models.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/evidence/data_console_complete_ui/stage3a/route_capability_matrix.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_probes.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/operations/return_support/providers/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/resources.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/security/principal.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "scripts/validate_stage4_contracts.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_catalog_loader.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/report_digest.headers": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/latest.headers": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/evidence/stage4_e2e_completion/source_validation.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/review/status/stages_3e_to_3h_plan.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/review/verdict/fix_all_verified_issues_implementation_plan_verdict.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/components/PaginationControls.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "compose.yaml": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/canonical/customer.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_sampling_authorization.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/contracts/dataStudio.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/evidence/stage4_e2e_completion/frontend_syntax_validation.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/ai_gateway/providers/openai_compatible.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/api/adapters/workspacesFixtureAdapter.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/ai_gateway/providers/google.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/mapping/handlers/registry.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/tailwind.config.js": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/operations/shared.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/operations/return_support/providers/sandbox.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "scripts/run_worker_host.ps1": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/config/live_validation/data_assets.sampling.yaml": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/api/scenariosQueries.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/InventoryPage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/api/returns.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/scripts/seed_e2e_data.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "STAGE_4_DELIVERY_MANIFEST.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/asgi.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/operations/AIGatewayPages.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/contracts/api.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/api/operations.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "scripts/run_backend_host.sh": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/latest.status": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/jobs/JobDetailPage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/canonical/shipment.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/main.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/DataStudioPages.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/operations/associate_flow.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_canonical_return_models.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/env.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/components/JsonInspector.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "STAGE_4_HLD_ALIGNMENT_NEXT_STEPS_EXECUTION_PLAN.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/tests/e2e.spec.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/ai_gateway/providers/anthropic.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/scripts/validate_ai_gateway_live.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/mapping/projection.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_customer_neo4j_readback.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/api/adapters/scenariosFixtureAdapter.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/fixtures/graphExplorer.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/schema_registry.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "scripts/run_backend_host.ps1": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/components/Shell.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/public/favicon.svg": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/jobs/ImportWizardPage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/config/data_assets.yaml": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/review/status/stage3b_fixes_plan.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "scripts/bootstrap_host.sh": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/scripts/export_openapi.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/vitest.config.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  ".gitignore": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/components/Shell.test.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_sampling_mongodb.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/graph-explorer/GraphTable.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/RecordDetailPage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_customer_mapping_handlers.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/api/adapters/sources.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_canonical_operations.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_stage4_schema_and_seed_contracts.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/mapping/handlers/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/evidence/stage4_hld_alignment/execution_blockers.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/api/ports/scenariosPort.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/conftest.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_mapping_relationship_direction.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/list.headers": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/poetry.lock": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_governance/inventory/contracts/base_contracts.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/components/DataTable.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/fixtures/customer_graph_sandbox/customer_p100.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/config/data_platform/sync_pipelines.yaml": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_canonical_base.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/ai_gateway/providers/factory.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/evidence/stage4_delivery_v2/source_contract_validation.log": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_customer_account_mapping_profile.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/graph/evidence_query.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "scripts/run_worker_host.sh": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_canonical_product.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/graph-explorer/RelationshipDetailPanel.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/api/seed.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/graph/writer.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/sources/mongodb/customer.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/evidence/data_console_complete_ui/stage3a/api_gap_register.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_console/api/browser.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/contracts/operations.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_console/api/ai_studio.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_canonical_shipment.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/document_full.headers": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/operations/return_support/providers/factory.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_customer_neo4j_command_builder.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/configuration/settings.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/graph-explorer/GraphExplorerPage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_console/api/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/ai_gateway/providers/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/validation_summary.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/document_summary.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/scenarios/ScenarioCreatePage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_canonical_warehouse.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/evidence/stage4_hld_alignment/source_contract_validation.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/scripts/validate_graph_evidence_api.sh": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/list.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/evidence/stage4_e2e_completion/STAGE_3_E2E_COMPLETION_STATUS_AUDIT.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/api/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/api/associate_returns.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/ai_studio.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/canonical/warehouse.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/test-results/.last-run.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/api/adapters/scenarios.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/tsconfig.node.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/document_summary.headers": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_governance/inventory/mongodb.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/graph-explorer/__tests__/GraphExplorerPage.test.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_catalog_lifespan.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/BrowserLandingPage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/customer_graph_sandbox_validation.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/assets/vite.svg": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/canonical/bay.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "scripts/run_frontend_host.sh": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/evidence/stage4_e2e_completion/4a_diff_check_before.txt": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/.nvmrc": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/mapping/loader.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_inventory_mongodb.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/RecordDetailPage.test.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_governance.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/SourceDetailPage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_console/infrastructure/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_console/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/tests/a11y.spec.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/api/browserQueries.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/mocks/handlers.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/ai_gateway/providers/http.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_governance/inventory/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_governance/sampling/contracts.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_governance/inventory/sqlserver.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/workflows/return_workflow.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_customer_graph_sandbox.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/operations/return_support/providers/external.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_governance/sampling/mongodb.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/document_summary.status": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_drift.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/api/adapters/httpGraphExplorerAdapter.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/canonical/order.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/document_full.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/api/sourceQueries.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_governance/sampling/sanitization.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/components/PropertyList.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_console/api/sources.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_canonical_customer.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/package.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/api/client.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/components/ConfirmationDialog.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_governance/catalog_loader.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/routes.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/operations/return_support/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/shared/contracts.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/index.html": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/graph/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_customer_mongodb_source_adapter.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/configuration/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/report_digest.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/review/verdict/stage3c_implementation_plan_verdict.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/sync_run.headers": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/SourcesPage.test.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/mapping/contracts.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/document_full.status": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/README.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/canonical/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/graph/schema.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/run_live_drift.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/audit/HardeningPage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/OverviewPage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "scripts/bootstrap_host.ps1": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_mapping_configuration_loader.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/review/verdict/stage3b_data_console_foundation_verdict.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/shared/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/config/data_platform/sources.yaml": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_governance/drift.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/components/DependencyCard.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/graph/sandbox_runner.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/review/verdict/stage3b_status_review_verdict.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/list.status": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_mapping_physical_path_scope.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/review/verdict/stage3c_working_screens_verdict.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/security/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/api/adapters/browser.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/components/StatusBadge.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/ai_gateway/providers.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "scripts/run_frontend_host.ps1": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/review/verdict/stage3b_walkthrough_review_verdict.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/contracts/browser.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_governance/inventory/contracts/sqlserver_contracts.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/jobs/JobsListPage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/graph/sync_service.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/graph/sandbox.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "PACKAGE_MANIFEST.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/operations/SupportPages.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/api/inventoryQueries.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/InventoryPage.test.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_mapping_compiler.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_governance/sampling/authorization.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_customer_neo4j_writer.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/GraphEvidencePage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/api/workspacesQueries.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/config/data_platform/canonical_mappings.yaml": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_sampling_sanitization.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_inventory_sqlserver.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/canonical/product.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_governance/inventory/contracts/mongodb_contracts.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/shared/governance.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/components/ErrorBoundary.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/components/DetailDrawer.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/config/data_platform/graph_projection.yaml": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/evidence/stage4_e2e_completion/4c_coverage.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/SourcesPage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/App.css": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_graph_evidence_api.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "scripts/infra.sh": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/operations/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_canonical_bay.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_console/api/graph_sync.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/operations/repository.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/index.css": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/operations/orchestrator.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_governance/sampling/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "README.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_console/api/feedback_learning.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/validation_output_new.txt": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/scenarios/ScenarioComparePage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/.env.mock": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/config/schema_registry.yaml": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/GraphEvidencePage.test.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/.gitignore": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/latest.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/mapping/handlers/contracts.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/evidence/stage4_delivery_v2/source_validation.log": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/operations/models.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/sync_run.status": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/mapping/compiler.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  ".env.example": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_governance/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_sampling_sqlserver.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/review/verdict/complete_frontend_backend_integration_plan_verdict.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/test/setup.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/eslint.config.js": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/components/Breadcrumbs.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "generate_baseline_json.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/mapping/handlers/customer.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/sources/mongodb/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/canonical/operations.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/graph-explorer/NodeDetailPanel.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/BrowserLandingPage.test.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/ai_gateway/providers/nvidia.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/ai_gateway/providers/simulator.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/public/icons.svg": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/assets/react.svg": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/ai_gateway/providers/ollama.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/operations/AssociateReturnsPage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/components/Tabs.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/sync_run.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/AssetBrowserPage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/ai_gateway/providers/contracts.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_mapping_handler_registry.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/review/status/stage3c_status.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/contracts/sources.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/AssetBrowserPage.test.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/api/generated/return-platform.d.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/ai_gateway/providers/openai.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/run_live_sql_inventory.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_console/api/schema_catalog.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/operations/return_support/providers/contracts.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/tsconfig.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/pyproject.toml": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/api/associateReturns.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/review/verdict/walkthrough_phase1_2_3_remediation_verdict.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/api/dataStudio.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_mapping_contracts.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/evidence/stage4_delivery_v2/frontend_syntax_validation.log": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/main.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/mocks/handlers/graph.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/graph/commands.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/jobs/ExportsListPage.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "infra/sqlserver/init/002_domain_models.sql": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/mocks/handlers/browserHandlers.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/scripts/validate_return_workflow_live.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/contracts/associateReturns.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_customer_document_normalizer.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/api/queries.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/data-console/pages/SourceDetailPage.test.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/tests/test_customer_graph_projection_materializer.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "scripts/run_all_host.sh": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/operations/seed_coordinator.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/assets.yaml": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/operations/CustomerReturnsPages.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_governance/inventory/contracts/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/features/operations/SystemPages.tsx": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/docs/evidence/graph_evidence_api/report_digest.status": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/src/fixtures/browser.ts": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/mapping/__init__.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/mapping/normalizer.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "frontend/openapi/return-platform.openapi.json": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/operations/sql_business_state.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "docs/plans/STAGE_4_HLD_ALIGNMENT_NEXT_STEPS_EXECUTION_PLAN.md": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/graph/readback.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  },
+  "backend/src/return_platform/data_platform/graph/evidence_repository.py": {
+    "git_status": "??",
+    "decision": "INTENTIONAL_DEFERRED_CHANGE",
+    "reason": "Pending Stage 4 fixes"
+  }
+}
