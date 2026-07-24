@@ -1,0 +1,30 @@
+{
+  "stage": "4B",
+  "classification": "CONTRACT_TESTED",
+  "environment": {
+    "python": "3.13.14",
+    "poetry": "2.4.1",
+    "node": "24",
+    "npm": "11",
+    "docker_compose": "validated"
+  },
+  "commands": [
+    "python -m poetry install --sync --with dev",
+    "python -m poetry check --lock",
+    "npm ci",
+    "docker compose config --quiet"
+  ],
+  "exitCode": 0,
+  "startedAt": "2026-07-24T12:08:41+05:30",
+  "completedAt": "2026-07-24T12:16:48+05:30",
+  "result": "PASS",
+  "artifacts": [
+    "docs/evidence/stage4_e2e_completion/4b_toolchains.json",
+    "docs/evidence/stage4_e2e_completion/4b_backend_lock_sha256.txt",
+    "docs/evidence/stage4_e2e_completion/4b_frontend_lock_sha256.txt"
+  ],
+  "reproduction": [
+    "cd backend && python -m poetry install --sync --with dev",
+    "cd frontend && npm ci"
+  ]
+}
