@@ -27,6 +27,16 @@ export function createFixtureJobAdapters(): JobQueryPort & ImportJobPort & Expor
       return getJobFixture(jobId);
     },
 
+    async cancelJob(jobId: string): Promise<Job> {
+      await new Promise(resolve => setTimeout(resolve, 300));
+      return getJobFixture(jobId);
+    },
+
+    async retryJob(jobId: string): Promise<Job> {
+      await new Promise(resolve => setTimeout(resolve, 300));
+      return getJobFixture(jobId);
+    },
+
     async submitImport(payload: { target: string; format: string; duplicatePolicy: string; fieldMapping: Record<string, string> }): Promise<Job> {
       await new Promise(resolve => setTimeout(resolve, 500));
       const id = String(Date.now());
@@ -37,6 +47,8 @@ export function createFixtureJobAdapters(): JobQueryPort & ImportJobPort & Expor
         target: payload.target,
         owner: "currentUser@example.com",
         createdAt: new Date().toISOString(),
+        attempts: 1,
+        maxAttempts: 3,
         metrics: {
           progressPercentage: 0
         }
@@ -53,6 +65,8 @@ export function createFixtureJobAdapters(): JobQueryPort & ImportJobPort & Expor
         target: payload.source,
         owner: "currentUser@example.com",
         createdAt: new Date().toISOString(),
+        attempts: 1,
+        maxAttempts: 3,
         metrics: {
           progressPercentage: 0
         }

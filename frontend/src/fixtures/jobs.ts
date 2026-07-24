@@ -10,6 +10,8 @@ const MOCK_JOBS: Job[] = [
     createdAt: "2026-07-22T08:00:00Z",
     startedAt: "2026-07-22T08:01:00Z",
     completedAt: "2026-07-22T08:05:00Z",
+    attempts: 1,
+    maxAttempts: 3,
     metrics: {
       totalRecords: 1000,
       processedRecords: 1000,
@@ -25,6 +27,8 @@ const MOCK_JOBS: Job[] = [
     owner: "bob@example.com",
     createdAt: "2026-07-23T10:00:00Z",
     startedAt: "2026-07-23T10:02:00Z",
+    attempts: 1,
+    maxAttempts: 3,
     metrics: {
       totalRecords: 50000,
       processedRecords: 25000,
@@ -41,6 +45,8 @@ const MOCK_JOBS: Job[] = [
     createdAt: "2026-07-21T12:00:00Z",
     startedAt: "2026-07-21T12:01:00Z",
     completedAt: "2026-07-21T12:02:00Z",
+    attempts: 1,
+    maxAttempts: 3,
     metrics: {
       totalRecords: 50,
       processedRecords: 10,
