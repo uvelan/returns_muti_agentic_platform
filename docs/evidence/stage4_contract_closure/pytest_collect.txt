@@ -1023,4 +1023,4 @@ C:\Users\Uday\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2
     from starlette.testclient import TestClient as TestClient  # noqa
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-======================== 953 tests collected in 1.09s =========================
+======================== 953 tests collected in 2.04s =========================

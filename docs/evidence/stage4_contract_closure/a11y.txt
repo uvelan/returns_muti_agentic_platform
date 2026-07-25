@@ -1,0 +1,67 @@
+
+> return-platform-console@0.1.0 test:a11y
+> playwright test tests/a11y.spec.ts
+
+
+Running 10 tests using 4 workers
+
+[WebServer] 9:56:03 am [vite] (client) [console.error] [MSW] Error: intercepted a request without a matching request handler:
+[WebServer] 
+[WebServer]   • GET /data-console/v1/inventory
+[WebServer] 
+[WebServer] If you still wish to intercept this unhandled request, please create a request handler for it.
+[WebServer] Read more: https://mswjs.io/docs/http/intercepting-requests
+[WebServer] 9:56:03 am [vite] (client) [console.error] [MSW] Error: intercepted a request without a matching request handler:
+[WebServer] 
+[WebServer]   • GET /data-console/v1/inventory
+[WebServer] 
+[WebServer] If you still wish to intercept this unhandled request, please create a request handler for it.
+[WebServer] Read more: https://mswjs.io/docs/http/intercepting-requests
+[WebServer] 9:56:03 am [vite] (client) [console.error] [MSW] Error: intercepted a request without a matching request handler:
+[WebServer] 
+[WebServer]   • GET /data-console/v1/graph-evidence/validation/latest
+[WebServer] 
+[WebServer] If you still wish to intercept this unhandled request, please create a request handler for it.
+[WebServer] Read more: https://mswjs.io/docs/http/intercepting-requests
+[WebServer] 9:56:03 am [vite] (client) [console.error] [MSW] Error: intercepted a request without a matching request handler:
+[WebServer] 
+[WebServer]   • GET /data-console/v1/graph-evidence?page_size=25
+[WebServer] 
+[WebServer] If you still wish to intercept this unhandled request, please create a request handler for it.
+[WebServer] Read more: https://mswjs.io/docs/http/intercepting-requests
+[WebServer] 9:56:03 am [vite] (client) [console.error] [MSW] Error: intercepted a request without a matching request handler:
+[WebServer] 
+[WebServer]   • GET /data-console/v1/graph-evidence/validation/latest
+[WebServer] 
+[WebServer] If you still wish to intercept this unhandled request, please create a request handler for it.
+[WebServer] Read more: https://mswjs.io/docs/http/intercepting-requests
+[WebServer] 9:56:03 am [vite] (client) [console.error] [MSW] Error: intercepted a request without a matching request handler:
+[WebServer] 
+[WebServer]   • GET /data-console/v1/graph-evidence?page_size=25
+[WebServer] 
+[WebServer] If you still wish to intercept this unhandled request, please create a request handler for it.
+[WebServer] Read more: https://mswjs.io/docs/http/intercepting-requests
+[WebServer] 9:56:03 am [vite] (client) [console.error] [MSW] Error: intercepted a request without a matching request handler:
+[WebServer] 
+[WebServer]   • GET /data-console/v1/overview
+[WebServer] 
+[WebServer] If you still wish to intercept this unhandled request, please create a request handler for it.
+[WebServer] Read more: https://mswjs.io/docs/http/intercepting-requests
+[WebServer] 9:56:03 am [vite] (client) [console.error] [MSW] Error: intercepted a request without a matching request handler:
+[WebServer] 
+[WebServer]   • GET /data-console/v1/overview
+[WebServer] 
+[WebServer] If you still wish to intercept this unhandled request, please create a request handler for it.
+[WebServer] Read more: https://mswjs.io/docs/http/intercepting-requests
+  ok  4 [chromium] › tests\a11y.spec.ts:5:3 › Accessibility › Overview page should not have any automatically detectable accessibility issues (3.9s)
+  ok  2 [chromium] › tests\a11y.spec.ts:19:3 › Accessibility › Graph evidence page should not have any automatically detectable accessibility issues (4.3s)
+  ok  3 [chromium] › tests\a11y.spec.ts:12:3 › Accessibility › Inventory page should not have any automatically detectable accessibility issues (4.6s)
+  ok  1 [chromium] › tests\a11y.spec.ts:26:3 › Accessibility › Sources page should not have any automatically detectable accessibility issues (5.1s)
+  ok  5 [chromium] › tests\a11y.spec.ts:33:3 › Accessibility › Source Detail page should not have any automatically detectable accessibility issues (2.7s)
+  ok  6 [chromium] › tests\a11y.spec.ts:40:3 › Accessibility › Data Browser page should not have any automatically detectable accessibility issues (2.7s)
+  ok  7 [chromium] › tests\a11y.spec.ts:47:3 › Accessibility › Asset Browser page should not have any automatically detectable accessibility issues (2.7s)
+  ok  8 [chromium] › tests\a11y.spec.ts:54:3 › Accessibility › Record Detail page should not have any automatically detectable accessibility issues (2.8s)
+  ok 10 [chromium] › tests\a11y.spec.ts:80:3 › Accessibility › 404 page should not have any automatically detectable accessibility issues (1.8s)
+  ok  9 [chromium] › tests\a11y.spec.ts:61:3 › Accessibility › Graph Explorer page should not have any automatically detectable accessibility issues (4.0s)
+
+  10 passed (13.6s)

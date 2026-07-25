@@ -1,0 +1,89 @@
+
+> return-platform-console@0.1.0 build
+> npm run typecheck && vite build && npm run check:bundle
+
+
+> return-platform-console@0.1.0 typecheck
+> tsc -b --pretty false
+
+[36mvite v8.1.5 [32mbuilding client environment for production...[36m[39m
+[2K
+transforming...✓ 1816 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                      0.95 kB │ gzip:  0.48 kB
+dist/assets/GraphExplorerPage-DLioOiRN.css          15.41 kB │ gzip:  2.56 kB
+dist/assets/index-Bronok1U.css                      37.55 kB │ gzip:  7.17 kB
+dist/assets/chevron-left-_lfEBfBc.js                 0.12 kB │ gzip:  0.14 kB
+dist/assets/chevron-right-C2gF_jXg.js                0.12 kB │ gzip:  0.14 kB
+dist/assets/arrow-right-Bcohms2a.js                  0.16 kB │ gzip:  0.16 kB
+dist/assets/circle-check-DugwaqFp.js                 0.17 kB │ gzip:  0.16 kB
+dist/assets/circle-alert-CMOeDSGA.js                 0.24 kB │ gzip:  0.18 kB
+dist/assets/lock-keyhole-CTtgOPPz.js                 0.25 kB │ gzip:  0.22 kB
+dist/assets/refresh-cw-CnNaiKOZ.js                   0.32 kB │ gzip:  0.23 kB
+dist/assets/EngineBadge-DknxbsDR.js                  0.54 kB │ gzip:  0.35 kB
+dist/assets/sourceQueries-CR5cHbEK.js                0.67 kB │ gzip:  0.34 kB
+dist/assets/inventoryQueries-CTq-aR0B.js             0.68 kB │ gzip:  0.41 kB
+dist/assets/ErrorState-BvLtLTV7.js                   0.69 kB │ gzip:  0.35 kB
+dist/assets/consoleGovernanceQueries-2okxXnnH.js     0.72 kB │ gzip:  0.28 kB
+dist/assets/EmptyState-e49XwqHI.js                   0.73 kB │ gzip:  0.40 kB
+dist/assets/SearchInput-BeHsbEM9.js                  0.73 kB │ gzip:  0.44 kB
+dist/assets/createLucideIcon-XrW6lAYB.js             0.88 kB │ gzip:  0.53 kB
+dist/assets/PropertyList-1DmTEGWN.js                 1.00 kB │ gzip:  0.50 kB
+dist/assets/DataTable-BcbA1vQL.js                    1.08 kB │ gzip:  0.54 kB
+dist/assets/queryKeyFactory-CbtvYB1G.js              1.09 kB │ gzip:  0.38 kB
+dist/assets/browserQueries-BxGvd8Sx.js               1.32 kB │ gzip:  0.56 kB
+dist/assets/SettingsPage-BbBK3EJH.js                 1.40 kB │ gzip:  0.74 kB
+dist/assets/PageHeader-CEwJXIHO.js                   1.43 kB │ gzip:  0.70 kB
+dist/assets/ExportsListPage-DDSTzGbb.js              1.54 kB │ gzip:  0.81 kB
+dist/assets/ImportsListPage-CA72PL3m.js              1.54 kB │ gzip:  0.81 kB
+dist/assets/JsonInspector-oQEe1Tmf.js                1.61 kB │ gzip:  0.58 kB
+dist/assets/AuditLogsPage-BbDUTaT6.js                1.74 kB │ gzip:  0.90 kB
+dist/assets/ScenarioPreviewPage-arv-0UDf.js          1.75 kB │ gzip:  0.80 kB
+dist/assets/InventoryAssetPage-Di9kYntd.js           1.87 kB │ gzip:  0.84 kB
+dist/assets/JobsListPage-P0o73VtL.js                 1.87 kB │ gzip:  0.93 kB
+dist/assets/BrowserLandingPage-CyX-BYAR.js           1.95 kB │ gzip:  0.96 kB
+dist/assets/WorkspacesListPage-Cocjc2mN.js           2.15 kB │ gzip:  1.05 kB
+dist/assets/useMutation-hUdbdHB9.js                  2.24 kB │ gzip:  0.93 kB
+dist/assets/WorkspaceRecordCreatePage-JH3cpBep.js    2.25 kB │ gzip:  1.06 kB
+dist/assets/jobsQueries-DCfYiOHP.js                  2.37 kB │ gzip:  0.74 kB
+dist/assets/WorkspaceCreatePage-C0RT9VfI.js          2.40 kB │ gzip:  1.00 kB
+dist/assets/RecordDetailPage-SQwK8jlq.js             2.53 kB │ gzip:  1.08 kB
+dist/assets/ScenarioCreatePage-C9tumu-t.js           2.57 kB │ gzip:  0.99 kB
+dist/assets/ScenariosListPage-C5f49im1.js            2.63 kB │ gzip:  1.18 kB
+dist/assets/ScenarioComparePage-CS7XrW-Y.js          2.64 kB │ gzip:  1.00 kB
+dist/assets/shared-BG9wLWIJ.js                       2.66 kB │ gzip:  0.95 kB
+dist/assets/HardeningPage-CwzzRx6N.js                2.79 kB │ gzip:  1.05 kB
+dist/assets/operations-EYOGopOy.js                   2.80 kB │ gzip:  0.71 kB
+dist/assets/WorkspaceRecordEditPage-SuvZERyg.js      2.88 kB │ gzip:  1.32 kB
+dist/assets/scenariosQueries-Ic0YlELP.js             2.96 kB │ gzip:  0.77 kB
+dist/assets/GovernancePage-674d_1Cg.js               3.26 kB │ gzip:  1.15 kB
+dist/assets/SourcesPage-DzfxAk85.js                  3.30 kB │ gzip:  1.44 kB
+dist/assets/ScenarioDetailPage-BD95m2is.js           3.44 kB │ gzip:  1.30 kB
+dist/assets/ExportWizardPage-BGPa-FGt.js             3.48 kB │ gzip:  1.39 kB
+dist/assets/workspacesQueries-D6RubnQf.js            3.69 kB │ gzip:  0.89 kB
+dist/assets/JobDetailPage-BfJaHOLq.js                3.93 kB │ gzip:  1.48 kB
+dist/assets/WorkspaceDetailPage-DveWayfE.js          4.79 kB │ gzip:  1.75 kB
+dist/assets/SourceDetailPage-DCU0ybPS.js             5.01 kB │ gzip:  1.91 kB
+dist/assets/ImportWizardPage-Bjm_fDnw.js             5.04 kB │ gzip:  1.96 kB
+dist/assets/SystemPages-4dAYSKRQ.js                  6.01 kB │ gzip:  2.04 kB
+dist/assets/InventoryPage-B9Ouy68p.js                6.82 kB │ gzip:  2.11 kB
+dist/assets/AssetBrowserPage-BIxD_4FH.js             7.24 kB │ gzip:  2.49 kB
+dist/assets/CustomerReturnsPages-Dc71xSFx.js         8.50 kB │ gzip:  2.89 kB
+dist/assets/useQuery-COsDjBGN.js                     8.78 kB │ gzip:  3.22 kB
+dist/assets/AssociateReturnsPage-DNV59BYq.js         9.35 kB │ gzip:  3.13 kB
+dist/assets/OverviewPage-CIjxJwCL.js                10.03 kB │ gzip:  3.13 kB
+dist/assets/SupportPages-Cj4HHzML.js                14.60 kB │ gzip:  3.79 kB
+dist/assets/AIGatewayPages-DEx-1Zz7.js              15.40 kB │ gzip:  4.16 kB
+dist/assets/GraphEvidencePage-Dk8S0FHl.js           16.84 kB │ gzip:  4.89 kB
+dist/assets/DataStudioPages-D-iS3uxj.js             17.22 kB │ gzip:  4.37 kB
+dist/assets/client-CLRSXysu.js                      17.93 kB │ gzip:  6.63 kB
+dist/assets/GraphExplorerPage-CVWdOxhE.js          194.72 kB │ gzip: 60.58 kB
+dist/assets/index-H5YBPV70.js                      295.47 kB │ gzip: 85.96 kB
+
+[32m✓ built in 1.39s[39m
+
+> return-platform-console@0.1.0 check:bundle
+> node scripts/check-bundle.js
+
+✅ Bundle check passed: No mock artifacts found in production bundle.

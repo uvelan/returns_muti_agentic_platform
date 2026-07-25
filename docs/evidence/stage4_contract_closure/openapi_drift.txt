@@ -1,0 +1,21 @@
+âœ¨ openapi-typescript 7.13.0
+ðŸš€ C:\Users\Uday\AppData\Local\Temp\tmpipokvu4j\return-platform.openapi.json â†’ C:\Users\Uday\AppData\Local\Temp\tmpipokvu4j\return-platform.d.ts [203.1ms]
+{
+  "stage": "4E",
+  "gate": "openapi_drift",
+  "commit": "7ff46df5c99a99ecf5e23f5fb0db5edcb7bef6c9",
+  "environment": "local-contract-validation",
+  "command": [
+    "node",
+    "K:\\Projects\\FEG\\Ret\\full\\tmp\\returns_multi_agentic_platform\\frontend\\node_modules\\openapi-typescript\\bin\\cli.js",
+    "C:\\Users\\Uday\\AppData\\Local\\Temp\\tmpipokvu4j\\return-platform.openapi.json",
+    "--output",
+    "C:\\Users\\Uday\\AppData\\Local\\Temp\\tmpipokvu4j\\return-platform.d.ts"
+  ],
+  "started_at": "2026-07-25T04:26:22.110430+00:00",
+  "finished_at": "2026-07-25T04:26:25.003735+00:00",
+  "openapi_sha256": "9db385e0c49b7ac9e9b779c24973d0d6ae36c6d6b4b7179036ab7597e574c6e1",
+  "exit_code": 0,
+  "diffs": [],
+  "status": "PASS"
+}

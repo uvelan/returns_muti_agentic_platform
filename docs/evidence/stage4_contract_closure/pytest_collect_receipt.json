@@ -1,10 +1,10 @@
 {
   "stage": "4C",
   "gate": "pytest_collect",
-  "commit": "869e3ff2902c27623249eeb23bdaaec7b847b39b",
+  "commit": "7ff46df5c99a99ecf5e23f5fb0db5edcb7bef6c9",
   "environment": "local-contract-validation",
   "command": [
-    "python",
+    "C:\\Users\\Uday\\AppData\\Local\\Microsoft\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\\python.exe",
     "-m",
     "poetry",
     "--project",
@@ -15,7 +15,7 @@
     "backend/tests"
   ],
   "exit_code": 0,
-  "started_at": "2026-07-25T02:05:56.390117+00:00",
-  "finished_at": "2026-07-25T02:06:00.427742+00:00",
+  "started_at": "2026-07-25T04:24:39.445522+00:00",
+  "finished_at": "2026-07-25T04:24:47.096759+00:00",
   "status": "PASS"
 }

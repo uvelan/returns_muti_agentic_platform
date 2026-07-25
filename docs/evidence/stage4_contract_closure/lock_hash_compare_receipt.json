@@ -1,13 +1,14 @@
 {
   "stage": "4B",
   "gate": "lock_hash_compare",
-  "commit": "869e3ff2902c27623249eeb23bdaaec7b847b39b",
+  "commit": "7ff46df5c99a99ecf5e23f5fb0db5edcb7bef6c9",
   "environment": "local-contract-validation",
   "command": [
-    "dummy"
+    "C:\\Users\\Uday\\AppData\\Local\\Microsoft\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\\python.exe",
+    "scripts/compare_lock_hashes.py"
   ],
   "exit_code": 0,
-  "started_at": "2026-07-25T02:52:26.669818+00:00",
-  "finished_at": "2026-07-25T02:52:26.669830+00:00",
+  "started_at": "2026-07-25T04:24:39.031226+00:00",
+  "finished_at": "2026-07-25T04:24:39.326684+00:00",
   "status": "PASS"
 }

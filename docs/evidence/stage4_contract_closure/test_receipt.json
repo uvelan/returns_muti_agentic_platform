@@ -1,16 +1,17 @@
 {
-  "stage": "4B",
-  "gate": "frontend_ci",
+  "stage": "4D",
+  "gate": "test",
   "commit": "7ff46df5c99a99ecf5e23f5fb0db5edcb7bef6c9",
   "environment": "local-contract-validation",
   "command": [
     "npm.cmd",
-    "ci",
+    "run",
+    "test",
     "--prefix",
     "frontend"
   ],
   "exit_code": 0,
-  "started_at": "2026-07-25T04:24:03.318678+00:00",
-  "finished_at": "2026-07-25T04:24:35.719821+00:00",
+  "started_at": "2026-07-25T04:25:47.429465+00:00",
+  "finished_at": "2026-07-25T04:25:57.088906+00:00",
   "status": "PASS"
 }

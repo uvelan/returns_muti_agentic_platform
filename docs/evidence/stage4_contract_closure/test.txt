@@ -1,0 +1,37 @@
+
+> return-platform-console@0.1.0 test
+> vitest run
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90mK:/Projects/FEG/Ret/full/tmp/returns_multi_agentic_platform/frontend[39m
+
+ [32m✓[39m src/api/graphEvidence.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 34[2mms[22m[39m
+ [32m✓[39m src/components/ToastProvider.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 79[2mms[22m[39m
+ [32m✓[39m src/components/ConfirmationDialog.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 87[2mms[22m[39m
+ [32m✓[39m src/components/States.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[32m 96[2mms[22m[39m
+ [32m✓[39m src/features/data-console/pages/InventoryPage.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 155[2mms[22m[39m
+ [32m✓[39m src/features/data-console/pages/graph-explorer/__tests__/GraphExplorerPage.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 374[2mms[22m[39m
+     [33m[2m✓[22m[39m renders search bar and view toggles [33m 311[2mms[22m[39m
+ [32m✓[39m src/features/data-console/pages/GraphEvidencePage.test.tsx [2m([22m[2m8 tests[22m[2m)[22m[33m 3333[2mms[22m[39m
+     [33m[2m✓[22m[39m performs exact lookup and opens summary inspection [33m 1379[2mms[22m[39m
+     [33m[2m✓[22m[39m renders admin full evidence [33m 435[2mms[22m[39m
+     [33m[2m✓[22m[39m keeps summary visible when viewer full access is denied [33m 429[2mms[22m[39m
+     [33m[2m✓[22m[39m navigates forward and back with seek cursors [33m 314[2mms[22m[39m
+ [32m✓[39m src/components/Shell.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 681[2mms[22m[39m
+     [33m[2m✓[22m[39m toggles mobile menu [33m 426[2mms[22m[39m
+ [32m✓[39m src/features/data-console/pages/RecordDetailPage.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 492[2mms[22m[39m
+     [33m[2m✓[22m[39m renders record data and properties [33m 485[2mms[22m[39m
+ [32m✓[39m src/features/data-console/pages/SourceDetailPage.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 492[2mms[22m[39m
+     [33m[2m✓[22m[39m renders source details and tabs [33m 485[2mms[22m[39m
+ [32m✓[39m src/features/data-console/pages/AssetBrowserPage.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 514[2mms[22m[39m
+     [33m[2m✓[22m[39m renders records and capabilities [33m 507[2mms[22m[39m
+ [32m✓[39m src/features/data-console/pages/SourcesPage.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 473[2mms[22m[39m
+     [33m[2m✓[22m[39m renders sources and fixture notice [33m 467[2mms[22m[39m
+ [32m✓[39m src/features/data-console/pages/BrowserLandingPage.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 421[2mms[22m[39m
+     [33m[2m✓[22m[39m renders assets table [33m 416[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m13 passed[39m[22m[90m (13)[39m
+[2m      Tests [22m [1m[32m39 passed[39m[22m[90m (39)[39m
+[2m   Start at [22m 09:55:48
+[2m   Duration [22m 8.88s[2m (transform 2.06s, setup 12.16s, import 6.03s, tests 7.23s, environment 26.58s)[22m
+
