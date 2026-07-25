@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any, Final, cast
 
 from fastapi import HTTPException, Request
@@ -23,6 +23,7 @@ from return_platform.operations.models import (
     SupportCaseView,
     SupportOperationRequest,
     TimelineEvent,
+    normalize_utc_datetime,
     utc_now,
 )
 from return_platform.operations.seed_manifest import (
@@ -142,7 +143,7 @@ class OperationalRepository:
         payload["slaBreached"] = bool(
             status in {SupportCaseStatus.OPEN.value, SupportCaseStatus.ASSIGNED.value}
             and isinstance(due_at, datetime)
-            and utc_now() > due_at.astimezone(UTC)
+            and utc_now() > normalize_utc_datetime(due_at)
         )
         return SupportCaseView.model_validate(payload)
 

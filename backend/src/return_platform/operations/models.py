@@ -264,5 +264,12 @@ class SeedStatusView(MutableContract):
     validationErrors: list[str]
 
 
+def normalize_utc_datetime(value: datetime) -> datetime:
+    """Treat timezone-naive persistence timestamps as UTC and normalize aware values."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
 def utc_now() -> datetime:
     return datetime.now(UTC)

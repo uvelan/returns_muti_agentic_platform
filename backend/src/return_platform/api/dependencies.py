@@ -18,6 +18,7 @@ from return_platform.data_console.infrastructure.probes import (
     probe_temporal,
     probe_valkey,
 )
+from return_platform.operations.models import normalize_utc_datetime
 from return_platform.operations.repository import resolve_operational_repository
 from return_platform.shared.contracts import APIResponse, DependencyProbeResult, ResponseMeta
 
@@ -87,10 +88,15 @@ async def _cards(request: Request) -> list[dict[str, Any]]:
     ):
         heartbeat = await repository.get_heartbeat(worker)
         last_seen = heartbeat.get("lastSeenAt") if heartbeat else None
+        last_seen_utc = (
+            normalize_utc_datetime(last_seen) if isinstance(last_seen, datetime) else None
+        )
+        heartbeat_age_seconds = (
+            (now - last_seen_utc).total_seconds() if last_seen_utc is not None else None
+        )
         healthy = (
-            isinstance(last_seen, datetime)
-            and (now - last_seen.astimezone(UTC)).total_seconds()
-            <= settings.worker_readiness_ttl_seconds
+            heartbeat_age_seconds is not None
+            and heartbeat_age_seconds <= settings.worker_readiness_ttl_seconds
         )
         cards.append(
             {
@@ -106,6 +112,8 @@ async def _cards(request: Request) -> list[dict[str, Any]]:
                 "checkedAt": now,
                 "details": {
                     **(heartbeat or {}),
+                    **({"lastSeenAt": last_seen_utc} if last_seen_utc is not None else {}),
+                    "heartbeatAgeSeconds": heartbeat_age_seconds,
                     "readinessTtlSeconds": settings.worker_readiness_ttl_seconds,
                     "validationLevel": "DURABLE_HEARTBEAT",
                 },
@@ -119,9 +127,12 @@ async def _cards(request: Request) -> list[dict[str, Any]]:
         projection={"occurredAt": 1},
     )
     oldest_at = oldest.get("occurredAt") if oldest else None
+    oldest_at_utc = (
+        normalize_utc_datetime(oldest_at) if isinstance(oldest_at, datetime) else None
+    )
     oldest_age_seconds = (
-        int((now - oldest_at.astimezone(UTC)).total_seconds())
-        if isinstance(oldest_at, datetime)
+        max(0, int((now - oldest_at_utc).total_seconds()))
+        if oldest_at_utc is not None
         else 0
     )
     outbox_healthy = (

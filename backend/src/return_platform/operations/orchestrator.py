@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, Final, cast
 
 import httpx
@@ -20,6 +20,7 @@ from return_platform.operations.models import (
     AIRequestStatus,
     ReturnSessionView,
     ReturnStatus,
+    normalize_utc_datetime,
 )
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_support.providers.factory import (
@@ -73,7 +74,7 @@ def _binding_snapshot(binding: StageContextBinding) -> ContextSnapshot:
 
 
 def _observed_at(session: ReturnSessionView) -> datetime:
-    return session.createdAt.astimezone(UTC)
+    return normalize_utc_datetime(session.createdAt)
 
 
 def _eligibility_decision(value: AIDecision) -> EligibilityDecision:
@@ -326,7 +327,10 @@ class ReturnOrchestrator:
                 delivered_at = order.get("deliveredAt")
                 days_since_delivery = None
                 if isinstance(delivered_at, datetime):
-                    days_since_delivery = max(0, (observed_at - delivered_at.astimezone(UTC)).days)
+                    days_since_delivery = max(
+                        0,
+                        (observed_at - normalize_utc_datetime(delivered_at)).days,
+                    )
                 evaluation = await self._ai.evaluate(
                     session_id=session.id,
                     redacted_input={
