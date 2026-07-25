@@ -224,6 +224,77 @@ class SQLBusinessStateRepository:
 
         await self._run(operation)
 
+    async def reset_demo_business_state(self, seed_version: str) -> None:
+        """Delete business facts created from deterministic E2E seed orders."""
+
+        order_references = tuple(str(item["orderReference"]) for item in SEED_SCENARIOS)
+
+        def operation() -> None:
+            with self._connect() as connection:
+                try:
+                    with connection.cursor() as cursor:
+                        placeholders = ",".join("%s" for _ in order_references)
+                        cursor.execute(
+                            f"""
+                            SELECT session_id, return_reference
+                            FROM dbo.return_requests
+                            WHERE order_reference IN ({placeholders})
+                            """,
+                            order_references,
+                        )
+                        rows = cursor.fetchall()
+                        session_ids = tuple(str(row[0]) for row in rows)
+                        return_references = tuple(
+                            str(row[1]) for row in rows if row[1] is not None
+                        )
+
+                        def delete_many(
+                            table: str,
+                            column: str,
+                            values: tuple[str, ...],
+                        ) -> None:
+                            if not values:
+                                return
+                            value_placeholders = ",".join("%s" for _ in values)
+                            cursor.execute(
+                                f"DELETE FROM {table} WHERE {column} IN ({value_placeholders})",
+                                values,
+                            )
+
+                        delete_many(
+                            "platform.bay_assignment",
+                            "return_reference",
+                            return_references,
+                        )
+                        delete_many(
+                            "dbo.return_tracking",
+                            "return_reference",
+                            return_references,
+                        )
+                        delete_many(
+                            "platform.feedback_recommendation",
+                            "session_id",
+                            session_ids,
+                        )
+                        delete_many(
+                            "integration.return_support_ticket",
+                            "session_id",
+                            session_ids,
+                        )
+                        delete_many("dbo.return_items", "session_id", session_ids)
+                        delete_many("dbo.return_fulfillment", "session_id", session_ids)
+                        delete_many("dbo.return_requests", "session_id", session_ids)
+                        cursor.execute(
+                            "DELETE FROM dbo.e2e_seed_scenarios WHERE seed_version=%s",
+                            (seed_version,),
+                        )
+                    connection.commit()
+                except Exception:
+                    connection.rollback()
+                    raise
+
+        await self._run(operation)
+
     async def persist_support_result(
         self,
         session: ReturnSessionView,

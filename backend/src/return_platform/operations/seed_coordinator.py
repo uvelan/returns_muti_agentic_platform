@@ -120,7 +120,7 @@ class SeedCoordinator:
             raise PermissionError("Seed reset is restricted to development and test.")
         seed_version = self._settings.seed_version
         await self._repository.reset_demo_data()
-        await self._sql.reset_seed_manifest(seed_version)
+        await self._sql.reset_demo_business_state(seed_version)
         # Neo4j is a derived projection. A sandbox reset may safely rebuild it from sources.
         await self._neo4j.execute_query(
             "MATCH (node) DETACH DELETE node",

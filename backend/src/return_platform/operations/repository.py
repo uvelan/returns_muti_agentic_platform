@@ -1054,6 +1054,9 @@ class OperationalRepository:
         await self._db["return_session_audit_events"].delete_many({})
         await self._db["return_session_outbox_events"].delete_many({})
         await self._db["return_session_agent_decisions"].delete_many({})
+        await self._db["associate_conversations"].delete_many({})
+        await self._db["discovery_locks"].delete_many({})
+        await self._db["feedback_learning_records"].delete_many({})
 
 
 def resolve_operational_repository(request: Request) -> OperationalRepository:
