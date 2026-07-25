@@ -1,0 +1,88 @@
+
+> return-platform-console@0.1.0 dev
+> vite
+
+
+  VITE v8.1.5  ready in 358 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://10.100.242.229:5173/
+  ➜  Network: http://172.19.0.1:5173/
+INFO:     Will watch for changes in these directories: ['/home/d-193230@USTDEV.COM/dev/projects/returns_agentic_platform/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [3044434] using WatchFiles
+INFO:     Started server process [3044528]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:39884 - "GET /api/v1/system/dependencies HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38126 - "POST /api/v1/associate-returns/conversations HTTP/1.1" 201 Created
+INFO:     127.0.0.1:38142 - "POST /api/v1/associate-returns/conversations/05eac91d-33ff-4080-8a27-9cedb9c51b42/confirm HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38152 - "POST /api/v1/associate-returns/conversations/05eac91d-33ff-4080-8a27-9cedb9c51b42/details HTTP/1.1" 201 Created
+INFO:     127.0.0.1:38154 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38156 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38158 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38164 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38170 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0/stream HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38178 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38182 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56182 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56198 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56206 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56208 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39308 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39316 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39320 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52422 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52426 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52430 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52442 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32834 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32836 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32842 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34644 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34656 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34668 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34676 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45172 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45188 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45194 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34090 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34106 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34122 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34132 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36906 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36908 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36912 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34968 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34984 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34990 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34992 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58088 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58102 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58116 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34252 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34268 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34278 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34292 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47000 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47016 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47022 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44668 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44672 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42494 - "GET /data-console/v1/graph-sync/runs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42496 - "GET /data-console/v1/graph-sync/runs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42498 - "GET /data-console/v1/graph-sync/runs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41926 - "GET /data-console/v1/graph-sync/runs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41930 - "GET /data-console/v1/inventory HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41938 - "GET /data-console/v1/inventory HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45984 - "GET /data-console/v1/browser/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48454 - "GET /data-console/v1/browser/MONGODB/source.mongodb.sales_inv/records?page_index=0&page_size=10 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48456 - "GET /data-console/v1/browser/MONGODB/source.mongodb.sales_inv/records?page_index=0&page_size=10 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48464 - "GET /data-console/v1/browser/MONGODB/source.mongodb.sales_inv/records/SANDBOX%2AORD-10001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49368 - "GET /api/v1/support/cases HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49382 - "GET /api/v1/support/cases HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58214 - "GET /api/v1/support/cases HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47944 - "GET /api/v1/support/cases HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47958 - "GET /api/v1/support/cases HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38496 - "GET /api/v1/support/cases HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38508 - "GET /api/v1/support/cases HTTP/1.1" 200 OK

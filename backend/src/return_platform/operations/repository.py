@@ -48,6 +48,13 @@ SEED_METADATA: Final = "seed_metadata"
 SOURCE_ORDERS: Final = "orders"
 SOURCE_CUSTOMERS: Final = "customers"
 SOURCE_PRODUCTS: Final = "products"
+_EVENT_DEDUPLICATION_INDEX: Final = "stream_deduplication_unique"
+_EVENT_DEDUPLICATION_KEYS: Final = (
+    ("streamId", ASCENDING),
+    ("deduplicationKey", ASCENDING),
+)
+_EVENT_DEDUPLICATION_FILTER: Final = {"deduplicationKey": {"$type": "string"}}
+
 DOMAIN_SOURCE_COLLECTIONS: Final = (
     "salesInv",
     "customerOutboundCDM",
@@ -100,11 +107,7 @@ class OperationalRepository:
         await self.events.create_index(
             [("streamId", ASCENDING), ("sequence", ASCENDING)], unique=True
         )
-        await self.events.create_index(
-            [("streamId", ASCENDING), ("deduplicationKey", ASCENDING)],
-            unique=True,
-            sparse=True,
-        )
+        await self._ensure_event_deduplication_index()
         await self.events.create_index([("publishedAt", ASCENDING), ("occurredAt", ASCENDING)])
         await self.support_cases.create_index(
             [("status", ASCENDING), ("priorityRank", ASCENDING), ("slaDueAt", ASCENDING)]
@@ -114,6 +117,30 @@ class OperationalRepository:
         await self.ai_traces.create_index([("sessionId", ASCENDING), ("createdAt", DESCENDING)])
         await self.worker_heartbeats.create_index("expiresAt", expireAfterSeconds=0)
         await self.ai_rate_limits.create_index("expiresAt", expireAfterSeconds=0)
+
+    async def _ensure_event_deduplication_index(self) -> None:
+        indexes = await self.events.index_information()
+        expected_keys = list(_EVENT_DEDUPLICATION_KEYS)
+        for index_name, definition in indexes.items():
+            if list(definition.get("key", ())) != expected_keys:
+                continue
+            is_current = (
+                index_name == _EVENT_DEDUPLICATION_INDEX
+                and definition.get("unique") is True
+                and definition.get("partialFilterExpression")
+                == _EVENT_DEDUPLICATION_FILTER
+                and not bool(definition.get("sparse", False))
+            )
+            if is_current:
+                return
+            await self.events.drop_index(index_name)
+
+        await self.events.create_index(
+            list(_EVENT_DEDUPLICATION_KEYS),
+            name=_EVENT_DEDUPLICATION_INDEX,
+            unique=True,
+            partialFilterExpression=_EVENT_DEDUPLICATION_FILTER,
+        )
 
     @staticmethod
     def _return_view(document: dict[str, Any]) -> ReturnSessionView:

@@ -1,0 +1,19 @@
+
+> return-platform-console@0.1.0 dev
+> vite
+
+
+  VITE v8.1.5  ready in 352 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://10.100.242.229:5173/
+  ➜  Network: http://172.19.0.1:5173/
+INFO:     Will watch for changes in these directories: ['/home/d-193230@USTDEV.COM/dev/projects/returns_agentic_platform/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [3162876] using WatchFiles
+INFO:     Started server process [3162972]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:46518 - "GET /api/v1/returns HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40674 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53362 - "GET /api/v1/returns/3d000f71-55bd-47fb-89dc-77befa3fc6d0/events HTTP/1.1" 200 OK
