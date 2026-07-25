@@ -185,7 +185,7 @@ class AssociateConversationService:
         return AssociateConversationView.model_validate(
             {
                 "id": str(document["_id"]),
-                **{key: value for key, value in document.items() if key != "_id"},
+                **{key: value for key, value in document.items() if key not in ("_id", "anchorDigest", "createdBy")},
             }
         )
 

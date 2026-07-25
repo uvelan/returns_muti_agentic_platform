@@ -226,6 +226,7 @@ async def probe_sqlserver(request: Request) -> DependencyProbeResult:
 
         with pymssql.connect(
             server=settings.sqlserver_host,
+            port=settings.sqlserver_port,
             user=settings.sqlserver_user,
             password=settings.sqlserver_password.get_secret_value(),
             database=settings.sqlserver_database,
