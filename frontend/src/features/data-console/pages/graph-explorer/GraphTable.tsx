@@ -11,7 +11,7 @@ export const GraphTable: React.FC<Props> = ({ nodes, relationships }) => {
   return (
     <div className="space-y-8" role="region" aria-label="Graph Data Table">
       <section>
-        <h3 className="text-lg font-semibold mb-4">Nodes</h3>
+        <h2 className="text-lg font-semibold mb-4">Nodes</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse border border-gray-200">
             <caption className="sr-only">Graph Nodes</caption>
@@ -59,7 +59,7 @@ export const GraphTable: React.FC<Props> = ({ nodes, relationships }) => {
       </section>
 
       <section>
-        <h3 className="text-lg font-semibold mb-4">Relationships</h3>
+        <h2 className="text-lg font-semibold mb-4">Relationships</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse border border-gray-200">
             <caption className="sr-only">Graph Relationships</caption>

@@ -28,7 +28,7 @@ describe("AssetBrowserPage", () => {
     await waitFor(() => {
       expect(screen.getByText("SalesOrders")).toBeInTheDocument();
       expect(screen.getByText("SO-1001")).toBeInTheDocument();
-      expect(screen.getByText("Read Only")).toBeInTheDocument(); // because it's a read-only source
+      expect(screen.getByText(/Read-only governed inspection/i)).toBeInTheDocument();
     });
   });
 });

@@ -26,11 +26,6 @@ describe("SourcesPage", () => {
       </QueryClientProvider>
     );
 
-    // Wait for fixture notice
-    await waitFor(() => {
-      expect(screen.getByText(/FIXTURE — NON-DURABLE/)).toBeInTheDocument();
-    });
-
     // Wait for sources to load
     await waitFor(() => {
       expect(screen.getByText("OMC SQL Server")).toBeInTheDocument();

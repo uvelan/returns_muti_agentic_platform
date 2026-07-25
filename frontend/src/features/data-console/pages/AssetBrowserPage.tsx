@@ -79,7 +79,7 @@ export function AssetBrowserPage() {
         <button
           type="button"
           className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-          onClick={() => setLocation("/data-console/ai-studio")}
+          onClick={() => { setLocation("/data-console/ai-studio"); }}
         >
           Open AI Studio
         </button>
@@ -114,7 +114,7 @@ export function AssetBrowserPage() {
                   <tr
                     key={record.identity.id}
                     className="cursor-pointer hover:bg-gray-50"
-                    onClick={() => setSelectedRecord(record)}
+                    onClick={() => { setSelectedRecord(record); }}
                   >
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">
                       {record.identity.id}
@@ -157,7 +157,7 @@ export function AssetBrowserPage() {
 
       <DetailDrawer
         isOpen={selectedRecord !== null}
-        onClose={() => setSelectedRecord(null)}
+        onClose={() => { setSelectedRecord(null); }}
         title={`Record Inspection: ${selectedRecord?.identity.id ?? ""}`}
       >
         {selectedRecord && (
@@ -174,9 +174,9 @@ export function AssetBrowserPage() {
               type="button"
               className="w-full rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               onClick={() =>
-                setLocation(
+                { setLocation(
                   `/data-console/browser/${encodeURIComponent(engine)}/${encodeURIComponent(assetId)}/records/${encodeURIComponent(selectedRecord.identity.id)}`,
-                )
+                ); }
               }
             >
               View full details

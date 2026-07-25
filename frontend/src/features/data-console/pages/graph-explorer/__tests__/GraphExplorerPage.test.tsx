@@ -41,15 +41,15 @@ vi.mock("../../../../../api/graphExplorerQueries", () => ({
   }))
 }));
 
-// Mock react flow to avoid rendering errors in JSDOM
-vi.mock("@xyflow/react", async () => {
-  const actual = await vi.importActual("@xyflow/react");
+vi.mock("@xyflow/react", () => {
   return {
-    ...actual,
     ReactFlow: ({ children }: { children: React.ReactNode }) => <div data-testid="react-flow-mock">{children}</div>,
     Background: () => <div />,
     Controls: () => <div />,
-    Panel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>
+    Panel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+    MarkerType: { ArrowClosed: "arrowclosed" },
+    useNodesState: (n: unknown) => [n, vi.fn(), vi.fn()],
+    useEdgesState: (e: unknown) => [e, vi.fn(), vi.fn()],
   };
 });
 

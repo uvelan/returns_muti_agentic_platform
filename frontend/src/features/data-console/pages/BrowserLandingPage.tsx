@@ -60,9 +60,9 @@ export function BrowserLandingPage() {
           columns={columns}
           keyExtractor={(asset) => `${asset.engine}-${asset.assetId}`}
           onRowClick={(asset) =>
-            setLocation(
+            { setLocation(
               `/data-console/browser/${encodeURIComponent(asset.engine)}/${encodeURIComponent(asset.assetId)}`,
-            )
+            ); }
           }
           className="border-none shadow-none rounded-none"
         />

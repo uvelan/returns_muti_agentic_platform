@@ -79,7 +79,7 @@ export function Shell({ children }: ShellProps) {
       )}
 
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col w-64 shrink-0 border-r border-slate-200 bg-white sticky top-0 h-screen">
+      <aside aria-label="Primary navigation" className="hidden md:flex flex-col w-64 shrink-0 border-r border-slate-200 bg-white sticky top-0 h-screen">
         <div className="flex h-16 shrink-0 items-center px-6 border-b border-slate-200">
           <Link href="/" className="flex min-w-0 items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2" aria-label="Return Platform overview">
             <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white shadow-sm" aria-hidden="true">
@@ -121,7 +121,7 @@ export function Shell({ children }: ShellProps) {
       {/* Main content area */}
       <div className="flex flex-1 flex-col overflow-hidden min-w-0">
         {isMockMode && (
-          <div className="bg-amber-100 px-4 py-2 text-center text-sm font-medium text-amber-900 border-b border-amber-200 shrink-0">
+          <div role="region" aria-label="Mock Mode Indicator" className="bg-amber-100 px-4 py-2 text-center text-sm font-medium text-amber-900 border-b border-amber-200 shrink-0">
             FIXTURE MODE — NON-DURABLE
           </div>
         )}

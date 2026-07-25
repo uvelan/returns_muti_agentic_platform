@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, type SyntheticEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Bot, CheckCircle2, LockKeyhole, Search, Send, UserRound } from "lucide-react";
@@ -89,7 +89,7 @@ export function AssociateReturnsPage() {
     onSuccess: (value) => { setConversation(value.conversation); },
   });
 
-  function start(event: FormEvent<HTMLFormElement>) {
+  function start(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     startMutation.mutate({ anchorType, anchorValue });
   }

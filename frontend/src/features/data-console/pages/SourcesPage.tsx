@@ -128,7 +128,7 @@ export function SourcesPage() {
         data={filteredSources}
         columns={columns}
         keyExtractor={(source) => source.id}
-        onRowClick={(source) => setLocation(`/data-console/sources/${source.id}`)}
+        onRowClick={(source) => { setLocation(`/data-console/sources/${source.id}`); }}
       />
     </div>
   );

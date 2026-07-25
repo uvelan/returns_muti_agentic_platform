@@ -209,7 +209,7 @@ export const GraphExplorerPage = () => {
 
         {/* Right Side: Inspector Panel */}
         {hasInspector && (
-          <aside className="w-full md:w-1/3 h-full border-l bg-white flex-shrink-0 z-20 shadow-[-4px_0_15px_rgba(0,0,0,0.05)]">
+          <aside aria-label="Inspector Details" className="w-full md:w-1/3 h-full border-l bg-white flex-shrink-0 z-20 shadow-[-4px_0_15px_rgba(0,0,0,0.05)]">
             {activeNodeId && (
               <NodeDetailPanel nodeId={activeNodeId} onClose={closeInspector} />
             )}

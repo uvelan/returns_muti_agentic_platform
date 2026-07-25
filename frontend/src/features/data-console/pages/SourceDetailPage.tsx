@@ -12,7 +12,7 @@ import { PropertyList } from "../components/PropertyList";
 export function SourceDetailPage() {
   const params = useParams();
   const [, setLocation] = useLocation();
-  const sourceId = (params.sourceId as string) ?? "";
+  const sourceId = params.sourceId ?? "";
   const { data: source, isLoading, error } = useSourceDetail(sourceId);
   const [activeTab, setActiveTab] = useState("summary");
 
@@ -74,7 +74,7 @@ export function SourceDetailPage() {
         onChange={setActiveTab}
         tabs={[
           { id: "summary", label: "Configuration Summary" },
-          { id: "assets", label: `Assets (${source.assets.length})` },
+          { id: "assets", label: `Assets (${String(source.assets.length)})` },
           { id: "governance", label: "Governance" },
           { id: "activity", label: "Dependency Evidence" },
         ]}
@@ -118,9 +118,9 @@ export function SourceDetailPage() {
                     key={asset.assetId}
                     className="cursor-pointer hover:bg-gray-50"
                     onClick={() =>
-                      setLocation(
+                      { setLocation(
                         `/data-console/browser/${source.engine === "SQL_SERVER" ? "SQL_SERVER" : "MONGODB"}/${encodeURIComponent(asset.assetId)}`,
-                      )
+                      ); }
                     }
                   >
                     <td className="px-6 py-4">
