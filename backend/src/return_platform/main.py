@@ -13,19 +13,24 @@ from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
 from return_platform.api.ai_gateway import router as ai_gateway_router
+from return_platform.api.associate_returns import router as associate_returns_router
 from return_platform.api.dependencies import router as dependencies_router
 from return_platform.api.returns import router as returns_router
 from return_platform.api.seed import router as seed_router
 from return_platform.api.support import router as support_router
 from return_platform.configuration.settings import Settings
+from return_platform.data_console.api.ai_studio import router as ai_studio_router
 from return_platform.data_console.api.audit import router as audit_router
 from return_platform.data_console.api.browser import router as browser_router
+from return_platform.data_console.api.feedback_learning import router as feedback_learning_router
 from return_platform.data_console.api.graph import router as graph_router
 from return_platform.data_console.api.graph_evidence import router as graph_evidence_router
+from return_platform.data_console.api.graph_sync import router as graph_sync_router
 from return_platform.data_console.api.inventory import router as inventory_router
 from return_platform.data_console.api.jobs import router as jobs_router
 from return_platform.data_console.api.router import router as console_router
 from return_platform.data_console.api.scenarios import router as scenarios_router
+from return_platform.data_console.api.schema_catalog import router as schema_catalog_router
 from return_platform.data_console.api.sources import router as sources_router
 from return_platform.data_console.api.workspaces import router as workspaces_router
 from return_platform.data_console.infrastructure.probes import (
@@ -37,6 +42,7 @@ from return_platform.data_console.infrastructure.probes import (
     probe_valkey,
 )
 from return_platform.data_governance import load_asset_catalog
+from return_platform.data_platform.schema_registry import load_schema_registry
 from return_platform.operations.repository import OperationalRepository
 from return_platform.resources import (
     AsyncValkeyClient,
@@ -238,10 +244,12 @@ async def lifespan(
     settings = _get_settings(app)
 
     loaded_catalog = load_asset_catalog(settings.catalog_path)
+    schema_registry = load_schema_registry(settings.schema_registry_path)
 
     resources = RuntimeResources(
         settings=settings,
         catalog=loaded_catalog,
+        schema_registry=schema_registry,
     )
 
     try:
@@ -275,6 +283,8 @@ async def lifespan(
                 "catalog_version": (loaded_catalog.catalog.version),
                 "catalog_asset_count": (loaded_catalog.asset_count),
                 "catalog_sha256": (loaded_catalog.sha256_hex),
+                "schema_registry_asset_count": len(schema_registry.assets),
+                "graph_node_count": len(schema_registry.graph.nodes),
             },
         )
 
@@ -314,7 +324,7 @@ def create_app(
 ) -> FastAPI:
     """Construct and configure the Return Platform API."""
 
-    app_settings = custom_settings or Settings()
+    app_settings = custom_settings or Settings()  # type: ignore[call-arg]
 
     provider = _resolve_principal_provider(
         app_settings,
@@ -501,6 +511,10 @@ def create_app(
         )
 
     fastapi_app.include_router(console_router)
+    fastapi_app.include_router(schema_catalog_router)
+    fastapi_app.include_router(ai_studio_router)
+    fastapi_app.include_router(graph_sync_router)
+    fastapi_app.include_router(feedback_learning_router)
     fastapi_app.include_router(graph_router)
     fastapi_app.include_router(graph_evidence_router)
     fastapi_app.include_router(inventory_router)
@@ -511,6 +525,7 @@ def create_app(
     fastapi_app.include_router(scenarios_router)
     fastapi_app.include_router(audit_router)
     fastapi_app.include_router(returns_router)
+    fastapi_app.include_router(associate_returns_router)
     fastapi_app.include_router(support_router)
     fastapi_app.include_router(ai_gateway_router)
     fastapi_app.include_router(seed_router)

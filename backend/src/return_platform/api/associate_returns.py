@@ -1,0 +1,151 @@
+"""Associate-first conversational return intake APIs."""
+
+from __future__ import annotations
+
+from typing import Any, cast
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+
+from return_platform.data_console.api.auth import require_read_roles, require_write_roles
+from return_platform.operations.associate_flow import (
+    AssociateConversationService,
+    AssociateConversationView,
+    ConfirmDiscoveryRequest,
+    ReturnDetailsRequest,
+    StartAssociateConversationRequest,
+)
+from return_platform.operations.repository import OperationalRepository
+from return_platform.resources import RuntimeResources
+from return_platform.shared.contracts import APIResponse, ResponseMeta
+
+router = APIRouter(prefix="/api/v1/associate-returns", tags=["Associate Returns"])
+
+
+def _meta(request: Request) -> ResponseMeta:
+    return ResponseMeta(request_id=cast(str, getattr(request.state, "correlation_id", "unknown")))
+
+
+def _service(request: Request) -> AssociateConversationService:
+    resources = getattr(request.app.state, "resources", None)
+    if (
+        not isinstance(resources, RuntimeResources)
+        or resources.mongo is None
+        or resources.source_mongo is None
+        or resources.neo4j is None
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail="Associate discovery dependencies are unavailable.",
+        )
+    repository = OperationalRepository(
+        resources.mongo,
+        resources.settings,
+        resources.source_mongo,
+    )
+    return AssociateConversationService(
+        platform_client=resources.mongo,
+        source_client=resources.source_mongo,
+        graph=resources.neo4j,
+        settings=resources.settings,
+        repository=repository,
+    )
+
+
+@router.get("/conversations", response_model=APIResponse[list[AssociateConversationView]])
+async def list_conversations(
+    request: Request,
+    limit: int = Query(default=100, ge=1, le=500),
+    _actor: str = Depends(require_read_roles),
+) -> APIResponse[list[AssociateConversationView]]:
+    service = _service(request)
+    await service.ensure_indexes()
+    return APIResponse(data=await service.list(limit), meta=_meta(request))
+
+
+@router.post(
+    "/conversations",
+    response_model=APIResponse[AssociateConversationView],
+    status_code=status.HTTP_201_CREATED,
+)
+async def start_conversation(
+    payload: StartAssociateConversationRequest,
+    request: Request,
+    actor: str = Depends(require_write_roles),
+) -> APIResponse[AssociateConversationView]:
+    try:
+        data = await _service(request).start(payload, actor_id=actor)
+    except Exception as error:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Associate discovery failed: {type(error).__name__}",
+        ) from error
+    return APIResponse(data=data, meta=_meta(request))
+
+
+@router.get(
+    "/conversations/{conversation_id}",
+    response_model=APIResponse[AssociateConversationView],
+)
+async def get_conversation(
+    conversation_id: str,
+    request: Request,
+    _actor: str = Depends(require_read_roles),
+) -> APIResponse[AssociateConversationView]:
+    data = await _service(request).get(conversation_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Associate conversation not found.")
+    return APIResponse(data=data, meta=_meta(request))
+
+
+@router.post(
+    "/conversations/{conversation_id}/confirm",
+    response_model=APIResponse[AssociateConversationView],
+)
+async def confirm_discovery(
+    conversation_id: str,
+    payload: ConfirmDiscoveryRequest,
+    request: Request,
+    actor: str = Depends(require_write_roles),
+) -> APIResponse[AssociateConversationView]:
+    try:
+        data = await _service(request).confirm(conversation_id, payload, actor_id=actor)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="Associate conversation not found.") from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return APIResponse(data=data, meta=_meta(request))
+
+
+@router.post(
+    "/conversations/{conversation_id}/details",
+    response_model=APIResponse[dict[str, Any]],
+    status_code=status.HTTP_201_CREATED,
+)
+async def submit_return_details(
+    conversation_id: str,
+    payload: ReturnDetailsRequest,
+    request: Request,
+    actor: str = Depends(require_write_roles),
+) -> APIResponse[dict[str, Any]]:
+    try:
+        conversation, session = await _service(request).submit_details(
+            conversation_id,
+            payload,
+            actor_id=actor,
+            correlation_id=_meta(request).request_id,
+        )
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="Associate conversation not found.") from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return APIResponse(
+        data={
+            "conversation": conversation.model_dump(mode="json"),
+            "returnSession": session.model_dump(mode="json"),
+        },
+        meta=_meta(request),
+    )

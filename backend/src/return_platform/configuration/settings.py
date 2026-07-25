@@ -5,7 +5,9 @@ from pydantic import AnyHttpUrl, Field, SecretStr, field_validator, model_valida
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
+REPOSITORY_ROOT = BACKEND_ROOT.parent
 DEFAULT_DATA_ASSET_CATALOG_PATH = BACKEND_ROOT / "config" / "data_assets.yaml"
+DEFAULT_SCHEMA_REGISTRY_PATH = BACKEND_ROOT / "config" / "schema_registry.yaml"
 
 
 class Settings(BaseSettings):
@@ -13,7 +15,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="PLATFORM_",
-        env_file=".env",
+        env_file=REPOSITORY_ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
@@ -22,6 +24,7 @@ class Settings(BaseSettings):
     )
 
     catalog_path: Path = Field(default=DEFAULT_DATA_ASSET_CATALOG_PATH)
+    schema_registry_path: Path = Field(default=DEFAULT_SCHEMA_REGISTRY_PATH)
     environment: Literal["development", "test", "staging", "production"] = "development"
 
     probe_timeout_seconds: float = Field(default=2.0, gt=0.0, le=30.0)
@@ -73,6 +76,8 @@ class Settings(BaseSettings):
         pattern=r"^[A-Za-z][A-Za-z0-9_.-]{0,126}$",
     )
     graph_evidence_query_timeout_seconds: float = Field(default=5.0, ge=0.05, le=30.0)
+    graph_sync_batch_size: int = Field(default=250, ge=1, le=5_000)
+    graph_sync_max_records: int = Field(default=10_000, ge=1, le=1_000_000)
 
     ai_provider_order: str = "GOOGLE,NVIDIA,OPENAI,ANTHROPIC,OLLAMA,SIMULATOR"
     ai_timeout_seconds: float = Field(default=12.0, ge=0.5, le=60.0)
@@ -90,7 +95,7 @@ class Settings(BaseSettings):
 
     nvidia_api_key: SecretStr | None = None
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
-    nvidia_model: str = "nvidia/nemotron-3.5-nano-30b-a3b"
+    nvidia_model: str = "nvidia/nemotron-3-nano-30b-a3b"
 
     openai_api_key: SecretStr | None = None
     openai_base_url: str = "https://api.openai.com/v1"
@@ -105,16 +110,24 @@ class Settings(BaseSettings):
     ollama_model: str | None = None
 
     seed_version: str = Field(default="e2e-v1", min_length=1, max_length=64)
+    ai_studio_max_records: int = Field(default=500, ge=1, le=10_000)
+    support_ticket_mode: Literal["SANDBOX_AUTO", "EXTERNAL"] = "SANDBOX_AUTO"
+    support_ticket_base_url: str | None = None
+    support_ticket_api_key: SecretStr | None = None
+    support_ticket_timeout_seconds: float = Field(default=15.0, ge=1.0, le=120.0)
+    support_ticket_poll_seconds: float = Field(default=5.0, ge=0.5, le=300.0)
+    support_ticket_max_polls: int = Field(default=12, ge=1, le=120)
+    feedback_learning_enabled: bool = True
     audit_retention_days: int = Field(default=90, ge=7, le=3_650)
 
-    @field_validator("catalog_path")
+    @field_validator("catalog_path", "schema_registry_path")
     @classmethod
     def validate_catalog_path(cls, value: Path) -> Path:
         resolved_path = value.expanduser()
         if not resolved_path.is_absolute():
-            raise ValueError("catalog_path must be an absolute path")
+            raise ValueError("Configuration registry paths must be absolute.")
         if resolved_path.suffix.lower() not in {".yaml", ".yml"}:
-            raise ValueError("catalog_path must reference a .yaml or .yml file")
+            raise ValueError("Configuration registry paths must reference YAML files.")
         return resolved_path.resolve(strict=False)
 
     @field_validator(
@@ -142,7 +155,12 @@ class Settings(BaseSettings):
         )
 
     @field_validator(
-        "google_api_key", "nvidia_api_key", "openai_api_key", "anthropic_api_key", mode="before"
+        "google_api_key",
+        "nvidia_api_key",
+        "openai_api_key",
+        "anthropic_api_key",
+        "support_ticket_api_key",
+        mode="before",
     )
     @classmethod
     def normalize_optional_secrets(cls, value: object) -> object:
@@ -155,6 +173,18 @@ class Settings(BaseSettings):
     def normalize_optional_models(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
             return None
+        return value
+
+    @field_validator("support_ticket_base_url", mode="before")
+    @classmethod
+    def normalize_optional_support_url(cls, value: object) -> object:
+        if isinstance(value, str):
+            normalized = value.strip()
+            if not normalized:
+                return None
+            if not normalized.startswith(("http://", "https://")):
+                raise ValueError("Support ticket base URL must use HTTP or HTTPS.")
+            return normalized.rstrip("/")
         return value
 
     @field_validator("mongo_dsn", "neo4j_password", "valkey_password", "sqlserver_password")
@@ -235,4 +265,8 @@ class Settings(BaseSettings):
             raise ValueError("AI global timeout must be greater than or equal to provider timeout.")
         if self.environment == "production" and "SIMULATOR" in self.ai_provider_order.split(","):
             raise ValueError("SIMULATOR cannot be configured in production.")
+        if self.support_ticket_mode == "EXTERNAL" and self.support_ticket_base_url is None:
+            raise ValueError("External Return Support mode requires a base URL.")
+        if self.environment == "production" and self.support_ticket_mode != "EXTERNAL":
+            raise ValueError("Production requires the external Return Support provider.")
         return self

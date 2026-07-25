@@ -33,20 +33,6 @@ export async function getReturn(sessionId: string, signal?: AbortSignal): Promis
   return requireData((await apiClient<ReturnSession>(`/api/v1/returns/${encodeURIComponent(sessionId)}`, { signal })).data);
 }
 
-export async function createReturn(payload: {
-  customerReference: string;
-  orderReference: string;
-  itemReferences: string[];
-  reasonCode: string;
-  notes?: string;
-}): Promise<ReturnSession> {
-  const idempotencyKey = crypto.randomUUID();
-  return requireData((await apiClient<ReturnSession>("/api/v1/returns", {
-    ...jsonInit("POST", { ...payload, channel: "CUSTOMER", idempotencyKey }),
-    headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
-  })).data);
-}
-
 export async function cancelReturn(session: ReturnSession): Promise<ReturnSession> {
   return requireData((await apiClient<ReturnSession>(
     `/api/v1/returns/${encodeURIComponent(session.id)}/cancel?expectedVersion=${session.version}`,

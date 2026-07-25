@@ -16,7 +16,7 @@ export function exactIdSearchFixture(id: string): GraphSearchResult {
   if (id === "error") {
     throw new Error("Simulated hard error");
   }
-  
+
   if (id === "not-found") {
     return {
       data: { nodes: [], relationships: [] },

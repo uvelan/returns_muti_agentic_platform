@@ -379,7 +379,7 @@ def test_runner_rejects_symlink_and_oversized_source_files(tmp_path: Path) -> No
     """Prevent path substitution and unbounded source-document loading."""
     target = tmp_path / "target.json"
     target.write_text(json.dumps(_document()), encoding="utf-8")
-    
+
     paths_to_test = []
     link = tmp_path / "link.json"
     try:

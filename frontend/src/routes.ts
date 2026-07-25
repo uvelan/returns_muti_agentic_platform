@@ -1,7 +1,7 @@
 import { lazy } from "react";
 import { LayoutDashboard, Database, FileCheck2, HardDrive, Search, Network, Import, Download, Activity, Briefcase, Zap, Shield, Settings, CheckSquare, RotateCcw, Headphones, Bot, TestTube2, ShieldAlert, ServerCog, DatabaseZap } from "lucide-react";
 
-export type RouteCapability = 
+export type RouteCapability =
   | "LIVE"
   | "FIXTURE"
   | "BLOCKED";
@@ -13,10 +13,19 @@ export type RouteDefinition = {
   capability: RouteCapability;
   component: React.LazyExoticComponent<React.ComponentType<unknown>>;
   navigable: boolean;
-  group?: "Customer" | "Support" | "AI Gateway" | "Explore" | "Data Operations" | "Sandbox & AI" | "Governance" | "System";
+  group?: "Associate" | "Customer" | "Support" | "AI Gateway" | "Explore" | "Data Operations" | "Sandbox & AI" | "Governance" | "System";
 };
 
 export const routes: RouteDefinition[] = [
+  {
+    path: "/associate/returns",
+    name: "Returns Assistant",
+    icon: Bot,
+    capability: "LIVE",
+    navigable: true,
+    group: "Associate",
+    component: lazy(() => import("./features/operations/AssociateReturnsPage").then(m => ({ default: m.AssociateReturnsPage }))),
+  },
   {
     path: "/customer/returns",
     name: "My Returns",
@@ -31,7 +40,7 @@ export const routes: RouteDefinition[] = [
     name: "Create Return",
     capability: "LIVE",
     navigable: false,
-    component: lazy(() => import("./features/operations/CustomerReturnsPages").then(m => ({ default: m.CustomerReturnCreatePage }))),
+    component: lazy(() => import("./features/operations/AssociateReturnsPage").then(m => ({ default: m.AssociateReturnsPage }))),
   },
   {
     path: "/customer/returns/:sessionId",
@@ -141,6 +150,42 @@ export const routes: RouteDefinition[] = [
     navigable: true,
     group: "Explore",
     component: lazy(() => import("./features/data-console/pages/OverviewPage").then(m => ({ default: m.OverviewPage }))),
+  },
+  {
+    path: "/data-console/schema",
+    name: "Model & Schema",
+    icon: Database,
+    capability: "LIVE",
+    navigable: true,
+    group: "Explore",
+    component: lazy(() => import("./features/data-console/pages/DataStudioPages").then(m => ({ default: m.SchemaCatalogPage }))),
+  },
+  {
+    path: "/data-console/ai-studio",
+    name: "AI Studio",
+    icon: Bot,
+    capability: "LIVE",
+    navigable: true,
+    group: "Sandbox & AI",
+    component: lazy(() => import("./features/data-console/pages/DataStudioPages").then(m => ({ default: m.AIStudioPage }))),
+  },
+  {
+    path: "/data-console/graph-sync",
+    name: "Graph Sync",
+    icon: Network,
+    capability: "LIVE",
+    navigable: true,
+    group: "Data Operations",
+    component: lazy(() => import("./features/data-console/pages/DataStudioPages").then(m => ({ default: m.GraphSyncPage }))),
+  },
+  {
+    path: "/data-console/feedback-learning",
+    name: "Feedback Learning",
+    icon: Activity,
+    capability: "LIVE",
+    navigable: true,
+    group: "Governance",
+    component: lazy(() => import("./features/data-console/pages/DataStudioPages").then(m => ({ default: m.FeedbackLearningPage }))),
   },
   {
     path: "/data-console/inventory",

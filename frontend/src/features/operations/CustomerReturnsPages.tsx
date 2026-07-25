@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/restrict-template-expressions */
 /* eslint-disable @typescript-eslint/no-unnecessary-condition */
 /* eslint-disable @typescript-eslint/no-deprecated */
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation, useParams } from "wouter";
+import { Link, useParams } from "wouter";
 import { ArrowRight, Ban, Plus } from "lucide-react";
 
-import { createReturn, cancelReturn, getReturn, listEvents, listReturns } from "../../api/operations";
+import { cancelReturn, getReturn, listEvents, listReturns } from "../../api/operations";
 import type { TimelineEvent } from "../../contracts/operations";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorState } from "../../components/ErrorState";
@@ -49,7 +49,7 @@ export function CustomerReturnsPage() {
   return (
     <div>
       <PageHeader title="Customer Returns" description="Create and track return requests through the real workflow.">
-        <Link href="/customer/returns/new" className={primaryButton}><Plus size={16} /> New return</Link>
+        <Link href="/associate/returns" className={primaryButton}><Plus size={16} /> Start with assistant</Link>
       </PageHeader>
       <div className="mb-5 flex max-w-xs flex-col">
         <label className="text-sm font-medium text-slate-700" htmlFor="return-status">Status</label>
@@ -86,46 +86,6 @@ export function CustomerReturnsPage() {
           </div>
         </Panel>
       )}
-    </div>
-  );
-}
-
-export function CustomerReturnCreatePage() {
-  const [, setLocation] = useLocation();
-  const { toast } = useToast();
-  const [customerReference, setCustomerReference] = useState("CUST-1001");
-  const [orderReference, setOrderReference] = useState("ORD-10001");
-  const [itemReferences, setItemReferences] = useState("LINE-1");
-  const [reasonCode, setReasonCode] = useState("DAMAGED");
-  const [notes, setNotes] = useState("");
-  const mutation = useMutation({
-    mutationFn: createReturn,
-    onSuccess: (session) => {
-      toast({ title: "Return submitted", description: session.id, type: "success" });
-      setLocation(`/customer/returns/${session.id}`);
-    },
-  });
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const items = itemReferences.split(",").map((item) => item.trim()).filter(Boolean);
-    mutation.mutate({ customerReference, orderReference, itemReferences: items, reasonCode, notes: notes || undefined });
-  }
-
-  return (
-    <div>
-      <PageHeader title="Create Return" description="Seed defaults exercise the positive E2E scenario. IDs are editable for negative-path validation." />
-      {mutation.isError && <div className="mb-4"><ErrorState message={mutation.error.message} /></div>}
-      <Panel className="max-w-3xl">
-        <form className="grid gap-5 md:grid-cols-2" onSubmit={submit}>
-          <label className="text-sm font-medium text-slate-700">Customer reference<input className={inputClass} value={customerReference} onChange={(event) => { setCustomerReference(event.target.value); }} required /></label>
-          <label className="text-sm font-medium text-slate-700">Order reference<input className={inputClass} value={orderReference} onChange={(event) => { setOrderReference(event.target.value); }} required /></label>
-          <label className="text-sm font-medium text-slate-700 md:col-span-2">Item references <span className="font-normal text-slate-500">(comma separated)</span><input className={inputClass} value={itemReferences} onChange={(event) => { setItemReferences(event.target.value); }} required /></label>
-          <label className="text-sm font-medium text-slate-700">Reason code<select className={inputClass} value={reasonCode} onChange={(event) => { setReasonCode(event.target.value); }}><option>DAMAGED</option><option>WRONG_ITEM</option><option>NOT_NEEDED</option><option>QUALITY_ISSUE</option></select></label>
-          <label className="text-sm font-medium text-slate-700 md:col-span-2">Notes<textarea className={inputClass} rows={4} value={notes} onChange={(event) => { setNotes(event.target.value); }} /></label>
-          <div className="flex gap-3 md:col-span-2"><button className={primaryButton} disabled={mutation.isPending} type="submit">{mutation.isPending ? "Submitting..." : "Submit return"}</button><Link className={secondaryButton} href="/customer/returns">Cancel</Link></div>
-        </form>
-      </Panel>
     </div>
   );
 }
@@ -191,7 +151,7 @@ export function CustomerReturnDetailPage() {
       </div>
       <div className="grid gap-6 lg:grid-cols-3">
         <Panel title="Return details">
-          <dl><KeyValue label="Customer" value={session.customerReference} /><KeyValue label="Order" value={session.orderReference} /><KeyValue label="Items" value={session.itemReferences.join(", ")} /><KeyValue label="Reason" value={session.reasonCode} /><KeyValue label="RMA" value={session.returnReference} /><KeyValue label="Tracking" value={session.trackingReference} /><KeyValue label="Bay" value={session.bayReference} /><KeyValue label="Updated" value={formatDate(session.updatedAt)} /></dl>
+          <dl><KeyValue label="Customer" value={session.customerReference} /><KeyValue label="Order" value={session.orderReference} /><KeyValue label="Order line" value={session.itemReferences.join(", ")} /><KeyValue label="Product" value={session.productReferences.join(", ")} /><KeyValue label="Product type" value={session.productType} /><KeyValue label="Warehouse" value={session.processingWarehouseReference} /><KeyValue label="Reason" value={session.reasonCode} /><KeyValue label="Return quantity" value={String(session.returnQuantity)} /><KeyValue label="Package count" value={String(session.packageCount)} /><KeyValue label="Shipping path" value={session.shippingPathExpectation} /><KeyValue label="Support ticket" value={session.supportTicketReference} /><KeyValue label="RMA" value={session.returnReference} /><KeyValue label="Tracking" value={session.trackingReference} /><KeyValue label="Bay" value={session.bayReference} /><KeyValue label="Feedback" value={session.feedbackReference} /><KeyValue label="Updated" value={formatDate(session.updatedAt)} /></dl>
           <div className="mt-4 flex flex-wrap gap-2">
             {session.aiRequestId && <Link className={secondaryButton} href={`/ai-gateway/requests/${session.aiRequestId}`}>Open AI request</Link>}
             {session.supportCaseId && <Link className={secondaryButton} href="/support/review-queue">Open support queue</Link>}

@@ -1,0 +1,2250 @@
+schema_version: '1.0'
+assets:
+- asset_id: source.mongodb.sales_inv
+  engine: MONGODB
+  database: return_source
+  name: salesInv
+  ownership: SOURCE_SYSTEM
+  authoritative: true
+  writable_in_sandbox: true
+  description: Sales order headers, lines, warehouse and shipping context.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: sales_invoice_id
+  - name: salesHdrEventData.orderId
+    type: string
+    required: true
+    key: false
+    description: Saleshdreventdata.Orderid
+    generator: order_reference
+  - name: salesHdr.salesHdrData.custId
+    type: string
+    required: true
+    key: false
+    description: Saleshdr.Saleshdrdata.Custid
+    generator: customer_reference
+  - name: salesHdr.salesHdrData.custName
+    type: string
+    required: true
+    key: false
+    description: Saleshdr.Saleshdrdata.Custname
+    generator: person_name
+  - name: salesHdrEventData.srcErp
+    type: string
+    required: true
+    key: false
+    description: Saleshdreventdata.Srcerp
+    generator: erp_code
+  - name: salesHdrEventData.srcSysCode
+    type: string
+    required: true
+    key: false
+    description: Saleshdreventdata.Srcsyscode
+    generator: source_code
+  - name: salesHdrEventData.orderStatus
+    type: string
+    required: true
+    key: false
+    description: Saleshdreventdata.Orderstatus
+    generator: order_status
+  - name: salesHdrEventData.sellWhseId
+    type: string
+    required: true
+    key: false
+    description: Saleshdreventdata.Sellwhseid
+    generator: warehouse_reference
+  - name: salesHdrEventData.shipFromWhseId
+    type: string
+    required: true
+    key: false
+    description: Saleshdreventdata.Shipfromwhseid
+    generator: warehouse_reference
+  - name: salesHdr.shipping.shipViaCode
+    type: string
+    required: false
+    key: false
+    description: Saleshdr.Shipping.Shipviacode
+    generator: ship_via_code
+  - name: salesHdr.shipping.shipViaDesc
+    type: string
+    required: false
+    key: false
+    description: Saleshdr.Shipping.Shipviadesc
+    generator: ship_via_description
+  - name: salesLines
+    type: array
+    required: true
+    key: false
+    description: Saleslines
+    generator: sales_lines
+    items: sales_line
+  - name: deliveredAt
+    type: datetime
+    required: true
+    key: false
+    description: Deliveredat
+    generator: past_datetime
+  - name: updatedAt
+    type: datetime
+    required: true
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+- asset_id: source.mongodb.customer_outbound_cdm
+  engine: MONGODB
+  database: return_source
+  name: customerOutboundCDM
+  ownership: SOURCE_SYSTEM
+  authoritative: true
+  writable_in_sandbox: true
+  description: Customer identity and contact discovery source.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: customer_document_id
+  - name: partyId
+    type: string
+    required: true
+    key: false
+    description: Partyid
+    generator: party_id
+  - name: customerId
+    type: string
+    required: true
+    key: false
+    description: Customerid
+    generator: customer_reference
+  - name: customerName
+    type: string
+    required: true
+    key: false
+    description: Customername
+    generator: person_name
+  - name: phoneNumber
+    type: string
+    required: false
+    key: false
+    description: Phonenumber
+    generator: phone
+  - name: email
+    type: string
+    required: false
+    key: false
+    description: Email
+    generator: email
+  - name: custAccts
+    type: array
+    required: true
+    key: false
+    description: Custaccts
+    generator: customer_accounts
+    items: customer_account
+  - name: updatedAt
+    type: datetime
+    required: true
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+- asset_id: source.mongodb.shipment_info
+  engine: MONGODB
+  database: return_source
+  name: shipmentInfo
+  ownership: SOURCE_SYSTEM
+  authoritative: true
+  writable_in_sandbox: true
+  description: Original shipment and tracking-to-order lookup.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: shipment_document_id
+  - name: shipmentInfoEventData.trkNum
+    type: string
+    required: true
+    key: false
+    description: Shipmentinfoeventdata.Trknum
+    generator: tracking_reference
+  - name: shipmentInfoEventData.trilOrdNum
+    type: string
+    required: true
+    key: false
+    description: Shipmentinfoeventdata.Trilordnum
+    generator: order_reference
+  - name: shipmentInfoEventData.carrierCode
+    type: string
+    required: true
+    key: false
+    description: Shipmentinfoeventdata.Carriercode
+    generator: carrier_code
+  - name: shipmentInfoEventData.shippedAt
+    type: datetime
+    required: true
+    key: false
+    description: Shipmentinfoeventdata.Shippedat
+    generator: past_datetime
+  - name: updatedAt
+    type: datetime
+    required: true
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+- asset_id: source.mongodb.product_search
+  engine: MONGODB
+  database: return_source
+  name: lkpSearchProduct
+  ownership: SOURCE_SYSTEM
+  authoritative: true
+  writable_in_sandbox: true
+  description: Product and SKU fallback lookup.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: product_document_id
+  - name: productId
+    type: string
+    required: true
+    key: false
+    description: Productid
+    generator: product_reference
+  - name: sku
+    type: string
+    required: true
+    key: false
+    description: Sku
+    generator: sku
+  - name: masterProductId
+    type: string
+    required: true
+    key: false
+    description: Masterproductid
+    generator: master_product_reference
+  - name: productDescription
+    type: string
+    required: true
+    key: false
+    description: Productdescription
+    generator: product_description
+  - name: productType
+    type: string
+    required: true
+    key: false
+    description: Producttype
+    generator: product_type
+  - name: updatedAt
+    type: datetime
+    required: true
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+- asset_id: source.mongodb.customers
+  engine: MONGODB
+  database: return_source
+  name: customers
+  ownership: SOURCE_SYSTEM
+  authoritative: true
+  writable_in_sandbox: true
+  description: Transitional customer fixtures retained for compatibility with existing sandbox flows.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: Customer reference.
+    generator: customer_reference
+  - name: name
+    type: string
+    required: true
+    key: false
+    description: Customer display name.
+    generator: person_name
+  - name: tier
+    type: string
+    required: true
+    key: false
+    description: Customer service tier.
+    generator: customer_tier
+  - name: region
+    type: string
+    required: true
+    key: false
+    description: Customer region.
+    generator: region
+  - name: seedVersion
+    type: string
+    required: false
+    key: false
+    description: Synthetic seed version.
+    generator: seed_version
+  - name: seedDigest
+    type: string
+    required: false
+    key: false
+    description: Synthetic seed digest.
+    generator: sha256
+- asset_id: source.mongodb.products
+  engine: MONGODB
+  database: return_source
+  name: products
+  ownership: SOURCE_SYSTEM
+  authoritative: true
+  writable_in_sandbox: true
+  description: Transitional product fixtures retained for compatibility with existing sandbox flows.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: Product or SKU reference.
+    generator: sku
+  - name: name
+    type: string
+    required: true
+    key: false
+    description: Product display name.
+    generator: product_description
+  - name: returnWindowDays
+    type: integer
+    required: true
+    key: false
+    description: Configured return window in days.
+    generator: return_window_days
+  - name: category
+    type: string
+    required: true
+    key: false
+    description: Product category.
+    generator: category
+  - name: seedVersion
+    type: string
+    required: false
+    key: false
+    description: Synthetic seed version.
+    generator: seed_version
+  - name: seedDigest
+    type: string
+    required: false
+    key: false
+    description: Synthetic seed digest.
+    generator: sha256
+- asset_id: source.mongodb.orders
+  engine: MONGODB
+  database: return_source
+  name: orders
+  ownership: SOURCE_SYSTEM
+  authoritative: true
+  writable_in_sandbox: true
+  description: Transitional order fixtures retained as a bounded sandbox fallback; salesInv is primary.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: Sales Order reference.
+    generator: order_reference
+  - name: customerReference
+    type: string
+    required: true
+    key: false
+    description: Customer reference.
+    generator: customer_reference
+  - name: status
+    type: string
+    required: true
+    key: false
+    description: Order status.
+    generator: order_status
+  - name: deliveredAt
+    type: datetime
+    required: false
+    key: false
+    description: Delivery timestamp.
+    generator: past_datetime
+  - name: items
+    type: array
+    required: true
+    key: false
+    description: Order-line fixtures.
+    generator: legacy_items
+    items: legacy_order_item
+  - name: scenarioId
+    type: string
+    required: false
+    key: false
+    description: Synthetic scenario identifier.
+    generator: scenario_id
+  - name: expectedReasonCode
+    type: string
+    required: false
+    key: false
+    description: Expected return reason.
+    generator: reason_code
+  - name: expectedDecision
+    type: string
+    required: false
+    key: false
+    description: Expected eligibility outcome.
+    generator: decision
+  - name: seedVersion
+    type: string
+    required: false
+    key: false
+    description: Synthetic seed version.
+    generator: seed_version
+  - name: seedDigest
+    type: string
+    required: false
+    key: false
+    description: Synthetic seed digest.
+    generator: sha256
+- asset_id: platform.mongodb.operational_returns
+  engine: MONGODB
+  database: return_platform
+  name: operational_returns
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Durable return-session projection.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.operational_events
+  engine: MONGODB
+  database: return_platform
+  name: operational_events
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Immutable ordered return timeline.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.support_cases
+  engine: MONGODB
+  database: return_platform
+  name: support_cases
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Internal exception and review cases.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.ai_gateway_traces
+  engine: MONGODB
+  database: return_platform
+  name: ai_gateway_traces
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Redacted AI request and response traces.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.ai_gateway_settings
+  engine: MONGODB
+  database: return_platform
+  name: ai_gateway_settings
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Versioned AI gateway runtime policy.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.ai_gateway_rate_limits
+  engine: MONGODB
+  database: return_platform
+  name: ai_gateway_rate_limits
+  ownership: PLATFORM_OWNED
+  authoritative: false
+  writable_in_sandbox: false
+  description: Transient rate-limit buckets.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.worker_heartbeats
+  engine: MONGODB
+  database: return_platform
+  name: worker_heartbeats
+  ownership: PLATFORM_OWNED
+  authoritative: false
+  writable_in_sandbox: false
+  description: Worker readiness leases.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.seed_metadata
+  engine: MONGODB
+  database: return_platform
+  name: seed_metadata
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Cross-store seed manifest evidence.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.workspaces
+  engine: MONGODB
+  database: return_platform
+  name: workspaces
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: true
+  description: Data Console sandbox workspaces.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.sandbox_records
+  engine: MONGODB
+  database: return_platform
+  name: sandbox_records
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: true
+  description: Workspace records.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.jobs
+  engine: MONGODB
+  database: return_platform
+  name: jobs
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Data operation jobs.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.job_commands
+  engine: MONGODB
+  database: return_platform
+  name: job_commands
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Durable job commands.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.job_artifacts
+  engine: MONGODB
+  database: return_platform
+  name: job_artifacts
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Generated job artifacts.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.scenarios
+  engine: MONGODB
+  database: return_platform
+  name: scenarios
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: true
+  description: What-if scenario manifests.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.scenario_records
+  engine: MONGODB
+  database: return_platform
+  name: scenario_records
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: true
+  description: Scenario-generated records.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.audit
+  engine: MONGODB
+  database: return_platform
+  name: audit
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Data Console audit trail.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.graph_evidence_runs
+  engine: MONGODB
+  database: return_platform
+  name: graph_evidence_runs
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Immutable graph validation evidence.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.associate_conversations
+  engine: MONGODB
+  database: return_platform
+  name: associate_conversations
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Associate-first return conversations.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.discovery_locks
+  engine: MONGODB
+  database: return_platform
+  name: discovery_locks
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Immutable associate-confirmed order locks.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.ai_studio_proposals
+  engine: MONGODB
+  database: return_platform
+  name: ai_studio_proposals
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Generated data proposals pending explicit apply.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.graph_sync_runs
+  engine: MONGODB
+  database: return_platform
+  name: graph_sync_runs
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Graph synchronization run evidence.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.feedback_learning_records
+  engine: MONGODB
+  database: return_platform
+  name: feedback_learning_records
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Feedback-learning outputs and recommendations.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: ' Id'
+    generator: uuid
+  - name: createdAt
+    type: datetime
+    required: true
+    key: false
+    description: Createdat
+    generator: recent_datetime
+  - name: updatedAt
+    type: datetime
+    required: false
+    key: false
+    description: Updatedat
+    generator: recent_datetime
+  - name: version
+    type: integer
+    required: false
+    key: false
+    description: Version
+    generator: zero
+- asset_id: platform.mongodb.return_sessions
+  engine: MONGODB
+  database: return_platform
+  name: return_sessions
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Transactional Temporal workflow aggregate and immutable stage-context bindings.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: RETURN_SESSION-prefixed document identity.
+    generator: session_document_id
+  - name: schema_version
+    type: string
+    required: true
+    key: false
+    description: Persistence schema version.
+    generator: schema_version
+  - name: document_id
+    type: string
+    required: true
+    key: false
+    description: Canonical session document identity.
+    generator: session_document_id
+  - name: revision
+    type: integer
+    required: true
+    key: false
+    description: Optimistic aggregate revision.
+    generator: zero
+  - name: session
+    type: object
+    required: true
+    key: false
+    description: Canonical ReturnSession payload.
+    generator: return_session_payload
+  - name: applied_commands
+    type: array
+    required: true
+    key: false
+    description: Bound idempotent workflow commands.
+    generator: empty_array
+    items: applied_session_command
+  - name: state_digest
+    type: string
+    required: true
+    key: false
+    description: Canonical aggregate digest.
+    generator: sha256
+- asset_id: platform.mongodb.return_session_audit_events
+  engine: MONGODB
+  database: return_platform
+  name: return_session_audit_events
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Immutable audit events committed atomically with workflow transitions.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: Audit event identity.
+    generator: uuid
+  - name: audit_event_id
+    type: string
+    required: true
+    key: false
+    description: Canonical audit event identity.
+    generator: uuid
+  - name: session_id
+    type: string
+    required: true
+    key: false
+    description: Return session identity.
+    generator: uuid
+  - name: correlation_id
+    type: string
+    required: true
+    key: false
+    description: Cross-service correlation identity.
+    generator: correlation_id
+  - name: actor_type
+    type: string
+    required: true
+    key: false
+    description: Actor type.
+    generator: actor_type
+  - name: actor_id
+    type: string
+    required: true
+    key: false
+    description: Actor identity.
+    generator: associate_reference
+  - name: operation
+    type: string
+    required: true
+    key: false
+    description: Audited operation.
+    generator: audit_operation
+  - name: entity_type
+    type: string
+    required: true
+    key: false
+    description: Audited entity type.
+    generator: entity_type
+  - name: entity_key
+    type: string
+    required: true
+    key: false
+    description: Audited entity key.
+    generator: session_document_id
+  - name: outcome
+    type: string
+    required: true
+    key: false
+    description: Operation outcome.
+    generator: success_status
+  - name: occurred_at
+    type: datetime
+    required: true
+    key: false
+    description: UTC event timestamp.
+    generator: recent_datetime
+  - name: evidence_references
+    type: array
+    required: false
+    key: false
+    description: Bound evidence references.
+    generator: evidence_references
+    items: string
+- asset_id: platform.mongodb.return_session_outbox_events
+  engine: MONGODB
+  database: return_platform
+  name: return_session_outbox_events
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Transactional workflow outbox events for reliable publication.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: Outbox event identity.
+    generator: uuid
+  - name: schema_version
+    type: string
+    required: true
+    key: false
+    description: Outbox schema version.
+    generator: schema_version
+  - name: event_id
+    type: string
+    required: true
+    key: false
+    description: Canonical event identity.
+    generator: uuid
+  - name: session_id
+    type: string
+    required: true
+    key: false
+    description: Return session identity.
+    generator: uuid
+  - name: command_id
+    type: string
+    required: false
+    key: false
+    description: Transition command identity.
+    generator: 'null'
+  - name: event_type
+    type: string
+    required: true
+    key: false
+    description: Workflow event type.
+    generator: session_event_type
+  - name: revision
+    type: integer
+    required: true
+    key: false
+    description: Resulting session revision.
+    generator: zero
+  - name: current_stage
+    type: string
+    required: true
+    key: false
+    description: Resulting workflow stage.
+    generator: workflow_stage
+  - name: status
+    type: string
+    required: true
+    key: false
+    description: Resulting session status.
+    generator: running_status
+  - name: occurred_at
+    type: datetime
+    required: true
+    key: false
+    description: UTC occurrence timestamp.
+    generator: recent_datetime
+  - name: published_at
+    type: datetime
+    required: false
+    key: false
+    description: UTC publication timestamp.
+    generator: 'null'
+- asset_id: platform.mongodb.return_session_agent_decisions
+  engine: MONGODB
+  database: return_platform
+  name: return_session_agent_decisions
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: false
+  description: Digest-bound AI and deterministic-agent decision evidence.
+  fields:
+  - name: _id
+    type: string
+    required: true
+    key: true
+    description: Decision identity.
+    generator: uuid
+  - name: decision_id
+    type: string
+    required: true
+    key: false
+    description: Canonical decision identity.
+    generator: uuid
+  - name: session_id
+    type: string
+    required: true
+    key: false
+    description: Return session identity.
+    generator: uuid
+  - name: agent_name
+    type: string
+    required: true
+    key: false
+    description: Decision-producing agent.
+    generator: agent_name
+  - name: stage
+    type: string
+    required: true
+    key: false
+    description: Workflow stage.
+    generator: eligibility_stage
+  - name: decision_type
+    type: string
+    required: true
+    key: false
+    description: Decision classification.
+    generator: decision_type
+  - name: decision
+    type: string
+    required: true
+    key: false
+    description: Decision outcome.
+    generator: decision
+  - name: explanation
+    type: string
+    required: true
+    key: false
+    description: Safe decision explanation.
+    generator: decision_explanation
+  - name: confidence
+    type: number
+    required: true
+    key: false
+    description: Decision confidence.
+    generator: confidence
+  - name: evidence_references
+    type: array
+    required: true
+    key: false
+    description: Bound evidence references.
+    generator: evidence_references
+    items: string
+  - name: model_provider
+    type: string
+    required: false
+    key: false
+    description: AI provider.
+    generator: provider_name
+  - name: model_name
+    type: string
+    required: false
+    key: false
+    description: AI model.
+    generator: model_name
+  - name: configuration_version
+    type: string
+    required: true
+    key: false
+    description: Decision policy version.
+    generator: configuration_version
+  - name: created_at
+    type: datetime
+    required: true
+    key: false
+    description: UTC decision timestamp.
+    generator: recent_datetime
+  - name: reviewed_by
+    type: string
+    required: false
+    key: false
+    description: Optional reviewer identity.
+    generator: 'null'
+- asset_id: source.sql.return_requests
+  engine: SQLSERVER
+  database: return_platform
+  name: return_requests
+  ownership: SOURCE_SYSTEM
+  authoritative: true
+  writable_in_sandbox: true
+  description: Authoritative return request/RMA state.
+  fields:
+  - name: session_id
+    type: string
+    required: true
+    key: true
+    description: Session Id
+    generator: uuid
+  - name: correlation_id
+    type: string
+    required: true
+    key: false
+    description: Correlation Id
+    generator: uuid
+  - name: customer_reference
+    type: string
+    required: true
+    key: false
+    description: Customer Reference
+    generator: customer_reference
+  - name: order_reference
+    type: string
+    required: true
+    key: false
+    description: Order Reference
+    generator: order_reference
+  - name: reason_code
+    type: string
+    required: true
+    key: false
+    description: Reason Code
+    generator: reason_code
+  - name: eligibility_decision
+    type: string
+    required: true
+    key: false
+    description: Eligibility Decision
+    generator: decision
+  - name: return_reference
+    type: string
+    required: false
+    key: false
+    description: Return Reference
+    generator: return_reference
+  - name: return_status
+    type: string
+    required: true
+    key: false
+    description: Return Status
+    generator: return_status
+  - name: row_version
+    type: integer
+    required: true
+    key: false
+    description: Row Version
+    generator: one
+  - name: created_at
+    type: datetime
+    required: true
+    key: false
+    description: Created At
+    generator: recent_datetime
+  - name: updated_at
+    type: datetime
+    required: true
+    key: false
+    description: Updated At
+    generator: recent_datetime
+  namespace: dbo
+- asset_id: source.sql.return_items
+  engine: SQLSERVER
+  database: return_platform
+  name: return_items
+  ownership: SOURCE_SYSTEM
+  authoritative: true
+  writable_in_sandbox: true
+  description: Authoritative returned item details.
+  fields:
+  - name: return_item_id
+    type: string
+    required: true
+    key: true
+    description: Return Item Id
+    generator: uuid
+  - name: session_id
+    type: string
+    required: true
+    key: false
+    description: Session Id
+    generator: uuid
+  - name: return_reference
+    type: string
+    required: false
+    key: false
+    description: Return Reference
+    generator: return_reference
+  - name: order_line_id
+    type: string
+    required: true
+    key: false
+    description: Order Line Id
+    generator: order_line_reference
+  - name: product_id
+    type: string
+    required: true
+    key: false
+    description: Product Id
+    generator: product_reference
+  - name: quantity
+    type: integer
+    required: true
+    key: false
+    description: Quantity
+    generator: quantity
+  - name: reason_code
+    type: string
+    required: true
+    key: false
+    description: Reason Code
+    generator: reason_code
+  - name: item_status
+    type: string
+    required: true
+    key: false
+    description: Item Status
+    generator: return_item_status
+  - name: created_at
+    type: datetime
+    required: true
+    key: false
+    description: Created At
+    generator: recent_datetime
+  namespace: dbo
+- asset_id: source.sql.return_fulfillment
+  engine: SQLSERVER
+  database: return_platform
+  name: return_fulfillment
+  ownership: SOURCE_SYSTEM
+  authoritative: true
+  writable_in_sandbox: true
+  description: Authoritative fulfillment and tracking state.
+  fields:
+  - name: session_id
+    type: string
+    required: true
+    key: true
+    description: Session Id
+    generator: uuid
+  - name: fulfillment_reference
+    type: string
+    required: false
+    key: false
+    description: Fulfillment Reference
+    generator: fulfillment_reference
+  - name: tracking_reference
+    type: string
+    required: false
+    key: false
+    description: Tracking Reference
+    generator: tracking_reference
+  - name: warehouse_reference
+    type: string
+    required: false
+    key: false
+    description: Warehouse Reference
+    generator: warehouse_reference
+  - name: bay_reference
+    type: string
+    required: false
+    key: false
+    description: Bay Reference
+    generator: bay_reference
+  - name: fulfillment_status
+    type: string
+    required: true
+    key: false
+    description: Fulfillment Status
+    generator: fulfillment_status
+  - name: row_version
+    type: integer
+    required: true
+    key: false
+    description: Row Version
+    generator: one
+  - name: created_at
+    type: datetime
+    required: true
+    key: false
+    description: Created At
+    generator: recent_datetime
+  - name: updated_at
+    type: datetime
+    required: true
+    key: false
+    description: Updated At
+    generator: recent_datetime
+  namespace: dbo
+- asset_id: source.sql.return_tracking
+  engine: SQLSERVER
+  database: return_platform
+  name: return_tracking
+  ownership: SOURCE_SYSTEM
+  authoritative: true
+  writable_in_sandbox: true
+  description: PPL/BOL/customer-ship tracking facts.
+  fields:
+  - name: tracking_id
+    type: string
+    required: true
+    key: true
+    description: Tracking Id
+    generator: uuid
+  - name: return_reference
+    type: string
+    required: true
+    key: false
+    description: Return Reference
+    generator: return_reference
+  - name: tracking_type
+    type: string
+    required: true
+    key: false
+    description: Tracking Type
+    generator: tracking_type
+  - name: tracking_reference
+    type: string
+    required: true
+    key: false
+    description: Tracking Reference
+    generator: tracking_reference
+  - name: carrier_code
+    type: string
+    required: false
+    key: false
+    description: Carrier Code
+    generator: carrier_code
+  - name: tracking_status
+    type: string
+    required: true
+    key: false
+    description: Tracking Status
+    generator: tracking_status
+  - name: event_at
+    type: datetime
+    required: true
+    key: false
+    description: Event At
+    generator: recent_datetime
+  namespace: dbo
+- asset_id: platform.sql.return_support_ticket
+  engine: SQLSERVER
+  database: return_platform
+  name: return_support_ticket
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: true
+  description: Return Support ticket/thread handoff and follow-up state.
+  fields:
+  - name: ticket_id
+    type: string
+    required: true
+    key: true
+    description: Ticket Id
+    generator: ticket_reference
+  - name: session_id
+    type: string
+    required: true
+    key: false
+    description: Session Id
+    generator: uuid
+  - name: request_digest
+    type: string
+    required: true
+    key: false
+    description: Request Digest
+    generator: sha256
+  - name: status
+    type: string
+    required: true
+    key: false
+    description: Status
+    generator: support_ticket_status
+  - name: external_reference
+    type: string
+    required: false
+    key: false
+    description: External Reference
+    generator: external_ticket_reference
+  - name: clarification_request
+    type: string
+    required: false
+    key: false
+    description: Clarification Request
+    generator: clarification
+  - name: return_reference
+    type: string
+    required: false
+    key: false
+    description: Return Reference
+    generator: return_reference
+  - name: created_at
+    type: datetime
+    required: true
+    key: false
+    description: Created At
+    generator: recent_datetime
+  - name: updated_at
+    type: datetime
+    required: true
+    key: false
+    description: Updated At
+    generator: recent_datetime
+  namespace: integration
+- asset_id: platform.sql.bay_configuration
+  engine: SQLSERVER
+  database: return_platform
+  name: bay_configuration
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: true
+  description: Warehouse bay master and routing capabilities.
+  fields:
+  - name: bay_id
+    type: string
+    required: true
+    key: true
+    description: Bay Id
+    generator: bay_reference
+  - name: bay_name
+    type: string
+    required: true
+    key: false
+    description: Bay Name
+    generator: bay_name
+  - name: warehouse_id
+    type: string
+    required: true
+    key: false
+    description: Warehouse Id
+    generator: warehouse_reference
+  - name: branch_id
+    type: string
+    required: true
+    key: false
+    description: Branch Id
+    generator: branch_reference
+  - name: bay_type
+    type: string
+    required: true
+    key: false
+    description: Bay Type
+    generator: bay_type
+  - name: active
+    type: boolean
+    required: true
+    key: false
+    description: Active
+    generator: 'true'
+  - name: priority
+    type: integer
+    required: true
+    key: false
+    description: Priority
+    generator: priority
+  - name: supported_shipping_paths
+    type: string
+    required: true
+    key: false
+    description: Supported Shipping Paths
+    generator: shipping_paths_json
+  - name: supported_product_types
+    type: string
+    required: true
+    key: false
+    description: Supported Product Types
+    generator: product_types_json
+  - name: max_package_count
+    type: integer
+    required: true
+    key: false
+    description: Max Package Count
+    generator: package_capacity
+  - name: overflow_bay_id
+    type: string
+    required: false
+    key: false
+    description: Overflow Bay Id
+    generator: 'null'
+  namespace: platform
+- asset_id: platform.sql.bay_assignment
+  engine: SQLSERVER
+  database: return_platform
+  name: bay_assignment
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: true
+  description: Return item/package to physical bay binding.
+  fields:
+  - name: assignment_id
+    type: string
+    required: true
+    key: true
+    description: Assignment Id
+    generator: uuid
+  - name: return_reference
+    type: string
+    required: true
+    key: false
+    description: Return Reference
+    generator: return_reference
+  - name: sales_order_number
+    type: string
+    required: true
+    key: false
+    description: Sales Order Number
+    generator: order_reference
+  - name: order_line_id
+    type: string
+    required: true
+    key: false
+    description: Order Line Id
+    generator: order_line_reference
+  - name: item_number
+    type: string
+    required: true
+    key: false
+    description: Item Number
+    generator: product_reference
+  - name: package_count
+    type: integer
+    required: true
+    key: false
+    description: Package Count
+    generator: package_count
+  - name: warehouse_id
+    type: string
+    required: true
+    key: false
+    description: Warehouse Id
+    generator: warehouse_reference
+  - name: bay_id
+    type: string
+    required: true
+    key: false
+    description: Bay Id
+    generator: bay_reference
+  - name: status
+    type: string
+    required: true
+    key: false
+    description: Status
+    generator: bay_assignment_status
+  - name: confirmed_by_associate_id
+    type: string
+    required: false
+    key: false
+    description: Confirmed By Associate Id
+    generator: associate_reference
+  - name: created_at
+    type: datetime
+    required: true
+    key: false
+    description: Created At
+    generator: recent_datetime
+  - name: confirmed_at
+    type: datetime
+    required: false
+    key: false
+    description: Confirmed At
+    generator: recent_datetime
+  namespace: platform
+- asset_id: platform.sql.feedback_recommendation
+  engine: SQLSERVER
+  database: return_platform
+  name: feedback_recommendation
+  ownership: PLATFORM_OWNED
+  authoritative: true
+  writable_in_sandbox: true
+  description: Governed learning recommendation review queue.
+  fields:
+  - name: recommendation_id
+    type: string
+    required: true
+    key: true
+    description: Recommendation Id
+    generator: uuid
+  - name: session_id
+    type: string
+    required: true
+    key: false
+    description: Session Id
+    generator: uuid
+  - name: area
+    type: string
+    required: true
+    key: false
+    description: Area
+    generator: feedback_area
+  - name: recommendation
+    type: string
+    required: true
+    key: false
+    description: Recommendation
+    generator: recommendation
+  - name: evidence_digest
+    type: string
+    required: true
+    key: false
+    description: Evidence Digest
+    generator: sha256
+  - name: review_status
+    type: string
+    required: true
+    key: false
+    description: Review Status
+    generator: review_status
+  - name: created_at
+    type: datetime
+    required: true
+    key: false
+    description: Created At
+    generator: recent_datetime
+  - name: updated_at
+    type: datetime
+    required: true
+    key: false
+    description: Updated At
+    generator: recent_datetime
+  namespace: platform
+graph:
+  nodes:
+  - label: Customer
+    key_property: customer_key
+    source_assets:
+    - source.mongodb.customer_outbound_cdm
+    - source.mongodb.sales_inv
+    properties:
+    - customer_key
+    - party_id
+    - customer_id
+    - customer_name
+    - phone_hash
+    - email_hash
+    - source_system
+    - source_record_id
+    - source_updated_at
+    - graph_synced_at
+    - sync_run_id
+  - label: CustomerAccount
+    key_property: account_key
+    source_assets:
+    - source.mongodb.customer_outbound_cdm
+    properties:
+    - account_key
+    - customer_key
+    - account_number
+    - customer_id
+    - source_updated_at
+    - graph_synced_at
+    - sync_run_id
+  - label: SalesOrder
+    key_property: sales_order_number
+    source_assets:
+    - source.mongodb.sales_inv
+    properties:
+    - sales_order_number
+    - customer_id
+    - source_system
+    - order_status
+    - sell_warehouse_id
+    - ship_from_warehouse_id
+    - shipping_method
+    - delivered_at
+    - source_updated_at
+    - graph_synced_at
+    - sync_run_id
+  - label: OrderLine
+    key_property: order_line_key
+    source_assets:
+    - source.mongodb.sales_inv
+    properties:
+    - order_line_key
+    - sales_order_number
+    - product_id
+    - master_product_id
+    - product_description
+    - ordered_quantity
+    - shipped_quantity
+    - product_type
+    - source_updated_at
+    - graph_synced_at
+    - sync_run_id
+  - label: Product
+    key_property: product_id
+    source_assets:
+    - source.mongodb.sales_inv
+    - source.mongodb.product_search
+    properties:
+    - product_id
+    - sku
+    - master_product_id
+    - product_description
+    - product_type
+    - source_updated_at
+    - graph_synced_at
+    - sync_run_id
+  - label: Warehouse
+    key_property: warehouse_id
+    source_assets:
+    - source.mongodb.sales_inv
+    - platform.sql.bay_configuration
+    properties:
+    - warehouse_id
+    - branch_id
+    - source_updated_at
+    - graph_synced_at
+    - sync_run_id
+  - label: Shipment
+    key_property: tracking_number
+    source_assets:
+    - source.mongodb.shipment_info
+    properties:
+    - tracking_number
+    - sales_order_number
+    - carrier_code
+    - shipped_at
+    - source_updated_at
+    - graph_synced_at
+    - sync_run_id
+  - label: Return
+    key_property: return_reference
+    source_assets:
+    - source.sql.return_requests
+    properties:
+    - return_reference
+    - session_id
+    - sales_order_number
+    - customer_reference
+    - return_status
+    - eligibility_decision
+    - source_updated_at
+    - graph_synced_at
+    - sync_run_id
+  - label: ReturnItem
+    key_property: return_item_id
+    source_assets:
+    - source.sql.return_items
+    properties:
+    - return_item_id
+    - return_reference
+    - order_line_id
+    - product_id
+    - quantity
+    - reason_code
+    - item_status
+    - source_updated_at
+    - graph_synced_at
+    - sync_run_id
+  - label: ReturnTracking
+    key_property: tracking_id
+    source_assets:
+    - source.sql.return_tracking
+    properties:
+    - tracking_id
+    - return_reference
+    - tracking_type
+    - tracking_reference
+    - carrier_code
+    - tracking_status
+    - event_at
+    - graph_synced_at
+    - sync_run_id
+  - label: Bay
+    key_property: bay_id
+    source_assets:
+    - platform.sql.bay_configuration
+    properties:
+    - bay_id
+    - bay_name
+    - warehouse_id
+    - branch_id
+    - bay_type
+    - active
+    - priority
+    - max_package_count
+    - overflow_bay_id
+    - graph_synced_at
+    - sync_run_id
+  - label: BayAssignment
+    key_property: assignment_id
+    source_assets:
+    - platform.sql.bay_assignment
+    properties:
+    - assignment_id
+    - return_reference
+    - order_line_id
+    - item_number
+    - package_count
+    - warehouse_id
+    - bay_id
+    - status
+    - confirmed_by_associate_id
+    - graph_synced_at
+    - sync_run_id
+  - label: SupportTicket
+    key_property: ticket_id
+    source_assets:
+    - platform.sql.return_support_ticket
+    properties:
+    - ticket_id
+    - session_id
+    - status
+    - external_reference
+    - return_reference
+    - updated_at
+    - graph_synced_at
+    - sync_run_id
+  relationships:
+  - type: HAS_ACCOUNT
+    from_label: Customer
+    to_label: CustomerAccount
+    from_key: customer_key
+    to_key: account_key
+  - type: PLACED_ORDER
+    from_label: Customer
+    to_label: SalesOrder
+    from_key: customer_key
+    to_key: sales_order_number
+  - type: HAS_ORDER_LINE
+    from_label: SalesOrder
+    to_label: OrderLine
+    from_key: sales_order_number
+    to_key: order_line_key
+  - type: REFERENCES_PRODUCT
+    from_label: OrderLine
+    to_label: Product
+    from_key: order_line_key
+    to_key: product_id
+  - type: SOLD_BY_WAREHOUSE
+    from_label: SalesOrder
+    to_label: Warehouse
+    from_key: sales_order_number
+    to_key: warehouse_id
+  - type: SHIPPED_FROM_WAREHOUSE
+    from_label: SalesOrder
+    to_label: Warehouse
+    from_key: sales_order_number
+    to_key: warehouse_id
+  - type: HAS_ORIGINAL_SHIPMENT
+    from_label: SalesOrder
+    to_label: Shipment
+    from_key: sales_order_number
+    to_key: tracking_number
+  - type: HAS_RETURN
+    from_label: SalesOrder
+    to_label: Return
+    from_key: sales_order_number
+    to_key: return_reference
+  - type: HAS_RETURN_ITEM
+    from_label: Return
+    to_label: ReturnItem
+    from_key: return_reference
+    to_key: return_item_id
+  - type: RETURN_ITEM_FOR_LINE
+    from_label: ReturnItem
+    to_label: OrderLine
+    from_key: return_item_id
+    to_key: order_line_key
+  - type: HAS_TRACKING
+    from_label: Return
+    to_label: ReturnTracking
+    from_key: return_reference
+    to_key: tracking_id
+  - type: ASSIGNED_TO_BAY
+    from_label: ReturnItem
+    to_label: Bay
+    from_key: return_item_id
+    to_key: bay_id
+  - type: BINDS_RETURN_ITEM
+    from_label: BayAssignment
+    to_label: ReturnItem
+    from_key: assignment_id
+    to_key: return_item_id
+  - type: USES_BAY
+    from_label: BayAssignment
+    to_label: Bay
+    from_key: assignment_id
+    to_key: bay_id
+  - type: LOCATED_IN_WAREHOUSE
+    from_label: Bay
+    to_label: Warehouse
+    from_key: bay_id
+    to_key: warehouse_id
+  - type: TRACKED_BY_SUPPORT_TICKET
+    from_label: Return
+    to_label: SupportTicket
+    from_key: return_reference
+    to_key: ticket_id

@@ -1,4 +1,4 @@
-from collections.abc import Collection, Callable
+from collections.abc import Callable, Collection
 from typing import Final
 
 from fastapi import HTTPException, Request

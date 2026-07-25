@@ -12,7 +12,7 @@ from return_platform.operations.repository import OperationalRepository
 
 
 async def _run() -> None:
-    settings = Settings()
+    settings = Settings()  # type: ignore[call-arg]
     mongo: AsyncMongoClient[dict[str, object]] = AsyncMongoClient(
         settings.mongo_dsn.get_secret_value()
     )

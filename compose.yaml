@@ -8,8 +8,9 @@ x-logging: &default-logging
 
 x-platform-environment: &platform-environment
   PLATFORM_ENVIRONMENT: ${PLATFORM_ENVIRONMENT:-development}
-  PLATFORM_FRONTEND_CORS_ORIGIN: ${PLATFORM_FRONTEND_CORS_ORIGIN:-http://localhost:3000}
+  PLATFORM_FRONTEND_CORS_ORIGIN: ${PLATFORM_CONTAINER_FRONTEND_CORS_ORIGIN:-http://localhost:3000}
   PLATFORM_CATALOG_PATH: /app/config/data_assets.yaml
+  PLATFORM_SCHEMA_REGISTRY_PATH: /app/config/schema_registry.yaml
   PLATFORM_PROBE_TIMEOUT_SECONDS: ${PLATFORM_PROBE_TIMEOUT_SECONDS:-5}
   PLATFORM_DEPENDENCY_CONNECT_TIMEOUT_SECONDS: ${PLATFORM_DEPENDENCY_CONNECT_TIMEOUT_SECONDS:-10}
   PLATFORM_OPERATION_TIMEOUT_SECONDS: ${PLATFORM_OPERATION_TIMEOUT_SECONDS:-15}
@@ -19,6 +20,16 @@ x-platform-environment: &platform-environment
   PLATFORM_SOURCE_MONGO_DATABASE: ${PLATFORM_SOURCE_MONGO_DATABASE:-return_source}
   PLATFORM_GRAPH_EVIDENCE_COLLECTION: ${PLATFORM_GRAPH_EVIDENCE_COLLECTION:-graph_evidence_runs}
   PLATFORM_GRAPH_EVIDENCE_QUERY_TIMEOUT_SECONDS: ${PLATFORM_GRAPH_EVIDENCE_QUERY_TIMEOUT_SECONDS:-5}
+  PLATFORM_GRAPH_SYNC_BATCH_SIZE: ${PLATFORM_GRAPH_SYNC_BATCH_SIZE:-250}
+  PLATFORM_GRAPH_SYNC_MAX_RECORDS: ${PLATFORM_GRAPH_SYNC_MAX_RECORDS:-10000}
+  PLATFORM_AI_STUDIO_MAX_RECORDS: ${PLATFORM_AI_STUDIO_MAX_RECORDS:-500}
+  PLATFORM_SUPPORT_TICKET_MODE: ${PLATFORM_SUPPORT_TICKET_MODE:-SANDBOX_AUTO}
+  PLATFORM_SUPPORT_TICKET_BASE_URL: ${PLATFORM_SUPPORT_TICKET_BASE_URL:-}
+  PLATFORM_SUPPORT_TICKET_API_KEY: ${PLATFORM_SUPPORT_TICKET_API_KEY:-}
+  PLATFORM_SUPPORT_TICKET_TIMEOUT_SECONDS: ${PLATFORM_SUPPORT_TICKET_TIMEOUT_SECONDS:-15}
+  PLATFORM_SUPPORT_TICKET_POLL_SECONDS: ${PLATFORM_SUPPORT_TICKET_POLL_SECONDS:-5}
+  PLATFORM_SUPPORT_TICKET_MAX_POLLS: ${PLATFORM_SUPPORT_TICKET_MAX_POLLS:-12}
+  PLATFORM_FEEDBACK_LEARNING_ENABLED: ${PLATFORM_FEEDBACK_LEARNING_ENABLED:-true}
   PLATFORM_NEO4J_URI: bolt://neo4j:7687
   PLATFORM_NEO4J_USER: neo4j
   PLATFORM_NEO4J_PASSWORD: ${GRAPH_PASSWORD}
@@ -52,7 +63,7 @@ x-platform-environment: &platform-environment
   PLATFORM_GOOGLE_MODEL: ${PLATFORM_GOOGLE_MODEL:-gemini-3.6-flash}
   PLATFORM_NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
   PLATFORM_NVIDIA_BASE_URL: ${PLATFORM_NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
-  PLATFORM_NVIDIA_MODEL: ${PLATFORM_NVIDIA_MODEL:-nvidia/nemotron-3.5-nano-30b-a3b}
+  PLATFORM_NVIDIA_MODEL: ${PLATFORM_NVIDIA_MODEL:-nvidia/nemotron-3-nano-30b-a3b}
   PLATFORM_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   PLATFORM_OPENAI_BASE_URL: ${PLATFORM_OPENAI_BASE_URL:-https://api.openai.com/v1}
   PLATFORM_OPENAI_MODEL: ${PLATFORM_OPENAI_MODEL:-}
@@ -74,6 +85,8 @@ x-backend-base: &backend-base
   restart: unless-stopped
   init: true
   networks: [platform]
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
   logging: *default-logging
 
 services:
@@ -115,6 +128,7 @@ services:
       - |
         /opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -Q "IF DB_ID(N'return_platform') IS NULL CREATE DATABASE [return_platform]"
         /opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -b -i /init/001_return_business_state.sql
+        /opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -b -i /init/002_domain_models.sql
     restart: "no"
     networks: [platform]
     logging: *default-logging
@@ -124,7 +138,14 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-mongoadmin}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
-    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--wiredTigerCacheSizeGB", "1"]
+    entrypoint:
+      - bash
+      - -c
+      - |
+        echo "returnPlatformMongodbKeyfileSandboxOnly1234567890" > /data/configdb/keyfile
+        chmod 400 /data/configdb/keyfile
+        chown 999:999 /data/configdb/keyfile
+        exec docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /data/configdb/keyfile --wiredTigerCacheSizeGB 1
     ports:
       - "127.0.0.1:27017:27017"
     volumes:
@@ -181,7 +202,7 @@ services:
       - neo4j_data:/data
       - neo4j_logs:/logs
     healthcheck:
-      test: ["CMD-SHELL", "cypher-shell -u neo4j -p \"$$NEO4J_AUTH\" 'RETURN 1' >/dev/null 2>&1 || cypher-shell -u neo4j -p '${GRAPH_PASSWORD}' 'RETURN 1' >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p '${GRAPH_PASSWORD}' 'RETURN 1' >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -192,7 +213,7 @@ services:
     mem_limit: 2500m
 
   valkey:
-    image: valkey/valkey:${VALKEY_VERSION:-8.0.2-alpine}
+    image: valkey/valkey:${VALKEY_VERSION:-8.0.9-alpine}
     command: ["valkey-server", "--requirepass", "${VALKEY_PASSWORD}", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction", "--appendonly", "yes"]
     ports:
       - "127.0.0.1:6379:6379"
@@ -234,14 +255,13 @@ services:
       POSTGRES_USER: temporal
       POSTGRES_PWD: ${TEMPORAL_DB_PASSWORD}
       POSTGRES_SEEDS: temporal-postgresql
-      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
     depends_on:
       temporal-postgresql:
         condition: service_healthy
     ports:
       - "127.0.0.1:7233:7233"
     healthcheck:
-      test: ["CMD-SHELL", "temporal operator cluster health --address 127.0.0.1:7233 >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "temporal operator cluster health --address temporal:7233 >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 18
@@ -252,7 +272,7 @@ services:
     mem_limit: 1500m
 
   temporal-ui:
-    image: temporalio/ui:${TEMPORAL_UI_VERSION:-2.51.1}
+    image: temporalio/ui:${TEMPORAL_UI_VERSION:-2.52.1}
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_CORS_ORIGINS: ${PLATFORM_FRONTEND_CORS_ORIGIN:-http://localhost:3000}
@@ -267,6 +287,7 @@ services:
     mem_limit: 512m
 
   seed-runner:
+    profiles: ["containerized-app"]
     <<: *backend-base
     command: ["python", "/app/scripts/seed_e2e_data.py"]
     depends_on:
@@ -279,6 +300,7 @@ services:
     restart: "no"
 
   backend:
+    profiles: ["containerized-app"]
     <<: *backend-base
     command: ["uvicorn", "return_platform.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
     ports:
@@ -298,6 +320,7 @@ services:
       start_period: 20s
 
   return-workflow-worker:
+    profiles: ["containerized-app"]
     <<: *backend-base
     command: ["python", "/app/scripts/run_return_workflow_worker.py"]
     depends_on:
@@ -307,6 +330,7 @@ services:
         condition: service_healthy
 
   return-orchestrator:
+    profiles: ["containerized-app"]
     <<: *backend-base
     command: ["python", "/app/scripts/run_return_orchestrator.py"]
     depends_on:
@@ -318,6 +342,7 @@ services:
         condition: service_started
 
   outbox-publisher:
+    profiles: ["containerized-app"]
     <<: *backend-base
     command: ["python", "/app/scripts/run_outbox_publisher.py"]
     depends_on:
@@ -327,6 +352,7 @@ services:
         condition: service_healthy
 
   data-job-worker:
+    profiles: ["containerized-app"]
     <<: *backend-base
     command: ["python", "/app/scripts/run_data_job_worker.py"]
     depends_on:
@@ -334,6 +360,7 @@ services:
         condition: service_completed_successfully
 
   frontend:
+    profiles: ["containerized-app"]
     image: return-platform-frontend:local
     build:
       context: ./frontend

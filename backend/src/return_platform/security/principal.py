@@ -43,6 +43,11 @@ class Principal:
             frozenset(role.strip() for role in self.roles),
         )
 
+    @property
+    def is_authenticated(self) -> bool:
+        """Match the authorization dependency contract without mutable auth state."""
+        return True
+
 
 type PrincipalProvider = Callable[[Request], Awaitable[Principal]]
 

@@ -1,0 +1,43 @@
+{
+  "stage": "4B",
+  "commit": "869e3ff2902c27623249eeb23bdaaec7b847b39b",
+  "evaluated_at": "2026-07-25T02:52:38.860212+00:00",
+  "gates": {
+    "backend_env_remove": {
+      "exit_code": 0,
+      "status": "PASS",
+      "hash": "e3b858fc3e7f366ceefdbd576c1915b7d43f6fcb0745a1f0f6d3efdf040c3615"
+    },
+    "backend_sync": {
+      "exit_code": 0,
+      "status": "PASS",
+      "hash": "71ff91bea9b37a18c36303cc16561d3f9089a47862c32cf91bcb86ec4fd72540"
+    },
+    "frontend_ci": {
+      "exit_code": 0,
+      "status": "PASS",
+      "hash": "f9a47d1f6b83c22c6315d4607a2cac74a8f5526b6c9016cf29c78a5f82afa2cc"
+    },
+    "frontend_playwright": {
+      "exit_code": 0,
+      "status": "PASS",
+      "hash": "88caa05db0706e25fbcd5d5aceb9726043bda229d8068117c38192e4c9b10bcf"
+    },
+    "backend_lock_diff": {
+      "exit_code": 0,
+      "status": "PASS",
+      "hash": "40dd5444f5558c30722221783dbeee9f984692c40aa1c31d9596e7a5a8a58655"
+    },
+    "frontend_lock_diff": {
+      "exit_code": 0,
+      "status": "PASS",
+      "hash": "de61c85a53c0c89d17d16e0b7a71e0705bb1b7c68e7360ab08b67694f59b59b7"
+    },
+    "lock_hash_compare": {
+      "exit_code": 0,
+      "status": "PASS",
+      "hash": "f1172e6fc27e55de4ed416ee65b698cca76cc1f2c2c55da0dd593411a6af3690"
+    }
+  },
+  "overall": "PASS"
+}

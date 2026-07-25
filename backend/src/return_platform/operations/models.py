@@ -60,9 +60,18 @@ class ReturnCreateRequest(MutableContract):
     customerReference: str = Field(min_length=1, max_length=128)
     orderReference: str = Field(min_length=1, max_length=128)
     itemReferences: list[str] = Field(min_length=1, max_length=50)
+    productReferences: list[str] = Field(default_factory=list, max_length=50)
+    processingWarehouseReference: str | None = Field(default=None, max_length=128)
+    productType: str | None = Field(default=None, max_length=64)
     reasonCode: str = Field(min_length=1, max_length=64)
+    returnQuantity: int = Field(default=1, ge=1, le=10_000)
+    packageCount: int = Field(default=1, ge=1, le=10_000)
+    shippingPathExpectation: str = Field(
+        default="PPL",
+        pattern=r"^(PPL|BOL|CUSTOMER_SHIP|NO_LABEL|DIRECT_VENDOR|FIELD_SCRAP)$",
+    )
     notes: str | None = Field(default=None, max_length=2_000)
-    channel: str = Field(default="CUSTOMER", pattern=r"^(CUSTOMER|ASSOCIATE|SYSTEM)$")
+    channel: str = Field(default="SYSTEM", pattern=r"^(CUSTOMER|ASSOCIATE|SYSTEM)$")
     idempotencyKey: str | None = Field(default=None, min_length=8, max_length=128)
 
     @field_validator("itemReferences")
@@ -81,7 +90,13 @@ class ReturnSessionView(MutableContract):
     customerReference: str
     orderReference: str
     itemReferences: list[str]
+    productReferences: list[str]
+    processingWarehouseReference: str | None = None
+    productType: str | None = None
     reasonCode: str
+    returnQuantity: int = Field(ge=1, le=10_000)
+    packageCount: int = Field(ge=1, le=10_000)
+    shippingPathExpectation: str
     notes: str | None = None
     channel: str
     status: ReturnStatus
@@ -89,8 +104,10 @@ class ReturnSessionView(MutableContract):
     progressPercentage: int = Field(ge=0, le=100)
     eligibilityDecision: AIDecision | None = None
     returnReference: str | None = None
+    supportTicketReference: str | None = None
     trackingReference: str | None = None
     bayReference: str | None = None
+    feedbackReference: str | None = None
     supportCaseId: str | None = None
     aiRequestId: str | None = None
     failureCode: str | None = None

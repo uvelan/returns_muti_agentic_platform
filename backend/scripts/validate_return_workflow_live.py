@@ -33,7 +33,6 @@ from return_platform.workflows.stage_results import (
     bind_stage_activity_result,
 )
 from return_platform.workflows.worker import (
-    RETURN_WORKFLOW_TASK_QUEUE,
     create_return_workflow_worker,
 )
 
@@ -72,10 +71,15 @@ async def _validate() -> None:
         decisions_collection=_DECISIONS,
         operation_timeout_seconds=5.0,
     )
-    worker = create_return_workflow_worker(temporal, repository)
+    worker = create_return_workflow_worker(temporal, repository, task_queue="live-validation-tq")
     worker_task = asyncio.create_task(worker.run())
     handle: WorkflowHandle[ReturnWorkflow, ReturnWorkflowExecutionState] | None = None
     await mongo.drop_database(_DATABASE)
+    database = mongo[_DATABASE]
+    await database.create_collection("return_sessions")
+    await database.create_collection("audit_events")
+    await database.create_collection("outbox_events")
+    await database.create_collection("agent_decisions")
     try:
         async with asyncio.timeout(45.0):
             handle = await temporal.start_workflow(
@@ -89,7 +93,7 @@ async def _validate() -> None:
                     ),
                 ),
                 id=f"return-live-validation-{uuid4()}",
-                task_queue=RETURN_WORKFLOW_TASK_QUEUE,
+                task_queue="live-validation-tq",
             )
             first_command = ReturnWorkflowAdvanceCommand(
                 command_id=str(UUID(int=1)),

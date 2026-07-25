@@ -17,7 +17,7 @@ export const sourcesHandlers = [
       }
     }), { headers: { 'Content-Type': 'application/json' } });
   }),
-  
+
   http.get("/data-console/v1/sources/:sourceId", async ({ params }) => {
     await delay(300);
     const sourceId = String(params.sourceId);

@@ -1,0 +1,19 @@
+{
+  "stage": "4E",
+  "gate": "openapi_drift",
+  "commit": "869e3ff2902c27623249eeb23bdaaec7b847b39b",
+  "environment": "local-contract-validation",
+  "command": [
+    "node",
+    "K:\\Projects\\FEG\\Ret\\full\\tmp\\returns_multi_agentic_platform\\frontend\\node_modules\\openapi-typescript\\bin\\cli.js",
+    "C:\\Users\\Uday\\AppData\\Local\\Temp\\tmppgbdflo0\\return-platform.openapi.json",
+    "--output",
+    "C:\\Users\\Uday\\AppData\\Local\\Temp\\tmppgbdflo0\\return-platform.d.ts"
+  ],
+  "started_at": "2026-07-25T02:47:21.484819+00:00",
+  "finished_at": "2026-07-25T02:47:25.006985+00:00",
+  "openapi_sha256": "9db385e0c49b7ac9e9b779c24973d0d6ae36c6d6b4b7179036ab7597e574c6e1",
+  "exit_code": 0,
+  "diffs": [],
+  "status": "PASS"
+}

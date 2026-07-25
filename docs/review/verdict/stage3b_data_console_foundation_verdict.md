@@ -1,7 +1,7 @@
 # Stage 3B Data Console Foundation Review Verdict
 
-Review date: 2026-07-23  
-Reviewed revision: `4aff786` plus the current uncommitted working tree  
+Review date: 2026-07-23
+Reviewed revision: `4aff786` plus the current uncommitted working tree
 Reviewer scope: the submitted Stage 3B completion statement, its evidence, and Docker reproducibility
 
 ## Verdict

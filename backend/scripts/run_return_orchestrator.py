@@ -13,7 +13,7 @@ from return_platform.operations.repository import OperationalRepository
 
 
 async def _run() -> None:
-    settings = Settings()
+    settings = Settings()  # type: ignore[call-arg]
     platform_dsn = settings.mongo_dsn.get_secret_value()
     source_dsn = (
         settings.source_mongo_dsn.get_secret_value()

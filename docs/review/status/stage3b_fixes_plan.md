@@ -15,7 +15,7 @@ This plan addresses the P0 and P1 blocking findings from the `stage3b_data_conso
 
 ### 2. Application Shell & Routing Fixes
 - **`main.tsx`**: Add `import.meta.env.DEV` to the `enableMocking` check to strictly bind the MSW worker to the development environment, addressing the P1 finding.
-- **`routes.ts`**: 
+- **`routes.ts`**:
   - Remove the `@typescript-eslint/no-explicit-any` suppression.
   - Change `React.LazyExoticComponent<any>` to `React.LazyExoticComponent<React.ComponentType<unknown>>` or an exact type to strictly type the lazy components without `any`.
 

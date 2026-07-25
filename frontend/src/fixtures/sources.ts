@@ -60,6 +60,7 @@ export const FIXTURE_SOURCE_DETAILS: Record<string, SourceDetail> = {
     inventoryTotals: { assets: 142, records: 15420000 },
     lastMetadataRefresh: new Date(Date.now() - 3600000).toISOString(),
     dependencyWarnings: [],
+    assets: [],
   },
   "src-mongo-returns": {
     ...FIXTURE_SOURCES[1],
@@ -67,6 +68,7 @@ export const FIXTURE_SOURCE_DETAILS: Record<string, SourceDetail> = {
     inventoryTotals: { assets: 24, records: 830000 },
     lastMetadataRefresh: new Date(Date.now() - 7200000).toISOString(),
     dependencyWarnings: [],
+    assets: [],
   },
   "src-neo4j-graph": {
     ...FIXTURE_SOURCES[2],
@@ -74,6 +76,7 @@ export const FIXTURE_SOURCE_DETAILS: Record<string, SourceDetail> = {
     inventoryTotals: { assets: 12, records: 4500000 },
     lastMetadataRefresh: new Date(Date.now() - 1800000).toISOString(),
     dependencyWarnings: ["Graph sync is 2 hours behind source updates"],
+    assets: [],
   },
   "src-mongo-platform": {
     ...FIXTURE_SOURCES[3],
@@ -81,6 +84,7 @@ export const FIXTURE_SOURCE_DETAILS: Record<string, SourceDetail> = {
     inventoryTotals: { assets: 15, records: 120000 },
     lastMetadataRefresh: new Date(Date.now() - 900000).toISOString(),
     dependencyWarnings: [],
+    assets: [],
   },
   "src-sandbox-1": {
     ...FIXTURE_SOURCES[4],
@@ -88,5 +92,6 @@ export const FIXTURE_SOURCE_DETAILS: Record<string, SourceDetail> = {
     inventoryTotals: { assets: 4, records: 150 },
     lastMetadataRefresh: new Date().toISOString(),
     dependencyWarnings: ["This is a synthetic sandbox workspace"],
+    assets: [],
   }
 };

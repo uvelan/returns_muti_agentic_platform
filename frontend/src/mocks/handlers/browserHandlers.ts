@@ -17,13 +17,13 @@ export const browserHandlers = [
       }
     }), { headers: { 'Content-Type': 'application/json' } });
   }),
-  
+
   http.get("/data-console/v1/browser/:engine/:assetId/records", async ({ request, params }) => {
     await delay(300);
     const { engine, assetId } = params;
     const url = new URL(request.url);
     const pageSize = Number(url.searchParams.get("page_size")) || 10;
-    
+
     const key = Object.keys(FIXTURE_BROWSER_RECORDS).find((candidate) => {
       const records = FIXTURE_BROWSER_RECORDS[candidate] ?? [];
       return (
@@ -54,7 +54,7 @@ export const browserHandlers = [
   http.get("/data-console/v1/browser/:engine/:assetId/records/:recordId", async ({ params }) => {
     await delay(300);
     const { engine, assetId, recordId } = params;
-    
+
     const key = Object.keys(FIXTURE_BROWSER_RECORDS).find((candidate) => {
       const records = FIXTURE_BROWSER_RECORDS[candidate] ?? [];
       return (

@@ -1,22 +1,41 @@
-"""API routes for configured data sources and inventory details."""
+"""Live data-source inventory derived from the governed schema registry and probes."""
 
-from datetime import UTC, datetime
-from typing import Any
-from typing import Final
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from datetime import datetime
+from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from return_platform.data_console.api.auth import require_read_roles
+from return_platform.data_console.infrastructure.probes import (
+    probe_mongodb,
+    probe_neo4j,
+    probe_source_mongodb,
+    probe_sqlserver,
+)
+from return_platform.data_platform.schema_registry import DataAssetSchema, SchemaRegistry
 from return_platform.resources import RuntimeResources
-from return_platform.shared.contracts import APIResponse, PageMeta, ResponseMeta, WarningMeta
+from return_platform.shared.contracts import (
+    APIResponse,
+    DependencyProbeResult,
+    DependencyStatus,
+    PageMeta,
+    ResponseMeta,
+)
 
 router = APIRouter(prefix="/data-console/v1", tags=["Sources", "Inventory"])
 
-_SOURCE: Final = "SOURCES"
+
+class SourceModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
 
-class SourceItem(BaseModel):
+class SourceItem(SourceModel):
     id: str
     name: str
     engine: str
@@ -24,22 +43,32 @@ class SourceItem(BaseModel):
     ownership: str
     health: str
     capability: str
-    lastInventoryTime: str | None
+    lastInventoryTime: datetime | None
 
 
-class InventoryTotals(BaseModel):
+class InventoryTotals(SourceModel):
     assets: int
-    records: int
+    records: int | None
+
+
+class SourceAssetSummary(SourceModel):
+    assetId: str
+    name: str
+    kind: str
+    ownership: str
+    authoritative: bool
+    writableInSandbox: bool
 
 
 class SourceDetail(SourceItem):
     connectionIdentity: str
     inventoryTotals: InventoryTotals
-    lastMetadataRefresh: str | None
+    lastMetadataRefresh: datetime | None
     dependencyWarnings: list[str]
+    assets: list[SourceAssetSummary]
 
 
-class InventoryDetail(BaseModel):
+class InventoryDetail(SourceModel):
     assetId: str
     engine: str
     name: str
@@ -48,7 +77,26 @@ class InventoryDetail(BaseModel):
     recordCount: int | None
     schemaVersion: str
     operations: list[str]
-    metadata: dict[str, Any]
+    metadata: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class SourceDefinition:
+    source_id: str
+    name: str
+    engine: str
+    ownership: str
+    capability: str
+    connection_identity: str
+    assets: tuple[DataAssetSchema, ...]
+    probe: Callable[[Request], Awaitable[DependencyProbeResult]]
+
+
+def _resources(request: Request) -> RuntimeResources:
+    resources = getattr(request.app.state, "resources", None)
+    if not isinstance(resources, RuntimeResources) or resources.schema_registry is None:
+        raise HTTPException(status_code=503, detail="Schema and runtime resources are unavailable.")
+    return resources
 
 
 def _request_id(request: Request) -> str:
@@ -56,151 +104,217 @@ def _request_id(request: Request) -> str:
     return value if isinstance(value, str) and value else "unknown"
 
 
-def _response_meta(request: Request, warnings: list[WarningMeta] | None = None) -> ResponseMeta:
-    return ResponseMeta(
-        request_id=_request_id(request),
-        partial=bool(warnings),
-        warnings=tuple(warnings) if warnings else (),
+def _response_meta(request: Request) -> ResponseMeta:
+    return ResponseMeta(request_id=_request_id(request))
+
+
+def _environment(resources: RuntimeResources) -> str:
+    return {
+        "development": "LOCAL",
+        "test": "SANDBOX",
+        "staging": "STAGING",
+        "production": "PRODUCTION",
+    }[resources.settings.environment]
+
+
+def _definitions(
+    resources: RuntimeResources, registry: SchemaRegistry
+) -> tuple[SourceDefinition, ...]:
+    source_mongo = tuple(
+        asset
+        for asset in registry.assets
+        if asset.engine == "MONGODB" and asset.database == resources.settings.source_mongo_database
+    )
+    platform_mongo = tuple(
+        asset
+        for asset in registry.assets
+        if asset.engine == "MONGODB" and asset.database == resources.settings.mongo_database
+    )
+    sql_assets = tuple(asset for asset in registry.assets if asset.engine == "SQLSERVER")
+    return (
+        SourceDefinition(
+            source_id="source-mongodb",
+            name="Source MongoDB",
+            engine="MONGODB",
+            ownership="AUTHORITATIVE",
+            capability="READ_ONLY",
+            connection_identity=f"mongodb/{resources.settings.source_mongo_database}",
+            assets=source_mongo,
+            probe=probe_source_mongodb,
+        ),
+        SourceDefinition(
+            source_id="platform-mongodb",
+            name="Platform MongoDB",
+            engine="PLATFORM",
+            ownership="INTERNAL",
+            capability="WRITABLE",
+            connection_identity=f"mongodb/{resources.settings.mongo_database}",
+            assets=platform_mongo,
+            probe=probe_mongodb,
+        ),
+        SourceDefinition(
+            source_id="sqlserver",
+            name="Return Business State SQL Server",
+            engine="SQL_SERVER",
+            ownership="AUTHORITATIVE",
+            capability="READ_ONLY",
+            connection_identity=f"sqlserver/{resources.settings.sqlserver_database}",
+            assets=sql_assets,
+            probe=probe_sqlserver,
+        ),
+        SourceDefinition(
+            source_id="neo4j",
+            name="Neo4j Graph Projection",
+            engine="NEO4J",
+            ownership="DERIVED",
+            capability="READ_ONLY",
+            connection_identity=f"neo4j/{resources.settings.neo4j_database}",
+            assets=(),
+            probe=probe_neo4j,
+        ),
     )
 
 
-# Derive sources dynamically from catalog or keep known list
-_STATIC_SOURCES = [
-    {
-        "id": "src-sql-omc",
-        "name": "OMC SQL Server",
-        "engine": "SQLSERVER",
-        "ownership": "AUTHORITATIVE",
-    },
-    {
-        "id": "src-mongo-returns",
-        "name": "Returns MongoDB",
-        "engine": "MONGODB",
-        "ownership": "AUTHORITATIVE",
-    },
-]
+def _health(probe: DependencyProbeResult) -> str:
+    if probe.status is DependencyStatus.HEALTHY:
+        return "HEALTHY"
+    if probe.status in {DependencyStatus.DEGRADED, DependencyStatus.STARTING}:
+        return "DEGRADED"
+    if probe.status is DependencyStatus.UNAVAILABLE:
+        return "UNAVAILABLE"
+    return "UNKNOWN"
+
+
+def _asset_summary(asset: DataAssetSchema) -> SourceAssetSummary:
+    qualified = f"{asset.namespace}.{asset.name}" if asset.namespace else asset.name
+    return SourceAssetSummary(
+        assetId=asset.asset_id,
+        name=qualified,
+        kind="TABLE" if asset.engine == "SQLSERVER" else "COLLECTION",
+        ownership=asset.ownership,
+        authoritative=asset.authoritative,
+        writableInSandbox=asset.writable_in_sandbox,
+    )
+
+
+def _source_item(
+    definition: SourceDefinition,
+    probe: DependencyProbeResult,
+    environment: str,
+) -> SourceItem:
+    return SourceItem(
+        id=definition.source_id,
+        name=definition.name,
+        engine=definition.engine,
+        environment=environment,
+        ownership=definition.ownership,
+        health=_health(probe),
+        capability=definition.capability,
+        lastInventoryTime=probe.checked_at,
+    )
+
+
+async def _probed_sources(
+    request: Request,
+) -> tuple[RuntimeResources, tuple[SourceDefinition, ...], list[DependencyProbeResult]]:
+    resources = _resources(request)
+    registry = cast(SchemaRegistry, resources.schema_registry)
+    definitions = _definitions(resources, registry)
+    probes = await asyncio.gather(*(definition.probe(request) for definition in definitions))
+    return resources, definitions, list(probes)
 
 
 @router.get("/sources", response_model=APIResponse[list[SourceItem]])
 async def get_sources(
-    request: Request, user_id: str = Depends(require_read_roles)
+    request: Request,
+    _actor: str = Depends(require_read_roles),
 ) -> APIResponse[list[SourceItem]]:
-    resources_value: object = getattr(request.app.state, "resources", None)
-    if not isinstance(resources_value, RuntimeResources):
-        raise HTTPException(status_code=500, detail="Resources unavailable")
-
-    views = []
-    # Identify unique stores in catalog
-    catalog_stores = {asset.store.value for asset in resources_value.catalog.catalog.assets}
-
-    for s in _STATIC_SOURCES:
-        if s["engine"] in catalog_stores:
-            views.append(
-                SourceItem(
-                    id=s["id"],
-                    name=s["name"],
-                    engine=s["engine"],
-                    environment="PRODUCTION",
-                    ownership=s["ownership"],
-                    health="HEALTHY",
-                    capability="READ_ONLY",
-                    lastInventoryTime=datetime.now(UTC).isoformat(),
-                )
-            )
-
+    resources, definitions, probes = await _probed_sources(request)
+    views = [
+        _source_item(definition, probe, _environment(resources))
+        for definition, probe in zip(definitions, probes, strict=True)
+    ]
     return APIResponse(
         data=views,
         meta=_response_meta(request),
-        page=PageMeta(next_cursor=None, has_more=False, page_size=len(views) or 10),
+        page=PageMeta(next_cursor=None, has_more=False, page_size=len(views)),
     )
 
 
 @router.get("/sources/{source_id}", response_model=APIResponse[SourceDetail])
 async def get_source(
-    request: Request, source_id: str, user_id: str = Depends(require_read_roles)
+    source_id: str,
+    request: Request,
+    _actor: str = Depends(require_read_roles),
 ) -> APIResponse[SourceDetail]:
-    resources_value: object = getattr(request.app.state, "resources", None)
-    if not isinstance(resources_value, RuntimeResources):
-        raise HTTPException(status_code=500, detail="Resources unavailable")
-
-    source_info = next((s for s in _STATIC_SOURCES if s["id"] == source_id), None)
-    if not source_info:
-        raise HTTPException(status_code=404, detail="Source not found")
-
-    catalog_stores = {asset.store.value for asset in resources_value.catalog.catalog.assets}
-    if source_info["engine"] not in catalog_stores:
-        raise HTTPException(status_code=404, detail="Source not found in active catalog")
-
-    assets_count = sum(
-        1 for a in resources_value.catalog.catalog.assets if a.store.value == source_info["engine"]
+    resources, definitions, probes = await _probed_sources(request)
+    selected = next(
+        (
+            (definition, probe)
+            for definition, probe in zip(definitions, probes, strict=True)
+            if definition.source_id == source_id
+        ),
+        None,
     )
-
+    if selected is None:
+        raise HTTPException(status_code=404, detail="Source not found.")
+    definition, probe = selected
+    base = _source_item(definition, probe, _environment(resources))
+    registry = cast(SchemaRegistry, resources.schema_registry)
+    graph_asset_count = (
+        len(registry.graph.nodes) + len(registry.graph.relationships)
+        if definition.source_id == "neo4j"
+        else 0
+    )
+    warnings = [probe.safe_message] if probe.safe_message else []
     detail = SourceDetail(
-        id=source_info["id"],
-        name=source_info["name"],
-        engine=source_info["engine"],
-        environment="PRODUCTION",
-        ownership=source_info["ownership"],
-        health="HEALTHY",
-        capability="READ_ONLY",
-        lastInventoryTime=datetime.now(UTC).isoformat(),
-        connectionIdentity=f"conn-{source_id}",
-        inventoryTotals=InventoryTotals(assets=assets_count, records=0),
-        lastMetadataRefresh=datetime.now(UTC).isoformat(),
-        dependencyWarnings=[],
+        **base.model_dump(),
+        connectionIdentity=definition.connection_identity,
+        inventoryTotals=InventoryTotals(
+            assets=len(definition.assets) + graph_asset_count,
+            records=None,
+        ),
+        lastMetadataRefresh=probe.checked_at,
+        dependencyWarnings=warnings,
+        assets=[_asset_summary(asset) for asset in definition.assets],
     )
-
-    return APIResponse(
-        data=detail,
-        meta=_response_meta(request),
-        page=PageMeta(next_cursor=None, has_more=False, page_size=1),
-    )
+    return APIResponse(data=detail, meta=_response_meta(request))
 
 
 @router.get("/inventory/{engine}/{asset_id}", response_model=APIResponse[InventoryDetail])
 async def get_inventory_detail(
-    request: Request, engine: str, asset_id: str, user_id: str = Depends(require_read_roles)
+    engine: str,
+    asset_id: str,
+    request: Request,
+    _actor: str = Depends(require_read_roles),
 ) -> APIResponse[InventoryDetail]:
-    resources_value: object = getattr(request.app.state, "resources", None)
-    if not isinstance(resources_value, RuntimeResources):
-        raise HTTPException(status_code=500, detail="Resources unavailable")
-
-    engine_upper = engine.upper()
-    catalog_entry = next(
-        (
-            a
-            for a in resources_value.catalog.catalog.assets
-            if a.asset_id == asset_id and a.store.value == engine_upper
-        ),
-        None,
-    )
-    if not catalog_entry:
-        raise HTTPException(status_code=404, detail="Asset not found in catalog")
-
-    # Determine name
-    name = catalog_entry.object_name
-    if catalog_entry.namespace:
-        name = f"{catalog_entry.namespace}.{name}"
-
+    resources = _resources(request)
+    registry = cast(SchemaRegistry, resources.schema_registry)
+    try:
+        asset = registry.asset(asset_id)
+    except KeyError as error:
+        raise HTTPException(
+            status_code=404, detail="Asset not found in schema registry."
+        ) from error
+    expected_engine = "SQL_SERVER" if asset.engine == "SQLSERVER" else "MONGODB"
+    if engine.upper() not in {asset.engine, expected_engine}:
+        raise HTTPException(status_code=404, detail="Asset engine does not match the route.")
+    qualified = f"{asset.namespace}.{asset.name}" if asset.namespace else asset.name
     detail = InventoryDetail(
-        assetId=catalog_entry.asset_id,
-        engine=catalog_entry.store.value,
-        name=name,
-        ownership=catalog_entry.ownership.value,
+        assetId=asset.asset_id,
+        engine=expected_engine,
+        name=qualified,
+        ownership=asset.ownership,
         capability="READ_ONLY",
         recordCount=None,
-        schemaVersion="1.0",
-        operations=[op.value for op in catalog_entry.allowed_operations],
+        schemaVersion=registry.schema_version,
+        operations=["READ", "INSPECT_SCHEMA"],
         metadata={
-            "database": catalog_entry.database,
-            "namespace": catalog_entry.namespace,
-            "objectKind": catalog_entry.object_kind.value,
-            "authoritative": catalog_entry.authoritative,
+            "database": asset.database,
+            "namespace": asset.namespace,
+            "authoritative": asset.authoritative,
+            "writableInSandbox": asset.writable_in_sandbox,
+            "fields": [field.model_dump() for field in asset.fields],
         },
     )
-
-    return APIResponse(
-        data=detail,
-        meta=_response_meta(request),
-        page=PageMeta(next_cursor=None, has_more=False, page_size=1),
-    )
+    return APIResponse(data=detail, meta=_response_meta(request))

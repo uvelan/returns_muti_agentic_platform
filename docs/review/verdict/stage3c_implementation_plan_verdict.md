@@ -1,8 +1,8 @@
 # Stage 3C Data Sources and Governed Data Browser Plan Verdict
 
-Review date: 2026-07-23  
-Review type: design and implementation-plan review  
-Reviewed scope: proposed Stage 3C Data Sources and Governed Data Browser plan  
+Review date: 2026-07-23
+Review type: design and implementation-plan review
+Reviewed scope: proposed Stage 3C Data Sources and Governed Data Browser plan
 Reference sources:
 
 - `CODEX_PROMPT_DATA_CONSOLE_ALL_UI_SCREENS.md`

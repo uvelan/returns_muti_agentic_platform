@@ -17,14 +17,24 @@ export type SourceItem = {
   lastInventoryTime: string | null;
 };
 
+export type SourceAssetSummary = {
+  assetId: string;
+  name: string;
+  kind: "COLLECTION" | "TABLE";
+  ownership: "SOURCE_SYSTEM" | "PLATFORM_OWNED" | "DERIVED_PROJECTION";
+  authoritative: boolean;
+  writableInSandbox: boolean;
+};
+
 export type SourceDetail = SourceItem & {
-  connectionIdentity: string; // Safe connection identity, no DSN/credentials
+  connectionIdentity: string;
   inventoryTotals: {
     assets: number;
-    records: number;
+    records: number | null;
   };
   lastMetadataRefresh: string | null;
   dependencyWarnings: string[];
+  assets: SourceAssetSummary[];
 };
 
 export type SourceListResponse = APIResponse<SourceItem[]>;
@@ -33,4 +43,4 @@ export type SourceDetailResponse = APIResponse<SourceDetail>;
 export type DataSourcesPort = {
   getSources(signal?: AbortSignal): Promise<SourceListResponse>;
   getSource(sourceId: string, signal?: AbortSignal): Promise<SourceDetailResponse>;
-}
+};

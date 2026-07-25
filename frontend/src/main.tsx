@@ -43,12 +43,12 @@ async function enableMocking() {
     return;
   }
   const { worker } = await import("./mocks/browser");
-  return worker.start({ 
+  return worker.start({
     onUnhandledRequest(request, print) {
       if (request.url.includes("/data-console/v1/")) {
         print.error();
       }
-    } 
+    }
   });
 }
 

@@ -24,13 +24,19 @@ def _meta(request: Request) -> ResponseMeta:
 def _coordinator(request: Request) -> SeedCoordinator:
     resources = getattr(request.app.state, "resources", None)
     settings = getattr(request.app.state, "settings", None)
-    if not isinstance(resources, RuntimeResources) or resources.neo4j is None or settings is None:
+    if (
+        not isinstance(resources, RuntimeResources)
+        or resources.neo4j is None
+        or resources.schema_registry is None
+        or settings is None
+    ):
         raise HTTPException(status_code=503, detail="Seed dependencies are unavailable")
     return SeedCoordinator(
         resolve_operational_repository(request),
         SQLBusinessStateRepository(settings),
         resources.neo4j,
         settings,
+        resources.schema_registry,
     )
 
 

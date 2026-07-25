@@ -18,7 +18,7 @@ export function JsonInspector({ data, redactedPaths = [], className = "" }: Json
     if (typeof value === "boolean") return <span className="text-blue-500">{value.toString()}</span>;
     if (typeof value === "number") return <span className="text-green-600">{value}</span>;
     if (typeof value === "string") return <span className="text-orange-600">"{value}"</span>;
-    
+
     if (Array.isArray(value)) {
       return (
         <div className="pl-4 border-l border-gray-200">
@@ -33,7 +33,7 @@ export function JsonInspector({ data, redactedPaths = [], className = "" }: Json
         </div>
       );
     }
-    
+
     if (typeof value === "object") {
       return (
         <div className="pl-4 border-l border-gray-200">
@@ -51,7 +51,7 @@ export function JsonInspector({ data, redactedPaths = [], className = "" }: Json
         </div>
       );
     }
-    
+
     return <span>{typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value)}</span>;
   };
 

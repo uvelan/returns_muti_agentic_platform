@@ -9,13 +9,14 @@ from neo4j import AsyncGraphDatabase
 from pymongo import AsyncMongoClient
 
 from return_platform.configuration.settings import Settings
+from return_platform.data_platform.schema_registry import load_schema_registry
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.seed_coordinator import SeedCoordinator
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
 
 
 async def _run() -> None:
-    settings = Settings()
+    settings = Settings()  # type: ignore[call-arg]
     platform_dsn = settings.mongo_dsn.get_secret_value()
     source_dsn = (
         settings.source_mongo_dsn.get_secret_value()
@@ -36,6 +37,7 @@ async def _run() -> None:
             SQLBusinessStateRepository(settings),
             neo4j,
             settings,
+            load_schema_registry(settings.schema_registry_path),
         )
         status = await coordinator.apply("seed-runner")
         print(json.dumps(status.model_dump(mode="json"), separators=(",", ":"), sort_keys=True))

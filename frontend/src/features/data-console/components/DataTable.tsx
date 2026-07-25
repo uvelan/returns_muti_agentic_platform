@@ -41,7 +41,7 @@ export function DataTable<T>({ data, columns, keyExtractor, onRowClick, classNam
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
           {data.map((item) => (
-            <tr 
+            <tr
               key={keyExtractor(item)}
               onClick={() => onRowClick?.(item)}
               className={onRowClick ? "cursor-pointer hover:bg-gray-50 transition-colors" : ""}

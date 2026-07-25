@@ -18,7 +18,13 @@ export type ReturnSession = {
   readonly customerReference: string;
   readonly orderReference: string;
   readonly itemReferences: readonly string[];
+  readonly productReferences: readonly string[];
+  readonly processingWarehouseReference: string | null;
+  readonly productType: string | null;
   readonly reasonCode: string;
+  readonly returnQuantity: number;
+  readonly packageCount: number;
+  readonly shippingPathExpectation: string;
   readonly notes: string | null;
   readonly channel: string;
   readonly status: ReturnStatus;
@@ -26,8 +32,10 @@ export type ReturnSession = {
   readonly progressPercentage: number;
   readonly eligibilityDecision: AIDecision | null;
   readonly returnReference: string | null;
+  readonly supportTicketReference: string | null;
   readonly trackingReference: string | null;
   readonly bayReference: string | null;
+  readonly feedbackReference: string | null;
   readonly supportCaseId: string | null;
   readonly aiRequestId: string | null;
   readonly failureCode: string | null;

@@ -40,10 +40,14 @@ async def _validate() -> None:
         audits_collection="audit_events",
         outbox_collection="outbox_events",
         decisions_collection="agent_decisions",
-        operation_timeout_seconds=5.0,
+        operation_timeout_seconds=30.0,
     )
     database = client[_DATABASE]
     await client.drop_database(_DATABASE)
+    await database.create_collection("return_sessions")
+    await database.create_collection("audit_events")
+    await database.create_collection("outbox_events")
+    await database.create_collection("agent_decisions")
     try:
         session = ReturnSession(
             session_id=_SESSION_ID,

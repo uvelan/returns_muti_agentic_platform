@@ -74,7 +74,7 @@ export type BrowserRecordDetailResponse = APIResponse<BrowserRecord>;
 
 export type DataBrowserPort = {
   getBrowserAssets(signal?: AbortSignal): Promise<BrowserAssetListResponse>;
-  getRecords(engine: EngineType, assetId: string, pageCursor: string | null, pageSize: number, filters?: RecordFilter[], sort?: RecordSort, signal?: AbortSignal): Promise<BrowserRecordsResponse>;
+  getRecords(engine: EngineType, assetId: string, pageIndex: number, pageSize: number, filters?: RecordFilter[], sort?: RecordSort, signal?: AbortSignal): Promise<BrowserRecordsResponse>;
   getRecord(engine: EngineType, assetId: string, recordId: string, signal?: AbortSignal): Promise<BrowserRecordDetailResponse>;
 }
 

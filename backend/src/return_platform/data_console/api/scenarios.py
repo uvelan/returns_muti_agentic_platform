@@ -276,18 +276,21 @@ class ScenarioService:
             raise ValueError(
                 "Only generated scenarios validated against the current digest can be approved."
             )
-        document = cast(dict[str, Any] | None, await self._scenarios.find_one_and_update(
-            {"_id": scenario_id, "version": scenario.version, "status": "READY"},
-            {
-                "$set": {
-                    "status": "APPROVED",
-                    "approvedAt": datetime.now(UTC),
-                    "approvedBy": actor,
+        document = cast(
+            dict[str, Any] | None,
+            await self._scenarios.find_one_and_update(
+                {"_id": scenario_id, "version": scenario.version, "status": "READY"},
+                {
+                    "$set": {
+                        "status": "APPROVED",
+                        "approvedAt": datetime.now(UTC),
+                        "approvedBy": actor,
+                    },
+                    "$inc": {"version": 1},
                 },
-                "$inc": {"version": 1},
-            },
-            return_document=ReturnDocument.AFTER,
-        ))
+                return_document=ReturnDocument.AFTER,
+            ),
+        )
         if document is None:
             raise ValueError("Scenario version conflict.")
         await self._write_audit(

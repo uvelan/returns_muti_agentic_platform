@@ -5,14 +5,16 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime
-from typing import Any, Final
+from typing import Any, Final, cast
 
+import httpx
 from temporalio.client import Client, WorkflowHandle
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from return_platform.ai_gateway.service import AIGatewayService
 from return_platform.canonical.operations import ContextSnapshot, WorkflowStage
 from return_platform.configuration.settings import Settings
+from return_platform.operations.feedback_service import FeedbackLearningService
 from return_platform.operations.models import (
     AIDecision,
     AIRequestStatus,
@@ -20,6 +22,9 @@ from return_platform.operations.models import (
     ReturnStatus,
 )
 from return_platform.operations.repository import OperationalRepository
+from return_platform.operations.return_support.providers.factory import (
+    build_return_support_provider,
+)
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
 from return_platform.workflows.bay_assignment import build_bay_assignment_result
 from return_platform.workflows.feedback_learning import build_feedback_learning_result
@@ -92,27 +97,44 @@ class ReturnOrchestrator:
         self._worker_id = worker_id
         self._ai = AIGatewayService(repository, settings)
         self._business_state = SQLBusinessStateRepository(settings)
+        self._http_client = httpx.AsyncClient()
+        self._support = build_return_support_provider(
+            settings=settings,
+            repository=self._business_state,
+            http_client=self._http_client,
+        )
+        self._feedback = FeedbackLearningService(
+            repository.platform_client,
+            settings,
+            self._business_state,
+        )
 
     async def run_forever(self) -> None:
-        await self._repository.ensure_indexes()
-        while True:
-            await self._repository.heartbeat(
-                "return-orchestrator",
-                self._worker_id,
-                ttl_seconds=self._settings.worker_readiness_ttl_seconds,
-            )
-            session = await self._repository.claim_next_return(self._worker_id)
-            if session is None:
-                await asyncio.sleep(self._settings.orchestration_poll_seconds)
-                continue
-            try:
-                final_state = await self.process(session)
-                await self._repository.release_return(session.id, final_state)
-            except asyncio.CancelledError:
-                raise
-            except Exception as error:
-                await self._fail(session, error)
-                await self._repository.release_return(session.id, "FAILED")
+        async with self._http_client:
+            await self._repository.ensure_indexes()
+            while True:
+                await self._repository.heartbeat(
+                    "return-orchestrator",
+                    self._worker_id,
+                    ttl_seconds=self._settings.worker_readiness_ttl_seconds,
+                )
+                session = await self._repository.claim_next_return(self._worker_id)
+                if session is None:
+                    await asyncio.sleep(self._settings.orchestration_poll_seconds)
+                    continue
+                try:
+                    final_state = await self.process(session)
+                    await self._repository.release_return(session.id, final_state)
+                    if final_state in {"COMPLETED", "CANCELLED", "FAILED"}:
+                        await self._repository.release_discovery_lock(
+                            session.id, reason=final_state
+                        )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:
+                    await self._fail(session, error)
+                    await self._repository.release_return(session.id, "FAILED")
+                    await self._repository.release_discovery_lock(session.id, reason="FAILED")
 
     async def _fail(self, session: ReturnSessionView, error: Exception) -> None:
         code = type(error).__name__.upper()[:100]
@@ -139,9 +161,7 @@ class ReturnOrchestrator:
             deduplication_key=f"flow-failed:{session.id}:{code}",
         )
 
-    async def _handle(
-        self, session: ReturnSessionView
-    ) -> WorkflowHandle[Any, Any]:
+    async def _handle(self, session: ReturnSessionView) -> WorkflowHandle[Any, Any]:
         workflow_id = session.workflowId or f"return-{session.id}"
         handle = self._temporal.get_workflow_handle(workflow_id)
         if session.workflowId is None:
@@ -198,8 +218,10 @@ class ReturnOrchestrator:
             completed_stage=stage,
             context_binding=binding,
         )
-        from typing import cast
-        state = cast(ReturnWorkflowExecutionState, await handle.execute_update(ReturnWorkflow.complete_stage, command))
+        state = cast(
+            ReturnWorkflowExecutionState,
+            await handle.execute_update(ReturnWorkflow.complete_stage, command),
+        )
         await self._repository.update_return(
             session.id,
             {
@@ -225,8 +247,10 @@ class ReturnOrchestrator:
         if session.status is ReturnStatus.CANCELLED:
             return "CANCELLED"
         handle = await self._handle(session)
-        from typing import cast
-        state = cast(ReturnWorkflowExecutionState, await handle.query(ReturnWorkflow.execution_state))
+        state = cast(
+            ReturnWorkflowExecutionState,
+            await handle.query(ReturnWorkflow.execution_state),
+        )
         observed_at = _observed_at(session)
 
         intake = bind_stage_activity_result(
@@ -311,6 +335,9 @@ class ReturnOrchestrator:
                         "orderReferences": [session.orderReference],
                         "itemReferences": session.itemReferences,
                         "reasonCode": session.reasonCode,
+                        "returnQuantity": session.returnQuantity,
+                        "packageCount": session.packageCount,
+                        "shippingPathExpectation": session.shippingPathExpectation,
                         "orderStatus": order.get("status"),
                         "daysSinceDelivery": days_since_delivery,
                     },
@@ -440,43 +467,41 @@ class ReturnOrchestrator:
             )
 
         assert trace is not None and trace.decision is not None
-        return_reference = (
-            f"RMA-{session.id[:8].upper()}" if trace.decision is AIDecision.APPROVE else None
+        support_result = await self._support.submit(
+            session,
+            decision=trace.decision.value,
+            request_digest=trace.requestDigest,
         )
+        return_reference = support_result.return_reference
         return_result = build_return_request_result(
             eligibility=_binding_snapshot(eligibility),
-            request_reference=f"REQ-{session.id}",
+            request_reference=support_result.external_reference,
             return_reference=return_reference,
             configuration_version=_CONFIGURATION_VERSION,
             observed_at=observed_at,
         )
         return_binding = bind_stage_activity_result(WorkflowStage.RETURN_REQUEST, return_result)
         if state.current_stage is WorkflowStage.RETURN_REQUEST:
-            await self._business_state.record_return_decision(
-                session,
-                decision=trace.decision.value,
-                return_reference=return_reference,
-                status=(
-                    ReturnStatus.APPROVED.value
-                    if trace.decision is AIDecision.APPROVE
-                    else ReturnStatus.REJECTED.value
-                ),
-            )
             state = await self._complete(
                 handle,
                 session,
                 WorkflowStage.RETURN_REQUEST,
                 return_binding,
-                event_type="RETURN_REQUEST_PROCESSED",
+                event_type="RETURN_SUPPORT_TICKET_UPDATED",
                 event_payload={
                     "outcome": return_result.outcome.value,
+                    "ticketReference": support_result.external_reference,
+                    "ticketStatus": support_result.ticket_status,
                     "returnReference": return_reference,
                 },
-                updates={"returnReference": return_reference},
+                updates={
+                    "returnReference": return_reference,
+                    "supportTicketReference": support_result.external_reference,
+                },
             )
 
-        fulfillment_reference = f"FUL-{session.id[:8].upper()}" if return_reference else None
-        tracking_reference = f"TRK-{session.id[:8].upper()}" if return_reference else None
+        fulfillment_reference = support_result.fulfillment_reference
+        tracking_reference = support_result.tracking_reference
         fulfillment_result = build_fulfillment_tracking_result(
             return_request=_binding_snapshot(return_binding),
             fulfillment_reference=fulfillment_reference,
@@ -489,29 +514,29 @@ class ReturnOrchestrator:
             fulfillment_result,
         )
         if state.current_stage is WorkflowStage.FULFILLMENT_TRACKING:
-            await self._business_state.record_fulfillment(
-                session.id,
-                fulfillment_reference=fulfillment_reference,
-                tracking_reference=tracking_reference,
-                warehouse_reference=None,
-                bay_reference=None,
-                status=fulfillment_result.status.value,
-            )
             state = await self._complete(
                 handle,
                 session,
                 WorkflowStage.FULFILLMENT_TRACKING,
                 fulfillment_binding,
-                event_type="FULFILLMENT_TRACKING_CREATED",
+                event_type="AUTHORITATIVE_FULFILLMENT_TRACKING_READ",
                 event_payload={
                     "status": fulfillment_result.status.value,
                     "trackingReference": tracking_reference,
+                    "supportTicketReference": support_result.external_reference,
                 },
                 updates={"trackingReference": tracking_reference},
             )
 
-        warehouse_reference = "WH-CHENNAI-01" if return_reference else None
-        bay_reference = "BAY-A1" if return_reference else None
+        warehouse_reference: str | None = None
+        bay_reference: str | None = None
+        if return_reference is not None and support_result.shipping_path is not None:
+            warehouse_reference, bay_reference = await self._business_state.assign_bay(
+                session,
+                return_reference=return_reference,
+                shipping_path=support_result.shipping_path,
+                package_count=session.packageCount,
+            )
         bay_result = build_bay_assignment_result(
             fulfillment=_binding_snapshot(fulfillment_binding),
             warehouse_reference=warehouse_reference,
@@ -521,26 +546,35 @@ class ReturnOrchestrator:
         )
         bay_binding = bind_stage_activity_result(WorkflowStage.BAY_ASSIGNMENT, bay_result)
         if state.current_stage is WorkflowStage.BAY_ASSIGNMENT:
-            await self._business_state.record_fulfillment(
-                session.id,
-                fulfillment_reference=fulfillment_reference,
-                tracking_reference=tracking_reference,
-                warehouse_reference=warehouse_reference,
-                bay_reference=bay_reference,
-                status=bay_result.status.value,
-            )
             state = await self._complete(
                 handle,
                 session,
                 WorkflowStage.BAY_ASSIGNMENT,
                 bay_binding,
                 event_type="BAY_ASSIGNMENT_UPDATED",
-                event_payload={"status": bay_result.status.value, "bayReference": bay_reference},
+                event_payload={
+                    "status": bay_result.status.value,
+                    "bayReference": bay_reference,
+                    "warehouseReference": warehouse_reference,
+                },
                 updates={"bayReference": bay_reference},
             )
 
-        feedback_reference = f"FDB-{session.id[:8].upper()}" if return_reference else None
-        learning_reference = f"LRN-{session.id[:8].upper()}" if return_reference else None
+        projected_session = await self._repository.get_return(session.id) or session
+        projected_events = await self._repository.list_events(session.id)
+        intended_terminal_status = (
+            ReturnStatus.COMPLETED
+            if trace.decision is AIDecision.APPROVE
+            else ReturnStatus.REJECTED
+        )
+        feedback_record = await self._feedback.record(
+            projected_session,
+            projected_events,
+            support_ticket_reference=support_result.external_reference,
+            final_outcome=intended_terminal_status.value,
+        )
+        feedback_reference = feedback_record.id if return_reference else None
+        learning_reference = feedback_record.evidenceDigest if return_reference else None
         feedback_result = build_feedback_learning_result(
             bay_assignment=_binding_snapshot(bay_binding),
             feedback_reference=feedback_reference,
@@ -558,16 +592,16 @@ class ReturnOrchestrator:
                 WorkflowStage.FEEDBACK_LEARNING,
                 feedback_binding,
                 event_type="FEEDBACK_LEARNING_RECORDED",
-                event_payload={"status": feedback_result.status.value},
-                updates={},
+                event_payload={
+                    "status": feedback_result.status.value,
+                    "feedbackReference": feedback_record.id,
+                    "reviewStatus": feedback_record.reviewStatus,
+                },
+                updates={"feedbackReference": feedback_record.id},
             )
 
         if state.current_stage is WorkflowStage.COMPLETED:
-            terminal_status = (
-                ReturnStatus.COMPLETED
-                if trace.decision is AIDecision.APPROVE
-                else ReturnStatus.REJECTED
-            )
+            terminal_status = intended_terminal_status
             await self._business_state.mark_return_status(session.id, terminal_status.value)
             await self._repository.update_return(
                 session.id,
@@ -575,6 +609,8 @@ class ReturnOrchestrator:
                     "currentStage": WorkflowStage.COMPLETED.value,
                     "status": terminal_status.value,
                     "progressPercentage": 100,
+                    "supportTicketReference": support_result.external_reference,
+                    "feedbackReference": feedback_record.id,
                 },
             )
             await self._repository.append_event(
@@ -585,6 +621,8 @@ class ReturnOrchestrator:
                 payload={
                     "workflowStatus": "COMPLETED",
                     "returnStatus": terminal_status.value,
+                    "supportTicketReference": support_result.external_reference,
+                    "feedbackReference": feedback_record.id,
                 },
                 deduplication_key="workflow-terminal",
             )

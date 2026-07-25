@@ -1,6 +1,6 @@
 # Stages 3E through 3H Implementation Plan
 
-This plan encompasses the remaining UI stages (Imports, Exports, Jobs, Workspaces, Scenarios, Audit, Governance, Settings, Hardening) as per the CODEX UI-First execution prompt. 
+This plan encompasses the remaining UI stages (Imports, Exports, Jobs, Workspaces, Scenarios, Audit, Governance, Settings, Hardening) as per the CODEX UI-First execution prompt.
 No user review is required; execution will proceed immediately and continuously.
 
 ## Stage 3E - Imports, Exports, Jobs and Activity

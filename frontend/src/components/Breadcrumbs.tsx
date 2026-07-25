@@ -5,7 +5,7 @@ import { routes } from "../routes";
 export function Breadcrumbs() {
   const [location] = useLocation();
   const segments = location.split("/").filter(Boolean);
-  
+
   const crumbs = [];
   let currentPath = "";
   for (const segment of segments) {

@@ -11,10 +11,10 @@ export function Shell({ children }: ShellProps) {
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const isMockMode = import.meta.env.VITE_MOCK_MODE === "true";
+  const isMockMode = import.meta.env.MODE === "mock" || import.meta.env.VITE_MOCK_MODE === "true";
 
   const navigation = routes.filter(r => r.navigable);
-  const groups = ["Customer", "Support", "AI Gateway", "Explore", "Data Operations", "Sandbox & AI", "Governance", "System"] as const;
+  const groups = ["Associate", "Customer", "Support", "AI Gateway", "Explore", "Data Operations", "Sandbox & AI", "Governance", "System"] as const;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">

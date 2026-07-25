@@ -15,7 +15,7 @@ The Stage 3C implementation successfully delivered the Data Console interface in
   - `/data-console/browser/:engine/:assetId`
   - `/data-console/browser/:engine/:assetId/records/:recordId`
 - **End-to-End Tests Passing:** Navigational timeouts and locator issues in `tests/e2e.spec.ts` were debugged and resolved by making the MSW handlers dynamically identify records using `:assetId` suffixes and utilizing Playwright's `.first()` strict-mode handlers.
-- **Accessibility Violations Fixed:** 
+- **Accessibility Violations Fixed:**
   - `landmark-unique`: Eliminated duplicate `Breadcrumbs` rendering which caused Axe rule violations on detail pages. Mobile Navigation `aria-label` was fixed in `Shell.tsx`.
   - `heading-order`: Rectified jumping heading hierarchies (`h1` -> `h3`) within `RecordDetailPage.tsx` and `BrowserLandingPage.tsx`.
   - `color-contrast`: Repaired the contrast ratios on the read-only badges within `AssetBrowserPage.tsx`.

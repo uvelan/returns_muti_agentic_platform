@@ -1,0 +1,43 @@
+{
+  "stage": "4D",
+  "commit": "869e3ff2902c27623249eeb23bdaaec7b847b39b",
+  "evaluated_at": "2026-07-25T02:52:39.066897+00:00",
+  "gates": {
+    "lint": {
+      "exit_code": 0,
+      "status": "PASS",
+      "hash": "ac29d1244280c2de6d3318f2041ae02cfa3a4c959ac38aeb69bab2907610ecf2"
+    },
+    "typecheck": {
+      "exit_code": 0,
+      "status": "PASS",
+      "hash": "b8e09b64399bf971f69cf3a9af68f62178ab6b7229909973de332533cc0a8834"
+    },
+    "test": {
+      "exit_code": 0,
+      "status": "PASS",
+      "hash": "25f26dc3242272dc08b1663f27f98628d9b7fbce0961a26f0536ce81653c33c1"
+    },
+    "a11y": {
+      "exit_code": 0,
+      "status": "PASS",
+      "hash": "e6083f5118facd11bd15af9a7c76add26411ae3109cecc90130e2bbe8f10f535"
+    },
+    "build": {
+      "exit_code": 0,
+      "status": "PASS",
+      "hash": "1ab14572d72a8f741297f6b19cc7477d6912549a6e420412077f1310a222f996"
+    },
+    "check_bundle": {
+      "exit_code": 0,
+      "status": "PASS",
+      "hash": "6256c2b29f62058f7382deda1172772cb2070cf766ea6f6438b4029f8a960cbf"
+    },
+    "schema_registry_drift": {
+      "exit_code": 0,
+      "status": "PASS",
+      "hash": "f1933cd2aab9886a4d80e3e320f01a35ae3cac5bb16517fad6ac7518ae98fd42"
+    }
+  },
+  "overall": "PASS"
+}

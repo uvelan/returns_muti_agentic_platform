@@ -25,13 +25,13 @@ export function DetailDrawer({ isOpen, onClose, title, children }: DetailDrawerP
 
   return (
     <>
-      <div 
-        className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity z-40" 
+      <div
+        className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity z-40"
         onClick={onClose}
         aria-hidden="true"
       />
       <div className="fixed inset-y-0 right-0 flex max-w-full pl-10 z-50">
-        <div 
+        <div
           ref={drawerRef}
           className="w-screen max-w-md transform transition-transform duration-300 ease-in-out bg-white shadow-xl flex flex-col"
           role="dialog"

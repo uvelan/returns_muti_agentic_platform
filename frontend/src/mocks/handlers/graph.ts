@@ -1,9 +1,9 @@
 import { http, HttpResponse, delay } from "msw";
-import { 
-  exactIdSearchFixture, 
-  getNodeFixture, 
-  getRelationshipFixture, 
-  expandNeighborhoodFixture 
+import {
+  exactIdSearchFixture,
+  getNodeFixture,
+  getRelationshipFixture,
+  expandNeighborhoodFixture
 } from "../../fixtures/graphExplorer";
 
 export const graphHandlers = [
@@ -14,7 +14,7 @@ export const graphHandlers = [
     if (!q) {
       return HttpResponse.json({ error: "Missing query parameter 'q'" }, { status: 400 });
     }
-    
+
     if (request.signal.aborted) {
       return HttpResponse.error();
     }
@@ -30,7 +30,7 @@ export const graphHandlers = [
   http.get("/data-console/v1/graph/nodes/:nodeId", async ({ params, request }) => {
     await delay();
     const { nodeId } = params;
-    
+
     if (request.signal.aborted) {
       return HttpResponse.error();
     }
@@ -58,7 +58,7 @@ export const graphHandlers = [
   http.get("/data-console/v1/graph/relationships/:relationshipId", async ({ params, request }) => {
     await delay();
     const { relationshipId } = params;
-    
+
     if (request.signal.aborted) {
       return HttpResponse.error();
     }
@@ -88,7 +88,7 @@ export const graphHandlers = [
     const url = new URL(request.url);
     const rawDepth = url.searchParams.get("expansionDepth");
     const expansionDepth = rawDepth ? parseInt(rawDepth, 10) : undefined;
-    
+
     if (request.signal.aborted) {
       return HttpResponse.error();
     }

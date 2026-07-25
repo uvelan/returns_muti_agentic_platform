@@ -5,7 +5,7 @@ The Graph Explorer feature has been implemented successfully per the conditional
 
 1. **Explicit Port & Adapters**: Implemented `GraphExplorerPort` with both `httpGraphExplorerAdapter` (production) and `graphExplorerFixtureAdapter` (deterministic tests).
 2. **Deterministic Network Mocks**: Moved mock data out of MSW handlers directly into `fixtures/graphExplorer.ts`, and updated handlers to use the fixtures and emit correct standard API envelopes (`schema_version`, `page`, `request_id`, etc).
-3. **Graph Explorer Page**: 
+3. **Graph Explorer Page**:
    - Supports governed exact-ID search through explicit UI elements without arbitrary Cypher.
    - Handles split-pane design logic (Graph Canvas and Table).
    - Features robust handling of loading, error, and empty states.

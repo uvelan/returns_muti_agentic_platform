@@ -55,14 +55,14 @@ vi.mock("@xyflow/react", async () => {
 
 describe("GraphExplorerPage", () => {
   const queryClient = new QueryClient();
-  
+
   it("renders search bar and view toggles", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <GraphExplorerPage />
       </QueryClientProvider>
     );
-    
+
     expect(screen.getByRole("heading", { name: "Graph Explorer" })).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Enter Exact Node ID...")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();

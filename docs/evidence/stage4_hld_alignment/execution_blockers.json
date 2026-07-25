@@ -1,0 +1,28 @@
+{
+  "stage": "Stage 4 \u2014 Dependency-Backed Gate Attempts",
+  "validationLevel": "BLOCKED_EXTERNAL_DEPENDENCY",
+  "environment": {
+    "python": "3.13.5",
+    "node": "v22.16.0",
+    "npm": "10.9.2",
+    "dockerAvailable": false
+  },
+  "attempts": [
+    {
+      "gate": "OpenAPI export",
+      "exitCode": 1,
+      "log": "openapi_export_attempt.log"
+    },
+    {
+      "gate": "Frontend typecheck",
+      "exitCode": 1,
+      "log": "frontend_typecheck_attempt.log"
+    },
+    {
+      "gate": "Pytest contract module through project conftest",
+      "exitCode": 4,
+      "log": "pytest_attempt.log",
+      "command": "cd backend && PYTHONPATH=src python3.13 -m pytest tests/test_stage4_schema_and_seed_contracts.py -q"
+    }
+  ]
+}

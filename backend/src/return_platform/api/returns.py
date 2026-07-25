@@ -31,6 +31,13 @@ async def create_return(
     actor_id: str = Depends(require_write_roles),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> APIResponse[ReturnSessionView]:
+    if payload.channel != "SYSTEM":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Interactive returns must start through /api/v1/associate-returns/conversations."
+            ),
+        )
     if idempotency_key is not None:
         payload = payload.model_copy(update={"idempotencyKey": idempotency_key})
     repository = resolve_operational_repository(request)
@@ -139,6 +146,7 @@ async def cancel_return(
         raise HTTPException(status_code=404, detail="Return session not found") from error
     except ConcurrencyConflictError as error:
         raise HTTPException(status_code=409, detail="Return session version conflict") from error
+    await repository.release_discovery_lock(session_id, reason="CANCELLED")
     await repository.append_event(
         session_id,
         event_type="RETURN_CANCELLED",

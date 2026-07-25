@@ -1,7 +1,7 @@
 # Stage 3B Status Review Verdict
 
-Review date: 2026-07-23  
-Reviewed revision: `4aff786` plus the current uncommitted working tree  
+Review date: 2026-07-23
+Reviewed revision: `4aff786` plus the current uncommitted working tree
 Reviewed submission: `docs/review/status/stage3b_status.md`
 
 ## Verdict

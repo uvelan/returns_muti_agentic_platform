@@ -18,24 +18,29 @@ const assetsPath = path.join(distPath, 'assets');
 if (fs.existsSync(assetsPath)) {
   const files = fs.readdirSync(assetsPath).filter(f => f.endsWith('.js'));
   let foundViolations = false;
-  
+
   for (const file of files) {
     const filePath = path.join(assetsPath, file);
     const content = fs.readFileSync(filePath, 'utf8');
-    
+
     // Look for suspicious strings
     if (content.includes('FIXTURE MODE — NON-DURABLE')) {
       console.error(`❌ FATAL: Fixture mode banner text found in production bundle: ${file}`);
       foundViolations = true;
     }
-    
+
     // Ensure setupWorker isn't bundled
     if (content.includes('setupWorker') && content.includes('msw')) {
       console.error(`❌ FATAL: MSW setup code found in production bundle: ${file}`);
       foundViolations = true;
     }
+
+    if (content.includes('src/dev/adapters')) {
+      console.error(`❌ FATAL: Dev fixtures code found in production bundle: ${file}`);
+      foundViolations = true;
+    }
   }
-  
+
   if (foundViolations) {
     process.exit(1);
   }

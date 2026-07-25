@@ -1,0 +1,22 @@
+{
+  "stage": "4C",
+  "gate": "pytest_cov",
+  "commit": "869e3ff2902c27623249eeb23bdaaec7b847b39b",
+  "environment": "local-contract-validation",
+  "command": [
+    "python",
+    "-m",
+    "poetry",
+    "--project",
+    "backend",
+    "run",
+    "pytest",
+    "--cov=return_platform",
+    "--cov-report=json:../docs/evidence/stage4_contract_closure/backend_coverage.json",
+    "backend/tests"
+  ],
+  "exit_code": 0,
+  "started_at": "2026-07-25T02:09:06.318693+00:00",
+  "finished_at": "2026-07-25T02:09:32.190385+00:00",
+  "status": "PASS"
+}

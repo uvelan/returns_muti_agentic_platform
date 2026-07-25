@@ -30,6 +30,7 @@ from return_platform.operations.seed_manifest import (
     SEED_PRODUCTS,
     SEED_SCENARIOS,
     manifest_digest,
+    materialize_domain_seed,
     materialize_seed,
     scenario_counts,
 )
@@ -46,6 +47,12 @@ SEED_METADATA: Final = "seed_metadata"
 SOURCE_ORDERS: Final = "orders"
 SOURCE_CUSTOMERS: Final = "customers"
 SOURCE_PRODUCTS: Final = "products"
+DOMAIN_SOURCE_COLLECTIONS: Final = (
+    "salesInv",
+    "customerOutboundCDM",
+    "shipmentInfo",
+    "lkpSearchProduct",
+)
 
 
 class ConcurrencyConflictError(RuntimeError):
@@ -74,6 +81,16 @@ class OperationalRepository:
         self.ai_rate_limits = self._db[AI_RATE_LIMITS]
         self.worker_heartbeats = self._db[WORKER_HEARTBEATS]
         self.seed_metadata = self._db[SEED_METADATA]
+
+    @property
+    def platform_client(self) -> AsyncMongoClient[dict[str, object]]:
+        """Expose the shared client without leaking collection internals."""
+        return self._client
+
+    @property
+    def source_client(self) -> AsyncMongoClient[dict[str, object]]:
+        """Expose the read/source client for governed cross-store services."""
+        return self._source_client
 
     async def ensure_indexes(self) -> None:
         await self.returns.create_index([("createdAt", DESCENDING)])
@@ -151,7 +168,13 @@ class OperationalRepository:
             "customerReference": payload.customerReference,
             "orderReference": payload.orderReference,
             "itemReferences": payload.itemReferences,
+            "productReferences": payload.productReferences or list(payload.itemReferences),
+            "processingWarehouseReference": payload.processingWarehouseReference,
+            "productType": payload.productType,
             "reasonCode": payload.reasonCode,
+            "returnQuantity": payload.returnQuantity,
+            "packageCount": payload.packageCount,
+            "shippingPathExpectation": payload.shippingPathExpectation,
             "notes": payload.notes,
             "channel": payload.channel,
             "status": ReturnStatus.QUEUED.value,
@@ -159,8 +182,10 @@ class OperationalRepository:
             "progressPercentage": 0,
             "eligibilityDecision": None,
             "returnReference": None,
+            "supportTicketReference": None,
             "trackingReference": None,
             "bayReference": None,
+            "feedbackReference": None,
             "supportCaseId": None,
             "aiRequestId": None,
             "failureCode": None,
@@ -193,6 +218,9 @@ class OperationalRepository:
                 "orderReference": payload.orderReference,
                 "itemCount": len(payload.itemReferences),
                 "reasonCode": payload.reasonCode,
+                "returnQuantity": payload.returnQuantity,
+                "packageCount": payload.packageCount,
+                "shippingPathExpectation": payload.shippingPathExpectation,
             },
         )
         stored = await self.returns.find_one({"_id": session_id})
@@ -281,6 +309,21 @@ class OperationalRepository:
                     "updatedAt": utc_now(),
                 },
                 "$inc": {"version": 1},
+            },
+        )
+
+    async def release_discovery_lock(self, session_id: str, *, reason: str) -> None:
+        """Release only the active discovery lock bound to this return session."""
+        now = utc_now()
+        await self._db["discovery_locks"].update_many(
+            {"returnSessionId": session_id, "status": "ACTIVE"},
+            {
+                "$set": {
+                    "status": "RELEASED",
+                    "releasedAt": now,
+                    "releaseReason": reason,
+                    "expiresAt": now,
+                }
             },
         )
 
@@ -824,6 +867,54 @@ class OperationalRepository:
         return None if document is None else cast(dict[str, Any], document)
 
     async def source_order(self, order_reference: str) -> dict[str, Any] | None:
+        sales_inventory = await self._source_db["salesInv"].find_one(
+            {"salesHdrEventData.orderId": order_reference}
+        )
+        if sales_inventory is not None:
+            raw = cast(dict[str, Any], sales_inventory)
+            header_event = raw.get("salesHdrEventData")
+            header = raw.get("salesHdr")
+            header_event = header_event if isinstance(header_event, dict) else {}
+            header = header if isinstance(header, dict) else {}
+            header_data = header.get("salesHdrData")
+            header_data = header_data if isinstance(header_data, dict) else {}
+            items: list[dict[str, Any]] = []
+            for sales_line in raw.get("salesLines", []):
+                if not isinstance(sales_line, dict):
+                    continue
+                line_data = sales_line.get("lineData")
+                if not isinstance(line_data, dict):
+                    continue
+                line_reference = str(
+                    line_data.get("orderLineId") or f"{order_reference}:LINE:{len(items) + 1}"
+                )
+                items.append(
+                    {
+                        "itemReference": line_reference,
+                        "productReference": str(
+                            line_data.get("productId") or line_data.get("sku") or ""
+                        ),
+                        "productType": str(line_data.get("productType") or "STANDARD"),
+                        "description": str(line_data.get("productDesc") or ""),
+                        "orderedQuantity": int(line_data.get("orderQty") or 0),
+                        "shippedQuantity": int(line_data.get("shipQty") or 0),
+                    }
+                )
+            return {
+                "_id": order_reference,
+                "orderReference": order_reference,
+                "customerReference": str(header_data.get("custId") or ""),
+                "customerName": str(header_data.get("custName") or ""),
+                "status": str(header_event.get("orderStatus") or "UNKNOWN"),
+                "sellingWarehouseReference": str(header_event.get("sellWhseId") or ""),
+                "shipFromWarehouseReference": str(header_event.get("shipFromWhseId") or ""),
+                "deliveredAt": raw.get("deliveredAt"),
+                "items": items,
+                "sourceAssetId": "SOURCE_MONGODB_SALES_INV",
+                "sourceDocumentReference": str(raw.get("_id") or order_reference),
+            }
+
+        # Transitional fallback for existing sandbox fixtures. New flows must seed salesInv.
         document = await self._source_db[SOURCE_ORDERS].find_one({"_id": order_reference})
         return None if document is None else cast(dict[str, Any], document)
 
@@ -841,6 +932,14 @@ class OperationalRepository:
             ),
             "seededOrders": await self._source_db[SOURCE_ORDERS].count_documents(seeded_query),
             "seededProducts": await self._source_db[SOURCE_PRODUCTS].count_documents(seeded_query),
+            "salesInv": await self._source_db["salesInv"].count_documents(seeded_query),
+            "customerOutboundCDM": await self._source_db["customerOutboundCDM"].count_documents(
+                seeded_query
+            ),
+            "shipmentInfo": await self._source_db["shipmentInfo"].count_documents(seeded_query),
+            "lkpSearchProduct": await self._source_db["lkpSearchProduct"].count_documents(
+                seeded_query
+            ),
             "returns": await self.returns.count_documents({}),
             "supportCases": await self.support_cases.count_documents({}),
             "aiTraces": await self.ai_traces.count_documents({}),
@@ -849,6 +948,10 @@ class OperationalRepository:
             "seededCustomers": len(SEED_CUSTOMERS),
             "seededOrders": len(SEED_SCENARIOS),
             "seededProducts": len(SEED_PRODUCTS),
+            "salesInv": len(SEED_SCENARIOS),
+            "customerOutboundCDM": len(SEED_CUSTOMERS),
+            "shipmentInfo": len(SEED_SCENARIOS),
+            "lkpSearchProduct": len(SEED_PRODUCTS),
         }
         errors = [
             f"{name} expected {expected}, found {counts[name]}."
@@ -874,17 +977,51 @@ class OperationalRepository:
         )
 
     async def apply_seed(self, *, actor_id: str) -> SeedStatusView:
+        if self._settings.environment not in {"development", "test"}:
+            raise PermissionError(
+                "Deterministic source seed apply is restricted to development and test."
+            )
         now = utc_now()
         seed_version = self._settings.seed_version
         digest = manifest_digest(seed_version)
         customers, products, orders = materialize_seed(seed_version, now)
+        domain_records = materialize_domain_seed(seed_version, now)
         for collection, documents in (
             (self._source_db[SOURCE_CUSTOMERS], customers),
             (self._source_db[SOURCE_PRODUCTS], products),
             (self._source_db[SOURCE_ORDERS], orders),
+            *((self._source_db[name], records) for name, records in domain_records.items()),
         ):
             for document in documents:
                 await collection.replace_one({"_id": document["_id"]}, document, upsert=True)
+        await self._source_db["salesInv"].create_index(
+            "salesHdrEventData.orderId", unique=True, name="sales_order_number_unique"
+        )
+        await self._source_db["salesInv"].create_index(
+            "salesHdr.salesHdrData.custId", name="sales_customer_lookup"
+        )
+        await self._source_db["salesInv"].create_index(
+            "salesLines.lineData.productId", name="sales_product_lookup"
+        )
+        await self._source_db["salesInv"].create_index(
+            "salesLines.lineData.sku", name="sales_sku_lookup"
+        )
+        await self._source_db["customerOutboundCDM"].create_index(
+            "customerId", unique=True, name="customer_id_unique"
+        )
+        await self._source_db["customerOutboundCDM"].create_index(
+            "phoneNumber", name="customer_phone_lookup"
+        )
+        await self._source_db["customerOutboundCDM"].create_index(
+            "email", name="customer_email_lookup"
+        )
+        await self._source_db["shipmentInfo"].create_index(
+            "shipmentInfoEventData.trkNum", unique=True, name="tracking_number_unique"
+        )
+        await self._source_db["lkpSearchProduct"].create_index(
+            "productId", unique=True, name="product_id_unique"
+        )
+        await self._source_db["lkpSearchProduct"].create_index("sku", name="product_sku_lookup")
         await self.seed_metadata.replace_one(
             {"_id": seed_version},
             {
@@ -904,6 +1041,8 @@ class OperationalRepository:
         await self._source_db[SOURCE_CUSTOMERS].delete_many(source_cleanup)
         await self._source_db[SOURCE_PRODUCTS].delete_many(source_cleanup)
         await self._source_db[SOURCE_ORDERS].delete_many(source_cleanup)
+        for collection_name in DOMAIN_SOURCE_COLLECTIONS:
+            await self._source_db[collection_name].delete_many(source_cleanup)
         await self.seed_metadata.delete_many({"_id": seed_version})
         await self.returns.delete_many({})
         await self.events.delete_many({})

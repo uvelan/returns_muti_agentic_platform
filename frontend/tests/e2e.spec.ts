@@ -4,16 +4,16 @@ test.describe('E2E Navigation', () => {
   test('Navigates existing routes', async ({ page }) => {
     await page.goto('/overview');
     await expect(page.locator('h1').first()).toHaveText('Infrastructure Overview');
-    
+
     await page.click('text=Inventory');
     await expect(page.locator('h1').first()).toHaveText('Data Inventory');
-    
+
     await page.click('text=Graph evidence');
     await expect(page.locator('h1').first()).toHaveText('Customer graph evidence');
 
     await page.click('text=Data Sources');
     await expect(page.locator('h1').first()).toHaveText('Data Sources');
-    
+
     await page.click('text=Data Browser');
     await expect(page.locator('h1').first()).toHaveText('Governed Data Browser');
   });
@@ -29,7 +29,7 @@ test.describe('E2E Navigation', () => {
     await page.goto('/data-console/browser');
     await page.click('text=SalesOrders');
     await expect(page.locator('h1').first()).toHaveText('dbo.SalesOrders');
-    
+
     // Navigate from asset browser to record detail
     await page.click('text=Details');
     await expect(page.locator('h1').first()).toContainText('Record: row-0');

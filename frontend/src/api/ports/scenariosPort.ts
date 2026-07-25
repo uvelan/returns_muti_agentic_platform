@@ -7,7 +7,7 @@ export type ScenarioPort = {
   createScenario(payload: { name: string; description: string; baseWorkspaceId: string; parameters: Record<string, unknown> }, options?: { signal?: AbortSignal }): Promise<Scenario>;
   deleteScenario(scenarioId: string, options?: { signal?: AbortSignal }): Promise<void>;
   getScenarioDiffs(scenarioId: string, options?: { signal?: AbortSignal }): Promise<APIResponse<ScenarioDiff[]>>;
-  
+
   generateScenario(scenarioId: string, options?: { signal?: AbortSignal }): Promise<Scenario>;
   validateScenario(scenarioId: string, options?: { signal?: AbortSignal }): Promise<Scenario>;
   approveScenario(scenarioId: string, options?: { signal?: AbortSignal }): Promise<Scenario>;

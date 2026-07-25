@@ -1,0 +1,60 @@
+"""Google Gemini adapter."""
+
+from __future__ import annotations
+
+import json
+
+from return_platform.ai_gateway.providers.contracts import (
+    ProviderError,
+    ProviderRequest,
+    ProviderResponse,
+)
+from return_platform.ai_gateway.providers.http import HTTPProvider, secret_value
+from return_platform.configuration.settings import Settings
+
+
+class GeminiProvider(HTTPProvider):
+    name = "GOOGLE"
+
+    def __init__(self, settings: Settings) -> None:
+        super().__init__(timeout_seconds=settings.ai_timeout_seconds)
+        self._api_key = secret_value(settings.google_api_key)
+        self._base_url = settings.google_base_url
+        self.model = settings.google_model
+
+    @property
+    def configured(self) -> bool:
+        return self._api_key is not None and bool(self.model)
+
+    async def generate(self, request: ProviderRequest) -> ProviderResponse:
+        if self._api_key is None:
+            raise ProviderError("AUTH_FAILED")
+        data = await self._post(
+            f"{self._base_url}/models/{self.model}:generateContent",
+            headers={"x-goog-api-key": self._api_key, "Content-Type": "application/json"},
+            payload={
+                "systemInstruction": {"parts": [{"text": request.system_prompt}]},
+                "contents": [
+                    {"role": "user", "parts": [{"text": json.dumps(request.user_payload)}]}
+                ],
+                "generationConfig": {
+                    "temperature": 0,
+                    "responseMimeType": "application/json",
+                },
+            },
+        )
+        try:
+            text = data["candidates"][0]["content"]["parts"][0]["text"]
+        except (KeyError, IndexError, TypeError) as error:
+            raise ProviderError("RESPONSE_INVALID") from error
+        if not isinstance(text, str) or not text.strip():
+            raise ProviderError("RESPONSE_INVALID")
+        usage = data.get("usageMetadata", {})
+        return ProviderResponse(
+            self.name,
+            self.model,
+            text,
+            input_tokens=usage.get("promptTokenCount") if isinstance(usage, dict) else None,
+            output_tokens=usage.get("candidatesTokenCount") if isinstance(usage, dict) else None,
+            total_tokens=usage.get("totalTokenCount") if isinstance(usage, dict) else None,
+        )

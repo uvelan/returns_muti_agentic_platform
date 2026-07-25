@@ -1,0 +1,85 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.14, pytest-9.1.1, pluggy-1.6.0
+rootdir: K:\Projects\FEG\Ret\full\tmp\returns_multi_agentic_platform\backend
+configfile: pyproject.toml
+plugins: anyio-4.14.2, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 953 items
+
+backend\tests\gate_tools\test_run_gate.py ......                         [  0%]
+backend\tests\operations\return_support\test_provider_architecture.py .. [  0%]
+..                                                                       [  1%]
+backend\tests\test_ai_gateway_policy.py ...                              [  1%]
+backend\tests\test_bay_assignment.py .......                             [  2%]
+backend\tests\test_canonical_base.py .................                   [  3%]
+backend\tests\test_canonical_bay.py ...............................      [  7%]
+backend\tests\test_canonical_customer.py ..........................      [  9%]
+backend\tests\test_canonical_operations.py ............................. [ 12%]
+...........                                                              [ 14%]
+backend\tests\test_canonical_order.py ................................   [ 17%]
+backend\tests\test_canonical_product.py ..................               [ 19%]
+backend\tests\test_canonical_return_models.py .......................... [ 22%]
+.                                                                        [ 22%]
+backend\tests\test_canonical_shipment.py ............................... [ 25%]
+.............                                                            [ 26%]
+backend\tests\test_canonical_warehouse.py .....................          [ 28%]
+backend\tests\test_catalog_lifespan.py ...                               [ 29%]
+backend\tests\test_catalog_loader.py ..............                      [ 30%]
+backend\tests\test_customer_account_mapping_profile.py ...........       [ 31%]
+backend\tests\test_customer_document_normalizer.py ..................... [ 34%]
+..                                                                       [ 34%]
+backend\tests\test_customer_graph_projection_materializer.py ........... [ 35%]
+.........                                                                [ 36%]
+backend\tests\test_customer_graph_sandbox.py ........................... [ 39%]
+                                                                         [ 39%]
+backend\tests\test_customer_mapping_handlers.py ....................     [ 41%]
+backend\tests\test_customer_mongodb_source_adapter.py .................. [ 43%]
+.............                                                            [ 44%]
+backend\tests\test_customer_neo4j_command_builder.py ................... [ 46%]
+..                                                                       [ 46%]
+backend\tests\test_customer_neo4j_readback.py ................           [ 48%]
+backend\tests\test_customer_neo4j_writer.py ............................ [ 51%]
+....                                                                     [ 51%]
+backend\tests\test_drift.py ......................                       [ 54%]
+backend\tests\test_feedback_learning.py .......                          [ 54%]
+backend\tests\test_fulfillment_tracking.py ........                      [ 55%]
+backend\tests\test_governance.py ................                        [ 57%]
+backend\tests\test_graph_evidence_api.py ........                        [ 58%]
+backend\tests\test_health.py ......                                      [ 58%]
+backend\tests\test_inventory_api.py ..                                   [ 59%]
+backend\tests\test_inventory_mongodb.py ....................             [ 61%]
+backend\tests\test_inventory_sqlserver.py .....................          [ 63%]
+backend\tests\test_mapping_compiler.py .......................           [ 65%]
+backend\tests\test_mapping_configuration_loader.py ............s........ [ 67%]
+...........                                                              [ 69%]
+backend\tests\test_mapping_contracts.py ................................ [ 72%]
+......................................................                   [ 78%]
+backend\tests\test_mapping_handler_registry.py ..........                [ 79%]
+backend\tests\test_mapping_physical_path_scope.py .....                  [ 79%]
+backend\tests\test_mapping_relationship_direction.py ........            [ 80%]
+backend\tests\test_probes.py .........                                   [ 81%]
+backend\tests\test_return_eligibility.py ......                          [ 82%]
+backend\tests\test_return_request.py .......                             [ 82%]
+backend\tests\test_return_session_persistence.py ............            [ 84%]
+backend\tests\test_return_stage_results.py ...........                   [ 85%]
+backend\tests\test_return_workflow.py ............                       [ 86%]
+backend\tests\test_return_workflow_worker.py .......                     [ 87%]
+backend\tests\test_sampling_authorization.py ................            [ 88%]
+backend\tests\test_sampling_mongodb.py .....................             [ 91%]
+backend\tests\test_sampling_sanitization.py ............................ [ 94%]
+....................                                                     [ 96%]
+backend\tests\test_sampling_sqlserver.py ...........................     [ 99%]
+backend\tests\test_seed_manifest.py ...                                  [ 99%]
+backend\tests\test_stage4_schema_and_seed_contracts.py ......            [100%]
+
+============================== warnings summary ===============================
+C:\Users\Uday\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\Local\pypoetry\Cache\virtualenvs\return-platform-backend-VwLyWexl-py3.13\Lib\site-packages\fastapi\testclient.py:1
+  C:\Users\Uday\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\Local\pypoetry\Cache\virtualenvs\return-platform-backend-VwLyWexl-py3.13\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.13.14-final-0 _______________
+
+Coverage JSON written to file ../docs/evidence/stage4_contract_closure/backend_coverage.json
+================= 952 passed, 1 skipped, 1 warning in 21.90s ==================

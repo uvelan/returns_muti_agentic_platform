@@ -350,9 +350,12 @@ class ReturnWorkflow:
         ):
             _raise_error(ReturnWorkflowErrorCode.PERSISTENCE_MISMATCH)
         self._persistence_ready = True
+        workflow.logger.info(f"DEBUG run wait_condition 1: {self._state.status}")
         await workflow.wait_condition(
             lambda: self._state is not None and self._state.status is ReturnWorkflowStatus.COMPLETED
         )
+        workflow.logger.info(f"DEBUG run wait_condition 2: {self._state.status}")
+        await workflow.wait_condition(lambda: workflow.all_handlers_finished())
         return self._require_state()
 
     @workflow.query(name="execution_state")
@@ -373,6 +376,12 @@ class ReturnWorkflow:
         try:
             previous_state = self._require_state()
             next_state = advance_return_workflow(previous_state, command)
+            workflow.logger.info(
+                "Return workflow stage transition: status=%s from=%s to=%s",
+                next_state.status,
+                previous_state.current_stage,
+                next_state.current_stage,
+            )
             if next_state is previous_state:
                 return previous_state
             persisted = await workflow.execute_activity(

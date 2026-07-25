@@ -11,6 +11,7 @@ from temporalio.client import Client
 
 from return_platform.configuration.settings import Settings
 from return_platform.data_governance import LoadedAssetCatalog
+from return_platform.data_platform.schema_registry import SchemaRegistry
 from return_platform.shared.contracts import DependencyProbeResult
 
 logger = logging.getLogger("return_platform.resources")
@@ -100,6 +101,7 @@ class RuntimeResources:
 
     settings: Settings
     catalog: LoadedAssetCatalog
+    schema_registry: SchemaRegistry | None = None
     mongo: AsyncMongoClient[dict[str, object]] | None = None
     source_mongo: AsyncMongoClient[dict[str, object]] | None = None
     neo4j: AsyncDriver | None = None

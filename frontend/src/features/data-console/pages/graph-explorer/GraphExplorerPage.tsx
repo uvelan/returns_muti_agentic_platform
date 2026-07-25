@@ -11,17 +11,17 @@ import { RelationshipDetailPanel } from "./RelationshipDetailPanel";
 
 export const GraphExplorerPage = () => {
   const [, setLocation] = useLocation();
-  
+
   // Route matching
   const [matchNode, paramsNode] = useRoute("/data-console/graph/nodes/:nodeId");
   const [matchRel, paramsRel] = useRoute("/data-console/graph/relationships/:relationshipId");
-  
+
   const activeNodeId = matchNode ? decodeURIComponent(paramsNode.nodeId) : null;
   const activeRelId = matchRel ? decodeURIComponent(paramsRel.relationshipId) : null;
   const hasInspector = Boolean(activeNodeId ?? activeRelId);
 
   // State for search and view mode
-  // Note: if user directly loads a node URL but queryId is empty, 
+  // Note: if user directly loads a node URL but queryId is empty,
   // we initialize it automatically from the URL
   const [searchId, setSearchId] = useState(activeNodeId ?? "");
   const [queryId, setQueryId] = useState(activeNodeId ?? "");
@@ -101,18 +101,18 @@ export const GraphExplorerPage = () => {
           <h1 className="text-xl font-bold">Graph Explorer</h1>
           <p className="text-sm text-gray-500">Read-only exploration by exact ID</p>
         </div>
-        
+
         <form onSubmit={handleSearch} className="flex gap-2 items-center flex-1 max-w-lg">
-          <input 
-            type="text" 
+          <input
+            type="text"
             value={searchId}
             onChange={(e) => { setSearchId(e.target.value); }}
-            placeholder="Enter Exact Node ID..." 
+            placeholder="Enter Exact Node ID..."
             className="flex-1 px-3 py-2 border rounded text-sm focus:ring-2 focus:ring-blue-500"
             aria-label="Search by exact ID"
           />
-          <select 
-            value={expansionDepth} 
+          <select
+            value={expansionDepth}
             onChange={(e) => { setExpansionDepth(Number(e.target.value)); }}
             className="px-3 py-2 border rounded text-sm bg-white"
             aria-label="Expansion Depth"
@@ -125,14 +125,14 @@ export const GraphExplorerPage = () => {
         </form>
 
         <div className="flex gap-2">
-          <button 
+          <button
             className={`px-3 py-1 border rounded ${viewMode === "canvas" ? "bg-blue-600 text-white" : "bg-white"}`}
             onClick={() => { setViewMode("canvas"); }}
             aria-pressed={viewMode === "canvas"}
           >
             Canvas
           </button>
-          <button 
+          <button
             className={`px-3 py-1 border rounded ${viewMode === "table" ? "bg-blue-600 text-white" : "bg-white"}`}
             onClick={() => { setViewMode("table"); }}
             aria-pressed={viewMode === "table"}
@@ -144,7 +144,7 @@ export const GraphExplorerPage = () => {
 
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden relative">
-        
+
         {/* Left Side: View (Canvas or Table) */}
         <div className={`flex-1 transition-all duration-300 ${hasInspector ? 'hidden md:block md:w-2/3' : 'w-full'}`}>
           {isLoading && (
@@ -152,7 +152,7 @@ export const GraphExplorerPage = () => {
               <p className="text-gray-500">Loading graph...</p>
             </div>
           )}
-          
+
           {isError && (
             <div className="flex items-center justify-center h-full p-4">
               <div className="bg-red-50 text-red-600 p-4 rounded border border-red-200 text-center max-w-md">
@@ -169,12 +169,12 @@ export const GraphExplorerPage = () => {
                   Warning: Results are truncated due to expansion limits.
                 </div>
               )}
-              
+
               {viewMode === "table" ? (
                 <div className="h-full overflow-y-auto p-4">
-                  <GraphTable 
-                    nodes={searchResult.data.nodes} 
-                    relationships={searchResult.data.relationships} 
+                  <GraphTable
+                    nodes={searchResult.data.nodes}
+                    relationships={searchResult.data.relationships}
                   />
                 </div>
               ) : (
@@ -218,7 +218,7 @@ export const GraphExplorerPage = () => {
             )}
           </aside>
         )}
-        
+
       </div>
     </div>
   );

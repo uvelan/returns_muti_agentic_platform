@@ -1,8 +1,8 @@
 # Stage 3B Remediation Walkthrough Review Verdict
 
-Review date: 2026-07-23  
-Reviewed revision: `4aff786` plus the current uncommitted working tree  
-Reviewed submission: `docs/review/status/walkthrough.md`  
+Review date: 2026-07-23
+Reviewed revision: `4aff786` plus the current uncommitted working tree
+Reviewed submission: `docs/review/status/walkthrough.md`
 Prior verdict: `docs/review/verdict/stage3b_status_review_verdict.md`
 
 ## Verdict

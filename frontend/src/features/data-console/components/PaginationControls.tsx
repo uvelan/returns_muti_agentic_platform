@@ -27,7 +27,7 @@ export function PaginationControls({ pageIndex, pageSize, hasMore, onPageChange,
           ))}
         </select>
       </div>
-      
+
       <div className="flex items-center space-x-2">
         <button
           onClick={() => { onPageChange(Math.max(0, pageIndex - 1)); }}

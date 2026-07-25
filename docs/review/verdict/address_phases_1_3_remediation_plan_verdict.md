@@ -1,8 +1,8 @@
 # Address Phases 1–3 Remediation Plan Verdict
 
-Review date: 2026-07-23  
-Review type: corrective implementation-plan review  
-Reviewed scope: `Address Phases 1-3 Remediation Verdict`  
+Review date: 2026-07-23
+Review type: corrective implementation-plan review
+Reviewed scope: `Address Phases 1-3 Remediation Verdict`
 Primary references:
 
 - `CODEX_PROMPT_FIX_ALL_VERIFIED_FRONTEND_BACKEND_ISSUES.md`

@@ -201,3 +201,133 @@ def scenario_counts() -> dict[str, int]:
         "reviewRequired": decisions.count("REVIEW_REQUIRED"),
         "total": len(decisions),
     }
+
+
+def materialize_domain_seed(
+    seed_version: str,
+    applied_at: datetime,
+) -> dict[str, list[dict[str, Any]]]:
+    """Materialize the HLD source collections with coherent cross-collection keys."""
+    digest = manifest_digest(seed_version)
+    customer_by_id = {str(item["_id"]): item for item in SEED_CUSTOMERS}
+    product_by_id = {str(item["_id"]): item for item in SEED_PRODUCTS}
+    sales_inventory: list[dict[str, Any]] = []
+    shipments: list[dict[str, Any]] = []
+    customers: list[dict[str, Any]] = []
+    products: list[dict[str, Any]] = []
+
+    for customer in SEED_CUSTOMERS:
+        customer_id = str(customer["_id"])
+        ordinal = int(customer_id.rsplit("-", 1)[-1])
+        customers.append(
+            {
+                "_id": customer_id,
+                "customerId": customer_id,
+                "customerName": customer["name"],
+                "phoneNumber": f"+91-90000-{ordinal:05d}",
+                "email": f"{customer_id.lower()}@example.invalid",
+                "accounts": [{"accountNumber": customer_id, "status": "ACTIVE"}],
+                "region": customer["region"],
+                "seedVersion": seed_version,
+                "seedDigest": digest,
+                "updatedAt": applied_at,
+            }
+        )
+
+    for product in SEED_PRODUCTS:
+        sku = str(product["_id"])
+        products.append(
+            {
+                "_id": sku,
+                "productId": sku,
+                "sku": sku,
+                "masterProductId": f"MASTER-{sku}",
+                "productDescription": product["name"],
+                "productType": "BULKY" if product["category"] == "INDUSTRIAL" else "STANDARD",
+                "category": product["category"],
+                "returnWindowDays": product["returnWindowDays"],
+                "seedVersion": seed_version,
+                "seedDigest": digest,
+                "updatedAt": applied_at,
+            }
+        )
+
+    for index, scenario in enumerate(SEED_SCENARIOS, start=1):
+        order_reference = str(scenario["orderReference"])
+        customer_reference = str(scenario["customerReference"])
+        sku = str(scenario["sku"])
+        customer = customer_by_id[customer_reference]
+        product = product_by_id[sku]
+        days = scenario["daysSinceDelivery"]
+        delivered_at = applied_at - timedelta(days=int(days)) if isinstance(days, int) else None
+        tracking_reference = f"SHIP-{order_reference}"
+        sales_inventory.append(
+            {
+                "_id": f"SANDBOX*{order_reference}",
+                "salesHdrEventData": {
+                    "orderId": order_reference,
+                    "srcErp": "OMC",
+                    "srcSysCode": "SANDBOX",
+                    "orderStatus": scenario["orderStatus"],
+                    "sellWhseId": "WH-CHENNAI-01",
+                    "shipFromWhseId": "WH-CHENNAI-01",
+                },
+                "salesHdr": {
+                    "salesHdrData": {
+                        "custId": customer_reference,
+                        "custName": customer["name"],
+                    },
+                    "shipping": {
+                        "shipViaCode": "PPL",
+                        "shipViaDesc": "Prepaid parcel label",
+                    },
+                },
+                "salesLines": [
+                    {
+                        "lineData": {
+                            "orderLineId": f"{order_reference}:LINE:1",
+                            "productId": sku,
+                            "masterProductId": f"MASTER-{sku}",
+                            "sku": sku,
+                            "productDesc": product["name"],
+                            "productType": (
+                                "BULKY" if product["category"] == "INDUSTRIAL" else "STANDARD"
+                            ),
+                            "orderQty": 1,
+                            "shipQty": 1,
+                        }
+                    }
+                ],
+                "deliveredAt": delivered_at,
+                "scenarioId": scenario["id"],
+                "expectedReasonCode": scenario["reasonCode"],
+                "expectedDecision": scenario["expectedDecision"],
+                "seedVersion": seed_version,
+                "seedDigest": digest,
+                "updatedAt": applied_at,
+            }
+        )
+        shipments.append(
+            {
+                "_id": tracking_reference,
+                "shipmentInfoEventData": {
+                    "trkNum": tracking_reference,
+                    "trilOrdNum": order_reference,
+                    "carrierCode": "UPS",
+                    "shippedAt": (
+                        delivered_at - timedelta(days=2) if delivered_at is not None else applied_at
+                    ),
+                },
+                "seedVersion": seed_version,
+                "seedDigest": digest,
+                "updatedAt": applied_at,
+                "ordinal": index,
+            }
+        )
+
+    return {
+        "customerOutboundCDM": customers,
+        "lkpSearchProduct": products,
+        "salesInv": sales_inventory,
+        "shipmentInfo": shipments,
+    }
