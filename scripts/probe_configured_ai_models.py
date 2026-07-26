@@ -13,6 +13,7 @@ from collections.abc import Iterable
 from typing import Any
 
 import httpx
+
 from return_platform.configuration.settings import Settings
 
 
