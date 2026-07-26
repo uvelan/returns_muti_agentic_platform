@@ -168,6 +168,7 @@ def test_settings_accept_key_and_model_lists() -> None:
             "sqlserver_host": "localhost",
             "sqlserver_password": "password",
             "sqlserver_database": "returns",
+            "ai_studio_sqlserver_password": "",
             "google_api_keys": '["key-a","key-b"]',
             "google_lightweight_models": '["light-a","light-b"]',
             "google_standard_models": '["standard-a"]',
@@ -176,6 +177,7 @@ def test_settings_accept_key_and_model_lists() -> None:
     assert [item.get_secret_value() for item in settings.google_api_keys] == ["key-a", "key-b"]
     assert settings.google_lightweight_models == ("light-a", "light-b")
     assert settings.google_standard_models == ("standard-a",)
+    assert settings.ai_studio_sqlserver_password is None
 
 
 def test_default_model_pools_have_rotation_capacity() -> None:

@@ -354,11 +354,13 @@ class Settings(BaseSettings):
             raise ValueError("Secret must not be blank.")
         return value
 
-    @field_validator("ai_studio_sqlserver_password")
+    @field_validator("ai_studio_sqlserver_password", mode="before")
     @classmethod
-    def reject_blank_optional_secret(cls, value: SecretStr | None) -> SecretStr | None:
-        if value is not None and not value.get_secret_value().strip():
-            raise ValueError("Secret must not be blank.")
+    def normalize_blank_optional_secret(cls, value: object) -> object:
+        if isinstance(value, SecretStr):
+            return value if value.get_secret_value().strip() else None
+        if isinstance(value, str):
+            return value if value.strip() else None
         return value
 
     @field_validator("mongo_dsn", "source_mongo_dsn")
