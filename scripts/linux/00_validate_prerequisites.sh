@@ -2,11 +2,11 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
-for command in bash git python3 node npm docker curl jq tar sha256sum; do
+for command in bash git python3 python3.13 poetry node npm docker curl jq tar sha256sum; do
   require_command "$command"
 done
 
-python_version="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+python_version="$(python3.13 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 [[ "$python_version" == "3.13" ]] || {
   echo "Python 3.13 is required; found $python_version." >&2
   exit 2
@@ -27,5 +27,5 @@ npm_major="$(npm --version | cut -d. -f1)"
 docker compose version >/dev/null
 docker info >/dev/null
 
-python3 "$LINUX_SCRIPT_DIR/validate_env.py" "$REPO_ROOT/.env" --simulation
+python3.13 "$LINUX_SCRIPT_DIR/validate_env.py" "$REPO_ROOT/.env" --simulation
 printf 'Linux prerequisites, Docker daemon, and safe simulation configuration validated.\n'
