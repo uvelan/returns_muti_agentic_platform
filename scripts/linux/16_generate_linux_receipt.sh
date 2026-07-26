@@ -6,12 +6,12 @@ python3 - \
   "$REPO_ROOT" \
   "$LINUX_SCRIPT_DIR/validation_phases.txt" \
   "$(repo_fingerprint)" <<'PY'
-import datetime
 import json
 import pathlib
 import platform
 import subprocess
 import sys
+from datetime import datetime, timezone
 
 evidence = pathlib.Path(sys.argv[1])
 repository = pathlib.Path(sys.argv[2])
@@ -56,7 +56,7 @@ failed = next((item["phase"] for item in phases if item.get("status") != "PASS")
 overall_pass = not missing_phases and not invalid_phases and failed is None
 payload = {
     "schemaVersion": 1,
-    "generatedAt": datetime.datetime.now(datetime.UTC).isoformat(),
+    "generatedAt": datetime.now(timezone.utc).isoformat(),
     "environment": "linux",
     "distribution": platform.platform(),
     "kernel": platform.release(),

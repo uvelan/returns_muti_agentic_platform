@@ -1,5 +1,5 @@
-01_verify_transfer.sh
 00_validate_prerequisites.sh
+01_verify_transfer.sh
 02_reconstruct_environment.sh
 03_run_backend_quality.sh
 04_run_frontend_quality.sh
