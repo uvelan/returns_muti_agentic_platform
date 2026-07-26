@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Literal, Self
 
@@ -8,6 +9,11 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 REPOSITORY_ROOT = BACKEND_ROOT.parent
 DEFAULT_DATA_ASSET_CATALOG_PATH = BACKEND_ROOT / "config" / "data_assets.yaml"
 DEFAULT_SCHEMA_REGISTRY_PATH = BACKEND_ROOT / "config" / "schema_registry.yaml"
+DEFAULT_RETURN_CONFIGURATION_PATH = BACKEND_ROOT / "config" / "returns" / "production.yaml"
+DEFAULT_DEPENDENCY_SIMULATION_CONFIGURATION_PATH = (
+    BACKEND_ROOT / "config" / "dependency_simulation.yaml"
+)
+DEFAULT_AI_GATEWAY_CONFIGURATION_PATH = BACKEND_ROOT / "config" / "ai_gateway.yaml"
 
 
 class Settings(BaseSettings):
@@ -25,6 +31,11 @@ class Settings(BaseSettings):
 
     catalog_path: Path = Field(default=DEFAULT_DATA_ASSET_CATALOG_PATH)
     schema_registry_path: Path = Field(default=DEFAULT_SCHEMA_REGISTRY_PATH)
+    return_configuration_path: Path = Field(default=DEFAULT_RETURN_CONFIGURATION_PATH)
+    dependency_simulation_configuration_path: Path = Field(
+        default=DEFAULT_DEPENDENCY_SIMULATION_CONFIGURATION_PATH
+    )
+    ai_gateway_configuration_path: Path = Field(default=DEFAULT_AI_GATEWAY_CONFIGURATION_PATH)
     environment: Literal["development", "test", "staging", "production"] = "development"
 
     probe_timeout_seconds: float = Field(default=2.0, gt=0.0, le=30.0)
@@ -89,38 +100,71 @@ class Settings(BaseSettings):
     ai_interception_default: bool = False
     ai_prompt_version: str = Field(default="return-eligibility-v1", min_length=1, max_length=128)
 
+    # Credential and model pools. List fields are the production path; single-value fields
+    # remain as backward-compatible fallbacks during migration.
+    google_api_keys: tuple[SecretStr, ...] = ()
+    google_lightweight_models: tuple[str, ...] = ("gemini-3.1-flash-lite",)
+    google_standard_models: tuple[str, ...] = ("gemini-3.5-flash",)
     google_api_key: SecretStr | None = None
     google_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
-    google_model: str = "gemini-3.6-flash"
+    google_model: str = "gemini-3.5-flash"
 
+    nvidia_api_keys: tuple[SecretStr, ...] = ()
+    nvidia_lightweight_models: tuple[str, ...] = ("meta/llama-3.2-3b-instruct",)
+    nvidia_standard_models: tuple[str, ...] = ("nvidia/nemotron-3-nano-30b-a3b",)
     nvidia_api_key: SecretStr | None = None
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     nvidia_model: str = "nvidia/nemotron-3-nano-30b-a3b"
 
+    openai_api_keys: tuple[SecretStr, ...] = ()
+    openai_lightweight_models: tuple[str, ...] = ()
+    openai_standard_models: tuple[str, ...] = ()
     openai_api_key: SecretStr | None = None
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str | None = None
 
+    anthropic_api_keys: tuple[SecretStr, ...] = ()
+    anthropic_lightweight_models: tuple[str, ...] = ()
+    anthropic_standard_models: tuple[str, ...] = ()
     anthropic_api_key: SecretStr | None = None
     anthropic_base_url: str = "https://api.anthropic.com/v1"
     anthropic_model: str | None = None
     anthropic_version: str = "2023-06-01"
 
     ollama_base_url: str = "http://localhost:11434/v1"
+    ollama_lightweight_models: tuple[str, ...] = ()
+    ollama_standard_models: tuple[str, ...] = ()
     ollama_model: str | None = None
 
     seed_version: str = Field(default="e2e-v1", min_length=1, max_length=64)
     ai_studio_max_records: int = Field(default=500, ge=1, le=10_000)
-    support_ticket_mode: Literal["SANDBOX_AUTO", "EXTERNAL"] = "SANDBOX_AUTO"
+    support_ticket_mode: Literal["INTERNAL", "INTERNAL_WITH_EXTERNAL_MIRROR", "EXTERNAL_AUTHORITY"] = "INTERNAL"
     support_ticket_base_url: str | None = None
     support_ticket_api_key: SecretStr | None = None
     support_ticket_timeout_seconds: float = Field(default=15.0, ge=1.0, le=120.0)
     support_ticket_poll_seconds: float = Field(default=5.0, ge=0.5, le=300.0)
     support_ticket_max_polls: int = Field(default=12, ge=1, le=120)
+    omc_command_base_url: str | None = None
+    omc_command_api_key: SecretStr | None = None
+    carrier_booking_base_url: str | None = None
+    carrier_booking_api_key: SecretStr | None = None
+    customer_notification_base_url: str | None = None
+    customer_notification_api_key: SecretStr | None = None
+
+    omc_dependency_mode: Literal["REAL", "SIMULATED", "MANUAL", "BLOCKED"] = "SIMULATED"
+    parcel_dependency_mode: Literal["REAL", "SIMULATED", "MANUAL", "BLOCKED"] = "SIMULATED"
+    freight_dependency_mode: Literal["REAL", "SIMULATED", "MANUAL", "BLOCKED"] = "SIMULATED"
+    lsi_dependency_mode: Literal["REAL", "SIMULATED", "MANUAL", "BLOCKED"] = "SIMULATED"
     feedback_learning_enabled: bool = True
     audit_retention_days: int = Field(default=90, ge=7, le=3_650)
 
-    @field_validator("catalog_path", "schema_registry_path")
+    @field_validator(
+        "catalog_path",
+        "schema_registry_path",
+        "return_configuration_path",
+        "dependency_simulation_configuration_path",
+        "ai_gateway_configuration_path",
+    )
     @classmethod
     def validate_catalog_path(cls, value: Path) -> Path:
         resolved_path = value.expanduser()
@@ -155,11 +199,75 @@ class Settings(BaseSettings):
         )
 
     @field_validator(
+        "google_api_keys",
+        "nvidia_api_keys",
+        "openai_api_keys",
+        "anthropic_api_keys",
+        mode="before",
+    )
+    @classmethod
+    def parse_secret_list(cls, value: object) -> object:
+        if value is None or value == "":
+            return ()
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return ()
+            if raw.startswith("["):
+                parsed = json.loads(raw)
+                if not isinstance(parsed, list):
+                    raise ValueError("AI credential setting must contain a JSON list.")
+                return tuple(str(item).strip() for item in parsed if str(item).strip())
+            return tuple(item.strip() for item in raw.split(",") if item.strip())
+        if isinstance(value, (list, tuple)):
+            return tuple(value)
+        raise ValueError("AI credential setting must be a JSON list or comma-separated string.")
+
+    @field_validator(
+        "google_lightweight_models",
+        "google_standard_models",
+        "nvidia_lightweight_models",
+        "nvidia_standard_models",
+        "openai_lightweight_models",
+        "openai_standard_models",
+        "anthropic_lightweight_models",
+        "anthropic_standard_models",
+        "ollama_lightweight_models",
+        "ollama_standard_models",
+        mode="before",
+    )
+    @classmethod
+    def parse_model_list(cls, value: object) -> object:
+        if value is None or value == "":
+            return ()
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return ()
+            if raw.startswith("["):
+                parsed = json.loads(raw)
+                if not isinstance(parsed, list):
+                    raise ValueError("AI model setting must contain a JSON list.")
+                values = [str(item).strip() for item in parsed if str(item).strip()]
+            else:
+                values = [item.strip() for item in raw.split(",") if item.strip()]
+        elif isinstance(value, (list, tuple)):
+            values = [str(item).strip() for item in value if str(item).strip()]
+        else:
+            raise ValueError("AI model setting must be a JSON list or comma-separated string.")
+        if len(values) != len(set(values)):
+            raise ValueError("AI model lists must not contain duplicates.")
+        return tuple(values)
+
+    @field_validator(
         "google_api_key",
         "nvidia_api_key",
         "openai_api_key",
         "anthropic_api_key",
         "support_ticket_api_key",
+        "omc_command_api_key",
+        "carrier_booking_api_key",
+        "customer_notification_api_key",
         mode="before",
     )
     @classmethod
@@ -175,7 +283,37 @@ class Settings(BaseSettings):
             return None
         return value
 
-    @field_validator("support_ticket_base_url", mode="before")
+
+    @field_validator(
+        "omc_dependency_mode",
+        "parcel_dependency_mode",
+        "freight_dependency_mode",
+        "lsi_dependency_mode",
+        mode="before",
+    )
+    @classmethod
+    def normalize_dependency_mode(cls, value: object) -> object:
+        return value.strip().upper() if isinstance(value, str) else value
+
+    @field_validator("support_ticket_mode", mode="before")
+    @classmethod
+    def normalize_support_ticket_mode(cls, value: object) -> object:
+        if isinstance(value, str):
+            normalized = value.strip().upper()
+            aliases = {
+                "SANDBOX_AUTO": "INTERNAL",
+                "EXTERNAL": "EXTERNAL_AUTHORITY",
+            }
+            return aliases.get(normalized, normalized)
+        return value
+
+    @field_validator(
+        "support_ticket_base_url",
+        "omc_command_base_url",
+        "carrier_booking_base_url",
+        "customer_notification_base_url",
+        mode="before",
+    )
     @classmethod
     def normalize_optional_support_url(cls, value: object) -> object:
         if isinstance(value, str):
@@ -183,7 +321,7 @@ class Settings(BaseSettings):
             if not normalized:
                 return None
             if not normalized.startswith(("http://", "https://")):
-                raise ValueError("Support ticket base URL must use HTTP or HTTPS.")
+                raise ValueError("External integration base URL must use HTTP or HTTPS.")
             return normalized.rstrip("/")
         return value
 
@@ -257,6 +395,42 @@ class Settings(BaseSettings):
             raise ValueError("ai_provider_order is invalid")
         return ",".join(providers)
 
+    @property
+    def resolved_google_api_keys(self) -> tuple[SecretStr, ...]:
+        return self.google_api_keys or ((self.google_api_key,) if self.google_api_key else ())
+
+    @property
+    def resolved_nvidia_api_keys(self) -> tuple[SecretStr, ...]:
+        return self.nvidia_api_keys or ((self.nvidia_api_key,) if self.nvidia_api_key else ())
+
+    @property
+    def resolved_openai_api_keys(self) -> tuple[SecretStr, ...]:
+        return self.openai_api_keys or ((self.openai_api_key,) if self.openai_api_key else ())
+
+    @property
+    def resolved_anthropic_api_keys(self) -> tuple[SecretStr, ...]:
+        return self.anthropic_api_keys or ((self.anthropic_api_key,) if self.anthropic_api_key else ())
+
+    @property
+    def resolved_google_standard_models(self) -> tuple[str, ...]:
+        return self.google_standard_models or ((self.google_model,) if self.google_model else ())
+
+    @property
+    def resolved_nvidia_standard_models(self) -> tuple[str, ...]:
+        return self.nvidia_standard_models or ((self.nvidia_model,) if self.nvidia_model else ())
+
+    @property
+    def resolved_openai_standard_models(self) -> tuple[str, ...]:
+        return self.openai_standard_models or ((self.openai_model,) if self.openai_model else ())
+
+    @property
+    def resolved_anthropic_standard_models(self) -> tuple[str, ...]:
+        return self.anthropic_standard_models or ((self.anthropic_model,) if self.anthropic_model else ())
+
+    @property
+    def resolved_ollama_standard_models(self) -> tuple[str, ...]:
+        return self.ollama_standard_models or ((self.ollama_model,) if self.ollama_model else ())
+
     @model_validator(mode="after")
     def validate_relationships(self) -> Self:
         if self.dependency_connect_timeout_seconds < self.probe_timeout_seconds:
@@ -265,8 +439,17 @@ class Settings(BaseSettings):
             raise ValueError("AI global timeout must be greater than or equal to provider timeout.")
         if self.environment == "production" and "SIMULATOR" in self.ai_provider_order.split(","):
             raise ValueError("SIMULATOR cannot be configured in production.")
-        if self.support_ticket_mode == "EXTERNAL" and self.support_ticket_base_url is None:
-            raise ValueError("External Return Support mode requires a base URL.")
-        if self.environment == "production" and self.support_ticket_mode != "EXTERNAL":
-            raise ValueError("Production requires the external Return Support provider.")
+        dependency_modes = {
+            self.omc_dependency_mode,
+            self.parcel_dependency_mode,
+            self.freight_dependency_mode,
+            self.lsi_dependency_mode,
+        }
+        if self.environment == "production" and "SIMULATED" in dependency_modes:
+            raise ValueError("External dependency simulation is forbidden in production.")
+        if (
+            self.support_ticket_mode in {"INTERNAL_WITH_EXTERNAL_MIRROR", "EXTERNAL_AUTHORITY"}
+            and self.support_ticket_base_url is None
+        ):
+            raise ValueError("Configured external Return Support integration requires a base URL.")
         return self

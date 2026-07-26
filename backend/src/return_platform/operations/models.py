@@ -16,6 +16,8 @@ class ReturnStatus(StrEnum):
     RUNNING = "RUNNING"
     INTERCEPTION_PENDING = "INTERCEPTION_PENDING"
     REVIEW_REQUIRED = "REVIEW_REQUIRED"
+    WAITING_SUPPORT = "WAITING_SUPPORT"
+    WAITING_EXTERNAL = "WAITING_EXTERNAL"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
     COMPLETED = "COMPLETED"
@@ -34,6 +36,8 @@ class AIDecision(StrEnum):
     APPROVE = "APPROVE"
     REJECT = "REJECT"
     REVIEW_REQUIRED = "REVIEW_REQUIRED"
+    WAITING_SUPPORT = "WAITING_SUPPORT"
+    WAITING_EXTERNAL = "WAITING_EXTERNAL"
 
 
 class AIRequestStatus(StrEnum):
@@ -67,11 +71,24 @@ class ReturnCreateRequest(MutableContract):
     returnQuantity: int = Field(default=1, ge=1, le=10_000)
     packageCount: int = Field(default=1, ge=1, le=10_000)
     shippingPathExpectation: str = Field(
-        default="PPL",
-        pattern=r"^(PPL|BOL|CUSTOMER_SHIP|NO_LABEL|DIRECT_VENDOR|FIELD_SCRAP)$",
+        default="UNKNOWN",
+        pattern=r"^(PPL|BOL|CUSTOMER_SHIP|NO_LABEL|DIRECT_VENDOR|FIELD_SCRAP|PREPAID_PARCEL|BRANCH_UPS|BRANCH_LTL|OFFSITE_PARCEL|OFFSITE_LTL|NO_PHYSICAL_RETURN|CUSTOMER_KEEP|UNKNOWN)$",
+    )
+    orderSource: str = Field(default="UNKNOWN", max_length=64)
+    sourceWebOrderNumber: str | None = Field(default=None, max_length=128)
+    trilogieOrderNumber: str | None = Field(default=None, max_length=128)
+    productPresence: str | None = Field(default=None, max_length=64)
+    branchReference: str | None = Field(default=None, max_length=128)
+    associateReference: str | None = Field(default=None, max_length=128)
+    pickupAssessment: dict[str, Any] | None = None
+    assumptionSetVersion: str = Field(
+        default="FERGUSON-RETURN-ASSUMPTIONS-1.0", max_length=128
     )
     notes: str | None = Field(default=None, max_length=2_000)
     channel: str = Field(default="SYSTEM", pattern=r"^(CUSTOMER|ASSOCIATE|SYSTEM)$")
+    workflowMode: str = Field(
+        default="PRODUCTION_V2", pattern=r"^(PRODUCTION_V2|LEGACY_V1)$"
+    )
     idempotencyKey: str | None = Field(default=None, min_length=8, max_length=128)
 
     @field_validator("itemReferences")
@@ -87,6 +104,7 @@ class ReturnSessionView(MutableContract):
     id: str
     correlationId: str
     workflowId: str | None = None
+    workflowMode: str = "PRODUCTION_V2"
     customerReference: str
     orderReference: str
     itemReferences: list[str]
@@ -97,6 +115,16 @@ class ReturnSessionView(MutableContract):
     returnQuantity: int = Field(ge=1, le=10_000)
     packageCount: int = Field(ge=1, le=10_000)
     shippingPathExpectation: str
+    orderSource: str = "UNKNOWN"
+    sourceWebOrderNumber: str | None = None
+    trilogieOrderNumber: str | None = None
+    productPresence: str | None = None
+    branchReference: str | None = None
+    associateReference: str | None = None
+    pickupAssessment: dict[str, Any] | None = None
+    assumptionSetVersion: str = "FERGUSON-RETURN-ASSUMPTIONS-1.0"
+    productionWorkflowVersion: str | None = None
+    returnRequestSnapshotId: str | None = None
     notes: str | None = None
     channel: str
     status: ReturnStatus
@@ -105,6 +133,16 @@ class ReturnSessionView(MutableContract):
     eligibilityDecision: AIDecision | None = None
     returnReference: str | None = None
     supportTicketReference: str | None = None
+    supportWorkItemId: str | None = None
+    supportStatus: str | None = None
+    omcReturnVersion: str | None = None
+    approvedReturnMethod: str | None = None
+    shippingInstructionReference: str | None = None
+    customerResolutionStatus: str = "PENDING"
+    physicalReturnStatus: str = "NOT_STARTED"
+    warehouseStatus: str = "NOT_REQUIRED_OR_PENDING"
+    vendorRecoveryStatus: str = "NOT_REQUIRED_OR_PENDING"
+    caseClosureStatus: str = "OPEN"
     trackingReference: str | None = None
     bayReference: str | None = None
     feedbackReference: str | None = None
@@ -157,8 +195,13 @@ class AITraceView(MutableContract):
     id: str
     sessionId: str | None = None
     status: AIRequestStatus
+    taskId: str = "RETURN_ELIGIBILITY_V1"
+    configuredTier: str = "LIGHTWEIGHT"
+    selectedTier: str | None = None
     provider: str | None = None
     model: str | None = None
+    credentialId: str | None = None
+    routeId: str | None = None
     promptVersion: str
     redactedInput: dict[str, Any]
     systemPrompt: str
@@ -168,11 +211,17 @@ class AITraceView(MutableContract):
     explanation: str | None = None
     confidenceMillionths: int | None = Field(default=None, ge=0, le=1_000_000)
     latencyMs: int | None = Field(default=None, ge=0)
+    rateLimitWaitMs: int = Field(default=0, ge=0)
     inputTokens: int | None = Field(default=None, ge=0)
     outputTokens: int | None = Field(default=None, ge=0)
     totalTokens: int | None = Field(default=None, ge=0)
+    estimatedCostMicrousd: int = Field(default=0, ge=0)
     responseDigest: str | None = None
     attempts: int = Field(default=0, ge=0)
+    fallbackUsed: bool = False
+    safetyStatus: str = "SAFE"
+    safetySignals: list[str] = Field(default_factory=list)
+    selectionReason: str | None = None
     errorCode: str | None = None
     interceptedBy: str | None = None
     interceptionReason: str | None = None

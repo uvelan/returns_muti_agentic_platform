@@ -1,40 +1,45 @@
-# Final Source Package Manifest — Corrected v2
+# Production Return Platform Package Manifest — Stage 4M
 
-Generated: 2026-07-24T14:06:22.961422+00:00
+Generated: 2026-07-25
 
 ## Classification
 
-`SOURCE_VALIDATED` — not `CONTRACT_TESTED`, `SANDBOX_VALIDATED`, or `PRODUCTION_VALIDATED`.
+```text
+SOURCE_VALIDATED
+LIVE_STACK_VALIDATION_PENDING
+```
+
+This package extends the production application with development/test dependency simulators. It is not a separate demo application.
 
 ## Included
 
-- Backend, frontend, infrastructure, tests, configuration, documentation, and source-validation evidence.
-- HLD-aligned associate return workflow and next-steps execution plan.
-- Safe root `.env.example`; no real credentials or machine-local environment files.
-- Root Compose file: `compose.yaml`.
+- Stage 4L production return agents, workflows, configuration, APIs and role-specific screens.
+- Stage 4M deterministic OMC, Parcel, Freight/TMS and LSI simulators.
+- Lightweight optional AI narrative enrichment with mandatory templates.
+- Complete simulator AI-attempt and fallback metrics.
+- Transactional-outbox simulator dispatchers.
+- Dedicated simulator pages and operation details.
+- API-driven E2E scripts for branch parcel and offsite heavy returns.
+- Focused tests, source validators, runbooks and evidence.
+- Safe `.env.example` with no credentials.
 
-## Deliberately Excluded
+## Excluded
 
 - `.git/`
-- Root `.env`, `frontend/.env.mock`, and machine-local environment variants
-- `node_modules/`, frontend build output, Python virtual environments, bytecode, caches, coverage, and browser-test artifacts
-- Scratch files: `script.py`, `generate_baseline_json.py`, and `validation_output.txt`
+- `.env` and credentials
+- `node_modules/`
+- frontend build output
+- Python virtual environments
+- Python bytecode and caches
+- pytest/mypy/Ruff caches
+- coverage files
+- browser-test artifacts
+- root runtime logs
 
-## Package Statistics
+## Required validation before promotion
 
-- Files: 503
-- Root directory: `returns_multi_agentic_platform/`
+Run the complete backend, frontend, Compose, Temporal restart, Playwright, accessibility and live-provider gates documented in:
 
-## Validation Rerun
-
-These dependency-light gates passed in the staged delivery tree:
-
-- `python3 scripts/validate_stage4_source.py`
-- `python3 scripts/validate_stage4_contracts.py`
-- `node scripts/validate_frontend_syntax.mjs`
-
-Evidence is under `docs/evidence/stage4_delivery_v2/`.
-
-## Required Next Step
-
-Read `STAGE_4_HLD_ALIGNMENT_NEXT_STEPS_EXECUTION_PLAN.md` before promoting the validation classification.
+```text
+docs/STAGE_4M_FUTURE_PRODUCTION_STEPS.md
+```

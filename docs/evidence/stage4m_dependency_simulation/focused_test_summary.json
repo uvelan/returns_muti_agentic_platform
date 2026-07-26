@@ -1,0 +1,8 @@
+{
+  "stage": "4M",
+  "command": "PYTHONPATH=backend/src pytest --noconftest -q backend/tests/test_dependency_simulation.py backend/tests/test_production_return_state.py",
+  "testsPassed": 14,
+  "exitCode": 0,
+  "status": "PASSED",
+  "validationLevel": "SOURCE_VALIDATED"
+}

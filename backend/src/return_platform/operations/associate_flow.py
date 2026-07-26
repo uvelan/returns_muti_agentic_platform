@@ -14,9 +14,28 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pymongo import AsyncMongoClient, ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
+from return_platform.agents.contracts import (
+    DiscoveryAssessmentRequest,
+    DiscoveryCandidateInput,
+    NormalizedReturnMethod,
+    OrderSource,
+    ProductPresence,
+    ReturnItemInput,
+    ReturnWorkflowAssessmentRequest,
+)
+from return_platform.agents.order_discovery import OrderDiscoveryAgent
+from return_platform.agents.return_workflow import ReturnWorkflowAgent
+from return_platform.configuration.return_configuration import (
+    ReturnPlatformConfiguration,
+    load_return_configuration,
+)
 from return_platform.configuration.settings import Settings
 from return_platform.operations.models import ReturnCreateRequest, ReturnSessionView
 from return_platform.operations.repository import OperationalRepository
+from return_platform.operations.return_support.service import (
+    CreateSupportWorkItemRequest,
+    ReturnSupportService,
+)
 
 
 class AssociateModel(BaseModel):
@@ -30,6 +49,8 @@ class AnchorType(StrEnum):
     EMAIL = "EMAIL"
     TRACKING_NUMBER = "TRACKING_NUMBER"
     SKU = "SKU"
+    CUSTOMER_NAME = "CUSTOMER_NAME"
+    PRODUCT_DESCRIPTION = "PRODUCT_DESCRIPTION"
 
 
 class ConversationMessage(AssociateModel):
@@ -52,6 +73,9 @@ class OrderCandidate(AssociateModel):
     customerReference: str
     customerName: str | None = None
     orderReference: str
+    sourceWebOrderNumber: str | None = None
+    trilogieOrderNumber: str | None = None
+    orderSource: OrderSource = OrderSource.UNKNOWN
     orderStatus: str | None = None
     sellWarehouseId: str | None = None
     shipFromWarehouseId: str | None = None
@@ -64,6 +88,9 @@ class OrderCandidate(AssociateModel):
 class DiscoveryLock(AssociateModel):
     customerReference: str
     orderReference: str
+    sourceWebOrderNumber: str | None = None
+    trilogieOrderNumber: str | None = None
+    orderSource: OrderSource = OrderSource.UNKNOWN
     orderLineId: str
     productId: str
     lockDigest: str = Field(pattern=r"^[a-f0-9]{64}$")
@@ -76,11 +103,16 @@ class AssociateConversationView(AssociateModel):
     status: str
     anchorType: AnchorType
     anchorValueMasked: str
+    orderSource: OrderSource = OrderSource.UNKNOWN
+    discoveryAssessment: dict[str, Any] | None = None
     messages: list[ConversationMessage]
     candidates: list[OrderCandidate]
     discoveryLock: DiscoveryLock | None = None
     returnDetails: dict[str, Any] | None = None
     returnSessionId: str | None = None
+    discoverySnapshotId: str | None = None
+    confirmationSnapshotId: str | None = None
+    lastMessageSequence: int = Field(default=0, ge=0)
     nextQuestion: str | None = None
     version: int = Field(ge=0)
     createdAt: datetime
@@ -110,9 +142,12 @@ class ReturnDetailsRequest(AssociateModel):
     reasonCode: str = Field(min_length=1, max_length=64)
     returnQuantity: int = Field(ge=1, le=10_000)
     packageCount: int = Field(ge=1, le=10_000)
-    shippingPathExpectation: str = Field(
-        pattern=r"^(PPL|BOL|CUSTOMER_SHIP|NO_LABEL|DIRECT_VENDOR|FIELD_SCRAP)$"
-    )
+    shippingPathExpectation: NormalizedReturnMethod
+    productPresence: ProductPresence = ProductPresence.PRESENT_AT_BRANCH
+    branchReference: str | None = Field(default=None, max_length=128)
+    associateReference: str | None = Field(default=None, max_length=128)
+    pickupAssessment: dict[str, Any] | None = None
+    attachmentIds: list[str] = Field(default_factory=list, max_length=100)
     notes: str | None = Field(default=None, max_length=2_000)
     expectedVersion: int = Field(ge=0)
 
@@ -144,6 +179,22 @@ def _nested(document: dict[str, Any], path: str) -> Any:
     return value
 
 
+def _first_nested(document: dict[str, Any], paths: tuple[str, ...]) -> Any:
+    for path in paths:
+        value = _nested(document, path)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _first_line_value(line: dict[str, Any], paths: tuple[str, ...]) -> Any:
+    for path in paths:
+        value = _nested(line, path)
+        if value not in (None, ""):
+            return value
+    return None
+
+
 class AssociateConversationService:
     """Graph-first discovery with targeted source fallback and immutable confirmation locks."""
 
@@ -155,18 +206,50 @@ class AssociateConversationService:
         graph: AsyncDriver,
         settings: Settings,
         repository: OperationalRepository,
+        return_configuration: ReturnPlatformConfiguration | None = None,
     ) -> None:
         self._db = platform_client[settings.mongo_database]
         self._source = source_client[settings.source_mongo_database]
         self._graph = graph
         self._graph_database = settings.neo4j_database
         self._conversations = self._db["associate_conversations"]
+        self._messages = self._db["associate_messages"]
+        self._discovery_snapshots = self._db["discovery_snapshots"]
+        self._return_request_snapshots = self._db["return_request_snapshots"]
         self._locks = self._db["discovery_locks"]
         self._repository = repository
+        self._return_configuration = (
+            return_configuration
+            or load_return_configuration(settings.return_configuration_path).configuration
+        )
+        self._source_config = self._return_configuration.source_resolution
+        self._order_discovery_agent = OrderDiscoveryAgent(self._return_configuration)
+        self._return_workflow_agent = ReturnWorkflowAgent(self._return_configuration)
+        self._return_support = ReturnSupportService(
+            client=platform_client,
+            settings=settings,
+            configuration=self._return_configuration,
+            operational_repository=repository,
+        )
 
     async def ensure_indexes(self) -> None:
         await self._conversations.create_index([("createdAt", -1)])
         await self._conversations.create_index("status")
+        await self._messages.create_index(
+            [("conversationId", 1), ("sequence", 1)], unique=True
+        )
+        await self._messages.create_index([("conversationId", 1), ("createdAt", 1)])
+        await self._discovery_snapshots.create_index("snapshotId", unique=True)
+        await self._discovery_snapshots.create_index(
+            [("conversationId", 1), ("snapshotType", 1), ("contentDigest", 1)],
+            unique=True,
+        )
+        await self._return_request_snapshots.create_index(
+            "requestSnapshotId", unique=True
+        )
+        await self._return_request_snapshots.create_index(
+            [("sessionId", 1), ("contentDigest", 1)], unique=True
+        )
         index_info = await self._locks.index_information()
         for obsolete_name in ("lockDigest_1", "orderReference_1_orderLineId_1"):
             if obsolete_name in index_info:
@@ -197,6 +280,101 @@ class AssociateConversationService:
             "content": content,
             "createdAt": _now(),
         }
+
+    async def _persist_messages(
+        self,
+        conversation_id: str,
+        *,
+        starting_sequence: int,
+        messages: list[dict[str, Any]],
+    ) -> None:
+        for offset, message in enumerate(messages):
+            sequence = starting_sequence + offset
+            document = {
+                "_id": message["id"],
+                "conversationId": conversation_id,
+                "sequence": sequence,
+                "speakerRole": message["role"],
+                "messageText": message["content"],
+                "attachmentIds": [],
+                "extractedEvidence": [],
+                "createdAt": message["createdAt"],
+            }
+            await self._messages.update_one(
+                {"conversationId": conversation_id, "sequence": sequence},
+                {"$setOnInsert": document},
+                upsert=True,
+            )
+
+    async def _persist_discovery_snapshot(
+        self,
+        *,
+        conversation_id: str,
+        snapshot_type: str,
+        payload: dict[str, Any],
+        actor_id: str,
+    ) -> str:
+        content_digest = _digest(payload)
+        snapshot_id = str(
+            uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"{conversation_id}:{snapshot_type}:{content_digest}",
+            )
+        )
+        await self._discovery_snapshots.update_one(
+            {
+                "conversationId": conversation_id,
+                "snapshotType": snapshot_type,
+                "contentDigest": content_digest,
+            },
+            {
+                "$setOnInsert": {
+                    "_id": snapshot_id,
+                    "snapshotId": snapshot_id,
+                    "conversationId": conversation_id,
+                    "snapshotType": snapshot_type,
+                    "payload": payload,
+                    "contentDigest": content_digest,
+                    "schemaVersion": "1.0",
+                    "createdBy": actor_id,
+                    "createdAt": _now(),
+                }
+            },
+            upsert=True,
+        )
+        return snapshot_id
+
+    async def _persist_return_request_snapshot(
+        self,
+        *,
+        session_id: str,
+        conversation_id: str,
+        payload: dict[str, Any],
+        actor_id: str,
+    ) -> tuple[str, str]:
+        content_digest = _digest(payload)
+        snapshot_id = str(
+            uuid.uuid5(uuid.NAMESPACE_URL, f"{session_id}:{content_digest}")
+        )
+        await self._return_request_snapshots.update_one(
+            {"sessionId": session_id, "contentDigest": content_digest},
+            {
+                "$setOnInsert": {
+                    "_id": snapshot_id,
+                    "requestSnapshotId": snapshot_id,
+                    "sessionId": session_id,
+                    "conversationId": conversation_id,
+                    "payload": payload,
+                    "contentDigest": content_digest,
+                    "schemaVersion": "1.0",
+                    "confirmedBy": actor_id,
+                    "confirmedAt": _now(),
+                    "submittedAt": _now(),
+                }
+            },
+            upsert=True,
+        )
+        return snapshot_id, content_digest
 
     async def _graph_candidates(
         self, anchor_type: AnchorType, anchor_value: str
@@ -250,7 +428,10 @@ class AssociateConversationService:
                 anchor_value,
             ),
         }
-        query, query_value = queries[anchor_type]
+        query_definition = queries.get(anchor_type)
+        if query_definition is None:
+            return []
+        query, query_value = query_definition
         records, _, _ = await self._graph.execute_query(
             query, value=query_value, database_=self._graph_database
         )
@@ -282,6 +463,19 @@ class AssociateConversationService:
                         ),
                         customerName=cast(str | None, customer.get("customer_name")),
                         orderReference=str(order.get("sales_order_number")),
+                        sourceWebOrderNumber=cast(
+                            str | None, order.get("source_web_order_number")
+                        ),
+                        trilogieOrderNumber=cast(
+                            str | None,
+                            order.get("trilogie_order_number")
+                            or order.get("sales_order_number"),
+                        ),
+                        orderSource=(
+                            OrderSource.FERGUSONHOME_WEB
+                            if order.get("source_web_order_number")
+                            else OrderSource.UNKNOWN
+                        ),
                         orderStatus=cast(str | None, order.get("order_status")),
                         sellWarehouseId=cast(str | None, order.get("sell_warehouse_id")),
                         shipFromWarehouseId=cast(str | None, order.get("ship_from_warehouse_id")),
@@ -296,42 +490,93 @@ class AssociateConversationService:
     async def _source_documents(
         self, anchor_type: AnchorType, anchor_value: str
     ) -> list[dict[str, Any]]:
+        config = self._source_config
+        sales = self._source[config.sales_invoice_collection]
         if anchor_type is AnchorType.ORDER_NUMBER:
-            query: dict[str, Any] = {"salesHdrEventData.orderId": anchor_value}
+            query: dict[str, Any] = {
+                "$or": [
+                    {path: anchor_value}
+                    for path in dict.fromkeys(
+                        (*config.order_number_paths, *config.web_order_paths)
+                    )
+                ]
+            }
         elif anchor_type is AnchorType.CUSTOMER_ID:
-            query = {"salesHdr.salesHdrData.custId": anchor_value}
+            query = {
+                "$or": [{path: anchor_value} for path in config.customer_id_paths]
+            }
         elif anchor_type in {AnchorType.PHONE, AnchorType.EMAIL}:
-            field = "phoneNumber" if anchor_type is AnchorType.PHONE else "email"
-            customer = await self._source["customerOutboundCDM"].find_one({field: anchor_value})
-            customer_id = customer.get("customerId") if customer else None
+            field = (
+                config.phone_field
+                if anchor_type is AnchorType.PHONE
+                else config.email_field
+            )
+            customer = await self._source[config.customer_collection].find_one(
+                {field: anchor_value}
+            )
+            customer_id = (
+                _nested(cast(dict[str, Any], customer), config.customer_master_id_field)
+                if customer
+                else None
+            )
             if customer_id is None:
                 return []
-            query = {"salesHdr.salesHdrData.custId": customer_id}
+            query = {
+                "$or": [{path: customer_id} for path in config.customer_id_paths]
+            }
         elif anchor_type is AnchorType.TRACKING_NUMBER:
-            shipment = await self._source["shipmentInfo"].find_one(
-                {"shipmentInfoEventData.trkNum": anchor_value}
+            shipment = await self._source[config.shipment_collection].find_one(
+                {config.tracking_field: anchor_value}
             )
-            order_id = _nested(
-                cast(dict[str, Any], shipment or {}),
-                "shipmentInfoEventData.trilOrdNum",
+            order_id = (
+                _nested(cast(dict[str, Any], shipment), config.tracking_order_field)
+                if shipment
+                else None
             )
             if order_id is None:
                 return []
-            query = {"salesHdrEventData.orderId": order_id}
+            query = {
+                "$or": [{path: order_id} for path in config.order_number_paths]
+            }
+        elif anchor_type is AnchorType.SKU:
+            query = {
+                "$or": [
+                    {f"salesLines.lineData.{path}": anchor_value}
+                    for path in dict.fromkeys(
+                        (*config.sku_paths, *config.product_id_paths)
+                    )
+                ]
+            }
+        elif anchor_type is AnchorType.CUSTOMER_NAME:
+            query = {
+                "$or": [
+                    {path: {"$regex": anchor_value, "$options": "i"}}
+                    for path in config.customer_name_paths
+                ]
+            }
         else:
             query = {
                 "$or": [
-                    {"salesLines.lineData.sku": anchor_value},
-                    {"salesLines.lineData.productId": anchor_value},
+                    {
+                        f"salesLines.lineData.{path}": {
+                            "$regex": anchor_value,
+                            "$options": "i",
+                        }
+                    }
+                    for path in config.product_description_paths
                 ]
             }
-        cursor = self._source["salesInv"].find(query).limit(20)
+        cursor = sales.find(query).limit(20)
         return [cast(dict[str, Any], item) async for item in cursor]
 
-    @staticmethod
-    def _source_candidate(document: dict[str, Any]) -> OrderCandidate | None:
-        order_reference = _nested(document, "salesHdrEventData.orderId")
-        customer_reference = _nested(document, "salesHdr.salesHdrData.custId")
+    def _source_candidate(self, document: dict[str, Any]) -> OrderCandidate | None:
+        config = self._source_config
+        source_web_order = _first_nested(document, config.web_order_paths)
+        trilogie_order = _first_nested(document, config.trilogie_order_paths)
+        order_reference = trilogie_order or source_web_order or _first_nested(
+            document, config.order_number_paths
+        )
+        customer_reference = _first_nested(document, config.customer_id_paths)
         if order_reference is None or customer_reference is None:
             return None
         lines: list[OrderLineCandidate] = []
@@ -341,26 +586,53 @@ class AssociateConversationService:
                 if not isinstance(wrapper, dict):
                     continue
                 line = wrapper.get("lineData", wrapper)
-                if not isinstance(line, dict) or line.get("productId") is None:
+                if not isinstance(line, dict):
                     continue
+                product_id = _first_line_value(line, config.product_id_paths)
+                if product_id is None:
+                    continue
+                line_id = _first_line_value(line, config.line_id_paths)
                 lines.append(
                     OrderLineCandidate(
                         orderLineId=str(
-                            line.get("orderLineId") or f"{order_reference}:LINE:{position + 1}"
+                            line_id or f"{order_reference}:LINE:{position + 1}"
                         ),
-                        productId=str(line["productId"]),
-                        sku=cast(str | None, line.get("sku")),
-                        productDescription=cast(str | None, line.get("productDesc")),
+                        productId=str(product_id),
+                        sku=cast(
+                            str | None, _first_line_value(line, config.sku_paths)
+                        ),
+                        productDescription=cast(
+                            str | None,
+                            _first_line_value(
+                                line, config.product_description_paths
+                            ),
+                        ),
                         productType=cast(str | None, line.get("productType")),
-                        shippedQuantity=cast(int | float | None, line.get("shipQty")),
+                        shippedQuantity=cast(
+                            int | float | None,
+                            _first_line_value(line, config.shipped_quantity_paths),
+                        ),
                     )
                 )
         if not lines:
             return None
         return OrderCandidate(
             customerReference=str(customer_reference),
-            customerName=cast(str | None, _nested(document, "salesHdr.salesHdrData.custName")),
+            customerName=cast(
+                str | None, _first_nested(document, config.customer_name_paths)
+            ),
             orderReference=str(order_reference),
+            sourceWebOrderNumber=(
+                str(source_web_order) if source_web_order is not None else None
+            ),
+            trilogieOrderNumber=(
+                str(trilogie_order) if trilogie_order is not None else None
+            ),
+            orderSource=(
+                OrderSource.FERGUSONHOME_WEB
+                if source_web_order is not None
+                else OrderSource.UNKNOWN
+            ),
             orderStatus=cast(str | None, _nested(document, "salesHdrEventData.orderStatus")),
             sellWarehouseId=cast(str | None, _nested(document, "salesHdrEventData.sellWhseId")),
             shipFromWarehouseId=cast(
@@ -385,9 +657,15 @@ class AssociateConversationService:
             MERGE (o:SalesOrder {sales_order_number: row.orderReference})
             SET o.order_status=row.orderStatus, o.sell_warehouse_id=row.sellWarehouseId,
                 o.ship_from_warehouse_id=row.shipFromWarehouseId,
-                o.shipping_method=row.shippingMethod, o.graph_synced_at=$syncedAt,
-                o.sync_run_id=$syncRunId
+                o.shipping_method=row.shippingMethod,
+                o.source_web_order_number=row.sourceWebOrderNumber,
+                o.trilogie_order_number=row.trilogieOrderNumber,
+                o.graph_synced_at=$syncedAt, o.sync_run_id=$syncRunId
             MERGE (c)-[:PLACED_ORDER]->(o)
+            FOREACH (_ IN CASE WHEN row.sourceWebOrderNumber IS NULL THEN [] ELSE [1] END |
+                MERGE (w:WebOrder {web_order_number: row.sourceWebOrderNumber})
+                SET w.graph_synced_at=$syncedAt, w.sync_run_id=$syncRunId
+                MERGE (w)-[:RESOLVES_TO]->(o))
             FOREACH (line IN row.lines |
                 MERGE (l:OrderLine {order_line_key: line.orderLineId})
                 SET l.shipped_quantity=line.shippedQuantity, l.graph_synced_at=$syncedAt,
@@ -405,6 +683,55 @@ class AssociateConversationService:
             database_=self._graph_database,
         )
 
+    def _assess_candidates(
+        self,
+        payload: StartAssociateConversationRequest,
+        candidates: list[OrderCandidate],
+    ) -> tuple[list[OrderCandidate], dict[str, Any], OrderSource]:
+        evidence_key = {
+            AnchorType.ORDER_NUMBER: "order_number",
+            AnchorType.CUSTOMER_ID: "customer_id",
+            AnchorType.PHONE: "phone_or_email",
+            AnchorType.EMAIL: "phone_or_email",
+            AnchorType.TRACKING_NUMBER: "tracking_number",
+            AnchorType.SKU: "product_model",
+            AnchorType.CUSTOMER_NAME: "customer_name",
+            AnchorType.PRODUCT_DESCRIPTION: "product_model",
+        }[payload.anchorType]
+        candidate_by_id: dict[str, OrderCandidate] = {}
+        inputs: list[DiscoveryCandidateInput] = []
+        for candidate in candidates:
+            candidate_id = f"{candidate.customerReference}:{candidate.orderReference}"
+            candidate_by_id[candidate_id] = candidate
+            inputs.append(
+                DiscoveryCandidateInput(
+                    candidateId=candidate_id,
+                    orderReference=candidate.orderReference,
+                    customerReference=candidate.customerReference,
+                    orderSource=candidate.orderSource,
+                    matchedAnchors=(payload.anchorType.value,),
+                    evidenceReferences=(
+                        f"{candidate.evidenceSource}:{candidate.orderReference}",
+                    ),
+                )
+            )
+        assessment = self._order_discovery_agent.assess(
+            DiscoveryAssessmentRequest(
+                suppliedEvidence={evidence_key: payload.anchorValue},
+                candidates=tuple(inputs),
+            )
+        )
+        ranked: list[OrderCandidate] = []
+        for result in assessment.rankedCandidates:
+            found_candidate = candidate_by_id.get(result.candidateId)
+            if found_candidate is not None:
+                ranked.append(
+                    found_candidate.model_copy(
+                        update={"confidenceMillionths": result.scoreMillionths}
+                    )
+                )
+        return ranked, assessment.model_dump(mode="json"), assessment.orderSource
+
     async def start(
         self,
         payload: StartAssociateConversationRequest,
@@ -421,14 +748,20 @@ class AssociateConversationService:
                 if (candidate := self._source_candidate(document))
             ]
             await self._targeted_graph_upsert(candidates)
+        candidates, discovery_assessment, order_source = self._assess_candidates(
+            payload, candidates
+        )
         now = _now()
         if candidates:
             assistant_text = (
-                f"I found {len(candidates)} candidate order(s). Confirm the customer, "
-                "order, and exact order line to lock discovery."
+                f"I found {len(candidates)} source-backed candidate order(s). "
+                "Review the evidence and confirm the customer, order, and exact order line."
             )
             status = "DISCOVERY_READY"
-            next_question = "Which order and order line should be returned?"
+            next_question = (
+                discovery_assessment.get("nextQuestion")
+                or "Which order and order line should be returned?"
+            )
         else:
             assistant_text = (
                 "No order matched that evidence. Add a stronger anchor such as order "
@@ -436,21 +769,26 @@ class AssociateConversationService:
             )
             status = "NO_MATCH"
             next_question = "What additional order evidence can you provide?"
+        conversation_id = str(uuid.uuid4())
+        initial_messages = [
+            self._message(
+                "ASSOCIATE",
+                f"Start return lookup using {payload.anchorType.value}.",
+            ),
+            self._message("AI_ASSISTANT", assistant_text),
+        ]
         document: dict[str, Any] = {
-            "_id": str(uuid.uuid4()),
+            "_id": conversation_id,
             "status": status,
             "anchorType": payload.anchorType.value,
             "anchorValueMasked": _mask(payload.anchorValue, payload.anchorType),
+            "orderSource": order_source.value,
+            "discoveryAssessment": discovery_assessment,
             "anchorDigest": _digest(
                 {"type": payload.anchorType.value, "value": payload.anchorValue}
             ),
-            "messages": [
-                self._message(
-                    "ASSOCIATE",
-                    f"Start return lookup using {payload.anchorType.value}.",
-                ),
-                self._message("AI_ASSISTANT", assistant_text),
-            ],
+            "messages": initial_messages,
+            "lastMessageSequence": len(initial_messages),
             "candidates": [candidate.model_dump(mode="json") for candidate in candidates],
             "discoveryLock": None,
             "returnDetails": None,
@@ -462,6 +800,35 @@ class AssociateConversationService:
             "updatedAt": now,
         }
         await self._conversations.insert_one(document)
+        await self._persist_messages(
+            conversation_id, starting_sequence=1, messages=initial_messages
+        )
+        discovery_snapshot_id = await self._persist_discovery_snapshot(
+            conversation_id=conversation_id,
+            snapshot_type="DISCOVERY_CANDIDATES",
+            payload={
+                "anchorType": payload.anchorType.value,
+                "anchorValueMasked": document["anchorValueMasked"],
+                "orderSource": order_source.value,
+                "candidates": document["candidates"],
+                "assessment": discovery_assessment,
+            },
+            actor_id=actor_id,
+        )
+        await self._conversations.update_one(
+            {"_id": conversation_id},
+            {"$set": {"discoverySnapshotId": discovery_snapshot_id}},
+        )
+        document["discoverySnapshotId"] = discovery_snapshot_id
+        decision = discovery_assessment.get("decision")
+        if isinstance(decision, dict):
+            await self._repository.persist_agent_decision(
+                aggregate_id=str(document["_id"]),
+                session_id=None,
+                decision=decision,
+                decision_key=f"discovery:{document['anchorDigest']}",
+                actor_id=actor_id,
+            )
         return self._view(document)
 
     async def list(self, limit: int = 100) -> list[AssociateConversationView]:
@@ -497,6 +864,9 @@ class AssociateConversationService:
         lock_payload = {
             "customerReference": candidate.customerReference,
             "orderReference": candidate.orderReference,
+            "sourceWebOrderNumber": candidate.sourceWebOrderNumber,
+            "trilogieOrderNumber": candidate.trilogieOrderNumber,
+            "orderSource": candidate.orderSource,
             "orderLineId": line.orderLineId,
             "productId": line.productId,
         }
@@ -525,36 +895,62 @@ class AssociateConversationService:
                 raise RuntimeError(
                     "Order line is already locked by another return session"
                 ) from error
+        confirmation_messages = [
+            self._message(
+                "ASSOCIATE",
+                f"Confirmed {candidate.orderReference} / {line.orderLineId}.",
+            ),
+            self._message(
+                "AI_ASSISTANT",
+                "Discovery is locked. Provide reason, quantity, package count, "
+                "shipping path, and optional notes.",
+            ),
+        ]
         updated = await self._conversations.find_one_and_update(
             {"_id": conversation_id, "version": payload.expectedVersion, "discoveryLock": None},
             {
                 "$set": {
                     "status": "DETAILS_REQUIRED",
+                    "orderSource": (
+                        candidate.orderSource.value
+                        if candidate.orderSource is not OrderSource.UNKNOWN
+                        else conversation.orderSource.value
+                    ),
                     "discoveryLock": lock.model_dump(mode="json"),
                     "nextQuestion": "Why is the item being returned?",
                     "updatedAt": _now(),
                 },
-                "$push": {
-                    "messages": {
-                        "$each": [
-                            self._message(
-                                "ASSOCIATE",
-                                f"Confirmed {candidate.orderReference} / {line.orderLineId}.",
-                            ),
-                            self._message(
-                                "AI_ASSISTANT",
-                                "Discovery is locked. Provide reason, quantity, package "
-                                "count, shipping path, and optional notes.",
-                            ),
-                        ]
-                    }
+                "$push": {"messages": {"$each": confirmation_messages}},
+                "$inc": {
+                    "version": 1,
+                    "lastMessageSequence": len(confirmation_messages),
                 },
-                "$inc": {"version": 1},
             },
             return_document=ReturnDocument.AFTER,
         )
         if updated is None:
             raise RuntimeError("Conversation version conflict")
+        ending_sequence = int(str(updated.get("lastMessageSequence", 0)))
+        await self._persist_messages(
+            conversation_id,
+            starting_sequence=ending_sequence - len(confirmation_messages) + 1,
+            messages=confirmation_messages,
+        )
+        confirmation_snapshot_id = await self._persist_discovery_snapshot(
+            conversation_id=conversation_id,
+            snapshot_type="DISCOVERY_CONFIRMED",
+            payload={
+                "lock": lock.model_dump(mode="json"),
+                "candidate": candidate.model_dump(mode="json"),
+                "line": line.model_dump(mode="json"),
+            },
+            actor_id=actor_id,
+        )
+        await self._conversations.update_one(
+            {"_id": conversation_id},
+            {"$set": {"confirmationSnapshotId": confirmation_snapshot_id}},
+        )
+        updated["confirmationSnapshotId"] = confirmation_snapshot_id
         return self._view(cast(dict[str, Any], updated))
 
     async def submit_details(
@@ -590,7 +986,55 @@ class AssociateConversationService:
             and payload.returnQuantity > selected_line.shippedQuantity
         ):
             raise ValueError("Return quantity exceeds the shipped quantity for the locked line")
-        details = payload.model_dump(mode="json", exclude={"expectedVersion"})
+        selected_candidate = next(
+            (
+                candidate
+                for candidate in conversation.candidates
+                if candidate.orderReference == lock.orderReference
+            ),
+            None,
+        )
+        if selected_candidate is None:
+            raise RuntimeError("Locked order candidate is absent from discovery context")
+        order_source = (
+            selected_candidate.orderSource
+            if selected_candidate.orderSource is not OrderSource.UNKNOWN
+            else conversation.orderSource
+        )
+        workflow_assessment = self._return_workflow_agent.assess(
+            ReturnWorkflowAssessmentRequest(
+                sessionId=conversation_id,
+                orderSource=order_source,
+                productPresence=payload.productPresence,
+                proposedReturnMethod=payload.shippingPathExpectation,
+                branchId=payload.branchReference,
+                associateId=payload.associateReference or actor_id,
+                items=(
+                    ReturnItemInput(
+                        orderLineId=lock.orderLineId,
+                        productId=lock.productId,
+                        requestedQuantity=payload.returnQuantity,
+                        shippedQuantity=(
+                            int(selected_line.shippedQuantity)
+                            if selected_line.shippedQuantity is not None
+                            else None
+                        ),
+                        reasonCode=payload.reasonCode,
+                        attachmentIds=tuple(payload.attachmentIds),
+                    ),
+                ),
+                pickupAssessment=payload.pickupAssessment,
+            )
+        )
+        if not workflow_assessment.complete:
+            raise ValueError(
+                "Return details are incomplete: " + ", ".join(workflow_assessment.missingFields)
+            )
+        details = {
+            **payload.model_dump(mode="json", exclude={"expectedVersion"}),
+            "supportDraft": workflow_assessment.supportDraft,
+            "agentDecision": workflow_assessment.decision.model_dump(mode="json"),
+        }
         session = await self._repository.create_return(
             ReturnCreateRequest(
                 customerReference=lock.customerReference,
@@ -609,7 +1053,17 @@ class AssociateConversationService:
                 reasonCode=payload.reasonCode,
                 returnQuantity=payload.returnQuantity,
                 packageCount=payload.packageCount,
-                shippingPathExpectation=payload.shippingPathExpectation,
+                shippingPathExpectation=workflow_assessment.recommendedReturnMethod.value,
+                orderSource=order_source.value,
+                sourceWebOrderNumber=selected_candidate.sourceWebOrderNumber,
+                trilogieOrderNumber=(
+                    selected_candidate.trilogieOrderNumber or lock.orderReference
+                ),
+                productPresence=payload.productPresence.value,
+                branchReference=payload.branchReference,
+                associateReference=payload.associateReference or actor_id,
+                pickupAssessment=payload.pickupAssessment,
+                assumptionSetVersion=self._return_configuration.assumption_set_version,
                 notes=payload.notes,
                 channel="ASSOCIATE",
                 idempotencyKey=f"associate:{conversation_id}:{lock.lockDigest}",
@@ -617,6 +1071,52 @@ class AssociateConversationService:
             correlation_id=correlation_id,
             actor_id=actor_id,
         )
+        await self._repository.persist_return_intake_records(
+            session_id=session.id,
+            order_line_id=lock.orderLineId,
+            product_id=lock.productId,
+            reason_code=payload.reasonCode,
+            requested_quantity=payload.returnQuantity,
+            approved_method=workflow_assessment.recommendedReturnMethod.value,
+            product_presence=payload.productPresence.value,
+            package_count=payload.packageCount,
+            pickup_assessment=payload.pickupAssessment,
+            attachment_ids=payload.attachmentIds,
+            actor_id=actor_id,
+        )
+        await self._repository.persist_agent_decision(
+            aggregate_id=session.id,
+            session_id=session.id,
+            decision=workflow_assessment.decision.model_dump(mode="json"),
+            decision_key=f"return-workflow:{conversation_id}:v{payload.expectedVersion}",
+            actor_id=actor_id,
+        )
+        request_snapshot_id, snapshot_digest = await self._persist_return_request_snapshot(
+            session_id=session.id,
+            conversation_id=conversation_id,
+            payload={
+                "discoveryLock": lock.model_dump(mode="json"),
+                "returnDetails": details,
+                "returnSession": session.model_dump(mode="json"),
+            },
+            actor_id=actor_id,
+        )
+        await self._repository.update_return(
+            session.id,
+            {"returnRequestSnapshotId": request_snapshot_id},
+        )
+        await self._return_support.create_work_item(
+            CreateSupportWorkItemRequest(
+                sessionId=session.id,
+                subject=f"Return request for order {lock.orderReference}",
+                supportDraft=workflow_assessment.supportDraft,
+                requestSnapshotDigest=snapshot_digest,
+                idempotencyKey=f"support:{session.id}:{snapshot_digest}",
+            ),
+            actor_id=actor_id,
+            correlation_id=correlation_id,
+        )
+        session = await self._repository.get_return(session.id) or session
         await self._locks.update_one(
             {"lockDigest": lock.lockDigest, "conversationId": conversation_id, "status": "ACTIVE"},
             {
@@ -626,6 +1126,14 @@ class AssociateConversationService:
                 }
             },
         )
+        submission_messages = [
+            self._message("ASSOCIATE", "Confirmed return handling details."),
+            self._message(
+                "AI_ASSISTANT",
+                f"Return session {session.id} was created and handed to "
+                "Return Support processing.",
+            ),
+        ]
         updated = await self._conversations.find_one_and_update(
             {"_id": conversation_id, "version": payload.expectedVersion},
             {
@@ -636,22 +1144,20 @@ class AssociateConversationService:
                     "nextQuestion": None,
                     "updatedAt": _now(),
                 },
-                "$push": {
-                    "messages": {
-                        "$each": [
-                            self._message("ASSOCIATE", "Confirmed return handling details."),
-                            self._message(
-                                "AI_ASSISTANT",
-                                f"Return session {session.id} was created and handed to "
-                                "Return Support processing.",
-                            ),
-                        ]
-                    }
+                "$push": {"messages": {"$each": submission_messages}},
+                "$inc": {
+                    "version": 1,
+                    "lastMessageSequence": len(submission_messages),
                 },
-                "$inc": {"version": 1},
             },
             return_document=ReturnDocument.AFTER,
         )
         if updated is None:
             raise RuntimeError("Conversation version conflict")
+        ending_sequence = int(str(updated.get("lastMessageSequence", 0)))
+        await self._persist_messages(
+            conversation_id,
+            starting_sequence=ending_sequence - len(submission_messages) + 1,
+            messages=submission_messages,
+        )
         return self._view(cast(dict[str, Any], updated)), session

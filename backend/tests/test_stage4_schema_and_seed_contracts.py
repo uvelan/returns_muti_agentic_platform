@@ -107,6 +107,25 @@ def test_schema_registry_models_every_required_physical_store_and_graph_type() -
         "ai_studio_proposals",
         "graph_sync_runs",
         "feedback_learning_records",
+        "associate_messages",
+        "discovery_snapshots",
+        "return_request_snapshots",
+        "operational_return_items",
+        "handling_units",
+        "pickup_sites",
+        "pickup_requests",
+        "branch_staging_records",
+        "document_artifacts",
+        "shipping_instructions",
+        "shipment_events",
+        "omc_command_records",
+        "agent_decisions",
+        "vendor_return_links",
+        "integration_outbox",
+        "support_work_items",
+        "support_messages",
+        "schema_migrations",
+        "return_configuration_snapshots",
     ):
         assert ("MONGODB", None, collection) in physical
 
@@ -119,6 +138,8 @@ def test_schema_registry_models_every_required_physical_store_and_graph_type() -
         ("platform", "bay_configuration"),
         ("platform", "bay_assignment"),
         ("platform", "feedback_recommendation"),
+        ("platform", "bay_reservation"),
+        ("platform", "return_policy_version"),
     ):
         assert ("SQLSERVER", namespace, table) in physical
 

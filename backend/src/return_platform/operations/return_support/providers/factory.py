@@ -10,7 +10,6 @@ from return_platform.operations.return_support.providers.contracts import (
 from return_platform.operations.return_support.providers.external import (
     ExternalReturnSupportProvider,
 )
-from return_platform.operations.return_support.providers.sandbox import SandboxReturnSupportProvider
 
 
 def build_return_support_provider(
@@ -18,8 +17,10 @@ def build_return_support_provider(
     repository: ReturnSupportRepository,
     http_client: httpx.AsyncClient,
 ) -> ReturnSupportProvider:
-    if settings.support_ticket_mode == "SANDBOX_AUTO":
-        return SandboxReturnSupportProvider(repository)
+    if settings.support_ticket_mode != "EXTERNAL_AUTHORITY":
+        raise ValueError(
+            "Internal Returns Support is platform-owned and must use ReturnSupportService."
+        )
     return ExternalReturnSupportProvider(
         repository=repository, http_client=http_client, settings=settings
     )

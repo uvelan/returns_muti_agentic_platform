@@ -1,0 +1,10 @@
+{
+  "stage": "4M",
+  "status": "PASSED",
+  "validationLevel": "SOURCE_VALIDATED",
+  "operations": 10,
+  "aiRequests": 10,
+  "fallbacks": 10,
+  "tokens": 0,
+  "checks": 19
+}

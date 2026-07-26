@@ -10,6 +10,7 @@ from fastapi import HTTPException, Request
 from pymongo import ASCENDING, DESCENDING, AsyncMongoClient, ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
+from return_platform.ai_gateway.models import AIUsageAttemptView, AIUsageSummaryView
 from return_platform.configuration.settings import Settings
 from return_platform.operations.models import (
     AIGatewaySettingsView,
@@ -43,8 +44,22 @@ SUPPORT_CASES: Final = "support_cases"
 AI_TRACES: Final = "ai_gateway_traces"
 AI_SETTINGS: Final = "ai_gateway_settings"
 AI_RATE_LIMITS: Final = "ai_gateway_rate_limits"
+AI_ATTEMPTS: Final = "ai_gateway_attempt_metrics"
 WORKER_HEARTBEATS: Final = "worker_heartbeats"
 SEED_METADATA: Final = "seed_metadata"
+RETURN_ITEMS: Final = "operational_return_items"
+HANDLING_UNITS: Final = "handling_units"
+PICKUP_SITES: Final = "pickup_sites"
+PICKUP_REQUESTS: Final = "pickup_requests"
+BRANCH_STAGING_RECORDS: Final = "branch_staging_records"
+DOCUMENT_ARTIFACTS: Final = "document_artifacts"
+SHIPPING_INSTRUCTIONS: Final = "shipping_instructions"
+SHIPMENT_EVENTS: Final = "shipment_events"
+OMC_COMMAND_RECORDS: Final = "omc_command_records"
+AGENT_DECISIONS: Final = "agent_decisions"
+VENDOR_RETURN_LINKS: Final = "vendor_return_links"
+INTEGRATION_OUTBOX: Final = "integration_outbox"
+RETURN_CONFIGURATION_SNAPSHOTS: Final = "return_configuration_snapshots"
 SOURCE_ORDERS: Final = "orders"
 SOURCE_CUSTOMERS: Final = "customers"
 SOURCE_PRODUCTS: Final = "products"
@@ -87,8 +102,22 @@ class OperationalRepository:
         self.ai_traces = self._db[AI_TRACES]
         self.ai_settings = self._db[AI_SETTINGS]
         self.ai_rate_limits = self._db[AI_RATE_LIMITS]
+        self.ai_attempts = self._db[AI_ATTEMPTS]
         self.worker_heartbeats = self._db[WORKER_HEARTBEATS]
         self.seed_metadata = self._db[SEED_METADATA]
+        self.return_items = self._db[RETURN_ITEMS]
+        self.handling_units = self._db[HANDLING_UNITS]
+        self.pickup_sites = self._db[PICKUP_SITES]
+        self.pickup_requests = self._db[PICKUP_REQUESTS]
+        self.branch_staging_records = self._db[BRANCH_STAGING_RECORDS]
+        self.document_artifacts = self._db[DOCUMENT_ARTIFACTS]
+        self.shipping_instructions = self._db[SHIPPING_INSTRUCTIONS]
+        self.shipment_events = self._db[SHIPMENT_EVENTS]
+        self.omc_command_records = self._db[OMC_COMMAND_RECORDS]
+        self.agent_decisions = self._db[AGENT_DECISIONS]
+        self.vendor_return_links = self._db[VENDOR_RETURN_LINKS]
+        self.integration_outbox = self._db[INTEGRATION_OUTBOX]
+        self.return_configuration_snapshots = self._db[RETURN_CONFIGURATION_SNAPSHOTS]
 
     @property
     def platform_client(self) -> AsyncMongoClient[dict[str, object]]:
@@ -103,6 +132,10 @@ class OperationalRepository:
     async def ensure_indexes(self) -> None:
         await self.returns.create_index([("createdAt", DESCENDING)])
         await self.returns.create_index([("status", ASCENDING), ("updatedAt", ASCENDING)])
+        await self.returns.create_index([("supportStatus", ASCENDING), ("updatedAt", ASCENDING)])
+        await self.returns.create_index([("trilogieOrderNumber", ASCENDING), ("createdAt", DESCENDING)])
+        await self.returns.create_index([("sourceWebOrderNumber", ASCENDING), ("createdAt", DESCENDING)])
+        await self.returns.create_index("supportWorkItemId", sparse=True)
         await self.returns.create_index("idempotencyKey", unique=True, sparse=True)
         await self.events.create_index(
             [("streamId", ASCENDING), ("sequence", ASCENDING)], unique=True
@@ -115,8 +148,94 @@ class OperationalRepository:
         await self.support_cases.create_index("sessionId", unique=True, sparse=True)
         await self.ai_traces.create_index([("createdAt", DESCENDING)])
         await self.ai_traces.create_index([("sessionId", ASCENDING), ("createdAt", DESCENDING)])
+        await self.ai_attempts.create_index([("createdAt", DESCENDING)])
+        await self.ai_attempts.create_index([("traceId", ASCENDING), ("attemptNumber", ASCENDING)])
+        await self.ai_attempts.create_index([("taskId", ASCENDING), ("createdAt", DESCENDING)])
+        await self.ai_attempts.create_index([("provider", ASCENDING), ("model", ASCENDING), ("createdAt", DESCENDING)])
         await self.worker_heartbeats.create_index("expiresAt", expireAfterSeconds=0)
         await self.ai_rate_limits.create_index("expiresAt", expireAfterSeconds=0)
+        await self.return_items.create_index("returnItemId", unique=True)
+        await self.return_items.create_index(
+            [("sessionId", ASCENDING), ("orderLineId", ASCENDING)], unique=True
+        )
+        await self.handling_units.create_index("handlingUnitId", unique=True)
+        await self.handling_units.create_index(
+            [("sessionId", ASCENDING), ("sequence", ASCENDING)], unique=True
+        )
+        await self.handling_units.create_index(
+            "trackingNumber",
+            unique=True,
+            partialFilterExpression={"trackingNumber": {"$type": "string"}},
+        )
+        await self.pickup_sites.create_index("pickupSiteId", unique=True)
+        await self.pickup_sites.create_index("sessionId", unique=True)
+        await self.pickup_requests.create_index("pickupRequestId", unique=True)
+        await self.pickup_requests.create_index("sessionId", unique=True)
+        await self.branch_staging_records.create_index("stagingRecordId", unique=True)
+        await self.branch_staging_records.create_index(
+            [("sessionId", ASCENDING), ("handlingUnitId", ASCENDING)], unique=True
+        )
+        await self.document_artifacts.create_index("artifactId", unique=True)
+        await self.document_artifacts.create_index(
+            [("sessionId", ASCENDING), ("createdAt", DESCENDING)]
+        )
+        await self.document_artifacts.create_index(
+            [("storageProvider", ASCENDING), ("storageKey", ASCENDING)], unique=True
+        )
+        await self.shipping_instructions.create_index("shippingInstructionId", unique=True)
+        await self.shipping_instructions.create_index(
+            [("sessionId", ASCENDING), ("issuedAt", DESCENDING)]
+        )
+        await self.shipment_events.create_index(
+            [("sourceSystem", ASCENDING), ("sourceEventId", ASCENDING)], unique=True
+        )
+        await self.omc_command_records.create_index("commandId", unique=True)
+        await self.omc_command_records.create_index("idempotencyKey", unique=True)
+        await self.agent_decisions.create_index(
+            [("sessionId", ASCENDING), ("createdAt", DESCENDING)]
+        )
+        await self.vendor_return_links.create_index("vendorReturnLinkId", unique=True)
+        await self.vendor_return_links.create_index(
+            [("sessionId", ASCENDING), ("omcRgaId", ASCENDING)], unique=True
+        )
+        await self.integration_outbox.create_index("idempotencyKey", unique=True)
+        await self.integration_outbox.create_index(
+            [("status", ASCENDING), ("nextAttemptAt", ASCENDING)]
+        )
+        await self.return_configuration_snapshots.create_index("sha256", unique=True)
+        await self.return_configuration_snapshots.create_index(
+            [("assumptionSetVersion", ASCENDING), ("activatedAt", DESCENDING)]
+        )
+
+
+    async def persist_return_configuration_snapshot(
+        self,
+        *,
+        path: str,
+        sha256: str,
+        schema_version: str,
+        assumption_set_version: str,
+        configuration: dict[str, Any],
+    ) -> None:
+        """Persist one immutable, digest-addressed production configuration snapshot."""
+        now = utc_now()
+        await self.return_configuration_snapshots.update_one(
+            {"sha256": sha256},
+            {
+                "$setOnInsert": {
+                    "_id": sha256,
+                    "sha256": sha256,
+                    "path": path,
+                    "schemaVersion": schema_version,
+                    "assumptionSetVersion": assumption_set_version,
+                    "configuration": configuration,
+                    "activatedAt": now,
+                    "createdAt": now,
+                },
+                "$set": {"lastObservedAt": now},
+            },
+            upsert=True,
+        )
 
     async def _ensure_event_deduplication_index(self) -> None:
         indexes = await self.events.index_information()
@@ -193,6 +312,7 @@ class OperationalRepository:
             "_id": session_id,
             "correlationId": correlation_id,
             "workflowId": None,
+            "workflowMode": payload.workflowMode,
             "customerReference": payload.customerReference,
             "orderReference": payload.orderReference,
             "itemReferences": payload.itemReferences,
@@ -203,6 +323,14 @@ class OperationalRepository:
             "returnQuantity": payload.returnQuantity,
             "packageCount": payload.packageCount,
             "shippingPathExpectation": payload.shippingPathExpectation,
+            "orderSource": payload.orderSource,
+            "sourceWebOrderNumber": payload.sourceWebOrderNumber,
+            "trilogieOrderNumber": payload.trilogieOrderNumber,
+            "productPresence": payload.productPresence,
+            "branchReference": payload.branchReference,
+            "associateReference": payload.associateReference,
+            "pickupAssessment": payload.pickupAssessment,
+            "assumptionSetVersion": payload.assumptionSetVersion,
             "notes": payload.notes,
             "channel": payload.channel,
             "status": ReturnStatus.QUEUED.value,
@@ -211,6 +339,16 @@ class OperationalRepository:
             "eligibilityDecision": None,
             "returnReference": None,
             "supportTicketReference": None,
+            "supportWorkItemId": None,
+            "supportStatus": None,
+            "omcReturnVersion": None,
+            "approvedReturnMethod": None,
+            "shippingInstructionReference": None,
+            "customerResolutionStatus": "PENDING",
+            "physicalReturnStatus": "NOT_STARTED",
+            "warehouseStatus": "NOT_REQUIRED_OR_PENDING",
+            "vendorRecoveryStatus": "NOT_REQUIRED_OR_PENDING",
+            "caseClosureStatus": "OPEN",
             "trackingReference": None,
             "bayReference": None,
             "feedbackReference": None,
@@ -249,11 +387,653 @@ class OperationalRepository:
                 "returnQuantity": payload.returnQuantity,
                 "packageCount": payload.packageCount,
                 "shippingPathExpectation": payload.shippingPathExpectation,
+                "orderSource": payload.orderSource,
+                "productPresence": payload.productPresence,
+                "assumptionSetVersion": payload.assumptionSetVersion,
             },
         )
         stored = await self.returns.find_one({"_id": session_id})
         assert stored is not None
         return self._return_view(cast(dict[str, Any], stored))
+
+    async def persist_agent_decision(
+        self,
+        *,
+        aggregate_id: str,
+        session_id: str | None,
+        decision: dict[str, Any],
+        decision_key: str,
+        actor_id: str,
+    ) -> None:
+        now = utc_now()
+        document_id = str(
+            uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"{aggregate_id}:{decision.get('agent')}:{decision_key}",
+            )
+        )
+        await self.agent_decisions.update_one(
+            {"_id": document_id},
+            {
+                "$setOnInsert": {
+                    "_id": document_id,
+                    "aggregateId": aggregate_id,
+                    "sessionId": session_id,
+                    "decisionKey": decision_key,
+                    "agent": decision.get("agent"),
+                    "decisionType": decision.get("decisionType"),
+                    "decision": decision,
+                    "createdBy": actor_id,
+                    "createdAt": now,
+                },
+                "$set": {"updatedAt": now},
+            },
+            upsert=True,
+        )
+
+    async def list_agent_decisions(
+        self, session_id: str
+    ) -> list[dict[str, Any]]:
+        cursor = self.agent_decisions.find({"sessionId": session_id}).sort(
+            "createdAt", ASCENDING
+        )
+        return [
+            {key: value for key, value in cast(dict[str, Any], document).items() if key != "_id"}
+            async for document in cursor
+        ]
+
+    async def persist_return_intake_records(
+        self,
+        *,
+        session_id: str,
+        order_line_id: str,
+        product_id: str,
+        reason_code: str,
+        requested_quantity: int,
+        approved_method: str,
+        product_presence: str,
+        package_count: int,
+        pickup_assessment: dict[str, Any] | None,
+        attachment_ids: list[str],
+        actor_id: str,
+    ) -> None:
+        """Persist idempotent item, handling-unit, and pickup projections."""
+        now = utc_now()
+        return_item_id = f"{session_id}:{order_line_id}"
+        await self.return_items.update_one(
+            {"returnItemId": return_item_id},
+            {
+                "$setOnInsert": {
+                    "_id": str(uuid.uuid4()),
+                    "returnItemId": return_item_id,
+                    "sessionId": session_id,
+                    "orderLineId": order_line_id,
+                    "productId": product_id,
+                    "requestedQuantity": requested_quantity,
+                    "approvedQuantity": None,
+                    "reasonCode": reason_code,
+                    "attachmentIds": list(attachment_ids),
+                    "disposition": "PENDING",
+                    "version": 0,
+                    "createdBy": actor_id,
+                    "createdAt": now,
+                },
+                "$set": {"updatedAt": now},
+            },
+            upsert=True,
+        )
+        handling_type = (
+            "PALLET" if approved_method in {"BRANCH_LTL", "OFFSITE_LTL"} else "PACKAGE"
+        )
+        for sequence in range(1, package_count + 1):
+            handling_unit_id = f"{session_id}:HU:{sequence}"
+            await self.handling_units.update_one(
+                {"handlingUnitId": handling_unit_id},
+                {
+                    "$setOnInsert": {
+                        "_id": str(uuid.uuid4()),
+                        "handlingUnitId": handling_unit_id,
+                        "sessionId": session_id,
+                        "sequence": sequence,
+                        "handlingUnitType": handling_type,
+                        "returnItemAllocations": [
+                            {
+                                "returnItemId": return_item_id,
+                                "quantity": (
+                                    requested_quantity if package_count == 1 else None
+                                ),
+                            }
+                        ],
+                        "physicalStatus": "PLANNED",
+                        "shippingInstructionId": None,
+                        "trackingNumber": None,
+                        "bolReference": None,
+                        "licensePlateIds": [],
+                        "version": 0,
+                        "createdBy": actor_id,
+                        "createdAt": now,
+                    },
+                    "$set": {"updatedAt": now},
+                },
+                upsert=True,
+            )
+        if product_presence.startswith("OFFSITE_"):
+            assessment = pickup_assessment or {}
+            pickup_site_id = f"{session_id}:PICKUP_SITE"
+            pickup_request_id = f"{session_id}:PICKUP"
+            await self.pickup_sites.update_one(
+                {"pickupSiteId": pickup_site_id},
+                {
+                    "$setOnInsert": {
+                        "_id": str(uuid.uuid4()),
+                        "pickupSiteId": pickup_site_id,
+                        "sessionId": session_id,
+                        "locationType": product_presence,
+                        **assessment,
+                        "validatedBy": actor_id,
+                        "validatedAt": now,
+                        "version": 0,
+                        "createdAt": now,
+                    },
+                    "$set": {"updatedAt": now},
+                },
+                upsert=True,
+            )
+            await self.pickup_requests.update_one(
+                {"pickupRequestId": pickup_request_id},
+                {
+                    "$setOnInsert": {
+                        "_id": str(uuid.uuid4()),
+                        "pickupRequestId": pickup_request_id,
+                        "sessionId": session_id,
+                        "pickupSiteId": pickup_site_id,
+                        "status": "ASSESSMENT_COMPLETE",
+                        "handlingUnitIds": [
+                            f"{session_id}:HU:{sequence}"
+                            for sequence in range(1, package_count + 1)
+                        ],
+                        "equipmentRequirements": [],
+                        "carrier": None,
+                        "serviceLevel": None,
+                        "scheduledWindowStart": None,
+                        "scheduledWindowEnd": None,
+                        "bolReference": None,
+                        "version": 0,
+                        "createdBy": actor_id,
+                        "createdAt": now,
+                    },
+                    "$set": {"updatedAt": now},
+                },
+                upsert=True,
+            )
+
+    async def list_return_items(self, session_id: str) -> list[dict[str, Any]]:
+        cursor = self.return_items.find({"sessionId": session_id}).sort(
+            "createdAt", ASCENDING
+        )
+        return [cast(dict[str, Any], document) async for document in cursor]
+
+    async def update_return_item(
+        self,
+        return_item_id: str,
+        updates: dict[str, Any],
+        *,
+        expected_version: int,
+    ) -> dict[str, Any]:
+        document = await self.return_items.find_one_and_update(
+            {"returnItemId": return_item_id, "version": expected_version},
+            {"$set": {**updates, "updatedAt": utc_now()}, "$inc": {"version": 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if document is None:
+            exists = await self.return_items.find_one(
+                {"returnItemId": return_item_id}, {"_id": 1}
+            )
+            if exists is None:
+                raise KeyError(return_item_id)
+            raise ConcurrencyConflictError(return_item_id)
+        return cast(dict[str, Any], document)
+
+    async def list_handling_units(self, session_id: str) -> list[dict[str, Any]]:
+        cursor = self.handling_units.find({"sessionId": session_id}).sort(
+            "sequence", ASCENDING
+        )
+        return [cast(dict[str, Any], document) async for document in cursor]
+
+    async def get_pickup_projection(self, session_id: str) -> dict[str, Any] | None:
+        site = await self.pickup_sites.find_one({"sessionId": session_id})
+        pickup_request = await self.pickup_requests.find_one({"sessionId": session_id})
+        if site is None and pickup_request is None:
+            return None
+        return {
+            "site": (
+                None
+                if site is None
+                else {key: value for key, value in site.items() if key != "_id"}
+            ),
+            "request": (
+                None
+                if pickup_request is None
+                else {key: value for key, value in pickup_request.items() if key != "_id"}
+            ),
+        }
+
+
+    async def get_handling_unit(self, handling_unit_id: str) -> dict[str, Any] | None:
+        document = await self.handling_units.find_one({"handlingUnitId": handling_unit_id})
+        return None if document is None else cast(dict[str, Any], document)
+
+    async def update_handling_unit(
+        self,
+        handling_unit_id: str,
+        updates: dict[str, Any],
+        *,
+        expected_version: int,
+    ) -> dict[str, Any]:
+        document = await self.handling_units.find_one_and_update(
+            {"handlingUnitId": handling_unit_id, "version": expected_version},
+            {"$set": {**updates, "updatedAt": utc_now()}, "$inc": {"version": 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if document is None:
+            exists = await self.handling_units.find_one(
+                {"handlingUnitId": handling_unit_id}, {"_id": 1}
+            )
+            if exists is None:
+                raise KeyError(handling_unit_id)
+            raise ConcurrencyConflictError(handling_unit_id)
+        return cast(dict[str, Any], document)
+
+    async def upsert_branch_staging_record(
+        self,
+        *,
+        session_id: str,
+        handling_unit_id: str,
+        branch_id: str,
+        staging_location: str,
+        return_number_tag_applied: bool,
+        manufacturer_box_directly_marked: bool,
+        inventory_added_to_branch: bool,
+        actor_id: str,
+    ) -> dict[str, Any]:
+        now = utc_now()
+        staging_record_id = f"{session_id}:{handling_unit_id}:STAGING"
+        document = await self.branch_staging_records.find_one_and_update(
+            {"sessionId": session_id, "handlingUnitId": handling_unit_id},
+            {
+                "$setOnInsert": {
+                    "_id": str(uuid.uuid4()),
+                    "stagingRecordId": staging_record_id,
+                    "sessionId": session_id,
+                    "handlingUnitId": handling_unit_id,
+                    "createdAt": now,
+                    "version": 0,
+                },
+                "$set": {
+                    "branchId": branch_id,
+                    "stagingLocation": staging_location,
+                    "returnNumberTagApplied": return_number_tag_applied,
+                    "manufacturerBoxDirectlyMarked": manufacturer_box_directly_marked,
+                    "inventoryAddedToBranch": inventory_added_to_branch,
+                    "confirmedBy": actor_id,
+                    "confirmedAt": now,
+                    "updatedAt": now,
+                },
+                "$inc": {"version": 1},
+            },
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        assert document is not None
+        return cast(dict[str, Any], document)
+
+    async def list_branch_staging_records(self, session_id: str) -> list[dict[str, Any]]:
+        cursor = self.branch_staging_records.find({"sessionId": session_id}).sort(
+            "confirmedAt", ASCENDING
+        )
+        return [cast(dict[str, Any], document) async for document in cursor]
+
+    async def get_pickup_request(self, session_id: str) -> dict[str, Any] | None:
+        document = await self.pickup_requests.find_one({"sessionId": session_id})
+        return None if document is None else cast(dict[str, Any], document)
+
+    async def update_pickup_request(
+        self,
+        session_id: str,
+        updates: dict[str, Any],
+        *,
+        expected_version: int,
+    ) -> dict[str, Any]:
+        document = await self.pickup_requests.find_one_and_update(
+            {"sessionId": session_id, "version": expected_version},
+            {"$set": {**updates, "updatedAt": utc_now()}, "$inc": {"version": 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if document is None:
+            exists = await self.pickup_requests.find_one({"sessionId": session_id}, {"_id": 1})
+            if exists is None:
+                raise KeyError(session_id)
+            raise ConcurrencyConflictError(session_id)
+        return cast(dict[str, Any], document)
+
+    async def register_document_artifact(
+        self,
+        *,
+        session_id: str,
+        artifact_id: str,
+        artifact_type: str,
+        storage_provider: str,
+        storage_key: str,
+        content_type: str,
+        size_bytes: int,
+        sha256: str,
+        classification: str,
+        actor_id: str,
+    ) -> dict[str, Any]:
+        now = utc_now()
+        document = {
+            "_id": artifact_id,
+            "artifactId": artifact_id,
+            "sessionId": session_id,
+            "artifactType": artifact_type,
+            "storageProvider": storage_provider,
+            "storageKey": storage_key,
+            "contentType": content_type,
+            "sizeBytes": size_bytes,
+            "sha256": sha256,
+            "classification": classification,
+            "processingStatus": "REGISTERED",
+            "createdBy": actor_id,
+            "createdAt": now,
+        }
+        try:
+            await self.document_artifacts.insert_one(document)
+        except DuplicateKeyError:
+            existing = await self.document_artifacts.find_one({"artifactId": artifact_id})
+            if existing is None:
+                raise
+            return cast(dict[str, Any], existing)
+        return document
+
+    async def list_document_artifacts(self, session_id: str) -> list[dict[str, Any]]:
+        cursor = self.document_artifacts.find({"sessionId": session_id}).sort(
+            "createdAt", ASCENDING
+        )
+        return [cast(dict[str, Any], document) async for document in cursor]
+
+    async def record_shipping_instruction(
+        self,
+        *,
+        session_id: str,
+        instruction_id: str,
+        instruction_type: str,
+        source_system: str,
+        issued_by: str,
+        handling_unit_ids: list[str] | None = None,
+        carrier: str | None = None,
+        tracking_numbers: list[str] | None = None,
+        bol_reference: str | None = None,
+        evidence_reference: str | None = None,
+    ) -> dict[str, Any]:
+        now = utc_now()
+        document = {
+            "_id": instruction_id,
+            "shippingInstructionId": instruction_id,
+            "sessionId": session_id,
+            "handlingUnitIds": handling_unit_ids or [],
+            "instructionType": instruction_type,
+            "carrier": carrier,
+            "trackingNumbers": tracking_numbers or [],
+            "bolReference": bol_reference,
+            "evidenceReference": evidence_reference,
+            "sourceSystem": source_system,
+            "authoritativeReadbackStatus": "CONFIRMED",
+            "issuedBy": issued_by,
+            "issuedAt": now,
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        await self.shipping_instructions.update_one(
+            {"shippingInstructionId": instruction_id},
+            {"$setOnInsert": document},
+            upsert=True,
+        )
+        stored = await self.shipping_instructions.find_one(
+            {"shippingInstructionId": instruction_id}
+        )
+        assert stored is not None
+        return cast(dict[str, Any], stored)
+
+    async def list_shipping_instructions(self, session_id: str) -> list[dict[str, Any]]:
+        cursor = self.shipping_instructions.find({"sessionId": session_id}).sort(
+            "issuedAt", ASCENDING
+        )
+        return [cast(dict[str, Any], document) async for document in cursor]
+
+    async def record_shipment_event(
+        self,
+        *,
+        session_id: str,
+        source_system: str,
+        source_event_id: str,
+        event_code: str,
+        event_time: datetime,
+        handling_unit_id: str | None = None,
+        tracking_number: str | None = None,
+        bol_reference: str | None = None,
+        carrier: str | None = None,
+        location: str | None = None,
+        payload_digest: str | None = None,
+    ) -> dict[str, Any]:
+        shipment_event_id = str(
+            uuid.uuid5(uuid.NAMESPACE_URL, f"{source_system}:{source_event_id}")
+        )
+        now = utc_now()
+        document = {
+            "_id": shipment_event_id,
+            "shipmentEventId": shipment_event_id,
+            "sessionId": session_id,
+            "handlingUnitId": handling_unit_id,
+            "trackingNumber": tracking_number,
+            "bolReference": bol_reference,
+            "carrier": carrier,
+            "eventCode": event_code,
+            "eventTime": event_time,
+            "receivedAt": now,
+            "location": location,
+            "sourceSystem": source_system,
+            "sourceEventId": source_event_id,
+            "payloadDigest": payload_digest,
+        }
+        await self.shipment_events.update_one(
+            {"sourceSystem": source_system, "sourceEventId": source_event_id},
+            {"$setOnInsert": document},
+            upsert=True,
+        )
+        stored = await self.shipment_events.find_one(
+            {"sourceSystem": source_system, "sourceEventId": source_event_id}
+        )
+        assert stored is not None
+        return cast(dict[str, Any], stored)
+
+    async def list_shipment_events(self, session_id: str) -> list[dict[str, Any]]:
+        cursor = self.shipment_events.find({"sessionId": session_id}).sort(
+            "eventTime", ASCENDING
+        )
+        return [cast(dict[str, Any], document) async for document in cursor]
+
+    async def record_omc_command(
+        self,
+        *,
+        command_id: str,
+        idempotency_key: str,
+        session_id: str,
+        support_work_item_id: str,
+        operation: str,
+        request_digest: str,
+        request_payload: dict[str, Any],
+        actor_id: str,
+    ) -> dict[str, Any]:
+        now = utc_now()
+        document = {
+            "_id": command_id,
+            "commandId": command_id,
+            "idempotencyKey": idempotency_key,
+            "sessionId": session_id,
+            "supportWorkItemId": support_work_item_id,
+            "operation": operation,
+            "requestDigest": request_digest,
+            "requestPayload": request_payload,
+            "status": "PENDING",
+            "attemptCount": 0,
+            "authoritativeReturnReference": None,
+            "authoritativeVersion": None,
+            "responsePayload": None,
+            "readbackDigest": None,
+            "errorCode": None,
+            "errorMessage": None,
+            "createdBy": actor_id,
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        try:
+            await self.omc_command_records.insert_one(document)
+        except DuplicateKeyError:
+            existing = await self.omc_command_records.find_one(
+                {"idempotencyKey": idempotency_key}
+            )
+            if existing is None:
+                raise
+            if existing.get("requestDigest") != request_digest:
+                raise ConcurrencyConflictError("OMC command idempotency conflict")
+            return cast(dict[str, Any], existing)
+        return document
+
+    async def confirm_omc_command(
+        self,
+        *,
+        session_id: str,
+        operation: str,
+        authoritative_return_reference: str,
+        authoritative_version: str,
+        readback_digest: str,
+        response_payload: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        now = utc_now()
+        document = await self.omc_command_records.find_one_and_update(
+            {"sessionId": session_id, "operation": operation},
+            {
+                "$set": {
+                    "status": "CONFIRMED",
+                    "authoritativeReturnReference": authoritative_return_reference,
+                    "authoritativeVersion": authoritative_version,
+                    "readbackDigest": readback_digest,
+                    "responsePayload": response_payload,
+                    "confirmedAt": now,
+                    "updatedAt": now,
+                }
+            },
+            sort=[("createdAt", DESCENDING)],
+            return_document=ReturnDocument.AFTER,
+        )
+        return None if document is None else cast(dict[str, Any], document)
+
+    async def list_omc_commands(self, session_id: str) -> list[dict[str, Any]]:
+        cursor = self.omc_command_records.find({"sessionId": session_id}).sort(
+            "createdAt", ASCENDING
+        )
+        return [cast(dict[str, Any], document) async for document in cursor]
+
+    async def enqueue_integration_command(
+        self,
+        *,
+        topic: str,
+        aggregate_type: str,
+        aggregate_id: str,
+        idempotency_key: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        now = utc_now()
+        command_id = str(uuid.uuid5(uuid.NAMESPACE_URL, idempotency_key))
+        document = {
+            "_id": command_id,
+            "topic": topic,
+            "aggregateType": aggregate_type,
+            "aggregateId": aggregate_id,
+            "idempotencyKey": idempotency_key,
+            "payload": payload,
+            "status": "PENDING",
+            "attemptCount": 0,
+            "nextAttemptAt": now,
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        await self.integration_outbox.update_one(
+            {"idempotencyKey": idempotency_key},
+            {"$setOnInsert": document},
+            upsert=True,
+        )
+        stored = await self.integration_outbox.find_one(
+            {"idempotencyKey": idempotency_key}
+        )
+        assert stored is not None
+        return cast(dict[str, Any], stored)
+
+    async def list_integration_commands(self, aggregate_id: str) -> list[dict[str, Any]]:
+        cursor = self.integration_outbox.find({"aggregateId": aggregate_id}).sort(
+            "createdAt", ASCENDING
+        )
+        return [cast(dict[str, Any], document) async for document in cursor]
+
+    async def upsert_vendor_return_link(
+        self,
+        *,
+        session_id: str,
+        omc_rga_id: str,
+        omc_rga_number: str | None,
+        omc_cart_item_ids: list[str],
+        po_numbers: list[str],
+        vendor_id: str | None,
+        status: str,
+        credit_memo_ids: list[str] | None,
+        actor_id: str,
+    ) -> dict[str, Any]:
+        now = utc_now()
+        link_id = str(
+            uuid.uuid5(uuid.NAMESPACE_URL, f"{session_id}:{omc_rga_id}")
+        )
+        document = await self.vendor_return_links.find_one_and_update(
+            {"sessionId": session_id, "omcRgaId": omc_rga_id},
+            {
+                "$setOnInsert": {
+                    "_id": link_id,
+                    "vendorReturnLinkId": link_id,
+                    "sessionId": session_id,
+                    "omcRgaId": omc_rga_id,
+                    "createdBy": actor_id,
+                    "createdAt": now,
+                },
+                "$set": {
+                    "omcRgaNumber": omc_rga_number,
+                    "omcCartItemIds": omc_cart_item_ids,
+                    "poNumbers": po_numbers,
+                    "vendorId": vendor_id,
+                    "status": status,
+                    "creditMemoIds": credit_memo_ids or [],
+                    "updatedAt": now,
+                },
+            },
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        assert document is not None
+        return cast(dict[str, Any], document)
+
+    async def list_vendor_return_links(self, session_id: str) -> list[dict[str, Any]]:
+        cursor = self.vendor_return_links.find({"sessionId": session_id}).sort(
+            "createdAt", ASCENDING
+        )
+        return [cast(dict[str, Any], document) async for document in cursor]
 
     async def get_return(self, session_id: str) -> ReturnSessionView | None:
         document = await self.returns.find_one({"_id": session_id})
@@ -275,6 +1055,7 @@ class OperationalRepository:
         updates: dict[str, Any],
         *,
         expected_version: int | None = None,
+        session: Any = None,
     ) -> ReturnSessionView:
         query: dict[str, Any] = {"_id": session_id}
         if expected_version is not None:
@@ -284,9 +1065,10 @@ class OperationalRepository:
             query,
             update,
             return_document=ReturnDocument.AFTER,
+            session=session,
         )
         if document is None:
-            exists = await self.returns.find_one({"_id": session_id}, {"_id": 1})
+            exists = await self.returns.find_one({"_id": session_id}, {"_id": 1}, session=session)
             if exists is None:
                 raise KeyError(session_id)
             raise ConcurrencyConflictError(session_id)
@@ -307,10 +1089,20 @@ class OperationalRepository:
                     ]
                 },
                 "orchestrationState": {"$in": ["QUEUED", "RUNNING"]},
-                "$or": [
-                    {"orchestrationLeaseUntil": None},
-                    {"orchestrationLeaseUntil": {"$lt": now}},
-                    {"orchestrationOwner": worker_id},
+                "$and": [
+                    {
+                        "$or": [
+                            {"workflowMode": "LEGACY_V1"},
+                            {"workflowMode": {"$exists": False}},
+                        ]
+                    },
+                    {
+                        "$or": [
+                            {"orchestrationLeaseUntil": None},
+                            {"orchestrationLeaseUntil": {"$lt": now}},
+                            {"orchestrationOwner": worker_id},
+                        ]
+                    },
                 ],
             },
             {
@@ -364,10 +1156,12 @@ class OperationalRepository:
         actor_id: str,
         payload: dict[str, Any],
         deduplication_key: str | None = None,
+        session: Any = None,
     ) -> TimelineEvent:
         if deduplication_key is not None:
             existing = await self.events.find_one(
-                {"streamId": stream_id, "deduplicationKey": deduplication_key}
+                {"streamId": stream_id, "deduplicationKey": deduplication_key},
+                session=session,
             )
             if existing is not None:
                 return self._event_view(cast(dict[str, Any], existing))
@@ -377,6 +1171,7 @@ class OperationalRepository:
             {"$inc": {"lastEventSequence": 1}},
             projection={"lastEventSequence": 1},
             return_document=ReturnDocument.AFTER,
+            session=session,
         )
         if owner is None:
             raise KeyError(stream_id)
@@ -396,12 +1191,13 @@ class OperationalRepository:
         if deduplication_key is not None:
             document["deduplicationKey"] = deduplication_key
         try:
-            await self.events.insert_one(document)
+            await self.events.insert_one(document, session=session)
         except DuplicateKeyError:
             if deduplication_key is None:
                 raise
             existing = await self.events.find_one(
-                {"streamId": stream_id, "deduplicationKey": deduplication_key}
+                {"streamId": stream_id, "deduplicationKey": deduplication_key},
+                session=session,
             )
             if existing is None:
                 raise
@@ -463,6 +1259,10 @@ class OperationalRepository:
         system_prompt: str,
         request_digest: str,
         original_request_digest: str | None = None,
+        task_id: str = "RETURN_ELIGIBILITY_V1",
+        configured_tier: str = "LIGHTWEIGHT",
+        safety_status: str = "SAFE",
+        safety_signals: list[str] | None = None,
     ) -> AITraceView:
         now = utc_now()
         trace_id = str(uuid.uuid4())
@@ -470,8 +1270,13 @@ class OperationalRepository:
             "_id": trace_id,
             "sessionId": session_id,
             "status": status.value,
+            "taskId": task_id,
+            "configuredTier": configured_tier,
+            "selectedTier": None,
             "provider": None,
             "model": None,
+            "credentialId": None,
+            "routeId": None,
             "promptVersion": prompt_version,
             "redactedInput": redacted_input,
             "systemPrompt": system_prompt,
@@ -481,11 +1286,17 @@ class OperationalRepository:
             "explanation": None,
             "confidenceMillionths": None,
             "latencyMs": None,
+            "rateLimitWaitMs": 0,
             "inputTokens": None,
             "outputTokens": None,
             "totalTokens": None,
+            "estimatedCostMicrousd": 0,
             "responseDigest": None,
             "attempts": 0,
+            "fallbackUsed": False,
+            "safetyStatus": safety_status,
+            "safetySignals": list(safety_signals or []),
+            "selectionReason": None,
             "errorCode": None,
             "interceptedBy": None,
             "interceptionReason": None,
@@ -529,6 +1340,62 @@ class OperationalRepository:
                 raise KeyError(trace_id)
             raise ConcurrencyConflictError(trace_id)
         return self._trace_view(cast(dict[str, Any], document))
+
+    async def insert_ai_attempt_metric(self, document: dict[str, Any]) -> AIUsageAttemptView:
+        payload = dict(document)
+        payload.setdefault("_id", payload.get("id") or str(uuid.uuid4()))
+        payload.setdefault("id", str(payload["_id"]))
+        payload.setdefault("createdAt", utc_now())
+        await self.ai_attempts.insert_one(payload)
+        return AIUsageAttemptView.model_validate({**payload, "id": str(payload["_id"])})
+
+    async def list_ai_attempt_metrics(
+        self,
+        *,
+        trace_id: str | None = None,
+        task_id: str | None = None,
+        limit: int = 500,
+    ) -> list[AIUsageAttemptView]:
+        query: dict[str, Any] = {}
+        if trace_id is not None:
+            query["traceId"] = trace_id
+        if task_id is not None:
+            query["taskId"] = task_id
+        cursor = self.ai_attempts.find(query).sort("createdAt", DESCENDING).limit(limit)
+        return [
+            AIUsageAttemptView.model_validate({**cast(dict[str, Any], item), "id": str(item["_id"])})
+            async for item in cursor
+        ]
+
+    async def summarize_ai_attempt_metrics(self) -> AIUsageSummaryView:
+        attempts = await self.list_ai_attempt_metrics(limit=10_000)
+        by_provider: dict[str, int] = {}
+        by_model: dict[str, int] = {}
+        by_task: dict[str, int] = {}
+        by_tier: dict[str, int] = {}
+        for item in attempts:
+            provider = item.provider or "NONE"
+            model = item.model or "NONE"
+            by_provider[provider] = by_provider.get(provider, 0) + 1
+            by_model[model] = by_model.get(model, 0) + 1
+            by_task[item.taskId] = by_task.get(item.taskId, 0) + 1
+            tier = item.selectedTier.value if item.selectedTier is not None else item.configuredTier.value
+            by_tier[tier] = by_tier.get(tier, 0) + 1
+        return AIUsageSummaryView(
+            attempts=len(attempts),
+            successes=sum(item.status == "SUCCESS" for item in attempts),
+            failures=sum(item.status == "FAILED" for item in attempts),
+            fallbacks=sum(item.fallbackUsed for item in attempts),
+            blockedBySafety=sum(item.status == "SAFETY_BLOCKED" for item in attempts),
+            inputTokens=sum(item.inputTokens for item in attempts),
+            outputTokens=sum(item.outputTokens for item in attempts),
+            totalTokens=sum(item.totalTokens for item in attempts),
+            estimatedCostMicrousd=sum(item.estimatedCostMicrousd for item in attempts),
+            byProvider=by_provider,
+            byModel=by_model,
+            byTask=by_task,
+            byTier=by_tier,
+        )
 
     async def create_support_case(
         self,

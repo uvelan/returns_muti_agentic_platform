@@ -2,14 +2,17 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+RUN_GATE_SCRIPT = str(PROJECT_ROOT / "scripts" / "run_gate.py")
 
 def test_run_gate_success(tmp_path):
     log_file = tmp_path / "test.log"
     receipt_file = tmp_path / "receipt.json"
     cmd = [
         sys.executable,
-        "scripts/run_gate.py",
+        RUN_GATE_SCRIPT,
         "--stage",
         "test",
         "--gate",
@@ -35,7 +38,7 @@ def test_run_gate_nonzero(tmp_path):
     receipt_file = tmp_path / "receipt.json"
     cmd = [
         sys.executable,
-        "scripts/run_gate.py",
+        RUN_GATE_SCRIPT,
         "--stage",
         "test",
         "--gate",
@@ -60,7 +63,7 @@ def test_run_gate_missing_executable(tmp_path):
     receipt_file = tmp_path / "receipt.json"
     cmd = [
         sys.executable,
-        "scripts/run_gate.py",
+        RUN_GATE_SCRIPT,
         "--stage",
         "test",
         "--gate",
@@ -83,7 +86,7 @@ def test_run_gate_timeout(tmp_path):
     receipt_file = tmp_path / "receipt.json"
     cmd = [
         sys.executable,
-        "scripts/run_gate.py",
+        RUN_GATE_SCRIPT,
         "--stage",
         "test",
         "--gate",
@@ -115,7 +118,7 @@ def test_run_gate_redaction(tmp_path):
 
     cmd = [
         sys.executable,
-        "scripts/run_gate.py",
+        RUN_GATE_SCRIPT,
         "--stage",
         "test",
         "--gate",
@@ -142,7 +145,7 @@ def test_run_gate_empty_command(tmp_path):
     receipt_file = tmp_path / "receipt.json"
     cmd = [
         sys.executable,
-        "scripts/run_gate.py",
+        RUN_GATE_SCRIPT,
         "--stage",
         "test",
         "--gate",

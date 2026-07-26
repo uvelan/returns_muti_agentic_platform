@@ -8,6 +8,7 @@ from temporalio.worker import Worker
 
 from return_platform.workflows.activities import ReturnSessionActivities
 from return_platform.workflows.persistence import ReturnSessionRepositoryPort
+from return_platform.workflows.production_return_workflow import ProductionReturnWorkflow
 from return_platform.workflows.return_workflow import ReturnWorkflow
 
 __all__ = ["RETURN_WORKFLOW_TASK_QUEUE", "create_return_workflow_worker"]
@@ -29,7 +30,7 @@ def create_return_workflow_worker(
     return Worker(
         client,
         task_queue=task_queue,
-        workflows=(ReturnWorkflow,),
+        workflows=(ReturnWorkflow, ProductionReturnWorkflow),
         activities=(
             activities.initialize_return_session,
             activities.transition_return_session,

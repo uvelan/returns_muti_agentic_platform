@@ -19,5 +19,6 @@ start "$ROOT/scripts/run_worker_host.sh" temporal
 start "$ROOT/scripts/run_worker_host.sh" orchestrator
 start "$ROOT/scripts/run_worker_host.sh" outbox
 start "$ROOT/scripts/run_worker_host.sh" jobs
+start "$ROOT/scripts/run_worker_host.sh" integration-outbox
 start "$ROOT/scripts/run_frontend_host.sh"
 wait -n "${PIDS[@]}"

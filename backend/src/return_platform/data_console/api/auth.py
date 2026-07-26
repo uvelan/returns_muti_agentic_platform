@@ -3,12 +3,48 @@ from typing import Final
 
 from fastapi import HTTPException, Request
 
-# Standard Data Console Roles
-READ_ROLES: Final = frozenset(
+CONSOLE_READ_ROLES: Final = frozenset(
     {"console_admin", "console_viewer", "workspace_editor", "workspace_viewer"}
 )
-WRITE_ROLES: Final = frozenset({"console_admin", "workspace_editor"})
+BUSINESS_READ_ROLES: Final = frozenset(
+    {
+        "return_associate",
+        "return_support",
+        "logistics_coordinator",
+        "warehouse_associate",
+        "return_auditor",
+        "return_platform_service",
+    }
+)
+READ_ROLES: Final = CONSOLE_READ_ROLES | BUSINESS_READ_ROLES
+WRITE_ROLES: Final = frozenset(
+    {
+        "console_admin",
+        "workspace_editor",
+        "return_associate",
+        "return_support",
+        "logistics_coordinator",
+        "warehouse_associate",
+        "return_platform_service",
+    }
+)
 ADMIN_ROLES: Final = frozenset({"console_admin"})
+ASSOCIATE_ROLES: Final = frozenset(
+    {"console_admin", "return_associate", "return_platform_service"}
+)
+SUPPORT_ROLES: Final = frozenset(
+    {"console_admin", "return_support", "return_platform_service"}
+)
+LOGISTICS_ROLES: Final = frozenset(
+    {"console_admin", "logistics_coordinator", "return_platform_service"}
+)
+WAREHOUSE_ROLES: Final = frozenset(
+    {"console_admin", "warehouse_associate", "return_platform_service"}
+)
+AUDIT_ROLES: Final = frozenset(
+    {"console_admin", "return_auditor", "return_platform_service"}
+)
+RETURN_COLLABORATION_ROLES: Final = ASSOCIATE_ROLES | SUPPORT_ROLES
 
 
 def require_roles(allowed_roles: Collection[str]) -> Callable[[Request], str]:
@@ -29,3 +65,27 @@ def require_read_roles(request: Request) -> str:
 
 def require_write_roles(request: Request) -> str:
     return str(require_roles(WRITE_ROLES)(request))
+
+
+def require_associate_roles(request: Request) -> str:
+    return str(require_roles(ASSOCIATE_ROLES)(request))
+
+
+def require_support_roles(request: Request) -> str:
+    return str(require_roles(SUPPORT_ROLES)(request))
+
+
+def require_return_collaboration_roles(request: Request) -> str:
+    return str(require_roles(RETURN_COLLABORATION_ROLES)(request))
+
+
+def require_logistics_roles(request: Request) -> str:
+    return str(require_roles(LOGISTICS_ROLES)(request))
+
+
+def require_warehouse_roles(request: Request) -> str:
+    return str(require_roles(WAREHOUSE_ROLES)(request))
+
+
+def require_audit_roles(request: Request) -> str:
+    return str(require_roles(AUDIT_ROLES)(request))

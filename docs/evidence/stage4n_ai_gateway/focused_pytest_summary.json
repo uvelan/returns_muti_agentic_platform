@@ -1,0 +1,19 @@
+{
+  "stage": "STAGE_4N_AI_GATEWAY_HARDENING",
+  "command": "PYTHONPATH=backend/src pytest --noconftest -q backend/tests/test_ai_gateway_policy.py backend/tests/test_ai_gateway_routing.py backend/tests/test_dependency_simulation.py",
+  "status": "PASSED",
+  "testsPassed": 21,
+  "testsFailed": 0,
+  "validationLevel": "SOURCE_VALIDATED",
+  "scope": [
+    "AI input policy",
+    "credential and model route expansion",
+    "lightweight and standard task routing",
+    "key and model failover",
+    "prompt injection and domain safety",
+    "dependency simulator AI success",
+    "dependency simulator deterministic fallback",
+    "AI usage metrics",
+    "deterministic dependency state machines"
+  ]
+}

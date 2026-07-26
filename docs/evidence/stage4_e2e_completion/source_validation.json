@@ -7,7 +7,7 @@
     "dockerAvailable": false
   },
   "command": "python3.13 scripts/validate_stage4_source.py",
-  "generatedAt": "2026-07-24T14:05:58.485598+00:00",
+  "generatedAt": "2026-07-25T23:53:33.089665+00:00",
   "exitCode": 0,
   "status": "PASSED",
   "checks": [
@@ -21,14 +21,14 @@
       "status": "PASS",
       "evidence": {
         "missing": [],
-        "routeCount": 53
+        "routeCount": 71
       }
     },
     {
       "name": "frontend_routes_live_only",
       "status": "PASS",
       "evidence": {
-        "liveCount": 53
+        "liveCount": 71
       }
     },
     {
@@ -82,9 +82,9 @@
       "name": "physical_schema_registry",
       "status": "PASS",
       "evidence": {
-        "mongoAssets": 33,
-        "sqlAssets": 8,
-        "totalAssets": 41,
+        "mongoAssets": 52,
+        "sqlAssets": 10,
+        "totalAssets": 62,
         "missingMongoCollections": []
       }
     },
@@ -100,8 +100,8 @@
       "name": "ai_studio_generator_coverage",
       "status": "PASS",
       "evidence": {
-        "declared": 90,
-        "supported": 90,
+        "declared": 91,
+        "supported": 91,
         "missingImplementations": [],
         "unusedImplementations": []
       }

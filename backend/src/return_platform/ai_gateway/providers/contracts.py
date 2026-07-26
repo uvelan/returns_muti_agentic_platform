@@ -18,6 +18,8 @@ class ProviderError(RuntimeError):
 class ProviderRequest:
     system_prompt: str
     user_payload: dict[str, Any]
+    max_output_tokens: int | None = None
+    temperature: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)

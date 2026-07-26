@@ -1,0 +1,28 @@
+{
+  "agents": [
+    "bay_assignment",
+    "feedback_learning",
+    "order_discovery",
+    "return_fulfillment",
+    "return_workflow"
+  ],
+  "assumptionSetVersion": "FERGUSON-RETURN-ASSUMPTIONS-1.0",
+  "checkCount": 12,
+  "checks": [
+    "CONFIGURATION_AND_FIVE_AGENTS",
+    "BRANCH_PARCEL_LIFECYCLE",
+    "BOL_TENDER_BOOKING_PICKUP_SEPARATION",
+    "NO_PHYSICAL_RETURN_LIFECYCLE",
+    "DIRECT_VENDOR_WITHOUT_LSI_LICENSE_PLATE",
+    "SCHEMA_REGISTRY_COVERAGE",
+    "BACKEND_ROUTE_REGISTRATION",
+    "LEGACY_ORCHESTRATOR_ISOLATION",
+    "PRODUCTION_SCREEN_REGISTRATION",
+    "ROLE_SEPARATION",
+    "EXTERNAL_INTEGRATION_BOUNDARIES",
+    "FORWARD_ONLY_PLATFORM_SQL_MIGRATIONS"
+  ],
+  "configurationSha256": "bfd3a5b10f3b43b1724bd9433185141ad58b8c0371901b3a5e82e2bded5a6265",
+  "stage": "4L",
+  "status": "SOURCE_VALIDATED"
+}

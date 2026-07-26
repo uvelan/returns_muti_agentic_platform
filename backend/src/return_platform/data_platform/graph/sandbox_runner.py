@@ -208,7 +208,7 @@ def load_customer_graph_sandbox_settings(
 ) -> CustomerGraphSandboxSettings:
     """Load strict runner settings from the repository-root dotenv file."""
     selected_dotenv = repository_dotenv_file() if dotenv_file is None else dotenv_file
-    return CustomerGraphSandboxSettings(_env_file=selected_dotenv)  # type: ignore[call-arg]
+    return CustomerGraphSandboxSettings(_env_file=selected_dotenv)
 
 
 class LoadedCustomerGraphSourceDocument:

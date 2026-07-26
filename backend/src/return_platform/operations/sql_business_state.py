@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import uuid
 from collections.abc import Callable, Sequence
 from datetime import datetime
 from typing import Any, TypeVar
@@ -511,6 +513,210 @@ class SQLBusinessStateRepository:
                     )
                 connection.commit()
                 return warehouse_id, bay_id
+
+        return await self._run(operation)
+
+
+
+    async def list_bay_candidates(
+        self,
+        *,
+        warehouse_id: str | None,
+        return_method: str,
+        product_type: str,
+    ) -> list[dict[str, Any]]:
+        """Return platform-owned bay capacity candidates for agent ranking."""
+
+        def operation() -> list[dict[str, Any]]:
+            with self._connect() as connection:
+                with connection.cursor(as_dict=True) as cursor:
+                    cursor.execute(
+                        """
+                        SELECT configuration.bay_id, configuration.bay_type,
+                               configuration.active, configuration.priority,
+                               configuration.warehouse_id,
+                               configuration.supported_shipping_paths,
+                               configuration.supported_product_types,
+                               configuration.hazardous_allowed,
+                               configuration.oversized_allowed,
+                               COALESCE(configuration.max_handling_unit_count,
+                                        configuration.max_package_count) AS max_capacity,
+                               COALESCE(reserved.reserved_capacity, 0) AS reserved_capacity
+                        FROM platform.bay_configuration AS configuration
+                        OUTER APPLY (
+                            SELECT SUM(reservation.reserved_capacity) AS reserved_capacity
+                            FROM platform.bay_reservation AS reservation
+                            WHERE reservation.bay_id = configuration.bay_id
+                              AND reservation.status IN ('RESERVED','ASSIGNED')
+                              AND reservation.expires_at > SYSUTCDATETIME()
+                        ) AS reserved
+                        WHERE (%s IS NULL OR configuration.warehouse_id = %s)
+                        ORDER BY configuration.priority ASC, configuration.bay_id ASC;
+                        """,
+                        (warehouse_id, warehouse_id),
+                    )
+                    rows = cursor.fetchall() or []
+            candidates: list[dict[str, Any]] = []
+            for row in rows:
+                paths_raw = row.get("supported_shipping_paths") or "[]"
+                product_types_raw = row.get("supported_product_types") or "[]"
+                try:
+                    paths = tuple(str(item) for item in json.loads(str(paths_raw)))
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    paths = ()
+                try:
+                    product_types = tuple(
+                        str(item) for item in json.loads(str(product_types_raw))
+                    )
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    product_types = ()
+                if paths and return_method not in paths and not (
+                    return_method == "BRANCH_UPS" and "PPL" in paths
+                ) and not (
+                    return_method in {"BRANCH_LTL", "OFFSITE_LTL"} and "BOL" in paths
+                ):
+                    continue
+                if product_types and product_type not in product_types:
+                    continue
+                max_capacity = int(row.get("max_capacity") or 0)
+                reserved_capacity = int(row.get("reserved_capacity") or 0)
+                candidates.append(
+                    {
+                        "bayId": str(row["bay_id"]),
+                        "bayType": str(row["bay_type"]),
+                        "warehouseId": str(row["warehouse_id"]),
+                        "active": bool(row["active"]),
+                        "priority": int(row["priority"]),
+                        "capacityAvailable": max(0, max_capacity - reserved_capacity),
+                        "supportsHazardous": bool(row.get("hazardous_allowed", False)),
+                        "supportsOversized": bool(row.get("oversized_allowed", False)),
+                        "supportedReturnMethods": [return_method],
+                    }
+                )
+            return candidates
+
+        return await self._run(operation)
+
+    async def reserve_and_assign_handling_unit(
+        self,
+        session: ReturnSessionView,
+        *,
+        handling_unit_id: str,
+        return_reference: str,
+        bay_id: str,
+        warehouse_id: str,
+        required_capacity: int,
+        actor_id: str,
+        reservation_minutes: int = 60,
+    ) -> tuple[str, str]:
+        """Atomically reserve platform bay capacity and create one assignment."""
+        if required_capacity < 1:
+            raise ValueError("required_capacity must be at least one")
+        reservation_id = str(
+            uuid.uuid5(uuid.NAMESPACE_URL, f"bay-reservation:{return_reference}:{handling_unit_id}")
+        )
+        assignment_id = str(
+            uuid.uuid5(uuid.NAMESPACE_URL, f"bay-assignment:{return_reference}:{handling_unit_id}")
+        )
+
+        def operation() -> tuple[str, str]:
+            with self._connect() as connection:
+                with connection.cursor(as_dict=True) as cursor:
+                    cursor.execute(
+                        """
+                        SELECT configuration.bay_id, configuration.warehouse_id,
+                               configuration.active,
+                               COALESCE(configuration.max_handling_unit_count,
+                                        configuration.max_package_count) AS max_capacity,
+                               COALESCE(reserved.reserved_capacity, 0) AS reserved_capacity
+                        FROM platform.bay_configuration AS configuration WITH (UPDLOCK, HOLDLOCK)
+                        OUTER APPLY (
+                            SELECT SUM(reservation.reserved_capacity) AS reserved_capacity
+                            FROM platform.bay_reservation AS reservation WITH (HOLDLOCK)
+                            WHERE reservation.bay_id = configuration.bay_id
+                              AND reservation.status IN ('RESERVED','ASSIGNED')
+                              AND reservation.expires_at > SYSUTCDATETIME()
+                              AND reservation.reservation_id <> %s
+                        ) AS reserved
+                        WHERE configuration.bay_id = %s
+                          AND configuration.warehouse_id = %s;
+                        """,
+                        (reservation_id, bay_id, warehouse_id),
+                    )
+                    row = cursor.fetchone()
+                    if row is None or not bool(row["active"]):
+                        raise RuntimeError("Selected bay is missing or inactive.")
+                    available = int(row["max_capacity"] or 0) - int(
+                        row["reserved_capacity"] or 0
+                    )
+                    if available < required_capacity:
+                        raise RuntimeError("Selected bay has insufficient available capacity.")
+                    cursor.execute(
+                        """
+                        IF NOT EXISTS (
+                            SELECT 1 FROM platform.bay_reservation
+                            WHERE reservation_id = %s
+                        )
+                        INSERT INTO platform.bay_reservation (
+                            reservation_id, return_reference, session_id,
+                            handling_unit_id, warehouse_id, bay_id,
+                            reserved_capacity, status, expires_at
+                        ) VALUES (
+                            %s,%s,%s,%s,%s,%s,%s,'ASSIGNED',
+                            DATEADD(MINUTE,%s,SYSUTCDATETIME())
+                        );
+                        """,
+                        (
+                            reservation_id,
+                            reservation_id,
+                            return_reference,
+                            session.id,
+                            handling_unit_id,
+                            warehouse_id,
+                            bay_id,
+                            required_capacity,
+                            reservation_minutes,
+                        ),
+                    )
+                    first_item = session.itemReferences[0]
+                    cursor.execute(
+                        """
+                        IF NOT EXISTS (
+                            SELECT 1 FROM platform.bay_assignment
+                            WHERE return_reference = %s AND handling_unit_id = %s
+                        )
+                        INSERT INTO platform.bay_assignment (
+                            assignment_id, return_reference, sales_order_number,
+                            order_line_id, item_number, package_count,
+                            warehouse_id, bay_id, status,
+                            confirmed_by_associate_id, confirmed_at,
+                            reservation_id, handling_unit_id,
+                            physical_receipt_confirmed, assignment_reason,
+                            staged_at
+                        ) VALUES (
+                            %s,%s,%s,%s,%s,%s,%s,%s,'STAGED',
+                            %s,SYSUTCDATETIME(),%s,%s,1,
+                            'AGENT_RECOMMENDED_AND_HUMAN_CONFIRMED',SYSUTCDATETIME()
+                        );
+                        """,
+                        (
+                            return_reference,
+                            handling_unit_id,
+                            assignment_id,
+                            return_reference,
+                            session.orderReference,
+                            first_item,
+                            first_item,
+                            required_capacity,
+                            warehouse_id,
+                            bay_id,
+                            actor_id,
+                            reservation_id,
+                            handling_unit_id,
+                        ),
+                    )
+                connection.commit()
+            return reservation_id, assignment_id
 
         return await self._run(operation)
 

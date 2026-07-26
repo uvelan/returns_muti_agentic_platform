@@ -6,7 +6,8 @@ from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from return_platform.data_console.api.auth import require_read_roles, require_write_roles
+from return_platform.configuration.return_configuration import LoadedReturnConfiguration
+from return_platform.data_console.api.auth import require_associate_roles, require_read_roles
 from return_platform.operations.associate_flow import (
     AssociateConversationService,
     AssociateConversationView,
@@ -14,6 +15,7 @@ from return_platform.operations.associate_flow import (
     ReturnDetailsRequest,
     StartAssociateConversationRequest,
 )
+from return_platform.operations.production_workflow import ProductionWorkflowCoordinator
 from return_platform.operations.repository import OperationalRepository
 from return_platform.resources import RuntimeResources
 from return_platform.shared.contracts import APIResponse, ResponseMeta
@@ -42,12 +44,16 @@ def _service(request: Request) -> AssociateConversationService:
         resources.settings,
         resources.source_mongo,
     )
+    loaded = getattr(request.app.state, "return_configuration", None)
     return AssociateConversationService(
         platform_client=resources.mongo,
         source_client=resources.source_mongo,
         graph=resources.neo4j,
         settings=resources.settings,
         repository=repository,
+        return_configuration=(
+            loaded.configuration if isinstance(loaded, LoadedReturnConfiguration) else None
+        ),
     )
 
 
@@ -70,7 +76,7 @@ async def list_conversations(
 async def start_conversation(
     payload: StartAssociateConversationRequest,
     request: Request,
-    actor: str = Depends(require_write_roles),
+    actor: str = Depends(require_associate_roles),
 ) -> APIResponse[AssociateConversationView]:
     try:
         data = await _service(request).start(payload, actor_id=actor)
@@ -107,7 +113,7 @@ async def confirm_discovery(
     conversation_id: str,
     payload: ConfirmDiscoveryRequest,
     request: Request,
-    actor: str = Depends(require_write_roles),
+    actor: str = Depends(require_associate_roles),
 ) -> APIResponse[AssociateConversationView]:
     try:
         data = await _service(request).confirm(conversation_id, payload, actor_id=actor)
@@ -129,7 +135,7 @@ async def submit_return_details(
     conversation_id: str,
     payload: ReturnDetailsRequest,
     request: Request,
-    actor: str = Depends(require_write_roles),
+    actor: str = Depends(require_associate_roles),
 ) -> APIResponse[dict[str, Any]]:
     try:
         conversation, session = await _service(request).submit_details(
@@ -144,6 +150,45 @@ async def submit_return_details(
         raise HTTPException(status_code=409, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    resources = getattr(request.app.state, "resources", None)
+    loaded = getattr(request.app.state, "return_configuration", None)
+    if (
+        isinstance(resources, RuntimeResources)
+        and resources.temporal is not None
+        and isinstance(loaded, LoadedReturnConfiguration)
+        and conversation.discoveryLock is not None
+        and session.supportWorkItemId is not None
+        and resources.mongo is not None
+    ):
+        repository = OperationalRepository(
+            resources.mongo, resources.settings, resources.source_mongo
+        )
+        coordinator = ProductionWorkflowCoordinator(
+            temporal=resources.temporal,
+            repository=repository,
+            configuration=loaded.configuration,
+            task_queue=resources.settings.return_workflow_task_queue,
+        )
+        try:
+            await coordinator.seed_confirmed_intake(
+                session,
+                discovery_evidence=f"DISCOVERY_LOCK:{conversation.discoveryLock.lockDigest}",
+                details_evidence=(
+                    f"RETURN_REQUEST_SNAPSHOT:{conversation.id}:v{conversation.version}"
+                ),
+                support_evidence=f"SUPPORT_WORK_ITEM:{session.supportWorkItemId}",
+                actor_id=actor,
+            )
+            session = await repository.get_return(session.id) or session
+        except Exception as error:
+            await repository.append_event(
+                session.id,
+                event_type="PRODUCTION_WORKFLOW_START_DEFERRED",
+                actor_type="SYSTEM",
+                actor_id="associate-api",
+                payload={"errorType": type(error).__name__},
+                deduplication_key=f"workflow-deferred:{session.id}",
+            )
     return APIResponse(
         data={
             "conversation": conversation.model_dump(mode="json"),

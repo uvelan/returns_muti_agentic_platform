@@ -1,0 +1,7 @@
+{
+  "stage": "4M",
+  "command": "bash -n scripts/start_stage4m_simulation.sh scripts/run_stage4m_simulated_e2e.sh scripts/run_stage4m_gates.sh",
+  "exitCode": 0,
+  "status": "PASSED",
+  "validationLevel": "SOURCE_VALIDATED"
+}

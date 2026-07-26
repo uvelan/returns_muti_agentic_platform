@@ -1,0 +1,149 @@
+schemaVersion: "1.0"
+domain: FERGUSON_RETURN_OPERATIONS
+circuitBreaker:
+  failureThreshold: 3
+  openSeconds: 60
+  authFailureOpenSeconds: 900
+  rateLimitCooldownSeconds: 60
+retry:
+  maximumAttemptsPerRoute: 1
+  maximumTotalAttempts: 6
+  initialBackoffMilliseconds: 200
+  maximumBackoffMilliseconds: 2000
+  jitter: true
+rateLimits:
+  application:
+    requestsPerMinute: 500
+    tokensPerMinute: 5000000
+  lightweight:
+    requestsPerMinute: 300
+    tokensPerMinute: 1000000
+    maximumConcurrency: 20
+  standard:
+    requestsPerMinute: 60
+    tokensPerMinute: 800000
+    maximumConcurrency: 6
+providerLimits:
+  GOOGLE:
+    requestsPerMinute: 120
+    tokensPerMinute: 1200000
+    maximumConcurrency: 8
+  NVIDIA:
+    requestsPerMinute: 100
+    tokensPerMinute: 1000000
+    maximumConcurrency: 8
+  OPENAI:
+    requestsPerMinute: 100
+    tokensPerMinute: 1000000
+    maximumConcurrency: 8
+  ANTHROPIC:
+    requestsPerMinute: 100
+    tokensPerMinute: 1000000
+    maximumConcurrency: 8
+  OLLAMA:
+    requestsPerMinute: 300
+    tokensPerMinute: 2000000
+    maximumConcurrency: 8
+  SIMULATOR:
+    requestsPerMinute: 1000
+    tokensPerMinute: 10000000
+    maximumConcurrency: 32
+tasks:
+  RETURN_ELIGIBILITY_V1:
+    tier: LIGHTWEIGHT
+    promptVersion: return-eligibility-v2
+    fallbackStrategy: MANUAL_REVIEW
+    fallbackTemplate: RETURN_ELIGIBILITY_REVIEW_V1
+    maximumOutputTokens: 256
+    maximumInputTokens: 4000
+    allowTierEscalation: false
+    allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA, SIMULATOR]
+    allowedInputKeys:
+      - requestReference
+      - customerReference
+      - orderReferences
+      - itemReferences
+      - reasonCode
+      - orderStatus
+      - daysSinceDelivery
+      - requestedDecision
+  RETURN_SMART_QUESTION_V1:
+    tier: LIGHTWEIGHT
+    promptVersion: return-smart-question-v1
+    fallbackStrategy: TEMPLATE
+    fallbackTemplate: SMART_QUESTION_V1
+    maximumOutputTokens: 192
+    maximumInputTokens: 3000
+    allowTierEscalation: false
+    allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
+    allowedInputKeys: [missingFields, knownFacts, returnPath]
+  RETURN_STATUS_SUMMARY_V1:
+    tier: LIGHTWEIGHT
+    promptVersion: return-status-summary-v1
+    fallbackStrategy: TEMPLATE
+    fallbackTemplate: RETURN_STATUS_SUMMARY_V1
+    maximumOutputTokens: 192
+    maximumInputTokens: 4000
+    allowTierEscalation: false
+    allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
+    allowedInputKeys: [statusFacts, milestones, blockers]
+  CUSTOMER_NOTIFICATION_DRAFT_V1:
+    tier: LIGHTWEIGHT
+    promptVersion: customer-notification-v1
+    fallbackStrategy: TEMPLATE
+    fallbackTemplate: CUSTOMER_NOTIFICATION_V1
+    maximumOutputTokens: 256
+    maximumInputTokens: 3000
+    allowTierEscalation: false
+    allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
+    allowedInputKeys: [notificationType, approvedFacts, nextAction]
+  SIMULATOR_OPERATION_NARRATIVE_V1:
+    tier: LIGHTWEIGHT
+    promptVersion: dependency-simulator-narrative-v2
+    fallbackStrategy: TEMPLATE
+    fallbackTemplate: SIMULATOR_OPERATION_RESPONSE_V1
+    maximumOutputTokens: 256
+    maximumInputTokens: 5000
+    allowTierEscalation: false
+    allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
+    allowedInputKeys: [dependency, operation, simulatedResult, rules]
+  ORDER_CANDIDATE_ANALYSIS_V1:
+    tier: STANDARD
+    promptVersion: order-candidate-analysis-v1
+    fallbackStrategy: MANUAL_REVIEW
+    fallbackTemplate: ORDER_CANDIDATE_REVIEW_V1
+    maximumOutputTokens: 800
+    maximumInputTokens: 12000
+    allowTierEscalation: false
+    allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
+    allowedInputKeys: [candidates, evidence, conflicts, knownFacts]
+  SUPPORT_CASE_ANALYSIS_V1:
+    tier: STANDARD
+    promptVersion: support-case-analysis-v1
+    fallbackStrategy: TEMPLATE
+    fallbackTemplate: SUPPORT_CASE_SUMMARY_V1
+    maximumOutputTokens: 800
+    maximumInputTokens: 16000
+    allowTierEscalation: false
+    allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
+    allowedInputKeys: [messages, returnFacts, missingFields, supportStatus]
+  EXTERNAL_STATE_RECONCILIATION_V1:
+    tier: STANDARD
+    promptVersion: external-state-reconciliation-v1
+    fallbackStrategy: MANUAL_REVIEW
+    fallbackTemplate: EXTERNAL_STATE_REVIEW_V1
+    maximumOutputTokens: 900
+    maximumInputTokens: 20000
+    allowTierEscalation: false
+    allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
+    allowedInputKeys: [platformState, omcState, carrierState, lsiState, temporalState]
+  FEEDBACK_RECOMMENDATION_V1:
+    tier: STANDARD
+    promptVersion: feedback-recommendation-v1
+    fallbackStrategy: MANUAL_REVIEW
+    fallbackTemplate: FEEDBACK_REVIEW_V1
+    maximumOutputTokens: 900
+    maximumInputTokens: 20000
+    allowTierEscalation: false
+    allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
+    allowedInputKeys: [metrics, corrections, delays, failures, assumptionMismatches]

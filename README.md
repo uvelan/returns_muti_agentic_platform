@@ -617,3 +617,297 @@ Primary implementation handoff:
 ```text
 STAGE_4_HLD_ALIGNMENT_DATA_CONSOLE_IMPLEMENTATION_HANDOFF.md
 ```
+
+
+# Stage 4L — Production Ferguson Return Application
+
+Stage 4L adds the production return application on top of this repository. It is not a separate demo fork.
+
+## Production capabilities
+
+- five bounded return agents;
+- validated, versioned return configuration;
+- graph-first Associate discovery and explicit confirmation;
+- internal Returns Support queue and shared thread;
+- production Temporal workflow v2;
+- branch staging, parcel, freight, offsite pickup, receipt, resolution, and vendor-recovery state;
+- OMC, carrier, external-ticket, notification, and artifact adapter contracts;
+- transactional integration outbox;
+- warehouse bay recommendation and atomic reservation/assignment;
+- Associate, Support, Logistics, Warehouse, Tracking, Agent Evidence, Dependency, and Integration Outbox screens.
+
+OCR and image-processing workers are deliberately disabled in the initial production foundation. Artifact metadata contracts are present for later asynchronous processing.
+
+## Configuration
+
+```text
+backend/config/returns/production.yaml
+```
+
+Environment variables are documented in `.env.example`. Important optional adapter settings include:
+
+```text
+PLATFORM_RETURN_SUPPORT_MODE
+PLATFORM_SUPPORT_TICKET_BASE_URL
+PLATFORM_SUPPORT_TICKET_API_KEY
+PLATFORM_OMC_COMMAND_BASE_URL
+PLATFORM_OMC_COMMAND_API_KEY
+PLATFORM_CARRIER_BOOKING_BASE_URL
+PLATFORM_CARRIER_BOOKING_API_KEY
+PLATFORM_CUSTOMER_NOTIFICATION_BASE_URL
+PLATFORM_CUSTOMER_NOTIFICATION_API_KEY
+PLATFORM_RETURN_CONFIGURATION_PATH
+```
+
+With no external endpoint configured, commands remain visible as blocked external dependencies. The application does not fabricate success.
+
+## Run production host services
+
+Backend API:
+
+```bash
+cd backend
+poetry install
+poetry run uvicorn return_platform.asgi:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Temporal worker:
+
+```bash
+cd backend
+poetry run python scripts/run_return_workflow_worker.py
+```
+
+Integration outbox worker:
+
+```bash
+cd backend
+PYTHONPATH=src poetry run python -m return_platform.workers.integration_outbox
+```
+
+Frontend, using Node 24 and npm 11:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Core routes:
+
+```text
+/associate/returns
+/operations/returns/:sessionId
+/operations/return-agents
+/return-support/workbench
+/logistics/returns
+/warehouse/returns
+/tracking/returns
+/system/integration-outbox
+/system/dependencies
+```
+
+## Stage 4L validation
+
+Source validation:
+
+```bash
+python3.13 scripts/validate_stage4l_production.py
+python3.13 scripts/validate_stage4_source.py
+python3.13 scripts/validate_stage4_contracts.py
+node scripts/validate_frontend_syntax.mjs
+```
+
+Full release gates remain mandatory:
+
+```bash
+cd backend
+poetry run ruff check .
+poetry run ruff format --check .
+poetry run mypy src tests
+poetry run pytest -q
+
+cd ../frontend
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+npm run test:e2e
+npm run test:a11y
+npm run contracts:check
+```
+
+Current Stage 4L evidence classification: `SOURCE_VALIDATED`. See `docs/evidence/stage4l_production/`.
+
+
+---
+
+## Stage 4M — External Dependency Simulation
+
+OMC, parcel carriers, Freight/TMS and LSI are represented through stable gateway contracts. Development and test environments can run deterministic live-service emulators while production uses real, manual or blocked adapters.
+
+The simulator does not place mock logic inside the return workflow. It is selected through configuration:
+
+```env
+PLATFORM_OMC_DEPENDENCY_MODE=SIMULATED
+PLATFORM_PARCEL_DEPENDENCY_MODE=SIMULATED
+PLATFORM_FREIGHT_DEPENDENCY_MODE=SIMULATED
+PLATFORM_LSI_DEPENDENCY_MODE=SIMULATED
+```
+
+Production startup fails when any of these values is `SIMULATED`.
+
+### AI behavior
+
+Simulator facts, identifiers and state transitions are deterministic. Optional AI is used only to improve operational wording. The simulator uses lightweight models from `backend/config/dependency_simulation.yaml` and always returns a versioned default template when a provider is missing, times out, fails or returns invalid JSON. AI failure never blocks RMA, label, BOL, receipt, RGA or status simulation.
+
+All attempts are captured with provider, model, tokens, latency, fallback usage, error code, request/response digests and configurable cost estimate. Pricing defaults to zero until approved provider pricing is entered.
+
+### Start the complete host application
+
+```bash
+cp .env.example .env
+./scripts/bootstrap_host.sh
+./scripts/start_stage4m_simulation.sh
+```
+
+### Run an API-driven E2E scenario
+
+```bash
+./scripts/run_stage4m_simulated_e2e.sh BRANCH_PARCEL
+./scripts/run_stage4m_simulated_e2e.sh OFFSITE_HEAVY
+```
+
+### Dedicated pages
+
+```text
+/system/dependency-simulator
+/system/dependency-simulator/omc
+/system/dependency-simulator/parcel
+/system/dependency-simulator/freight
+/system/dependency-simulator/lsi
+/system/dependency-simulator/ai-metrics
+```
+
+### Validation
+
+```bash
+./scripts/run_stage4m_gates.sh
+```
+
+Detailed documents:
+
+- `docs/plans/STAGE_4M_DEPENDENCY_SIMULATION_IMPLEMENTATION_PLAN.md`
+- `docs/STAGE_4M_DEPENDENCY_SIMULATION_ARCHITECTURE.md`
+- `docs/runbooks/STAGE_4M_SIMULATED_E2E_RUNBOOK.md`
+- `docs/STAGE_4M_IMPLEMENTATION_REPORT.md`
+
+---
+
+## Stage 4N — AI Gateway Key/Model Pools, Safety, and Simulator Validation
+
+Stage 4N hardens the AI control plane while keeping AI non-authoritative. Credentials and models are configured as lists, tasks deterministically choose a lightweight or standard tier, unhealthy routes rotate by key/model/provider, and every failed route ultimately uses an approved fallback rather than blocking the return workflow.
+
+### Configure credential and model lists
+
+Keep credentials in `.env`:
+
+```env
+PLATFORM_GOOGLE_API_KEYS=["google-key-a","google-key-b"]
+PLATFORM_GOOGLE_LIGHTWEIGHT_MODELS=["google-light-model-a","google-light-model-b"]
+PLATFORM_GOOGLE_STANDARD_MODELS=["google-standard-model-a"]
+
+PLATFORM_NVIDIA_API_KEYS=["nvidia-key-a"]
+PLATFORM_NVIDIA_LIGHTWEIGHT_MODELS=["nvidia-light-model-a"]
+PLATFORM_NVIDIA_STANDARD_MODELS=["nvidia-standard-model-a"]
+```
+
+Empty lists are valid. Legacy single-key/single-model variables remain readable for migration but should not be used for new environments.
+
+Model names, task tiers, limits, retry policy, circuits, exact input allowlists, and fallback strategies are governed by:
+
+```text
+backend/config/ai_gateway.yaml
+```
+
+### Task-based model complexity
+
+Lightweight models are used for low-complexity work such as simulator narratives, eligibility, smart questions, status summaries, and notification drafts. Standard models are reserved for conflicting order evidence, multi-message Support analysis, cross-system reconciliation, and feedback recommendations.
+
+The registered `taskId` selects the tier. The AI cannot choose a more powerful tier, and the simulator task cannot escalate beyond `LIGHTWEIGHT`.
+
+### Failure sequence
+
+```text
+healthy model + key
+→ another key for the same model
+→ another model in the same tier
+→ another allowed provider in the same tier
+→ exact deterministic fallback or manual review
+```
+
+Credential authentication/rate failures isolate that credential. Model-unavailable/context failures isolate that model. Provider failures are circuit-broken after the configured threshold. Retries and the total request deadline are bounded.
+
+### Rate limits and metrics
+
+The gateway enforces application, tier, provider, model, credential, and route request/token budgets plus concurrency limits. Every attempt records safe route identifiers, model tier, selection/failure reason, latency, token usage, fallback use, prompt version, safety result, and request/response digests.
+
+Raw API keys are never returned or persisted.
+
+### Prompt-injection and domain protection
+
+AI inputs pass deterministic controls before dispatch. Requests to override instructions, reveal prompts or secrets, bypass human approval, issue direct SQL, fabricate authoritative return actions, or answer unrelated questions are blocked. Outputs must match the exact registered schema and remain within Ferguson return operations.
+
+### Run dependency-light simulator AI validation
+
+```bash
+./scripts/run_stage4n_ai_simulator_e2e.sh
+```
+
+### Run focused AI tests
+
+```bash
+./scripts/run_stage4n_ai_tests.sh
+```
+
+### Run all source gates
+
+```bash
+./scripts/run_stage4n_full_gates.sh
+```
+
+### Run the live-stack simulated-return E2E
+
+Terminal 1:
+
+```bash
+cp .env.example .env
+./scripts/start_stage4m_simulation.sh
+```
+
+Terminal 2:
+
+```bash
+./scripts/run_stage4n_live_stack_e2e.sh
+```
+
+No provider key is required for the simulated return to complete. When every AI route fails or is absent, the versioned template response is used and the deterministic OMC/parcel/freight/LSI simulator operation continues.
+
+### Dedicated AI operations pages
+
+```text
+/ai-gateway/routes       provider/model/key health and circuit state
+/ai-gateway/tasks        task tier, prompt, limits, providers, and fallback
+/ai-gateway/metrics      per-attempt token, latency, route, and fallback metrics
+/ai-gateway/safety       development/test prompt-injection and domain test
+/ai-gateway              request trace list
+/system/dependency-simulator/ai-metrics
+```
+
+Detailed documentation:
+
+```text
+docs/implementation/STAGE_4N_AI_GATEWAY_HARDENING.md
+docs/runbooks/STAGE_4N_AI_SIMULATOR_E2E.md
+docs/evidence/stage4n_ai_gateway/validation_summary.json
+```

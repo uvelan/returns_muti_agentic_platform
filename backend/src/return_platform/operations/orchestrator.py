@@ -13,6 +13,7 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from return_platform.ai_gateway.service import AIGatewayService
 from return_platform.canonical.operations import ContextSnapshot, WorkflowStage
+from return_platform.configuration.return_configuration import load_return_configuration
 from return_platform.configuration.settings import Settings
 from return_platform.operations.feedback_service import FeedbackLearningService
 from return_platform.operations.models import (
@@ -25,6 +26,10 @@ from return_platform.operations.models import (
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_support.providers.factory import (
     build_return_support_provider,
+)
+from return_platform.operations.return_support.service import (
+    CreateSupportWorkItemRequest,
+    ReturnSupportService,
 )
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
 from return_platform.workflows.bay_assignment import build_bay_assignment_result
@@ -96,13 +101,27 @@ class ReturnOrchestrator:
         self._temporal = temporal
         self._settings = settings
         self._worker_id = worker_id
-        self._ai = AIGatewayService(repository, settings)
+        from return_platform.ai_gateway.service import AIGatewayRepository
+        self._ai = AIGatewayService(cast(AIGatewayRepository, repository), settings)
         self._business_state = SQLBusinessStateRepository(settings)
         self._http_client = httpx.AsyncClient()
-        self._support = build_return_support_provider(
+        self._return_configuration = load_return_configuration(
+            settings.return_configuration_path
+        ).configuration
+        self._internal_support = ReturnSupportService(
+            client=repository.platform_client,
             settings=settings,
-            repository=self._business_state,
-            http_client=self._http_client,
+            configuration=self._return_configuration,
+            operational_repository=repository,
+        )
+        self._support = (
+            build_return_support_provider(
+                settings=settings,
+                repository=self._business_state,
+                http_client=self._http_client,
+            )
+            if settings.support_ticket_mode == "EXTERNAL_AUTHORITY"
+            else None
         )
         self._feedback = FeedbackLearningService(
             repository.platform_client,
@@ -471,6 +490,36 @@ class ReturnOrchestrator:
             )
 
         assert trace is not None and trace.decision is not None
+        if self._support is None:
+            if session.supportWorkItemId is None:
+                support_draft = (
+                    f"Return request for order {session.orderReference}\n"
+                    f"Customer reference: {session.customerReference}\n"
+                    f"Items: {', '.join(session.itemReferences)}\n"
+                    f"Reason: {session.reasonCode}\n"
+                    f"Product presence: {session.productPresence or 'UNKNOWN'}\n"
+                    f"Proposed return method: {session.shippingPathExpectation}"
+                )
+                work_item = await self._internal_support.create_work_item(
+                    CreateSupportWorkItemRequest(
+                        sessionId=session.id,
+                        subject=f"Return request for order {session.orderReference}",
+                        supportDraft=support_draft,
+                        requestSnapshotDigest=trace.requestDigest,
+                        idempotencyKey=f"support:{session.id}:{trace.requestDigest}",
+                    ),
+                    actor_id=self._worker_id,
+                    correlation_id=session.correlationId,
+                )
+                await self._repository.append_event(
+                    session.id,
+                    event_type="RETURN_WORKFLOW_WAITING_FOR_SUPPORT",
+                    actor_type="SYSTEM",
+                    actor_id=self._worker_id,
+                    payload={"workItemId": work_item.id},
+                    deduplication_key=f"waiting-support:{work_item.id}",
+                )
+            return "WAITING_SUPPORT"
         support_result = await self._support.submit(
             session,
             decision=trace.decision.value,

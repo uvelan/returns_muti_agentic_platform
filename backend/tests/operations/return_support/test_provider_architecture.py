@@ -15,7 +15,6 @@ from return_platform.operations.return_support.providers.external import (
 from return_platform.operations.return_support.providers.factory import (
     build_return_support_provider,
 )
-from return_platform.operations.return_support.providers.sandbox import SandboxReturnSupportProvider
 
 
 def test_clean_import_no_db_dependencies():
@@ -31,16 +30,16 @@ def test_clean_import_no_db_dependencies():
     assert res.returncode == 0
 
 
-def test_factory_sandbox_auto():
-    settings = Settings(support_ticket_mode="SANDBOX_AUTO")
+def test_factory_internal_uses_platform_service():
+    settings = Settings(support_ticket_mode="INTERNAL")
     repo = unittest.mock.AsyncMock(spec=ReturnSupportRepository)
     client = httpx.AsyncClient()
-    provider = build_return_support_provider(settings, repo, client)
-    assert isinstance(provider, SandboxReturnSupportProvider)
+    with pytest.raises(ValueError, match="platform-owned"):
+        build_return_support_provider(settings, repo, client)
 
 
 def test_factory_external():
-    settings = Settings(support_ticket_mode="EXTERNAL", support_ticket_base_url="http://test")
+    settings = Settings(support_ticket_mode="EXTERNAL_AUTHORITY", support_ticket_base_url="http://test")
     repo = unittest.mock.AsyncMock(spec=ReturnSupportRepository)
     client = httpx.AsyncClient()
     provider = build_return_support_provider(settings, repo, client)
@@ -49,7 +48,7 @@ def test_factory_external():
 
 @pytest.mark.asyncio
 async def test_orchestrator_closes_http_client():
-    settings = Settings(support_ticket_mode="SANDBOX_AUTO")
+    settings = Settings(support_ticket_mode="INTERNAL")
     repo = unittest.mock.AsyncMock()
     repo.claim_next_return.return_value = None
     temporal = unittest.mock.AsyncMock()

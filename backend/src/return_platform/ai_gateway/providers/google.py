@@ -38,8 +38,13 @@ class GeminiProvider(HTTPProvider):
                     {"role": "user", "parts": [{"text": json.dumps(request.user_payload)}]}
                 ],
                 "generationConfig": {
-                    "temperature": 0,
+                    "temperature": request.temperature,
                     "responseMimeType": "application/json",
+                    **(
+                        {"maxOutputTokens": request.max_output_tokens}
+                        if request.max_output_tokens is not None
+                        else {}
+                    ),
                 },
             },
         )

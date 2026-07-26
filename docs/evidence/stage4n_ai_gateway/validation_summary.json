@@ -1,0 +1,87 @@
+{
+  "checks": [
+    {
+      "evidence": {
+        "credentialCount": 2,
+        "modelCount": 3,
+        "routeCount": 6
+      },
+      "name": "credential_and_model_lists_expand_to_routes",
+      "status": "PASSED"
+    },
+    {
+      "evidence": {
+        "simulatorTier": "LIGHTWEIGHT",
+        "supportAnalysisTier": "STANDARD"
+      },
+      "name": "task_complexity_tiers_are_deterministic",
+      "status": "PASSED"
+    },
+    {
+      "evidence": {
+        "light": "light-a",
+        "standard": "standard-a"
+      },
+      "name": "lightweight_and_standard_route_isolation",
+      "status": "PASSED"
+    },
+    {
+      "evidence": {
+        "remainingCredential": "google-key-2"
+      },
+      "name": "credential_rate_limit_rotates_key",
+      "status": "PASSED"
+    },
+    {
+      "evidence": {
+        "remainingModel": "light-model-b"
+      },
+      "name": "model_unavailable_rotates_model",
+      "status": "PASSED"
+    },
+    {
+      "evidence": {
+        "injection": "PROMPT_INJECTION_SUSPECTED",
+        "outOfDomain": "OUT_OF_DOMAIN_REQUEST"
+      },
+      "name": "prompt_injection_and_domain_firewall",
+      "status": "PASSED"
+    },
+    {
+      "evidence": {
+        "credentialId": "google-key-1",
+        "model": "light-simulator-a",
+        "operationStatus": "CONFIRMED",
+        "totalTokens": 58
+      },
+      "name": "simulator_lightweight_ai_success_and_metrics",
+      "status": "PASSED"
+    },
+    {
+      "evidence": {
+        "externalReferencePrefix": "2SIM",
+        "metricStatuses": [
+          "FAILED",
+          "FALLBACK"
+        ],
+        "operationStatus": "CONFIRMED"
+      },
+      "name": "simulator_ai_failure_uses_template_without_blocking_flow",
+      "status": "PASSED"
+    },
+    {
+      "evidence": {
+        "fallbackUsed": true
+      },
+      "name": "exact_output_schema_rejects_extra_fields",
+      "status": "PASSED"
+    }
+  ],
+  "checksPassed": 9,
+  "classification": "SOURCE_VALIDATED",
+  "error": null,
+  "finishedAt": "2026-07-25T23:53:50.482989+00:00",
+  "stage": "STAGE_4N_AI_GATEWAY_HARDENING",
+  "startedAt": "2026-07-25T23:53:50.453043+00:00",
+  "status": "PASSED"
+}

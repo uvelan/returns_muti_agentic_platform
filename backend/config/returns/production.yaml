@@ -1,0 +1,289 @@
+schema_version: "1.0"
+assumption_set_version: "FERGUSON-RETURN-ASSUMPTIONS-1.0"
+
+agents:
+  order_discovery:
+    name: "Order Discovery Agent"
+    version: "2.0"
+    enabled: true
+    ai_assisted: true
+    human_confirmation_required: true
+    capabilities:
+      - normalize_evidence
+      - classify_order_source
+      - rank_candidates
+      - explain_candidate_evidence
+      - recommend_next_question
+  return_workflow:
+    name: "Return Workflow Agent"
+    version: "2.0"
+    enabled: true
+    ai_assisted: true
+    human_confirmation_required: true
+    capabilities:
+      - identify_missing_fields
+      - enforce_evidence_requirements
+      - recommend_physical_path
+      - draft_support_request
+      - summarize_clarification
+  return_fulfillment:
+    name: "Return Fulfillment Agent"
+    version: "2.0"
+    enabled: true
+    ai_assisted: false
+    human_confirmation_required: false
+    capabilities:
+      - normalize_omc_status
+      - distinguish_rma_rga
+      - interpret_parcel_and_freight_state
+      - detect_stale_or_conflicting_evidence
+  bay_assignment:
+    name: "Bay Assignment Agent"
+    version: "2.0"
+    enabled: true
+    ai_assisted: false
+    human_confirmation_required: true
+    capabilities:
+      - filter_eligible_bays
+      - rank_bays
+      - recommend_overflow_or_hold
+      - explain_exclusions
+  feedback_learning:
+    name: "Feedback Learning Agent"
+    version: "2.0"
+    enabled: true
+    ai_assisted: true
+    human_confirmation_required: true
+    capabilities:
+      - calculate_operational_metrics
+      - detect_rework_patterns
+      - detect_assumption_mismatches
+      - recommend_policy_changes
+
+discovery:
+  web_order_pattern: "^W[0-9]{9,12}$"
+  ambiguity_gap_millionths: 100000
+  auto_confirmation_allowed: false
+  anchor_weights:
+    ORDER_NUMBER: 1000000
+    CUSTOMER_ID: 900000
+    TRACKING_NUMBER: 850000
+    PHONE: 650000
+    EMAIL: 650000
+    SKU: 450000
+    CUSTOMER_NAME: 300000
+    PRODUCT_DESCRIPTION: 250000
+  conflict_penalty_millionths: 300000
+  strong_anchors:
+    - ORDER_NUMBER
+    - CUSTOMER_ID
+    - TRACKING_NUMBER
+
+source_resolution:
+  sales_invoice_collection: salesInv
+  customer_collection: customerOutboundCDM
+  shipment_collection: shipmentInfo
+  product_collection: lkpSearchProduct
+  order_number_paths:
+    - salesHdrEventData.orderId
+    - salesHdr.salesHdrData.orderId
+  web_order_paths:
+    - salesHdrEventData.webOrderId
+    - salesHdrEventData.webOrderNumber
+    - salesHdr.salesHdrData.webOrderId
+    - salesHdr.salesHdrData.webOrderNumber
+  trilogie_order_paths:
+    - salesHdrEventData.trilOrdNum
+    - salesHdrEventData.orderId
+    - salesHdr.salesHdrData.trilOrdNum
+  customer_id_paths:
+    - salesHdr.salesHdrData.custId
+    - salesHdrEventData.customerId
+  customer_name_paths:
+    - salesHdr.salesHdrData.custName
+    - salesHdrEventData.customerName
+  line_id_paths:
+    - orderLineId
+    - lineId
+    - salesLineId
+  product_id_paths:
+    - productId
+    - productUniqueId
+  sku_paths:
+    - sku
+    - modelNumber
+  product_description_paths:
+    - productDesc
+    - productDescription
+  shipped_quantity_paths:
+    - shipQty
+    - shippedQuantity
+    - quantityShipped
+  phone_field: phoneNumber
+  email_field: email
+  customer_master_id_field: customerId
+  tracking_field: shipmentInfoEventData.trkNum
+  tracking_order_field: shipmentInfoEventData.trilOrdNum
+
+smart_questions:
+  max_questions_per_turn: 1
+  fields:
+    - field: order_number
+      question: "Do you have the Ferguson order number or web order number?"
+      priority: 100
+      customer_answerable: true
+    - field: phone_or_email
+      question: "What phone number or email was used for the purchase?"
+      priority: 90
+      customer_answerable: true
+    - field: product_model
+      question: "What model number, SKU, or product description is on the item?"
+      priority: 80
+      customer_answerable: true
+    - field: product_presence
+      question: "Is the product at this branch, at a residence, or at a jobsite?"
+      priority: 70
+      customer_answerable: true
+    - field: return_reason
+      question: "Why is the item being returned?"
+      priority: 60
+      customer_answerable: true
+
+return_policy:
+  photo_required_reason_codes:
+    - DAMAGED
+    - DEFECTIVE
+    - WRONG_ITEM
+  supported_product_presence:
+    - PRESENT_AT_BRANCH
+    - OFFSITE_CUSTOMER_RESIDENCE
+    - OFFSITE_CUSTOMER_JOBSITE
+    - OFFSITE_COMMERCIAL_SITE
+    - OFFSITE_VENDOR_SITE
+    - OFFSITE_OTHER
+    - NOT_APPLICABLE
+  normalized_return_methods:
+    - PREPAID_PARCEL
+    - BRANCH_UPS
+    - BRANCH_LTL
+    - OFFSITE_PARCEL
+    - OFFSITE_LTL
+    - DIRECT_VENDOR
+    - FIELD_SCRAP
+    - NO_PHYSICAL_RETURN
+    - CUSTOMER_KEEP
+    - UNKNOWN
+  rga_required_product_resolutions:
+    - RTV
+  heavy_pickup_required_fields:
+    - address
+    - contact_name
+    - contact_phone
+    - handling_unit_count
+    - estimated_weight
+    - dimensions
+    - palletized
+    - available_windows
+  branch_staging:
+    require_return_number_tag: true
+    allow_manufacturer_box_marking: false
+    allow_branch_inventory_addition: false
+
+workflow:
+  version: "2.0"
+  stages:
+    - INTAKE
+    - ORDER_DISCOVERY
+    - ORDER_CONFIRMATION
+    - RETURN_DETAILS
+    - SUPPORT_REQUEST
+    - RETURN_CREATION
+    - PHYSICAL_RETURN_SETUP
+    - RETURN_SHIPMENT
+    - RECEIPT
+    - CUSTOMER_RESOLUTION
+    - PRODUCT_DISPOSITION
+    - WAREHOUSE_PROCESSING
+    - CUSTOMER_RETURN_COMPLETE
+    - VENDOR_RECOVERY
+    - FULLY_CLOSED
+  sla_minutes:
+    support_acknowledgement: 5
+    support_clarification: 30
+    return_creation: 1440
+    shipping_instructions: 7200
+    pickup_scheduling: 2880
+  completion_dimensions:
+    - customer_resolution_complete
+    - physical_return_complete
+    - warehouse_processing_complete
+    - vendor_recovery_complete
+    - case_fully_closed
+
+support:
+  authority_mode: INTERNAL_PLATFORM
+  external_mirror_enabled: false
+  default_priority: NORMAL
+  queues:
+    - RETURNS_SUPPORT
+    - LOGISTICS
+    - WAREHOUSE_EXCEPTION
+    - OMC_EXCEPTION
+  external_ticket_outbox_topic: return-support.ticket.create
+
+omc:
+  v2_customer_return_table: omc.returns.returnMerchandiseAuthorization
+  v1_customer_return_table: omc.dbo.returns
+  customer_return_display:
+    V2: "RMA {id}"
+    V1: "Return {id}"
+  normalized_statuses:
+    REQUESTED: IN_PROGRESS
+    ENTERED: IN_PROGRESS
+    ISSUED: IN_PROGRESS
+    PROCESSED: PHYSICAL_COMPLETE
+    CREDITED: CUSTOMER_RESOLUTION_COMPLETE
+    REFUNDED: CUSTOMER_RESOLUTION_COMPLETE
+    DENIED: REJECTED
+    CANCELLED: CANCELLED
+  tendered_is_pickup: false
+  license_plate_implies_receipt: true
+  rga_is_customer_return: false
+
+bay:
+  authority_mode: PROJECTION
+  require_physical_receipt: true
+  allow_prearrival_reservation: false
+  eligible_statuses:
+    - WAREHOUSE_RECEIVED
+    - INSPECTION_COMPLETE
+
+
+integrations:
+  omc_return_create:
+    enabled: true
+    topic: omc.return.create
+    authority: OMC
+    ai_may_fabricate_success: false
+  external_support_mirror:
+    enabled: false
+    topic: return-support.ticket.create
+    authority: EXTERNAL_TICKET_SYSTEM
+    ai_may_fabricate_success: false
+  carrier_booking:
+    enabled: true
+    topic: carrier.return.book
+    authority: CARRIER_OR_TMS
+    ai_may_fabricate_success: false
+  customer_notification:
+    enabled: true
+    topic: customer.return.notify
+    authority: NOTIFICATION_PROVIDER
+    ai_may_fabricate_success: false
+
+extensions:
+  document_artifact_metadata: true
+  ocr_processing: false
+  image_processing: false
+  ncr_workflow: false
+  vendor_recovery_workflow: true

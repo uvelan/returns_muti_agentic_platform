@@ -1,0 +1,298 @@
+{
+  "stage": "Stage 4 \u2014 HLD Alignment and Data Console Completion",
+  "validationLevel": "SOURCE_VALIDATED",
+  "environment": {
+    "python": "3.13.5",
+    "platform": "linux",
+    "dockerAvailable": false
+  },
+  "command": "python3.13 scripts/validate_stage4_source.py",
+  "generatedAt": "2026-07-25T16:13:50.494248+00:00",
+  "exitCode": 0,
+  "status": "PASSED",
+  "checks": [
+    {
+      "name": "python_source_compiles",
+      "status": "PASS",
+      "evidence": "All Python source parsed and compiled."
+    },
+    {
+      "name": "required_frontend_routes",
+      "status": "PASS",
+      "evidence": {
+        "missing": [],
+        "routeCount": 60
+      }
+    },
+    {
+      "name": "frontend_routes_live_only",
+      "status": "PASS",
+      "evidence": {
+        "liveCount": 60
+      }
+    },
+    {
+      "name": "associate_first_ui",
+      "status": "PASS",
+      "evidence": {
+        "required": [
+          "Minimal evidence",
+          "Confirm and lock",
+          "Complete return details",
+          "Create Return Support request"
+        ]
+      }
+    },
+    {
+      "name": "provider_files_are_isolated",
+      "status": "PASS",
+      "evidence": {
+        "missing": [],
+        "monolithAbsent": true,
+        "files": [
+          "__init__.py",
+          "anthropic.py",
+          "contracts.py",
+          "factory.py",
+          "google.py",
+          "http.py",
+          "nvidia.py",
+          "ollama.py",
+          "openai.py",
+          "openai_compatible.py",
+          "simulator.py"
+        ]
+      }
+    },
+    {
+      "name": "provider_registry_complete",
+      "status": "PASS",
+      "evidence": {
+        "providers": [
+          "ANTHROPIC",
+          "GOOGLE",
+          "NVIDIA",
+          "OLLAMA",
+          "OPENAI",
+          "SIMULATOR"
+        ]
+      }
+    },
+    {
+      "name": "physical_schema_registry",
+      "status": "PASS",
+      "evidence": {
+        "mongoAssets": 52,
+        "sqlAssets": 10,
+        "totalAssets": 62,
+        "missingMongoCollections": []
+      }
+    },
+    {
+      "name": "graph_schema_registry",
+      "status": "PASS",
+      "evidence": {
+        "nodes": 13,
+        "relationships": 16
+      }
+    },
+    {
+      "name": "ai_studio_generator_coverage",
+      "status": "PASS",
+      "evidence": {
+        "declared": 91,
+        "supported": 91,
+        "missingImplementations": [],
+        "unusedImplementations": []
+      }
+    },
+    {
+      "name": "ai_studio_direct_write_boundaries",
+      "status": "PASS",
+      "evidence": {
+        "directMongo": [
+          "customerOutboundCDM",
+          "customers",
+          "lkpSearchProduct",
+          "orders",
+          "products",
+          "salesInv",
+          "sandbox_records",
+          "scenario_records",
+          "scenarios",
+          "shipmentInfo",
+          "workspaces"
+        ],
+        "writableMongo": [
+          "customerOutboundCDM",
+          "customers",
+          "lkpSearchProduct",
+          "orders",
+          "products",
+          "salesInv",
+          "sandbox_records",
+          "scenario_records",
+          "scenarios",
+          "shipmentInfo",
+          "workspaces"
+        ],
+        "directSql": [
+          "platform.sql.bay_assignment",
+          "platform.sql.bay_configuration",
+          "platform.sql.feedback_recommendation",
+          "platform.sql.return_support_ticket",
+          "source.sql.return_fulfillment",
+          "source.sql.return_items",
+          "source.sql.return_requests",
+          "source.sql.return_tracking"
+        ],
+        "writableSql": [
+          "platform.sql.bay_assignment",
+          "platform.sql.bay_configuration",
+          "platform.sql.feedback_recommendation",
+          "platform.sql.return_support_ticket",
+          "source.sql.return_fulfillment",
+          "source.sql.return_items",
+          "source.sql.return_requests",
+          "source.sql.return_tracking"
+        ]
+      }
+    },
+    {
+      "name": "data_console_services_present",
+      "status": "PASS",
+      "evidence": [
+        "backend/src/return_platform/data_platform/ai_studio.py",
+        "backend/src/return_platform/data_platform/graph/schema.py",
+        "backend/src/return_platform/data_platform/graph/sync_service.py",
+        "backend/src/return_platform/data_console/api/schema_catalog.py",
+        "backend/src/return_platform/data_console/api/ai_studio.py",
+        "backend/src/return_platform/data_console/api/graph_sync.py",
+        "backend/src/return_platform/data_console/api/feedback_learning.py"
+      ]
+    },
+    {
+      "name": "hld_aligned_operational_flow",
+      "status": "PASS",
+      "evidence": {
+        "graph_first_discovery": true,
+        "digest_bound_lock": true,
+        "typed_return_details": true,
+        "support_ticket_provider": true,
+        "authoritative_sql": true,
+        "capacity_aware_bay": true,
+        "feedback_review_queue": true,
+        "lock_release": true
+      }
+    },
+    {
+      "name": "seed_scenario_matrix",
+      "status": "PASS",
+      "evidence": {
+        "APPROVE": 5,
+        "REJECT": 3,
+        "REVIEW_REQUIRED": 2
+      }
+    },
+    {
+      "name": "hld_source_collections_seeded",
+      "status": "PASS",
+      "evidence": {
+        "collections": [
+          "salesInv",
+          "customerOutboundCDM",
+          "shipmentInfo",
+          "lkpSearchProduct"
+        ]
+      }
+    },
+    {
+      "name": "seed_uses_canonical_graph_sync",
+      "status": "PASS",
+      "evidence": {
+        "canonicalService": "GraphSyncService",
+        "scope": "SOURCE_MONGODB",
+        "forbiddenLegacyFragments": [
+          "MERGE (order:Order",
+          "[:PLACED]",
+          "[:CONTAINS]"
+        ]
+      }
+    },
+    {
+      "name": "runtime_topology",
+      "status": "PASS",
+      "evidence": {
+        "missing": [],
+        "services": [
+          "backend",
+          "data-job-worker",
+          "frontend",
+          "mongodb",
+          "mongodb-rs-init",
+          "neo4j",
+          "outbox-publisher",
+          "return-orchestrator",
+          "return-workflow-worker",
+          "seed-runner",
+          "sqlserver",
+          "sqlserver-init",
+          "temporal",
+          "temporal-postgresql",
+          "temporal-ui",
+          "valkey"
+        ]
+      }
+    },
+    {
+      "name": "host_app_not_docker_required",
+      "status": "PASS",
+      "evidence": {
+        "profileErrors": []
+      }
+    },
+    {
+      "name": "host_run_scripts",
+      "status": "PASS",
+      "evidence": {
+        "missing": []
+      }
+    },
+    {
+      "name": "domain_sql_migration",
+      "status": "PASS",
+      "evidence": {
+        "tables": [
+          "dbo.return_items",
+          "dbo.return_tracking",
+          "integration.return_support_ticket",
+          "platform.bay_configuration",
+          "platform.bay_assignment",
+          "platform.feedback_recommendation"
+        ]
+      }
+    },
+    {
+      "name": "readme_runbook_commands",
+      "status": "PASS",
+      "evidence": {
+        "commands": [
+          "./scripts/bootstrap_host.sh",
+          "./scripts/infra.sh start",
+          "./scripts/run_all_host.sh",
+          "npm run contracts:check",
+          "python3.13 scripts/validate_stage4_contracts.py"
+        ]
+      }
+    },
+    {
+      "name": "forbidden_runtime_patterns_absent",
+      "status": "PASS",
+      "evidence": "No forbidden patterns found."
+    }
+  ],
+  "limitations": [
+    "This source gate does not replace Ruff, strict mypy, pytest, Node 24 dependency-backed checks, Compose startup, SQL/Mongo/Neo4j integration tests, or live provider validation.",
+    "The current audit host has Node 22, no Docker daemon, and no installed backend runtime dependency set."
+  ]
+}

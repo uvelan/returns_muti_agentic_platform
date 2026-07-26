@@ -24,6 +24,12 @@ def raise_for_provider_status(response: httpx.Response) -> None:
         raise ProviderError("AUTH_FAILED")
     if response.status_code == 429:
         raise ProviderError("RATE_LIMITED")
+    if response.status_code == 404:
+        raise ProviderError("MODEL_UNAVAILABLE")
+    if response.status_code in {408, 504}:
+        raise ProviderError("TIMEOUT")
+    if response.status_code in {413, 422}:
+        raise ProviderError("CONTEXT_LIMIT_EXCEEDED")
     if response.status_code >= 500:
         raise ProviderError("PROVIDER_UNAVAILABLE")
     try:

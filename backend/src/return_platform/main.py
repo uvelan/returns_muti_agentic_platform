@@ -12,12 +12,23 @@ from neo4j import AsyncGraphDatabase
 from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
+from return_platform.ai_gateway.configuration import load_ai_gateway_configuration
+from return_platform.ai_gateway.routing import AIRoutePool, build_routes
 from return_platform.api.ai_gateway import router as ai_gateway_router
 from return_platform.api.associate_returns import router as associate_returns_router
 from return_platform.api.dependencies import router as dependencies_router
+from return_platform.api.dependency_simulator import router as dependency_simulator_router
+from return_platform.api.integration_outbox import router as integration_outbox_router
+from return_platform.api.physical_operations import router as physical_operations_router
+from return_platform.api.production_workflow import router as production_workflow_router
+from return_platform.api.return_agents import router as return_agents_router
+from return_platform.api.return_artifacts import router as return_artifacts_router
+from return_platform.api.return_support import router as return_support_router
 from return_platform.api.returns import router as returns_router
 from return_platform.api.seed import router as seed_router
 from return_platform.api.support import router as support_router
+from return_platform.api.warehouse_placement import router as warehouse_placement_router
+from return_platform.configuration.return_configuration import load_return_configuration
 from return_platform.configuration.settings import Settings
 from return_platform.data_console.api.ai_studio import router as ai_studio_router
 from return_platform.data_console.api.audit import router as audit_router
@@ -43,7 +54,12 @@ from return_platform.data_console.infrastructure.probes import (
 )
 from return_platform.data_governance import load_asset_catalog
 from return_platform.data_platform.schema_registry import load_schema_registry
+from return_platform.dependency_simulation.configuration import (
+    load_dependency_simulation_configuration,
+)
+from return_platform.dependency_simulation.repository import MongoSimulationRepository
 from return_platform.operations.repository import OperationalRepository
+from return_platform.operations.return_support.service import ReturnSupportService
 from return_platform.resources import (
     AsyncValkeyClient,
     RuntimeResources,
@@ -245,6 +261,13 @@ async def lifespan(
 
     loaded_catalog = load_asset_catalog(settings.catalog_path)
     schema_registry = load_schema_registry(settings.schema_registry_path)
+    return_configuration = load_return_configuration(settings.return_configuration_path)
+    dependency_simulation_configuration = load_dependency_simulation_configuration(
+        settings.dependency_simulation_configuration_path
+    )
+    ai_gateway_configuration = load_ai_gateway_configuration(
+        settings.ai_gateway_configuration_path
+    )
 
     resources = RuntimeResources(
         settings=settings,
@@ -274,8 +297,36 @@ async def lifespan(
         )
 
         app.state.resources = resources
+        app.state.return_configuration = return_configuration
+        app.state.dependency_simulation_configuration = dependency_simulation_configuration
+        app.state.ai_gateway_configuration = ai_gateway_configuration
+        app.state.ai_gateway_route_pool = AIRoutePool(
+            build_routes(settings),
+            ai_gateway_configuration.configuration,
+        )
         if resources.mongo is not None:
-            await OperationalRepository(resources.mongo, settings).ensure_indexes()
+            operational_repository = OperationalRepository(
+                resources.mongo,
+                settings,
+                resources.source_mongo,
+            )
+            await operational_repository.ensure_indexes()
+            await operational_repository.persist_return_configuration_snapshot(
+                path=str(return_configuration.path),
+                sha256=return_configuration.sha256,
+                schema_version=return_configuration.configuration.schema_version,
+                assumption_set_version=(
+                    return_configuration.configuration.assumption_set_version
+                ),
+                configuration=return_configuration.configuration.model_dump(mode="json"),
+            )
+            await MongoSimulationRepository(resources.mongo, settings).ensure_indexes()
+            await ReturnSupportService(
+                client=resources.mongo,
+                settings=settings,
+                configuration=return_configuration.configuration,
+                operational_repository=operational_repository,
+            ).ensure_indexes()
 
         logger.info(
             "application_resources_initialized",
@@ -285,6 +336,13 @@ async def lifespan(
                 "catalog_sha256": (loaded_catalog.sha256_hex),
                 "schema_registry_asset_count": len(schema_registry.assets),
                 "graph_node_count": len(schema_registry.graph.nodes),
+                "return_configuration_sha256": return_configuration.sha256,
+                "return_assumption_set": (
+                    return_configuration.configuration.assumption_set_version
+                ),
+                "dependency_simulation_sha256": dependency_simulation_configuration.sha256,
+                "ai_gateway_configuration_sha256": ai_gateway_configuration.sha256,
+                "ai_gateway_route_count": len(app.state.ai_gateway_route_pool.routes),
             },
         )
 
@@ -324,7 +382,7 @@ def create_app(
 ) -> FastAPI:
     """Construct and configure the Return Platform API."""
 
-    app_settings = custom_settings or Settings()  # type: ignore[call-arg]
+    app_settings = custom_settings or Settings()
 
     provider = _resolve_principal_provider(
         app_settings,
@@ -525,10 +583,18 @@ def create_app(
     fastapi_app.include_router(scenarios_router)
     fastapi_app.include_router(audit_router)
     fastapi_app.include_router(returns_router)
+    fastapi_app.include_router(return_agents_router)
+    fastapi_app.include_router(return_support_router)
+    fastapi_app.include_router(production_workflow_router)
+    fastapi_app.include_router(physical_operations_router)
+    fastapi_app.include_router(return_artifacts_router)
+    fastapi_app.include_router(warehouse_placement_router)
+    fastapi_app.include_router(integration_outbox_router)
     fastapi_app.include_router(associate_returns_router)
     fastapi_app.include_router(support_router)
     fastapi_app.include_router(ai_gateway_router)
     fastapi_app.include_router(seed_router)
     fastapi_app.include_router(dependencies_router)
+    fastapi_app.include_router(dependency_simulator_router)
 
     return fastapi_app

@@ -1,0 +1,3 @@
+command: python -m compileall -q backend/src backend/tests
+exit_code: 0
+status: PASSED

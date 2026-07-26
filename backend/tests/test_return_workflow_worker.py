@@ -57,7 +57,10 @@ def test_registers_exact_workflow_and_activity_names(monkeypatch: pytest.MonkeyP
     assert captured == {
         "client": client,
         "task_queue": RETURN_WORKFLOW_TASK_QUEUE,
-        "workflows": ("return-platform-return-v1",),
+        "workflows": (
+            "return-platform-return-v1",
+            "return-platform-production-return-v2",
+        ),
         "activities": (
             "initialize_return_session",
             "transition_return_session",

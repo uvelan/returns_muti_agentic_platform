@@ -1,0 +1,84 @@
+schemaVersion: "1.0"
+enabled: true
+templateVersion: "dependency-simulator-v1"
+modeBanner: "SIMULATED EXTERNAL DEPENDENCY — NOT PRODUCTION DATA"
+defaultScenario: SUCCESS
+ai:
+  enabled: true
+  taskId: SIMULATOR_OPERATION_NARRATIVE_V1
+  providerOrder: [GOOGLE, NVIDIA]
+  timeoutSeconds: 4.0
+  maxOutputTokens: 256
+  temperature: 0.0
+  fallbackAlwaysEnabled: true
+  pricingMicrousdPerMillionTokens:
+    GOOGLE:
+      input: 0
+      output: 0
+    NVIDIA:
+      input: 0
+      output: 0
+dependencies:
+  OMC:
+    operations:
+      - CREATE_RMA
+      - CREATE_LEGACY_RETURN
+      - GET_RETURN
+      - UPDATE_RETURN_STATUS
+      - SET_CUSTOMER_RESOLUTION
+      - SET_PRODUCT_RESOLUTION
+      - CREATE_RGA
+      - RECORD_VENDOR_CREDIT
+  PARCEL:
+    operations:
+      - CREATE_RETURN_LABEL
+      - VOID_LABEL
+      - REISSUE_LABEL
+      - GET_TRACKING
+      - ADVANCE_TRACKING
+      - SIMULATE_EXCEPTION
+    statusSequence:
+      - LABEL_CREATED
+      - PACKAGE_ACCEPTED
+      - IN_TRANSIT
+      - OUT_FOR_DELIVERY
+      - DELIVERED
+  FREIGHT:
+    operations:
+      - REQUEST_QUOTES
+      - APPROVE_QUOTE
+      - CREATE_BOL
+      - TENDER_SHIPMENT
+      - CONFIRM_BOOKING
+      - SCHEDULE_APPOINTMENT
+      - CONFIRM_CARRIER_ARRIVAL
+      - CONFIRM_PICKUP
+      - ADVANCE_FREIGHT_TRACKING
+      - FAIL_PICKUP
+      - RESCHEDULE_PICKUP
+    statusSequence:
+      - QUOTE_REQUESTED
+      - QUOTED
+      - QUOTE_APPROVED
+      - BOL_CREATED
+      - TENDERED
+      - BOOKING_PENDING
+      - BOOKED
+      - APPOINTMENT_SCHEDULED
+      - CUSTOMER_READY
+      - CARRIER_ARRIVED
+      - PICKED_UP
+      - IN_TRANSIT
+      - RECEIVED
+  LSI:
+    operations:
+      - GENERATE_RETURN_AUTHORIZATION_ACK
+      - RECORD_RECEIPT
+      - ASSIGN_LICENSE_PLATE
+      - SET_PRODUCT_RESOLUTION
+      - COMPLETE_WAREHOUSE_PROCESSING
+      - CREATE_LOT
+      - CREATE_RGA
+      - RECORD_VENDOR_DEBIT
+      - RECORD_VENDOR_CREDIT
+      - CLOSE_VENDOR_RECOVERY

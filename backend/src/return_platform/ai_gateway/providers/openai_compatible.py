@@ -47,8 +47,13 @@ class OpenAICompatibleProvider(HTTPProvider):
                     {"role": "system", "content": request.system_prompt},
                     {"role": "user", "content": json.dumps(request.user_payload)},
                 ],
-                "temperature": 0,
+                "temperature": request.temperature,
                 "stream": False,
+                **(
+                    {"max_tokens": request.max_output_tokens}
+                    if request.max_output_tokens is not None
+                    else {}
+                ),
             },
         )
         try:
