@@ -1,0 +1,47 @@
+{
+  "audit": "STAGE_4O",
+  "commit": "c8976dab36eee87c238da5a174bfd4800bc212cc",
+  "generatedAt": "2026-07-26T12:15:00+05:30",
+  "items": [
+    {
+      "Configuration": "backend/config/returns/production.yaml",
+      "Consumed by": "load_return_configuration; agents; services",
+      "Validation": "Strict Pydantic",
+      "Snapshot/digest": "Persisted return_configuration_snapshots",
+      "Classification": "SOURCE_IMPLEMENTED_RUNTIME_UNVERIFIED",
+      "Gap": "Graph freshness and full heavy-equipment policy missing."
+    },
+    {
+      "Configuration": "backend/config/dependency_simulation.yaml",
+      "Consumed by": "DependencySimulationService",
+      "Validation": "Strict Pydantic + required dependencies",
+      "Snapshot/digest": "SHA logged",
+      "Classification": "PARTIAL",
+      "Gap": "OMC SET_RETURN_METHOD absent; parcel milestones differ."
+    },
+    {
+      "Configuration": "backend/config/ai_gateway.yaml",
+      "Consumed by": "AIGatewayService/AIRoutePool",
+      "Validation": "Strict task/limit config",
+      "Snapshot/digest": "SHA logged",
+      "Classification": "SOURCE_IMPLEMENTED_RUNTIME_UNVERIFIED",
+      "Gap": "Task/session/user limits not modeled."
+    },
+    {
+      "Configuration": "backend/src/return_platform/configuration/settings.py",
+      "Consumed by": "Application startup",
+      "Validation": "Pydantic validators and production simulation guard",
+      "Snapshot/digest": "Indirect environment snapshot",
+      "Classification": "SOURCE_IMPLEMENTED_RUNTIME_UNVERIFIED",
+      "Gap": "Legacy single key/model fields coexist with list path."
+    },
+    {
+      "Configuration": "compose.yaml",
+      "Consumed by": "Compose topology",
+      "Validation": "docker compose config",
+      "Snapshot/digest": "Image/source state only",
+      "Classification": "PARTIAL",
+      "Gap": "Single configurable SQL credential spans platform tables and potential generic write service."
+    }
+  ]
+}

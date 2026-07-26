@@ -84,7 +84,7 @@ def test_idempotency_returns_same_rma() -> None:
     asyncio.run(run())
 
 
-def test_parcel_label_does_not_imply_carrier_acceptance() -> None:
+def test_parcel_label_package_readiness_and_carrier_acceptance_are_distinct() -> None:
     async def run() -> None:
         service, _ = _service()
         label = await service.execute(
@@ -98,6 +98,20 @@ def test_parcel_label_does_not_imply_carrier_acceptance() -> None:
             )
         )
         assert label.simulatedState == "LABEL_CREATED"
+        ready = await service.execute(
+            SimulationOperationRequest(
+                dependency=DependencyKind.PARCEL,
+                operation="ADVANCE_TRACKING",
+                sessionId="RET-TEST-003",
+                idempotencyKey="RET-TEST-003:READY",
+                payload={
+                    "trackingNumber": label.externalReference,
+                    "targetStatus": "PACKAGE_READY",
+                },
+                useAiNarrative=False,
+            )
+        )
+        assert ready.simulatedState == "PACKAGE_READY"
         accepted = await service.execute(
             SimulationOperationRequest(
                 dependency=DependencyKind.PARCEL,
@@ -106,12 +120,41 @@ def test_parcel_label_does_not_imply_carrier_acceptance() -> None:
                 idempotencyKey="RET-TEST-003:ACCEPTED",
                 payload={
                     "trackingNumber": label.externalReference,
-                    "targetStatus": "PACKAGE_ACCEPTED",
+                    "targetStatus": "CARRIER_ACCEPTED",
                 },
                 useAiNarrative=False,
             )
         )
-        assert accepted.simulatedState == "PACKAGE_ACCEPTED"
+        assert accepted.simulatedState == "CARRIER_ACCEPTED"
+
+    asyncio.run(run())
+
+
+def test_omc_can_authorize_return_method_after_return_creation() -> None:
+    async def run() -> None:
+        service, _ = _service()
+        await service.execute(
+            SimulationOperationRequest(
+                dependency=DependencyKind.OMC,
+                operation="CREATE_RMA",
+                sessionId="RET-TEST-METHOD",
+                idempotencyKey="RET-TEST-METHOD:CREATE",
+                useAiNarrative=False,
+            )
+        )
+        method = await service.execute(
+            SimulationOperationRequest(
+                dependency=DependencyKind.OMC,
+                operation="SET_RETURN_METHOD",
+                sessionId="RET-TEST-METHOD",
+                idempotencyKey="RET-TEST-METHOD:METHOD",
+                payload={"returnMethod": "DIRECT_VENDOR"},
+                useAiNarrative=False,
+            )
+        )
+        assert method.simulatedState == "RETURN_METHOD_AUTHORIZED"
+        assert method.responsePayload["returnMethod"] == "DIRECT_VENDOR"
+        assert str(method.responsePayload["authorizationId"]).startswith("OMC-METHOD-SIM-")
 
     asyncio.run(run())
 

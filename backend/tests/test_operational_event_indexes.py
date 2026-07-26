@@ -3,6 +3,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
+from pymongo.errors import OperationFailure
 
 from return_platform.operations.repository import OperationalRepository
 
@@ -59,3 +60,31 @@ async def test_event_deduplication_index_keeps_current_partial_index() -> None:
 
     events.drop_index.assert_not_awaited()
     events.create_index.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_event_deduplication_index_tolerates_concurrent_legacy_drop() -> None:
+    repository = cast(Any, object.__new__(OperationalRepository))
+    events = SimpleNamespace(
+        index_information=AsyncMock(
+            return_value={
+                "streamId_1_deduplicationKey_1": {
+                    "key": [("streamId", 1), ("deduplicationKey", 1)],
+                    "unique": True,
+                    "sparse": True,
+                },
+            }
+        ),
+        drop_index=AsyncMock(side_effect=OperationFailure("index not found", code=27)),
+        create_index=AsyncMock(),
+    )
+    repository.events = events
+
+    await repository._ensure_event_deduplication_index()
+
+    events.create_index.assert_awaited_once_with(
+        [("streamId", 1), ("deduplicationKey", 1)],
+        name="stream_deduplication_unique",
+        unique=True,
+        partialFilterExpression={"deduplicationKey": {"$type": "string"}},
+    )

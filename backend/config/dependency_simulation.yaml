@@ -25,6 +25,7 @@ dependencies:
       - CREATE_LEGACY_RETURN
       - GET_RETURN
       - UPDATE_RETURN_STATUS
+      - SET_RETURN_METHOD
       - SET_CUSTOMER_RESOLUTION
       - SET_PRODUCT_RESOLUTION
       - CREATE_RGA
@@ -39,7 +40,8 @@ dependencies:
       - SIMULATE_EXCEPTION
     statusSequence:
       - LABEL_CREATED
-      - PACKAGE_ACCEPTED
+      - PACKAGE_READY
+      - CARRIER_ACCEPTED
       - IN_TRANSIT
       - OUT_FOR_DELIVERY
       - DELIVERED

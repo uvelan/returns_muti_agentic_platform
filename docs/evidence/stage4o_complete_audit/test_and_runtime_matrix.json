@@ -1,0 +1,143 @@
+{
+  "audit": "STAGE_4O",
+  "commit": "c8976dab36eee87c238da5a174bfd4800bc212cc",
+  "generatedAt": "2026-07-26T12:15:00+05:30",
+  "items": [
+    {
+      "Command": "python3 -m compileall -q backend/src backend/tests scripts",
+      "Environment": "python:3.13-slim Linux container, Python 3.13.14",
+      "Exit code": 0,
+      "Duration": "not captured",
+      "Result": "PASSED",
+      "Details": "No output."
+    },
+    {
+      "Command": "cd backend && ruff check .",
+      "Environment": "Linux container, Ruff 0.15.21",
+      "Exit code": 0,
+      "Duration": "about 3s",
+      "Result": "PASSED",
+      "Details": "All checks passed."
+    },
+    {
+      "Command": "cd backend && ruff format --check .",
+      "Environment": "Linux container, Ruff 0.15.21",
+      "Exit code": 0,
+      "Duration": "about 3s",
+      "Result": "PASSED",
+      "Details": "246 files already formatted."
+    },
+    {
+      "Command": "cd backend && mypy --strict src",
+      "Environment": "Linux container, MyPy 2.3.0",
+      "Exit code": 0,
+      "Duration": "about 28s",
+      "Result": "PASSED",
+      "Details": "Success: no issues found in 172 source files."
+    },
+    {
+      "Command": "cd backend && pytest",
+      "Environment": "Linux container, Python 3.13.14, Pytest 9.1.1",
+      "Exit code": 0,
+      "Duration": "18.16s test time",
+      "Result": "PASSED",
+      "Details": "987 passed, 1 deprecation warning."
+    },
+    {
+      "Command": "cd frontend && npm run lint",
+      "Environment": "Windows host Node 24.14.0/npm 11.9.0 because no general WSL distro",
+      "Exit code": 0,
+      "Duration": "14.146s",
+      "Result": "PASSED",
+      "Details": "ESLint clean."
+    },
+    {
+      "Command": "cd frontend && npm run typecheck",
+      "Environment": "Windows host, rerun outside sandbox after node_modules/.tmp EPERM",
+      "Exit code": 0,
+      "Duration": "5.188s",
+      "Result": "PASSED",
+      "Details": "Initial sandbox attempt blocked; approved rerun passed."
+    },
+    {
+      "Command": "cd frontend && npm run test",
+      "Environment": "Windows host",
+      "Exit code": 0,
+      "Duration": "7.06s test time",
+      "Result": "PASSED",
+      "Details": "13 files, 39 tests passed."
+    },
+    {
+      "Command": "cd frontend && npm run build",
+      "Environment": "Windows host",
+      "Exit code": 0,
+      "Duration": "7.347s",
+      "Result": "PASSED",
+      "Details": "Vite production build and bundle mock-artifact check passed."
+    },
+    {
+      "Command": "./scripts/run_stage4n_ai_simulator_e2e.sh",
+      "Environment": "Linux container, Python 3.13.14",
+      "Exit code": 0,
+      "Duration": "about 7s",
+      "Result": "PASSED",
+      "Details": "9 validator checks passed; 5 focused tests passed, 6 deselected."
+    },
+    {
+      "Command": "./scripts/infra.sh start (docker compose up -d --wait equivalent)",
+      "Environment": "Docker Desktop Linux engine",
+      "Exit code": 1,
+      "Duration": "about 4m initial recovery",
+      "Result": "FAILED",
+      "Details": "Initial PostgreSQL/SQL/Neo4j health budget failure; dependencies later individually healthy. Retry still exited 1 because successful one-shot mongodb-rs-init was treated as exited."
+    },
+    {
+      "Command": "./scripts/infra.sh probe",
+      "Environment": "Repository script inspection",
+      "Exit code": 2,
+      "Duration": "not run",
+      "Result": "BLOCKED",
+      "Details": "scripts/infra.sh has no probe action; supported actions are start/full-containerized/stop/status/logs/reset/config."
+    },
+    {
+      "Command": "docker compose --profile containerized-app up -d --build (containerized equivalent attempted for start_stage4m_simulation.sh)",
+      "Environment": "Docker Desktop Linux engine",
+      "Exit code": 1,
+      "Duration": "about 6m including build/start",
+      "Result": "FAILED",
+      "Details": "Seed succeeded and core dependencies became healthy. Backend/orchestrator restart on wrong /usr/local/lib/python3.13/config paths; concurrent Mongo index migration also raised IndexNotFound code 27."
+    },
+    {
+      "Command": "./scripts/run_stage4m_simulated_e2e.sh BRANCH_PARCEL",
+      "Environment": "Full stack",
+      "Exit code": null,
+      "Duration": "not run",
+      "Result": "BLOCKED",
+      "Details": "Application profile did not reach validated readiness before evidence cutoff."
+    },
+    {
+      "Command": "./scripts/run_stage4m_simulated_e2e.sh OFFSITE_HEAVY",
+      "Environment": "Full stack",
+      "Exit code": null,
+      "Duration": "not run",
+      "Result": "BLOCKED",
+      "Details": "Application profile did not reach validated readiness before evidence cutoff."
+    },
+    {
+      "Command": "BRANCH_LTL/OFFSITE_PARCEL/DIRECT_VENDOR/NO_PHYSICAL_RETURN business E2E",
+      "Environment": "Source inspection",
+      "Exit code": 2,
+      "Duration": "not run",
+      "Result": "BLOCKED",
+      "Details": "run_stage4m_simulated_e2e.sh accepts only BRANCH_PARCEL and OFFSITE_HEAVY."
+    },
+    {
+      "Command": "npm run test:e2e:real",
+      "Environment": "Real full stack",
+      "Exit code": null,
+      "Duration": "not run",
+      "Result": "BLOCKED",
+      "Details": "Full stack not validated and required screens are absent."
+    }
+  ]
+}

@@ -8,7 +8,7 @@ from typing import Any, Final, cast
 
 from fastapi import HTTPException, Request
 from pymongo import ASCENDING, DESCENDING, AsyncMongoClient, ReturnDocument
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from return_platform.ai_gateway.models import AIUsageAttemptView, AIUsageSummaryView
 from return_platform.configuration.settings import Settings
@@ -256,7 +256,14 @@ class OperationalRepository:
             )
             if is_current:
                 return
-            await self.events.drop_index(index_name)
+            try:
+                await self.events.drop_index(index_name)
+            except OperationFailure as exc:
+                # Multiple API/worker processes initialize the same collections.
+                # Another process may remove the legacy index after this process
+                # inspected it; MongoDB code 27 means the desired migration won.
+                if exc.code != 27:
+                    raise
 
         await self.events.create_index(
             list(_EVENT_DEDUPLICATION_KEYS),

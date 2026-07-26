@@ -1,0 +1,81 @@
+{
+  "stage": "4O_REMEDIATION",
+  "date": "2026-07-26",
+  "windowsE2EExecuted": false,
+  "windowsE2EOmittedByOperatorInstruction": true,
+  "mandatoryScreens": {
+    "required": 23,
+    "present": 23,
+    "missing": 0,
+    "routeContractTests": 2
+  },
+  "backend": {
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "sourceFiles": 172
+    },
+    "pytest": {
+      "status": "PASS",
+      "passed": 992,
+      "skipped": 1,
+      "failed": 0
+    }
+  },
+  "frontend": {
+    "typescript": "PASS",
+    "eslint": "PASS",
+    "vitest": {
+      "status": "PASS",
+      "files": 14,
+      "tests": 41
+    },
+    "viteBuild": {
+      "status": "PASS",
+      "modules": 1827
+    }
+  },
+  "contracts": {
+    "openapiDrift": "PASS",
+    "typescriptRegenerated": true
+  },
+  "providerModels": {
+    "GOOGLE": {
+      "catalogStatus": 200,
+      "catalogModelCount": 41,
+      "lightweight": [
+        "gemini-3.1-flash-lite",
+        "gemini-2.5-flash-lite"
+      ],
+      "standard": [
+        "gemini-3.5-flash",
+        "gemini-2.5-flash"
+      ],
+      "minimalGeneration": "PASS"
+    },
+    "NVIDIA": {
+      "catalogStatus": 200,
+      "catalogModelCount": 118,
+      "lightweight": [
+        "meta/llama-3.2-3b-instruct",
+        "meta/llama-3.1-8b-instruct",
+        "nvidia/llama-3.1-nemotron-nano-vl-8b-v1"
+      ],
+      "standard": [
+        "nvidia/nemotron-3-nano-30b-a3b",
+        "abacusai/dracarys-llama-3.1-70b-instruct"
+      ],
+      "minimalGeneration": "PASS"
+    }
+  },
+  "externalRuntimeProofRemaining": [
+    "real OMC",
+    "real carrier/TMS",
+    "real LSI",
+    "Linux full-stack and worker heartbeats",
+    "Linux six-scenario E2E",
+    "real-stack browser and accessibility",
+    "restart/replay"
+  ],
+  "classification": "SOURCE_VALIDATED"
+}

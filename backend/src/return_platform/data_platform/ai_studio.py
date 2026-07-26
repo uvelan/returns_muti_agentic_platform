@@ -638,9 +638,17 @@ class AIStudioService:
     async def _apply_mongodb(
         self, asset: DataAssetSchema, records: builtins.list[dict[str, Any]]
     ) -> None:
-        target_db = (
-            self._source_db if asset.database == self._settings.source_mongo_database else self._db
-        )
+        sandbox_database = self._settings.ai_studio_mongo_database
+        if not sandbox_database:
+            raise PermissionError("AI Studio Mongo apply requires a dedicated sandbox database.")
+        if sandbox_database in {
+            self._settings.mongo_database,
+            self._settings.source_mongo_database,
+        }:
+            raise PermissionError(
+                "AI Studio Mongo apply cannot target operational or source databases."
+            )
+        target_db = self._client[sandbox_database]
         collection = target_db[asset.name]
         key_fields = [field.name for field in asset.fields if field.key]
         if key_fields != ["_id"]:
@@ -654,6 +662,27 @@ class AIStudioService:
     async def _apply_sql(
         self, asset: DataAssetSchema, records: builtins.list[dict[str, Any]]
     ) -> None:
+        sandbox_host = self._settings.ai_studio_sqlserver_host
+        sandbox_user = self._settings.ai_studio_sqlserver_user
+        sandbox_password = self._settings.ai_studio_sqlserver_password
+        sandbox_database = self._settings.ai_studio_sqlserver_database
+        if (
+            sandbox_host is None
+            or sandbox_user is None
+            or sandbox_password is None
+            or sandbox_database is None
+        ):
+            raise PermissionError(
+                "AI Studio SQL apply requires dedicated sandbox connection settings."
+            )
+        if (
+            sandbox_host == self._settings.sqlserver_host
+            or sandbox_user == self._settings.sqlserver_user
+            or sandbox_database == self._settings.sqlserver_database
+        ):
+            raise PermissionError(
+                "AI Studio SQL apply must use a separate host, credential, and database."
+            )
         if asset.namespace is None:
             raise ValueError("SQL asset namespace is required")
         for identifier in (asset.namespace, asset.name, *(field.name for field in asset.fields)):
@@ -678,11 +707,11 @@ class AIStudioService:
         def operation() -> None:
             timeout = max(1, int(self._settings.operation_timeout_seconds))
             with pymssql.connect(
-                server=self._settings.sqlserver_host,
-                port=str(self._settings.sqlserver_port),
-                user=self._settings.sqlserver_user,
-                password=self._settings.sqlserver_password.get_secret_value(),
-                database=self._settings.sqlserver_database,
+                server=sandbox_host,
+                port=str(self._settings.ai_studio_sqlserver_port),
+                user=sandbox_user,
+                password=sandbox_password.get_secret_value(),
+                database=sandbox_database,
                 login_timeout=timeout,
                 timeout=timeout,
                 autocommit=False,

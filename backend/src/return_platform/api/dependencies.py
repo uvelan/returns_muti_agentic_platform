@@ -173,8 +173,14 @@ async def _cards(request: Request) -> list[dict[str, Any]]:
 
     ai_settings = await repository.get_ai_settings()
     providers = {
-        "GOOGLE": bool(settings.google_api_key and settings.google_model),
-        "NVIDIA": bool(settings.nvidia_api_key and settings.nvidia_model),
+        "GOOGLE": bool(
+            settings.resolved_google_api_keys
+            and (settings.google_lightweight_models or settings.resolved_google_standard_models)
+        ),
+        "NVIDIA": bool(
+            settings.resolved_nvidia_api_keys
+            and (settings.nvidia_lightweight_models or settings.resolved_nvidia_standard_models)
+        ),
         "OPENAI": bool(settings.openai_api_key and settings.openai_model),
         "ANTHROPIC": bool(settings.anthropic_api_key and settings.anthropic_model),
         "OLLAMA": bool(settings.ollama_model),

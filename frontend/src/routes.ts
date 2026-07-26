@@ -13,7 +13,7 @@ export type RouteDefinition = {
   capability: RouteCapability;
   component: React.LazyExoticComponent<React.ComponentType<unknown>>;
   navigable: boolean;
-  group?: "Associate" | "Customer" | "Support" | "AI Gateway" | "Explore" | "Data Operations" | "Sandbox & AI" | "Governance" | "System";
+  group?: "Associate" | "Customer" | "Support" | "Operations" | "Logistics" | "Warehouse" | "Tracking" | "AI Gateway" | "Explore" | "Data Operations" | "Sandbox & AI" | "Governance" | "System";
 };
 
 export const routes: RouteDefinition[] = [
@@ -25,6 +25,49 @@ export const routes: RouteDefinition[] = [
     navigable: true,
     group: "Associate",
     component: lazy(() => import("./features/operations/AssociateReturnsPage").then(m => ({ default: m.AssociateReturnsPage }))),
+  },
+  {
+    path: "/operations/returns/:sessionId",
+    name: "Operations Return Detail",
+    capability: "LIVE",
+    navigable: false,
+    component: lazy(() => import("./features/operations/OperationalWorkspacePages").then(m => ({ default: m.OperationsReturnDetailPage }))),
+  },
+  {
+    path: "/operations/return-agents",
+    name: "Return Agents",
+    icon: Bot,
+    capability: "LIVE",
+    navigable: true,
+    group: "Operations",
+    component: lazy(() => import("./features/operations/OperationalWorkspacePages").then(m => ({ default: m.ReturnAgentsPage }))),
+  },
+  {
+    path: "/logistics/returns",
+    name: "Logistics Returns",
+    icon: RotateCcw,
+    capability: "LIVE",
+    navigable: true,
+    group: "Logistics",
+    component: lazy(() => import("./features/operations/OperationalWorkspacePages").then(m => ({ default: m.LogisticsReturnsPage }))),
+  },
+  {
+    path: "/warehouse/returns",
+    name: "Warehouse Returns",
+    icon: HardDrive,
+    capability: "LIVE",
+    navigable: true,
+    group: "Warehouse",
+    component: lazy(() => import("./features/operations/OperationalWorkspacePages").then(m => ({ default: m.WarehouseReturnsPage }))),
+  },
+  {
+    path: "/tracking/returns",
+    name: "Return Tracking",
+    icon: Activity,
+    capability: "LIVE",
+    navigable: true,
+    group: "Tracking",
+    component: lazy(() => import("./features/operations/OperationalWorkspacePages").then(m => ({ default: m.TrackingReturnsPage }))),
   },
   {
     path: "/customer/returns",
@@ -57,6 +100,15 @@ export const routes: RouteDefinition[] = [
     navigable: true,
     group: "Support",
     component: lazy(() => import("./features/operations/SupportPages").then(m => ({ default: m.SupportReturnsPage }))),
+  },
+  {
+    path: "/return-support/workbench",
+    name: "Returns Support Workbench",
+    icon: Headphones,
+    capability: "LIVE",
+    navigable: true,
+    group: "Support",
+    component: lazy(() => import("./features/operations/OperationalWorkspacePages").then(m => ({ default: m.ReturnSupportWorkbenchPage }))),
   },
   {
     path: "/support/returns/:sessionId",
@@ -93,6 +145,42 @@ export const routes: RouteDefinition[] = [
     component: lazy(() => import("./features/operations/AIGatewayPages").then(m => ({ default: m.AIRequestsPage }))),
   },
   {
+    path: "/ai-gateway/routes",
+    name: "AI Routes",
+    icon: Network,
+    capability: "LIVE",
+    navigable: true,
+    group: "AI Gateway",
+    component: lazy(() => import("./features/operations/OperationalWorkspacePages").then(m => ({ default: m.AIRoutesPage }))),
+  },
+  {
+    path: "/ai-gateway/tasks",
+    name: "AI Tasks",
+    icon: CheckSquare,
+    capability: "LIVE",
+    navigable: true,
+    group: "AI Gateway",
+    component: lazy(() => import("./features/operations/OperationalWorkspacePages").then(m => ({ default: m.AITasksPage }))),
+  },
+  {
+    path: "/ai-gateway/metrics",
+    name: "AI Metrics",
+    icon: Activity,
+    capability: "LIVE",
+    navigable: true,
+    group: "AI Gateway",
+    component: lazy(() => import("./features/operations/OperationalWorkspacePages").then(m => ({ default: m.AIMetricsPage }))),
+  },
+  {
+    path: "/ai-gateway/safety",
+    name: "AI Safety",
+    icon: ShieldAlert,
+    capability: "LIVE",
+    navigable: true,
+    group: "AI Gateway",
+    component: lazy(() => import("./features/operations/OperationalWorkspacePages").then(m => ({ default: m.AISafetyPage }))),
+  },
+  {
     path: "/ai-gateway/requests/:requestId",
     name: "AI Request Inspector",
     capability: "LIVE",
@@ -125,6 +213,15 @@ export const routes: RouteDefinition[] = [
     navigable: true,
     group: "System",
     component: lazy(() => import("./features/operations/SystemPages").then(m => ({ default: m.DependenciesPage }))),
+  },
+  {
+    path: "/system/integration-outbox",
+    name: "Integration Outbox",
+    icon: ServerCog,
+    capability: "LIVE",
+    navigable: true,
+    group: "System",
+    component: lazy(() => import("./features/operations/OperationalWorkspacePages").then(m => ({ default: m.IntegrationOutboxPage }))),
   },
   {
     path: "/system/dependencies/:dependencyId",

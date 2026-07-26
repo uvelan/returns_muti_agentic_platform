@@ -1,0 +1,117 @@
+{
+  "audit": "STAGE_4O",
+  "commit": "c8976dab36eee87c238da5a174bfd4800bc212cc",
+  "generatedAt": "2026-07-26T12:15:00+05:30",
+  "items": [
+    {
+      "Store": "Mongo",
+      "Model/collection/table": "operational_returns + return_sessions",
+      "Definition/repository": "OperationalRepository + MongoReturnSessionRepository",
+      "Indexes/idempotency": "Unique idempotency/revision/event indexes",
+      "Version/timestamps/audit": "Both versioned/audited differently",
+      "Startup/migration": "App/worker startup",
+      "Tests": "session/event tests",
+      "Classification": "PARTIAL",
+      "Gap": "Duplicate authoritative session models."
+    },
+    {
+      "Store": "Mongo",
+      "Model/collection/table": "associate_conversations/messages/discovery_snapshots/return_request_snapshots",
+      "Definition/repository": "AssociateConversationService",
+      "Indexes/idempotency": "Conversation/message/snapshot indexes",
+      "Version/timestamps/audit": "Timestamps and snapshot digests",
+      "Startup/migration": "Lazy ensure_indexes",
+      "Tests": "agent tests",
+      "Classification": "SOURCE_IMPLEMENTED_RUNTIME_UNVERIFIED",
+      "Gap": "Snapshot immutability not database-enforced."
+    },
+    {
+      "Store": "Mongo",
+      "Model/collection/table": "operational_return_items/handling_units/pickup_sites/pickup_requests/branch_staging_records",
+      "Definition/repository": "OperationalRepository",
+      "Indexes/idempotency": "Unique business IDs and bindings",
+      "Version/timestamps/audit": "Timestamps/events",
+      "Startup/migration": "App startup",
+      "Tests": "schema tests",
+      "Classification": "SOURCE_IMPLEMENTED_RUNTIME_UNVERIFIED",
+      "Gap": "Retention not defined."
+    },
+    {
+      "Store": "Mongo",
+      "Model/collection/table": "support_work_items/support_messages",
+      "Definition/repository": "ReturnSupportService",
+      "Indexes/idempotency": "Unique session/idempotency/thread sequence",
+      "Version/timestamps/audit": "Optimistic version/timestamps",
+      "Startup/migration": "App startup",
+      "Tests": "provider tests",
+      "Classification": "SOURCE_IMPLEMENTED_RUNTIME_UNVERIFIED",
+      "Gap": "Legacy support_cases also exists."
+    },
+    {
+      "Store": "Mongo",
+      "Model/collection/table": "shipping_instructions/shipment_events/omc_command_records/vendor_return_links/document_artifacts",
+      "Definition/repository": "OperationalRepository",
+      "Indexes/idempotency": "Unique external IDs and source events",
+      "Version/timestamps/audit": "Timestamps/events",
+      "Startup/migration": "App startup",
+      "Tests": "schema tests",
+      "Classification": "SOURCE_IMPLEMENTED_RUNTIME_UNVERIFIED",
+      "Gap": "Live integration proof absent."
+    },
+    {
+      "Store": "Mongo",
+      "Model/collection/table": "dependency_simulation_operations/dependency_simulation_ai_metrics",
+      "Definition/repository": "MongoSimulationRepository",
+      "Indexes/idempotency": "Unique idempotency plus query indexes",
+      "Version/timestamps/audit": "Timestamps/history",
+      "Startup/migration": "App startup",
+      "Tests": "simulation tests",
+      "Classification": "SIMULATED",
+      "Gap": "No retention policy."
+    },
+    {
+      "Store": "Mongo",
+      "Model/collection/table": "ai_gateway_traces/ai_gateway_attempt_metrics/ai_gateway_rate_limits",
+      "Definition/repository": "OperationalRepository",
+      "Indexes/idempotency": "Trace/attempt/query/TTL indexes",
+      "Version/timestamps/audit": "Timestamps/digests",
+      "Startup/migration": "App startup",
+      "Tests": "AI tests",
+      "Classification": "PARTIAL",
+      "Gap": "Attempt schema misses required audit fields; distributed route state absent."
+    },
+    {
+      "Store": "Mongo",
+      "Model/collection/table": "feedback_learning_records",
+      "Definition/repository": "FeedbackLearningService",
+      "Indexes/idempotency": "Unique session and review indexes",
+      "Version/timestamps/audit": "Evidence digest/timestamp",
+      "Startup/migration": "Lazy ensure_indexes",
+      "Tests": "feedback tests",
+      "Classification": "PARTIAL",
+      "Gap": "Expected learning_feedback name differs; metric scope incomplete."
+    },
+    {
+      "Store": "SQL",
+      "Model/collection/table": "platform.bay_configuration/reservation/assignment",
+      "Definition/repository": "SQLBusinessStateRepository; migrations 002-004",
+      "Indexes/idempotency": "Constraints and indexes",
+      "Version/timestamps/audit": "Created/updated/expiry fields",
+      "Startup/migration": "Forward init SQL",
+      "Tests": "bay tests",
+      "Classification": "SOURCE_IMPLEMENTED_RUNTIME_UNVERIFIED",
+      "Gap": "Release/expiry execution missing."
+    },
+    {
+      "Store": "SQL",
+      "Model/collection/table": "dbo.return_requests/items/fulfillment/tracking",
+      "Definition/repository": "SQLBusinessStateRepository; migrations 001-003",
+      "Indexes/idempotency": "Indexes and serializable writes",
+      "Version/timestamps/audit": "row_version/timestamps",
+      "Startup/migration": "Forward init SQL",
+      "Tests": "schema tests",
+      "Classification": "PARTIAL",
+      "Gap": "Local duplicate of facts designated OMC-authoritative."
+    }
+  ]
+}

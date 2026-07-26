@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Dependency-light Stage 4M source and behavior validation."""
+
 from __future__ import annotations
 
 import asyncio
@@ -18,21 +19,42 @@ def require(path: str) -> None:
 
 async def behavior() -> dict[str, object]:
     import sys
+
     sys.path.insert(0, str(BACKEND / "src"))
     from return_platform.configuration.settings import Settings
-    from return_platform.dependency_simulation.configuration import load_dependency_simulation_configuration
+    from return_platform.dependency_simulation.configuration import (
+        load_dependency_simulation_configuration,
+    )
     from return_platform.dependency_simulation.models import SimulationOperationRequest
-    from return_platform.dependency_simulation.repository import MemorySimulationRepository
-    from return_platform.dependency_simulation.service import DependencySimulationService
+    from return_platform.dependency_simulation.repository import (
+        MemorySimulationRepository,
+    )
+    from return_platform.dependency_simulation.service import (
+        DependencySimulationService,
+    )
 
     repository = MemorySimulationRepository()
-    settings = Settings.model_construct(environment="test", google_api_key=None, nvidia_api_key=None, openai_api_key=None, anthropic_api_key=None, ollama_model=None)
-    service = DependencySimulationService(repository, settings, load_dependency_simulation_configuration(BACKEND / "config" / "dependency_simulation.yaml"))
+    settings = Settings.model_construct(
+        environment="test",
+        google_api_key=None,
+        nvidia_api_key=None,
+        openai_api_key=None,
+        anthropic_api_key=None,
+        ollama_model=None,
+    )
+    service = DependencySimulationService(
+        repository,
+        settings,
+        load_dependency_simulation_configuration(
+            BACKEND / "config" / "dependency_simulation.yaml"
+        ),
+    )
     session = "STAGE4M-E2E"
     sequence = [
         ("OMC", "CREATE_RMA", {"items": [{"quantity": 1}]}),
         ("PARCEL", "CREATE_RETURN_LABEL", {"handlingUnitId": "HU-001"}),
-        ("PARCEL", "ADVANCE_TRACKING", {"targetStatus": "PACKAGE_ACCEPTED"}),
+        ("PARCEL", "ADVANCE_TRACKING", {"targetStatus": "PACKAGE_READY"}),
+        ("PARCEL", "ADVANCE_TRACKING", {"targetStatus": "CARRIER_ACCEPTED"}),
         ("LSI", "RECORD_RECEIPT", {"handlingUnitId": "HU-001"}),
         ("LSI", "ASSIGN_LICENSE_PLATE", {"handlingUnitId": "HU-001"}),
         ("OMC", "SET_CUSTOMER_RESOLUTION", {"customerResolution": "REFUNDED"}),
@@ -43,18 +65,38 @@ async def behavior() -> dict[str, object]:
     ]
     operations = []
     for index, (dependency, operation, payload) in enumerate(sequence, start=1):
-        item = await service.execute(SimulationOperationRequest(dependency=dependency, operation=operation, sessionId=session, idempotencyKey=f"{session}:{index}:{operation}", payload=payload, useAiNarrative=True, signalWorkflow=False))
+        item = await service.execute(
+            SimulationOperationRequest(
+                dependency=dependency,
+                operation=operation,
+                sessionId=session,
+                idempotencyKey=f"{session}:{index}:{operation}",
+                payload=payload,
+                useAiNarrative=True,
+                signalWorkflow=False,
+            )
+        )
         assert item.status.value == "CONFIRMED", (operation, item.errorCode)
         operations.append(item)
-    assert operations[0].externalReference and operations[0].externalReference.startswith("2SIM")
+    assert operations[0].externalReference and operations[
+        0
+    ].externalReference.startswith("2SIM")
     assert operations[1].simulatedState == "LABEL_CREATED"
-    assert operations[2].simulatedState == "PACKAGE_ACCEPTED"
-    assert operations[8].externalReference and operations[8].externalReference.startswith("RGA-SIM-")
-    assert operations[9].simulatedState == "VENDOR_CREDIT_CONFIRMED"
+    assert operations[2].simulatedState == "PACKAGE_READY"
+    assert operations[3].simulatedState == "CARRIER_ACCEPTED"
+    assert operations[9].externalReference and operations[
+        9
+    ].externalReference.startswith("RGA-SIM-")
+    assert operations[10].simulatedState == "VENDOR_CREDIT_CONFIRMED"
     ai = await repository.ai_summary()
     assert ai.requestCount == len(sequence)
     assert ai.fallbackCount == len(sequence)
-    return {"operations": len(operations), "aiRequests": ai.requestCount, "fallbacks": ai.fallbackCount, "tokens": ai.totalTokens}
+    return {
+        "operations": len(operations),
+        "aiRequests": ai.requestCount,
+        "fallbacks": ai.fallbackCount,
+        "tokens": ai.totalTokens,
+    }
 
 
 def main() -> None:
@@ -75,13 +117,29 @@ def main() -> None:
     for item in required:
         require(item)
     routes = (ROOT / "frontend/src/routes.ts").read_text()
-    for route in ("/system/dependency-simulator/omc", "/system/dependency-simulator/parcel", "/system/dependency-simulator/freight", "/system/dependency-simulator/lsi", "/system/dependency-simulator/ai-metrics"):
+    for route in (
+        "/system/dependency-simulator/omc",
+        "/system/dependency-simulator/parcel",
+        "/system/dependency-simulator/freight",
+        "/system/dependency-simulator/lsi",
+        "/system/dependency-simulator/ai-metrics",
+    ):
         assert route in routes
-    settings = (ROOT / "backend/src/return_platform/configuration/settings.py").read_text()
-    assert 'External dependency simulation is forbidden in production.' in settings
+    settings = (
+        ROOT / "backend/src/return_platform/configuration/settings.py"
+    ).read_text()
+    assert "External dependency simulation is forbidden in production." in settings
     behavior_result = asyncio.run(behavior())
-    result = {"stage": "4M", "status": "PASSED", "validationLevel": "SOURCE_VALIDATED", **behavior_result, "checks": len(required) + 7}
-    evidence = ROOT / "docs/evidence/stage4m_dependency_simulation/validation_summary.json"
+    result = {
+        "stage": "4M",
+        "status": "PASSED",
+        "validationLevel": "SOURCE_VALIDATED",
+        **behavior_result,
+        "checks": len(required) + 7,
+    }
+    evidence = (
+        ROOT / "docs/evidence/stage4m_dependency_simulation/validation_summary.json"
+    )
     evidence.parent.mkdir(parents=True, exist_ok=True)
     evidence.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))

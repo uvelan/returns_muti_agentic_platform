@@ -259,6 +259,15 @@ async def run_e2e(
     session = await operational.get_return(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Return session not found.")
+    return_methods = {
+        "BRANCH_PARCEL": "PREPAID_PARCEL",
+        "OFFSITE_HEAVY": "OFFSITE_LTL",
+        "BRANCH_LTL": "BRANCH_LTL",
+        "OFFSITE_PARCEL": "OFFSITE_PARCEL",
+        "DIRECT_VENDOR": "DIRECT_VENDOR",
+        "NO_PHYSICAL_RETURN": "NO_PHYSICAL_RETURN",
+    }
+    return_method = return_methods[payload.scenario]
     handling_units = await operational.list_handling_units(session_id)
     if not handling_units:
         await operational.persist_return_intake_records(
@@ -269,9 +278,7 @@ async def run_e2e(
             ),
             reason_code=session.reasonCode,
             requested_quantity=session.returnQuantity,
-            approved_method=(
-                "BRANCH_LTL" if payload.scenario == "OFFSITE_HEAVY" else "PREPAID_PARCEL"
-            ),
+            approved_method=return_method,
             product_presence=(session.productPresence or "PRESENT_AT_BRANCH"),
             package_count=max(1, session.packageCount),
             pickup_assessment=session.pickupAssessment,
@@ -316,27 +323,69 @@ async def run_e2e(
         operations.append(item)
         return item
 
+    async def record_workflow_event(
+        event_type: ProductionReturnEventType,
+        suffix: str,
+        data: dict[str, object] | None = None,
+    ) -> None:
+        if resources.temporal is None:
+            return
+        coordinator = ProductionWorkflowCoordinator(
+            temporal=resources.temporal,
+            repository=operational,
+            configuration=loaded_returns.configuration,
+            task_queue=resources.settings.return_workflow_task_queue,
+        )
+        await coordinator.record_event(
+            session_id,
+            event_id=f"SIM-PATH-{suffix}-{session_id}",
+            event_type=event_type,
+            evidence_reference=f"SIMULATION:PATH:{payload.scenario}:{suffix}",
+            actor_id=actor,
+            business_payload={
+                "sourceSystem": "DEPENDENCY_SIMULATOR",
+                "scenario": payload.scenario,
+                **(data or {}),
+            },
+        )
+
     rma = await run(
         "OMC",
         "CREATE_RMA",
         "omc-rma",
-        {"returnMethod": "PREPAID_PARCEL", "items": [{"quantity": 1}]},
+        {"returnMethod": return_method, "items": [{"quantity": 1}]},
     )
-    if payload.scenario == "BRANCH_PARCEL":
+    await run(
+        "OMC",
+        "SET_RETURN_METHOD",
+        "omc-return-method",
+        {"returnMethod": return_method},
+    )
+    if payload.scenario in {"BRANCH_PARCEL", "OFFSITE_PARCEL"}:
         label = await run(
             "PARCEL", "CREATE_RETURN_LABEL", "parcel-label", {"handlingUnitId": handling_unit_id}
         )
         await run(
             "PARCEL",
             "ADVANCE_TRACKING",
-            "parcel-accepted",
+            "parcel-ready",
             {
                 "trackingNumber": label.externalReference,
-                "targetStatus": "PACKAGE_ACCEPTED",
+                "targetStatus": "PACKAGE_READY",
                 "handlingUnitId": handling_unit_id,
             },
         )
-    else:
+        await run(
+            "PARCEL",
+            "ADVANCE_TRACKING",
+            "parcel-carrier-accepted",
+            {
+                "trackingNumber": label.externalReference,
+                "targetStatus": "CARRIER_ACCEPTED",
+                "handlingUnitId": handling_unit_id,
+            },
+        )
+    elif payload.scenario in {"OFFSITE_HEAVY", "BRANCH_LTL"}:
         await run("FREIGHT", "REQUEST_QUOTES", "freight-quotes", {"weight": 386, "palletCount": 1})
         await run("FREIGHT", "APPROVE_QUOTE", "freight-approve", {})
         bol = await run("FREIGHT", "CREATE_BOL", "freight-bol", {})
@@ -352,29 +401,89 @@ async def run_e2e(
             "freight-pickup",
             {"bolReference": bol.externalReference, "handlingUnitId": handling_unit_id},
         )
-    await run(
-        "LSI",
-        "RECORD_RECEIPT",
-        "lsi-receipt",
-        {
-            "rmaId": rma.externalReference,
-            "cartItemId": rma.responsePayload.get("cartItemIds", ["CI-SIM-1"])[0],
-            "handlingUnitId": handling_unit_id,
-        },
-    )
-    await run("LSI", "ASSIGN_LICENSE_PLATE", "lsi-license", {"handlingUnitId": handling_unit_id})
+    elif payload.scenario == "DIRECT_VENDOR":
+        await record_workflow_event(
+            ProductionReturnEventType.SHIPPING_INSTRUCTIONS_ISSUED,
+            "direct-vendor-authorization",
+            {"returnMethod": return_method},
+        )
+        await run(
+            "OMC",
+            "UPDATE_RETURN_STATUS",
+            "direct-vendor-shipped",
+            {"status": "DIRECT_VENDOR_SHIPPED"},
+        )
+        await run(
+            "OMC",
+            "UPDATE_RETURN_STATUS",
+            "direct-vendor-received",
+            {"status": "DIRECT_VENDOR_RECEIVED"},
+        )
+        await record_workflow_event(
+            ProductionReturnEventType.LICENSE_PLATE_NOT_REQUIRED,
+            "direct-vendor-no-license-plate",
+            {"authorization": "DIRECT_VENDOR"},
+        )
+        await record_workflow_event(
+            ProductionReturnEventType.WAREHOUSE_PROCESSING_NOT_REQUIRED,
+            "direct-vendor-no-warehouse",
+            {"authorization": "DIRECT_VENDOR"},
+        )
+    else:
+        await record_workflow_event(
+            ProductionReturnEventType.PHYSICAL_RETURN_NOT_REQUIRED,
+            "no-physical-return-authorization",
+            {"returnMethod": return_method, "authorization": "CUSTOMER_KEEP_OR_FIELD_SCRAP"},
+        )
+        await record_workflow_event(
+            ProductionReturnEventType.LICENSE_PLATE_NOT_REQUIRED,
+            "no-physical-no-license-plate",
+        )
+        await record_workflow_event(
+            ProductionReturnEventType.WAREHOUSE_PROCESSING_NOT_REQUIRED,
+            "no-physical-no-warehouse",
+        )
+    if payload.scenario not in {"DIRECT_VENDOR", "NO_PHYSICAL_RETURN"}:
+        await run(
+            "LSI",
+            "RECORD_RECEIPT",
+            "lsi-receipt",
+            {
+                "rmaId": rma.externalReference,
+                "cartItemId": rma.responsePayload.get("cartItemIds", ["CI-SIM-1"])[0],
+                "handlingUnitId": handling_unit_id,
+            },
+        )
+        await run(
+            "LSI",
+            "ASSIGN_LICENSE_PLATE",
+            "lsi-license",
+            {"handlingUnitId": handling_unit_id},
+        )
     await run(
         "OMC", "SET_CUSTOMER_RESOLUTION", "customer-refund", {"customerResolution": "REFUNDED"}
     )
-    await run("LSI", "SET_PRODUCT_RESOLUTION", "product-rtv", {"productResolution": "RTV"})
-    if payload.includeVendorRecovery:
+    product_dependency = (
+        "OMC" if payload.scenario in {"DIRECT_VENDOR", "NO_PHYSICAL_RETURN"} else "LSI"
+    )
+    product_resolution = "CUSTOMER_KEEP" if payload.scenario == "NO_PHYSICAL_RETURN" else "RTV"
+    await run(
+        product_dependency,
+        "SET_PRODUCT_RESOLUTION",
+        "product-resolution",
+        {"productResolution": product_resolution},
+    )
+    vendor_recovery = payload.includeVendorRecovery and payload.scenario != "NO_PHYSICAL_RETURN"
+    vendor_dependency = "OMC" if payload.scenario == "DIRECT_VENDOR" else "LSI"
+    if vendor_recovery:
         # Record the RTV vendor-recovery requirement before all customer-facing
         # completion conditions become true, so the durable state cannot close
         # before downstream RGA and vendor-credit evidence arrives.
-        await run("LSI", "CREATE_RGA", "vendor-rga", {})
-    await run("LSI", "COMPLETE_WAREHOUSE_PROCESSING", "warehouse-complete", {})
-    if payload.includeVendorRecovery:
-        await run("LSI", "RECORD_VENDOR_CREDIT", "vendor-credit", {})
+        await run(vendor_dependency, "CREATE_RGA", "vendor-rga", {})
+    if payload.scenario not in {"DIRECT_VENDOR", "NO_PHYSICAL_RETURN"}:
+        await run("LSI", "COMPLETE_WAREHOUSE_PROCESSING", "warehouse-complete", {})
+    if vendor_recovery:
+        await run(vendor_dependency, "RECORD_VENDOR_CREDIT", "vendor-credit", {})
     workflow_stage = None
     case_fully_closed = None
     if resources.temporal is not None:

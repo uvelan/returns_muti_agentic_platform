@@ -1,0 +1,15 @@
+# AI Gateway Matrix
+
+Routing and safety tests pass; distributed safety and complete metrics/UI do not.
+
+| Feature ID | Feature | Classification | Source evidence | Test | Screen | Known gap | Risk | Recommended action |
+|---|---|---|---|---|---|---|---|---|
+| AI-01 | Provider/model/key lists and safe route IDs | VERIFIED_IMPLEMENTED | backend/src/return_platform/configuration/settings.py; backend/src/return_platform/ai_gateway/routing.py | backend/tests/test_ai_gateway_routing.py::test_settings_accept_key_and_model_lists | None | None identified | LOW | Retain and regression-test. |
+| AI-02 | Complexity task registry | VERIFIED_IMPLEMENTED | backend/config/ai_gateway.yaml; backend/src/return_platform/ai_gateway/service.py | scripts/validate_stage4n_ai_gateway.py | Missing /ai-gateway/tasks | None identified | LOW | Retain and regression-test. |
+| AI-03 | Key/model/provider failover | VERIFIED_IMPLEMENTED | backend/src/return_platform/ai_gateway/routing.py; backend/src/return_platform/ai_gateway/service.py | backend/tests/test_ai_gateway_routing.py; scripts/run_stage4n_ai_simulator_e2e.sh | None | None identified | LOW | Retain and regression-test. |
+| AI-04 | Bounded retries and deadline | VERIFIED_IMPLEMENTED | backend/src/return_platform/ai_gateway/service.py; backend/config/ai_gateway.yaml | backend/tests/test_ai_gateway_routing.py | None | None identified | LOW | Retain and regression-test. |
+| AI-05 | Rate limiting | PARTIAL | backend/src/return_platform/ai_gateway/routing.py; backend/src/return_platform/operations/repository.py | None found | None | No task/session/user limits; route/tier/provider/model/credential circuits and counters are process-local, not Valkey-distributed. | BLOCKER | Retain and regression-test. |
+| AI-06 | Circuit breakers | PARTIAL | backend/src/return_platform/ai_gateway/routing.py | None found | None | Circuit state is explicitly process-local and lost on restart; Retry-After is not consumed. | BLOCKER | Retain and regression-test. |
+| AI-07 | Prompt injection/domain/action firewall | PARTIAL | backend/src/return_platform/ai_gateway/safety.py; backend/src/return_platform/ai_gateway/service.py | backend/tests/test_ai_gateway_routing.py::test_prompt_injection_is_blocked_before_provider_dispatch; test_domain_firewall_rejects_unrelated_request | None | Legal and broad general-knowledge detection are absent; deterministic domain text is returned inside structured fallback but not proven for every unrelated request. | HIGH | Retain and regression-test. |
+| AI-08 | Exact AI schemas and non-authority | VERIFIED_IMPLEMENTED | backend/src/return_platform/ai_gateway/service.py | backend/tests/test_ai_gateway_policy.py | None | None identified | LOW | Retain and regression-test. |
+| AI-09 | Durable attempt metrics | PARTIAL | backend/src/return_platform/ai_gateway/models.py; backend/src/return_platform/operations/repository.py | None found | Missing /ai-gateway/metrics | failureReason, schemaResult and explicit simulated/live marker are missing; UI route is absent; pagination is limit-only. | HIGH | Retain and regression-test. |

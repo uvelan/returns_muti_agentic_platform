@@ -17,7 +17,12 @@ FROM python:3.13-slim AS runtime
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PYTHONPATH=/app/src
+    PYTHONPATH=/app/src \
+    PLATFORM_CATALOG_PATH=/app/config/data_assets.yaml \
+    PLATFORM_SCHEMA_REGISTRY_PATH=/app/config/schema_registry.yaml \
+    PLATFORM_RETURN_CONFIGURATION_PATH=/app/config/returns/production.yaml \
+    PLATFORM_DEPENDENCY_SIMULATION_CONFIGURATION_PATH=/app/config/dependency_simulation.yaml \
+    PLATFORM_AI_GATEWAY_CONFIGURATION_PATH=/app/config/ai_gateway.yaml
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libsybdb5 \

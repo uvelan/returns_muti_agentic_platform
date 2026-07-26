@@ -16,6 +16,8 @@ function requireData<T>(value: T | null): T {
   return value;
 }
 
+export type OperationalRecord = Record<string, unknown>;
+
 function jsonInit(method: string, body?: unknown): RequestInit {
   return {
     method,
@@ -174,5 +176,82 @@ export async function getOperationalDependency(id: string, signal?: AbortSignal)
   return requireData((await apiClient<OperationalDependency>(
     `/api/v1/system/dependencies/${encodeURIComponent(id)}`,
     { signal },
+  )).data);
+}
+
+export async function getProductionArtifacts(
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<OperationalRecord> {
+  return requireData((await apiClient<OperationalRecord>(
+    `/api/v1/returns/${encodeURIComponent(sessionId)}/production-artifacts`,
+    { signal },
+  )).data);
+}
+
+export async function getReturnAgentConfiguration(signal?: AbortSignal): Promise<OperationalRecord> {
+  return requireData((await apiClient<OperationalRecord>(
+    "/api/v1/return-agents/configuration",
+    { signal },
+  )).data);
+}
+
+export async function listReturnSupportWorkItems(
+  status?: string,
+  signal?: AbortSignal,
+): Promise<readonly OperationalRecord[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return requireData((await apiClient<OperationalRecord[]>(
+    `/api/v1/return-support/work-items${query}`,
+    { signal },
+  )).data);
+}
+
+export async function listIntegrationOutbox(
+  status?: string,
+  signal?: AbortSignal,
+): Promise<readonly OperationalRecord[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return requireData((await apiClient<OperationalRecord[]>(
+    `/api/v1/integration-outbox${query}`,
+    { signal },
+  )).data);
+}
+
+export async function listAIRoutes(signal?: AbortSignal): Promise<readonly OperationalRecord[]> {
+  return requireData((await apiClient<OperationalRecord[]>(
+    "/api/v1/ai-gateway/routes",
+    { signal },
+  )).data);
+}
+
+export async function listAITasks(signal?: AbortSignal): Promise<readonly OperationalRecord[]> {
+  return requireData((await apiClient<OperationalRecord[]>(
+    "/api/v1/ai-gateway/tasks",
+    { signal },
+  )).data);
+}
+
+export async function listAIMetrics(signal?: AbortSignal): Promise<readonly OperationalRecord[]> {
+  return requireData((await apiClient<OperationalRecord[]>(
+    "/api/v1/ai-gateway/metrics",
+    { signal },
+  )).data);
+}
+
+export async function getAIMetricsSummary(signal?: AbortSignal): Promise<OperationalRecord> {
+  return requireData((await apiClient<OperationalRecord>(
+    "/api/v1/ai-gateway/metrics/summary",
+    { signal },
+  )).data);
+}
+
+export async function testAISafety(payload: {
+  taskId: string;
+  payload: OperationalRecord;
+}): Promise<OperationalRecord> {
+  return requireData((await apiClient<OperationalRecord>(
+    "/api/v1/ai-gateway/safety-test",
+    jsonInit("POST", payload),
   )).data);
 }

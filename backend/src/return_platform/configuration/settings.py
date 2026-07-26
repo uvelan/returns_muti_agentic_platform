@@ -103,15 +103,28 @@ class Settings(BaseSettings):
     # Credential and model pools. List fields are the production path; single-value fields
     # remain as backward-compatible fallbacks during migration.
     google_api_keys: tuple[SecretStr, ...] = ()
-    google_lightweight_models: tuple[str, ...] = ("gemini-3.1-flash-lite",)
-    google_standard_models: tuple[str, ...] = ("gemini-3.5-flash",)
+    google_lightweight_models: tuple[str, ...] = (
+        "gemini-3.1-flash-lite",
+        "gemini-2.5-flash-lite",
+    )
+    google_standard_models: tuple[str, ...] = (
+        "gemini-3.5-flash",
+        "gemini-2.5-flash",
+    )
     google_api_key: SecretStr | None = None
     google_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
     google_model: str = "gemini-3.5-flash"
 
     nvidia_api_keys: tuple[SecretStr, ...] = ()
-    nvidia_lightweight_models: tuple[str, ...] = ("meta/llama-3.2-3b-instruct",)
-    nvidia_standard_models: tuple[str, ...] = ("nvidia/nemotron-3-nano-30b-a3b",)
+    nvidia_lightweight_models: tuple[str, ...] = (
+        "meta/llama-3.2-3b-instruct",
+        "meta/llama-3.1-8b-instruct",
+        "nvidia/llama-3.1-nemotron-nano-vl-8b-v1",
+    )
+    nvidia_standard_models: tuple[str, ...] = (
+        "nvidia/nemotron-3-nano-30b-a3b",
+        "abacusai/dracarys-llama-3.1-70b-instruct",
+    )
     nvidia_api_key: SecretStr | None = None
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     nvidia_model: str = "nvidia/nemotron-3-nano-30b-a3b"
@@ -138,6 +151,14 @@ class Settings(BaseSettings):
 
     seed_version: str = Field(default="e2e-v1", min_length=1, max_length=64)
     ai_studio_max_records: int = Field(default=500, ge=1, le=10_000)
+    # AI Studio write targets are deliberately separate from operational/source stores.
+    # Apply remains disabled until an operator supplies all sandbox-only coordinates.
+    ai_studio_mongo_database: str | None = None
+    ai_studio_sqlserver_host: str | None = None
+    ai_studio_sqlserver_port: int = Field(default=1433, ge=1, le=65_535)
+    ai_studio_sqlserver_user: str | None = None
+    ai_studio_sqlserver_password: SecretStr | None = None
+    ai_studio_sqlserver_database: str | None = None
     support_ticket_mode: Literal[
         "INTERNAL", "INTERNAL_WITH_EXTERNAL_MIRROR", "EXTERNAL_AUTHORITY"
     ] = "INTERNAL"
@@ -330,6 +351,13 @@ class Settings(BaseSettings):
     @classmethod
     def reject_blank_secrets(cls, value: SecretStr) -> SecretStr:
         if not value.get_secret_value().strip():
+            raise ValueError("Secret must not be blank.")
+        return value
+
+    @field_validator("ai_studio_sqlserver_password")
+    @classmethod
+    def reject_blank_optional_secret(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and not value.get_secret_value().strip():
             raise ValueError("Secret must not be blank.")
         return value
 

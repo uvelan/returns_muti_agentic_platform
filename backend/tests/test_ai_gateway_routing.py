@@ -178,6 +178,20 @@ def test_settings_accept_key_and_model_lists() -> None:
     assert settings.google_standard_models == ("standard-a",)
 
 
+def test_default_model_pools_have_rotation_capacity() -> None:
+    settings = Settings()
+    google_models = {
+        *settings.google_lightweight_models,
+        *settings.google_standard_models,
+    }
+    nvidia_models = {
+        *settings.nvidia_lightweight_models,
+        *settings.nvidia_standard_models,
+    }
+    assert len(google_models) >= 4
+    assert len(nvidia_models) >= 5
+
+
 def test_build_routes_expands_model_and_key_lists_by_tier() -> None:
     settings = _settings().model_copy(
         update={

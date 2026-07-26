@@ -9351,7 +9351,7 @@
           },
           "scenario": {
             "default": "BRANCH_PARCEL",
-            "pattern": "^(BRANCH_PARCEL|OFFSITE_HEAVY)$",
+            "pattern": "^(BRANCH_PARCEL|OFFSITE_HEAVY|BRANCH_LTL|OFFSITE_PARCEL|DIRECT_VENDOR|NO_PHYSICAL_RETURN)$",
             "title": "Scenario",
             "type": "string"
           },

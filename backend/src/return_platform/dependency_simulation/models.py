@@ -138,7 +138,13 @@ class DependencySimulationSummary(SimulatorContract):
 
 
 class SimulationE2ERequest(SimulatorContract):
-    scenario: str = Field(default="BRANCH_PARCEL", pattern=r"^(BRANCH_PARCEL|OFFSITE_HEAVY)$")
+    scenario: str = Field(
+        default="BRANCH_PARCEL",
+        pattern=(
+            r"^(BRANCH_PARCEL|OFFSITE_HEAVY|BRANCH_LTL|OFFSITE_PARCEL|"
+            r"DIRECT_VENDOR|NO_PHYSICAL_RETURN)$"
+        ),
+    )
     useAiNarrative: bool = True
     includeVendorRecovery: bool = True
 

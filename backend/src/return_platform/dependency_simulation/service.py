@@ -144,6 +144,28 @@ class DependencySimulationService:
                 latest.externalReference,
                 latest.simulatedState,
             )
+        if op == "SET_RETURN_METHOD":
+            await self._require_confirmed(
+                request.sessionId,
+                "OMC",
+                ("CREATE_RMA", "CREATE_LEGACY_RETURN"),
+                "Return-method authorization requires an authoritative simulated return.",
+            )
+            method = str(payload.get("returnMethod", "")).upper()
+            if not method:
+                raise SimulationContractError("returnMethod is required.")
+            ref = self._reference("OMC-METHOD-SIM-", key)
+            return (
+                {
+                    "externalReference": ref,
+                    "returnMethod": method,
+                    "authorizationId": ref,
+                    "status": "RETURN_METHOD_AUTHORIZED",
+                    "simulation": True,
+                },
+                ref,
+                "RETURN_METHOD_AUTHORIZED",
+            )
         if op == "SET_CUSTOMER_RESOLUTION":
             await self._require_confirmed(
                 request.sessionId,

@@ -1,0 +1,106 @@
+{
+  "audit": "STAGE_4O",
+  "commit": "c8976dab36eee87c238da5a174bfd4800bc212cc",
+  "generatedAt": "2026-07-26T12:15:00+05:30",
+  "items": [
+    {
+      "Feature ID": "AI-01",
+      "Feature": "Provider/model/key lists and safe route IDs",
+      "Classification": "VERIFIED_IMPLEMENTED",
+      "Source evidence": "backend/src/return_platform/configuration/settings.py; backend/src/return_platform/ai_gateway/routing.py",
+      "Test": "backend/tests/test_ai_gateway_routing.py::test_settings_accept_key_and_model_lists",
+      "Screen": "None",
+      "Known gap": "None identified",
+      "Risk": "LOW",
+      "Recommended action": "Retain and regression-test."
+    },
+    {
+      "Feature ID": "AI-02",
+      "Feature": "Complexity task registry",
+      "Classification": "VERIFIED_IMPLEMENTED",
+      "Source evidence": "backend/config/ai_gateway.yaml; backend/src/return_platform/ai_gateway/service.py",
+      "Test": "scripts/validate_stage4n_ai_gateway.py",
+      "Screen": "Missing /ai-gateway/tasks",
+      "Known gap": "None identified",
+      "Risk": "LOW",
+      "Recommended action": "Retain and regression-test."
+    },
+    {
+      "Feature ID": "AI-03",
+      "Feature": "Key/model/provider failover",
+      "Classification": "VERIFIED_IMPLEMENTED",
+      "Source evidence": "backend/src/return_platform/ai_gateway/routing.py; backend/src/return_platform/ai_gateway/service.py",
+      "Test": "backend/tests/test_ai_gateway_routing.py; scripts/run_stage4n_ai_simulator_e2e.sh",
+      "Screen": "None",
+      "Known gap": "None identified",
+      "Risk": "LOW",
+      "Recommended action": "Retain and regression-test."
+    },
+    {
+      "Feature ID": "AI-04",
+      "Feature": "Bounded retries and deadline",
+      "Classification": "VERIFIED_IMPLEMENTED",
+      "Source evidence": "backend/src/return_platform/ai_gateway/service.py; backend/config/ai_gateway.yaml",
+      "Test": "backend/tests/test_ai_gateway_routing.py",
+      "Screen": "None",
+      "Known gap": "None identified",
+      "Risk": "LOW",
+      "Recommended action": "Retain and regression-test."
+    },
+    {
+      "Feature ID": "AI-05",
+      "Feature": "Rate limiting",
+      "Classification": "PARTIAL",
+      "Source evidence": "backend/src/return_platform/ai_gateway/routing.py; backend/src/return_platform/operations/repository.py",
+      "Test": "None found",
+      "Screen": "None",
+      "Known gap": "No task/session/user limits; route/tier/provider/model/credential circuits and counters are process-local, not Valkey-distributed.",
+      "Risk": "BLOCKER",
+      "Recommended action": "Retain and regression-test."
+    },
+    {
+      "Feature ID": "AI-06",
+      "Feature": "Circuit breakers",
+      "Classification": "PARTIAL",
+      "Source evidence": "backend/src/return_platform/ai_gateway/routing.py",
+      "Test": "None found",
+      "Screen": "None",
+      "Known gap": "Circuit state is explicitly process-local and lost on restart; Retry-After is not consumed.",
+      "Risk": "BLOCKER",
+      "Recommended action": "Retain and regression-test."
+    },
+    {
+      "Feature ID": "AI-07",
+      "Feature": "Prompt injection/domain/action firewall",
+      "Classification": "PARTIAL",
+      "Source evidence": "backend/src/return_platform/ai_gateway/safety.py; backend/src/return_platform/ai_gateway/service.py",
+      "Test": "backend/tests/test_ai_gateway_routing.py::test_prompt_injection_is_blocked_before_provider_dispatch; test_domain_firewall_rejects_unrelated_request",
+      "Screen": "None",
+      "Known gap": "Legal and broad general-knowledge detection are absent; deterministic domain text is returned inside structured fallback but not proven for every unrelated request.",
+      "Risk": "HIGH",
+      "Recommended action": "Retain and regression-test."
+    },
+    {
+      "Feature ID": "AI-08",
+      "Feature": "Exact AI schemas and non-authority",
+      "Classification": "VERIFIED_IMPLEMENTED",
+      "Source evidence": "backend/src/return_platform/ai_gateway/service.py",
+      "Test": "backend/tests/test_ai_gateway_policy.py",
+      "Screen": "None",
+      "Known gap": "None identified",
+      "Risk": "LOW",
+      "Recommended action": "Retain and regression-test."
+    },
+    {
+      "Feature ID": "AI-09",
+      "Feature": "Durable attempt metrics",
+      "Classification": "PARTIAL",
+      "Source evidence": "backend/src/return_platform/ai_gateway/models.py; backend/src/return_platform/operations/repository.py",
+      "Test": "None found",
+      "Screen": "Missing /ai-gateway/metrics",
+      "Known gap": "failureReason, schemaResult and explicit simulated/live marker are missing; UI route is absent; pagination is limit-only.",
+      "Risk": "HIGH",
+      "Recommended action": "Retain and regression-test."
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "audit": "STAGE_4O",
+  "commit": "c8976dab36eee87c238da5a174bfd4800bc212cc",
+  "generatedAt": "2026-07-26T12:15:00+05:30",
+  "items": [
+    {
+      "repositoryRoot": "K:\\Projects\\FEG\\Ret\\full\\returns_platform",
+      "commit": "c8976dab36eee87c238da5a174bfd4800bc212cc",
+      "workingTreeBeforeAudit": "clean",
+      "requirements": {
+        "python": ">=3.13,<3.14",
+        "node": ">=24,<25",
+        "npm": ">=11,<12"
+      },
+      "counts": {
+        "backendSourceFiles": 173,
+        "backendTestFiles": 61,
+        "frontendSourceFiles": 164,
+        "frontendTestSpecs": 3,
+        "scripts": 58,
+        "docsFilesBeforeAudit": 140
+      },
+      "backendPackages": [
+        "agents",
+        "ai_gateway",
+        "api",
+        "canonical",
+        "configuration",
+        "data_console",
+        "data_governance",
+        "data_platform",
+        "dependency_simulation",
+        "operations",
+        "security",
+        "shared",
+        "workers",
+        "workflows"
+      ],
+      "frontendPackages": [
+        "api",
+        "components",
+        "contracts",
+        "features/operations",
+        "features/dependency-simulator",
+        "features/data-console"
+      ],
+      "agents": [
+        "Order Discovery Agent",
+        "Return Workflow Agent",
+        "Return Fulfillment Agent",
+        "Bay Assignment Agent",
+        "Feedback Learning Agent"
+      ],
+      "workflows": [
+        "ReturnWorkflow (legacy v1)",
+        "ProductionReturnWorkflow (production v2)"
+      ],
+      "workers": [
+        "return-workflow-worker",
+        "return-orchestrator",
+        "outbox-publisher",
+        "data-job-worker"
+      ],
+      "infrastructureTopology": [
+        "MongoDB platform/source databases",
+        "Neo4j derived graph",
+        "SQL Server local platform/sandbox schema",
+        "Valkey",
+        "Temporal + PostgreSQL",
+        "FastAPI",
+        "React/Vite/nginx"
+      ],
+      "duplicateImplementations": [
+        "operational_returns versus return_sessions",
+        "operational_events versus return_session_audit/outbox events",
+        "support_cases versus support_work_items/messages",
+        "AI gateway attempt metrics versus dependency simulator AI metrics",
+        "legacy ReturnWorkflow versus ProductionReturnWorkflow"
+      ],
+      "placeholderOrEmpty": [
+        "No empty Python modules beyond package __init__ files; required feature routes are absent rather than placeholders."
+      ],
+      "staleOrConflictingDocs": [
+        "README and Stage 4N docs list /ai-gateway/routes, /tasks and /metrics screens absent from frontend routes.",
+        "Prompt/runbook requests scripts/infra.sh probe, but the script has no probe action.",
+        "README uses SOURCE_VALIDATED accurately overall but screen-level completion claims conflict with source."
+      ]
+    }
+  ]
+}
