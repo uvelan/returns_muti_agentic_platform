@@ -48,6 +48,9 @@ class ProductionReturnWorkflow:
                 self._state is not None and (self._state.case_fully_closed or self._state.cancelled)
             )
         )
+        await workflow.wait_condition(workflow.all_handlers_finished)
+        if self._state is None:
+            raise RuntimeError("Production return workflow state was lost before completion")
         return self._state
 
     @workflow.query(name="production_state")

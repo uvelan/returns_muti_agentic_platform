@@ -125,3 +125,22 @@ def test_direct_vendor_path_can_skip_lsi_license_plate_and_warehouse() -> None:
     assert state.license_plate_required is False
     assert state.warehouse_processing_required is False
     assert state.case_fully_closed is True
+
+
+def test_direct_vendor_vendor_recovery_is_registered_before_customer_closure() -> None:
+    state = confirmed_return()
+    state = apply(state, ProductionReturnEventType.PHYSICAL_HANDOFF_CONFIRMED)
+    state = apply(state, ProductionReturnEventType.RECEIPT_CONFIRMED)
+    state = apply(state, ProductionReturnEventType.LICENSE_PLATE_NOT_REQUIRED)
+    state = apply(state, ProductionReturnEventType.WAREHOUSE_PROCESSING_NOT_REQUIRED)
+    state = apply(state, ProductionReturnEventType.PRODUCT_DISPOSITION_COMPLETED)
+    assert state.case_fully_closed is False
+
+    state = apply(state, ProductionReturnEventType.VENDOR_RECOVERY_REQUIRED)
+    state = apply(state, ProductionReturnEventType.CUSTOMER_RESOLUTION_COMPLETED)
+    assert state.stage is ProductionReturnStage.VENDOR_RECOVERY
+    assert state.case_fully_closed is False
+
+    state = apply(state, ProductionReturnEventType.VENDOR_RECOVERY_COMPLETED)
+    assert state.stage is ProductionReturnStage.FULLY_CLOSED
+    assert state.case_fully_closed is True

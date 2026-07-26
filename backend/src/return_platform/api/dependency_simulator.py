@@ -460,9 +460,6 @@ async def run_e2e(
             "lsi-license",
             {"handlingUnitId": handling_unit_id},
         )
-    await run(
-        "OMC", "SET_CUSTOMER_RESOLUTION", "customer-refund", {"customerResolution": "REFUNDED"}
-    )
     product_dependency = (
         "OMC" if payload.scenario in {"DIRECT_VENDOR", "NO_PHYSICAL_RETURN"} else "LSI"
     )
@@ -480,6 +477,9 @@ async def run_e2e(
         # completion conditions become true, so the durable state cannot close
         # before downstream RGA and vendor-credit evidence arrives.
         await run(vendor_dependency, "CREATE_RGA", "vendor-rga", {})
+    await run(
+        "OMC", "SET_CUSTOMER_RESOLUTION", "customer-refund", {"customerResolution": "REFUNDED"}
+    )
     if payload.scenario not in {"DIRECT_VENDOR", "NO_PHYSICAL_RETURN"}:
         await run("LSI", "COMPLETE_WAREHOUSE_PROCESSING", "warehouse-complete", {})
     if vendor_recovery:
