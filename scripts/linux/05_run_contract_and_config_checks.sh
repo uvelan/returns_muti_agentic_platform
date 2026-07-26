@@ -2,7 +2,10 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 cd "$REPO_ROOT"
-docker compose config --quiet
+docker compose --profile containerized-app config --quiet
+python3 "$LINUX_SCRIPT_DIR/verify_mandatory_routes.py" \
+  "$LINUX_SCRIPT_DIR/mandatory_routes.json" \
+  "$REPO_ROOT/frontend/src/routes.ts"
 if command -v poetry >/dev/null 2>&1; then
   POETRY=(poetry)
 elif [[ -x "$RUNTIME_ROOT/tooling/bin/poetry" ]]; then

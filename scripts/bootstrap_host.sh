@@ -12,6 +12,7 @@ node -e 'const [major]=process.versions.node.split(".").map(Number); if (major !
 npm -v | awk -F. '$1 != 11 { print "npm 11 required, found " $0 > "/dev/stderr"; exit 1 }'
 if [[ ! -f "$ROOT/.env" ]]; then
   cp "$ROOT/.env.example" "$ROOT/.env"
+  chmod 600 "$ROOT/.env"
   echo "Created .env. Replace placeholder credentials before running services."
 fi
 cd "$ROOT/backend"

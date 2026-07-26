@@ -1,6 +1,7 @@
-"""Generate the Stage 4O audit artifacts from the evidence gathered on 2026-07-26.
+"""Generate the pre-remediation Stage 4O audit baseline gathered on 2026-07-26.
 
-This file is evidence provenance, not production application code.
+This file is evidence provenance, not production application code. It must not
+be used to overwrite the post-remediation validation summary.
 """
 
 from __future__ import annotations
@@ -464,7 +465,9 @@ summary = {
     ],
     "qualityEvidence": {"backendTests": 987, "frontendTests": 39, "stage4nValidatorChecks": 9, "stage4nFocusedTests": 5},
 }
-(OUT / "validation_summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+(OUT / "baseline_validation_summary.json").write_text(
+    json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+)
 
 answers_text = "\n\n".join(f"### {question}\n\n{answer}" for question, answer in mandatory_answers)
 top_gaps = "\n".join(f"{i}. {gap}" for i, gap in enumerate(summary["topBlockers"], start=1))

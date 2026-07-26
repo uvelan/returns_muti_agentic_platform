@@ -1,32 +1,70 @@
 {
-  "commit": "c8976dab36eee87c238da5a174bfd4800bc212cc",
-  "finalClassification": "SOURCE_INCOMPLETE",
-  "featureCounts": {
-    "PARTIAL": 26,
-    "SOURCE_IMPLEMENTED_RUNTIME_UNVERIFIED": 13,
-    "UNSAFE": 4,
-    "VERIFIED_IMPLEMENTED": 17,
-    "SIMULATED": 6,
-    "MISSING": 5
+  "schemaVersion": 2,
+  "auditBaseline": {
+    "commit": "c8976dab36eee87c238da5a174bfd4800bc212cc",
+    "classification": "SOURCE_INCOMPLETE",
+    "purpose": "Pre-remediation Stage 4O findings baseline",
+    "featureCounts": {
+      "PARTIAL": 26,
+      "SOURCE_IMPLEMENTED_RUNTIME_UNVERIFIED": 13,
+      "UNSAFE": 4,
+      "VERIFIED_IMPLEMENTED": 17,
+      "SIMULATED": 6,
+      "MISSING": 5
+    },
+    "screensPresent": 12,
+    "screensMissing": 11,
+    "testsPassed": 10,
+    "testsFailed": 2,
+    "testsBlocked": 5
   },
-  "screensVerified": 0,
-  "screensSourceImplementedRuntimeUnverified": 12,
-  "screensIncomplete": 23,
-  "testsPassed": 10,
-  "testsFailed": 2,
-  "testsBlocked": 5,
-  "topBlockers": [
-    "Only two of six return scenarios have any E2E runner path; four are missing/dedicated-path incomplete.",
-    "11 of 23 mandatory exact frontend routes are absent.",
-    "No live OMC, parcel carrier, freight/TMS, or LSI integration proof.",
-    "AI rate limits/circuits are process-local and required metrics fields/UI are incomplete.",
-    "Backend/orchestrator cannot start because configuration paths resolve outside /app/config; concurrent Mongo index migration also races.",
-    "Data Console generic SQL write boundary is not physically isolated from production OMC configuration."
-  ],
-  "qualityEvidence": {
-    "backendTests": 987,
-    "frontendTests": 39,
-    "stage4nValidatorChecks": 9,
-    "stage4nFocusedTests": 5
+  "remediation": {
+    "commitPrefix": "b278776",
+    "classification": "SOURCE_VALIDATED",
+    "mandatoryScreens": {
+      "required": 23,
+      "present": 23,
+      "missing": 0
+    },
+    "backend": {
+      "pytestPassed": 992,
+      "pytestSkipped": 1,
+      "ruff": "PASS",
+      "strictMypy": "PASS"
+    },
+    "frontend": {
+      "vitestPassed": 41,
+      "typescript": "PASS",
+      "eslint": "PASS",
+      "productionBuild": "PASS"
+    },
+    "contracts": {
+      "openapiDrift": "PASS",
+      "generatedTypescript": "REFRESHED"
+    },
+    "details": "remediation_validation.json"
+  },
+  "currentClassification": "SOURCE_VALIDATED",
+  "linuxRuntimeValidation": {
+    "status": "PENDING",
+    "requiredProof": [
+      "full-stack startup and readiness",
+      "worker heartbeats",
+      "all six simulated scenarios",
+      "AI live-stack validation",
+      "real browser E2E",
+      "accessibility",
+      "restart and replay",
+      "manual inspection of all 23 mandatory routes"
+    ]
+  },
+  "productionExternalValidation": {
+    "status": "NOT_PROVEN",
+    "dependencies": [
+      "OMC",
+      "parcel carrier or TMS",
+      "freight or TMS",
+      "LSI"
+    ]
   }
 }

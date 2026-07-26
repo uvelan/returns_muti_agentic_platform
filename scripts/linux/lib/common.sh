@@ -25,7 +25,8 @@ require_command() {
 repo_fingerprint() {
   {
     git -C "$REPO_ROOT" rev-parse HEAD
-    git -C "$REPO_ROOT" diff --binary
+    git -C "$REPO_ROOT" diff --binary HEAD
+    git -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all
   } | sha256sum | awk '{print $1}'
 }
 
@@ -81,7 +82,9 @@ run_and_record() {
 
 checkpoint_valid() {
   local phase="$1" checkpoint="$STATE_DIR/${phase}.sha256"
-  [[ -s "$checkpoint" ]] && [[ "$(cat "$checkpoint")" == "$(repo_fingerprint)" ]] \
+  [[ -z "$(git -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ]] \
+    && [[ -s "$checkpoint" ]] \
+    && [[ "$(cat "$checkpoint")" == "$(repo_fingerprint)" ]] \
     && python3 - "$EVIDENCE_DIR/${phase}.json" <<'PY'
 import json
 import pathlib

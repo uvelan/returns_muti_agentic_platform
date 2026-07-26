@@ -13,17 +13,17 @@
 
 ```bash
 cp .env.example .env
-
-cat >> .env <<'EOF'
-PLATFORM_ENVIRONMENT=development
-PLATFORM_OMC_DEPENDENCY_MODE=SIMULATED
-PLATFORM_PARCEL_DEPENDENCY_MODE=SIMULATED
-PLATFORM_FREIGHT_DEPENDENCY_MODE=SIMULATED
-PLATFORM_LSI_DEPENDENCY_MODE=SIMULATED
-EOF
+chmod 600 .env
 ```
 
-Google and NVIDIA keys are optional. Without them, every simulator operation receives its default template and continues normally.
+Replace every placeholder in `.env`. Do not append duplicate assignments. Keep
+`PLATFORM_ENVIRONMENT=development` and all four dependency modes set to
+`SIMULATED`. JSON key/model arrays must be wrapped in single quotes.
+
+Google and NVIDIA keys are optional for simulator-only flow execution. Without
+them, simulator AI operations use deterministic fallback templates. The full
+Linux validation gate additionally performs live catalog and minimal-generation
+checks, so both configured provider pools must be populated for that gate.
 
 ## Install host dependencies
 
@@ -41,19 +41,24 @@ The script starts Docker infrastructure, the API, Temporal worker, return orches
 
 ## Execute API-driven E2E
 
-In another terminal:
+In another terminal, run all six paths:
 
 ```bash
-./scripts/run_stage4m_simulated_e2e.sh BRANCH_PARCEL
+for scenario in \
+  BRANCH_PARCEL \
+  OFFSITE_HEAVY \
+  BRANCH_LTL \
+  OFFSITE_PARCEL \
+  DIRECT_VENDOR \
+  NO_PHYSICAL_RETURN
+do
+  ./scripts/run_stage4m_simulated_e2e.sh "$scenario" || exit 1
+done
 ```
 
-or:
-
-```bash
-./scripts/run_stage4m_simulated_e2e.sh OFFSITE_HEAVY
-```
-
-The script creates a production-v2 return session, runs the external dependency simulation, queries Temporal state, checks that simulator headers are present and prints all generated operation IDs.
+Each run creates a production-v2 return session, executes the required simulated
+dependency lifecycle, queries Temporal state, checks simulator headers, and
+fails unless `caseFullyClosed` is `true`.
 
 ## Dedicated pages
 
@@ -69,8 +74,11 @@ http://localhost:5173/system/dependency-simulator/ai-metrics
 ## Validation
 
 ```bash
-./scripts/run_stage4m_gates.sh
+./scripts/linux/run_full_linux_validation.sh --from-start
 ```
+
+The first full run creates a commit-bound 23-screen manual attestation and stops.
+Complete that file, then run `./scripts/linux/run_full_linux_validation.sh --resume`.
 
 ## Stop infrastructure
 

@@ -73,13 +73,13 @@ cp .env.example .env
 Configure key and model lists when live AI is desired:
 
 ```env
-PLATFORM_GOOGLE_API_KEYS=["replace-me"]
-PLATFORM_GOOGLE_LIGHTWEIGHT_MODELS=["configured-lightweight-model"]
-PLATFORM_GOOGLE_STANDARD_MODELS=["configured-standard-model"]
+PLATFORM_GOOGLE_API_KEYS='["replace-me"]'
+PLATFORM_GOOGLE_LIGHTWEIGHT_MODELS='["configured-lightweight-model"]'
+PLATFORM_GOOGLE_STANDARD_MODELS='["configured-standard-model"]'
 
-PLATFORM_NVIDIA_API_KEYS=[]
-PLATFORM_NVIDIA_LIGHTWEIGHT_MODELS=[]
-PLATFORM_NVIDIA_STANDARD_MODELS=[]
+PLATFORM_NVIDIA_API_KEYS='[]'
+PLATFORM_NVIDIA_LIGHTWEIGHT_MODELS='[]'
+PLATFORM_NVIDIA_STANDARD_MODELS='[]'
 ```
 
 Start the simulated dependency stack:

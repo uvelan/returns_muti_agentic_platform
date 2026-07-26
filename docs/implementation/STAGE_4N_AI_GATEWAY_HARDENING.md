@@ -40,15 +40,15 @@ AI never creates or confirms RMA, RGA, tracking, booking, pickup, receipt, licen
 Credentials are secret lists in `.env`:
 
 ```env
-PLATFORM_GOOGLE_API_KEYS=["key-a","key-b"]
-PLATFORM_NVIDIA_API_KEYS=["key-x","key-y"]
+PLATFORM_GOOGLE_API_KEYS='["key-a","key-b"]'
+PLATFORM_NVIDIA_API_KEYS='["key-x","key-y"]'
 ```
 
 Models are independently configured by complexity:
 
 ```env
-PLATFORM_GOOGLE_LIGHTWEIGHT_MODELS=["light-model-a","light-model-b"]
-PLATFORM_GOOGLE_STANDARD_MODELS=["standard-model-a","standard-model-b"]
+PLATFORM_GOOGLE_LIGHTWEIGHT_MODELS='["light-model-a","light-model-b"]'
+PLATFORM_GOOGLE_STANDARD_MODELS='["standard-model-a","standard-model-b"]'
 ```
 
 The gateway expands these into runtime routes such as:
@@ -61,6 +61,12 @@ google/standard-model-a/google-key-1
 ```
 
 Raw credentials are never returned by APIs or written to metrics. Only safe IDs such as `google-key-2` are persisted.
+
+The operator probe validates catalog authentication for every configured Google
+and NVIDIA credential, then performs minimal generation against every distinct
+configured model using one healthy credential. Duplicate model IDs across tiers,
+failed credentials, missing catalog models, and non-200 generation responses fail
+the Linux live-stack gate without printing key material or provider response bodies.
 
 ## Task complexity tiers
 

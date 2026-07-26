@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """Dependency-light validation for Stage 4L production return implementation."""
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ROOT = REPOSITORY_ROOT / "backend"
-
-import sys
 
 sys.path.insert(0, str(BACKEND_ROOT / "src"))
 

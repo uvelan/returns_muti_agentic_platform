@@ -8,8 +8,12 @@ Production-oriented Sales Order return orchestration with an associate-first AI 
 The cross-platform quality review is tracked in
 `docs/code_quality/FULL_CODEBASE_REVIEW_FINDINGS.md`. Linux operators must use
 `docs/code_quality/LINUX_LIVE_VALIDATION_RUNBOOK.md` and the single master
-command `./scripts/linux/run_full_linux_validation.sh --from-start`. Windows
-results are not proof of Linux execution.
+command `./scripts/linux/run_full_linux_validation.sh --from-start`. The gate
+requires the Stage 4O commit prefix `b278776` to be an ancestor, executes all
+six simulated return paths, validates every configured Google/NVIDIA credential
+and exact model, runs real browser E2E, accessibility, restart/replay, and
+requires a commit-bound manual attestation for all 23 mandatory routes.
+Windows results are not proof of Linux execution.
 
 ## 1. Product flow
 
@@ -121,6 +125,7 @@ Create `.env` once. Never track, print, attach, or package it.
 
 ```bash
 cp .env.example .env
+chmod 600 .env
 ```
 
 PowerShell:
@@ -150,6 +155,10 @@ PLATFORM_SUPPORT_TICKET_MAX_POLLS=12
 ```
 
 Do not run `cp .env.example .env` when `.env` already exists; that would overwrite credentials. The bootstrap scripts create it only when absent.
+JSON list values must remain single-quoted so Bash, Compose, and Pydantic receive
+the same JSON value. The Linux prerequisite gate validates syntax, permissions,
+simulation mode, required credentials, and model pools without displaying any
+secret value.
 
 ## 7. Host bootstrap — no application Docker required
 
@@ -780,8 +789,16 @@ cp .env.example .env
 ### Run an API-driven E2E scenario
 
 ```bash
-./scripts/run_stage4m_simulated_e2e.sh BRANCH_PARCEL
-./scripts/run_stage4m_simulated_e2e.sh OFFSITE_HEAVY
+for scenario in \
+  BRANCH_PARCEL \
+  OFFSITE_HEAVY \
+  BRANCH_LTL \
+  OFFSITE_PARCEL \
+  DIRECT_VENDOR \
+  NO_PHYSICAL_RETURN
+do
+  ./scripts/run_stage4m_simulated_e2e.sh "$scenario" || exit 1
+done
 ```
 
 ### Dedicated pages
@@ -819,16 +836,19 @@ Stage 4N hardens the AI control plane while keeping AI non-authoritative. Creden
 Keep credentials in `.env`:
 
 ```env
-PLATFORM_GOOGLE_API_KEYS=["google-key-a","google-key-b"]
-PLATFORM_GOOGLE_LIGHTWEIGHT_MODELS=["google-light-model-a","google-light-model-b"]
-PLATFORM_GOOGLE_STANDARD_MODELS=["google-standard-model-a"]
+PLATFORM_GOOGLE_API_KEYS='["google-key-a","google-key-b"]'
+PLATFORM_GOOGLE_LIGHTWEIGHT_MODELS='["google-light-model-a","google-light-model-b"]'
+PLATFORM_GOOGLE_STANDARD_MODELS='["google-standard-model-a"]'
 
-PLATFORM_NVIDIA_API_KEYS=["nvidia-key-a"]
-PLATFORM_NVIDIA_LIGHTWEIGHT_MODELS=["nvidia-light-model-a"]
-PLATFORM_NVIDIA_STANDARD_MODELS=["nvidia-standard-model-a"]
+PLATFORM_NVIDIA_API_KEYS='["nvidia-key-a"]'
+PLATFORM_NVIDIA_LIGHTWEIGHT_MODELS='["nvidia-light-model-a"]'
+PLATFORM_NVIDIA_STANDARD_MODELS='["nvidia-standard-model-a"]'
 ```
 
-Empty lists are valid. Legacy single-key/single-model variables remain readable for migration but should not be used for new environments.
+Empty lists are valid for providers that are intentionally disabled. The full
+Linux live-validation gate requires the configured Google and NVIDIA pools to
+be non-empty and verifies every configured model. Legacy single-key/single-model
+variables remain readable for migration but should not be used for new environments.
 
 Model names, task tiers, limits, retry policy, circuits, exact input allowlists, and fallback strategies are governed by:
 

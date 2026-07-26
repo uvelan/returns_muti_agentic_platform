@@ -15,27 +15,31 @@ elif [[ -n "${2:-}" ]]; then
   exit 2
 fi
 
+phase_manifest="$LINUX_SCRIPT_DIR/validation_phases.txt"
+[[ -s "$phase_manifest" ]] || {
+  echo "Validation phase manifest is missing: $phase_manifest" >&2
+  exit 2
+}
+readarray -t phases < <(grep -vE '^[[:space:]]*(#|$)' "$phase_manifest")
+[[ "${#phases[@]}" -gt 0 ]] || {
+  echo "Validation phase manifest contains no phases." >&2
+  exit 2
+}
+for script_name in "${phases[@]}"; do
+  [[ -x "$LINUX_SCRIPT_DIR/$script_name" ]] || {
+    echo "Validation phase is missing or not executable: $script_name" >&2
+    exit 2
+  }
+done
+
 if [[ "$mode" == "--from-start" ]]; then
   find "$STATE_DIR" -maxdepth 1 -type f -name '*.sha256' -delete
+  rm -f "$EVIDENCE_DIR/linux-validation-receipt.json"
+  for script_name in "${phases[@]}"; do
+    phase="${script_name%.sh}"
+    rm -f "$EVIDENCE_DIR/${phase}.json" "$LOG_DIR/${phase}.log"
+  done
 fi
-
-declare -a phases=(
-  "01_verify_transfer.sh"
-  "02_reconstruct_environment.sh"
-  "03_run_backend_quality.sh"
-  "04_run_frontend_quality.sh"
-  "05_run_contract_and_config_checks.sh"
-  "06_start_infrastructure.sh"
-  "07_seed_and_validate_data.sh"
-  "08_start_backend.sh"
-  "09_start_workers.sh"
-  "10_start_frontend.sh"
-  "11_validate_host_processes.sh"
-  "12_validate_worker_heartbeats.sh"
-  "13_run_api_probes.sh"
-  "14_run_real_e2e.sh"
-  "19_verify_repository_state.sh"
-)
 
 failed_phase=""
 for script_name in "${phases[@]}"; do
@@ -54,6 +58,14 @@ done
 if [[ -n "$failed_phase" ]]; then
   "$LINUX_SCRIPT_DIR/15_collect_failure_evidence.sh" || true
   "$LINUX_SCRIPT_DIR/16_generate_linux_receipt.sh" || true
+  if [[ "$failed_phase" == "20_verify_manual_screen_attestation" ]]; then
+    cat <<EOF
+manual_action=inspect and complete $EVIDENCE_DIR/manual-screen-validation.json
+resume_command=./scripts/linux/run_full_linux_validation.sh --resume
+EOF
+  else
+    printf 'failed_phase_log=%s\n' "$LOG_DIR/${failed_phase}.log"
+  fi
   cat <<EOF
 overall_status=FAIL
 failed_phase=$failed_phase
@@ -78,7 +90,12 @@ backend_status=PASS
 worker_status=PASS
 frontend_status=PASS
 api_status=PASS
+scenario_status=PASS
+ai_live_stack_status=PASS
 e2e_status=PASS
+accessibility_status=PASS
+restart_replay_status=PASS
+manual_screen_status=PASS
 evidence_directory=$EVIDENCE_DIR
 exact_next_command=./scripts/linux/package_validation_results.sh
 EOF

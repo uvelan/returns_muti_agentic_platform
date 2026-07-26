@@ -8,6 +8,14 @@ require_command npm
   echo "Python 3.13 is required." >&2
   exit 2
 }
+[[ "$(node -p 'process.versions.node.split(".")[0]')" == "24" ]] || {
+  echo "Node.js 24 is required; found $(node --version)." >&2
+  exit 2
+}
+[[ "$(npm --version | cut -d. -f1)" == "11" ]] || {
+  echo "npm 11 is required; found $(npm --version)." >&2
+  exit 2
+}
 cd "$REPO_ROOT/backend"
 if command -v poetry >/dev/null 2>&1; then
   poetry install --sync --no-interaction
@@ -19,3 +27,4 @@ else
 fi
 cd "$REPO_ROOT/frontend"
 npm ci --ignore-scripts=false
+npx playwright install --with-deps chromium
