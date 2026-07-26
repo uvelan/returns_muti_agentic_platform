@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "environment": "linux",
+  "category": "live-e2e",
+  "status": "NOT_RUN",
+  "linuxExecutionClaim": false
+}

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -85,9 +85,13 @@ class BranchStagingService:
         if session is None:
             raise KeyError(session_id)
         if session.productPresence != "PRESENT_AT_BRANCH":
-            raise ValueError("Branch staging is allowed only when the product is present at branch.")
+            raise ValueError(
+                "Branch staging is allowed only when the product is present at branch."
+            )
         if session.returnReference is None:
-            raise ValueError("An authoritative return/RMA number is required before branch staging.")
+            raise ValueError(
+                "An authoritative return/RMA number is required before branch staging."
+            )
         policy = self._configuration.return_policy.branch_staging
         if policy.require_return_number_tag and not request.returnNumberTagApplied:
             raise ValueError("A removable return-number tag is required.")
@@ -131,14 +135,12 @@ class BranchStagingService:
         )
         return {
             "stagingRecord": {key: value for key, value in record.items() if key != "_id"},
-            "handlingUnit": {
-                key: value for key, value in updated_handling.items() if key != "_id"
-            },
+            "handlingUnit": {key: value for key, value in updated_handling.items() if key != "_id"},
         }
 
 
 class PickupCoordinationService:
-    _allowed: dict[str, frozenset[PickupAction]] = {
+    _allowed: ClassVar[dict[str, frozenset[PickupAction]]] = {
         "ASSESSMENT_COMPLETE": frozenset({PickupAction.AUTHORIZE, PickupAction.CANCEL}),
         "AUTHORIZED": frozenset(
             {PickupAction.REQUEST_BOOKING, PickupAction.SCHEDULE, PickupAction.CANCEL}
@@ -223,8 +225,7 @@ class PickupCoordinationService:
                 "carrier": request.carrier or current.get("carrier"),
                 "serviceLevel": request.serviceLevel or current.get("serviceLevel"),
                 "equipmentRequirements": (
-                    request.equipmentRequirements
-                    or list(current.get("equipmentRequirements", []))
+                    request.equipmentRequirements or list(current.get("equipmentRequirements", []))
                 ),
                 "requestedWindowStart": request.scheduledWindowStart.isoformat(),
                 "requestedWindowEnd": request.scheduledWindowEnd.isoformat(),
@@ -238,8 +239,7 @@ class PickupCoordinationService:
                 aggregate_type="PICKUP_REQUEST",
                 aggregate_id=session_id,
                 idempotency_key=(
-                    f"carrier-booking:{current.get('pickupRequestId')}:"
-                    f"{request.expectedVersion}"
+                    f"carrier-booking:{current.get('pickupRequestId')}:{request.expectedVersion}"
                 ),
                 payload=booking_payload,
             )
@@ -271,9 +271,7 @@ class PickupCoordinationService:
                     "scheduledWindowStart": start,
                     "scheduledWindowEnd": end,
                     "bolReference": request.bolReference or current.get("bolReference"),
-                    "bookingConfirmationReference": (
-                        request.bookingConfirmationReference
-                    ),
+                    "bookingConfirmationReference": (request.bookingConfirmationReference),
                     "scheduledBy": actor_id,
                     "scheduledAt": now,
                     "failureCode": None,

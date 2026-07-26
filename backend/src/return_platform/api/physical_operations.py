@@ -88,9 +88,9 @@ async def apply_pickup_action(
 ) -> APIResponse[dict[str, Any]]:
     resources, loaded, repository = _dependencies(request)
     try:
-        result = await PickupCoordinationService(
-            repository, loaded.configuration
-        ).apply(session_id, payload, actor_id=actor)
+        result = await PickupCoordinationService(repository, loaded.configuration).apply(
+            session_id, payload, actor_id=actor
+        )
         workflow_event = {
             PickupAction.CONFIRM_BOOKING: (
                 ProductionReturnEventType.CARRIER_BOOKING_CONFIRMED,
@@ -133,7 +133,9 @@ async def apply_pickup_action(
                 },
             )
     except KeyError as error:
-        raise HTTPException(status_code=404, detail="Return or pickup request not found.") from error
+        raise HTTPException(
+            status_code=404, detail="Return or pickup request not found."
+        ) from error
     except ConcurrencyConflictError as error:
         raise HTTPException(status_code=409, detail="Pickup request version conflict.") from error
     except ValueError as error:

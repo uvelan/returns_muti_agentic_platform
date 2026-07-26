@@ -37,24 +37,41 @@ def _meta(request: Request) -> ResponseMeta:
     return ResponseMeta(request_id=cast(str, getattr(request.state, "correlation_id", "unknown")))
 
 
-def _service(request: Request) -> tuple[DependencySimulationService, RuntimeResources, LoadedReturnConfiguration, OperationalRepository]:
+def _service(
+    request: Request,
+) -> tuple[
+    DependencySimulationService, RuntimeResources, LoadedReturnConfiguration, OperationalRepository
+]:
     resources = getattr(request.app.state, "resources", None)
     loaded = getattr(request.app.state, "dependency_simulation_configuration", None)
     loaded_returns = getattr(request.app.state, "return_configuration", None)
     if not isinstance(resources, RuntimeResources) or resources.mongo is None:
-        raise HTTPException(status_code=503, detail="Platform MongoDB is required for dependency simulation.")
-    if not isinstance(loaded, LoadedDependencySimulationConfiguration) or not isinstance(loaded_returns, LoadedReturnConfiguration):
-        raise HTTPException(status_code=503, detail="Dependency simulation configuration is unavailable.")
+        raise HTTPException(
+            status_code=503, detail="Platform MongoDB is required for dependency simulation."
+        )
+    if not isinstance(loaded, LoadedDependencySimulationConfiguration) or not isinstance(
+        loaded_returns, LoadedReturnConfiguration
+    ):
+        raise HTTPException(
+            status_code=503, detail="Dependency simulation configuration is unavailable."
+        )
     if resources.settings.environment == "production" or not loaded.configuration.enabled:
-        raise HTTPException(status_code=403, detail="Dependency simulation is disabled in this environment.")
+        raise HTTPException(
+            status_code=403, detail="Dependency simulation is disabled in this environment."
+        )
     repository = MongoSimulationRepository(resources.mongo, resources.settings)
     operational = OperationalRepository(resources.mongo, resources.settings, resources.source_mongo)
-    return DependencySimulationService(
-        repository,
-        resources.settings,
-        loaded,
-        route_pool=getattr(request.app.state, "ai_gateway_route_pool", None),
-    ), resources, loaded_returns, operational
+    return (
+        DependencySimulationService(
+            repository,
+            resources.settings,
+            loaded,
+            route_pool=getattr(request.app.state, "ai_gateway_route_pool", None),
+        ),
+        resources,
+        loaded_returns,
+        operational,
+    )
 
 
 def _simulation_header(response: Response) -> None:
@@ -63,7 +80,9 @@ def _simulation_header(response: Response) -> None:
 
 
 @router.get("/summary", response_model=APIResponse[DependencySimulationSummary])
-async def summary(request: Request, response: Response, _actor: str = Depends(require_read_roles)) -> APIResponse[DependencySimulationSummary]:
+async def summary(
+    request: Request, response: Response, _actor: str = Depends(require_read_roles)
+) -> APIResponse[DependencySimulationSummary]:
     service, resources, _, _ = _service(request)
     _simulation_header(response)
     data = DependencySimulationSummary(
@@ -84,14 +103,28 @@ async def summary(request: Request, response: Response, _actor: str = Depends(re
 
 
 @router.get("/operations", response_model=APIResponse[list[SimulationOperationView]])
-async def operations(request: Request, response: Response, dependency: str | None = Query(default=None), session_id: str | None = Query(default=None, alias="sessionId"), _actor: str = Depends(require_read_roles)) -> APIResponse[list[SimulationOperationView]]:
+async def operations(
+    request: Request,
+    response: Response,
+    dependency: str | None = Query(default=None),
+    session_id: str | None = Query(default=None, alias="sessionId"),
+    _actor: str = Depends(require_read_roles),
+) -> APIResponse[list[SimulationOperationView]]:
     service, _, _, _ = _service(request)
     _simulation_header(response)
-    return APIResponse(data=await service.repository.list_operations(dependency=dependency, session_id=session_id), meta=_meta(request))
+    return APIResponse(
+        data=await service.repository.list_operations(dependency=dependency, session_id=session_id),
+        meta=_meta(request),
+    )
 
 
 @router.get("/operations/{operation_id}", response_model=APIResponse[SimulationOperationView])
-async def operation_detail(operation_id: str, request: Request, response: Response, _actor: str = Depends(require_read_roles)) -> APIResponse[SimulationOperationView]:
+async def operation_detail(
+    operation_id: str,
+    request: Request,
+    response: Response,
+    _actor: str = Depends(require_read_roles),
+) -> APIResponse[SimulationOperationView]:
     service, _, _, _ = _service(request)
     _simulation_header(response)
     item = await service.repository.get_operation(operation_id)
@@ -101,21 +134,42 @@ async def operation_detail(operation_id: str, request: Request, response: Respon
 
 
 @router.post("/operations", response_model=APIResponse[SimulationOperationView])
-async def create_operation(payload: SimulationOperationRequest, request: Request, response: Response, actor: str = Depends(require_write_roles)) -> APIResponse[SimulationOperationView]:
+async def create_operation(
+    payload: SimulationOperationRequest,
+    request: Request,
+    response: Response,
+    actor: str = Depends(require_write_roles),
+) -> APIResponse[SimulationOperationView]:
     service, resources, loaded_returns, operational = _service(request)
     _simulation_header(response)
     item = await service.execute(payload)
     if payload.signalWorkflow and item.status.value == "CONFIRMED":
         try:
-            event_type, signal_status = await signal_workflow(item, resources=resources, loaded_returns=loaded_returns, repository=operational, actor_id=actor)
+            event_type, signal_status = await signal_workflow(
+                item,
+                resources=resources,
+                loaded_returns=loaded_returns,
+                repository=operational,
+                actor_id=actor,
+            )
         except Exception:
             event_type, signal_status = None, "SIGNAL_FAILED"
-        item = await service.repository.update_operation(item.id, {"workflowEventType": event_type, "workflowSignalStatus": signal_status})
+        item = await service.repository.update_operation(
+            item.id, {"workflowEventType": event_type, "workflowSignalStatus": signal_status}
+        )
     return APIResponse(data=item, meta=_meta(request))
 
 
-@router.post("/operations/{operation_id}/advance", response_model=APIResponse[SimulationOperationView])
-async def advance_operation(operation_id: str, payload: SimulationAdvanceRequest, request: Request, response: Response, actor: str = Depends(require_write_roles)) -> APIResponse[SimulationOperationView]:
+@router.post(
+    "/operations/{operation_id}/advance", response_model=APIResponse[SimulationOperationView]
+)
+async def advance_operation(
+    operation_id: str,
+    payload: SimulationAdvanceRequest,
+    request: Request,
+    response: Response,
+    actor: str = Depends(require_write_roles),
+) -> APIResponse[SimulationOperationView]:
     service, resources, loaded_returns, operational = _service(request)
     _simulation_header(response)
     try:
@@ -124,39 +178,82 @@ async def advance_operation(operation_id: str, payload: SimulationAdvanceRequest
         raise HTTPException(status_code=404, detail="Simulation operation not found.") from error
     if payload.signalWorkflow and item.status.value == "CONFIRMED":
         try:
-            event_type, signal_status = await signal_workflow(item, resources=resources, loaded_returns=loaded_returns, repository=operational, actor_id=actor)
+            event_type, signal_status = await signal_workflow(
+                item,
+                resources=resources,
+                loaded_returns=loaded_returns,
+                repository=operational,
+                actor_id=actor,
+            )
         except Exception:
             event_type, signal_status = None, "SIGNAL_FAILED"
-        item = await service.repository.update_operation(item.id, {"workflowEventType": event_type, "workflowSignalStatus": signal_status})
+        item = await service.repository.update_operation(
+            item.id, {"workflowEventType": event_type, "workflowSignalStatus": signal_status}
+        )
     return APIResponse(data=item, meta=_meta(request))
 
 
 @router.get("/ai-metrics", response_model=APIResponse[list[SimulationAIUsageMetric]])
-async def ai_metrics(request: Request, response: Response, session_id: str | None = Query(default=None, alias="sessionId"), _actor: str = Depends(require_read_roles)) -> APIResponse[list[SimulationAIUsageMetric]]:
+async def ai_metrics(
+    request: Request,
+    response: Response,
+    session_id: str | None = Query(default=None, alias="sessionId"),
+    _actor: str = Depends(require_read_roles),
+) -> APIResponse[list[SimulationAIUsageMetric]]:
     service, _, _, _ = _service(request)
     _simulation_header(response)
-    return APIResponse(data=await service.repository.list_ai_metrics(session_id=session_id), meta=_meta(request))
+    return APIResponse(
+        data=await service.repository.list_ai_metrics(session_id=session_id), meta=_meta(request)
+    )
 
 
-async def _record_initial_events(session_id: str, *, resources: RuntimeResources, loaded_returns: LoadedReturnConfiguration, operational: OperationalRepository, actor: str) -> None:
+async def _record_initial_events(
+    session_id: str,
+    *,
+    resources: RuntimeResources,
+    loaded_returns: LoadedReturnConfiguration,
+    operational: OperationalRepository,
+    actor: str,
+) -> None:
     if resources.temporal is None:
         return
     session = await operational.get_return(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Return session not found.")
-    coordinator = ProductionWorkflowCoordinator(temporal=resources.temporal, repository=operational, configuration=loaded_returns.configuration, task_queue=resources.settings.return_workflow_task_queue)
+    coordinator = ProductionWorkflowCoordinator(
+        temporal=resources.temporal,
+        repository=operational,
+        configuration=loaded_returns.configuration,
+        task_queue=resources.settings.return_workflow_task_queue,
+    )
     await coordinator.ensure_started(session, actor_id=actor)
-    for index, event_type in enumerate((
-        ProductionReturnEventType.DISCOVERY_CONFIRMED,
-        ProductionReturnEventType.RETURN_DETAILS_CONFIRMED,
-        ProductionReturnEventType.SUPPORT_REQUEST_CREATED,
-        ProductionReturnEventType.SUPPORT_ACKNOWLEDGED,
-    ), start=1):
-        await coordinator.record_event(session_id, event_id=f"SIM-BOOT-{index}-{session_id}", event_type=event_type, evidence_reference=f"SIMULATION:BOOT:{index}", actor_id=actor, business_payload={"sourceSystem": "DEPENDENCY_SIMULATOR"})
+    for index, event_type in enumerate(
+        (
+            ProductionReturnEventType.DISCOVERY_CONFIRMED,
+            ProductionReturnEventType.RETURN_DETAILS_CONFIRMED,
+            ProductionReturnEventType.SUPPORT_REQUEST_CREATED,
+            ProductionReturnEventType.SUPPORT_ACKNOWLEDGED,
+        ),
+        start=1,
+    ):
+        await coordinator.record_event(
+            session_id,
+            event_id=f"SIM-BOOT-{index}-{session_id}",
+            event_type=event_type,
+            evidence_reference=f"SIMULATION:BOOT:{index}",
+            actor_id=actor,
+            business_payload={"sourceSystem": "DEPENDENCY_SIMULATOR"},
+        )
 
 
 @router.post("/e2e/{session_id}/run", response_model=APIResponse[SimulationE2EResult])
-async def run_e2e(session_id: str, payload: SimulationE2ERequest, request: Request, response: Response, actor: str = Depends(require_write_roles)) -> APIResponse[SimulationE2EResult]:
+async def run_e2e(
+    session_id: str,
+    payload: SimulationE2ERequest,
+    request: Request,
+    response: Response,
+    actor: str = Depends(require_write_roles),
+) -> APIResponse[SimulationE2EResult]:
     service, resources, loaded_returns, operational = _service(request)
     _simulation_header(response)
     session = await operational.get_return(session_id)
@@ -167,10 +264,14 @@ async def run_e2e(session_id: str, payload: SimulationE2ERequest, request: Reque
         await operational.persist_return_intake_records(
             session_id=session_id,
             order_line_id=session.itemReferences[0],
-            product_id=(session.productReferences[0] if session.productReferences else "PRODUCT-SIM-001"),
+            product_id=(
+                session.productReferences[0] if session.productReferences else "PRODUCT-SIM-001"
+            ),
             reason_code=session.reasonCode,
             requested_quantity=session.returnQuantity,
-            approved_method=("BRANCH_LTL" if payload.scenario == "OFFSITE_HEAVY" else "PREPAID_PARCEL"),
+            approved_method=(
+                "BRANCH_LTL" if payload.scenario == "OFFSITE_HEAVY" else "PREPAID_PARCEL"
+            ),
             product_presence=(session.productPresence or "PRESENT_AT_BRANCH"),
             package_count=max(1, session.packageCount),
             pickup_assessment=session.pickupAssessment,
@@ -179,30 +280,92 @@ async def run_e2e(session_id: str, payload: SimulationE2ERequest, request: Reque
         )
         handling_units = await operational.list_handling_units(session_id)
     handling_unit_id = str(handling_units[0]["handlingUnitId"])
-    await _record_initial_events(session_id, resources=resources, loaded_returns=loaded_returns, operational=operational, actor=actor)
+    await _record_initial_events(
+        session_id,
+        resources=resources,
+        loaded_returns=loaded_returns,
+        operational=operational,
+        actor=actor,
+    )
     operations: list[SimulationOperationView] = []
 
-    async def run(dependency: str, operation: str, suffix: str, data: dict[str, object]) -> SimulationOperationView:
-        item = await service.execute(SimulationOperationRequest(dependency=dependency, operation=operation, sessionId=session_id, idempotencyKey=f"{session_id}:{suffix}", payload=data, useAiNarrative=payload.useAiNarrative, signalWorkflow=True))
-        event_type, signal_status = await signal_workflow(item, resources=resources, loaded_returns=loaded_returns, repository=operational, actor_id=actor)
-        item = await service.repository.update_operation(item.id, {"workflowEventType": event_type, "workflowSignalStatus": signal_status})
+    async def run(
+        dependency: str, operation: str, suffix: str, data: dict[str, object]
+    ) -> SimulationOperationView:
+        item = await service.execute(
+            SimulationOperationRequest(
+                dependency=dependency,
+                operation=operation,
+                sessionId=session_id,
+                idempotencyKey=f"{session_id}:{suffix}",
+                payload=data,
+                useAiNarrative=payload.useAiNarrative,
+                signalWorkflow=True,
+            )
+        )
+        event_type, signal_status = await signal_workflow(
+            item,
+            resources=resources,
+            loaded_returns=loaded_returns,
+            repository=operational,
+            actor_id=actor,
+        )
+        item = await service.repository.update_operation(
+            item.id, {"workflowEventType": event_type, "workflowSignalStatus": signal_status}
+        )
         operations.append(item)
         return item
 
-    rma = await run("OMC", "CREATE_RMA", "omc-rma", {"returnMethod": "PREPAID_PARCEL", "items": [{"quantity": 1}]})
+    rma = await run(
+        "OMC",
+        "CREATE_RMA",
+        "omc-rma",
+        {"returnMethod": "PREPAID_PARCEL", "items": [{"quantity": 1}]},
+    )
     if payload.scenario == "BRANCH_PARCEL":
-        label = await run("PARCEL", "CREATE_RETURN_LABEL", "parcel-label", {"handlingUnitId": handling_unit_id})
-        await run("PARCEL", "ADVANCE_TRACKING", "parcel-accepted", {"trackingNumber": label.externalReference, "targetStatus": "PACKAGE_ACCEPTED", "handlingUnitId": handling_unit_id})
+        label = await run(
+            "PARCEL", "CREATE_RETURN_LABEL", "parcel-label", {"handlingUnitId": handling_unit_id}
+        )
+        await run(
+            "PARCEL",
+            "ADVANCE_TRACKING",
+            "parcel-accepted",
+            {
+                "trackingNumber": label.externalReference,
+                "targetStatus": "PACKAGE_ACCEPTED",
+                "handlingUnitId": handling_unit_id,
+            },
+        )
     else:
         await run("FREIGHT", "REQUEST_QUOTES", "freight-quotes", {"weight": 386, "palletCount": 1})
         await run("FREIGHT", "APPROVE_QUOTE", "freight-approve", {})
         bol = await run("FREIGHT", "CREATE_BOL", "freight-bol", {})
-        await run("FREIGHT", "TENDER_SHIPMENT", "freight-tender", {"bolReference": bol.externalReference})
-        await run("FREIGHT", "CONFIRM_BOOKING", "freight-book", {"bolReference": bol.externalReference})
-        await run("FREIGHT", "CONFIRM_PICKUP", "freight-pickup", {"bolReference": bol.externalReference, "handlingUnitId": handling_unit_id})
-    await run("LSI", "RECORD_RECEIPT", "lsi-receipt", {"rmaId": rma.externalReference, "cartItemId": rma.responsePayload.get("cartItemIds", ["CI-SIM-1"])[0], "handlingUnitId": handling_unit_id})
+        await run(
+            "FREIGHT", "TENDER_SHIPMENT", "freight-tender", {"bolReference": bol.externalReference}
+        )
+        await run(
+            "FREIGHT", "CONFIRM_BOOKING", "freight-book", {"bolReference": bol.externalReference}
+        )
+        await run(
+            "FREIGHT",
+            "CONFIRM_PICKUP",
+            "freight-pickup",
+            {"bolReference": bol.externalReference, "handlingUnitId": handling_unit_id},
+        )
+    await run(
+        "LSI",
+        "RECORD_RECEIPT",
+        "lsi-receipt",
+        {
+            "rmaId": rma.externalReference,
+            "cartItemId": rma.responsePayload.get("cartItemIds", ["CI-SIM-1"])[0],
+            "handlingUnitId": handling_unit_id,
+        },
+    )
     await run("LSI", "ASSIGN_LICENSE_PLATE", "lsi-license", {"handlingUnitId": handling_unit_id})
-    await run("OMC", "SET_CUSTOMER_RESOLUTION", "customer-refund", {"customerResolution": "REFUNDED"})
+    await run(
+        "OMC", "SET_CUSTOMER_RESOLUTION", "customer-refund", {"customerResolution": "REFUNDED"}
+    )
     await run("LSI", "SET_PRODUCT_RESOLUTION", "product-rtv", {"productResolution": "RTV"})
     if payload.includeVendorRecovery:
         # Record the RTV vendor-recovery requirement before all customer-facing
@@ -215,15 +378,34 @@ async def run_e2e(session_id: str, payload: SimulationE2ERequest, request: Reque
     workflow_stage = None
     case_fully_closed = None
     if resources.temporal is not None:
-        coordinator = ProductionWorkflowCoordinator(temporal=resources.temporal, repository=operational, configuration=loaded_returns.configuration, task_queue=resources.settings.return_workflow_task_queue)
+        coordinator = ProductionWorkflowCoordinator(
+            temporal=resources.temporal,
+            repository=operational,
+            configuration=loaded_returns.configuration,
+            task_queue=resources.settings.return_workflow_task_queue,
+        )
         state = await coordinator.query_state(session_id)
         workflow_stage = state.stage.value
         case_fully_closed = state.case_fully_closed
-    return APIResponse(data=SimulationE2EResult(sessionId=session_id, scenario=payload.scenario, operationIds=[item.id for item in operations], workflowStage=workflow_stage, caseFullyClosed=case_fully_closed), meta=_meta(request))
+    return APIResponse(
+        data=SimulationE2EResult(
+            sessionId=session_id,
+            scenario=payload.scenario,
+            operationIds=[item.id for item in operations],
+            workflowStage=workflow_stage,
+            caseFullyClosed=case_fully_closed,
+        ),
+        meta=_meta(request),
+    )
 
 
 @router.post("/reset", response_model=APIResponse[dict[str, bool]])
-async def reset(payload: SimulationResetRequest, request: Request, response: Response, _actor: str = Depends(require_write_roles)) -> APIResponse[dict[str, bool]]:
+async def reset(
+    payload: SimulationResetRequest,
+    request: Request,
+    response: Response,
+    _actor: str = Depends(require_write_roles),
+) -> APIResponse[dict[str, bool]]:
     service, _, _, _ = _service(request)
     _simulation_header(response)
     await service.repository.reset(payload.sessionId)

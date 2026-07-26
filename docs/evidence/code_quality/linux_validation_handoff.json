@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "environment": "linux",
+  "generatedAt": null,
+  "overallStatus": "NOT_RUN",
+  "failedPhase": null,
+  "phases": [],
+  "linuxExecutionClaim": false,
+  "reason": "Awaiting execution on the Linux host and checksum-verified evidence import."
+}

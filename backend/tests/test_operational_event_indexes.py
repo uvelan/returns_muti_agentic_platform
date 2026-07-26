@@ -46,9 +46,7 @@ async def test_event_deduplication_index_keeps_current_partial_index() -> None:
                 "stream_deduplication_unique": {
                     "key": [("streamId", 1), ("deduplicationKey", 1)],
                     "unique": True,
-                    "partialFilterExpression": {
-                        "deduplicationKey": {"$type": "string"}
-                    },
+                    "partialFilterExpression": {"deduplicationKey": {"$type": "string"}},
                 }
             }
         ),

@@ -134,9 +134,13 @@ def _provider(
     model: str,
 ) -> AIProvider:
     if provider_name == "GOOGLE":
-        return GeminiProvider(settings.model_copy(update={"google_api_key": key, "google_model": model}))
+        return GeminiProvider(
+            settings.model_copy(update={"google_api_key": key, "google_model": model})
+        )
     if provider_name == "NVIDIA":
-        return NvidiaProvider(settings.model_copy(update={"nvidia_api_key": key, "nvidia_model": model}))
+        return NvidiaProvider(
+            settings.model_copy(update={"nvidia_api_key": key, "nvidia_model": model})
+        )
     if provider_name == "OPENAI":
         return OpenAIResponsesProvider(
             settings.model_copy(update={"openai_api_key": key, "openai_model": model})
@@ -363,7 +367,9 @@ class AIRoutePool:
 
             if self._state.active_tiers[route.tier.value] >= tier_limit.maximumConcurrency:
                 return RouteAcquireResult(False, "TIER_CONCURRENCY_LIMIT")
-            provider_concurrency = provider_limit.maximumConcurrency or tier_limit.maximumConcurrency
+            provider_concurrency = (
+                provider_limit.maximumConcurrency or tier_limit.maximumConcurrency
+            )
             if self._state.active_providers[route.provider_name] >= provider_concurrency:
                 return RouteAcquireResult(False, "PROVIDER_CONCURRENCY_LIMIT")
 
@@ -428,12 +434,16 @@ class AIRoutePool:
                 circuit.consecutive_failures += 1 if circuit is not route_circuit else 0
                 circuit.last_error = error_code
                 circuit.last_failure_at = now_epoch
-                if error_code in {
-                    "AUTH_FAILED",
-                    "RATE_LIMITED",
-                    "MODEL_UNAVAILABLE",
-                    "CONTEXT_LIMIT_EXCEEDED",
-                } or circuit.consecutive_failures >= cfg.failureThreshold:
+                if (
+                    error_code
+                    in {
+                        "AUTH_FAILED",
+                        "RATE_LIMITED",
+                        "MODEL_UNAVAILABLE",
+                        "CONTEXT_LIMIT_EXCEEDED",
+                    }
+                    or circuit.consecutive_failures >= cfg.failureThreshold
+                ):
                     circuit.open_until = max(circuit.open_until, now + open_seconds)
 
     async def health(self) -> tuple[RouteHealth, ...]:
@@ -446,7 +456,11 @@ class AIRoutePool:
                 circuit = self._circuit(self._state.route_circuits, route.route_id)
                 group_state = max(
                     (item.state(now) for item in self._group_circuits(route)),
-                    key=lambda state: {CircuitState.CLOSED: 0, CircuitState.HALF_OPEN: 1, CircuitState.OPEN: 2}[state],
+                    key=lambda state: {
+                        CircuitState.CLOSED: 0,
+                        CircuitState.HALF_OPEN: 1,
+                        CircuitState.OPEN: 2,
+                    }[state],
                 )
                 values.append(
                     RouteHealth(

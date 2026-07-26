@@ -133,8 +133,12 @@ class OperationalRepository:
         await self.returns.create_index([("createdAt", DESCENDING)])
         await self.returns.create_index([("status", ASCENDING), ("updatedAt", ASCENDING)])
         await self.returns.create_index([("supportStatus", ASCENDING), ("updatedAt", ASCENDING)])
-        await self.returns.create_index([("trilogieOrderNumber", ASCENDING), ("createdAt", DESCENDING)])
-        await self.returns.create_index([("sourceWebOrderNumber", ASCENDING), ("createdAt", DESCENDING)])
+        await self.returns.create_index(
+            [("trilogieOrderNumber", ASCENDING), ("createdAt", DESCENDING)]
+        )
+        await self.returns.create_index(
+            [("sourceWebOrderNumber", ASCENDING), ("createdAt", DESCENDING)]
+        )
         await self.returns.create_index("supportWorkItemId", sparse=True)
         await self.returns.create_index("idempotencyKey", unique=True, sparse=True)
         await self.events.create_index(
@@ -151,7 +155,9 @@ class OperationalRepository:
         await self.ai_attempts.create_index([("createdAt", DESCENDING)])
         await self.ai_attempts.create_index([("traceId", ASCENDING), ("attemptNumber", ASCENDING)])
         await self.ai_attempts.create_index([("taskId", ASCENDING), ("createdAt", DESCENDING)])
-        await self.ai_attempts.create_index([("provider", ASCENDING), ("model", ASCENDING), ("createdAt", DESCENDING)])
+        await self.ai_attempts.create_index(
+            [("provider", ASCENDING), ("model", ASCENDING), ("createdAt", DESCENDING)]
+        )
         await self.worker_heartbeats.create_index("expiresAt", expireAfterSeconds=0)
         await self.ai_rate_limits.create_index("expiresAt", expireAfterSeconds=0)
         await self.return_items.create_index("returnItemId", unique=True)
@@ -207,7 +213,6 @@ class OperationalRepository:
             [("assumptionSetVersion", ASCENDING), ("activatedAt", DESCENDING)]
         )
 
-
     async def persist_return_configuration_snapshot(
         self,
         *,
@@ -246,8 +251,7 @@ class OperationalRepository:
             is_current = (
                 index_name == _EVENT_DEDUPLICATION_INDEX
                 and definition.get("unique") is True
-                and definition.get("partialFilterExpression")
-                == _EVENT_DEDUPLICATION_FILTER
+                and definition.get("partialFilterExpression") == _EVENT_DEDUPLICATION_FILTER
                 and not bool(definition.get("sparse", False))
             )
             if is_current:
@@ -431,12 +435,8 @@ class OperationalRepository:
             upsert=True,
         )
 
-    async def list_agent_decisions(
-        self, session_id: str
-    ) -> list[dict[str, Any]]:
-        cursor = self.agent_decisions.find({"sessionId": session_id}).sort(
-            "createdAt", ASCENDING
-        )
+    async def list_agent_decisions(self, session_id: str) -> list[dict[str, Any]]:
+        cursor = self.agent_decisions.find({"sessionId": session_id}).sort("createdAt", ASCENDING)
         return [
             {key: value for key, value in cast(dict[str, Any], document).items() if key != "_id"}
             async for document in cursor
@@ -482,9 +482,7 @@ class OperationalRepository:
             },
             upsert=True,
         )
-        handling_type = (
-            "PALLET" if approved_method in {"BRANCH_LTL", "OFFSITE_LTL"} else "PACKAGE"
-        )
+        handling_type = "PALLET" if approved_method in {"BRANCH_LTL", "OFFSITE_LTL"} else "PACKAGE"
         for sequence in range(1, package_count + 1):
             handling_unit_id = f"{session_id}:HU:{sequence}"
             await self.handling_units.update_one(
@@ -499,9 +497,7 @@ class OperationalRepository:
                         "returnItemAllocations": [
                             {
                                 "returnItemId": return_item_id,
-                                "quantity": (
-                                    requested_quantity if package_count == 1 else None
-                                ),
+                                "quantity": (requested_quantity if package_count == 1 else None),
                             }
                         ],
                         "physicalStatus": "PLANNED",
@@ -568,9 +564,7 @@ class OperationalRepository:
             )
 
     async def list_return_items(self, session_id: str) -> list[dict[str, Any]]:
-        cursor = self.return_items.find({"sessionId": session_id}).sort(
-            "createdAt", ASCENDING
-        )
+        cursor = self.return_items.find({"sessionId": session_id}).sort("createdAt", ASCENDING)
         return [cast(dict[str, Any], document) async for document in cursor]
 
     async def update_return_item(
@@ -586,18 +580,14 @@ class OperationalRepository:
             return_document=ReturnDocument.AFTER,
         )
         if document is None:
-            exists = await self.return_items.find_one(
-                {"returnItemId": return_item_id}, {"_id": 1}
-            )
+            exists = await self.return_items.find_one({"returnItemId": return_item_id}, {"_id": 1})
             if exists is None:
                 raise KeyError(return_item_id)
             raise ConcurrencyConflictError(return_item_id)
         return cast(dict[str, Any], document)
 
     async def list_handling_units(self, session_id: str) -> list[dict[str, Any]]:
-        cursor = self.handling_units.find({"sessionId": session_id}).sort(
-            "sequence", ASCENDING
-        )
+        cursor = self.handling_units.find({"sessionId": session_id}).sort("sequence", ASCENDING)
         return [cast(dict[str, Any], document) async for document in cursor]
 
     async def get_pickup_projection(self, session_id: str) -> dict[str, Any] | None:
@@ -617,7 +607,6 @@ class OperationalRepository:
                 else {key: value for key, value in pickup_request.items() if key != "_id"}
             ),
         }
-
 
     async def get_handling_unit(self, handling_unit_id: str) -> dict[str, Any] | None:
         document = await self.handling_units.find_one({"handlingUnitId": handling_unit_id})
@@ -857,9 +846,7 @@ class OperationalRepository:
         return cast(dict[str, Any], stored)
 
     async def list_shipment_events(self, session_id: str) -> list[dict[str, Any]]:
-        cursor = self.shipment_events.find({"sessionId": session_id}).sort(
-            "eventTime", ASCENDING
-        )
+        cursor = self.shipment_events.find({"sessionId": session_id}).sort("eventTime", ASCENDING)
         return [cast(dict[str, Any], document) async for document in cursor]
 
     async def record_omc_command(
@@ -898,14 +885,12 @@ class OperationalRepository:
         }
         try:
             await self.omc_command_records.insert_one(document)
-        except DuplicateKeyError:
-            existing = await self.omc_command_records.find_one(
-                {"idempotencyKey": idempotency_key}
-            )
+        except DuplicateKeyError as error:
+            existing = await self.omc_command_records.find_one({"idempotencyKey": idempotency_key})
             if existing is None:
                 raise
             if existing.get("requestDigest") != request_digest:
-                raise ConcurrencyConflictError("OMC command idempotency conflict")
+                raise ConcurrencyConflictError("OMC command idempotency conflict") from error
             return cast(dict[str, Any], existing)
         return document
 
@@ -973,9 +958,7 @@ class OperationalRepository:
             {"$setOnInsert": document},
             upsert=True,
         )
-        stored = await self.integration_outbox.find_one(
-            {"idempotencyKey": idempotency_key}
-        )
+        stored = await self.integration_outbox.find_one({"idempotencyKey": idempotency_key})
         assert stored is not None
         return cast(dict[str, Any], stored)
 
@@ -999,9 +982,7 @@ class OperationalRepository:
         actor_id: str,
     ) -> dict[str, Any]:
         now = utc_now()
-        link_id = str(
-            uuid.uuid5(uuid.NAMESPACE_URL, f"{session_id}:{omc_rga_id}")
-        )
+        link_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{session_id}:{omc_rga_id}"))
         document = await self.vendor_return_links.find_one_and_update(
             {"sessionId": session_id, "omcRgaId": omc_rga_id},
             {
@@ -1363,7 +1344,9 @@ class OperationalRepository:
             query["taskId"] = task_id
         cursor = self.ai_attempts.find(query).sort("createdAt", DESCENDING).limit(limit)
         return [
-            AIUsageAttemptView.model_validate({**cast(dict[str, Any], item), "id": str(item["_id"])})
+            AIUsageAttemptView.model_validate(
+                {**cast(dict[str, Any], item), "id": str(item["_id"])}
+            )
             async for item in cursor
         ]
 
@@ -1379,7 +1362,11 @@ class OperationalRepository:
             by_provider[provider] = by_provider.get(provider, 0) + 1
             by_model[model] = by_model.get(model, 0) + 1
             by_task[item.taskId] = by_task.get(item.taskId, 0) + 1
-            tier = item.selectedTier.value if item.selectedTier is not None else item.configuredTier.value
+            tier = (
+                item.selectedTier.value
+                if item.selectedTier is not None
+                else item.configuredTier.value
+            )
             by_tier[tier] = by_tier.get(tier, 0) + 1
         return AIUsageSummaryView(
             attempts=len(attempts),

@@ -29,21 +29,15 @@ WRITE_ROLES: Final = frozenset(
     }
 )
 ADMIN_ROLES: Final = frozenset({"console_admin"})
-ASSOCIATE_ROLES: Final = frozenset(
-    {"console_admin", "return_associate", "return_platform_service"}
-)
-SUPPORT_ROLES: Final = frozenset(
-    {"console_admin", "return_support", "return_platform_service"}
-)
+ASSOCIATE_ROLES: Final = frozenset({"console_admin", "return_associate", "return_platform_service"})
+SUPPORT_ROLES: Final = frozenset({"console_admin", "return_support", "return_platform_service"})
 LOGISTICS_ROLES: Final = frozenset(
     {"console_admin", "logistics_coordinator", "return_platform_service"}
 )
 WAREHOUSE_ROLES: Final = frozenset(
     {"console_admin", "warehouse_associate", "return_platform_service"}
 )
-AUDIT_ROLES: Final = frozenset(
-    {"console_admin", "return_auditor", "return_platform_service"}
-)
+AUDIT_ROLES: Final = frozenset({"console_admin", "return_auditor", "return_platform_service"})
 RETURN_COLLABORATION_ROLES: Final = ASSOCIATE_ROLES | SUPPORT_ROLES
 
 

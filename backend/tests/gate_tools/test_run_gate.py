@@ -7,7 +7,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 RUN_GATE_SCRIPT = str(PROJECT_ROOT / "scripts" / "run_gate.py")
 
-def test_run_gate_success(tmp_path):
+
+def test_run_gate_success(tmp_path: Path) -> None:
     log_file = tmp_path / "test.log"
     receipt_file = tmp_path / "receipt.json"
     cmd = [
@@ -33,7 +34,7 @@ def test_run_gate_success(tmp_path):
     assert receipt["status"] == "PASS"
 
 
-def test_run_gate_nonzero(tmp_path):
+def test_run_gate_nonzero(tmp_path: Path) -> None:
     log_file = tmp_path / "test.log"
     receipt_file = tmp_path / "receipt.json"
     cmd = [
@@ -58,7 +59,7 @@ def test_run_gate_nonzero(tmp_path):
     assert receipt["status"] == "FAIL"
 
 
-def test_run_gate_missing_executable(tmp_path):
+def test_run_gate_missing_executable(tmp_path: Path) -> None:
     log_file = tmp_path / "test.log"
     receipt_file = tmp_path / "receipt.json"
     cmd = [
@@ -81,7 +82,7 @@ def test_run_gate_missing_executable(tmp_path):
     assert receipt["status"] == "FAIL"
 
 
-def test_run_gate_timeout(tmp_path):
+def test_run_gate_timeout(tmp_path: Path) -> None:
     log_file = tmp_path / "test.log"
     receipt_file = tmp_path / "receipt.json"
     cmd = [
@@ -109,7 +110,7 @@ def test_run_gate_timeout(tmp_path):
     assert "timed out" in receipt["error"]
 
 
-def test_run_gate_redaction(tmp_path):
+def test_run_gate_redaction(tmp_path: Path) -> None:
     log_file = tmp_path / "test.log"
     receipt_file = tmp_path / "receipt.json"
     env = os.environ.copy()
@@ -140,7 +141,7 @@ def test_run_gate_redaction(tmp_path):
     assert "[REDACTED]" in log
 
 
-def test_run_gate_empty_command(tmp_path):
+def test_run_gate_empty_command(tmp_path: Path) -> None:
     log_file = tmp_path / "test.log"
     receipt_file = tmp_path / "receipt.json"
     cmd = [

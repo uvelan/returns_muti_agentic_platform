@@ -58,8 +58,6 @@ _SENSITIVE_KEY_FRAGMENTS = (
 )
 
 
-
-
 class AIGatewayRepository(Protocol):
     async def create_ai_trace(self, **kwargs: Any) -> AITraceView: ...
     async def update_ai_trace(
@@ -68,6 +66,7 @@ class AIGatewayRepository(Protocol):
     async def get_ai_settings(self) -> Any: ...
     async def consume_ai_quota(self, bucket: str) -> bool: ...
     async def insert_ai_attempt_metric(self, document: dict[str, Any]) -> Any: ...
+
 
 @dataclass(frozen=True, slots=True)
 class GatewayEvaluation:
@@ -627,7 +626,11 @@ class AIGatewayService:
                         self._configuration.retry.maximumBackoffMilliseconds,
                         self._configuration.retry.initialBackoffMilliseconds * (2**route_attempt),
                     )
-                    jitter = random.randint(0, max(1, base_ms // 4)) if self._configuration.retry.jitter else 0
+                    jitter = (
+                        random.randint(0, max(1, base_ms // 4))
+                        if self._configuration.retry.jitter
+                        else 0
+                    )
                     await asyncio.sleep((base_ms + jitter) / 1000)
 
         return await self._manual_review(

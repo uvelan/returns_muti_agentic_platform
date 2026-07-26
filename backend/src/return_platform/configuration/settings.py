@@ -138,7 +138,9 @@ class Settings(BaseSettings):
 
     seed_version: str = Field(default="e2e-v1", min_length=1, max_length=64)
     ai_studio_max_records: int = Field(default=500, ge=1, le=10_000)
-    support_ticket_mode: Literal["INTERNAL", "INTERNAL_WITH_EXTERNAL_MIRROR", "EXTERNAL_AUTHORITY"] = "INTERNAL"
+    support_ticket_mode: Literal[
+        "INTERNAL", "INTERNAL_WITH_EXTERNAL_MIRROR", "EXTERNAL_AUTHORITY"
+    ] = "INTERNAL"
     support_ticket_base_url: str | None = None
     support_ticket_api_key: SecretStr | None = None
     support_ticket_timeout_seconds: float = Field(default=15.0, ge=1.0, le=120.0)
@@ -283,7 +285,6 @@ class Settings(BaseSettings):
             return None
         return value
 
-
     @field_validator(
         "omc_dependency_mode",
         "parcel_dependency_mode",
@@ -409,7 +410,9 @@ class Settings(BaseSettings):
 
     @property
     def resolved_anthropic_api_keys(self) -> tuple[SecretStr, ...]:
-        return self.anthropic_api_keys or ((self.anthropic_api_key,) if self.anthropic_api_key else ())
+        return self.anthropic_api_keys or (
+            (self.anthropic_api_key,) if self.anthropic_api_key else ()
+        )
 
     @property
     def resolved_google_standard_models(self) -> tuple[str, ...]:
@@ -425,7 +428,9 @@ class Settings(BaseSettings):
 
     @property
     def resolved_anthropic_standard_models(self) -> tuple[str, ...]:
-        return self.anthropic_standard_models or ((self.anthropic_model,) if self.anthropic_model else ())
+        return self.anthropic_standard_models or (
+            (self.anthropic_model,) if self.anthropic_model else ()
+        )
 
     @property
     def resolved_ollama_standard_models(self) -> tuple[str, ...]:

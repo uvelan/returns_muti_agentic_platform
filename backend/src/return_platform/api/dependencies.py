@@ -127,13 +127,9 @@ async def _cards(request: Request) -> list[dict[str, Any]]:
         projection={"occurredAt": 1},
     )
     oldest_at = oldest.get("occurredAt") if oldest else None
-    oldest_at_utc = (
-        normalize_utc_datetime(oldest_at) if isinstance(oldest_at, datetime) else None
-    )
+    oldest_at_utc = normalize_utc_datetime(oldest_at) if isinstance(oldest_at, datetime) else None
     oldest_age_seconds = (
-        max(0, int((now - oldest_at_utc).total_seconds()))
-        if oldest_at_utc is not None
-        else 0
+        max(0, int((now - oldest_at_utc).total_seconds())) if oldest_at_utc is not None else 0
     )
     outbox_healthy = (
         unpublished == 0 or oldest_age_seconds <= settings.worker_readiness_ttl_seconds * 2

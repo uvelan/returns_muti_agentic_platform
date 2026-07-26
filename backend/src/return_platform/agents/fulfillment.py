@@ -25,9 +25,8 @@ class ReturnFulfillmentAgent:
         received = "LSI_RECEIPT" in fact_types or "WAREHOUSE_RECEIPT" in fact_types
         license_plate = "LICENSE_PLATE" in fact_types
         customer_complete = (
-            (request.rawCustomerResolution or "").strip().upper() == "REFUNDED"
-            or normalized == "CUSTOMER_RESOLUTION_COMPLETE"
-        )
+            request.rawCustomerResolution or ""
+        ).strip().upper() == "REFUNDED" or normalized == "CUSTOMER_RESOLUTION_COMPLETE"
         physical_complete = received
         warehouse_complete = received and license_plate and bool(request.rawProductResolution)
         vendor_complete = "VENDOR_CREDIT" in fact_types
@@ -39,8 +38,10 @@ class ReturnFulfillmentAgent:
         if "RGA" in fact_types and not received:
             warnings.append("RGA_BEFORE_RECEIPT_REQUIRES_REVIEW")
         if not received:
-            next_event = "CARRIER_BOOKING" if tendered and not booked else (
-                "PICKUP_CONFIRMATION" if booked and not picked_up else "PHYSICAL_RECEIPT"
+            next_event = (
+                "CARRIER_BOOKING"
+                if tendered and not booked
+                else ("PICKUP_CONFIRMATION" if booked and not picked_up else "PHYSICAL_RECEIPT")
             )
         elif not customer_complete:
             next_event = "CUSTOMER_RESOLUTION"
@@ -64,7 +65,9 @@ class ReturnFulfillmentAgent:
                 configurationVersion=self._root.assumption_set_version,
                 decisionType="FULFILLMENT_STATE_INTERPRETATION",
                 decision=normalized,
-                explanation="OMC and carrier evidence were normalized without inferring physical events.",
+                explanation=(
+                    "OMC and carrier evidence were normalized without inferring physical events."
+                ),
                 confidenceMillionths=900_000 if normalized != "UNKNOWN" else 400_000,
                 evidenceReferences=evidence,
                 warnings=tuple(warnings),

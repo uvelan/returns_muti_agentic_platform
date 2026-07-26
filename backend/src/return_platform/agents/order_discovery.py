@@ -41,7 +41,9 @@ class OrderDiscoveryAgent:
             score = 0
             for anchor in candidate.matchedAnchors:
                 score += self._root.discovery.anchor_weights.get(anchor.upper(), 0)
-            score -= len(candidate.conflictingAnchors) * self._root.discovery.conflict_penalty_millionths
+            score -= (
+                len(candidate.conflictingAnchors) * self._root.discovery.conflict_penalty_millionths
+            )
             score = max(0, min(1_000_000, score))
             ranked.append(
                 RankedDiscoveryCandidate(
@@ -56,9 +58,7 @@ class OrderDiscoveryAgent:
             )
         ranked.sort(key=lambda item: (-item.scoreMillionths, item.candidateId))
         gap = (
-            ranked[0].scoreMillionths - ranked[1].scoreMillionths
-            if len(ranked) > 1
-            else 1_000_000
+            ranked[0].scoreMillionths - ranked[1].scoreMillionths if len(ranked) > 1 else 1_000_000
         )
         ambiguous = not ranked or (
             len(ranked) > 1 and gap < self._root.discovery.ambiguity_gap_millionths
@@ -76,9 +76,7 @@ class OrderDiscoveryAgent:
             None,
         )
         refs = tuple(
-            dict.fromkeys(
-                ref for candidate in ranked[:3] for ref in candidate.evidenceReferences
-            )
+            dict.fromkeys(ref for candidate in ranked[:3] for ref in candidate.evidenceReferences)
         ) or ("DISCOVERY:NO_CANDIDATE",)
         return DiscoveryAssessment(
             orderSource=self._source(request.suppliedEvidence),

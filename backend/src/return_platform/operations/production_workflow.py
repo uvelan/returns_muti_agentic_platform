@@ -145,9 +145,7 @@ class ProductionWorkflowCoordinator:
             FulfillmentAssessmentRequest(
                 returnVersion=session.omcReturnVersion or "UNKNOWN",
                 rawReturnStatus=raw_status,
-                rawCustomerResolution=(
-                    "REFUNDED" if state.customer_resolution_complete else None
-                ),
+                rawCustomerResolution=("REFUNDED" if state.customer_resolution_complete else None),
                 rawProductResolution=raw_product_resolution,
                 facts=tuple(facts),
             )
@@ -170,12 +168,8 @@ class ProductionWorkflowCoordinator:
                             "SUPPORT_CLARIFICATION_REQUESTED"
                         ),
                         "pickupFailureCount": event_types.count("PICKUP_FAILED"),
-                        "discoveryAmbiguityCount": event_types.count(
-                            "DISCOVERY_AMBIGUOUS"
-                        ),
-                        "assumptionMismatch": (
-                            "BUSINESS_ASSUMPTION_MISMATCH" in event_types
-                        ),
+                        "discoveryAmbiguityCount": event_types.count("DISCOVERY_AMBIGUOUS"),
+                        "assumptionMismatch": ("BUSINESS_ASSUMPTION_MISMATCH" in event_types),
                     },
                     evidenceReferences=(evidence_reference,),
                 )
@@ -202,8 +196,7 @@ class ProductionWorkflowCoordinator:
         selected_units = [
             item
             for item in handling_units
-            if handling_unit_id is None
-            or str(item.get("handlingUnitId")) == str(handling_unit_id)
+            if handling_unit_id is None or str(item.get("handlingUnitId")) == str(handling_unit_id)
         ]
         if event_type in {
             ProductionReturnEventType.BOL_TENDERED,
@@ -213,9 +206,7 @@ class ProductionWorkflowCoordinator:
         }:
             event_codes = {
                 ProductionReturnEventType.BOL_TENDERED: "BOL_TENDERED",
-                ProductionReturnEventType.CARRIER_BOOKING_CONFIRMED: (
-                    "CARRIER_BOOKING_CONFIRMED"
-                ),
+                ProductionReturnEventType.CARRIER_BOOKING_CONFIRMED: ("CARRIER_BOOKING_CONFIRMED"),
                 ProductionReturnEventType.PHYSICAL_HANDOFF_CONFIRMED: (
                     "PHYSICAL_HANDOFF_CONFIRMED"
                 ),
@@ -223,34 +214,24 @@ class ProductionWorkflowCoordinator:
             }
             await self._repository.record_shipment_event(
                 session_id=session_id,
-                source_system=str(
-                    business_payload.get("sourceSystem") or "PLATFORM_EVIDENCE"
-                ),
+                source_system=str(business_payload.get("sourceSystem") or "PLATFORM_EVIDENCE"),
                 source_event_id=str(
                     business_payload.get("sourceEventId")
                     or f"{event_type.value}:{evidence_reference}"
                 ),
                 event_code=event_codes[event_type],
                 event_time=datetime.now(UTC),
-                handling_unit_id=(
-                    str(handling_unit_id) if handling_unit_id is not None else None
-                ),
-                tracking_number=cast(
-                    str | None, business_payload.get("trackingNumber")
-                ),
+                handling_unit_id=(str(handling_unit_id) if handling_unit_id is not None else None),
+                tracking_number=cast(str | None, business_payload.get("trackingNumber")),
                 bol_reference=cast(str | None, business_payload.get("bolReference")),
                 carrier=cast(str | None, business_payload.get("carrier")),
                 location=cast(str | None, business_payload.get("location")),
-                payload_digest=cast(
-                    str | None, business_payload.get("payloadDigest")
-                ),
+                payload_digest=cast(str | None, business_payload.get("payloadDigest")),
             )
         handling_statuses = {
             ProductionReturnEventType.PHYSICAL_HANDOFF_CONFIRMED: "IN_TRANSIT",
             ProductionReturnEventType.RECEIPT_CONFIRMED: "WAREHOUSE_RECEIVED",
-            ProductionReturnEventType.WAREHOUSE_PROCESSING_COMPLETED: (
-                "WAREHOUSE_STAGED"
-            ),
+            ProductionReturnEventType.WAREHOUSE_PROCESSING_COMPLETED: ("WAREHOUSE_STAGED"),
         }
         target_status = handling_statuses.get(event_type)
         if target_status is not None:
@@ -284,9 +265,7 @@ class ProductionWorkflowCoordinator:
                     str(item["returnItemId"]),
                     {
                         "disposition": disposition,
-                        "omcProductResolutionId": business_payload.get(
-                            "omcProductResolutionId"
-                        ),
+                        "omcProductResolutionId": business_payload.get("omcProductResolutionId"),
                     },
                     expected_version=int(item.get("version", 0)),
                 )
@@ -299,26 +278,19 @@ class ProductionWorkflowCoordinator:
                 await self._repository.upsert_vendor_return_link(
                     session_id=session_id,
                     omc_rga_id=str(rga_id),
-                    omc_rga_number=cast(
-                        str | None, business_payload.get("omcRgaNumber")
-                    ),
+                    omc_rga_number=cast(str | None, business_payload.get("omcRgaNumber")),
                     omc_cart_item_ids=[
-                        str(value)
-                        for value in business_payload.get("omcCartItemIds", [])
+                        str(value) for value in business_payload.get("omcCartItemIds", [])
                     ],
-                    po_numbers=[
-                        str(value) for value in business_payload.get("poNumbers", [])
-                    ],
+                    po_numbers=[str(value) for value in business_payload.get("poNumbers", [])],
                     vendor_id=cast(str | None, business_payload.get("vendorId")),
                     status=(
                         "CLOSED"
-                        if event_type
-                        is ProductionReturnEventType.VENDOR_RECOVERY_COMPLETED
+                        if event_type is ProductionReturnEventType.VENDOR_RECOVERY_COMPLETED
                         else "ACTIVE"
                     ),
                     credit_memo_ids=[
-                        str(value)
-                        for value in business_payload.get("creditMemoIds", [])
+                        str(value) for value in business_payload.get("creditMemoIds", [])
                     ],
                     actor_id=actor_id,
                 )
@@ -362,9 +334,7 @@ class ProductionWorkflowCoordinator:
             "customerResolutionStatus": (
                 "COMPLETE" if state.customer_resolution_complete else "PENDING"
             ),
-            "warehouseStatus": (
-                "COMPLETE" if state.warehouse_processing_complete else "PENDING"
-            ),
+            "warehouseStatus": ("COMPLETE" if state.warehouse_processing_complete else "PENDING"),
             "vendorRecoveryStatus": (
                 "COMPLETE"
                 if state.vendor_recovery_complete
@@ -410,14 +380,14 @@ class ProductionWorkflowCoordinator:
         actor_id: str,
     ) -> ProductionReturnWorkflowState:
         await self.ensure_started(session, actor_id=actor_id)
-        state = await self.record_event(
+        await self.record_event(
             session.id,
             event_id=f"discovery:{discovery_evidence}",
             event_type=ProductionReturnEventType.DISCOVERY_CONFIRMED,
             evidence_reference=discovery_evidence,
             actor_id=actor_id,
         )
-        state = await self.record_event(
+        await self.record_event(
             session.id,
             event_id=f"details:{details_evidence}",
             event_type=ProductionReturnEventType.RETURN_DETAILS_CONFIRMED,

@@ -155,4 +155,3 @@ class SimulationE2EResult(SimulatorContract):
 class SimulationResetRequest(SimulatorContract):
     confirmation: str = Field(pattern=r"^RESET_SIMULATION$")
     sessionId: str | None = Field(default=None, min_length=3, max_length=128)
-

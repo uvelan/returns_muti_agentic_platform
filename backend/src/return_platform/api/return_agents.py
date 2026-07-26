@@ -76,9 +76,7 @@ async def configuration(
             "schemaVersion": config.schema_version,
             "assumptionSetVersion": config.assumption_set_version,
             "sha256": loaded.sha256,
-            "agents": {
-                key: value.model_dump(mode="json") for key, value in config.agents.items()
-            },
+            "agents": {key: value.model_dump(mode="json") for key, value in config.agents.items()},
             "workflow": config.workflow.model_dump(mode="json"),
             "support": config.support.model_dump(mode="json"),
             "bay": config.bay.model_dump(mode="json"),

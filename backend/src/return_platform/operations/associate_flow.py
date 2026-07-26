@@ -235,18 +235,14 @@ class AssociateConversationService:
     async def ensure_indexes(self) -> None:
         await self._conversations.create_index([("createdAt", -1)])
         await self._conversations.create_index("status")
-        await self._messages.create_index(
-            [("conversationId", 1), ("sequence", 1)], unique=True
-        )
+        await self._messages.create_index([("conversationId", 1), ("sequence", 1)], unique=True)
         await self._messages.create_index([("conversationId", 1), ("createdAt", 1)])
         await self._discovery_snapshots.create_index("snapshotId", unique=True)
         await self._discovery_snapshots.create_index(
             [("conversationId", 1), ("snapshotType", 1), ("contentDigest", 1)],
             unique=True,
         )
-        await self._return_request_snapshots.create_index(
-            "requestSnapshotId", unique=True
-        )
+        await self._return_request_snapshots.create_index("requestSnapshotId", unique=True)
         await self._return_request_snapshots.create_index(
             [("sessionId", 1), ("contentDigest", 1)], unique=True
         )
@@ -268,7 +264,11 @@ class AssociateConversationService:
         return AssociateConversationView.model_validate(
             {
                 "id": str(document["_id"]),
-                **{key: value for key, value in document.items() if key not in ("_id", "anchorDigest", "createdBy")},
+                **{
+                    key: value
+                    for key, value in document.items()
+                    if key not in ("_id", "anchorDigest", "createdBy")
+                },
             }
         )
 
@@ -353,9 +353,7 @@ class AssociateConversationService:
         actor_id: str,
     ) -> tuple[str, str]:
         content_digest = _digest(payload)
-        snapshot_id = str(
-            uuid.uuid5(uuid.NAMESPACE_URL, f"{session_id}:{content_digest}")
-        )
+        snapshot_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{session_id}:{content_digest}"))
         await self._return_request_snapshots.update_one(
             {"sessionId": session_id, "contentDigest": content_digest},
             {
@@ -463,13 +461,10 @@ class AssociateConversationService:
                         ),
                         customerName=cast(str | None, customer.get("customer_name")),
                         orderReference=str(order.get("sales_order_number")),
-                        sourceWebOrderNumber=cast(
-                            str | None, order.get("source_web_order_number")
-                        ),
+                        sourceWebOrderNumber=cast(str | None, order.get("source_web_order_number")),
                         trilogieOrderNumber=cast(
                             str | None,
-                            order.get("trilogie_order_number")
-                            or order.get("sales_order_number"),
+                            order.get("trilogie_order_number") or order.get("sales_order_number"),
                         ),
                         orderSource=(
                             OrderSource.FERGUSONHOME_WEB
@@ -496,21 +491,13 @@ class AssociateConversationService:
             query: dict[str, Any] = {
                 "$or": [
                     {path: anchor_value}
-                    for path in dict.fromkeys(
-                        (*config.order_number_paths, *config.web_order_paths)
-                    )
+                    for path in dict.fromkeys((*config.order_number_paths, *config.web_order_paths))
                 ]
             }
         elif anchor_type is AnchorType.CUSTOMER_ID:
-            query = {
-                "$or": [{path: anchor_value} for path in config.customer_id_paths]
-            }
+            query = {"$or": [{path: anchor_value} for path in config.customer_id_paths]}
         elif anchor_type in {AnchorType.PHONE, AnchorType.EMAIL}:
-            field = (
-                config.phone_field
-                if anchor_type is AnchorType.PHONE
-                else config.email_field
-            )
+            field = config.phone_field if anchor_type is AnchorType.PHONE else config.email_field
             customer = await self._source[config.customer_collection].find_one(
                 {field: anchor_value}
             )
@@ -521,9 +508,7 @@ class AssociateConversationService:
             )
             if customer_id is None:
                 return []
-            query = {
-                "$or": [{path: customer_id} for path in config.customer_id_paths]
-            }
+            query = {"$or": [{path: customer_id} for path in config.customer_id_paths]}
         elif anchor_type is AnchorType.TRACKING_NUMBER:
             shipment = await self._source[config.shipment_collection].find_one(
                 {config.tracking_field: anchor_value}
@@ -535,16 +520,12 @@ class AssociateConversationService:
             )
             if order_id is None:
                 return []
-            query = {
-                "$or": [{path: order_id} for path in config.order_number_paths]
-            }
+            query = {"$or": [{path: order_id} for path in config.order_number_paths]}
         elif anchor_type is AnchorType.SKU:
             query = {
                 "$or": [
                     {f"salesLines.lineData.{path}": anchor_value}
-                    for path in dict.fromkeys(
-                        (*config.sku_paths, *config.product_id_paths)
-                    )
+                    for path in dict.fromkeys((*config.sku_paths, *config.product_id_paths))
                 ]
             }
         elif anchor_type is AnchorType.CUSTOMER_NAME:
@@ -573,8 +554,8 @@ class AssociateConversationService:
         config = self._source_config
         source_web_order = _first_nested(document, config.web_order_paths)
         trilogie_order = _first_nested(document, config.trilogie_order_paths)
-        order_reference = trilogie_order or source_web_order or _first_nested(
-            document, config.order_number_paths
+        order_reference = (
+            trilogie_order or source_web_order or _first_nested(document, config.order_number_paths)
         )
         customer_reference = _first_nested(document, config.customer_id_paths)
         if order_reference is None or customer_reference is None:
@@ -594,18 +575,12 @@ class AssociateConversationService:
                 line_id = _first_line_value(line, config.line_id_paths)
                 lines.append(
                     OrderLineCandidate(
-                        orderLineId=str(
-                            line_id or f"{order_reference}:LINE:{position + 1}"
-                        ),
+                        orderLineId=str(line_id or f"{order_reference}:LINE:{position + 1}"),
                         productId=str(product_id),
-                        sku=cast(
-                            str | None, _first_line_value(line, config.sku_paths)
-                        ),
+                        sku=cast(str | None, _first_line_value(line, config.sku_paths)),
                         productDescription=cast(
                             str | None,
-                            _first_line_value(
-                                line, config.product_description_paths
-                            ),
+                            _first_line_value(line, config.product_description_paths),
                         ),
                         productType=cast(str | None, line.get("productType")),
                         shippedQuantity=cast(
@@ -618,16 +593,10 @@ class AssociateConversationService:
             return None
         return OrderCandidate(
             customerReference=str(customer_reference),
-            customerName=cast(
-                str | None, _first_nested(document, config.customer_name_paths)
-            ),
+            customerName=cast(str | None, _first_nested(document, config.customer_name_paths)),
             orderReference=str(order_reference),
-            sourceWebOrderNumber=(
-                str(source_web_order) if source_web_order is not None else None
-            ),
-            trilogieOrderNumber=(
-                str(trilogie_order) if trilogie_order is not None else None
-            ),
+            sourceWebOrderNumber=(str(source_web_order) if source_web_order is not None else None),
+            trilogieOrderNumber=(str(trilogie_order) if trilogie_order is not None else None),
             orderSource=(
                 OrderSource.FERGUSONHOME_WEB
                 if source_web_order is not None
@@ -710,9 +679,7 @@ class AssociateConversationService:
                     customerReference=candidate.customerReference,
                     orderSource=candidate.orderSource,
                     matchedAnchors=(payload.anchorType.value,),
-                    evidenceReferences=(
-                        f"{candidate.evidenceSource}:{candidate.orderReference}",
-                    ),
+                    evidenceReferences=(f"{candidate.evidenceSource}:{candidate.orderReference}",),
                 )
             )
         assessment = self._order_discovery_agent.assess(
@@ -1056,9 +1023,7 @@ class AssociateConversationService:
                 shippingPathExpectation=workflow_assessment.recommendedReturnMethod.value,
                 orderSource=order_source.value,
                 sourceWebOrderNumber=selected_candidate.sourceWebOrderNumber,
-                trilogieOrderNumber=(
-                    selected_candidate.trilogieOrderNumber or lock.orderReference
-                ),
+                trilogieOrderNumber=(selected_candidate.trilogieOrderNumber or lock.orderReference),
                 productPresence=payload.productPresence.value,
                 branchReference=payload.branchReference,
                 associateReference=payload.associateReference or actor_id,
@@ -1130,8 +1095,7 @@ class AssociateConversationService:
             self._message("ASSOCIATE", "Confirmed return handling details."),
             self._message(
                 "AI_ASSISTANT",
-                f"Return session {session.id} was created and handed to "
-                "Return Support processing.",
+                f"Return session {session.id} was created and handed to Return Support processing.",
             ),
         ]
         updated = await self._conversations.find_one_and_update(

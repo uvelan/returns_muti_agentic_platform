@@ -115,3 +115,133 @@ Full E2E return flow (Stage B)
 ---
 
 *Report generated before any source modification. Remediation results appended below after execution.*
+
+---
+
+# Verification Audit of Commit `91b2bf8` (Findings-First Gate)
+
+This section records the repository state observed on 2026-07-26 before any new
+source remediation. It does not overwrite the earlier baseline above.
+
+## Audit Metadata
+
+| Field | Value |
+|---|---|
+| UTC timestamp | `2026-07-26T05:35:07Z` |
+| Environment | Windows `10.0.26200.0`, PowerShell `5.1.26100.8875` |
+| Baseline commit | `91b2bf8a8825f607d8045715064eb384c780c252` |
+| Branch | `master` |
+| Working tree | User-owned untracked `artifacts/`; no tracked changes before this report update |
+| Python / Poetry | `NOT RUN` — neither command is available on `PATH`, and no repository virtual environment exists |
+| Node / npm | Node `v24.14.0`; npm `11.9.0` |
+| Docker / Compose | Docker `29.6.2`; Compose `v5.3.1` |
+| Tracked files | 691 |
+| Backend source files | 173 |
+| Frontend source files | 171 |
+| Test files | 79 |
+| Configuration files | 83 |
+| Scripts | 30 |
+| Documentation files | 162 |
+| Review exclusions | `.git`, dependency directories, caches, binary assets and pre-existing generated archives |
+
+## Current Executive Verdict
+
+Repository health is **FAILED** at this baseline and the tree is not mergeable.
+The highest-risk defect is the committed truncation of 166 frontend source files
+to zero bytes. This removes the application while allowing lint, typecheck, and
+build to produce a misleading green result. Linux validation remains pending;
+no Linux execution is claimed.
+
+## Newly Confirmed Findings
+
+| ID | Severity | Area | File/Location | Finding | Evidence | Adversarial Failure | Risk | Recommended Fix | Regression Test |
+| -- | -------- | ---- | ------------- | ------- | -------- | ------------------- | ---- | --------------- | --------------- |
+| F-031 | CRITICAL | Frontend integrity | `frontend/src/` (166 tracked files, including `main.tsx`, `App.tsx`, `routes.ts`) | Application and tests were truncated to zero bytes in commit `91b2bf8`. | `git diff --shortstat HEAD^ HEAD -- frontend` reports 17,109 deleted lines; current `main.tsx` is zero bytes; Vite transforms only four modules and emits a 0.69 kB bundle. | Any browser request receives an effectively empty application. | Total loss of frontend functionality hidden by superficial static gates. | Restore the last reviewed non-empty frontend sources, then reconcile the new Stage 4M/4N feature files against the restored application. | Run lint, typecheck, all Vitest suites, production build, bundle check, and route-level tests; reject zero-test runs. |
+| F-032 | HIGH | Test integrity | 13 `frontend/src/**/*.test.*` files | Every discovered Vitest file contains zero tests. | `npm run test -- --run` exits 1 with 13 “No test suite found” failures and zero executed tests. | A regression can be committed while no frontend assertion runs. | No frontend regression protection. | Restore test sources and retain Vitest’s zero-test failure behavior. | Verify a non-zero test count and zero failed suites. |
+| F-033 | HIGH | Required automation | `scripts/windows/`, `scripts/linux/`, `scripts/generated-fixes/` | The prompt-mandated Windows and Linux automation kit is absent. | Required-path audit found no `validate_linux_kit.ps1`, import/finalization scripts, master Linux validator, phase scripts, or result packager. | Linux operator cannot reconstruct or validate the reviewed tree without manual reasoning. | Stage A and Stage B acceptance criteria cannot be met. | Implement the required scripts using actual repository commands, bounded process handling, checkpoints, structured receipts, and safe evidence collection. | Run the Windows Linux-kit validator, Bash syntax checks, reference checks, and secret scans. |
+| F-034 | HIGH | Evidence integrity | `docs/evidence/code_quality/` | All mandatory structured Windows, transfer, handoff, and Linux evidence files are absent. | Required-path audit found 0 of 8 sampled evidence JSON files. | A completion claim cannot be independently verified or safely imported. | The existing completion commit is unverifiable. | Generate schema-valid truthful Windows evidence and pending Linux placeholders that explicitly say `NOT_RUN`; never fabricate Linux success. | Parse every JSON file and validate required fields/checksums. |
+| F-035 | MEDIUM | Repository hygiene | `backend_results.txt`, `docker_compose_logs.txt`, `playwright_results.txt`, `frontend/test-results/`, `linux_kit/returns_platform.tar.gz` | Generated logs, Playwright failure artifacts, and a 15 MB archive are tracked. | `git show --stat HEAD` lists these as newly committed runtime/generated artifacts. | Archives may leak environment details and cause repository bloat; stale test output can be mistaken for current evidence. | Poor hygiene and ambiguous evidence provenance. | Remove generated artifacts from version control after reviewing them for required evidence; add narrow ignore rules. | Repository cleanliness scan and tracked-artifact policy check. |
+| F-036 | HIGH | Windows validation | Backend quality gates | The current Windows environment cannot run Python or Poetry gates. | `python` and `poetry` are not found and `backend/.venv` does not exist. | Backend regressions remain unverified on Windows. | Mandatory Stage A quality validation is blocked until Python 3.13 and Poetry are available. | Install or expose the supported toolchain, then run the exact configured backend gates. | Poetry check/install, Ruff, Ruff format, mypy, pytest, contract and architecture gates. |
+
+## Current Baseline Validation
+
+| Environment | Command | Exit Code | Status | Pass/Fail/Skip | Important Output |
+| ----------- | ------- | --------: | ------ | -------------- | ---------------- |
+| Windows | `python --version` | N/A | NOT RUN | BLOCKED | Command not found |
+| Windows | `python -m poetry --version` | N/A | NOT RUN | BLOCKED | Command not found |
+| Windows | `npm.cmd run lint` | 0 | COMPLETE | PASS (misleading) | Empty source files are syntactically valid |
+| Windows | `npm.cmd run typecheck` | 0 | COMPLETE | PASS (misleading) | Application entry points contain no code |
+| Windows | `npm.cmd run test -- --run` | 1 | COMPLETE | FAIL | 13 failed suites; zero tests |
+| Windows | `npm.cmd run build` | 0 | COMPLETE | PASS (misleading) | Four modules transformed; 0.69 kB JS bundle |
+| Windows | `docker compose config --quiet` | 0 | COMPLETE | PASS | Docker config-file access warning only |
+| Windows | `git diff --check` | 0 | COMPLETE | PASS | No whitespace errors before remediation |
+
+## Findings Gate Decision
+
+Severity counts for newly confirmed findings: **CRITICAL 1, HIGH 4, MEDIUM 1,
+LOW 0, INFO 0**.
+
+Selected for immediate remediation: F-031, F-032, F-033, F-034, and F-035.
+F-036 is environment-blocked but all backend-independent work can proceed.
+Actual infrastructure, worker, seed, API, and E2E results require Linux
+verification and must remain `NOT_RUN` until genuine Linux evidence is returned.
+
+## Verification Audit Remediation Results
+
+| Finding | Result | Evidence |
+|---|---|---|
+| F-031 | FIXED | Restored the last non-empty reviewed frontend source revision. Final Windows build transformed 1,816 modules and emitted the full route bundle. |
+| F-032 | FIXED | Restored 13 frontend test suites; Vitest executed and passed 39 tests. |
+| F-033 | FIXED FOR HANDOFF | Added the 19 numbered Linux phases, common process/checkpoint library, one-command master validator, result packager, two narrow generated repairs, and Windows validate/import/finalize/build scripts. The Windows kit validator passes all 22 required shell scripts, including Git Bash syntax checks. |
+| F-034 | MITIGATED / LINUX PENDING | Added all required structured evidence paths. Windows evidence is populated; every Linux receipt truthfully remains `NOT_RUN` with `linuxExecutionClaim: false`. |
+| F-035 | FIXED | Removed tracked backend, Docker, Playwright, test-results, and obsolete handoff archives; added narrow ignore rules. |
+| F-036 | BLOCKED | Python 3.13 and Poetry are not installed or discoverable on this Windows host, so backend gates remain `NOT_RUN`. |
+
+Additional remediation:
+
+- Removed `--reload` from the standard backend host command so the production-like
+  host process is single-start and PID-manageable.
+- Added repository line-ending policy for Bash and source files.
+- Removed 18 zero-byte newly added feature files instead of retaining stubs or
+  claiming unfinished product screens were implemented.
+- Generated a reverse-apply-verified binary patch and checksum-protected handoff
+  archive. New shell scripts are encoded as executable files in the patch.
+
+No Linux quality, infrastructure, host-process, heartbeat, seed, API, or E2E
+execution is claimed. No final commit is permitted until genuine Linux evidence
+is returned and validated. Backend Windows validation remains an explicit
+toolchain blocker.
+
+## Windows Toolchain and Final Gate Update
+
+Python `3.13.14`, pip `26.1.2`, and Poetry `2.4.1` were subsequently located in
+the registered Microsoft Store installation. F-036 is therefore **FIXED**.
+
+| Command | Exit | Result |
+|---|---:|---|
+| `poetry check` | 0 | PASS |
+| `poetry install --sync --no-interaction` | 0 | PASS; lock already synchronized |
+| `ruff check .` | 0 | PASS |
+| `ruff format --check .` | 0 | PASS; 246 files |
+| `mypy src tests` | 0 | PASS; 232 files |
+| `pytest` | 0 | PASS; 986 passed, 1 skipped, 1 dependency deprecation warning |
+| Stage 4 source validation | 0 | PASS |
+| Stage 4 contract validation | 0 | PASS; 6 contract tests |
+| Stage 4M dependency simulation | 0 | PASS; 10-operation behavior check |
+| Stage 4N AI gateway validation | 0 | PASS; 9 checks |
+| OpenAPI drift | 0 | PASS after regenerating the schema and declarations |
+
+The earlier removal of zero-byte Stage 4M files is superseded: the required
+dependency-simulator artifacts are now typed, live API-backed overview, OMC,
+parcel, freight, LSI, AI-metrics, and operation-detail screens. Frontend lint,
+typecheck, 39 tests, and the 1,826-module production build pass. Zero-byte
+unreferenced feature stubs outside the validated Stage 4M surface remain
+removed rather than being represented as implemented.
+
+The legacy contract-promotion script requires historical aggregate receipts
+bound to an already committed source revision and rejects expected remediation
+working-tree changes. That precondition is not met before the final commit;
+current OpenAPI zero-drift and source contract gates pass.
+
+No Linux execution is claimed. The final commit remains prohibited until the
+Linux archive is returned and validated.

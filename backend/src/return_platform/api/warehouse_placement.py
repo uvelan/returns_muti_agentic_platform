@@ -42,7 +42,9 @@ def _meta(request: Request) -> ResponseMeta:
 
 def _service(
     request: Request,
-) -> tuple[RuntimeResources, LoadedReturnConfiguration, OperationalRepository, WarehousePlacementService]:
+) -> tuple[
+    RuntimeResources, LoadedReturnConfiguration, OperationalRepository, WarehousePlacementService
+]:
     resources = getattr(request.app.state, "resources", None)
     loaded = getattr(request.app.state, "return_configuration", None)
     if (
@@ -111,9 +113,11 @@ async def assign_bay(
             actor_id=actor,
         )
         handling_units = await repository.list_handling_units(session_id)
-        if handling_units and all(
-            unit.get("physicalStatus") == "WAREHOUSE_STAGED" for unit in handling_units
-        ) and resources.temporal is not None:
+        if (
+            handling_units
+            and all(unit.get("physicalStatus") == "WAREHOUSE_STAGED" for unit in handling_units)
+            and resources.temporal is not None
+        ):
             coordinator = ProductionWorkflowCoordinator(
                 temporal=resources.temporal,
                 repository=repository,

@@ -265,9 +265,7 @@ async def lifespan(
     dependency_simulation_configuration = load_dependency_simulation_configuration(
         settings.dependency_simulation_configuration_path
     )
-    ai_gateway_configuration = load_ai_gateway_configuration(
-        settings.ai_gateway_configuration_path
-    )
+    ai_gateway_configuration = load_ai_gateway_configuration(settings.ai_gateway_configuration_path)
 
     resources = RuntimeResources(
         settings=settings,
@@ -315,9 +313,7 @@ async def lifespan(
                 path=str(return_configuration.path),
                 sha256=return_configuration.sha256,
                 schema_version=return_configuration.configuration.schema_version,
-                assumption_set_version=(
-                    return_configuration.configuration.assumption_set_version
-                ),
+                assumption_set_version=(return_configuration.configuration.assumption_set_version),
                 configuration=return_configuration.configuration.model_dump(mode="json"),
             )
             await MongoSimulationRepository(resources.mongo, settings).ensure_indexes()

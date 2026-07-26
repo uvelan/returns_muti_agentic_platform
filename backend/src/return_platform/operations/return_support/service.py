@@ -142,9 +142,7 @@ class SupportActionRequest(SupportModel):
     carrier: str | None = Field(default=None, max_length=64)
     trackingNumbers: tuple[str, ...] = Field(default=(), max_length=100)
     bolReference: str | None = Field(default=None, max_length=128)
-    authoritativeReadbackDigest: str | None = Field(
-        default=None, pattern=r"^[a-f0-9]{64}$"
-    )
+    authoritativeReadbackDigest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     customerResolution: str | None = Field(default=None, min_length=2, max_length=128)
     externalTicketReference: str | None = Field(default=None, max_length=256)
 
@@ -175,7 +173,9 @@ class ReturnSupportService:
             [("status", ASCENDING), ("priorityRank", ASCENDING), ("slaDueAt", ASCENDING)]
         )
         await self._work_items.create_index([("assignedTo", ASCENDING), ("status", ASCENDING)])
-        await self._messages.create_index([("threadId", ASCENDING), ("sequence", ASCENDING)], unique=True)
+        await self._messages.create_index(
+            [("threadId", ASCENDING), ("sequence", ASCENDING)], unique=True
+        )
         await self._messages.create_index([("threadId", ASCENDING), ("createdAt", ASCENDING)])
         await self._outbox.create_index("idempotencyKey", unique=True)
         await self._outbox.create_index([("status", ASCENDING), ("nextAttemptAt", ASCENDING)])
@@ -183,13 +183,17 @@ class ReturnSupportService:
 
     @staticmethod
     def _work_item_view(document: dict[str, Any]) -> SupportWorkItemView:
-        payload = {key: value for key, value in document.items() if key in SupportWorkItemView.model_fields}
+        payload = {
+            key: value for key, value in document.items() if key in SupportWorkItemView.model_fields
+        }
         payload["id"] = str(document["_id"])
         return SupportWorkItemView.model_validate(payload)
 
     @staticmethod
     def _message_view(document: dict[str, Any]) -> SupportMessageView:
-        payload = {key: value for key, value in document.items() if key in SupportMessageView.model_fields}
+        payload = {
+            key: value for key, value in document.items() if key in SupportMessageView.model_fields
+        }
         payload["id"] = str(document["_id"])
         return SupportMessageView.model_validate(payload)
 
@@ -312,9 +316,11 @@ class ReturnSupportService:
         self, *, status: str | None = None, limit: int = 200
     ) -> list[SupportWorkItemView]:
         query: dict[str, Any] = {"status": status} if status else {}
-        cursor = self._work_items.find(query).sort(
-            [("priorityRank", ASCENDING), ("slaDueAt", ASCENDING)]
-        ).limit(limit)
+        cursor = (
+            self._work_items.find(query)
+            .sort([("priorityRank", ASCENDING), ("slaDueAt", ASCENDING)])
+            .limit(limit)
+        )
         return [self._work_item_view(cast(dict[str, Any], item)) async for item in cursor]
 
     async def get_work_item(self, work_item_id: str) -> SupportWorkItemView | None:
@@ -360,7 +366,9 @@ class ReturnSupportService:
             "createdAt": now,
         }
         await self._messages.insert_one(message_document)
-        return self._work_item_view(cast(dict[str, Any], updated)), self._message_view(message_document)
+        return self._work_item_view(cast(dict[str, Any], updated)), self._message_view(
+            message_document
+        )
 
     @staticmethod
     def _validate_action(status: SupportWorkItemStatus, action: SupportAction) -> None:
@@ -442,15 +450,9 @@ class ReturnSupportService:
                     SupportAction.ATTACH_EXTERNAL_TICKET,
                 }
             ),
-            SupportWorkItemStatus.COMPLETED: frozenset(
-                {SupportAction.ATTACH_EXTERNAL_TICKET}
-            ),
-            SupportWorkItemStatus.REJECTED: frozenset(
-                {SupportAction.ATTACH_EXTERNAL_TICKET}
-            ),
-            SupportWorkItemStatus.CANCELLED: frozenset(
-                {SupportAction.ATTACH_EXTERNAL_TICKET}
-            ),
+            SupportWorkItemStatus.COMPLETED: frozenset({SupportAction.ATTACH_EXTERNAL_TICKET}),
+            SupportWorkItemStatus.REJECTED: frozenset({SupportAction.ATTACH_EXTERNAL_TICKET}),
+            SupportWorkItemStatus.CANCELLED: frozenset({SupportAction.ATTACH_EXTERNAL_TICKET}),
         }
         if action not in allowed[status]:
             raise ValueError(f"Action {action.value} is not valid from {status.value}")
@@ -478,9 +480,13 @@ class ReturnSupportService:
         if action is SupportAction.ASSIGN:
             if not request.assignee:
                 raise ValueError("ASSIGN requires assignee")
-            updates.update({"assignedTo": request.assignee, "status": SupportWorkItemStatus.IN_PROGRESS.value})
+            updates.update(
+                {"assignedTo": request.assignee, "status": SupportWorkItemStatus.IN_PROGRESS.value}
+            )
         elif action is SupportAction.ACKNOWLEDGE:
-            updates.update({"status": SupportWorkItemStatus.ACKNOWLEDGED.value, "acknowledgedAt": now})
+            updates.update(
+                {"status": SupportWorkItemStatus.ACKNOWLEDGED.value, "acknowledgedAt": now}
+            )
         elif action is SupportAction.REQUEST_CLARIFICATION:
             updates["status"] = SupportWorkItemStatus.CLARIFICATION_REQUIRED.value
         elif action is SupportAction.START_WORK:
@@ -535,9 +541,7 @@ class ReturnSupportService:
                 "recordedBy": actor_id,
                 "evidenceMode": "MANUAL_OR_INTEGRATION_READBACK",
             }
-            readback_digest = request.authoritativeReadbackDigest or _digest(
-                readback_payload
-            )
+            readback_digest = request.authoritativeReadbackDigest or _digest(readback_payload)
             await self._repository.confirm_omc_command(
                 session_id=str(current["sessionId"]),
                 operation="CREATE_CUSTOMER_RETURN",
@@ -566,9 +570,7 @@ class ReturnSupportService:
                 instruction_type=request.shippingInstructionType or "UNKNOWN",
                 source_system="OMC_OR_SUPPORT_READBACK",
                 issued_by=actor_id,
-                handling_unit_ids=[
-                    str(item["handlingUnitId"]) for item in handling_units
-                ],
+                handling_unit_ids=[str(item["handlingUnitId"]) for item in handling_units],
                 carrier=request.carrier,
                 tracking_numbers=list(request.trackingNumbers),
                 bol_reference=request.bolReference,
@@ -585,9 +587,7 @@ class ReturnSupportService:
                 payload={
                     "eventType": "SHIPPING_INSTRUCTIONS_ISSUED",
                     "sessionId": session_id,
-                    "shippingInstructionReference": (
-                        request.shippingInstructionReference
-                    ),
+                    "shippingInstructionReference": (request.shippingInstructionReference),
                 },
             )
             updates.update(
@@ -606,8 +606,7 @@ class ReturnSupportService:
                 aggregate_type="RETURN_SESSION",
                 aggregate_id=session_id,
                 idempotency_key=(
-                    f"customer-notification:resolution:{session_id}:"
-                    f"{request.customerResolution}"
+                    f"customer-notification:resolution:{session_id}:{request.customerResolution}"
                 ),
                 payload={
                     "eventType": "CUSTOMER_RESOLUTION_RECORDED",
@@ -660,9 +659,7 @@ class ReturnSupportService:
                 }
             )
         if updated.get("customerResolutionStatus"):
-            return_updates["customerResolutionStatus"] = str(
-                updated["customerResolutionStatus"]
-            )
+            return_updates["customerResolutionStatus"] = str(updated["customerResolutionStatus"])
         await self._repository.update_return(session_id, return_updates)
         await self._repository.append_event(
             session_id,

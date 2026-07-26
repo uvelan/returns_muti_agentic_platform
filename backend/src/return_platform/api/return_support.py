@@ -111,7 +111,9 @@ async def list_messages(
     item = await _service(request).get_work_item(work_item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Support work item not found.")
-    return APIResponse(data=await _service(request).list_messages(item.threadId), meta=_meta(request))
+    return APIResponse(
+        data=await _service(request).list_messages(item.threadId), meta=_meta(request)
+    )
 
 
 @router.post(
@@ -141,7 +143,9 @@ async def add_message(
     except KeyError as error:
         raise HTTPException(status_code=404, detail="Support work item not found.") from error
     except ConcurrencyConflictError as error:
-        raise HTTPException(status_code=409, detail="Support work item version conflict.") from error
+        raise HTTPException(
+            status_code=409, detail="Support work item version conflict."
+        ) from error
     return APIResponse(
         data={"workItem": item.model_dump(mode="json"), "message": message.model_dump(mode="json")},
         meta=_meta(request),
@@ -163,7 +167,9 @@ async def apply_action(
     except KeyError as error:
         raise HTTPException(status_code=404, detail="Support work item not found.") from error
     except ConcurrencyConflictError as error:
-        raise HTTPException(status_code=409, detail="Support work item version conflict.") from error
+        raise HTTPException(
+            status_code=409, detail="Support work item version conflict."
+        ) from error
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     event_type = {
@@ -203,9 +209,7 @@ async def apply_action(
                     "supportWorkItemId": data.id,
                     "returnVersion": data.returnVersion,
                     "returnReference": data.returnReference,
-                    "shippingInstructionReference": (
-                        data.shippingInstructionReference
-                    ),
+                    "shippingInstructionReference": (data.shippingInstructionReference),
                     "instructionType": payload.shippingInstructionType,
                     "carrier": payload.carrier,
                     "trackingNumbers": list(payload.trackingNumbers),
@@ -223,7 +227,8 @@ async def apply_action(
                 instruction_type = (payload.shippingInstructionType or "").upper()
                 if (
                     payload.action is SupportAction.RECORD_SHIPPING_INSTRUCTIONS
-                    and instruction_type in {
+                    and instruction_type
+                    in {
                         "LTL",
                         "BOL",
                         "BRANCH_LTL",
@@ -233,9 +238,7 @@ async def apply_action(
                 ):
                     await coordinator.record_event(
                         data.sessionId,
-                        event_id=(
-                            f"support-action:{data.id}:BOL_TENDERED:{data.version}"
-                        ),
+                        event_id=(f"support-action:{data.id}:BOL_TENDERED:{data.version}"),
                         event_type=ProductionReturnEventType.BOL_TENDERED,
                         evidence_reference=(
                             payload.bolReference
@@ -245,9 +248,7 @@ async def apply_action(
                         actor_id=actor,
                         business_payload={
                             "sourceSystem": "OMC_OR_SUPPORT_READBACK",
-                            "sourceEventId": (
-                                f"{data.id}:BOL_TENDERED:{data.version}"
-                            ),
+                            "sourceEventId": (f"{data.id}:BOL_TENDERED:{data.version}"),
                             "bolReference": payload.bolReference,
                             "carrier": payload.carrier,
                         },

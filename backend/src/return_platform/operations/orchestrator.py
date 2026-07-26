@@ -102,6 +102,7 @@ class ReturnOrchestrator:
         self._settings = settings
         self._worker_id = worker_id
         from return_platform.ai_gateway.service import AIGatewayRepository
+
         self._ai = AIGatewayService(cast(AIGatewayRepository, repository), settings)
         self._business_state = SQLBusinessStateRepository(settings)
         self._http_client = httpx.AsyncClient()

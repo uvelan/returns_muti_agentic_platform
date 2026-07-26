@@ -24,7 +24,9 @@
         "enum": [
           "APPROVE",
           "REJECT",
-          "REVIEW_REQUIRED"
+          "REVIEW_REQUIRED",
+          "WAITING_SUPPORT",
+          "WAITING_EXTERNAL"
         ],
         "title": "AIDecision",
         "type": "string"
@@ -193,6 +195,160 @@
         ],
         "title": "AIRequestStatus",
         "type": "string"
+      },
+      "AIRouteHealthView": {
+        "additionalProperties": false,
+        "properties": {
+          "activeRequests": {
+            "minimum": 0.0,
+            "title": "Activerequests",
+            "type": "integer"
+          },
+          "circuitState": {
+            "$ref": "#/components/schemas/CircuitState"
+          },
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "credentialId": {
+            "title": "Credentialid",
+            "type": "string"
+          },
+          "lastError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lasterror"
+          },
+          "lastFailureAtEpochMs": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastfailureatepochms"
+          },
+          "lastSuccessAtEpochMs": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastsuccessatepochms"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "requestsThisMinute": {
+            "minimum": 0.0,
+            "title": "Requeststhisminute",
+            "type": "integer"
+          },
+          "routeId": {
+            "title": "Routeid",
+            "type": "string"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/ModelTier"
+          },
+          "tokensThisMinute": {
+            "minimum": 0.0,
+            "title": "Tokensthisminute",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "routeId",
+          "provider",
+          "model",
+          "credentialId",
+          "tier",
+          "configured",
+          "circuitState",
+          "activeRequests",
+          "requestsThisMinute",
+          "tokensThisMinute"
+        ],
+        "title": "AIRouteHealthView",
+        "type": "object"
+      },
+      "AISafetyTestRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "taskId": {
+            "default": "RETURN_SMART_QUESTION_V1",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Taskid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload"
+        ],
+        "title": "AISafetyTestRequest",
+        "type": "object"
+      },
+      "AISafetyTestResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed": {
+            "title": "Allowed",
+            "type": "boolean"
+          },
+          "deterministicResponse": {
+            "additionalProperties": true,
+            "title": "Deterministicresponse",
+            "type": "object"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Signals",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SafetyStatus"
+          },
+          "taskId": {
+            "title": "Taskid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId",
+          "status",
+          "signals",
+          "allowed",
+          "deterministicResponse"
+        ],
+        "title": "AISafetyTestResponse",
+        "type": "object"
       },
       "AISimulatorRequest": {
         "additionalProperties": false,
@@ -427,6 +583,69 @@
         "title": "AIStudioProposalView",
         "type": "object"
       },
+      "AITaskView": {
+        "additionalProperties": false,
+        "properties": {
+          "allowTierEscalation": {
+            "title": "Allowtierescalation",
+            "type": "boolean"
+          },
+          "allowedInputKeys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowedinputkeys",
+            "type": "array"
+          },
+          "allowedProviders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowedproviders",
+            "type": "array"
+          },
+          "fallbackStrategy": {
+            "$ref": "#/components/schemas/FallbackStrategy"
+          },
+          "fallbackTemplate": {
+            "title": "Fallbacktemplate",
+            "type": "string"
+          },
+          "maximumInputTokens": {
+            "title": "Maximuminputtokens",
+            "type": "integer"
+          },
+          "maximumOutputTokens": {
+            "title": "Maximumoutputtokens",
+            "type": "integer"
+          },
+          "promptVersion": {
+            "title": "Promptversion",
+            "type": "string"
+          },
+          "taskId": {
+            "title": "Taskid",
+            "type": "string"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/ModelTier"
+          }
+        },
+        "required": [
+          "taskId",
+          "tier",
+          "promptVersion",
+          "fallbackStrategy",
+          "fallbackTemplate",
+          "maximumOutputTokens",
+          "maximumInputTokens",
+          "allowTierEscalation",
+          "allowedProviders",
+          "allowedInputKeys"
+        ],
+        "title": "AITaskView",
+        "type": "object"
+      },
       "AITraceView": {
         "additionalProperties": false,
         "properties": {
@@ -449,10 +668,26 @@
             ],
             "title": "Confidencemillionths"
           },
+          "configuredTier": {
+            "default": "LIGHTWEIGHT",
+            "title": "Configuredtier",
+            "type": "string"
+          },
           "createdAt": {
             "format": "date-time",
             "title": "Createdat",
             "type": "string"
+          },
+          "credentialId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credentialid"
           },
           "decision": {
             "anyOf": [
@@ -475,6 +710,12 @@
             ],
             "title": "Errorcode"
           },
+          "estimatedCostMicrousd": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Estimatedcostmicrousd",
+            "type": "integer"
+          },
           "explanation": {
             "anyOf": [
               {
@@ -485,6 +726,11 @@
               }
             ],
             "title": "Explanation"
+          },
+          "fallbackUsed": {
+            "default": false,
+            "title": "Fallbackused",
+            "type": "boolean"
           },
           "id": {
             "title": "Id",
@@ -585,6 +831,12 @@
             ],
             "title": "Provider"
           },
+          "rateLimitWaitMs": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Ratelimitwaitms",
+            "type": "integer"
+          },
           "redactedInput": {
             "additionalProperties": true,
             "title": "Redactedinput",
@@ -616,6 +868,51 @@
             ],
             "title": "Responsetext"
           },
+          "routeId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routeid"
+          },
+          "safetySignals": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Safetysignals",
+            "type": "array"
+          },
+          "safetyStatus": {
+            "default": "SAFE",
+            "title": "Safetystatus",
+            "type": "string"
+          },
+          "selectedTier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selectedtier"
+          },
+          "selectionReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selectionreason"
+          },
           "sessionId": {
             "anyOf": [
               {
@@ -632,6 +929,11 @@
           },
           "systemPrompt": {
             "title": "Systemprompt",
+            "type": "string"
+          },
+          "taskId": {
+            "default": "RETURN_ELIGIBILITY_V1",
+            "title": "Taskid",
             "type": "string"
           },
           "totalTokens": {
@@ -671,6 +973,288 @@
         "title": "AITraceView",
         "type": "object"
       },
+      "AIUsageAttemptView": {
+        "additionalProperties": false,
+        "properties": {
+          "attemptNumber": {
+            "minimum": 0.0,
+            "title": "Attemptnumber",
+            "type": "integer"
+          },
+          "configuredTier": {
+            "$ref": "#/components/schemas/ModelTier"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "credentialId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credentialid"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "estimatedCostMicrousd": {
+            "minimum": 0.0,
+            "title": "Estimatedcostmicrousd",
+            "type": "integer"
+          },
+          "fallbackUsed": {
+            "default": false,
+            "title": "Fallbackused",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "inputTokens": {
+            "minimum": 0.0,
+            "title": "Inputtokens",
+            "type": "integer"
+          },
+          "latencyMs": {
+            "minimum": 0.0,
+            "title": "Latencyms",
+            "type": "integer"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "outputTokens": {
+            "minimum": 0.0,
+            "title": "Outputtokens",
+            "type": "integer"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "rateLimitWaitMs": {
+            "minimum": 0.0,
+            "title": "Ratelimitwaitms",
+            "type": "integer"
+          },
+          "requestDigest": {
+            "title": "Requestdigest",
+            "type": "string"
+          },
+          "responseDigest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responsedigest"
+          },
+          "routeId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routeid"
+          },
+          "safetyStatus": {
+            "$ref": "#/components/schemas/SafetyStatus"
+          },
+          "selectedTier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelTier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selectionReason": {
+            "title": "Selectionreason",
+            "type": "string"
+          },
+          "sessionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessionid"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "taskId": {
+            "title": "Taskid",
+            "type": "string"
+          },
+          "totalTokens": {
+            "minimum": 0.0,
+            "title": "Totaltokens",
+            "type": "integer"
+          },
+          "traceId": {
+            "title": "Traceid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "traceId",
+          "taskId",
+          "configuredTier",
+          "attemptNumber",
+          "selectionReason",
+          "status",
+          "safetyStatus",
+          "latencyMs",
+          "rateLimitWaitMs",
+          "inputTokens",
+          "outputTokens",
+          "totalTokens",
+          "estimatedCostMicrousd",
+          "requestDigest",
+          "createdAt"
+        ],
+        "title": "AIUsageAttemptView",
+        "type": "object"
+      },
+      "AIUsageSummaryView": {
+        "additionalProperties": false,
+        "properties": {
+          "attempts": {
+            "minimum": 0.0,
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "blockedBySafety": {
+            "minimum": 0.0,
+            "title": "Blockedbysafety",
+            "type": "integer"
+          },
+          "byModel": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Bymodel",
+            "type": "object"
+          },
+          "byProvider": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Byprovider",
+            "type": "object"
+          },
+          "byTask": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Bytask",
+            "type": "object"
+          },
+          "byTier": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Bytier",
+            "type": "object"
+          },
+          "estimatedCostMicrousd": {
+            "minimum": 0.0,
+            "title": "Estimatedcostmicrousd",
+            "type": "integer"
+          },
+          "failures": {
+            "minimum": 0.0,
+            "title": "Failures",
+            "type": "integer"
+          },
+          "fallbacks": {
+            "minimum": 0.0,
+            "title": "Fallbacks",
+            "type": "integer"
+          },
+          "inputTokens": {
+            "minimum": 0.0,
+            "title": "Inputtokens",
+            "type": "integer"
+          },
+          "outputTokens": {
+            "minimum": 0.0,
+            "title": "Outputtokens",
+            "type": "integer"
+          },
+          "successes": {
+            "minimum": 0.0,
+            "title": "Successes",
+            "type": "integer"
+          },
+          "totalTokens": {
+            "minimum": 0.0,
+            "title": "Totaltokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "attempts",
+          "successes",
+          "failures",
+          "fallbacks",
+          "blockedBySafety",
+          "inputTokens",
+          "outputTokens",
+          "totalTokens",
+          "estimatedCostMicrousd",
+          "byProvider",
+          "byModel",
+          "byTask",
+          "byTier"
+        ],
+        "title": "AIUsageSummaryView",
+        "type": "object"
+      },
       "APIResponse_AIGatewaySettingsView_": {
         "additionalProperties": false,
         "properties": {
@@ -702,6 +1286,39 @@
           "meta"
         ],
         "title": "APIResponse[AIGatewaySettingsView]",
+        "type": "object"
+      },
+      "APIResponse_AISafetyTestResponse_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AISafetyTestResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[AISafetyTestResponse]",
         "type": "object"
       },
       "APIResponse_AIStudioProposalView_": {
@@ -770,6 +1387,39 @@
         "title": "APIResponse[AITraceView]",
         "type": "object"
       },
+      "APIResponse_AIUsageSummaryView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AIUsageSummaryView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[AIUsageSummaryView]",
+        "type": "object"
+      },
       "APIResponse_AssociateConversationView_": {
         "additionalProperties": false,
         "properties": {
@@ -834,6 +1484,39 @@
           "meta"
         ],
         "title": "APIResponse[AuditLog]",
+        "type": "object"
+      },
+      "APIResponse_BayAssessment_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BayAssessment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[BayAssessment]",
         "type": "object"
       },
       "APIResponse_ConsoleSettingsView_": {
@@ -968,6 +1651,105 @@
         "title": "APIResponse[DataAssetSchema]",
         "type": "object"
       },
+      "APIResponse_DependencySimulationSummary_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DependencySimulationSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[DependencySimulationSummary]",
+        "type": "object"
+      },
+      "APIResponse_DiscoveryAssessment_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiscoveryAssessment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[DiscoveryAssessment]",
+        "type": "object"
+      },
+      "APIResponse_FeedbackAssessment_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackAssessment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[FeedbackAssessment]",
+        "type": "object"
+      },
       "APIResponse_FeedbackLearningView_": {
         "additionalProperties": false,
         "properties": {
@@ -999,6 +1781,39 @@
           "meta"
         ],
         "title": "APIResponse[FeedbackLearningView]",
+        "type": "object"
+      },
+      "APIResponse_FulfillmentAssessment_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FulfillmentAssessment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[FulfillmentAssessment]",
         "type": "object"
       },
       "APIResponse_GovernanceSummary_": {
@@ -1298,6 +2113,39 @@
         "title": "APIResponse[ReturnSessionView]",
         "type": "object"
       },
+      "APIResponse_ReturnWorkflowAssessment_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReturnWorkflowAssessment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ReturnWorkflowAssessment]",
+        "type": "object"
+      },
       "APIResponse_SandboxRecord_": {
         "additionalProperties": false,
         "properties": {
@@ -1430,6 +2278,72 @@
         "title": "APIResponse[SeedStatusView]",
         "type": "object"
       },
+      "APIResponse_SimulationE2EResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimulationE2EResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[SimulationE2EResult]",
+        "type": "object"
+      },
+      "APIResponse_SimulationOperationView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimulationOperationView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[SimulationOperationView]",
+        "type": "object"
+      },
       "APIResponse_SourceDetail_": {
         "additionalProperties": false,
         "properties": {
@@ -1494,6 +2408,39 @@
           "meta"
         ],
         "title": "APIResponse[SupportCaseView]",
+        "type": "object"
+      },
+      "APIResponse_SupportWorkItemView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SupportWorkItemView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[SupportWorkItemView]",
         "type": "object"
       },
       "APIResponse_UnifiedInventory_": {
@@ -1671,6 +2618,115 @@
         "title": "APIResponse[dict[str, bool]]",
         "type": "object"
       },
+      "APIResponse_dict_str__object__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[dict[str, object]]",
+        "type": "object"
+      },
+      "APIResponse_dict_str__str__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[dict[str, str]]",
+        "type": "object"
+      },
+      "APIResponse_list_AIRouteHealthView__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AIRouteHealthView"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[list[AIRouteHealthView]]",
+        "type": "object"
+      },
       "APIResponse_list_AIStudioProposalView__": {
         "additionalProperties": false,
         "properties": {
@@ -1708,6 +2764,43 @@
         "title": "APIResponse[list[AIStudioProposalView]]",
         "type": "object"
       },
+      "APIResponse_list_AITaskView__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AITaskView"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[list[AITaskView]]",
+        "type": "object"
+      },
       "APIResponse_list_AITraceView__": {
         "additionalProperties": false,
         "properties": {
@@ -1743,6 +2836,43 @@
           "meta"
         ],
         "title": "APIResponse[list[AITraceView]]",
+        "type": "object"
+      },
+      "APIResponse_list_AIUsageAttemptView__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AIUsageAttemptView"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[list[AIUsageAttemptView]]",
         "type": "object"
       },
       "APIResponse_list_AssociateConversationView__": {
@@ -2004,6 +3134,43 @@
         "title": "APIResponse[list[Job]]",
         "type": "object"
       },
+      "APIResponse_list_OutboxView__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/OutboxView"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[list[OutboxView]]",
+        "type": "object"
+      },
       "APIResponse_list_ReturnSessionView__": {
         "additionalProperties": false,
         "properties": {
@@ -2152,6 +3319,80 @@
         "title": "APIResponse[list[Scenario]]",
         "type": "object"
       },
+      "APIResponse_list_SimulationAIUsageMetric__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SimulationAIUsageMetric"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[list[SimulationAIUsageMetric]]",
+        "type": "object"
+      },
+      "APIResponse_list_SimulationOperationView__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SimulationOperationView"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[list[SimulationOperationView]]",
+        "type": "object"
+      },
       "APIResponse_list_SourceItem__": {
         "additionalProperties": false,
         "properties": {
@@ -2224,6 +3465,80 @@
           "meta"
         ],
         "title": "APIResponse[list[SupportCaseView]]",
+        "type": "object"
+      },
+      "APIResponse_list_SupportMessageView__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SupportMessageView"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[list[SupportMessageView]]",
+        "type": "object"
+      },
+      "APIResponse_list_SupportWorkItemView__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SupportWorkItemView"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[list[SupportWorkItemView]]",
         "type": "object"
       },
       "APIResponse_list_TimelineEvent__": {
@@ -2412,6 +3727,86 @@
         "title": "APIResponse[tuple[CustomerGraphEvidenceSummary, ...]]",
         "type": "object"
       },
+      "AgentDecisionView": {
+        "additionalProperties": false,
+        "properties": {
+          "agent": {
+            "title": "Agent",
+            "type": "string"
+          },
+          "agentVersion": {
+            "title": "Agentversion",
+            "type": "string"
+          },
+          "confidenceMillionths": {
+            "maximum": 1000000.0,
+            "minimum": 0.0,
+            "title": "Confidencemillionths",
+            "type": "integer"
+          },
+          "configurationVersion": {
+            "title": "Configurationversion",
+            "type": "string"
+          },
+          "decision": {
+            "title": "Decision",
+            "type": "string"
+          },
+          "decisionType": {
+            "title": "Decisiontype",
+            "type": "string"
+          },
+          "evidenceReferences": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Evidencereferences",
+            "type": "array"
+          },
+          "executionMode": {
+            "$ref": "#/components/schemas/AgentExecutionMode",
+            "default": "DETERMINISTIC"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "agent",
+          "agentVersion",
+          "configurationVersion",
+          "decisionType",
+          "decision",
+          "explanation",
+          "confidenceMillionths",
+          "evidenceReferences"
+        ],
+        "title": "AgentDecisionView",
+        "type": "object"
+      },
+      "AgentExecutionMode": {
+        "enum": [
+          "DETERMINISTIC",
+          "AI_ASSISTED"
+        ],
+        "title": "AgentExecutionMode",
+        "type": "string"
+      },
       "AnchorType": {
         "enum": [
           "ORDER_NUMBER",
@@ -2419,7 +3814,9 @@
           "PHONE",
           "EMAIL",
           "TRACKING_NUMBER",
-          "SKU"
+          "SKU",
+          "CUSTOMER_NAME",
+          "PRODUCT_DESCRIPTION"
         ],
         "title": "AnchorType",
         "type": "string"
@@ -2441,10 +3838,33 @@
             "title": "Candidates",
             "type": "array"
           },
+          "confirmationSnapshotId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmationsnapshotid"
+          },
           "createdAt": {
             "format": "date-time",
             "title": "Createdat",
             "type": "string"
+          },
+          "discoveryAssessment": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discoveryassessment"
           },
           "discoveryLock": {
             "anyOf": [
@@ -2456,9 +3876,26 @@
               }
             ]
           },
+          "discoverySnapshotId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discoverysnapshotid"
+          },
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "lastMessageSequence": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Lastmessagesequence",
+            "type": "integer"
           },
           "messages": {
             "items": {
@@ -2477,6 +3914,10 @@
               }
             ],
             "title": "Nextquestion"
+          },
+          "orderSource": {
+            "$ref": "#/components/schemas/OrderSource",
+            "default": "UNKNOWN"
           },
           "returnDetails": {
             "anyOf": [
@@ -2571,6 +4012,270 @@
         "title": "AuditLog",
         "type": "object"
       },
+      "BayAssessment": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/AgentDecisionView"
+          },
+          "eligibleBayIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Eligiblebayids",
+            "type": "array"
+          },
+          "excludedReasons": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Excludedreasons",
+            "type": "object"
+          },
+          "recommendedBayId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommendedbayid"
+          }
+        },
+        "required": [
+          "recommendedBayId",
+          "eligibleBayIds",
+          "excludedReasons",
+          "decision"
+        ],
+        "title": "BayAssessment",
+        "type": "object"
+      },
+      "BayAssessmentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/BayCandidateInput"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "hazardous": {
+            "default": false,
+            "title": "Hazardous",
+            "type": "boolean"
+          },
+          "oversized": {
+            "default": false,
+            "title": "Oversized",
+            "type": "boolean"
+          },
+          "physicalStatus": {
+            "title": "Physicalstatus",
+            "type": "string"
+          },
+          "requiredCapacity": {
+            "minimum": 1.0,
+            "title": "Requiredcapacity",
+            "type": "integer"
+          },
+          "returnMethod": {
+            "$ref": "#/components/schemas/NormalizedReturnMethod"
+          }
+        },
+        "required": [
+          "physicalStatus",
+          "returnMethod",
+          "requiredCapacity",
+          "candidates"
+        ],
+        "title": "BayAssessmentRequest",
+        "type": "object"
+      },
+      "BayAssignmentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "bayId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Bayid",
+            "type": "string"
+          },
+          "expectedHandlingUnitVersion": {
+            "minimum": 0.0,
+            "title": "Expectedhandlingunitversion",
+            "type": "integer"
+          },
+          "handlingUnitId": {
+            "maxLength": 128,
+            "minLength": 3,
+            "title": "Handlingunitid",
+            "type": "string"
+          },
+          "hazardous": {
+            "default": false,
+            "title": "Hazardous",
+            "type": "boolean"
+          },
+          "oversized": {
+            "default": false,
+            "title": "Oversized",
+            "type": "boolean"
+          },
+          "requiredCapacity": {
+            "default": 1,
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Requiredcapacity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "handlingUnitId",
+          "bayId",
+          "expectedHandlingUnitVersion"
+        ],
+        "title": "BayAssignmentRequest",
+        "type": "object"
+      },
+      "BayCandidateInput": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "bayId": {
+            "title": "Bayid",
+            "type": "string"
+          },
+          "bayType": {
+            "title": "Baytype",
+            "type": "string"
+          },
+          "capacityAvailable": {
+            "minimum": 0.0,
+            "title": "Capacityavailable",
+            "type": "integer"
+          },
+          "supportedReturnMethods": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/NormalizedReturnMethod"
+            },
+            "title": "Supportedreturnmethods",
+            "type": "array"
+          },
+          "supportsHazardous": {
+            "default": false,
+            "title": "Supportshazardous",
+            "type": "boolean"
+          },
+          "supportsOversized": {
+            "default": false,
+            "title": "Supportsoversized",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "bayId",
+          "bayType",
+          "capacityAvailable"
+        ],
+        "title": "BayCandidateInput",
+        "type": "object"
+      },
+      "BayRecommendationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "handlingUnitId": {
+            "maxLength": 128,
+            "minLength": 3,
+            "title": "Handlingunitid",
+            "type": "string"
+          },
+          "hazardous": {
+            "default": false,
+            "title": "Hazardous",
+            "type": "boolean"
+          },
+          "oversized": {
+            "default": false,
+            "title": "Oversized",
+            "type": "boolean"
+          },
+          "requiredCapacity": {
+            "default": 1,
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Requiredcapacity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "handlingUnitId"
+        ],
+        "title": "BayRecommendationRequest",
+        "type": "object"
+      },
+      "BranchStagingRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "branchId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Branchid",
+            "type": "string"
+          },
+          "expectedHandlingUnitVersion": {
+            "minimum": 0.0,
+            "title": "Expectedhandlingunitversion",
+            "type": "integer"
+          },
+          "handlingUnitId": {
+            "maxLength": 128,
+            "minLength": 3,
+            "title": "Handlingunitid",
+            "type": "string"
+          },
+          "inventoryAddedToBranch": {
+            "title": "Inventoryaddedtobranch",
+            "type": "boolean"
+          },
+          "manufacturerBoxDirectlyMarked": {
+            "title": "Manufacturerboxdirectlymarked",
+            "type": "boolean"
+          },
+          "returnNumberTagApplied": {
+            "title": "Returnnumbertagapplied",
+            "type": "boolean"
+          },
+          "stagingLocation": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Staginglocation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "handlingUnitId",
+          "branchId",
+          "stagingLocation",
+          "returnNumberTagApplied",
+          "manufacturerBoxDirectlyMarked",
+          "inventoryAddedToBranch",
+          "expectedHandlingUnitVersion"
+        ],
+        "title": "BranchStagingRequest",
+        "type": "object"
+      },
       "BrowserAsset": {
         "additionalProperties": false,
         "properties": {
@@ -2626,6 +4331,15 @@
         ],
         "title": "BrowserAsset",
         "type": "object"
+      },
+      "CircuitState": {
+        "enum": [
+          "CLOSED",
+          "OPEN",
+          "HALF_OPEN"
+        ],
+        "title": "CircuitState",
+        "type": "string"
       },
       "ConfirmDiscoveryRequest": {
         "additionalProperties": false,
@@ -2852,6 +4566,95 @@
           "baseWorkspaceId"
         ],
         "title": "CreateScenarioPayload",
+        "type": "object"
+      },
+      "CreateSupportMessageRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "attachmentIds": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Attachmentids",
+            "type": "array"
+          },
+          "businessPayload": {
+            "additionalProperties": true,
+            "title": "Businesspayload",
+            "type": "object"
+          },
+          "expectedVersion": {
+            "minimum": 0.0,
+            "title": "Expectedversion",
+            "type": "integer"
+          },
+          "messageText": {
+            "maxLength": 16000,
+            "minLength": 1,
+            "title": "Messagetext",
+            "type": "string"
+          },
+          "messageType": {
+            "$ref": "#/components/schemas/SupportMessageType"
+          }
+        },
+        "required": [
+          "messageType",
+          "messageText",
+          "expectedVersion"
+        ],
+        "title": "CreateSupportMessageRequest",
+        "type": "object"
+      },
+      "CreateSupportWorkItemRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotencyKey": {
+            "maxLength": 256,
+            "minLength": 8,
+            "title": "Idempotencykey",
+            "type": "string"
+          },
+          "priority": {
+            "default": "NORMAL",
+            "pattern": "^(LOW|NORMAL|HIGH|CRITICAL)$",
+            "title": "Priority",
+            "type": "string"
+          },
+          "requestSnapshotDigest": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Requestsnapshotdigest",
+            "type": "string"
+          },
+          "sessionId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "subject": {
+            "maxLength": 256,
+            "minLength": 3,
+            "title": "Subject",
+            "type": "string"
+          },
+          "supportDraft": {
+            "maxLength": 16000,
+            "minLength": 10,
+            "title": "Supportdraft",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "subject",
+          "supportDraft",
+          "requestSnapshotDigest",
+          "idempotencyKey"
+        ],
+        "title": "CreateSupportWorkItemRequest",
         "type": "object"
       },
       "CreateWorkspacePayload": {
@@ -3171,6 +4974,16 @@
         "title": "DependencyErrorCode",
         "type": "string"
       },
+      "DependencyKind": {
+        "enum": [
+          "OMC",
+          "PARCEL",
+          "FREIGHT",
+          "LSI"
+        ],
+        "title": "DependencyKind",
+        "type": "string"
+      },
       "DependencyProbeResult": {
         "additionalProperties": false,
         "properties": {
@@ -3225,6 +5038,55 @@
         "title": "DependencyProbeResult",
         "type": "object"
       },
+      "DependencySimulationSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "ai": {
+            "$ref": "#/components/schemas/SimulationAISummary"
+          },
+          "banner": {
+            "title": "Banner",
+            "type": "string"
+          },
+          "configurationSha256": {
+            "title": "Configurationsha256",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "environment": {
+            "title": "Environment",
+            "type": "string"
+          },
+          "modes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Modes",
+            "type": "object"
+          },
+          "operationCounts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Operationcounts",
+            "type": "object"
+          }
+        },
+        "required": [
+          "enabled",
+          "banner",
+          "environment",
+          "modes",
+          "operationCounts",
+          "ai",
+          "configurationSha256"
+        ],
+        "title": "DependencySimulationSummary",
+        "type": "object"
+      },
       "DependencyStatus": {
         "enum": [
           "HEALTHY",
@@ -3235,6 +5097,131 @@
         ],
         "title": "DependencyStatus",
         "type": "string"
+      },
+      "DiscoveryAssessment": {
+        "additionalProperties": false,
+        "properties": {
+          "ambiguous": {
+            "title": "Ambiguous",
+            "type": "boolean"
+          },
+          "confirmationRequired": {
+            "title": "Confirmationrequired",
+            "type": "boolean"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/AgentDecisionView"
+          },
+          "nextQuestion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextquestion"
+          },
+          "orderSource": {
+            "$ref": "#/components/schemas/OrderSource"
+          },
+          "rankedCandidates": {
+            "items": {
+              "$ref": "#/components/schemas/RankedDiscoveryCandidate"
+            },
+            "title": "Rankedcandidates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "orderSource",
+          "rankedCandidates",
+          "confirmationRequired",
+          "ambiguous",
+          "nextQuestion",
+          "decision"
+        ],
+        "title": "DiscoveryAssessment",
+        "type": "object"
+      },
+      "DiscoveryAssessmentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/DiscoveryCandidateInput"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "suppliedEvidence": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Suppliedevidence",
+            "type": "object"
+          }
+        },
+        "required": [
+          "suppliedEvidence",
+          "candidates"
+        ],
+        "title": "DiscoveryAssessmentRequest",
+        "type": "object"
+      },
+      "DiscoveryCandidateInput": {
+        "additionalProperties": false,
+        "properties": {
+          "candidateId": {
+            "title": "Candidateid",
+            "type": "string"
+          },
+          "conflictingAnchors": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Conflictinganchors",
+            "type": "array"
+          },
+          "customerReference": {
+            "title": "Customerreference",
+            "type": "string"
+          },
+          "evidenceReferences": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Evidencereferences",
+            "type": "array"
+          },
+          "matchedAnchors": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Matchedanchors",
+            "type": "array"
+          },
+          "orderReference": {
+            "title": "Orderreference",
+            "type": "string"
+          },
+          "orderSource": {
+            "$ref": "#/components/schemas/OrderSource",
+            "default": "UNKNOWN"
+          }
+        },
+        "required": [
+          "candidateId",
+          "orderReference",
+          "customerReference",
+          "evidenceReferences"
+        ],
+        "title": "DiscoveryCandidateInput",
+        "type": "object"
       },
       "DiscoveryLock": {
         "additionalProperties": false,
@@ -3265,9 +5252,35 @@
             "title": "Orderreference",
             "type": "string"
           },
+          "orderSource": {
+            "$ref": "#/components/schemas/OrderSource",
+            "default": "UNKNOWN"
+          },
           "productId": {
             "title": "Productid",
             "type": "string"
+          },
+          "sourceWebOrderNumber": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcewebordernumber"
+          },
+          "trilogieOrderNumber": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trilogieordernumber"
           }
         },
         "required": [
@@ -3280,6 +5293,144 @@
           "confirmedAt"
         ],
         "title": "DiscoveryLock",
+        "type": "object"
+      },
+      "DocumentArtifactRegistration": {
+        "additionalProperties": false,
+        "properties": {
+          "artifactId": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Artifactid",
+            "type": "string"
+          },
+          "artifactType": {
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Artifacttype",
+            "type": "string"
+          },
+          "classification": {
+            "default": "RETURN_EVIDENCE",
+            "maxLength": 64,
+            "minLength": 3,
+            "title": "Classification",
+            "type": "string"
+          },
+          "contentType": {
+            "maxLength": 128,
+            "minLength": 3,
+            "title": "Contenttype",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[a-fA-F0-9]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "sizeBytes": {
+            "maximum": 100000000.0,
+            "minimum": 0.0,
+            "title": "Sizebytes",
+            "type": "integer"
+          },
+          "storageKey": {
+            "maxLength": 1024,
+            "minLength": 3,
+            "title": "Storagekey",
+            "type": "string"
+          },
+          "storageProvider": {
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Storageprovider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifactType",
+          "storageProvider",
+          "storageKey",
+          "contentType",
+          "sizeBytes",
+          "sha256"
+        ],
+        "title": "DocumentArtifactRegistration",
+        "type": "object"
+      },
+      "FallbackStrategy": {
+        "enum": [
+          "TEMPLATE",
+          "MANUAL_REVIEW"
+        ],
+        "title": "FallbackStrategy",
+        "type": "string"
+      },
+      "FeedbackAssessment": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/AgentDecisionView"
+          },
+          "recommendations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recommendations",
+            "type": "array"
+          },
+          "reviewRequired": {
+            "title": "Reviewrequired",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "recommendations",
+          "reviewRequired",
+          "decision"
+        ],
+        "title": "FeedbackAssessment",
+        "type": "object"
+      },
+      "FeedbackAssessmentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "evidenceReferences": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Evidencereferences",
+            "type": "array"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "title": "Metrics",
+            "type": "object"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "metrics",
+          "evidenceReferences"
+        ],
+        "title": "FeedbackAssessmentRequest",
         "type": "object"
       },
       "FeedbackLearningView": {
@@ -3379,6 +5530,146 @@
         ],
         "title": "FreshnessStatus",
         "type": "string"
+      },
+      "FulfillmentAssessment": {
+        "additionalProperties": false,
+        "properties": {
+          "customerResolutionComplete": {
+            "title": "Customerresolutioncomplete",
+            "type": "boolean"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/AgentDecisionView"
+          },
+          "nextExpectedEvent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextexpectedevent"
+          },
+          "normalizedReturnStatus": {
+            "title": "Normalizedreturnstatus",
+            "type": "string"
+          },
+          "physicalReturnComplete": {
+            "title": "Physicalreturncomplete",
+            "type": "boolean"
+          },
+          "vendorRecoveryComplete": {
+            "title": "Vendorrecoverycomplete",
+            "type": "boolean"
+          },
+          "warehouseProcessingComplete": {
+            "title": "Warehouseprocessingcomplete",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "normalizedReturnStatus",
+          "customerResolutionComplete",
+          "physicalReturnComplete",
+          "warehouseProcessingComplete",
+          "vendorRecoveryComplete",
+          "nextExpectedEvent",
+          "decision"
+        ],
+        "title": "FulfillmentAssessment",
+        "type": "object"
+      },
+      "FulfillmentAssessmentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "facts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FulfillmentFact"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
+          "rawCustomerResolution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rawcustomerresolution"
+          },
+          "rawProductResolution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rawproductresolution"
+          },
+          "rawReturnStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rawreturnstatus"
+          },
+          "returnVersion": {
+            "title": "Returnversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "returnVersion"
+        ],
+        "title": "FulfillmentAssessmentRequest",
+        "type": "object"
+      },
+      "FulfillmentFact": {
+        "additionalProperties": false,
+        "properties": {
+          "evidenceReference": {
+            "title": "Evidencereference",
+            "type": "string"
+          },
+          "factType": {
+            "title": "Facttype",
+            "type": "string"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "factType",
+          "status",
+          "evidenceReference"
+        ],
+        "title": "FulfillmentFact",
+        "type": "object"
       },
       "GovernanceSummary": {
         "additionalProperties": false,
@@ -4322,6 +6613,14 @@
         "type": "object"
       },
       "JsonValue": {},
+      "ModelTier": {
+        "enum": [
+          "LIGHTWEIGHT",
+          "STANDARD"
+        ],
+        "title": "ModelTier",
+        "type": "string"
+      },
       "MongoCollectionMetadata": {
         "additionalProperties": false,
         "description": "Observed physical metadata for one MongoDB collection.",
@@ -4507,6 +6806,22 @@
         "title": "Neo4jInventory",
         "type": "object"
       },
+      "NormalizedReturnMethod": {
+        "enum": [
+          "PREPAID_PARCEL",
+          "BRANCH_UPS",
+          "BRANCH_LTL",
+          "OFFSITE_PARCEL",
+          "OFFSITE_LTL",
+          "DIRECT_VENDOR",
+          "FIELD_SCRAP",
+          "NO_PHYSICAL_RETURN",
+          "CUSTOMER_KEEP",
+          "UNKNOWN"
+        ],
+        "title": "NormalizedReturnMethod",
+        "type": "string"
+      },
       "OrderCandidate": {
         "additionalProperties": false,
         "properties": {
@@ -4545,6 +6860,10 @@
           "orderReference": {
             "title": "Orderreference",
             "type": "string"
+          },
+          "orderSource": {
+            "$ref": "#/components/schemas/OrderSource",
+            "default": "UNKNOWN"
           },
           "orderStatus": {
             "anyOf": [
@@ -4589,6 +6908,28 @@
               }
             ],
             "title": "Shippingmethod"
+          },
+          "sourceWebOrderNumber": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcewebordernumber"
+          },
+          "trilogieOrderNumber": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trilogieordernumber"
           }
         },
         "required": [
@@ -4667,6 +7008,102 @@
         "title": "OrderLineCandidate",
         "type": "object"
       },
+      "OrderSource": {
+        "enum": [
+          "FERGUSONHOME_WEB",
+          "FERGUSON_SHOWROOM",
+          "FERGUSON_BRANCH",
+          "OTHER_DIGITAL_BRAND",
+          "UNKNOWN"
+        ],
+        "title": "OrderSource",
+        "type": "string"
+      },
+      "OutboxView": {
+        "additionalProperties": false,
+        "properties": {
+          "aggregateId": {
+            "title": "Aggregateid",
+            "type": "string"
+          },
+          "aggregateType": {
+            "title": "Aggregatetype",
+            "type": "string"
+          },
+          "attemptCount": {
+            "minimum": 0.0,
+            "title": "Attemptcount",
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "externalReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Externalreference"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "title": "Idempotencykey",
+            "type": "string"
+          },
+          "lastErrorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lasterrorcode"
+          },
+          "nextAttemptAt": {
+            "format": "date-time",
+            "title": "Nextattemptat",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "topic",
+          "aggregateType",
+          "aggregateId",
+          "idempotencyKey",
+          "status",
+          "attemptCount",
+          "nextAttemptAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "OutboxView",
+        "type": "object"
+      },
       "PageMeta": {
         "additionalProperties": false,
         "properties": {
@@ -4697,6 +7134,256 @@
           }
         },
         "title": "PageMeta",
+        "type": "object"
+      },
+      "PickupAction": {
+        "enum": [
+          "AUTHORIZE",
+          "REQUEST_BOOKING",
+          "CONFIRM_BOOKING",
+          "SCHEDULE",
+          "CONFIRM_READINESS",
+          "RECORD_CARRIER_ARRIVAL",
+          "RECORD_PICKUP",
+          "RECORD_FAILURE",
+          "CANCEL"
+        ],
+        "title": "PickupAction",
+        "type": "string"
+      },
+      "PickupActionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/PickupAction"
+          },
+          "bolReference": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bolreference"
+          },
+          "bookingConfirmationReference": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bookingconfirmationreference"
+          },
+          "carrier": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier"
+          },
+          "equipmentRequirements": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Equipmentrequirements",
+            "type": "array"
+          },
+          "expectedVersion": {
+            "minimum": 0.0,
+            "title": "Expectedversion",
+            "type": "integer"
+          },
+          "failureCode": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failurecode"
+          },
+          "pickupConfirmationReference": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickupconfirmationreference"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          },
+          "scheduledWindowEnd": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduledwindowend"
+          },
+          "scheduledWindowStart": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduledwindowstart"
+          },
+          "serviceLevel": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Servicelevel"
+          }
+        },
+        "required": [
+          "action",
+          "expectedVersion",
+          "reason"
+        ],
+        "title": "PickupActionRequest",
+        "type": "object"
+      },
+      "ProductPresence": {
+        "enum": [
+          "PRESENT_AT_BRANCH",
+          "OFFSITE_CUSTOMER_RESIDENCE",
+          "OFFSITE_CUSTOMER_JOBSITE",
+          "OFFSITE_COMMERCIAL_SITE",
+          "OFFSITE_VENDOR_SITE",
+          "OFFSITE_OTHER",
+          "NOT_APPLICABLE"
+        ],
+        "title": "ProductPresence",
+        "type": "string"
+      },
+      "ProductionEventRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "businessPayload": {
+            "additionalProperties": true,
+            "title": "Businesspayload",
+            "type": "object"
+          },
+          "eventId": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Eventid",
+            "type": "string"
+          },
+          "eventType": {
+            "$ref": "#/components/schemas/ProductionReturnEventType"
+          },
+          "evidenceReference": {
+            "maxLength": 512,
+            "minLength": 3,
+            "title": "Evidencereference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "eventId",
+          "eventType",
+          "evidenceReference"
+        ],
+        "title": "ProductionEventRequest",
+        "type": "object"
+      },
+      "ProductionReturnEventType": {
+        "enum": [
+          "DISCOVERY_CONFIRMED",
+          "RETURN_DETAILS_CONFIRMED",
+          "SUPPORT_REQUEST_CREATED",
+          "SUPPORT_ACKNOWLEDGED",
+          "OMC_RETURN_CREATED",
+          "SHIPPING_INSTRUCTIONS_ISSUED",
+          "BOL_TENDERED",
+          "CARRIER_BOOKING_CONFIRMED",
+          "PHYSICAL_HANDOFF_CONFIRMED",
+          "PHYSICAL_RETURN_NOT_REQUIRED",
+          "RECEIPT_CONFIRMED",
+          "LICENSE_PLATE_NOT_REQUIRED",
+          "WAREHOUSE_PROCESSING_NOT_REQUIRED",
+          "LICENSE_PLATE_ASSIGNED",
+          "CUSTOMER_RESOLUTION_COMPLETED",
+          "PRODUCT_DISPOSITION_COMPLETED",
+          "WAREHOUSE_PROCESSING_COMPLETED",
+          "VENDOR_RECOVERY_REQUIRED",
+          "VENDOR_RECOVERY_COMPLETED",
+          "CANCELLED"
+        ],
+        "title": "ProductionReturnEventType",
+        "type": "string"
+      },
+      "RankedDiscoveryCandidate": {
+        "additionalProperties": false,
+        "properties": {
+          "candidateId": {
+            "title": "Candidateid",
+            "type": "string"
+          },
+          "evidenceReferences": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidencereferences",
+            "type": "array"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "scoreMillionths": {
+            "maximum": 1000000.0,
+            "minimum": 0.0,
+            "title": "Scoremillionths",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "candidateId",
+          "scoreMillionths",
+          "explanation",
+          "evidenceReferences"
+        ],
+        "title": "RankedDiscoveryCandidate",
         "type": "object"
       },
       "RecordPayload": {
@@ -4773,6 +7460,36 @@
       "ReturnCreateRequest": {
         "additionalProperties": false,
         "properties": {
+          "associateReference": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Associatereference"
+          },
+          "assumptionSetVersion": {
+            "default": "FERGUSON-RETURN-ASSUMPTIONS-1.0",
+            "maxLength": 128,
+            "title": "Assumptionsetversion",
+            "type": "string"
+          },
+          "branchReference": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branchreference"
+          },
           "channel": {
             "default": "SYSTEM",
             "pattern": "^(CUSTOMER|ASSOCIATE|SYSTEM)$",
@@ -4825,12 +7542,30 @@
             "title": "Orderreference",
             "type": "string"
           },
+          "orderSource": {
+            "default": "UNKNOWN",
+            "maxLength": 64,
+            "title": "Ordersource",
+            "type": "string"
+          },
           "packageCount": {
             "default": 1,
             "maximum": 10000.0,
             "minimum": 1.0,
             "title": "Packagecount",
             "type": "integer"
+          },
+          "pickupAssessment": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickupassessment"
           },
           "processingWarehouseReference": {
             "anyOf": [
@@ -4843,6 +7578,18 @@
               }
             ],
             "title": "Processingwarehousereference"
+          },
+          "productPresence": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productpresence"
           },
           "productReferences": {
             "items": {
@@ -4878,9 +7625,39 @@
             "type": "integer"
           },
           "shippingPathExpectation": {
-            "default": "PPL",
-            "pattern": "^(PPL|BOL|CUSTOMER_SHIP|NO_LABEL|DIRECT_VENDOR|FIELD_SCRAP)$",
+            "default": "UNKNOWN",
+            "pattern": "^(PPL|BOL|CUSTOMER_SHIP|NO_LABEL|DIRECT_VENDOR|FIELD_SCRAP|PREPAID_PARCEL|BRANCH_UPS|BRANCH_LTL|OFFSITE_PARCEL|OFFSITE_LTL|NO_PHYSICAL_RETURN|CUSTOMER_KEEP|UNKNOWN)$",
             "title": "Shippingpathexpectation",
+            "type": "string"
+          },
+          "sourceWebOrderNumber": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcewebordernumber"
+          },
+          "trilogieOrderNumber": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trilogieordernumber"
+          },
+          "workflowMode": {
+            "default": "PRODUCTION_V2",
+            "pattern": "^(PRODUCTION_V2|LEGACY_V1)$",
+            "title": "Workflowmode",
             "type": "string"
           }
         },
@@ -4896,6 +7673,38 @@
       "ReturnDetailsRequest": {
         "additionalProperties": false,
         "properties": {
+          "associateReference": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Associatereference"
+          },
+          "attachmentIds": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Attachmentids",
+            "type": "array"
+          },
+          "branchReference": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branchreference"
+          },
           "expectedVersion": {
             "minimum": 0.0,
             "title": "Expectedversion",
@@ -4919,6 +7728,22 @@
             "title": "Packagecount",
             "type": "integer"
           },
+          "pickupAssessment": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickupassessment"
+          },
+          "productPresence": {
+            "$ref": "#/components/schemas/ProductPresence",
+            "default": "PRESENT_AT_BRANCH"
+          },
           "reasonCode": {
             "maxLength": 64,
             "minLength": 1,
@@ -4932,9 +7757,7 @@
             "type": "integer"
           },
           "shippingPathExpectation": {
-            "pattern": "^(PPL|BOL|CUSTOMER_SHIP|NO_LABEL|DIRECT_VENDOR|FIELD_SCRAP)$",
-            "title": "Shippingpathexpectation",
-            "type": "string"
+            "$ref": "#/components/schemas/NormalizedReturnMethod"
           }
         },
         "required": [
@@ -4945,6 +7768,67 @@
           "expectedVersion"
         ],
         "title": "ReturnDetailsRequest",
+        "type": "object"
+      },
+      "ReturnItemInput": {
+        "additionalProperties": false,
+        "properties": {
+          "attachmentIds": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Attachmentids",
+            "type": "array"
+          },
+          "condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "orderLineId": {
+            "title": "Orderlineid",
+            "type": "string"
+          },
+          "productId": {
+            "title": "Productid",
+            "type": "string"
+          },
+          "reasonCode": {
+            "title": "Reasoncode",
+            "type": "string"
+          },
+          "requestedQuantity": {
+            "minimum": 1.0,
+            "title": "Requestedquantity",
+            "type": "integer"
+          },
+          "shippedQuantity": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippedquantity"
+          }
+        },
+        "required": [
+          "orderLineId",
+          "productId",
+          "requestedQuantity",
+          "reasonCode"
+        ],
+        "title": "ReturnItemInput",
         "type": "object"
       },
       "ReturnSessionView": {
@@ -4961,6 +7845,33 @@
             ],
             "title": "Airequestid"
           },
+          "approvedReturnMethod": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approvedreturnmethod"
+          },
+          "associateReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Associatereference"
+          },
+          "assumptionSetVersion": {
+            "default": "FERGUSON-RETURN-ASSUMPTIONS-1.0",
+            "title": "Assumptionsetversion",
+            "type": "string"
+          },
           "bayReference": {
             "anyOf": [
               {
@@ -4971,6 +7882,22 @@
               }
             ],
             "title": "Bayreference"
+          },
+          "branchReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branchreference"
+          },
+          "caseClosureStatus": {
+            "default": "OPEN",
+            "title": "Caseclosurestatus",
+            "type": "string"
           },
           "channel": {
             "title": "Channel",
@@ -4991,6 +7918,11 @@
           },
           "customerReference": {
             "title": "Customerreference",
+            "type": "string"
+          },
+          "customerResolutionStatus": {
+            "default": "PENDING",
+            "title": "Customerresolutionstatus",
             "type": "string"
           },
           "eligibilityDecision": {
@@ -5058,8 +7990,24 @@
             ],
             "title": "Notes"
           },
+          "omcReturnVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Omcreturnversion"
+          },
           "orderReference": {
             "title": "Orderreference",
+            "type": "string"
+          },
+          "orderSource": {
+            "default": "UNKNOWN",
+            "title": "Ordersource",
             "type": "string"
           },
           "packageCount": {
@@ -5067,6 +8015,23 @@
             "minimum": 1.0,
             "title": "Packagecount",
             "type": "integer"
+          },
+          "physicalReturnStatus": {
+            "default": "NOT_STARTED",
+            "title": "Physicalreturnstatus",
+            "type": "string"
+          },
+          "pickupAssessment": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickupassessment"
           },
           "processingWarehouseReference": {
             "anyOf": [
@@ -5078,6 +8043,17 @@
               }
             ],
             "title": "Processingwarehousereference"
+          },
+          "productPresence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productpresence"
           },
           "productReferences": {
             "items": {
@@ -5096,6 +8072,17 @@
               }
             ],
             "title": "Producttype"
+          },
+          "productionWorkflowVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productionworkflowversion"
           },
           "progressPercentage": {
             "maximum": 100.0,
@@ -5124,9 +8111,42 @@
             ],
             "title": "Returnreference"
           },
+          "returnRequestSnapshotId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnrequestsnapshotid"
+          },
+          "shippingInstructionReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippinginstructionreference"
+          },
           "shippingPathExpectation": {
             "title": "Shippingpathexpectation",
             "type": "string"
+          },
+          "sourceWebOrderNumber": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcewebordernumber"
           },
           "status": {
             "$ref": "#/components/schemas/ReturnStatus"
@@ -5142,6 +8162,17 @@
             ],
             "title": "Supportcaseid"
           },
+          "supportStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supportstatus"
+          },
           "supportTicketReference": {
             "anyOf": [
               {
@@ -5152,6 +8183,17 @@
               }
             ],
             "title": "Supportticketreference"
+          },
+          "supportWorkItemId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supportworkitemid"
           },
           "trackingReference": {
             "anyOf": [
@@ -5164,15 +8206,36 @@
             ],
             "title": "Trackingreference"
           },
+          "trilogieOrderNumber": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trilogieordernumber"
+          },
           "updatedAt": {
             "format": "date-time",
             "title": "Updatedat",
+            "type": "string"
+          },
+          "vendorRecoveryStatus": {
+            "default": "NOT_REQUIRED_OR_PENDING",
+            "title": "Vendorrecoverystatus",
             "type": "string"
           },
           "version": {
             "minimum": 0.0,
             "title": "Version",
             "type": "integer"
+          },
+          "warehouseStatus": {
+            "default": "NOT_REQUIRED_OR_PENDING",
+            "title": "Warehousestatus",
+            "type": "string"
           },
           "workflowId": {
             "anyOf": [
@@ -5184,6 +8247,11 @@
               }
             ],
             "title": "Workflowid"
+          },
+          "workflowMode": {
+            "default": "PRODUCTION_V2",
+            "title": "Workflowmode",
+            "type": "string"
           }
         },
         "required": [
@@ -5214,6 +8282,8 @@
           "RUNNING",
           "INTERCEPTION_PENDING",
           "REVIEW_REQUIRED",
+          "WAITING_SUPPORT",
+          "WAITING_EXTERNAL",
           "APPROVED",
           "REJECTED",
           "COMPLETED",
@@ -5222,6 +8292,121 @@
         ],
         "title": "ReturnStatus",
         "type": "string"
+      },
+      "ReturnWorkflowAssessment": {
+        "additionalProperties": false,
+        "properties": {
+          "complete": {
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/AgentDecisionView"
+          },
+          "missingFields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missingfields",
+            "type": "array"
+          },
+          "photoEvidenceRequired": {
+            "title": "Photoevidencerequired",
+            "type": "boolean"
+          },
+          "recommendedReturnMethod": {
+            "$ref": "#/components/schemas/NormalizedReturnMethod"
+          },
+          "supportDraft": {
+            "title": "Supportdraft",
+            "type": "string"
+          }
+        },
+        "required": [
+          "complete",
+          "missingFields",
+          "photoEvidenceRequired",
+          "recommendedReturnMethod",
+          "supportDraft",
+          "decision"
+        ],
+        "title": "ReturnWorkflowAssessment",
+        "type": "object"
+      },
+      "ReturnWorkflowAssessmentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "associateId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Associateid"
+          },
+          "branchId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branchid"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReturnItemInput"
+            },
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "orderSource": {
+            "$ref": "#/components/schemas/OrderSource"
+          },
+          "pickupAssessment": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickupassessment"
+          },
+          "productPresence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductPresence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "proposedReturnMethod": {
+            "$ref": "#/components/schemas/NormalizedReturnMethod",
+            "default": "UNKNOWN"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "orderSource",
+          "items"
+        ],
+        "title": "ReturnWorkflowAssessmentRequest",
+        "type": "object"
       },
       "SQLServerColumnMetadata": {
         "additionalProperties": false,
@@ -5476,6 +8661,16 @@
         ],
         "title": "SQLServerViewMetadata",
         "type": "object"
+      },
+      "SafetyStatus": {
+        "enum": [
+          "SAFE",
+          "PROMPT_INJECTION_SUSPECTED",
+          "OUT_OF_DOMAIN_REQUEST",
+          "UNAUTHORIZED_ACTION_REQUEST"
+        ],
+        "title": "SafetyStatus",
+        "type": "string"
       },
       "SandboxIssue": {
         "additionalProperties": false,
@@ -5861,6 +9056,643 @@
         "title": "SeedStatusView",
         "type": "object"
       },
+      "SimulationAISummary": {
+        "additionalProperties": false,
+        "properties": {
+          "byDependency": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "Bydependency",
+            "type": "object"
+          },
+          "byModel": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "Bymodel",
+            "type": "object"
+          },
+          "byOperation": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "Byoperation",
+            "type": "object"
+          },
+          "byProvider": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "Byprovider",
+            "type": "object"
+          },
+          "estimatedCostMicrousd": {
+            "default": 0,
+            "title": "Estimatedcostmicrousd",
+            "type": "integer"
+          },
+          "failureCount": {
+            "default": 0,
+            "title": "Failurecount",
+            "type": "integer"
+          },
+          "fallbackCount": {
+            "default": 0,
+            "title": "Fallbackcount",
+            "type": "integer"
+          },
+          "requestCount": {
+            "default": 0,
+            "title": "Requestcount",
+            "type": "integer"
+          },
+          "successCount": {
+            "default": 0,
+            "title": "Successcount",
+            "type": "integer"
+          },
+          "totalInputTokens": {
+            "default": 0,
+            "title": "Totalinputtokens",
+            "type": "integer"
+          },
+          "totalOutputTokens": {
+            "default": 0,
+            "title": "Totaloutputtokens",
+            "type": "integer"
+          },
+          "totalTokens": {
+            "default": 0,
+            "title": "Totaltokens",
+            "type": "integer"
+          }
+        },
+        "title": "SimulationAISummary",
+        "type": "object"
+      },
+      "SimulationAIUsageMetric": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "minimum": 0.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "credentialId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credentialid"
+          },
+          "dependency": {
+            "$ref": "#/components/schemas/DependencyKind"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "estimatedCostMicrousd": {
+            "minimum": 0.0,
+            "title": "Estimatedcostmicrousd",
+            "type": "integer"
+          },
+          "fallbackUsed": {
+            "title": "Fallbackused",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "inputTokens": {
+            "minimum": 0.0,
+            "title": "Inputtokens",
+            "type": "integer"
+          },
+          "latencyMs": {
+            "minimum": 0.0,
+            "title": "Latencyms",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "modelTier": {
+            "default": "LIGHTWEIGHT",
+            "title": "Modeltier",
+            "type": "string"
+          },
+          "operation": {
+            "title": "Operation",
+            "type": "string"
+          },
+          "operationId": {
+            "title": "Operationid",
+            "type": "string"
+          },
+          "outputTokens": {
+            "minimum": 0.0,
+            "title": "Outputtokens",
+            "type": "integer"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "requestDigest": {
+            "title": "Requestdigest",
+            "type": "string"
+          },
+          "responseDigest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responsedigest"
+          },
+          "routeId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routeid"
+          },
+          "selectionReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selectionreason"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "totalTokens": {
+            "minimum": 0.0,
+            "title": "Totaltokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "operationId",
+          "sessionId",
+          "dependency",
+          "operation",
+          "provider",
+          "model",
+          "status",
+          "fallbackUsed",
+          "attempt",
+          "latencyMs",
+          "inputTokens",
+          "outputTokens",
+          "totalTokens",
+          "estimatedCostMicrousd",
+          "requestDigest",
+          "createdAt"
+        ],
+        "title": "SimulationAIUsageMetric",
+        "type": "object"
+      },
+      "SimulationAdvanceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "scenario": {
+            "$ref": "#/components/schemas/SimulationScenario",
+            "default": "SUCCESS"
+          },
+          "signalWorkflow": {
+            "default": true,
+            "title": "Signalworkflow",
+            "type": "boolean"
+          },
+          "targetStatus": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetstatus"
+          },
+          "useAiNarrative": {
+            "default": true,
+            "title": "Useainarrative",
+            "type": "boolean"
+          }
+        },
+        "title": "SimulationAdvanceRequest",
+        "type": "object"
+      },
+      "SimulationE2ERequest": {
+        "additionalProperties": false,
+        "properties": {
+          "includeVendorRecovery": {
+            "default": true,
+            "title": "Includevendorrecovery",
+            "type": "boolean"
+          },
+          "scenario": {
+            "default": "BRANCH_PARCEL",
+            "pattern": "^(BRANCH_PARCEL|OFFSITE_HEAVY)$",
+            "title": "Scenario",
+            "type": "string"
+          },
+          "useAiNarrative": {
+            "default": true,
+            "title": "Useainarrative",
+            "type": "boolean"
+          }
+        },
+        "title": "SimulationE2ERequest",
+        "type": "object"
+      },
+      "SimulationE2EResult": {
+        "additionalProperties": false,
+        "properties": {
+          "caseFullyClosed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Casefullyclosed"
+          },
+          "completedAt": {
+            "format": "date-time",
+            "title": "Completedat",
+            "type": "string"
+          },
+          "operationIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Operationids",
+            "type": "array"
+          },
+          "scenario": {
+            "title": "Scenario",
+            "type": "string"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "workflowStage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflowstage"
+          }
+        },
+        "required": [
+          "sessionId",
+          "scenario",
+          "operationIds"
+        ],
+        "title": "SimulationE2EResult",
+        "type": "object"
+      },
+      "SimulationNarrative": {
+        "additionalProperties": false,
+        "properties": {
+          "aiMetricId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aimetricid"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "nextAction": {
+            "title": "Nextaction",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "templateVersion": {
+            "title": "Templateversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "message",
+          "summary",
+          "nextAction",
+          "templateVersion"
+        ],
+        "title": "SimulationNarrative",
+        "type": "object"
+      },
+      "SimulationOperationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "dependency": {
+            "$ref": "#/components/schemas/DependencyKind"
+          },
+          "idempotencyKey": {
+            "maxLength": 200,
+            "minLength": 8,
+            "title": "Idempotencykey",
+            "type": "string"
+          },
+          "operation": {
+            "maxLength": 64,
+            "minLength": 2,
+            "pattern": "^[A-Z][A-Z0-9_]+$",
+            "title": "Operation",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "scenario": {
+            "$ref": "#/components/schemas/SimulationScenario",
+            "default": "SUCCESS"
+          },
+          "sessionId": {
+            "maxLength": 128,
+            "minLength": 3,
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "signalWorkflow": {
+            "default": true,
+            "title": "Signalworkflow",
+            "type": "boolean"
+          },
+          "useAiNarrative": {
+            "default": true,
+            "title": "Useainarrative",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "dependency",
+          "operation",
+          "sessionId",
+          "idempotencyKey"
+        ],
+        "title": "SimulationOperationRequest",
+        "type": "object"
+      },
+      "SimulationOperationStatus": {
+        "enum": [
+          "RECEIVED",
+          "VALIDATING",
+          "CONFIRMED",
+          "RETRYABLE_FAILURE",
+          "TERMINAL_FAILURE",
+          "MANUAL_REVIEW_REQUIRED",
+          "CANCELLED"
+        ],
+        "title": "SimulationOperationStatus",
+        "type": "string"
+      },
+      "SimulationOperationView": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "dependency": {
+            "$ref": "#/components/schemas/DependencyKind"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "externalReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Externalreference"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "title": "Idempotencykey",
+            "type": "string"
+          },
+          "narrative": {
+            "$ref": "#/components/schemas/SimulationNarrative"
+          },
+          "operation": {
+            "title": "Operation",
+            "type": "string"
+          },
+          "requestPayload": {
+            "additionalProperties": true,
+            "title": "Requestpayload",
+            "type": "object"
+          },
+          "responsePayload": {
+            "additionalProperties": true,
+            "title": "Responsepayload",
+            "type": "object"
+          },
+          "scenario": {
+            "$ref": "#/components/schemas/SimulationScenario"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "simulatedState": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Simulatedstate"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SimulationOperationStatus"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          },
+          "workflowEventType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workfloweventtype"
+          },
+          "workflowSignalStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflowsignalstatus"
+          }
+        },
+        "required": [
+          "id",
+          "dependency",
+          "operation",
+          "sessionId",
+          "idempotencyKey",
+          "scenario",
+          "status",
+          "requestPayload",
+          "responsePayload",
+          "narrative",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "SimulationOperationView",
+        "type": "object"
+      },
+      "SimulationResetRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmation": {
+            "pattern": "^RESET_SIMULATION$",
+            "title": "Confirmation",
+            "type": "string"
+          },
+          "sessionId": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessionid"
+          }
+        },
+        "required": [
+          "confirmation"
+        ],
+        "title": "SimulationResetRequest",
+        "type": "object"
+      },
+      "SimulationScenario": {
+        "enum": [
+          "SUCCESS",
+          "RETRYABLE_FAILURE",
+          "TERMINAL_FAILURE",
+          "TIMEOUT",
+          "INVALID_RESPONSE"
+        ],
+        "title": "SimulationScenario",
+        "type": "string"
+      },
       "SourceAssetSummary": {
         "additionalProperties": false,
         "properties": {
@@ -6072,6 +9904,181 @@
         "title": "StartAssociateConversationRequest",
         "type": "object"
       },
+      "SupportAction": {
+        "enum": [
+          "ASSIGN",
+          "ACKNOWLEDGE",
+          "REQUEST_CLARIFICATION",
+          "START_WORK",
+          "REQUEST_RETURN_CREATION",
+          "RECORD_RETURN_CREATION",
+          "RECORD_SHIPPING_INSTRUCTIONS",
+          "RECORD_CUSTOMER_RESOLUTION",
+          "MARK_READY_FOR_ASSOCIATE",
+          "COMPLETE",
+          "REJECT",
+          "CANCEL",
+          "ATTACH_EXTERNAL_TICKET"
+        ],
+        "title": "SupportAction",
+        "type": "string"
+      },
+      "SupportActionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/SupportAction"
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          },
+          "authoritativeReadbackDigest": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authoritativereadbackdigest"
+          },
+          "bolReference": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bolreference"
+          },
+          "carrier": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier"
+          },
+          "customerResolution": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customerresolution"
+          },
+          "expectedVersion": {
+            "minimum": 0.0,
+            "title": "Expectedversion",
+            "type": "integer"
+          },
+          "externalTicketReference": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Externalticketreference"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 3,
+            "title": "Reason",
+            "type": "string"
+          },
+          "returnReference": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnreference"
+          },
+          "returnVersion": {
+            "anyOf": [
+              {
+                "pattern": "^(V1|V2)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnversion"
+          },
+          "shippingInstructionReference": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippinginstructionreference"
+          },
+          "shippingInstructionType": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippinginstructiontype"
+          },
+          "trackingNumbers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Trackingnumbers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "action",
+          "expectedVersion",
+          "reason"
+        ],
+        "title": "SupportActionRequest",
+        "type": "object"
+      },
       "SupportCaseStatus": {
         "enum": [
           "OPEN",
@@ -6181,6 +10188,82 @@
         "title": "SupportCaseView",
         "type": "object"
       },
+      "SupportMessageType": {
+        "enum": [
+          "REQUEST",
+          "COMMENT",
+          "CLARIFICATION_REQUEST",
+          "CLARIFICATION_RESPONSE",
+          "SYSTEM",
+          "RETURN_CREATION",
+          "SHIPPING_INSTRUCTIONS"
+        ],
+        "title": "SupportMessageType",
+        "type": "string"
+      },
+      "SupportMessageView": {
+        "additionalProperties": false,
+        "properties": {
+          "attachmentIds": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Attachmentids",
+            "type": "array"
+          },
+          "businessPayload": {
+            "additionalProperties": true,
+            "title": "Businesspayload",
+            "type": "object"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "messageText": {
+            "title": "Messagetext",
+            "type": "string"
+          },
+          "messageType": {
+            "$ref": "#/components/schemas/SupportMessageType"
+          },
+          "senderId": {
+            "title": "Senderid",
+            "type": "string"
+          },
+          "senderRole": {
+            "title": "Senderrole",
+            "type": "string"
+          },
+          "sequence": {
+            "minimum": 1.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "threadId": {
+            "title": "Threadid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "threadId",
+          "sequence",
+          "senderRole",
+          "senderId",
+          "messageType",
+          "messageText",
+          "createdAt"
+        ],
+        "title": "SupportMessageView",
+        "type": "object"
+      },
       "SupportOperationRequest": {
         "additionalProperties": false,
         "properties": {
@@ -6219,6 +10302,244 @@
           "expectedVersion"
         ],
         "title": "SupportOperationRequest",
+        "type": "object"
+      },
+      "SupportWorkItemStatus": {
+        "enum": [
+          "NEW",
+          "ACKNOWLEDGED",
+          "CLARIFICATION_REQUIRED",
+          "IN_PROGRESS",
+          "RETURN_CREATION_PENDING",
+          "RETURN_CREATED",
+          "SHIPPING_INSTRUCTIONS_PENDING",
+          "READY_FOR_ASSOCIATE",
+          "COMPLETED",
+          "REJECTED",
+          "CANCELLED"
+        ],
+        "title": "SupportWorkItemStatus",
+        "type": "string"
+      },
+      "SupportWorkItemView": {
+        "additionalProperties": false,
+        "properties": {
+          "acknowledgedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acknowledgedat"
+          },
+          "assignedTo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignedto"
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completedat"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "customerResolutionRecordedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customerresolutionrecordedat"
+          },
+          "customerResolutionStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customerresolutionstatus"
+          },
+          "externalTicketReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Externalticketreference"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "string"
+          },
+          "queue": {
+            "title": "Queue",
+            "type": "string"
+          },
+          "requestSnapshotDigest": {
+            "title": "Requestsnapshotdigest",
+            "type": "string"
+          },
+          "returnCreatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returncreatedat"
+          },
+          "returnCreationCommandId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returncreationcommandid"
+          },
+          "returnCreationRequestedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returncreationrequestedat"
+          },
+          "returnReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnreference"
+          },
+          "returnVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnversion"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "shippingInstructionReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippinginstructionreference"
+          },
+          "shippingInstructionsIssuedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippinginstructionsissuedat"
+          },
+          "slaDueAt": {
+            "format": "date-time",
+            "title": "Sladueat",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SupportWorkItemStatus"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "threadId": {
+            "title": "Threadid",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "sessionId",
+          "threadId",
+          "status",
+          "priority",
+          "queue",
+          "subject",
+          "requestSnapshotDigest",
+          "slaDueAt",
+          "version",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "SupportWorkItemView",
         "type": "object"
       },
       "TimelineEvent": {
@@ -6472,6 +10793,104 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/ai-gateway/metrics": {
+      "get": {
+        "operationId": "list_usage_metrics_api_v1_ai_gateway_metrics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "traceId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Traceid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "taskId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Taskid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 10000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_AIUsageAttemptView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Usage Metrics",
+        "tags": [
+          "AI Gateway"
+        ]
+      }
+    },
+    "/api/v1/ai-gateway/metrics/summary": {
+      "get": {
+        "operationId": "usage_summary_api_v1_ai_gateway_metrics_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AIUsageSummaryView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Usage Summary",
+        "tags": [
+          "AI Gateway"
+        ]
+      }
+    },
     "/api/v1/ai-gateway/requests": {
       "get": {
         "operationId": "list_requests_api_v1_ai_gateway_requests_get",
@@ -6719,6 +11138,68 @@
         ]
       }
     },
+    "/api/v1/ai-gateway/routes": {
+      "get": {
+        "operationId": "list_routes_api_v1_ai_gateway_routes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_AIRouteHealthView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Routes",
+        "tags": [
+          "AI Gateway"
+        ]
+      }
+    },
+    "/api/v1/ai-gateway/safety-test": {
+      "post": {
+        "operationId": "safety_test_api_v1_ai_gateway_safety_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AISafetyTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AISafetyTestResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Safety Test",
+        "tags": [
+          "AI Gateway"
+        ]
+      }
+    },
     "/api/v1/ai-gateway/settings": {
       "get": {
         "operationId": "get_settings_api_v1_ai_gateway_settings_get",
@@ -6815,6 +11296,27 @@
           }
         },
         "summary": "Simulate",
+        "tags": [
+          "AI Gateway"
+        ]
+      }
+    },
+    "/api/v1/ai-gateway/tasks": {
+      "get": {
+        "operationId": "list_tasks_api_v1_ai_gateway_tasks_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_AITaskView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Tasks",
         "tags": [
           "AI Gateway"
         ]
@@ -7050,6 +11552,1076 @@
         ]
       }
     },
+    "/api/v1/dependency-simulator/ai-metrics": {
+      "get": {
+        "operationId": "ai_metrics_api_v1_dependency_simulator_ai_metrics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sessionId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sessionid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_SimulationAIUsageMetric__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ai Metrics",
+        "tags": [
+          "Dependency Simulator"
+        ]
+      }
+    },
+    "/api/v1/dependency-simulator/e2e/{session_id}/run": {
+      "post": {
+        "operationId": "run_e2e_api_v1_dependency_simulator_e2e__session_id__run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationE2ERequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SimulationE2EResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run E2E",
+        "tags": [
+          "Dependency Simulator"
+        ]
+      }
+    },
+    "/api/v1/dependency-simulator/operations": {
+      "get": {
+        "operationId": "operations_api_v1_dependency_simulator_operations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "dependency",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dependency"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sessionid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_SimulationOperationView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Operations",
+        "tags": [
+          "Dependency Simulator"
+        ]
+      },
+      "post": {
+        "operationId": "create_operation_api_v1_dependency_simulator_operations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationOperationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SimulationOperationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Operation",
+        "tags": [
+          "Dependency Simulator"
+        ]
+      }
+    },
+    "/api/v1/dependency-simulator/operations/{operation_id}": {
+      "get": {
+        "operationId": "operation_detail_api_v1_dependency_simulator_operations__operation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "title": "Operation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SimulationOperationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Operation Detail",
+        "tags": [
+          "Dependency Simulator"
+        ]
+      }
+    },
+    "/api/v1/dependency-simulator/operations/{operation_id}/advance": {
+      "post": {
+        "operationId": "advance_operation_api_v1_dependency_simulator_operations__operation_id__advance_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "title": "Operation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationAdvanceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SimulationOperationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Advance Operation",
+        "tags": [
+          "Dependency Simulator"
+        ]
+      }
+    },
+    "/api/v1/dependency-simulator/reset": {
+      "post": {
+        "operationId": "reset_api_v1_dependency_simulator_reset_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationResetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__bool__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset",
+        "tags": [
+          "Dependency Simulator"
+        ]
+      }
+    },
+    "/api/v1/dependency-simulator/summary": {
+      "get": {
+        "operationId": "summary_api_v1_dependency_simulator_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_DependencySimulationSummary_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Summary",
+        "tags": [
+          "Dependency Simulator"
+        ]
+      }
+    },
+    "/api/v1/integration-outbox": {
+      "get": {
+        "operationId": "list_outbox_api_v1_integration_outbox_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_OutboxView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Outbox",
+        "tags": [
+          "Integration Outbox"
+        ]
+      }
+    },
+    "/api/v1/production-returns/{session_id}/events": {
+      "post": {
+        "operationId": "record_workflow_event_api_v1_production_returns__session_id__events_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductionEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__object__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Workflow Event",
+        "tags": [
+          "Production Return Workflow"
+        ]
+      }
+    },
+    "/api/v1/production-returns/{session_id}/start": {
+      "post": {
+        "operationId": "start_workflow_api_v1_production_returns__session_id__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__str__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Workflow",
+        "tags": [
+          "Production Return Workflow"
+        ]
+      }
+    },
+    "/api/v1/production-returns/{session_id}/state": {
+      "get": {
+        "operationId": "workflow_state_api_v1_production_returns__session_id__state_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__object__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Workflow State",
+        "tags": [
+          "Production Return Workflow"
+        ]
+      }
+    },
+    "/api/v1/return-agents/bay-assignment/assess": {
+      "post": {
+        "operationId": "assess_bay_api_v1_return_agents_bay_assignment_assess_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BayAssessmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_BayAssessment_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Assess Bay",
+        "tags": [
+          "Return Agents"
+        ]
+      }
+    },
+    "/api/v1/return-agents/configuration": {
+      "get": {
+        "operationId": "configuration_api_v1_return_agents_configuration_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Configuration",
+        "tags": [
+          "Return Agents"
+        ]
+      }
+    },
+    "/api/v1/return-agents/feedback/assess": {
+      "post": {
+        "operationId": "assess_feedback_api_v1_return_agents_feedback_assess_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackAssessmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_FeedbackAssessment_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Assess Feedback",
+        "tags": [
+          "Return Agents"
+        ]
+      }
+    },
+    "/api/v1/return-agents/fulfillment/assess": {
+      "post": {
+        "operationId": "assess_fulfillment_api_v1_return_agents_fulfillment_assess_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FulfillmentAssessmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_FulfillmentAssessment_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Assess Fulfillment",
+        "tags": [
+          "Return Agents"
+        ]
+      }
+    },
+    "/api/v1/return-agents/order-discovery/assess": {
+      "post": {
+        "operationId": "assess_discovery_api_v1_return_agents_order_discovery_assess_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscoveryAssessmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_DiscoveryAssessment_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Assess Discovery",
+        "tags": [
+          "Return Agents"
+        ]
+      }
+    },
+    "/api/v1/return-agents/return-workflow/assess": {
+      "post": {
+        "operationId": "assess_return_workflow_api_v1_return_agents_return_workflow_assess_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnWorkflowAssessmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ReturnWorkflowAssessment_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Assess Return Workflow",
+        "tags": [
+          "Return Agents"
+        ]
+      }
+    },
+    "/api/v1/return-support/work-items": {
+      "get": {
+        "operationId": "list_work_items_api_v1_return_support_work_items_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_SupportWorkItemView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Work Items",
+        "tags": [
+          "Returns Support"
+        ]
+      },
+      "post": {
+        "operationId": "create_work_item_api_v1_return_support_work_items_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSupportWorkItemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SupportWorkItemView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Work Item",
+        "tags": [
+          "Returns Support"
+        ]
+      }
+    },
+    "/api/v1/return-support/work-items/{work_item_id}": {
+      "get": {
+        "operationId": "get_work_item_api_v1_return_support_work_items__work_item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "work_item_id",
+            "required": true,
+            "schema": {
+              "title": "Work Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SupportWorkItemView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Work Item",
+        "tags": [
+          "Returns Support"
+        ]
+      }
+    },
+    "/api/v1/return-support/work-items/{work_item_id}/actions": {
+      "post": {
+        "operationId": "apply_action_api_v1_return_support_work_items__work_item_id__actions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "work_item_id",
+            "required": true,
+            "schema": {
+              "title": "Work Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SupportWorkItemView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Action",
+        "tags": [
+          "Returns Support"
+        ]
+      }
+    },
+    "/api/v1/return-support/work-items/{work_item_id}/messages": {
+      "get": {
+        "operationId": "list_messages_api_v1_return_support_work_items__work_item_id__messages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "work_item_id",
+            "required": true,
+            "schema": {
+              "title": "Work Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_SupportMessageView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Messages",
+        "tags": [
+          "Returns Support"
+        ]
+      },
+      "post": {
+        "operationId": "add_message_api_v1_return_support_work_items__work_item_id__messages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "work_item_id",
+            "required": true,
+            "schema": {
+              "title": "Work Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSupportMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__object__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Message",
+        "tags": [
+          "Returns Support"
+        ]
+      }
+    },
     "/api/v1/returns": {
       "get": {
         "operationId": "list_returns_api_v1_returns_get",
@@ -7210,6 +12782,150 @@
         ]
       }
     },
+    "/api/v1/returns/{session_id}/artifacts": {
+      "get": {
+        "operationId": "list_artifacts_api_v1_returns__session_id__artifacts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_dict_str__Any___"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Artifacts",
+        "tags": [
+          "Physical Return Operations"
+        ]
+      },
+      "post": {
+        "operationId": "register_artifact_api_v1_returns__session_id__artifacts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentArtifactRegistration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Artifact",
+        "tags": [
+          "Physical Return Operations"
+        ]
+      }
+    },
+    "/api/v1/returns/{session_id}/branch-staging": {
+      "post": {
+        "operationId": "confirm_branch_staging_api_v1_returns__session_id__branch_staging_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BranchStagingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Branch Staging",
+        "tags": [
+          "Physical Return Operations"
+        ]
+      }
+    },
     "/api/v1/returns/{session_id}/cancel": {
       "post": {
         "operationId": "cancel_return_api_v1_returns__session_id__cancel_post",
@@ -7324,6 +13040,100 @@
         "summary": "List Return Events",
         "tags": [
           "Returns"
+        ]
+      }
+    },
+    "/api/v1/returns/{session_id}/pickup-actions": {
+      "post": {
+        "operationId": "apply_pickup_action_api_v1_returns__session_id__pickup_actions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PickupActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Pickup Action",
+        "tags": [
+          "Physical Return Operations"
+        ]
+      }
+    },
+    "/api/v1/returns/{session_id}/production-artifacts": {
+      "get": {
+        "operationId": "production_artifacts_api_v1_returns__session_id__production_artifacts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Production Artifacts",
+        "tags": [
+          "Production Return Evidence"
         ]
       }
     },
@@ -7698,6 +13508,110 @@
         "summary": "Get Dependency",
         "tags": [
           "Operational Readiness"
+        ]
+      }
+    },
+    "/api/v1/warehouse/returns/{session_id}/bay-assignment": {
+      "post": {
+        "operationId": "assign_bay_api_v1_warehouse_returns__session_id__bay_assignment_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BayAssignmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Assign Bay",
+        "tags": [
+          "Warehouse Placement"
+        ]
+      }
+    },
+    "/api/v1/warehouse/returns/{session_id}/bay-recommendation": {
+      "post": {
+        "operationId": "recommend_bay_api_v1_warehouse_returns__session_id__bay_recommendation_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BayRecommendationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recommend Bay",
+        "tags": [
+          "Warehouse Placement"
         ]
       }
     },

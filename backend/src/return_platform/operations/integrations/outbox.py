@@ -164,9 +164,7 @@ class IntegrationOutboxDispatcher:
 
     async def ensure_indexes(self) -> None:
         await self._collection.create_index("idempotencyKey", unique=True)
-        await self._collection.create_index(
-            [("status", ASCENDING), ("nextAttemptAt", ASCENDING)]
-        )
+        await self._collection.create_index([("status", ASCENDING), ("nextAttemptAt", ASCENDING)])
         await self._collection.create_index("leaseUntil")
 
     async def claim(self, *, lease_seconds: int = 60) -> OutboxCommand | None:

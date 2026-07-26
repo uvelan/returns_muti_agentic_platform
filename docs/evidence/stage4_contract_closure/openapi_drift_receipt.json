@@ -1,20 +1,19 @@
 {
   "stage": "4E",
   "gate": "openapi_drift",
-  "commit": "7ff46df5c99a99ecf5e23f5fb0db5edcb7bef6c9",
+  "commit": "91b2bf8a8825f607d8045715064eb384c780c252",
   "environment": "local-contract-validation",
   "command": [
-    "C:\\Users\\Uday\\AppData\\Local\\Microsoft\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\\python.exe",
-    "-m",
-    "poetry",
-    "--project",
-    "backend",
-    "run",
-    "python",
-    "scripts/check_openapi_drift.py"
+    "node",
+    "K:\\Projects\\FEG\\Ret\\full\\returns_platform\\frontend\\node_modules\\openapi-typescript\\bin\\cli.js",
+    "C:\\Users\\Uday\\AppData\\Local\\Temp\\tmp5zgs9tul\\return-platform.openapi.json",
+    "--output",
+    "C:\\Users\\Uday\\AppData\\Local\\Temp\\tmp5zgs9tul\\return-platform.d.ts"
   ],
+  "started_at": "2026-07-26T06:11:25.384590+00:00",
+  "finished_at": "2026-07-26T06:11:28.510197+00:00",
+  "openapi_sha256": "f11ace7d22967de036a4a8c451cf5ded89d3e8716502ee12e14e8e6e773bce4f",
   "exit_code": 0,
-  "started_at": "2026-07-25T04:26:20.702565+00:00",
-  "finished_at": "2026-07-25T04:26:25.265538+00:00",
+  "diffs": [],
   "status": "PASS"
 }

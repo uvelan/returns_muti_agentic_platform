@@ -5,6 +5,12 @@ Production-oriented Sales Order return orchestration with an associate-first AI 
 > **Validation status:** `SOURCE_VALIDATED`
 > Full dependency-backed, Compose, live-provider, and real-time E2E gates must still run in the target environment before claiming `SANDBOX_VALIDATED` or `PRODUCTION_VALIDATED`.
 
+The cross-platform quality review is tracked in
+`docs/code_quality/FULL_CODEBASE_REVIEW_FINDINGS.md`. Linux operators must use
+`docs/code_quality/LINUX_LIVE_VALIDATION_RUNBOOK.md` and the single master
+command `./scripts/linux/run_full_linux_validation.sh --from-start`. Windows
+results are not proof of Linux execution.
+
 ## 1. Product flow
 
 The operational entry point is the **Returns Assistant**:

@@ -16,10 +16,8 @@ from return_platform.ai_gateway.service import AIGatewayService
 from return_platform.configuration.settings import Settings
 from return_platform.operations.models import (
     AIGatewaySettingsView,
-    AIRequestStatus,
     AITraceView,
 )
-
 
 CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway.yaml"
 
@@ -219,7 +217,7 @@ def test_lightweight_task_rotates_key_and_persists_attempt_metrics() -> None:
         )
         repository = MemoryGatewayRepository()
         service = AIGatewayService(
-            repository,  # type: ignore[arg-type]
+            repository,
             _settings(),
             loaded_configuration=loaded,
             route_pool=AIRoutePool((first, second), loaded.configuration),
@@ -310,7 +308,7 @@ def test_prompt_injection_is_blocked_before_provider_dispatch() -> None:
         )
         repository = MemoryGatewayRepository()
         service = AIGatewayService(
-            repository,  # type: ignore[arg-type]
+            repository,
             _settings(),
             loaded_configuration=loaded,
             route_pool=AIRoutePool((route,), loaded.configuration),

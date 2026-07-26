@@ -27,24 +27,68 @@ class SafetyInspection:
 
 
 _INJECTION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("IGNORE_INSTRUCTIONS", re.compile(r"\b(ignore|disregard|forget)\b.{0,40}\b(instruction|prompt|policy|rule)s?\b", re.I | re.S)),
-    ("SYSTEM_PROMPT_REQUEST", re.compile(r"\b(show|reveal|print|repeat|leak)\b.{0,50}\b(system|developer|hidden)\s+(prompt|message|instruction)s?\b", re.I | re.S)),
-    ("ROLE_OVERRIDE", re.compile(r"\b(you are now|act as|pretend to be|switch role|developer mode|jailbreak)\b", re.I)),
-    ("SECRET_REQUEST", re.compile(r"\b(api[-_ ]?key|password|secret|credential|access[-_ ]?token|private key)\b", re.I)),
+    (
+        "IGNORE_INSTRUCTIONS",
+        re.compile(
+            r"\b(ignore|disregard|forget)\b.{0,40}\b(instruction|prompt|policy|rule)s?\b",
+            re.I | re.S,
+        ),
+    ),
+    (
+        "SYSTEM_PROMPT_REQUEST",
+        re.compile(
+            r"\b(show|reveal|print|repeat|leak)\b.{0,50}\b(system|developer|hidden)\s+(prompt|message|instruction)s?\b",
+            re.I | re.S,
+        ),
+    ),
+    (
+        "ROLE_OVERRIDE",
+        re.compile(
+            r"\b(you are now|act as|pretend to be|switch role|developer mode|jailbreak)\b", re.I
+        ),
+    ),
+    (
+        "SECRET_REQUEST",
+        re.compile(
+            r"\b(api[-_ ]?key|password|secret|credential|access[-_ ]?token|private key)\b", re.I
+        ),
+    ),
     ("ENCODED_OVERRIDE", re.compile(r"\b(base64|rot13|decode this|encoded instruction)\b", re.I)),
 )
 
 _UNAUTHORIZED_ACTION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("CREATE_AUTHORITATIVE_FACT", re.compile(r"\b(create|issue|generate|approve|confirm|mark)\b.{0,60}\b(rma|rga|refund|pickup|receipt|license plate|vendor credit)\b", re.I | re.S)),
-    ("DIRECT_SQL", re.compile(r"\b(insert|update|delete|drop|alter|execute)\b.{0,40}\b(sql|table|database|omc)\b", re.I | re.S)),
-    ("BYPASS_HUMAN", re.compile(r"\b(bypass|skip|avoid|override)\b.{0,50}\b(human|associate|support|approval|confirmation)\b", re.I | re.S)),
+    (
+        "CREATE_AUTHORITATIVE_FACT",
+        re.compile(
+            r"\b(create|issue|generate|approve|confirm|mark)\b.{0,60}"
+            r"\b(rma|rga|refund|pickup|receipt|license plate|vendor credit)\b",
+            re.I | re.S,
+        ),
+    ),
+    (
+        "DIRECT_SQL",
+        re.compile(
+            r"\b(insert|update|delete|drop|alter|execute)\b.{0,40}\b(sql|table|database|omc)\b",
+            re.I | re.S,
+        ),
+    ),
+    (
+        "BYPASS_HUMAN",
+        re.compile(
+            r"\b(bypass|skip|avoid|override)\b.{0,50}\b(human|associate|support|approval|confirmation)\b",
+            re.I | re.S,
+        ),
+    ),
 )
 
 # These patterns are evaluated only for explicit free-form request fields, not for every
 # product description or operational note.
 _OUT_OF_DOMAIN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("MEDICAL", re.compile(r"\b(diagnose|medicine|doctor|symptom|prescription)\b", re.I)),
-    ("FINANCIAL_ADVICE", re.compile(r"\b(stock tip|investment advice|crypto trade|loan advice)\b", re.I)),
+    (
+        "FINANCIAL_ADVICE",
+        re.compile(r"\b(stock tip|investment advice|crypto trade|loan advice)\b", re.I),
+    ),
     ("POLITICAL", re.compile(r"\b(vote for|political party|election campaign)\b", re.I)),
     ("GENERAL_CODING", re.compile(r"\b(write me code|debug my code|programming tutorial)\b", re.I)),
 )
@@ -96,11 +140,17 @@ def inspect_input(payload: dict[str, Any]) -> SafetyInspection:
                     out_of_domain.append(f"{code}:{path or '$'}")
 
     if signals:
-        return SafetyInspection(SafetyStatus.PROMPT_INJECTION_SUSPECTED, tuple(sorted(set(signals))))
+        return SafetyInspection(
+            SafetyStatus.PROMPT_INJECTION_SUSPECTED, tuple(sorted(set(signals)))
+        )
     if unauthorized:
-        return SafetyInspection(SafetyStatus.UNAUTHORIZED_ACTION_REQUEST, tuple(sorted(set(unauthorized))))
+        return SafetyInspection(
+            SafetyStatus.UNAUTHORIZED_ACTION_REQUEST, tuple(sorted(set(unauthorized)))
+        )
     if out_of_domain:
-        return SafetyInspection(SafetyStatus.OUT_OF_DOMAIN_REQUEST, tuple(sorted(set(out_of_domain))))
+        return SafetyInspection(
+            SafetyStatus.OUT_OF_DOMAIN_REQUEST, tuple(sorted(set(out_of_domain)))
+        )
     return SafetyInspection(SafetyStatus.SAFE)
 
 
@@ -112,5 +162,7 @@ def inspect_output(text: str) -> SafetyInspection:
         if pattern.search(bounded):
             signals.append(code)
     if signals:
-        return SafetyInspection(SafetyStatus.PROMPT_INJECTION_SUSPECTED, tuple(sorted(set(signals))))
+        return SafetyInspection(
+            SafetyStatus.PROMPT_INJECTION_SUSPECTED, tuple(sorted(set(signals)))
+        )
     return SafetyInspection(SafetyStatus.SAFE)

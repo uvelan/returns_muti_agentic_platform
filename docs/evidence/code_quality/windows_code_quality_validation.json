@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "environment": "windows",
+  "baselineCommit": "91b2bf8a8825f607d8045715064eb384c780c252",
+  "generatedAt": "2026-07-26T06:13:00Z",
+  "overallStatus": "PASS",
+  "toolchain": {
+    "docker": "29.6.2",
+    "dockerCompose": "5.3.1",
+    "git": "2.55.0.windows.3",
+    "node": "24.14.0",
+    "npm": "11.9.0",
+    "poetry": "2.4.1",
+    "powershell": "5.1.26100.8875",
+    "python": "3.13.14",
+    "windows": "10.0.26200.0"
+  },
+  "commands": [
+    {
+      "command": "npm.cmd run lint",
+      "exitCode": 0,
+      "result": "PASS"
+    },
+    {
+      "command": "npm.cmd run typecheck",
+      "exitCode": 0,
+      "result": "PASS"
+    },
+    {
+      "command": "npm.cmd run test -- --run",
+      "exitCode": 0,
+      "result": "PASS",
+      "testFiles": 13,
+      "testsPassed": 39,
+      "testsFailed": 0
+    },
+    {
+      "command": "npm.cmd run build",
+      "exitCode": 0,
+      "result": "PASS",
+      "modulesTransformed": 1826
+    },
+    {
+      "command": "docker compose config --quiet",
+      "exitCode": 0,
+      "result": "PASS"
+    },
+    {
+      "command": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/windows/validate_linux_kit.ps1",
+      "exitCode": 0,
+      "result": "PASS",
+      "requiredScripts": 22
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0,
+      "result": "PASS"
+    },
+    {
+      "command": "python3.13 -m poetry check",
+      "exitCode": 0,
+      "result": "PASS"
+    },
+    {
+      "command": "python3.13 -m poetry run ruff check .",
+      "exitCode": 0,
+      "result": "PASS"
+    },
+    {
+      "command": "python3.13 -m poetry run ruff format --check .",
+      "exitCode": 0,
+      "result": "PASS",
+      "filesChecked": 246
+    },
+    {
+      "command": "python3.13 -m poetry run mypy src tests",
+      "exitCode": 0,
+      "result": "PASS",
+      "sourceFilesChecked": 232
+    },
+    {
+      "command": "python3.13 -m poetry run pytest",
+      "exitCode": 0,
+      "result": "PASS",
+      "testsPassed": 986,
+      "testsSkipped": 1,
+      "warnings": 1
+    },
+    {
+      "command": "python3.13 scripts/validate_stage4_source.py",
+      "exitCode": 0,
+      "result": "PASS"
+    },
+    {
+      "command": "python3.13 scripts/validate_stage4_contracts.py",
+      "exitCode": 0,
+      "result": "PASS",
+      "testsPassed": 6
+    },
+    {
+      "command": "python3.13 scripts/validate_stage4m_dependency_simulation.py",
+      "exitCode": 0,
+      "result": "PASS",
+      "behaviorOperations": 10
+    },
+    {
+      "command": "python3.13 scripts/validate_stage4n_ai_gateway.py",
+      "exitCode": 0,
+      "result": "PASS",
+      "checksPassed": 9
+    },
+    {
+      "command": "python3.13 scripts/check_openapi_drift.py",
+      "exitCode": 0,
+      "result": "PASS"
+    }
+  ],
+  "linuxExecutionClaim": false
+}

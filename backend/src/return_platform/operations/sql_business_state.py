@@ -246,9 +246,7 @@ class SQLBusinessStateRepository:
                         )
                         rows = cursor.fetchall()
                         session_ids = tuple(str(row[0]) for row in rows)
-                        return_references = tuple(
-                            str(row[1]) for row in rows if row[1] is not None
-                        )
+                        return_references = tuple(str(row[1]) for row in rows if row[1] is not None)
 
                         def delete_many(
                             table: str,
@@ -516,8 +514,6 @@ class SQLBusinessStateRepository:
 
         return await self._run(operation)
 
-
-
     async def list_bay_candidates(
         self,
         *,
@@ -565,15 +561,14 @@ class SQLBusinessStateRepository:
                 except (TypeError, ValueError, json.JSONDecodeError):
                     paths = ()
                 try:
-                    product_types = tuple(
-                        str(item) for item in json.loads(str(product_types_raw))
-                    )
+                    product_types = tuple(str(item) for item in json.loads(str(product_types_raw)))
                 except (TypeError, ValueError, json.JSONDecodeError):
                     product_types = ()
-                if paths and return_method not in paths and not (
-                    return_method == "BRANCH_UPS" and "PPL" in paths
-                ) and not (
-                    return_method in {"BRANCH_LTL", "OFFSITE_LTL"} and "BOL" in paths
+                if (
+                    paths
+                    and return_method not in paths
+                    and not (return_method == "BRANCH_UPS" and "PPL" in paths)
+                    and not (return_method in {"BRANCH_LTL", "OFFSITE_LTL"} and "BOL" in paths)
                 ):
                     continue
                 if product_types and product_type not in product_types:
@@ -646,9 +641,7 @@ class SQLBusinessStateRepository:
                     row = cursor.fetchone()
                     if row is None or not bool(row["active"]):
                         raise RuntimeError("Selected bay is missing or inactive.")
-                    available = int(row["max_capacity"] or 0) - int(
-                        row["reserved_capacity"] or 0
-                    )
+                    available = int(row["max_capacity"] or 0) - int(row["reserved_capacity"] or 0)
                     if available < required_capacity:
                         raise RuntimeError("Selected bay has insufficient available capacity.")
                     cursor.execute(

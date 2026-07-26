@@ -4,17 +4,22 @@ import asyncio
 from pathlib import Path
 
 from return_platform.ai_gateway.configuration import ModelTier, load_ai_gateway_configuration
-from return_platform.ai_gateway.providers import ProviderError, ProviderResponse
+from return_platform.ai_gateway.providers import (
+    ProviderError,
+    ProviderRequest,
+    ProviderResponse,
+)
 from return_platform.ai_gateway.routing import AIRoute, AIRoutePool
 from return_platform.configuration.settings import Settings
-from return_platform.dependency_simulation.configuration import load_dependency_simulation_configuration
+from return_platform.dependency_simulation.configuration import (
+    load_dependency_simulation_configuration,
+)
 from return_platform.dependency_simulation.models import (
     DependencyKind,
     SimulationOperationRequest,
 )
 from return_platform.dependency_simulation.repository import MemorySimulationRepository
 from return_platform.dependency_simulation.service import DependencySimulationService
-
 
 CONFIG = Path(__file__).resolve().parents[1] / "config" / "dependency_simulation.yaml"
 
@@ -56,6 +61,7 @@ def test_ai_failure_uses_default_template_without_blocking_rma() -> None:
         summary = await repository.ai_summary()
         assert summary.fallbackCount == 1
         assert summary.totalTokens == 0
+
     asyncio.run(run())
 
 
@@ -74,6 +80,7 @@ def test_idempotency_returns_same_rma() -> None:
         second = await service.execute(request)
         assert first.id == second.id
         assert first.externalReference == second.externalReference
+
     asyncio.run(run())
 
 
@@ -97,11 +104,15 @@ def test_parcel_label_does_not_imply_carrier_acceptance() -> None:
                 operation="ADVANCE_TRACKING",
                 sessionId="RET-TEST-003",
                 idempotencyKey="RET-TEST-003:ACCEPTED",
-                payload={"trackingNumber": label.externalReference, "targetStatus": "PACKAGE_ACCEPTED"},
+                payload={
+                    "trackingNumber": label.externalReference,
+                    "targetStatus": "PACKAGE_ACCEPTED",
+                },
                 useAiNarrative=False,
             )
         )
         assert accepted.simulatedState == "PACKAGE_ACCEPTED"
+
     asyncio.run(run())
 
 
@@ -167,6 +178,7 @@ def test_rga_requires_rtv_and_then_vendor_credit_can_complete() -> None:
             )
         )
         assert credit.simulatedState == "VENDOR_CREDIT_CONFIRMED"
+
     asyncio.run(run())
 
 
@@ -196,6 +208,7 @@ def test_freight_tender_booking_and_pickup_are_separate() -> None:
             )
             states.append(item.simulatedState)
         assert states == ["TENDERED", "BOOKED", "PICKED_UP"]
+
     asyncio.run(run())
 
 
@@ -254,7 +267,7 @@ def test_configured_lightweight_provider_failure_is_measured_and_falls_back() ->
         model = "lightweight-test-model"
         configured = True
 
-        async def generate(self, request: object) -> object:
+        async def generate(self, request: ProviderRequest) -> ProviderResponse:
             del request
             raise RuntimeError("unexpected provider failure")
 

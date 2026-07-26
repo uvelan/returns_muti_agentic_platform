@@ -22,7 +22,10 @@ class ProviderPrice(StrictModel):
 class SimulationAIConfiguration(StrictModel):
     enabled: bool = True
     taskId: str = Field(default="SIMULATOR_OPERATION_NARRATIVE_V1", min_length=1, max_length=128)
-    providerOrder: tuple[Literal["GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC", "OLLAMA"], ...] = ("GOOGLE", "NVIDIA")
+    providerOrder: tuple[Literal["GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC", "OLLAMA"], ...] = (
+        "GOOGLE",
+        "NVIDIA",
+    )
     timeoutSeconds: float = Field(default=4.0, ge=0.25, le=30.0)
     maxOutputTokens: int = Field(default=256, ge=32, le=2_048)
     temperature: float = Field(default=0.0, ge=0.0, le=1.0)

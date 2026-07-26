@@ -82,6 +82,7 @@ async def start_conversation(
         data = await _service(request).start(payload, actor_id=actor)
     except Exception as error:
         import logging
+
         logging.exception("Associate discovery failed")
         raise HTTPException(
             status_code=502,

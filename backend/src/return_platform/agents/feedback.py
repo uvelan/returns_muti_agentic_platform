@@ -28,7 +28,9 @@ class FeedbackLearningAgent:
         if ambiguity >= 2:
             recommendations.append("Add stronger order-discovery anchors or scoring evidence.")
         if assumption_mismatch:
-            recommendations.append("Create a reviewed replacement for the active assumption policy.")
+            recommendations.append(
+                "Create a reviewed replacement for the active assumption policy."
+            )
         return FeedbackAssessment(
             recommendations=tuple(recommendations),
             reviewRequired=bool(recommendations),

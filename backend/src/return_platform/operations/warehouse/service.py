@@ -61,8 +61,10 @@ class WarehousePlacementService:
             raise KeyError(handling_unit_id)
         events = await self._repository.list_events(session_id)
         receipt_confirmed = any(event.eventType == "RECEIPT_CONFIRMED" for event in events)
-        physical_status = "WAREHOUSE_RECEIVED" if receipt_confirmed else str(
-            handling.get("physicalStatus", "UNKNOWN")
+        physical_status = (
+            "WAREHOUSE_RECEIVED"
+            if receipt_confirmed
+            else str(handling.get("physicalStatus", "UNKNOWN"))
         )
         return_method = normalize_method(
             session.approvedReturnMethod or session.shippingPathExpectation

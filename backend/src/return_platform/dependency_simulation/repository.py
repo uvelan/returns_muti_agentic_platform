@@ -34,25 +34,37 @@ class SimulationRepository(Protocol):
     async def ensure_indexes(self) -> None: ...
     async def get_by_idempotency_key(self, key: str) -> SimulationOperationView | None: ...
     async def insert_operation(self, document: dict[str, Any]) -> SimulationOperationView: ...
-    async def update_operation(self, operation_id: str, changes: dict[str, Any]) -> SimulationOperationView: ...
+    async def update_operation(
+        self, operation_id: str, changes: dict[str, Any]
+    ) -> SimulationOperationView: ...
     async def get_operation(self, operation_id: str) -> SimulationOperationView | None: ...
-    async def list_operations(self, *, dependency: str | None = None, session_id: str | None = None, limit: int = 200) -> list[SimulationOperationView]: ...
-    async def latest_operation(self, session_id: str, dependency: str, operations: tuple[str, ...]) -> SimulationOperationView | None: ...
+    async def list_operations(
+        self, *, dependency: str | None = None, session_id: str | None = None, limit: int = 200
+    ) -> list[SimulationOperationView]: ...
+    async def latest_operation(
+        self, session_id: str, dependency: str, operations: tuple[str, ...]
+    ) -> SimulationOperationView | None: ...
     async def insert_ai_metric(self, document: dict[str, Any]) -> SimulationAIUsageMetric: ...
-    async def list_ai_metrics(self, *, session_id: str | None = None, limit: int = 500) -> list[SimulationAIUsageMetric]: ...
+    async def list_ai_metrics(
+        self, *, session_id: str | None = None, limit: int = 500
+    ) -> list[SimulationAIUsageMetric]: ...
     async def ai_summary(self) -> SimulationAISummary: ...
     async def operation_counts(self) -> dict[str, int]: ...
     async def reset(self, session_id: str | None = None) -> None: ...
 
 
 def _operation_view(document: dict[str, Any]) -> SimulationOperationView:
-    payload = {key: value for key, value in document.items() if key in SimulationOperationView.model_fields}
+    payload = {
+        key: value for key, value in document.items() if key in SimulationOperationView.model_fields
+    }
     payload["id"] = str(document.get("_id") or document.get("id"))
     return SimulationOperationView.model_validate(payload)
 
 
 def _metric_view(document: dict[str, Any]) -> SimulationAIUsageMetric:
-    payload = {key: value for key, value in document.items() if key in SimulationAIUsageMetric.model_fields}
+    payload = {
+        key: value for key, value in document.items() if key in SimulationAIUsageMetric.model_fields
+    }
     payload["id"] = str(document.get("_id") or document.get("id"))
     return SimulationAIUsageMetric.model_validate(payload)
 
@@ -77,7 +89,9 @@ def summarize_metrics(metrics: list[SimulationAIUsageMetric]) -> SimulationAISum
             (summary.byDependency, item.dependency.value),
             (summary.byOperation, item.operation),
         ):
-            current = bucket.setdefault(key, {"requests": 0, "tokens": 0, "fallbacks": 0, "costMicrousd": 0})
+            current = bucket.setdefault(
+                key, {"requests": 0, "tokens": 0, "fallbacks": 0, "costMicrousd": 0}
+            )
             current["requests"] += 1
             current["tokens"] += item.totalTokens
             current["fallbacks"] += int(item.fallbackUsed)
@@ -107,7 +121,9 @@ class MongoSimulationRepository:
         await self._operations.insert_one(document)
         return _operation_view(document)
 
-    async def update_operation(self, operation_id: str, changes: dict[str, Any]) -> SimulationOperationView:
+    async def update_operation(
+        self, operation_id: str, changes: dict[str, Any]
+    ) -> SimulationOperationView:
         changes = {**changes, "updatedAt": datetime.now(UTC)}
         document = await self._operations.find_one_and_update(
             {"_id": operation_id}, {"$set": changes}, return_document=ReturnDocument.AFTER
@@ -120,7 +136,9 @@ class MongoSimulationRepository:
         document = await self._operations.find_one({"_id": operation_id})
         return _operation_view(cast(dict[str, Any], document)) if document else None
 
-    async def list_operations(self, *, dependency: str | None = None, session_id: str | None = None, limit: int = 200) -> list[SimulationOperationView]:
+    async def list_operations(
+        self, *, dependency: str | None = None, session_id: str | None = None, limit: int = 200
+    ) -> list[SimulationOperationView]:
         query: dict[str, Any] = {}
         if dependency:
             query["dependency"] = dependency
@@ -129,9 +147,16 @@ class MongoSimulationRepository:
         cursor = self._operations.find(query).sort("createdAt", DESCENDING).limit(limit)
         return [_operation_view(cast(dict[str, Any], item)) async for item in cursor]
 
-    async def latest_operation(self, session_id: str, dependency: str, operations: tuple[str, ...]) -> SimulationOperationView | None:
+    async def latest_operation(
+        self, session_id: str, dependency: str, operations: tuple[str, ...]
+    ) -> SimulationOperationView | None:
         document = await self._operations.find_one(
-            {"sessionId": session_id, "dependency": dependency, "operation": {"$in": list(operations)}, "status": "CONFIRMED"},
+            {
+                "sessionId": session_id,
+                "dependency": dependency,
+                "operation": {"$in": list(operations)},
+                "status": "CONFIRMED",
+            },
             sort=[("createdAt", DESCENDING)],
         )
         return _operation_view(cast(dict[str, Any], document)) if document else None
@@ -140,7 +165,9 @@ class MongoSimulationRepository:
         await self._metrics.insert_one(document)
         return _metric_view(document)
 
-    async def list_ai_metrics(self, *, session_id: str | None = None, limit: int = 500) -> list[SimulationAIUsageMetric]:
+    async def list_ai_metrics(
+        self, *, session_id: str | None = None, limit: int = 500
+    ) -> list[SimulationAIUsageMetric]:
         query = {"sessionId": session_id} if session_id else {}
         cursor = self._metrics.find(query).sort("createdAt", DESCENDING).limit(limit)
         return [_metric_view(cast(dict[str, Any], item)) async for item in cursor]
@@ -152,7 +179,9 @@ class MongoSimulationRepository:
         result: dict[str, int] = {}
         # aggregate() in PyMongo async is a coroutine that must be awaited to obtain
         # the AsyncCommandCursor before async-iterating over it.
-        cursor = await self._operations.aggregate([{"$group": {"_id": "$dependency", "count": {"$sum": 1}}}])
+        cursor = await self._operations.aggregate(
+            [{"$group": {"_id": "$dependency", "count": {"$sum": 1}}}]
+        )
         async for item in cursor:
             result[str(item["_id"])] = int(str(item["count"]))
         return result
@@ -187,7 +216,9 @@ class MemorySimulationRepository:
         self.idempotency[key] = operation_id
         return _operation_view(document)
 
-    async def update_operation(self, operation_id: str, changes: dict[str, Any]) -> SimulationOperationView:
+    async def update_operation(
+        self, operation_id: str, changes: dict[str, Any]
+    ) -> SimulationOperationView:
         document = self.operations[operation_id]
         document.update(changes)
         document["updatedAt"] = datetime.now(UTC)
@@ -197,7 +228,9 @@ class MemorySimulationRepository:
         document = self.operations.get(operation_id)
         return _operation_view(document) if document else None
 
-    async def list_operations(self, *, dependency: str | None = None, session_id: str | None = None, limit: int = 200) -> list[SimulationOperationView]:
+    async def list_operations(
+        self, *, dependency: str | None = None, session_id: str | None = None, limit: int = 200
+    ) -> list[SimulationOperationView]:
         values = list(self.operations.values())
         values.sort(key=lambda item: item["createdAt"], reverse=True)
         result = [
@@ -208,18 +241,35 @@ class MemorySimulationRepository:
         ]
         return result[:limit]
 
-    async def latest_operation(self, session_id: str, dependency: str, operations: tuple[str, ...]) -> SimulationOperationView | None:
-        values = await self.list_operations(dependency=dependency, session_id=session_id, limit=10_000)
-        return next((item for item in values if item.operation in operations and item.status.value == "CONFIRMED"), None)
+    async def latest_operation(
+        self, session_id: str, dependency: str, operations: tuple[str, ...]
+    ) -> SimulationOperationView | None:
+        values = await self.list_operations(
+            dependency=dependency, session_id=session_id, limit=10_000
+        )
+        return next(
+            (
+                item
+                for item in values
+                if item.operation in operations and item.status.value == "CONFIRMED"
+            ),
+            None,
+        )
 
     async def insert_ai_metric(self, document: dict[str, Any]) -> SimulationAIUsageMetric:
         self.metrics[str(document["_id"])] = dict(document)
         return _metric_view(document)
 
-    async def list_ai_metrics(self, *, session_id: str | None = None, limit: int = 500) -> list[SimulationAIUsageMetric]:
+    async def list_ai_metrics(
+        self, *, session_id: str | None = None, limit: int = 500
+    ) -> list[SimulationAIUsageMetric]:
         values = list(self.metrics.values())
         values.sort(key=lambda item: item["createdAt"], reverse=True)
-        result = [_metric_view(item) for item in values if not session_id or item["sessionId"] == session_id]
+        result = [
+            _metric_view(item)
+            for item in values
+            if not session_id or item["sessionId"] == session_id
+        ]
         return result[:limit]
 
     async def ai_summary(self) -> SimulationAISummary:

@@ -26,7 +26,10 @@ class BayAssignmentAgent:
                     configurationVersion=self._root.assumption_set_version,
                     decisionType="BAY_RECOMMENDATION",
                     decision="NOT_READY",
-                    explanation="A warehouse bay cannot be recommended before the configured readiness gate.",
+                    explanation=(
+                        "A warehouse bay cannot be recommended before the configured "
+                        "readiness gate."
+                    ),
                     confidenceMillionths=1_000_000,
                     evidenceReferences=(f"PHYSICAL_STATUS:{request.physicalStatus}",),
                 ),
@@ -44,7 +47,10 @@ class BayAssignmentAgent:
                 reasons.append("OVERSIZED_NOT_SUPPORTED")
             if request.hazardous and not bay.supportsHazardous:
                 reasons.append("HAZARDOUS_NOT_SUPPORTED")
-            if bay.supportedReturnMethods and request.returnMethod not in bay.supportedReturnMethods:
+            if (
+                bay.supportedReturnMethods
+                and request.returnMethod not in bay.supportedReturnMethods
+            ):
                 reasons.append("RETURN_METHOD_NOT_SUPPORTED")
             if reasons:
                 excluded[bay.bayId] = tuple(reasons)
@@ -63,7 +69,10 @@ class BayAssignmentAgent:
                 configurationVersion=self._root.assumption_set_version,
                 decisionType="BAY_RECOMMENDATION",
                 decision="RECOMMENDED" if recommended else "NO_ELIGIBLE_BAY",
-                explanation="The recommendation is advisory; atomic capacity reservation remains deterministic.",
+                explanation=(
+                    "The recommendation is advisory; atomic capacity reservation "
+                    "remains deterministic."
+                ),
                 confidenceMillionths=950_000 if recommended else 800_000,
                 evidenceReferences=(f"PHYSICAL_STATUS:{request.physicalStatus}",),
             ),

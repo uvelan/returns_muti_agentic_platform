@@ -14,24 +14,42 @@ from return_platform.workflows.production_return_workflow import ProductionRetur
 _EVENT_MAP: dict[tuple[str, str, str | None], ProductionReturnEventType] = {
     ("OMC", "CREATE_RMA", None): ProductionReturnEventType.OMC_RETURN_CREATED,
     ("OMC", "CREATE_LEGACY_RETURN", None): ProductionReturnEventType.OMC_RETURN_CREATED,
-    ("OMC", "SET_CUSTOMER_RESOLUTION", None): ProductionReturnEventType.CUSTOMER_RESOLUTION_COMPLETED,
+    (
+        "OMC",
+        "SET_CUSTOMER_RESOLUTION",
+        None,
+    ): ProductionReturnEventType.CUSTOMER_RESOLUTION_COMPLETED,
     ("PARCEL", "CREATE_RETURN_LABEL", None): ProductionReturnEventType.SHIPPING_INSTRUCTIONS_ISSUED,
-    ("PARCEL", "ADVANCE_TRACKING", "PACKAGE_ACCEPTED"): ProductionReturnEventType.PHYSICAL_HANDOFF_CONFIRMED,
+    (
+        "PARCEL",
+        "ADVANCE_TRACKING",
+        "PACKAGE_ACCEPTED",
+    ): ProductionReturnEventType.PHYSICAL_HANDOFF_CONFIRMED,
     ("FREIGHT", "CREATE_BOL", None): ProductionReturnEventType.SHIPPING_INSTRUCTIONS_ISSUED,
     ("FREIGHT", "TENDER_SHIPMENT", None): ProductionReturnEventType.BOL_TENDERED,
     ("FREIGHT", "CONFIRM_BOOKING", None): ProductionReturnEventType.CARRIER_BOOKING_CONFIRMED,
     ("FREIGHT", "CONFIRM_PICKUP", None): ProductionReturnEventType.PHYSICAL_HANDOFF_CONFIRMED,
     ("LSI", "RECORD_RECEIPT", None): ProductionReturnEventType.RECEIPT_CONFIRMED,
     ("LSI", "ASSIGN_LICENSE_PLATE", None): ProductionReturnEventType.LICENSE_PLATE_ASSIGNED,
-    ("LSI", "SET_PRODUCT_RESOLUTION", None): ProductionReturnEventType.PRODUCT_DISPOSITION_COMPLETED,
-    ("LSI", "COMPLETE_WAREHOUSE_PROCESSING", None): ProductionReturnEventType.WAREHOUSE_PROCESSING_COMPLETED,
+    (
+        "LSI",
+        "SET_PRODUCT_RESOLUTION",
+        None,
+    ): ProductionReturnEventType.PRODUCT_DISPOSITION_COMPLETED,
+    (
+        "LSI",
+        "COMPLETE_WAREHOUSE_PROCESSING",
+        None,
+    ): ProductionReturnEventType.WAREHOUSE_PROCESSING_COMPLETED,
     ("LSI", "CREATE_RGA", None): ProductionReturnEventType.VENDOR_RECOVERY_REQUIRED,
     ("LSI", "RECORD_VENDOR_CREDIT", None): ProductionReturnEventType.VENDOR_RECOVERY_COMPLETED,
 }
 
 
 def event_for(operation: SimulationOperationView) -> ProductionReturnEventType | None:
-    return _EVENT_MAP.get((operation.dependency.value, operation.operation, operation.simulatedState)) or _EVENT_MAP.get((operation.dependency.value, operation.operation, None))
+    return _EVENT_MAP.get(
+        (operation.dependency.value, operation.operation, operation.simulatedState)
+    ) or _EVENT_MAP.get((operation.dependency.value, operation.operation, None))
 
 
 async def signal_workflow(

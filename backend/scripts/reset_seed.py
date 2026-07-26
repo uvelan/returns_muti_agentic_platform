@@ -1,12 +1,15 @@
 import asyncio
 import json
+
 from neo4j import AsyncGraphDatabase
 from pymongo import AsyncMongoClient
+
 from return_platform.configuration.settings import Settings
 from return_platform.data_platform.schema_registry import load_schema_registry
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.seed_coordinator import SeedCoordinator
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
+
 
 async def _run() -> None:
     settings = Settings()
@@ -41,6 +44,7 @@ async def _run() -> None:
         if source_mongo is not mongo:
             await source_mongo.close()
         await mongo.close()
+
 
 if __name__ == "__main__":
     asyncio.run(_run())

@@ -129,8 +129,6 @@ class BayConfiguration(StrictConfigModel):
     eligible_statuses: tuple[NonBlank, ...] = Field(min_length=1)
 
 
-
-
 class IntegrationTopicConfiguration(StrictConfigModel):
     enabled: bool
     topic: NonBlank

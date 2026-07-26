@@ -44,8 +44,9 @@ class ProductionReturnWorkflow:
             applied_event_ids=(),
         )
         await workflow.wait_condition(
-            lambda: self._state is not None
-            and (self._state.case_fully_closed or self._state.cancelled)
+            lambda: (
+                self._state is not None and (self._state.case_fully_closed or self._state.cancelled)
+            )
         )
         return self._state
 

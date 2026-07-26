@@ -13,12 +13,21 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.venv/
 .env
+
+# Generated validation and test output
+.runtime/
+artifacts/
+frontend/test-results/
+frontend/playwright-report/
+backend_results.txt
+docker_compose_logs.txt
+playwright_results.txt
+linux_kit_validation/
 
 # OS & Editor
 .DS_Store
 .idea/
 .vscode/
 *.swp
-
-#others

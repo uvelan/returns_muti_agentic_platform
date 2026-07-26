@@ -81,14 +81,10 @@ class ReturnCreateRequest(MutableContract):
     branchReference: str | None = Field(default=None, max_length=128)
     associateReference: str | None = Field(default=None, max_length=128)
     pickupAssessment: dict[str, Any] | None = None
-    assumptionSetVersion: str = Field(
-        default="FERGUSON-RETURN-ASSUMPTIONS-1.0", max_length=128
-    )
+    assumptionSetVersion: str = Field(default="FERGUSON-RETURN-ASSUMPTIONS-1.0", max_length=128)
     notes: str | None = Field(default=None, max_length=2_000)
     channel: str = Field(default="SYSTEM", pattern=r"^(CUSTOMER|ASSOCIATE|SYSTEM)$")
-    workflowMode: str = Field(
-        default="PRODUCTION_V2", pattern=r"^(PRODUCTION_V2|LEGACY_V1)$"
-    )
+    workflowMode: str = Field(default="PRODUCTION_V2", pattern=r"^(PRODUCTION_V2|LEGACY_V1)$")
     idempotencyKey: str | None = Field(default=None, min_length=8, max_length=128)
 
     @field_validator("itemReferences")

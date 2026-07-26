@@ -107,10 +107,7 @@ def _advance_stage(state: ProductionReturnWorkflowState) -> ProductionReturnStag
         state.customer_resolution_complete
         and state.physical_return_complete
         and state.product_disposition_complete
-        and (
-            state.warehouse_processing_complete
-            or not state.warehouse_processing_required
-        )
+        and (state.warehouse_processing_complete or not state.warehouse_processing_required)
     ):
         return ProductionReturnStage.CUSTOMER_RETURN_COMPLETE
     receipt_satisfied = state.receipt_confirmed or not state.receipt_required
@@ -265,20 +262,15 @@ def apply_production_return_event(
         updates["vendor_recovery_complete"] = True
     elif event_type is ProductionReturnEventType.CANCELLED:
         updates["cancelled"] = True
-    next_state = replace(state, **updates)  # type: ignore[arg-type]
+    next_state = replace(state, **updates)
     fully_closed = (
         next_state.customer_resolution_complete
         and next_state.physical_return_complete
         and next_state.product_disposition_complete
         and (
-            next_state.warehouse_processing_complete
-            or not next_state.warehouse_processing_required
+            next_state.warehouse_processing_complete or not next_state.warehouse_processing_required
         )
-        and (
-            not next_state.vendor_recovery_required or next_state.vendor_recovery_complete
-        )
+        and (not next_state.vendor_recovery_required or next_state.vendor_recovery_complete)
     )
     next_state = replace(next_state, case_fully_closed=fully_closed)
     return replace(next_state, stage=_advance_stage(next_state))
-
-

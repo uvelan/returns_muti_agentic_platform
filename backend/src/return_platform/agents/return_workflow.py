@@ -75,7 +75,8 @@ class ReturnWorkflowAgent:
         support_draft = (
             f"Return request {request.sessionId}\n"
             f"Order source: {request.orderSource.value}\n"
-            f"Product presence: {request.productPresence.value if request.productPresence else 'UNKNOWN'}\n"
+            "Product presence: "
+            f"{request.productPresence.value if request.productPresence else 'UNKNOWN'}\n"
             f"Proposed method: {method.value}\n"
             f"Items:\n{item_lines}\n"
             f"Missing evidence: {', '.join(missing) if missing else 'None'}"

@@ -163,7 +163,9 @@ async def safety_test(
 ) -> APIResponse[AISafetyTestResponse]:
     settings = request.app.state.settings
     if settings.environment not in {"development", "test"}:
-        raise HTTPException(status_code=403, detail="AI safety test is disabled in this environment")
+        raise HTTPException(
+            status_code=403, detail="AI safety test is disabled in this environment"
+        )
     repository = resolve_operational_repository(request)
     gateway = _gateway(request, repository)
     if payload.taskId not in gateway.configuration.tasks:
@@ -254,8 +256,13 @@ async def replay_request(
     settings = request.app.state.settings
     if settings.environment == "production" and payload.provider == "SIMULATOR":
         raise HTTPException(status_code=422, detail="SIMULATOR is forbidden in production")
-    if payload.editedSystemPrompt is not None and settings.environment not in {"development", "test"}:
-        raise HTTPException(status_code=422, detail="Custom prompts are forbidden in this environment")
+    if payload.editedSystemPrompt is not None and settings.environment not in {
+        "development",
+        "test",
+    }:
+        raise HTTPException(
+            status_code=422, detail="Custom prompts are forbidden in this environment"
+        )
     evaluation = await _gateway(request, repository).evaluate(
         session_id=trace.sessionId,
         redacted_input=trace.redactedInput,
@@ -340,7 +347,8 @@ async def intercept(
                 )
             if request.app.state.settings.environment not in {"development", "test"}:
                 raise HTTPException(
-                    status_code=422, detail="Custom prompt dispatch is forbidden in this environment"
+                    status_code=422,
+                    detail="Custom prompt dispatch is forbidden in this environment",
                 )
             await repository.update_ai_trace(
                 trace.id,

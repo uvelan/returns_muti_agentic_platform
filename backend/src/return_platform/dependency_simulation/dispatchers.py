@@ -8,7 +8,9 @@ from return_platform.operations.integrations.outbox import DispatchResult, Outbo
 
 
 class SimulationTopicDispatcher:
-    def __init__(self, service: DependencySimulationService, dependency: DependencyKind, operation: str) -> None:
+    def __init__(
+        self, service: DependencySimulationService, dependency: DependencyKind, operation: str
+    ) -> None:
         self._service = service
         self._dependency = dependency
         self._operation = operation

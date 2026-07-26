@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "environment": "linux",
+  "category": "workers",
+  "status": "NOT_RUN",
+  "linuxExecutionClaim": false
+}
