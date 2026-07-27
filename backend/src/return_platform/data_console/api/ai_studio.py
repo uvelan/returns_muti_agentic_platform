@@ -10,6 +10,7 @@ from return_platform.data_console.api.auth import require_read_roles, require_wr
 from return_platform.data_platform.ai_studio import (
     AIStudioApplyRequest,
     AIStudioGenerationRequest,
+    AIStudioPromptRequest,
     AIStudioProposalView,
     AIStudioService,
 )
@@ -70,6 +71,25 @@ async def generate_proposal(
     await service.ensure_indexes()
     try:
         result = await service.generate(payload, actor_id=actor)
+    except (KeyError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return APIResponse(data=result, meta=_meta(request))
+
+
+@router.post(
+    "/proposals/from-prompt",
+    response_model=APIResponse[AIStudioProposalView],
+    status_code=201,
+)
+async def generate_prompt_proposal(
+    payload: AIStudioPromptRequest,
+    request: Request,
+    actor: str = Depends(require_write_roles),
+) -> APIResponse[AIStudioProposalView]:
+    service = _service(request)
+    await service.ensure_indexes()
+    try:
+        result = await service.generate_from_prompt(payload, actor_id=actor)
     except (KeyError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return APIResponse(data=result, meta=_meta(request))

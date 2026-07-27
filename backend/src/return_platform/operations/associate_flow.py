@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -25,6 +26,7 @@ from return_platform.agents.contracts import (
 )
 from return_platform.agents.order_discovery import OrderDiscoveryAgent
 from return_platform.agents.return_workflow import ReturnWorkflowAgent
+from return_platform.ai_gateway.service import AIGatewayRepository, AIGatewayService
 from return_platform.configuration.return_configuration import (
     ReturnPlatformConfiguration,
     load_return_configuration,
@@ -132,6 +134,23 @@ class StartAssociateConversationRequest(AssociateModel):
         return normalized
 
 
+class ContinueAssociateConversationRequest(StartAssociateConversationRequest):
+    expectedVersion: int = Field(ge=0)
+
+
+class AssociateChatTurnRequest(AssociateModel):
+    message: str = Field(min_length=2, max_length=2_000)
+    expectedVersion: int | None = Field(default=None, ge=0)
+
+    @field_validator("message")
+    @classmethod
+    def normalize_message(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("message must not be blank")
+        return normalized
+
+
 class ConfirmDiscoveryRequest(AssociateModel):
     candidateIndex: int = Field(ge=0, le=99)
     orderLineId: str = Field(min_length=1, max_length=128)
@@ -218,6 +237,7 @@ class AssociateConversationService:
         self._return_request_snapshots = self._db["return_request_snapshots"]
         self._locks = self._db["discovery_locks"]
         self._repository = repository
+        self._ai = AIGatewayService(cast(AIGatewayRepository, repository), settings)
         self._return_configuration = (
             return_configuration
             or load_return_configuration(settings.return_configuration_path).configuration
@@ -231,6 +251,134 @@ class AssociateConversationService:
             configuration=self._return_configuration,
             operational_repository=repository,
         )
+
+    def _extract_anchor(self, message: str) -> StartAssociateConversationRequest:
+        matches: list[tuple[AnchorType, str]] = []
+        for extractor in self._return_configuration.discovery.anchor_extractors:
+            if extractor.anchor_type not in AnchorType._value2member_map_:
+                continue
+            anchor_type = AnchorType(extractor.anchor_type)
+            for pattern in extractor.patterns:
+                found = re.search(pattern, message, re.IGNORECASE)
+                if found is not None:
+                    matches.append((anchor_type, found.group(0)))
+                    break
+        strong = tuple(
+            AnchorType(value)
+            for value in self._return_configuration.discovery.strong_anchors
+            if value in AnchorType._value2member_map_
+        )
+        priority = {
+            anchor_type: index
+            for index, anchor_type in enumerate(
+                (
+                    *strong,
+                    AnchorType.PHONE,
+                    AnchorType.EMAIL,
+                    AnchorType.SKU,
+                )
+            )
+        }
+        if matches:
+            anchor_type, value = min(
+                matches,
+                key=lambda item: priority.get(item[0], len(priority)),
+            )
+            return StartAssociateConversationRequest(
+                anchorType=anchor_type,
+                anchorValue=value,
+            )
+        fallback = AnchorType(
+            self._return_configuration.discovery.free_text_fallback_anchor
+        )
+        return StartAssociateConversationRequest(
+            anchorType=fallback,
+            anchorValue=message,
+        )
+
+    async def _generate_smart_question(
+        self,
+        conversation: AssociateConversationView,
+    ) -> str:
+        strong = list(self._return_configuration.discovery.strong_anchors)
+        known = [
+            f"recognized evidence category: {conversation.anchorType.value}",
+            f"source-backed candidate count: {len(conversation.candidates)}",
+            f"discovery status: {conversation.status}",
+            f"confirmation lock present: {conversation.discoveryLock is not None}",
+        ]
+        missing = (
+            [
+                item.field.replace("_", " ").lower()
+                for item in sorted(
+                    self._return_configuration.smart_questions.fields,
+                    key=lambda item: -item.priority,
+                )
+                if item.customer_answerable
+            ]
+            if conversation.discoveryLock is not None
+            else [
+                value.replace("_", " ").lower()
+                for value in strong
+                if value != conversation.anchorType.value
+            ]
+        )
+        try:
+            evaluation = await self._ai.evaluate(
+                session_id=conversation.id,
+                redacted_input={
+                    "missingFields": missing,
+                    "knownFacts": known,
+                    "returnPath": "associate conversational discovery",
+                },
+                task_id="RETURN_SMART_QUESTION_V1",
+            )
+            question = (evaluation.trace.explanation or "").strip()
+            if question and question.endswith("?") and len(question) <= 500:
+                return question
+        except Exception:
+            pass
+        subject = (
+            "the matching order and item"
+            if conversation.candidates
+            else (missing[0] if missing else "one more order detail")
+        )
+        return f"Could you provide {subject}?"
+
+    async def _apply_chat_copy(
+        self,
+        conversation: AssociateConversationView,
+        *,
+        raw_message: str,
+    ) -> AssociateConversationView:
+        question = await self._generate_smart_question(conversation)
+        message_index = max(0, len(conversation.messages) - 2)
+        assistant_index = max(0, len(conversation.messages) - 1)
+        sequence = max(1, conversation.lastMessageSequence - 1)
+        assistant_sequence = max(1, conversation.lastMessageSequence)
+        assistant_text = conversation.messages[-1].content
+        planned_response = f"{assistant_text} {question}"
+        updated = await self._conversations.find_one_and_update(
+            {"_id": conversation.id, "version": conversation.version},
+            {
+                "$set": {
+                    f"messages.{message_index}.content": raw_message,
+                    f"messages.{assistant_index}.content": planned_response,
+                    "nextQuestion": question,
+                    "updatedAt": _now(),
+                }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        await self._messages.update_one(
+            {"conversationId": conversation.id, "sequence": sequence},
+            {"$set": {"messageText": raw_message}},
+        )
+        await self._messages.update_one(
+            {"conversationId": conversation.id, "sequence": assistant_sequence},
+            {"$set": {"messageText": planned_response}},
+        )
+        return conversation if updated is None else self._view(cast(dict[str, Any], updated))
 
     async def ensure_indexes(self) -> None:
         await self._conversations.create_index([("createdAt", -1)])
@@ -798,6 +946,19 @@ class AssociateConversationService:
             )
         return self._view(document)
 
+    async def start_chat(
+        self,
+        payload: AssociateChatTurnRequest,
+        *,
+        actor_id: str,
+    ) -> AssociateConversationView:
+        lookup = self._extract_anchor(payload.message)
+        conversation = await self.start(lookup, actor_id=actor_id)
+        return await self._apply_chat_copy(
+            conversation,
+            raw_message=payload.message,
+        )
+
     async def list(self, limit: int = 100) -> list[AssociateConversationView]:
         documents = await self._conversations.find({}).sort("createdAt", -1).limit(limit).to_list()
         return [self._view(document) for document in documents]
@@ -805,6 +966,137 @@ class AssociateConversationService:
     async def get(self, conversation_id: str) -> AssociateConversationView | None:
         document = await self._conversations.find_one({"_id": conversation_id})
         return None if document is None else self._view(document)
+
+    async def continue_discovery(
+        self,
+        conversation_id: str,
+        payload: ContinueAssociateConversationRequest,
+        *,
+        actor_id: str,
+    ) -> AssociateConversationView:
+        conversation = await self.get(conversation_id)
+        if conversation is None:
+            raise KeyError(conversation_id)
+        if conversation.version != payload.expectedVersion:
+            raise RuntimeError("Conversation version conflict")
+        if conversation.discoveryLock is not None:
+            raise ValueError("Discovery is already locked for this conversation")
+
+        lookup = StartAssociateConversationRequest(
+            anchorType=payload.anchorType,
+            anchorValue=payload.anchorValue,
+        )
+        candidates = await self._graph_candidates(lookup.anchorType, lookup.anchorValue)
+        if not candidates:
+            documents = await self._source_documents(lookup.anchorType, lookup.anchorValue)
+            candidates = [
+                candidate
+                for document in documents
+                if (candidate := self._source_candidate(document))
+            ]
+            await self._targeted_graph_upsert(candidates)
+        candidates, discovery_assessment, order_source = self._assess_candidates(
+            lookup, candidates
+        )
+        if candidates:
+            assistant_text = (
+                f"I found {len(candidates)} source-backed candidate order(s) using that "
+                "additional evidence. Review and confirm the exact order line."
+            )
+            status = "DISCOVERY_READY"
+            next_question = (
+                discovery_assessment.get("nextQuestion")
+                or "Which order and order line should be returned?"
+            )
+        else:
+            assistant_text = (
+                "I still could not find a matching order. You can keep chatting and try "
+                "another order number, customer ID, tracking number, email, phone, or SKU."
+            )
+            status = "NO_MATCH"
+            next_question = "What other evidence can you provide?"
+
+        messages = [
+            self._message(
+                "ASSOCIATE",
+                f"{payload.anchorType.value}: {payload.anchorValue}",
+            ),
+            self._message("AI_ASSISTANT", assistant_text),
+        ]
+        updated = await self._conversations.find_one_and_update(
+            {"_id": conversation_id, "version": payload.expectedVersion},
+            {
+                "$set": {
+                    "status": status,
+                    "anchorType": payload.anchorType.value,
+                    "anchorValueMasked": _mask(payload.anchorValue, payload.anchorType),
+                    "anchorDigest": _digest(
+                        {"type": payload.anchorType.value, "value": payload.anchorValue}
+                    ),
+                    "orderSource": order_source.value,
+                    "discoveryAssessment": discovery_assessment,
+                    "candidates": [
+                        candidate.model_dump(mode="json") for candidate in candidates
+                    ],
+                    "nextQuestion": next_question,
+                    "updatedAt": _now(),
+                },
+                "$push": {"messages": {"$each": messages}},
+                "$inc": {"version": 1, "lastMessageSequence": len(messages)},
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        if updated is None:
+            raise RuntimeError("Conversation version conflict")
+        ending_sequence = int(str(updated.get("lastMessageSequence", 0)))
+        await self._persist_messages(
+            conversation_id,
+            starting_sequence=ending_sequence - len(messages) + 1,
+            messages=messages,
+        )
+        snapshot_id = await self._persist_discovery_snapshot(
+            conversation_id=conversation_id,
+            snapshot_type="DISCOVERY_FOLLOW_UP",
+            payload={
+                "anchorType": payload.anchorType.value,
+                "anchorValueMasked": _mask(payload.anchorValue, payload.anchorType),
+                "candidates": [
+                    candidate.model_dump(mode="json") for candidate in candidates
+                ],
+                "assessment": discovery_assessment,
+            },
+            actor_id=actor_id,
+        )
+        updated["discoverySnapshotId"] = snapshot_id
+        await self._conversations.update_one(
+            {"_id": conversation_id},
+            {"$set": {"discoverySnapshotId": snapshot_id}},
+        )
+        return self._view(cast(dict[str, Any], updated))
+
+    async def continue_chat(
+        self,
+        conversation_id: str,
+        payload: AssociateChatTurnRequest,
+        *,
+        actor_id: str,
+    ) -> AssociateConversationView:
+        if payload.expectedVersion is None:
+            raise ValueError("expectedVersion is required when continuing a conversation")
+        lookup = self._extract_anchor(payload.message)
+        conversation = await self.continue_discovery(
+            conversation_id,
+            ContinueAssociateConversationRequest(
+                anchorType=lookup.anchorType,
+                anchorValue=lookup.anchorValue,
+                expectedVersion=payload.expectedVersion,
+            ),
+            actor_id=actor_id,
+        )
+        return await self._apply_chat_copy(
+            conversation,
+            raw_message=payload.message,
+        )
 
     async def confirm(
         self,
@@ -839,7 +1131,13 @@ class AssociateConversationService:
         }
         lock_key = f"{candidate.orderReference}:{line.orderLineId}"
         lock = DiscoveryLock(
-            **lock_payload,
+            customerReference=candidate.customerReference,
+            orderReference=candidate.orderReference,
+            sourceWebOrderNumber=candidate.sourceWebOrderNumber,
+            trilogieOrderNumber=candidate.trilogieOrderNumber,
+            orderSource=candidate.orderSource,
+            orderLineId=line.orderLineId,
+            productId=line.productId,
             lockDigest=_digest(lock_payload),
             confirmedBy=actor_id,
             confirmedAt=_now(),
@@ -918,7 +1216,28 @@ class AssociateConversationService:
             {"$set": {"confirmationSnapshotId": confirmation_snapshot_id}},
         )
         updated["confirmationSnapshotId"] = confirmation_snapshot_id
-        return self._view(cast(dict[str, Any], updated))
+        view = self._view(cast(dict[str, Any], updated))
+        question = await self._generate_smart_question(view)
+        assistant_index = max(0, len(view.messages) - 1)
+        assistant_sequence = max(1, view.lastMessageSequence)
+        planned_response = f"{view.messages[-1].content} {question}"
+        await self._conversations.update_one(
+            {"_id": conversation_id, "version": view.version},
+            {
+                "$set": {
+                    f"messages.{assistant_index}.content": planned_response,
+                    "nextQuestion": question,
+                    "updatedAt": _now(),
+                }
+            },
+        )
+        await self._messages.update_one(
+            {"conversationId": conversation_id, "sequence": assistant_sequence},
+            {"$set": {"messageText": planned_response}},
+        )
+        messages = list(view.messages)
+        messages[-1] = messages[-1].model_copy(update={"content": planned_response})
+        return view.model_copy(update={"nextQuestion": question, "messages": messages})
 
     async def submit_details(
         self,

@@ -272,11 +272,6 @@ class SQLBusinessStateRepository:
                             return_references,
                         )
                         delete_many(
-                            "platform.feedback_recommendation",
-                            "session_id",
-                            session_ids,
-                        )
-                        delete_many(
                             "integration.return_support_ticket",
                             "session_id",
                             session_ids,
@@ -712,41 +707,3 @@ class SQLBusinessStateRepository:
             return reservation_id, assignment_id
 
         return await self._run(operation)
-
-    async def record_feedback_recommendation(
-        self,
-        *,
-        recommendation_id: str,
-        session_id: str,
-        area: str,
-        recommendation: str,
-        evidence_digest: str,
-    ) -> None:
-        def operation() -> None:
-            with self._connect() as connection:
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        IF NOT EXISTS (
-                            SELECT 1 FROM platform.feedback_recommendation
-                            WHERE session_id=%s AND area=%s AND evidence_digest=%s
-                        )
-                        INSERT INTO platform.feedback_recommendation (
-                            recommendation_id, session_id, area, recommendation,
-                            evidence_digest, review_status
-                        ) VALUES (%s,%s,%s,%s,%s,'REVIEW_PENDING');
-                        """,
-                        (
-                            session_id,
-                            area,
-                            evidence_digest,
-                            recommendation_id,
-                            session_id,
-                            area,
-                            recommendation,
-                            evidence_digest,
-                        ),
-                    )
-                connection.commit()
-
-        await self._run(operation)

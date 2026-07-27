@@ -137,7 +137,6 @@ def test_schema_registry_models_every_required_physical_store_and_graph_type() -
         ("integration", "return_support_ticket"),
         ("platform", "bay_configuration"),
         ("platform", "bay_assignment"),
-        ("platform", "feedback_recommendation"),
         ("platform", "bay_reservation"),
         ("platform", "return_policy_version"),
     ):

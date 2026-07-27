@@ -3,7 +3,54 @@ from typing import Any, cast
 
 import pytest
 
-from return_platform.data_platform.ai_studio import AIStudioService
+from return_platform.data_platform.ai_studio import (
+    AIStudioService,
+    _bulk_order_context,
+    _parse_customer_order_prompt,
+)
+
+
+def test_customer_order_prompt_builds_relationship_aware_plan() -> None:
+    assert _parse_customer_order_prompt(
+        "Create 500 customers and 100 orders for each customer"
+    ) == (500, 100)
+    assert _parse_customer_order_prompt(
+        "create 500 customes and 100 orders for each cusotmer"
+    ) == (500, 100)
+
+
+def test_bulk_order_context_keeps_customer_identity_across_orders() -> None:
+    first = _bulk_order_context(7, 0, seed=20260727)
+    second = _bulk_order_context(7, 99, seed=20260727)
+    assert first.customer_reference == second.customer_reference
+    assert first.customer_name == second.customer_name
+    assert first.order_reference != second.order_reference
+    assert first.product_reference != second.product_reference
+
+    same_product_for_another_customer = _bulk_order_context(8, 99, seed=20260727)
+    assert second.product_reference == same_product_for_another_customer.product_reference
+    assert second.sku == same_product_for_another_customer.sku
+    assert second.warehouse_reference in {
+        "WH-CHENNAI-01",
+        "WH-ATLANTA-01",
+        "WH-DALLAS-01",
+    }
+    assert second.bay_reference.startswith(
+        f"BAY-{second.warehouse_reference.removeprefix('WH-').removesuffix('-01')}-"
+    )
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    (
+        "Create customers and orders",
+        "Create 501 customers and 1 order for each customer",
+        "Create 1 customer and 101 orders for each customer",
+    ),
+)
+def test_customer_order_prompt_rejects_unsafe_or_ambiguous_scale(prompt: str) -> None:
+    with pytest.raises(ValueError):
+        _parse_customer_order_prompt(prompt)
 
 
 @pytest.mark.asyncio

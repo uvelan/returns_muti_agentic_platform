@@ -127,7 +127,6 @@ class ReturnOrchestrator:
         self._feedback = FeedbackLearningService(
             repository.platform_client,
             settings,
-            self._business_state,
         )
 
     async def run_forever(self) -> None:

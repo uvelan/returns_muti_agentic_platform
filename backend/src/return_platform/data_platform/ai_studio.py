@@ -15,7 +15,7 @@ from typing import Any, Literal
 
 import pymssql
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from pymongo import AsyncMongoClient, ReturnDocument
+from pymongo import AsyncMongoClient, ReplaceOne, ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from return_platform.configuration.settings import Settings
@@ -39,15 +39,30 @@ DIRECT_MONGO_COLLECTIONS = frozenset(
 )
 DIRECT_SQL_ASSETS = frozenset(
     {
-        "source.sql.return_requests",
-        "source.sql.return_items",
-        "source.sql.return_fulfillment",
-        "source.sql.return_tracking",
-        "platform.sql.return_support_ticket",
         "platform.sql.bay_configuration",
-        "platform.sql.bay_assignment",
-        "platform.sql.feedback_recommendation",
     }
+)
+RELATIONAL_CUSTOMER_ASSETS = (
+    "source.mongodb.customer_outbound_cdm",
+    "source.mongodb.customers",
+)
+RELATIONAL_PRODUCT_ASSETS = (
+    "source.mongodb.product_search",
+    "source.mongodb.products",
+)
+RELATIONAL_ORDER_ASSETS = (
+    "source.mongodb.sales_inv",
+    "source.mongodb.shipment_info",
+    "source.mongodb.orders",
+)
+RELATIONAL_REFERENCE_ASSETS = (
+    "sandbox.mongodb.warehouses",
+    "platform.sql.bay_configuration",
+)
+SANDBOX_WAREHOUSES = (
+    ("WH-CHENNAI-01", "CHENNAI"),
+    ("WH-ATLANTA-01", "ATLANTA"),
+    ("WH-DALLAS-01", "DALLAS"),
 )
 
 SUPPORTED_GENERATORS = frozenset(
@@ -82,7 +97,6 @@ SUPPORTED_GENERATORS = frozenset(
         "evidence_references",
         "external_ticket_reference",
         "false",
-        "feedback_area",
         "fulfillment_reference",
         "fulfillment_status",
         "legacy_items",
@@ -171,6 +185,12 @@ class AIStudioApplyRequest(StudioModel):
     expectedDigest: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
+class AIStudioPromptRequest(StudioModel):
+    prompt: str = Field(min_length=10, max_length=1_000)
+    seed: int = Field(default=20260724, ge=0, le=2_147_483_647)
+    scenarioName: str = Field(default="customer-order-sandbox", min_length=3, max_length=128)
+
+
 class AIStudioProposalView(StudioModel):
     id: str
     scenarioName: str
@@ -188,6 +208,8 @@ class AIStudioProposalView(StudioModel):
     createdAt: datetime
     appliedBy: str | None = None
     appliedAt: datetime | None = None
+    generationPrompt: str | None = None
+    generationPlan: dict[str, int] = Field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -264,6 +286,80 @@ def _scenario_context(index: int, rng: random.Random) -> ScenarioContext:
     )
 
 
+def _bulk_order_context(
+    customer_index: int,
+    order_index: int,
+    *,
+    seed: int,
+) -> ScenarioContext:
+    customer_rng = random.Random(f"{seed}:customer:{customer_index}")
+    order_rng = random.Random(f"{seed}:customer:{customer_index}:order:{order_index}")
+    customer_suffix = f"{customer_rng.randrange(100000, 999999)}{customer_index:04d}"
+    order_suffix = f"{customer_index:04d}{order_index:04d}{order_rng.randrange(1000, 9999)}"
+    customer = f"CUST-{customer_suffix}"
+    order = f"SO-{order_suffix}"
+    product_rng = random.Random(f"{seed}:product:{order_index}")
+    product = f"PRD-{order_index + 1:04d}"
+    warehouse_city = order_rng.choice(("CHENNAI", "ATLANTA", "DALLAS"))
+    warehouse = f"WH-{warehouse_city}-01"
+    bay_type = order_rng.choice(("PPL", "BOL", "HOLD"))
+    now = _utc_now().replace(microsecond=0)
+    delivered = now - timedelta(days=order_rng.randrange(1, 40))
+    return ScenarioContext(
+        index=(customer_index * 100_000) + order_index,
+        customer_reference=customer,
+        customer_name=f"Sandbox Customer {customer_index + 1}",
+        party_id=f"PTY-{customer_suffix}",
+        phone=(
+            f"+1-555-{customer_rng.randrange(100, 999)}-"
+            f"{customer_rng.randrange(1000, 9999)}"
+        ),
+        email=f"sandbox.customer.{customer_suffix}@example.invalid",
+        order_reference=order,
+        order_line_reference=f"{order}-L1",
+        product_reference=product,
+        master_product_reference=f"M-{product}",
+        sku=f"SKU-{product_rng.randrange(100000, 999999)}",
+        product_description=f"Sandbox order product {order_index + 1}",
+        product_type=product_rng.choice(("STANDARD", "BULKY", "HAZARDOUS_REVIEW")),
+        warehouse_reference=warehouse,
+        branch_reference=f"BR-{order_rng.randrange(100, 999)}",
+        tracking_reference=f"1Z{order_rng.randrange(10**14, 10**15 - 1)}",
+        return_reference=f"RMA-{order_suffix}",
+        fulfillment_reference=f"FUL-{order_suffix}",
+        ticket_reference=f"RST-{order_suffix}",
+        bay_reference=f"BAY-{warehouse_city}-{bay_type}-01",
+        session_id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"return-studio:{order_suffix}")),
+        correlation_id=str(
+            uuid.uuid5(uuid.NAMESPACE_URL, f"return-studio-correlation:{order_suffix}")
+        ),
+        delivered_at=delivered,
+        updated_at=now,
+    )
+
+
+def _parse_customer_order_prompt(prompt: str) -> tuple[int, int]:
+    normalized = " ".join(prompt.lower().split())
+    customer_match = re.search(r"(\d[\d,]*)\s+cus\w*", normalized)
+    per_customer_match = re.search(
+        r"(\d[\d,]*)\s+orders?\s+(?:for|per)\s+(?:each|every)\s+cus\w*",
+        normalized,
+    )
+    if customer_match is None or per_customer_match is None:
+        raise ValueError(
+            "Describe the request as '<count> customers and <count> orders for each customer'."
+        )
+    customer_count = int(customer_match.group(1).replace(",", ""))
+    orders_per_customer = int(per_customer_match.group(1).replace(",", ""))
+    if not 1 <= customer_count <= 500:
+        raise ValueError("Customer count must be between 1 and 500")
+    if not 1 <= orders_per_customer <= 100:
+        raise ValueError("Orders per customer must be between 1 and 100")
+    if customer_count * orders_per_customer > 50_000:
+        raise ValueError("The governed bulk proposal limit is 50,000 orders")
+    return customer_count, orders_per_customer
+
+
 def _nested_set(document: dict[str, Any], path: str, value: Any) -> None:
     current = document
     parts = path.split(".")
@@ -334,10 +430,9 @@ def _value(generator: str | None, context: ScenarioContext, rng: random.Random) 
         "support_ticket_status": "RETURN_CREATED",
         "bay_assignment_status": "CREATED",
         "bay_name": f"Sandbox {context.bay_reference}",
-        "bay_type": context.bay_reference.split("-")[1],
+        "bay_type": context.bay_reference.split("-")[-2],
         "shipping_paths_json": '["PPL","BOL","NO_LABEL"]',
         "product_types_json": '["STANDARD","BULKY","HAZARDOUS_REVIEW"]',
-        "feedback_area": "SMART_QUESTIONS",
         "recommendation": "Keep the confirmed order-line question before support handoff.",
         "review_status": "REVIEW_PENDING",
         "clarification": "Confirm package count and item condition.",
@@ -426,6 +521,49 @@ def generate_asset_record(
     return record
 
 
+def _reference_records(
+    bay_asset: DataAssetSchema,
+    *,
+    seed: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    warehouses = [
+        {
+            "_id": warehouse_id,
+            "warehouseId": warehouse_id,
+            "name": f"Sandbox {city.title()} Warehouse",
+            "region": city,
+            "active": True,
+        }
+        for warehouse_id, city in SANDBOX_WAREHOUSES
+    ]
+    bays: list[dict[str, Any]] = []
+    for warehouse_index, (warehouse_id, city) in enumerate(SANDBOX_WAREHOUSES):
+        for bay_index, bay_type in enumerate(("PPL", "BOL", "HOLD")):
+            context = _bulk_order_context(
+                warehouse_index,
+                bay_index,
+                seed=seed,
+            )
+            bay_id = f"BAY-{city}-{bay_type}-01"
+            record = generate_asset_record(
+                bay_asset,
+                context,
+                random.Random(f"{seed}:bay:{warehouse_id}:{bay_type}"),
+            )
+            record.update(
+                {
+                    "bay_id": bay_id,
+                    "bay_name": f"Sandbox {city.title()} {bay_type} Bay",
+                    "warehouse_id": warehouse_id,
+                    "branch_id": f"BR-{city}",
+                    "bay_type": bay_type,
+                    "active": True,
+                }
+            )
+            bays.append(record)
+    return warehouses, bays
+
+
 class AIStudioService:
     """Generate schema-bound proposals and apply only explicit sandbox-safe assets."""
 
@@ -469,6 +607,8 @@ class AIStudioService:
                 "createdAt": document["createdAt"],
                 "appliedBy": document.get("appliedBy"),
                 "appliedAt": document.get("appliedAt"),
+                "generationPrompt": document.get("generationPrompt"),
+                "generationPlan": document.get("generationPlan", {}),
             }
         )
 
@@ -517,6 +657,138 @@ class AIStudioService:
             return self._view(existing)
         return self._view(document)
 
+    async def generate_from_prompt(
+        self,
+        request: AIStudioPromptRequest,
+        *,
+        actor_id: str,
+    ) -> AIStudioProposalView:
+        customer_count, orders_per_customer = _parse_customer_order_prompt(request.prompt)
+        customer_assets = [
+            self._registry.asset(asset_id) for asset_id in RELATIONAL_CUSTOMER_ASSETS
+        ]
+        product_assets = [
+            self._registry.asset(asset_id) for asset_id in RELATIONAL_PRODUCT_ASSETS
+        ]
+        order_assets = [
+            self._registry.asset(asset_id) for asset_id in RELATIONAL_ORDER_ASSETS
+        ]
+        bay_asset = self._registry.asset("platform.sql.bay_configuration")
+        preview_customers = min(customer_count, 5)
+        preview_orders = min(orders_per_customer, 2)
+        warehouses, bays = _reference_records(bay_asset, seed=request.seed)
+        records: dict[str, list[dict[str, Any]]] = {
+            asset.asset_id: []
+            for asset in (*customer_assets, *product_assets, *order_assets)
+        }
+        records["sandbox.mongodb.warehouses"] = warehouses
+        records[bay_asset.asset_id] = bays
+        for customer_index in range(preview_customers):
+            customer_context = _bulk_order_context(customer_index, 0, seed=request.seed)
+            for asset in customer_assets:
+                records[asset.asset_id].append(
+                    generate_asset_record(
+                        asset,
+                        customer_context,
+                        random.Random(
+                            f"{request.seed}:preview:{asset.asset_id}:{customer_index}"
+                        ),
+                    )
+                )
+            for order_index in range(preview_orders):
+                order_context = _bulk_order_context(
+                    customer_index,
+                    order_index,
+                    seed=request.seed,
+                )
+                for asset in order_assets:
+                    records[asset.asset_id].append(
+                        generate_asset_record(
+                            asset,
+                            order_context,
+                            random.Random(
+                                f"{request.seed}:preview:{asset.asset_id}:"
+                                f"{customer_index}:{order_index}"
+                            ),
+                        )
+                    )
+        for product_index in range(preview_orders):
+            product_context = _bulk_order_context(0, product_index, seed=request.seed)
+            for asset in product_assets:
+                records[asset.asset_id].append(
+                    generate_asset_record(
+                        asset,
+                        product_context,
+                        random.Random(
+                            f"{request.seed}:preview:{asset.asset_id}:{product_index}"
+                        ),
+                    )
+                )
+        record_counts = {
+            **{asset.asset_id: customer_count for asset in customer_assets},
+            **{asset.asset_id: orders_per_customer for asset in product_assets},
+            **{
+                asset.asset_id: customer_count * orders_per_customer
+                for asset in order_assets
+            },
+            "sandbox.mongodb.warehouses": len(warehouses),
+            bay_asset.asset_id: len(bays),
+        }
+        plan = {
+            "customers": customer_count,
+            "ordersPerCustomer": orders_per_customer,
+            "totalOrders": customer_count * orders_per_customer,
+            "products": orders_per_customer,
+            "warehouses": len(warehouses),
+            "bays": len(bays),
+            "relatedRecords": sum(record_counts.values()),
+            "previewCustomers": preview_customers,
+            "previewOrdersPerCustomer": preview_orders,
+        }
+        digest = hashlib.sha256(
+            json.dumps(
+                {
+                    "prompt": " ".join(request.prompt.split()),
+                    "seed": request.seed,
+                    "plan": plan,
+                    "preview": records,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode()
+        ).hexdigest()
+        now = _utc_now()
+        document: dict[str, Any] = {
+            "_id": str(uuid.uuid4()),
+            "scenarioName": request.scenarioName,
+            "mode": "AI_ASSISTED",
+            "seed": request.seed,
+            "assetIds": list(record_counts),
+            "recordsPerAsset": customer_count,
+            "digest": digest,
+            "status": "DRAFT",
+            "recordCounts": record_counts,
+            "records": records,
+            "generationPrompt": request.prompt,
+            "generationPlan": plan,
+            "appliedAssets": [],
+            "blockedAssets": [],
+            "applyErrors": {},
+            "createdBy": actor_id,
+            "createdAt": now,
+            "updatedAt": now,
+            "version": 0,
+        }
+        try:
+            await self._proposals.insert_one(document)
+        except DuplicateKeyError:
+            existing = await self._proposals.find_one({"digest": digest})
+            if existing is None:
+                raise
+            return self._view(existing)
+        return self._view(document)
+
     async def list(self, limit: int = 100) -> builtins.list[AIStudioProposalView]:
         documents = await self._proposals.find({}).sort("createdAt", -1).limit(limit).to_list()
         return [self._view(document) for document in documents]
@@ -548,6 +820,12 @@ class AIStudioService:
         view, records = result
         if view.digest != request.expectedDigest:
             raise RuntimeError("Proposal digest conflict")
+        if view.generationPlan:
+            return await self._apply_customer_order_plan(
+                proposal_id,
+                view,
+                actor_id=actor_id,
+            )
         registry_order = {
             asset.asset_id: index for index, asset in enumerate(self._registry.assets)
         }
@@ -599,6 +877,145 @@ class AIStudioService:
             status=status,
             applied=applied,
             blocked=blocked,
+            errors={},
+        )
+        return self._view(updated)
+
+    async def _apply_customer_order_plan(
+        self,
+        proposal_id: str,
+        view: AIStudioProposalView,
+        *,
+        actor_id: str,
+    ) -> AIStudioProposalView:
+        customer_count = int(view.generationPlan.get("customers", 0))
+        orders_per_customer = int(view.generationPlan.get("ordersPerCustomer", 0))
+        if not 1 <= customer_count <= 500 or not 1 <= orders_per_customer <= 100:
+            raise ValueError("Stored customer/order generation plan is invalid")
+        customer_assets = [
+            self._registry.asset(asset_id) for asset_id in RELATIONAL_CUSTOMER_ASSETS
+        ]
+        product_assets = [
+            self._registry.asset(asset_id) for asset_id in RELATIONAL_PRODUCT_ASSETS
+        ]
+        order_assets = [
+            self._registry.asset(asset_id) for asset_id in RELATIONAL_ORDER_ASSETS
+        ]
+        bay_asset = self._registry.asset("platform.sql.bay_configuration")
+        sandbox_database = self._settings.ai_studio_mongo_database
+        if not sandbox_database:
+            raise PermissionError("AI Studio Mongo apply requires a dedicated sandbox database.")
+        if sandbox_database in {
+            self._settings.mongo_database,
+            self._settings.source_mongo_database,
+        }:
+            raise PermissionError(
+                "AI Studio Mongo apply cannot target operational or source databases."
+            )
+        target_db = self._client[sandbox_database]
+
+        async def flush(
+            collection_name: str,
+            records: list[dict[str, Any]],
+        ) -> None:
+            if not records:
+                return
+            await target_db[collection_name].bulk_write(
+                [
+                    ReplaceOne({"_id": record["_id"]}, record, upsert=True)
+                    for record in records
+                ],
+                ordered=False,
+            )
+
+        batches: dict[str, list[dict[str, Any]]] = {
+            asset.asset_id: []
+            for asset in (*customer_assets, *product_assets, *order_assets)
+        }
+        collections = {
+            asset.asset_id: asset.name
+            for asset in (*customer_assets, *product_assets, *order_assets)
+        }
+
+        async def append(asset: DataAssetSchema, record: dict[str, Any]) -> None:
+            batch = batches[asset.asset_id]
+            batch.append(record)
+            if len(batch) >= 500:
+                await flush(collections[asset.asset_id], batch)
+                batch.clear()
+
+        warehouses, bays = _reference_records(bay_asset, seed=view.seed)
+        await flush("warehouses", warehouses)
+        await flush(
+            bay_asset.name,
+            [
+                {
+                    "_id": record["bay_id"],
+                    **record,
+                    "_sandboxAssetId": bay_asset.asset_id,
+                }
+                for record in bays
+            ],
+        )
+        for customer_index in range(customer_count):
+            customer_context = _bulk_order_context(customer_index, 0, seed=view.seed)
+            for asset in customer_assets:
+                await append(
+                    asset,
+                    generate_asset_record(
+                        asset,
+                        customer_context,
+                        random.Random(
+                            f"{view.seed}:apply:{asset.asset_id}:{customer_index}"
+                        ),
+                    ),
+                )
+            for order_index in range(orders_per_customer):
+                order_context = _bulk_order_context(
+                    customer_index,
+                    order_index,
+                    seed=view.seed,
+                )
+                for asset in order_assets:
+                    await append(
+                        asset,
+                        generate_asset_record(
+                            asset,
+                            order_context,
+                            random.Random(
+                                f"{view.seed}:apply:{asset.asset_id}:"
+                                f"{customer_index}:{order_index}"
+                            ),
+                        ),
+                    )
+        for product_index in range(orders_per_customer):
+            product_context = _bulk_order_context(0, product_index, seed=view.seed)
+            for asset in product_assets:
+                await append(
+                    asset,
+                    generate_asset_record(
+                        asset,
+                        product_context,
+                        random.Random(
+                            f"{view.seed}:apply:{asset.asset_id}:{product_index}"
+                        ),
+                    ),
+                )
+        for asset_id, batch in batches.items():
+            await flush(collections[asset_id], batch)
+        applied_assets = [
+            *RELATIONAL_CUSTOMER_ASSETS,
+            *RELATIONAL_PRODUCT_ASSETS,
+            *RELATIONAL_ORDER_ASSETS,
+            *RELATIONAL_REFERENCE_ASSETS,
+        ]
+        updated = await self._record_apply_result(
+            proposal_id=proposal_id,
+            expected_digest=view.digest,
+            actor_id=actor_id,
+            status="APPLIED",
+            applied=applied_assets,
+            blocked=[],
             errors={},
         )
         return self._view(updated)

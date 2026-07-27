@@ -9,9 +9,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
 from return_platform.data_console.api.auth import require_associate_roles, require_read_roles
 from return_platform.operations.associate_flow import (
+    AssociateChatTurnRequest,
     AssociateConversationService,
     AssociateConversationView,
     ConfirmDiscoveryRequest,
+    ContinueAssociateConversationRequest,
     ReturnDetailsRequest,
     StartAssociateConversationRequest,
 )
@@ -91,6 +93,31 @@ async def start_conversation(
     return APIResponse(data=data, meta=_meta(request))
 
 
+@router.post(
+    "/chat",
+    response_model=APIResponse[AssociateConversationView],
+    status_code=status.HTTP_201_CREATED,
+)
+async def start_chat(
+    payload: AssociateChatTurnRequest,
+    request: Request,
+    actor: str = Depends(require_associate_roles),
+) -> APIResponse[AssociateConversationView]:
+    try:
+        data = await _service(request).start_chat(payload, actor_id=actor)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except Exception as error:
+        import logging
+
+        logging.exception("Associate chat start failed")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Associate chat start failed: {type(error).__name__}",
+        ) from error
+    return APIResponse(data=data, meta=_meta(request))
+
+
 @router.get(
     "/conversations/{conversation_id}",
     response_model=APIResponse[AssociateConversationView],
@@ -103,6 +130,56 @@ async def get_conversation(
     data = await _service(request).get(conversation_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Associate conversation not found.")
+    return APIResponse(data=data, meta=_meta(request))
+
+
+@router.post(
+    "/conversations/{conversation_id}/messages",
+    response_model=APIResponse[AssociateConversationView],
+)
+async def continue_conversation(
+    conversation_id: str,
+    payload: ContinueAssociateConversationRequest,
+    request: Request,
+    actor: str = Depends(require_associate_roles),
+) -> APIResponse[AssociateConversationView]:
+    try:
+        data = await _service(request).continue_discovery(
+            conversation_id,
+            payload,
+            actor_id=actor,
+        )
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="Associate conversation not found.") from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return APIResponse(data=data, meta=_meta(request))
+
+
+@router.post(
+    "/conversations/{conversation_id}/chat",
+    response_model=APIResponse[AssociateConversationView],
+)
+async def continue_chat(
+    conversation_id: str,
+    payload: AssociateChatTurnRequest,
+    request: Request,
+    actor: str = Depends(require_associate_roles),
+) -> APIResponse[AssociateConversationView]:
+    try:
+        data = await _service(request).continue_chat(
+            conversation_id,
+            payload,
+            actor_id=actor,
+        )
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="Associate conversation not found.") from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     return APIResponse(data=data, meta=_meta(request))
 
 

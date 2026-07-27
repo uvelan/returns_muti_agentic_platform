@@ -25,6 +25,11 @@ class AgentConfiguration(StrictConfigModel):
     capabilities: tuple[NonBlank, ...] = Field(min_length=1)
 
 
+class AnchorExtractorConfiguration(StrictConfigModel):
+    anchor_type: NonBlank
+    patterns: tuple[NonBlank, ...] = Field(min_length=1)
+
+
 class DiscoveryConfiguration(StrictConfigModel):
     web_order_pattern: NonBlank
     ambiguity_gap_millionths: int = Field(ge=0, le=1_000_000)
@@ -32,11 +37,21 @@ class DiscoveryConfiguration(StrictConfigModel):
     anchor_weights: dict[NonBlank, int]
     conflict_penalty_millionths: int = Field(ge=0, le=1_000_000)
     strong_anchors: tuple[NonBlank, ...] = Field(min_length=1)
+    anchor_extractors: tuple[AnchorExtractorConfiguration, ...] = Field(min_length=1)
+    free_text_fallback_anchor: NonBlank
 
     @model_validator(mode="after")
     def validate_weights(self) -> DiscoveryConfiguration:
         if any(not 0 <= weight <= 1_000_000 for weight in self.anchor_weights.values()):
             raise ValueError("discovery anchor weights must be 0..1000000")
+        extractor_types = [item.anchor_type for item in self.anchor_extractors]
+        if len(extractor_types) != len(set(extractor_types)):
+            raise ValueError("discovery anchor extractor types must be unique")
+        missing_strong = set(self.strong_anchors) - set(extractor_types)
+        if missing_strong:
+            raise ValueError(
+                f"strong anchors require extraction patterns: {', '.join(sorted(missing_strong))}"
+            )
         return self
 
 

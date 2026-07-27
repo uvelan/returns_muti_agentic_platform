@@ -1122,18 +1122,72 @@ assets:
     key: false
     description: Createdat
     generator: recent_datetime
-  - name: updatedAt
-    type: datetime
-    required: false
+  - name: sessionId
+    type: string
+    required: true
     key: false
-    description: Updatedat
-    generator: recent_datetime
-  - name: version
-    type: integer
-    required: false
+    description: Return workflow session that produced the feedback evidence.
+    generator: uuid
+  - name: finalOutcome
+    type: string
+    required: true
     key: false
-    description: Version
-    generator: zero
+    description: Final return workflow outcome.
+    generator: return_status
+  - name: missingFieldInsights
+    type: array
+    required: true
+    key: false
+    description: Missing workflow inputs observed after completion.
+    generator: empty_array
+    items: string
+  - name: supportReworkInsights
+    type: array
+    required: true
+    key: false
+    description: Human support rework signals observed by the workflow.
+    generator: empty_array
+    items: string
+  - name: graphSyncInsights
+    type: array
+    required: true
+    key: false
+    description: Graph synchronization evidence used for learning.
+    generator: empty_array
+    items: string
+  - name: sourceUsageInsights
+    type: array
+    required: true
+    key: false
+    description: Source systems used by the completed workflow.
+    generator: empty_array
+    items: string
+  - name: bayAssignmentInsights
+    type: array
+    required: true
+    key: false
+    description: Physical bay-routing evidence from operations.
+    generator: empty_array
+    items: string
+  - name: recommendations
+    type: array
+    required: true
+    key: false
+    description: Reviewable recommendations; never auto-applied.
+    generator: empty_array
+    items: string
+  - name: evidenceDigest
+    type: string
+    required: true
+    key: false
+    description: Digest binding recommendations to workflow evidence.
+    generator: sha256
+  - name: reviewStatus
+    type: string
+    required: true
+    key: false
+    description: Human review state for feedback recommendations.
+    generator: review_status
 - asset_id: platform.mongodb.return_sessions
   engine: MONGODB
   database: return_platform
@@ -1449,7 +1503,7 @@ assets:
   name: return_requests
   ownership: SOURCE_SYSTEM
   authoritative: true
-  writable_in_sandbox: true
+  writable_in_sandbox: false
   description: Authoritative return request/RMA state.
   fields:
   - name: session_id
@@ -1525,7 +1579,7 @@ assets:
   name: return_items
   ownership: SOURCE_SYSTEM
   authoritative: true
-  writable_in_sandbox: true
+  writable_in_sandbox: false
   description: Authoritative returned item details.
   fields:
   - name: return_item_id
@@ -1589,7 +1643,7 @@ assets:
   name: return_fulfillment
   ownership: SOURCE_SYSTEM
   authoritative: true
-  writable_in_sandbox: true
+  writable_in_sandbox: false
   description: Authoritative fulfillment and tracking state.
   fields:
   - name: session_id
@@ -1653,7 +1707,7 @@ assets:
   name: return_tracking
   ownership: SOURCE_SYSTEM
   authoritative: true
-  writable_in_sandbox: true
+  writable_in_sandbox: false
   description: PPL/BOL/customer-ship tracking facts.
   fields:
   - name: tracking_id
@@ -1705,7 +1759,7 @@ assets:
   name: return_support_ticket
   ownership: PLATFORM_OWNED
   authoritative: true
-  writable_in_sandbox: true
+  writable_in_sandbox: false
   description: Return Support ticket/thread handoff and follow-up state.
   fields:
   - name: ticket_id
@@ -1887,7 +1941,7 @@ assets:
   name: bay_assignment
   ownership: PLATFORM_OWNED
   authoritative: true
-  writable_in_sandbox: true
+  writable_in_sandbox: false
   description: Return item/package to physical bay binding.
   fields:
   - name: assignment_id
@@ -2010,106 +2064,6 @@ assets:
     key: false
     description: Updated At
     generator: recent_datetime
-  namespace: platform
-- asset_id: platform.sql.feedback_recommendation
-  engine: SQLSERVER
-  database: return_platform
-  name: feedback_recommendation
-  ownership: PLATFORM_OWNED
-  authoritative: true
-  writable_in_sandbox: true
-  description: Governed learning recommendation review queue.
-  fields:
-  - name: recommendation_id
-    type: string
-    required: true
-    key: true
-    description: Recommendation Id
-    generator: uuid
-  - name: session_id
-    type: string
-    required: true
-    key: false
-    description: Session Id
-    generator: uuid
-  - name: area
-    type: string
-    required: true
-    key: false
-    description: Area
-    generator: feedback_area
-  - name: recommendation
-    type: string
-    required: true
-    key: false
-    description: Recommendation
-    generator: recommendation
-  - name: evidence_digest
-    type: string
-    required: true
-    key: false
-    description: Evidence Digest
-    generator: sha256
-  - name: review_status
-    type: string
-    required: true
-    key: false
-    description: Review Status
-    generator: review_status
-  - name: created_at
-    type: datetime
-    required: true
-    key: false
-    description: Created At
-    generator: recent_datetime
-  - name: updated_at
-    type: datetime
-    required: true
-    key: false
-    description: Updated At
-    generator: recent_datetime
-  - name: feedback_id
-    type: string
-    required: false
-    key: false
-    description: Feedback Id
-    generator: uuid
-  - name: recommendation_type
-    type: string
-    required: false
-    key: false
-    description: Recommendation Type
-    generator: feedback_area
-  - name: severity
-    type: string
-    required: false
-    key: false
-    description: Severity
-    generator: priority
-  - name: reviewed_by
-    type: string
-    required: false
-    key: false
-    description: Reviewed By
-    generator: associate_reference
-  - name: reviewed_at
-    type: datetime
-    required: false
-    key: false
-    description: Reviewed At
-    generator: recent_datetime
-  - name: applied_at
-    type: datetime
-    required: false
-    key: false
-    description: Applied At
-    generator: recent_datetime
-  - name: row_version
-    type: integer
-    required: true
-    key: false
-    description: Row Version
-    generator: zero
   namespace: platform
 - asset_id: platform.mongodb.associate_messages
   engine: MONGODB

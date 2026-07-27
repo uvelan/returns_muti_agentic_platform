@@ -48,6 +48,17 @@ export async function generateAIStudioProposal(payload: {
   )).data);
 }
 
+export async function generateAIStudioPromptProposal(payload: {
+  prompt: string;
+  seed: number;
+  scenarioName: string;
+}): Promise<AIStudioProposal> {
+  return requireData((await apiClient<AIStudioProposal>(
+    "/data-console/v1/ai-studio/proposals/from-prompt",
+    jsonInit("POST", payload),
+  )).data);
+}
+
 export async function applyAIStudioProposal(proposal: AIStudioProposal): Promise<AIStudioProposal> {
   return requireData((await apiClient<AIStudioProposal>(
     `/data-console/v1/ai-studio/proposals/${encodeURIComponent(proposal.id)}/apply`,

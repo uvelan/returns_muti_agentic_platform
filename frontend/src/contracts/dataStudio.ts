@@ -62,6 +62,8 @@ export type AIStudioProposal = {
   readonly createdAt: string;
   readonly appliedBy: string | null;
   readonly appliedAt: string | null;
+  readonly generationPrompt: string | null;
+  readonly generationPlan: Readonly<Record<string, number>>;
 };
 
 export type AIStudioProposalDetail = {

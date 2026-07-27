@@ -215,6 +215,15 @@ export const routes: RouteDefinition[] = [
     component: lazy(() => import("./features/operations/SystemPages").then(m => ({ default: m.DependenciesPage }))),
   },
   {
+    path: "/system/workflows",
+    name: "Workflow Workers",
+    icon: Activity,
+    capability: "LIVE",
+    navigable: true,
+    group: "System",
+    component: lazy(() => import("./features/operations/SystemPages").then(m => ({ default: m.WorkflowWorkersPage }))),
+  },
+  {
     path: "/system/integration-outbox",
     name: "Integration Outbox",
     icon: ServerCog,

@@ -78,6 +78,28 @@ discovery:
     - ORDER_NUMBER
     - CUSTOMER_ID
     - TRACKING_NUMBER
+  anchor_extractors:
+    - anchor_type: ORDER_NUMBER
+      patterns:
+        - "^W[0-9]{9,12}$"
+        - "\\b(?:ORD|SO)-[A-Z0-9-]{3,}\\b"
+        - "\\bW[0-9]{9,12}\\b"
+    - anchor_type: CUSTOMER_ID
+      patterns:
+        - "\\b(?:CUST|PTY)-[A-Z0-9-]{3,}\\b"
+    - anchor_type: TRACKING_NUMBER
+      patterns:
+        - "\\b1Z[A-Z0-9]{10,}\\b"
+    - anchor_type: PHONE
+      patterns:
+        - "(?<!\\w)\\+?[0-9][0-9 ()-]{7,}[0-9](?!\\w)"
+    - anchor_type: EMAIL
+      patterns:
+        - "\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b"
+    - anchor_type: SKU
+      patterns:
+        - "\\b(?:SKU|PRD)-[A-Z0-9-]{3,}\\b"
+  free_text_fallback_anchor: PRODUCT_DESCRIPTION
 
 source_resolution:
   sales_invoice_collection: salesInv

@@ -6,7 +6,9 @@ export type AnchorType =
   | "PHONE"
   | "EMAIL"
   | "TRACKING_NUMBER"
-  | "SKU";
+  | "SKU"
+  | "CUSTOMER_NAME"
+  | "PRODUCT_DESCRIPTION";
 
 export type ConversationMessage = {
   readonly id: string;

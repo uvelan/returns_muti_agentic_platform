@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -13,7 +12,6 @@ from pymongo import AsyncMongoClient
 
 from return_platform.configuration.settings import Settings
 from return_platform.operations.models import ReturnSessionView, TimelineEvent
-from return_platform.operations.sql_business_state import SQLBusinessStateRepository
 
 
 class FeedbackLearningView(BaseModel):
@@ -40,12 +38,10 @@ class FeedbackLearningService:
         self,
         client: AsyncMongoClient[dict[str, object]],
         settings: Settings,
-        sql: SQLBusinessStateRepository,
     ) -> None:
         self._db = client[settings.mongo_database]
         self._records = self._db["feedback_learning_records"]
         self._graph_runs = self._db["graph_sync_runs"]
-        self._sql = sql
         self._enabled = settings.feedback_learning_enabled
 
     async def ensure_indexes(self) -> None:
@@ -162,24 +158,6 @@ class FeedbackLearningService:
             "createdAt": now,
         }
         await self._records.replace_one({"sessionId": session.id}, document, upsert=True)
-        for index, recommendation in enumerate(recommendations):
-            area = (
-                "GRAPH_SYNC"
-                if "graph" in recommendation.lower()
-                else "SUPPORT_PAYLOAD"
-                if "support" in recommendation.lower()
-                else "SMART_QUESTIONS"
-            )
-            recommendation_id = str(
-                uuid.uuid5(uuid.NAMESPACE_URL, f"{session.id}:{index}:{digest}")
-            )
-            await self._sql.record_feedback_recommendation(
-                recommendation_id=recommendation_id,
-                session_id=session.id,
-                area=area,
-                recommendation=recommendation,
-                evidence_digest=digest,
-            )
         return self._view(document)
 
     async def list(self, limit: int = 200) -> list[FeedbackLearningView]:

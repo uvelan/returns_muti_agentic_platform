@@ -36,7 +36,7 @@ export function App() {
               {routes.map((route) => (
                 <Route key={route.path} path={route.path} component={route.component} />
               ))}
-              <Route path="/" component={routes.find(r => r.path === '/overview')?.component} />
+              <Route path="/" component={routes.find(r => r.path === '/associate/returns')?.component} />
               <Route>
                 <NotFoundPage />
               </Route>

@@ -11,7 +11,6 @@ from return_platform.operations.feedback_service import (
     FeedbackLearningService,
     FeedbackLearningView,
 )
-from return_platform.operations.sql_business_state import SQLBusinessStateRepository
 from return_platform.resources import RuntimeResources
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
@@ -28,7 +27,6 @@ def _service(request: Request) -> FeedbackLearningService:
     return FeedbackLearningService(
         resources.mongo,
         resources.settings,
-        SQLBusinessStateRepository(resources.settings),
     )
 
 

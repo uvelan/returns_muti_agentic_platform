@@ -104,8 +104,8 @@ class Settings(BaseSettings):
     # remain as backward-compatible fallbacks during migration.
     google_api_keys: tuple[SecretStr, ...] = ()
     google_lightweight_models: tuple[str, ...] = (
+        "gemini-3.5-flash-lite",
         "gemini-3.1-flash-lite",
-        "gemini-2.5-flash-lite",
     )
     google_standard_models: tuple[str, ...] = (
         "gemini-3.5-flash",

@@ -65,6 +65,51 @@ export function DependenciesPage() {
   );
 }
 
+export function WorkflowWorkersPage() {
+  const query = useQuery({
+    queryKey: [...dependencyKey, "workflow-workers"],
+    queryFn: ({ signal }) => listOperationalDependencies(signal),
+    refetchInterval: 5_000,
+  });
+  const workers = (query.data ?? []).filter(
+    (dependency) => dependency.category === "WORKER" || dependency.id === "temporal",
+  );
+  const healthy = workers.filter((worker) => worker.status === "HEALTHY").length;
+  return (
+    <div>
+      <PageHeader
+        title="Workflow Workers"
+        description="Live Temporal readiness and durable worker heartbeats, refreshed every five seconds."
+      />
+      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+        <Metric label="Healthy" value={healthy} />
+        <Metric label="Needs attention" value={workers.length - healthy} />
+        <Metric label="Workers and engine" value={workers.length} />
+      </div>
+      {query.isLoading && <LoadingState message="Loading workflow worker status..." />}
+      {query.isError && <ErrorState message={query.error.message} />}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {workers.map((worker) => (
+          <Panel key={worker.id}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  {worker.category === "WORKER" ? "Worker heartbeat" : "Workflow engine"}
+                </p>
+                <h2 className="mt-1 font-semibold text-slate-900">{worker.name}</h2>
+              </div>
+              <ToneBadge value={worker.status} />
+            </div>
+            <p className="mt-3 text-sm text-slate-600">{worker.message}</p>
+            <p className="mt-3 text-xs text-slate-500">Checked {formatDate(worker.checkedAt)}</p>
+            <div className="mt-4"><JsonBlock value={worker.details} /></div>
+          </Panel>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function DependencyDetailPage() {
   const params = useParams<{ dependencyId: string }>();
   const dependencyId = params.dependencyId ?? "";

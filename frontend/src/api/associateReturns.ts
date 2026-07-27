@@ -25,6 +25,39 @@ export async function listAssociateConversations(signal?: AbortSignal): Promise<
   )).data);
 }
 
+export async function getAssociateConversation(
+  conversationId: string,
+  signal?: AbortSignal,
+): Promise<AssociateConversation> {
+  return requireData((await apiClient<AssociateConversation>(
+    `/api/v1/associate-returns/conversations/${encodeURIComponent(conversationId)}`,
+    { signal },
+  )).data);
+}
+
+export async function startAssociateChat(payload: {
+  message: string;
+}): Promise<AssociateConversation> {
+  return requireData((await apiClient<AssociateConversation>(
+    "/api/v1/associate-returns/chat",
+    jsonInit(payload),
+  )).data);
+}
+
+export async function continueAssociateChat(payload: {
+  conversationId: string;
+  message: string;
+  expectedVersion: number;
+}): Promise<AssociateConversation> {
+  return requireData((await apiClient<AssociateConversation>(
+    `/api/v1/associate-returns/conversations/${encodeURIComponent(payload.conversationId)}/chat`,
+    jsonInit({
+      message: payload.message,
+      expectedVersion: payload.expectedVersion,
+    }),
+  )).data);
+}
+
 export async function startAssociateConversation(payload: {
   anchorType: AnchorType;
   anchorValue: string;
@@ -46,6 +79,22 @@ export async function confirmAssociateDiscovery(payload: {
     jsonInit({
       candidateIndex: payload.candidateIndex,
       orderLineId: payload.orderLineId,
+      expectedVersion: payload.expectedVersion,
+    }),
+  )).data);
+}
+
+export async function continueAssociateConversation(payload: {
+  conversationId: string;
+  anchorType: AnchorType;
+  anchorValue: string;
+  expectedVersion: number;
+}): Promise<AssociateConversation> {
+  return requireData((await apiClient<AssociateConversation>(
+    `/api/v1/associate-returns/conversations/${encodeURIComponent(payload.conversationId)}/messages`,
+    jsonInit({
+      anchorType: payload.anchorType,
+      anchorValue: payload.anchorValue,
       expectedVersion: payload.expectedVersion,
     }),
   )).data);
