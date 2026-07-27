@@ -34,6 +34,10 @@ export type OrderCandidate = {
   readonly sellWarehouseId: string | null;
   readonly shipFromWarehouseId: string | null;
   readonly shippingMethod: string | null;
+  readonly billingCity: string | null;
+  readonly postalCode: string | null;
+  readonly accountType: string | null;
+  readonly retrievalScore: number | null;
   readonly confidenceMillionths: number;
   readonly evidenceSource: string;
   readonly lines: readonly OrderLineCandidate[];
@@ -60,6 +64,13 @@ export type AssociateConversation = {
   readonly returnDetails: Readonly<Record<string, unknown>> | null;
   readonly returnSessionId: string | null;
   readonly nextQuestion: string | null;
+  readonly activeDialogueState: string;
+  readonly activeRequestedSlots: readonly string[];
+  readonly candidateSetId: string | null;
+  readonly candidateSetExpiresAt: string | null;
+  readonly configurationReleaseId: string | null;
+  readonly configurationChecksum: string | null;
+  readonly configurationSource: string;
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;

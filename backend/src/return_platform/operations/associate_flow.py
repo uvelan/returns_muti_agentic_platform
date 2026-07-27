@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -11,6 +12,7 @@ from enum import StrEnum
 from typing import Any, cast
 
 from neo4j import AsyncDriver
+from neo4j.exceptions import Neo4jError, ServiceUnavailable, SessionExpired
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pymongo import AsyncMongoClient, ReturnDocument
 from pymongo.errors import DuplicateKeyError
@@ -32,12 +34,20 @@ from return_platform.configuration.return_configuration import (
     load_return_configuration,
 )
 from return_platform.configuration.settings import Settings
+from return_platform.conversation.progressive import (
+    ConversationStatePolicy,
+    DisambiguationRule,
+    ProgressiveConversationEngine,
+)
 from return_platform.operations.models import ReturnCreateRequest, ReturnSessionView
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_support.service import (
     CreateSupportWorkItemRequest,
     ReturnSupportService,
 )
+from return_platform.security.contact_evidence import contact_lookup_digest
+
+logger = logging.getLogger("return_platform.operations.associate_flow")
 
 
 class AssociateModel(BaseModel):
@@ -82,6 +92,10 @@ class OrderCandidate(AssociateModel):
     sellWarehouseId: str | None = None
     shipFromWarehouseId: str | None = None
     shippingMethod: str | None = None
+    billingCity: str | None = None
+    postalCode: str | None = None
+    accountType: str | None = None
+    retrievalScore: float | None = Field(default=None, ge=0.0)
     confidenceMillionths: int = Field(ge=0, le=1_000_000)
     evidenceSource: str
     lines: list[OrderLineCandidate]
@@ -114,6 +128,13 @@ class AssociateConversationView(AssociateModel):
     returnSessionId: str | None = None
     discoverySnapshotId: str | None = None
     confirmationSnapshotId: str | None = None
+    activeDialogueState: str = "ENTITY_IDENTIFICATION"
+    activeRequestedSlots: list[str] = Field(default_factory=list)
+    candidateSetId: str | None = None
+    candidateSetExpiresAt: datetime | None = None
+    configurationReleaseId: str | None = None
+    configurationChecksum: str | None = None
+    configurationSource: str = "VERSION_CONTROLLED_BASELINE"
     lastMessageSequence: int = Field(default=0, ge=0)
     nextQuestion: str | None = None
     version: int = Field(ge=0)
@@ -155,6 +176,7 @@ class ConfirmDiscoveryRequest(AssociateModel):
     candidateIndex: int = Field(ge=0, le=99)
     orderLineId: str = Field(min_length=1, max_length=128)
     expectedVersion: int = Field(ge=0)
+    candidateSetId: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class ReturnDetailsRequest(AssociateModel):
@@ -226,11 +248,15 @@ class AssociateConversationService:
         settings: Settings,
         repository: OperationalRepository,
         return_configuration: ReturnPlatformConfiguration | None = None,
+        configuration_release_id: str | None = None,
+        configuration_checksum: str | None = None,
+        configuration_source: str = "VERSION_CONTROLLED_BASELINE",
     ) -> None:
         self._db = platform_client[settings.mongo_database]
         self._source = source_client[settings.source_mongo_database]
         self._graph = graph
         self._graph_database = settings.neo4j_database
+        self._settings = settings
         self._conversations = self._db["associate_conversations"]
         self._messages = self._db["associate_messages"]
         self._discovery_snapshots = self._db["discovery_snapshots"]
@@ -243,6 +269,30 @@ class AssociateConversationService:
             or load_return_configuration(settings.return_configuration_path).configuration
         )
         self._source_config = self._return_configuration.source_resolution
+        self._configuration_release_id = configuration_release_id
+        self._configuration_checksum = configuration_checksum or _digest(
+            self._return_configuration.model_dump(mode="json")
+        )
+        self._configuration_source = configuration_source
+        progressive = self._return_configuration.discovery.progressive
+        self._progressive_conversation = ProgressiveConversationEngine[OrderCandidate](
+            rules=tuple(
+                DisambiguationRule(
+                    slot=item.slot,
+                    candidate_field=item.candidate_field,
+                    question=item.question,
+                    priority=item.priority,
+                )
+                for item in progressive.disambiguation_attributes
+            ),
+            candidate_ttl_seconds=progressive.candidate_ttl_seconds,
+            states=ConversationStatePolicy(
+                no_candidates=progressive.dialogue_states.no_candidates,
+                single_candidate=progressive.dialogue_states.single_candidate,
+                slot_disambiguation=progressive.dialogue_states.slot_disambiguation,
+                generic_disambiguation=progressive.dialogue_states.generic_disambiguation,
+            ),
+        )
         self._order_discovery_agent = OrderDiscoveryAgent(self._return_configuration)
         self._return_workflow_agent = ReturnWorkflowAgent(self._return_configuration)
         self._return_support = ReturnSupportService(
@@ -310,12 +360,80 @@ class AssociateConversationService:
             anchorValue=message,
         )
 
+    def _is_strong_anchor(self, anchor_type: AnchorType) -> bool:
+        return anchor_type.value in set(self._return_configuration.discovery.strong_anchors)
+
+    def _fuzzy_query(self, value: str) -> str:
+        """Build a bounded Lucene fuzzy query without exposing query syntax injection."""
+
+        config = self._return_configuration.discovery.progressive
+        tokens = re.findall(r"[A-Za-z0-9]+", value)[:8]
+        fuzzy_tokens: list[str] = []
+        for token in tokens:
+            if len(token) >= config.two_edit_min_token_length:
+                edits = min(config.max_edit_distance, 2)
+            elif len(token) >= config.one_edit_min_token_length:
+                edits = min(config.max_edit_distance, 1)
+            else:
+                edits = 0
+            fuzzy_tokens.append(f"{token}~{edits}" if edits else token)
+        return " AND ".join(fuzzy_tokens)
+
+    @staticmethod
+    def _candidate_value(candidate: OrderCandidate, field: str) -> str | None:
+        value = getattr(candidate, field, None)
+        if value is None:
+            return None
+        normalized = " ".join(str(value).split()).strip()
+        return normalized or None
+
+    def _select_disambiguation_attribute(
+        self,
+        candidates: list[OrderCandidate],
+        *,
+        excluded_slots: set[str] | None = None,
+    ) -> tuple[str, str] | None:
+        selected = self._progressive_conversation.select_rule(
+            candidates,
+            value_for=self._candidate_value,
+            excluded_slots=excluded_slots,
+        )
+        return (selected.slot, selected.question) if selected is not None else None
+
+    def _dialogue_projection(
+        self,
+        candidates: list[OrderCandidate],
+    ) -> tuple[str, list[str], str | None, datetime | None, str | None]:
+        """Return state, requested slots, candidate-set identity, expiry, and question."""
+
+        decision = self._progressive_conversation.project(
+            candidates,
+            value_for=self._candidate_value,
+            default_ambiguity_question=(
+                self._return_configuration.discovery.conversation.default_discovery_question
+            ),
+        )
+        return (
+            decision.state,
+            list(decision.requested_slots),
+            decision.candidate_set_id,
+            decision.candidate_set_expires_at,
+            decision.question,
+        )
+
+    @staticmethod
+    def _slot_response_matches(candidate_value: str | None, response: str) -> bool:
+        return ProgressiveConversationEngine.response_matches(candidate_value, response)
+
     async def _generate_smart_question(
         self,
         conversation: AssociateConversationView,
     ) -> str:
         if conversation.status == self._return_configuration.discovery.conversation.greeting_status:
             return self._return_configuration.discovery.conversation.greeting_next_question
+
+        configured_question: str | None = None
+        task_id = "RETURN_SMART_QUESTION_V1"
         strong = list(self._return_configuration.discovery.strong_anchors)
         known = [
             f"recognized evidence category: {conversation.anchorType.value}",
@@ -323,22 +441,53 @@ class AssociateConversationService:
             f"discovery status: {conversation.status}",
             f"confirmation lock present: {conversation.discoveryLock is not None}",
         ]
-        missing = (
-            [
-                item.field.replace("_", " ").lower()
-                for item in sorted(
-                    self._return_configuration.smart_questions.fields,
-                    key=lambda item: -item.priority,
+
+        if conversation.activeRequestedSlots:
+            requested = conversation.activeRequestedSlots[0]
+            attributes = self._return_configuration.discovery.progressive.disambiguation_attributes
+            attribute = next((item for item in attributes if item.slot == requested), None)
+            if attribute is not None:
+                configured_question = attribute.question
+                approved_values = sorted(
+                    {
+                        value
+                        for candidate in conversation.candidates
+                        if (
+                            value := self._candidate_value(
+                                candidate,
+                                attribute.candidate_field,
+                            )
+                        )
+                    }
+                )[:20]
+                known.extend(
+                    (
+                        f"deterministically selected attribute: {requested.replace('_', ' ')}",
+                        "approved candidate values: "
+                        + (", ".join(approved_values) if approved_values else "not available"),
+                        f"deterministic fallback wording: {configured_question}",
+                    )
                 )
-                if item.customer_answerable
-            ]
-            if conversation.discoveryLock is not None
-            else [
-                value.replace("_", " ").lower()
-                for value in strong
-                if value != conversation.anchorType.value
-            ]
-        )
+            missing = [requested.replace("_", " ").lower()]
+            task_id = "RETURN_PROGRESSIVE_DISAMBIGUATION_V1"
+        else:
+            missing = (
+                [
+                    item.field.replace("_", " ").lower()
+                    for item in sorted(
+                        self._return_configuration.smart_questions.fields,
+                        key=lambda item: -item.priority,
+                    )
+                    if item.customer_answerable
+                ]
+                if conversation.discoveryLock is not None
+                else [
+                    value.replace("_", " ").lower()
+                    for value in strong
+                    if value != conversation.anchorType.value
+                ]
+            )
+
         try:
             evaluation = await self._ai.evaluate(
                 session_id=conversation.id,
@@ -347,13 +496,23 @@ class AssociateConversationService:
                     "knownFacts": known,
                     "returnPath": "associate conversational discovery",
                 },
-                task_id="RETURN_SMART_QUESTION_V1",
+                task_id=task_id,
             )
             question = (evaluation.trace.explanation or "").strip()
             if question and question.endswith("?") and len(question) <= 500:
                 return question
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "smart_question_ai_unavailable_using_deterministic_fallback",
+                extra={
+                    "conversation_id": conversation.id,
+                    "error_type": type(exc).__name__,
+                    "task_id": task_id,
+                },
+            )
+
+        if configured_question is not None:
+            return configured_question
         subject = (
             "the matching order and item"
             if conversation.candidates
@@ -546,7 +705,60 @@ class AssociateConversationService:
     async def _graph_candidates(
         self, anchor_type: AnchorType, anchor_value: str
     ) -> list[OrderCandidate]:
-        normalized_hash = hashlib.sha256(anchor_value.strip().lower().encode()).hexdigest()
+        normalized_hash = (
+            contact_lookup_digest(
+                anchor_value,
+                "PHONE" if anchor_type is AnchorType.PHONE else "EMAIL",
+                self._settings.contact_lookup_hmac_key.get_secret_value(),
+            )
+            if anchor_type in {AnchorType.PHONE, AnchorType.EMAIL}
+            else ""
+        )
+        progressive = self._return_configuration.discovery.progressive
+        if progressive.enabled and anchor_type is AnchorType.CUSTOMER_NAME:
+            fuzzy_query = self._fuzzy_query(anchor_value)
+            if not fuzzy_query:
+                return []
+            records, _, _ = await self._graph.execute_query(
+                """
+                CALL db.index.fulltext.queryNodes($indexName, $query, {limit: $limit})
+                YIELD node AS c, score
+                MATCH (c)-[:PLACED_ORDER]->(o:SalesOrder)
+                OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine)
+                OPTIONAL MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product)
+                RETURN c,o,score,collect({line:l,product:p}) AS lines
+                ORDER BY score DESC
+                LIMIT $limit
+                """,
+                indexName=progressive.customer_fulltext_index,
+                query=fuzzy_query,
+                limit=progressive.candidate_limit,
+                database_=self._graph_database,
+            )
+        elif progressive.enabled and anchor_type is AnchorType.PRODUCT_DESCRIPTION:
+            fuzzy_query = self._fuzzy_query(anchor_value)
+            if not fuzzy_query:
+                return []
+            records, _, _ = await self._graph.execute_query(
+                """
+                CALL db.index.fulltext.queryNodes($indexName, $query, {limit: $limit})
+                YIELD node AS p, score
+                MATCH (o:SalesOrder)-[:HAS_ORDER_LINE]->(l:OrderLine)
+                MATCH (l)-[:REFERENCES_PRODUCT]->(p)
+                MATCH (c:Customer)-[:PLACED_ORDER]->(o)
+                OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(allLine:OrderLine)
+                OPTIONAL MATCH (allLine)-[:REFERENCES_PRODUCT]->(allProduct:Product)
+                RETURN c,o,score,collect({line:allLine,product:allProduct}) AS lines
+                ORDER BY score DESC
+                LIMIT $limit
+                """,
+                indexName=progressive.product_fulltext_index,
+                query=fuzzy_query,
+                limit=progressive.candidate_limit,
+                database_=self._graph_database,
+            )
+        else:
+            records = []
         queries = {
             AnchorType.ORDER_NUMBER: (
                 "MATCH (c:Customer)-[:PLACED_ORDER]->(o:SalesOrder) "
@@ -601,17 +813,22 @@ class AssociateConversationService:
                 anchor_value,
             ),
         }
-        query_definition = queries.get(anchor_type)
-        if query_definition is None:
-            return []
-        query, query_value = query_definition
-        records, _, _ = await self._graph.execute_query(
-            query, value=query_value, database_=self._graph_database
-        )
+        if not records:
+            query_definition = queries.get(anchor_type)
+            if query_definition is None:
+                return []
+            query, query_value = query_definition
+            records, _, _ = await self._graph.execute_query(
+                query, value=query_value, database_=self._graph_database
+            )
         candidates: list[OrderCandidate] = []
         for record in records:
             customer = dict(record["c"])
             order = dict(record["o"])
+            raw_retrieval_score = record.get("score")
+            retrieval_score = (
+                float(raw_retrieval_score) if raw_retrieval_score is not None else None
+            )
             lines: list[OrderLineCandidate] = []
             for entry in record["lines"]:
                 line = dict(entry["line"]) if entry.get("line") is not None else {}
@@ -650,7 +867,24 @@ class AssociateConversationService:
                         sellWarehouseId=cast(str | None, order.get("sell_warehouse_id")),
                         shipFromWarehouseId=cast(str | None, order.get("ship_from_warehouse_id")),
                         shippingMethod=cast(str | None, order.get("shipping_method")),
-                        confidenceMillionths=980_000,
+                        billingCity=cast(
+                            str | None,
+                            customer.get("billing_city")
+                            or customer.get("city")
+                            or customer.get("normalized_city"),
+                        ),
+                        postalCode=cast(
+                            str | None,
+                            customer.get("postal_code") or customer.get("billing_postal_code"),
+                        ),
+                        accountType=cast(str | None, customer.get("account_type")),
+                        retrievalScore=retrieval_score,
+                        confidenceMillionths=(
+                            self._return_configuration.discovery.anchor_weights.get(
+                                anchor_type.value,
+                                0,
+                            )
+                        ),
                         evidenceSource="NEO4J_GRAPH",
                         lines=lines,
                     )
@@ -708,18 +942,20 @@ class AssociateConversationService:
                 ]
             }
         elif anchor_type is AnchorType.CUSTOMER_NAME:
+            escaped = re.escape(anchor_value.strip())
             query = {
                 "$or": [
-                    {path: {"$regex": anchor_value, "$options": "i"}}
+                    {path: {"$regex": escaped, "$options": "i"}}
                     for path in config.customer_name_paths
                 ]
             }
         else:
+            escaped = re.escape(anchor_value.strip())
             query = {
                 "$or": [
                     {
                         f"salesLines.lineData.{path}": {
-                            "$regex": anchor_value,
+                            "$regex": escaped,
                             "$options": "i",
                         }
                     }
@@ -787,6 +1023,19 @@ class AssociateConversationService:
                 str | None, _nested(document, "salesHdrEventData.shipFromWhseId")
             ),
             shippingMethod=cast(str | None, _nested(document, "salesHdr.shipping.shipViaCode")),
+            billingCity=cast(
+                str | None,
+                _first_nested(document, config.customer_city_paths),
+            ),
+            postalCode=cast(
+                str | None,
+                _first_nested(document, config.customer_postal_code_paths),
+            ),
+            accountType=cast(
+                str | None,
+                _first_nested(document, config.customer_account_type_paths),
+            ),
+            retrievalScore=None,
             confidenceMillionths=900_000,
             evidenceSource="SOURCE_MONGODB_TARGETED_FALLBACK",
             lines=lines,
@@ -801,6 +1050,8 @@ class AssociateConversationService:
             UNWIND $rows AS row
             MERGE (c:Customer {customer_key: row.customerReference})
             SET c.customer_id=row.customerReference, c.customer_name=row.customerName,
+                c.billing_city=row.billingCity, c.postal_code=row.postalCode,
+                c.account_type=row.accountType,
                 c.graph_synced_at=$syncedAt, c.sync_run_id=$syncRunId
             MERGE (o:SalesOrder {sales_order_number: row.orderReference})
             SET o.order_status=row.orderStatus, o.sell_warehouse_id=row.sellWarehouseId,
@@ -830,6 +1081,60 @@ class AssociateConversationService:
             syncRunId=f"TARGETED:{uuid.uuid4()}",
             database_=self._graph_database,
         )
+
+    async def _discover_candidates(
+        self,
+        anchor_type: AnchorType,
+        anchor_value: str,
+    ) -> list[OrderCandidate]:
+        """Resolve candidates through graph-first routing with an approved source fallback."""
+
+        graph_available = True
+        try:
+            candidates = await self._graph_candidates(anchor_type, anchor_value)
+        except (Neo4jError, ServiceUnavailable, SessionExpired) as exc:
+            graph_available = False
+            candidates = []
+            logger.warning(
+                "order_discovery_graph_unavailable_using_source_fallback",
+                extra={
+                    "anchor_type": anchor_type.value,
+                    "error_type": type(exc).__name__,
+                },
+            )
+
+        if candidates:
+            return candidates
+
+        progressive = self._return_configuration.discovery.progressive
+        source_fallback_allowed = self._is_strong_anchor(anchor_type) or (
+            progressive.weak_anchor_source_fallback_enabled
+            and anchor_type.value in progressive.fuzzy_search_anchors
+        )
+        if not source_fallback_allowed:
+            return []
+
+        documents = await self._source_documents(anchor_type, anchor_value)
+        candidates = [
+            candidate for document in documents if (candidate := self._source_candidate(document))
+        ]
+        should_repair_graph = graph_available and (
+            self._is_strong_anchor(anchor_type)
+            or progressive.weak_anchor_targeted_graph_upsert_enabled
+        )
+        if candidates and should_repair_graph:
+            try:
+                await self._targeted_graph_upsert(candidates)
+            except (Neo4jError, ServiceUnavailable, SessionExpired) as exc:
+                logger.warning(
+                    "order_discovery_graph_repair_deferred",
+                    extra={
+                        "anchor_type": anchor_type.value,
+                        "candidate_count": len(candidates),
+                        "error_type": type(exc).__name__,
+                    },
+                )
+        return candidates
 
     def _assess_candidates(
         self,
@@ -894,19 +1199,27 @@ class AssociateConversationService:
             status = conv_config.greeting_status
             next_question = conv_config.greeting_next_question
             masked_value = conv_config.greeting_title
+            dialogue_state = (
+                self._return_configuration.discovery.progressive.dialogue_states.no_candidates
+            )
+            requested_slots: list[str] = []
+            candidate_set_id = None
+            candidate_set_expires_at = None
         else:
-            candidates = await self._graph_candidates(payload.anchorType, payload.anchorValue)
-            if not candidates:
-                documents = await self._source_documents(payload.anchorType, payload.anchorValue)
-                candidates = [
-                    candidate
-                    for document in documents
-                    if (candidate := self._source_candidate(document))
-                ]
-                await self._targeted_graph_upsert(candidates)
+            candidates = await self._discover_candidates(
+                payload.anchorType,
+                payload.anchorValue,
+            )
             candidates, discovery_assessment, order_source = self._assess_candidates(
                 payload, candidates
             )
+            (
+                dialogue_state,
+                requested_slots,
+                candidate_set_id,
+                candidate_set_expires_at,
+                disambiguation_question,
+            ) = self._dialogue_projection(candidates)
             if candidates:
                 assistant_text = conv_config.initial_match_template.format(
                     count=len(candidates),
@@ -915,9 +1228,12 @@ class AssociateConversationService:
                 )
                 status = "DISCOVERY_READY"
                 next_question = (
-                    discovery_assessment.get("nextQuestion")
+                    disambiguation_question
+                    or discovery_assessment.get("nextQuestion")
                     or conv_config.default_discovery_question
                 )
+                if requested_slots:
+                    status = "DISCOVERY_CLARIFICATION_REQUIRED"
             else:
                 assistant_text = conv_config.initial_no_match_template.format(
                     anchor_type=self._format_anchor_type(payload.anchorType),
@@ -952,6 +1268,13 @@ class AssociateConversationService:
             "returnDetails": None,
             "returnSessionId": None,
             "nextQuestion": next_question,
+            "activeDialogueState": dialogue_state,
+            "activeRequestedSlots": requested_slots,
+            "candidateSetId": candidate_set_id,
+            "candidateSetExpiresAt": candidate_set_expires_at,
+            "configurationReleaseId": self._configuration_release_id,
+            "configurationChecksum": self._configuration_checksum,
+            "configurationSource": self._configuration_source,
             "version": 0,
             "createdBy": actor_id,
             "createdAt": now,
@@ -1033,23 +1356,31 @@ class AssociateConversationService:
             assistant_text = conv_config.greeting_response
             status = conv_config.greeting_status
             next_question = conv_config.greeting_next_question
+            dialogue_state = (
+                self._return_configuration.discovery.progressive.dialogue_states.no_candidates
+            )
+            requested_slots: list[str] = []
+            candidate_set_id = None
+            candidate_set_expires_at = None
         else:
             lookup = StartAssociateConversationRequest(
                 anchorType=payload.anchorType,
                 anchorValue=payload.anchorValue,
             )
-            candidates = await self._graph_candidates(lookup.anchorType, lookup.anchorValue)
-            if not candidates:
-                documents = await self._source_documents(lookup.anchorType, lookup.anchorValue)
-                candidates = [
-                    candidate
-                    for document in documents
-                    if (candidate := self._source_candidate(document))
-                ]
-                await self._targeted_graph_upsert(candidates)
+            candidates = await self._discover_candidates(
+                lookup.anchorType,
+                lookup.anchorValue,
+            )
             candidates, discovery_assessment, order_source = self._assess_candidates(
                 lookup, candidates
             )
+            (
+                dialogue_state,
+                requested_slots,
+                candidate_set_id,
+                candidate_set_expires_at,
+                disambiguation_question,
+            ) = self._dialogue_projection(candidates)
             if candidates:
                 assistant_text = conv_config.continue_match_template.format(
                     count=len(candidates),
@@ -1058,9 +1389,12 @@ class AssociateConversationService:
                 )
                 status = "DISCOVERY_READY"
                 next_question = (
-                    discovery_assessment.get("nextQuestion")
+                    disambiguation_question
+                    or discovery_assessment.get("nextQuestion")
                     or conv_config.default_discovery_question
                 )
+                if requested_slots:
+                    status = "DISCOVERY_CLARIFICATION_REQUIRED"
             else:
                 assistant_text = conv_config.continue_no_match_template.format(
                     anchor_type=self._format_anchor_type(payload.anchorType),
@@ -1090,6 +1424,10 @@ class AssociateConversationService:
                     "discoveryAssessment": discovery_assessment,
                     "candidates": [candidate.model_dump(mode="json") for candidate in candidates],
                     "nextQuestion": next_question,
+                    "activeDialogueState": dialogue_state,
+                    "activeRequestedSlots": requested_slots,
+                    "candidateSetId": candidate_set_id,
+                    "candidateSetExpiresAt": candidate_set_expires_at,
                     "updatedAt": _now(),
                 },
                 "$push": {"messages": {"$each": messages}},
@@ -1123,6 +1461,128 @@ class AssociateConversationService:
         )
         return self._view(cast(dict[str, Any], updated))
 
+    async def _continue_requested_slot(
+        self,
+        conversation: AssociateConversationView,
+        payload: AssociateChatTurnRequest,
+        *,
+        actor_id: str,
+    ) -> AssociateConversationView:
+        """Bind one associate answer to the currently requested deterministic slot."""
+
+        if payload.expectedVersion != conversation.version:
+            raise RuntimeError("Conversation version conflict")
+        if not conversation.activeRequestedSlots:
+            raise ValueError("Conversation is not requesting a disambiguation slot")
+        if (
+            conversation.candidateSetExpiresAt is not None
+            and conversation.candidateSetExpiresAt <= _now()
+        ):
+            raise RuntimeError("Candidate set expired; restart order discovery")
+
+        slot = conversation.activeRequestedSlots[0]
+        attributes = self._return_configuration.discovery.progressive.disambiguation_attributes
+        attribute = next((item for item in attributes if item.slot == slot), None)
+        if attribute is None:
+            raise RuntimeError(f"Unsupported requested slot: {slot}")
+
+        matched = [
+            candidate
+            for candidate in conversation.candidates
+            if self._slot_response_matches(
+                self._candidate_value(candidate, attribute.candidate_field),
+                payload.message,
+            )
+        ]
+
+        dialogue_states = self._return_configuration.discovery.progressive.dialogue_states
+        excluded = set(conversation.activeRequestedSlots)
+        next_attribute = self._select_disambiguation_attribute(
+            matched,
+            excluded_slots=excluded,
+        )
+        if not matched:
+            assistant_text = (
+                f"I could not match that {slot.replace('_', ' ')} to the current candidates. "
+                f"{attribute.question}"
+            )
+            next_state = conversation.activeDialogueState
+            next_slots = conversation.activeRequestedSlots
+            next_question = attribute.question
+            next_candidates = conversation.candidates
+        elif len(matched) > 1 and next_attribute is not None:
+            next_slot, next_question = next_attribute
+            assistant_text = f"I narrowed the result to {len(matched)} candidates. {next_question}"
+            next_state = dialogue_states.slot_disambiguation
+            next_slots = [next_slot]
+            next_candidates = matched
+        elif len(matched) > 1:
+            next_question = (
+                self._return_configuration.discovery.conversation.default_discovery_question
+            )
+            assistant_text = f"I narrowed the result to {len(matched)} orders. {next_question}"
+            next_state = dialogue_states.generic_disambiguation
+            next_slots = []
+            next_candidates = matched
+        else:
+            next_question = (
+                self._return_configuration.discovery.conversation.default_discovery_question
+            )
+            assistant_text = f"I found the matching customer and order. {next_question}"
+            next_state = dialogue_states.single_candidate
+            next_slots = []
+            next_candidates = matched
+
+        messages = [
+            self._message("ASSOCIATE", payload.message),
+            self._message("AI_ASSISTANT", assistant_text),
+        ]
+        updated = await self._conversations.find_one_and_update(
+            {"_id": conversation.id, "version": payload.expectedVersion},
+            {
+                "$set": {
+                    "status": (
+                        "DISCOVERY_CLARIFICATION_REQUIRED" if next_slots else "DISCOVERY_READY"
+                    ),
+                    "candidates": [item.model_dump(mode="json") for item in next_candidates],
+                    "activeDialogueState": next_state,
+                    "activeRequestedSlots": next_slots,
+                    "nextQuestion": next_question,
+                    "updatedAt": _now(),
+                },
+                "$push": {"messages": {"$each": messages}},
+                "$inc": {"version": 1, "lastMessageSequence": len(messages)},
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        if updated is None:
+            raise RuntimeError("Conversation version conflict")
+
+        ending_sequence = int(str(updated.get("lastMessageSequence", 0)))
+        await self._persist_messages(
+            conversation.id,
+            starting_sequence=ending_sequence - len(messages) + 1,
+            messages=messages,
+        )
+        snapshot_id = await self._persist_discovery_snapshot(
+            conversation_id=conversation.id,
+            snapshot_type="DISCOVERY_SLOT_BOUND",
+            payload={
+                "slot": slot,
+                "candidateSetId": conversation.candidateSetId,
+                "candidateCount": len(next_candidates),
+                "nextState": next_state,
+                "nextRequestedSlots": next_slots,
+            },
+            actor_id=actor_id,
+        )
+        await self._conversations.update_one(
+            {"_id": conversation.id},
+            {"$set": {"discoverySnapshotId": snapshot_id}},
+        )
+        updated["discoverySnapshotId"] = snapshot_id
+        return self._view(cast(dict[str, Any], updated))
+
     async def continue_chat(
         self,
         conversation_id: str,
@@ -1132,6 +1592,15 @@ class AssociateConversationService:
     ) -> AssociateConversationView:
         if payload.expectedVersion is None:
             raise ValueError("expectedVersion is required when continuing a conversation")
+        existing = await self.get(conversation_id)
+        if existing is None:
+            raise KeyError(conversation_id)
+        if existing.activeRequestedSlots:
+            return await self._continue_requested_slot(
+                existing,
+                payload,
+                actor_id=actor_id,
+            )
         lookup = self._extract_anchor(payload.message)
         conversation = await self.continue_discovery(
             conversation_id,
@@ -1161,6 +1630,16 @@ class AssociateConversationService:
             raise RuntimeError("Conversation version conflict")
         if conversation.discoveryLock is not None:
             return conversation
+        if (
+            conversation.candidateSetExpiresAt is not None
+            and conversation.candidateSetExpiresAt <= _now()
+        ):
+            raise RuntimeError("Candidate set expired; restart order discovery")
+        if (
+            conversation.candidateSetId is not None
+            and payload.candidateSetId != conversation.candidateSetId
+        ):
+            raise RuntimeError("Candidate set version conflict")
         if payload.candidateIndex >= len(conversation.candidates):
             raise ValueError("candidateIndex is out of range")
         candidate = conversation.candidates[payload.candidateIndex]
@@ -1191,10 +1670,12 @@ class AssociateConversationService:
             confirmedBy=actor_id,
             confirmedAt=_now(),
         )
+        inserted_lock_id: str | None = None
         try:
+            inserted_lock_id = str(uuid.uuid4())
             await self._locks.insert_one(
                 {
-                    "_id": str(uuid.uuid4()),
+                    "_id": inserted_lock_id,
                     **lock.model_dump(mode="json"),
                     "conversationId": conversation_id,
                     "lockKey": lock_key,
@@ -1236,6 +1717,8 @@ class AssociateConversationService:
                         else conversation.orderSource.value
                     ),
                     "discoveryLock": lock.model_dump(mode="json"),
+                    "activeDialogueState": "CONFIRMED",
+                    "activeRequestedSlots": [],
                     "nextQuestion": conv_config.default_details_question,
                     "updatedAt": _now(),
                 },
@@ -1248,6 +1731,22 @@ class AssociateConversationService:
             return_document=ReturnDocument.AFTER,
         )
         if updated is None:
+            if inserted_lock_id is not None:
+                await self._locks.update_one(
+                    {
+                        "_id": inserted_lock_id,
+                        "conversationId": conversation_id,
+                        "returnSessionId": None,
+                        "status": "ACTIVE",
+                    },
+                    {
+                        "$set": {
+                            "status": "CANCELLED",
+                            "cancelledAt": _now(),
+                            "cancellationReason": "CONVERSATION_VERSION_CONFLICT",
+                        }
+                    },
+                )
             raise RuntimeError("Conversation version conflict")
         ending_sequence = int(str(updated.get("lastMessageSequence", 0)))
         await self._persist_messages(

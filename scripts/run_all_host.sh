@@ -4,6 +4,8 @@ if [[ "$(uname -s)" == "Linux" ]]; then
   source "$(dirname "${BASH_SOURCE[0]}")/linux/enable_python_ca_compat.sh"
 fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+"$ROOT/scripts/prepare_runtime_configuration.sh"
+export PLATFORM_SKIP_RUNTIME_PREPARE=true
 PIDS=()
 cleanup() {
   local code=$?

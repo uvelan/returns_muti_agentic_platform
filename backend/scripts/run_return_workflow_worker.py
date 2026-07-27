@@ -7,7 +7,8 @@ import uuid
 from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
-from return_platform.configuration.settings import Settings
+from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
+from return_platform.configuration.runtime_loader import resolve_process_configuration
 from return_platform.operations.repository import OperationalRepository
 from return_platform.workflows.persistence import ReturnSessionRepository
 from return_platform.workflows.worker import create_return_workflow_worker
@@ -20,11 +21,17 @@ _PERSISTENCE_TIMEOUT_SECONDS = 5.0
 
 
 async def _run() -> None:
-    settings = Settings()  # type: ignore[call-arg]
+    runtime = await resolve_process_configuration()
+    settings = runtime.settings
     mongo: AsyncMongoClient[dict[str, object]] = AsyncMongoClient(
         settings.mongo_dsn.get_secret_value()
     )
     try:
+        await verify_runtime_validation_receipts(
+            mongo,
+            settings.mongo_database,
+            runtime.return_configuration.configuration,
+        )
         temporal = await Client.connect(settings.temporal_target)
         repository = ReturnSessionRepository.from_client(
             mongo,

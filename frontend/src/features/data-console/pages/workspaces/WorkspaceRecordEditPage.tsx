@@ -51,7 +51,7 @@ export function WorkspaceRecordEditPage() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <PageHeader title={`Edit Record: ${recordId}`} description="Modify sandbox record data. Changes are local to this workspace." />
+      <PageHeader title={`Edit Record: ${recordId}`} description="Modify isolated workspace record data. Changes remain local to this workspace." />
 
       {data.validationStatus !== "VALID" && issues && issues.length > 0 && (
         <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-6 rounded-r shadow-sm">

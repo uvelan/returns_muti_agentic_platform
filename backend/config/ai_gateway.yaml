@@ -77,6 +77,16 @@ tasks:
     allowTierEscalation: false
     allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
     allowedInputKeys: [missingFields, knownFacts, returnPath]
+  RETURN_PROGRESSIVE_DISAMBIGUATION_V1:
+    tier: LIGHTWEIGHT
+    promptVersion: return-progressive-disambiguation-v1
+    fallbackStrategy: TEMPLATE
+    fallbackTemplate: PROGRESSIVE_DISAMBIGUATION_V1
+    maximumOutputTokens: 192
+    maximumInputTokens: 3000
+    allowTierEscalation: false
+    allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
+    allowedInputKeys: [missingFields, knownFacts, returnPath]
   RETURN_STATUS_SUMMARY_V1:
     tier: LIGHTWEIGHT
     promptVersion: return-status-summary-v1

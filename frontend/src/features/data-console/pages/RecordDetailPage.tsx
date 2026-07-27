@@ -75,7 +75,7 @@ export function RecordDetailPage() {
         <div className="border-t border-gray-200 p-6 text-sm text-gray-700 space-y-2">
           <p>The Data Browser performs no mutation operations.</p>
           <p>Values matching secret or personal-data field patterns are redacted by the API.</p>
-          <p>Use AI Studio for governed proposals and sandbox-safe data generation.</p>
+          <p>Use AI Studio for governed proposals and isolated-workspace data generation.</p>
         </div>
       </div>
     </div>

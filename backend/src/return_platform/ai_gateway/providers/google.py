@@ -20,7 +20,7 @@ class GeminiProvider(HTTPProvider):
         super().__init__(timeout_seconds=settings.ai_timeout_seconds)
         self._api_key = secret_value(settings.google_api_key)
         self._base_url = settings.google_base_url
-        self.model = settings.google_model
+        self.model = settings.google_model or ""
 
     @property
     def configured(self) -> bool:

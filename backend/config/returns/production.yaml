@@ -120,6 +120,42 @@ discovery:
     default_no_match_question: "What additional order evidence can you provide?"
     default_continue_no_match_question: "What other order evidence can you provide?"
     default_details_question: "Why is the item being returned?"
+  progressive:
+    enabled: true
+    customer_fulltext_index: customer_name_search_v2
+    product_fulltext_index: product_description_search_v2
+    candidate_limit: 10
+    max_edit_distance: 2
+    one_edit_min_token_length: 4
+    two_edit_min_token_length: 8
+    candidate_ttl_seconds: 900
+    dialogue_states:
+      no_candidates: ENTITY_IDENTIFICATION
+      single_candidate: LINE_SELECTION
+      slot_disambiguation: CUSTOMER_DISAMBIGUATION
+      generic_disambiguation: ORDER_DISAMBIGUATION
+    weak_anchor_source_fallback_enabled: true
+    weak_anchor_targeted_graph_upsert_enabled: false
+    fuzzy_search_anchors:
+      - CUSTOMER_NAME
+      - PRODUCT_DESCRIPTION
+    disambiguation_attributes:
+      - slot: billing_city
+        candidate_field: billingCity
+        question: "Which city is the customer account located in?"
+        priority: 100
+      - slot: postal_code
+        candidate_field: postalCode
+        question: "What postal code is associated with the customer account?"
+        priority: 90
+      - slot: account_type
+        candidate_field: accountType
+        question: "Is this a showroom, branch, or direct customer account?"
+        priority: 80
+      - slot: order_number
+        candidate_field: orderReference
+        question: "Which order number should be used?"
+        priority: 70
 
 source_resolution:
   sales_invoice_collection: salesInv
@@ -143,6 +179,18 @@ source_resolution:
     - salesHdrEventData.customerId
   customer_name_paths:
     - salesHdr.salesHdrData.custName
+    - salesHdrEventData.customerName
+  customer_city_paths:
+    - salesHdr.salesHdrData.billToCity
+    - salesHdrEventData.billingCity
+    - salesHdrEventData.city
+  customer_postal_code_paths:
+    - salesHdr.salesHdrData.billToZip
+    - salesHdrEventData.billingPostalCode
+    - salesHdrEventData.postalCode
+  customer_account_type_paths:
+    - salesHdr.salesHdrData.accountType
+    - salesHdrEventData.accountType
     - salesHdrEventData.customerName
   line_id_paths:
     - orderLineId
@@ -329,3 +377,88 @@ extensions:
   image_processing: false
   ncr_workflow: false
   vendor_recovery_workflow: true
+
+feature_flags:
+  reusable_conversation_engine: true
+  order_discovery_copilot: true
+  copilot_operations_console: false
+  graph_first_runtime_configuration: true
+
+runtime_integrations:
+  ai_providers: []
+  data_sources:
+    - source_key: platform-mongodb
+      source_type: MONGODB
+      enabled: true
+      access_mode: READ_WRITE
+      uri: mongodb://runtime-resolved.invalid/return_platform
+      database: return_platform
+      bootstrap_managed: true
+      credential:
+        profile_key: platform-mongodb-runtime
+        vault_reference: vault://secret/production/data-sources/mongodb#dsn
+        bootstrap_managed: true
+      required_datasets:
+        - associate_conversations
+        - discovery_locks
+    - source_key: source-mongodb
+      source_type: MONGODB
+      enabled: true
+      access_mode: READ_ONLY
+      uri: mongodb://runtime-resolved.invalid/return_source
+      database: return_source
+      bootstrap_managed: true
+      credential:
+        profile_key: source-mongodb-runtime
+        vault_reference: vault://secret/production/data-sources/mongodb#source_dsn
+        bootstrap_managed: true
+      required_datasets:
+        - customers
+        - salesInv
+        - products
+    - source_key: configuration-neo4j
+      source_type: NEO4J
+      enabled: true
+      access_mode: READ_WRITE
+      uri: bolt://runtime-resolved.invalid:7687
+      username: neo4j
+      database: neo4j
+      bootstrap_managed: true
+      credential:
+        profile_key: neo4j-runtime
+        vault_reference: vault://secret/production/data-sources/neo4j#password
+        bootstrap_managed: true
+      required_datasets:
+        - customer_name_search_v2
+        - product_description_search_v2
+    - source_key: omc-sqlserver
+      source_type: SQLSERVER
+      enabled: true
+      access_mode: READ_ONLY
+      host: runtime-resolved.invalid
+      port: 1433
+      username: sa
+      database: return_platform
+      bootstrap_managed: true
+      credential:
+        profile_key: omc-sqlserver-runtime
+        vault_reference: vault://secret/production/data-sources/sqlserver#password
+        bootstrap_managed: true
+    - source_key: valkey
+      source_type: VALKEY
+      enabled: true
+      access_mode: READ_WRITE
+      host: runtime-resolved.invalid
+      port: 6379
+      bootstrap_managed: true
+      credential:
+        profile_key: valkey-runtime
+        vault_reference: vault://secret/production/data-sources/valkey#password
+        bootstrap_managed: true
+    - source_key: temporal
+      source_type: TEMPORAL
+      enabled: true
+      access_mode: READ_WRITE
+      host: runtime-resolved.invalid
+      port: 7233
+      bootstrap_managed: true

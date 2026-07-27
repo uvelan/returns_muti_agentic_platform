@@ -32,8 +32,8 @@ export const FIXTURE_BROWSER_ASSETS: BrowserAsset[] = [
     schemaVersion: "1.0",
   },
   {
-    assetId: "sandbox-orders",
-    sourceId: "src-sandbox-1",
+    assetId: "isolated-orders",
+    sourceId: "src-isolated-1",
     engine: "PLATFORM",
     name: "SandboxOrders",
     ownership: "SYNTHETIC",
@@ -97,10 +97,10 @@ export const FIXTURE_BROWSER_RECORDS: Record<string, BrowserRecord[]> = {
       }
     }
   ],
-  "src-sandbox-1:sandbox-orders": [
+  "src-isolated-1:isolated-orders": [
     {
       kind: "SQL_ROW", // Represented as row for simplicity
-      identity: { id: "TEST-SO-1", assetId: "sandbox-orders", engine: "PLATFORM" },
+      identity: { id: "TEST-SO-1", assetId: "isolated-orders", engine: "PLATFORM" },
       data: {
         OrderNumber: "TEST-SO-1",
         Status: "PENDING"

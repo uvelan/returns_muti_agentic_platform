@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
@@ -81,6 +81,63 @@ class ConversationPromptsConfiguration(StrictConfigModel):
     ]
 
 
+class DisambiguationAttributeConfiguration(StrictConfigModel):
+    """One deterministic candidate attribute that may be requested from an associate."""
+
+    slot: NonBlank
+    candidate_field: NonBlank
+    question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)]
+    priority: int = Field(ge=0, le=10_000)
+
+
+class ProgressiveDialogueStateConfiguration(StrictConfigModel):
+    """Domain state names consumed by the reusable conversation runtime."""
+
+    no_candidates: NonBlank = "ENTITY_IDENTIFICATION"
+    single_candidate: NonBlank = "LINE_SELECTION"
+    slot_disambiguation: NonBlank = "CUSTOMER_DISAMBIGUATION"
+    generic_disambiguation: NonBlank = "ORDER_DISAMBIGUATION"
+
+
+class ProgressiveDiscoveryConfiguration(StrictConfigModel):
+    """Bounded fuzzy retrieval and progressive disambiguation policy."""
+
+    enabled: bool = True
+    customer_fulltext_index: NonBlank = "customer_name_search_v2"
+    product_fulltext_index: NonBlank = "product_description_search_v2"
+    candidate_limit: int = Field(default=10, ge=1, le=20)
+    max_edit_distance: int = Field(default=2, ge=0, le=2)
+    one_edit_min_token_length: int = Field(default=4, ge=3, le=64)
+    two_edit_min_token_length: int = Field(default=8, ge=4, le=128)
+    candidate_ttl_seconds: int = Field(default=900, ge=60, le=3_600)
+    dialogue_states: ProgressiveDialogueStateConfiguration = Field(
+        default_factory=ProgressiveDialogueStateConfiguration
+    )
+    weak_anchor_source_fallback_enabled: bool = True
+    weak_anchor_targeted_graph_upsert_enabled: bool = False
+    fuzzy_search_anchors: tuple[NonBlank, ...] = (
+        "CUSTOMER_NAME",
+        "PRODUCT_DESCRIPTION",
+    )
+    disambiguation_attributes: tuple[DisambiguationAttributeConfiguration, ...] = Field(
+        min_length=1
+    )
+
+    @model_validator(mode="after")
+    def validate_policy(self) -> ProgressiveDiscoveryConfiguration:
+        slots = [item.slot for item in self.disambiguation_attributes]
+        if len(slots) != len(set(slots)):
+            raise ValueError("progressive discovery disambiguation slots must be unique")
+        if (
+            self.weak_anchor_targeted_graph_upsert_enabled
+            and not self.weak_anchor_source_fallback_enabled
+        ):
+            raise ValueError(
+                "weak-anchor graph upsert requires weak-anchor source fallback to be enabled"
+            )
+        return self
+
+
 class DiscoveryConfiguration(StrictConfigModel):
     web_order_pattern: NonBlank
     ambiguity_gap_millionths: int = Field(ge=0, le=1_000_000)
@@ -91,6 +148,7 @@ class DiscoveryConfiguration(StrictConfigModel):
     anchor_extractors: tuple[AnchorExtractorConfiguration, ...] = Field(min_length=1)
     free_text_fallback_anchor: NonBlank
     conversation: ConversationPromptsConfiguration
+    progressive: ProgressiveDiscoveryConfiguration
 
     @model_validator(mode="after")
     def validate_weights(self) -> DiscoveryConfiguration:
@@ -117,6 +175,9 @@ class SourceResolutionConfiguration(StrictConfigModel):
     trilogie_order_paths: tuple[NonBlank, ...] = Field(min_length=1)
     customer_id_paths: tuple[NonBlank, ...] = Field(min_length=1)
     customer_name_paths: tuple[NonBlank, ...] = Field(min_length=1)
+    customer_city_paths: tuple[NonBlank, ...] = ()
+    customer_postal_code_paths: tuple[NonBlank, ...] = ()
+    customer_account_type_paths: tuple[NonBlank, ...] = ()
     line_id_paths: tuple[NonBlank, ...] = Field(min_length=1)
     product_id_paths: tuple[NonBlank, ...] = Field(min_length=1)
     sku_paths: tuple[NonBlank, ...] = Field(min_length=1)
@@ -224,6 +285,223 @@ class ExtensionConfiguration(StrictConfigModel):
         return self
 
 
+class FeatureFlagsConfiguration(StrictConfigModel):
+    reusable_conversation_engine: bool = False
+    order_discovery_copilot: bool = False
+    copilot_operations_console: bool = False
+    graph_first_runtime_configuration: bool = False
+
+
+class CredentialBindingConfiguration(StrictConfigModel):
+    """One Vault reference whose value never enters graph configuration."""
+
+    profile_key: NonBlank
+    vault_reference: Annotated[
+        str,
+        StringConstraints(
+            strip_whitespace=True,
+            min_length=16,
+            max_length=768,
+            pattern=r"^vault://secret/production/[A-Za-z0-9_./-]+#[A-Za-z0-9_-]+(?:\?version=\d+)?$",
+        ),
+    ]
+    validation_receipt_id: NonBlank | None = None
+    validation_configuration_checksum: (
+        Annotated[
+            str,
+            StringConstraints(pattern=r"^[a-f0-9]{64}$"),
+        ]
+        | None
+    ) = None
+    bootstrap_managed: bool = False
+
+    @model_validator(mode="after")
+    def require_validation_receipt(self) -> CredentialBindingConfiguration:
+        if not self.bootstrap_managed and (
+            self.validation_receipt_id is None or self.validation_configuration_checksum is None
+        ):
+            raise ValueError(
+                "control-plane credentials require a validation receipt and configuration checksum"
+            )
+        return self
+
+
+class AIModelBindingConfiguration(StrictConfigModel):
+    model_id: NonBlank
+    model_class: Literal["LIGHTWEIGHT", "STANDARD"]
+    task_keys: tuple[NonBlank, ...] = Field(min_length=1)
+    priority: int = Field(default=1, ge=1, le=100)
+
+
+class AIValidatedRouteConfiguration(StrictConfigModel):
+    """One validated credential/model/task combination used by runtime routing."""
+
+    credential_profile_key: NonBlank
+    model_id: NonBlank
+    task_key: NonBlank
+    validation_receipt_id: NonBlank
+    validation_configuration_checksum: Annotated[
+        str,
+        StringConstraints(pattern=r"^[a-f0-9]{64}$"),
+    ]
+
+
+class AIProviderRuntimeConfiguration(StrictConfigModel):
+    provider_key: Literal["GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC", "OLLAMA"]
+    enabled: bool = False
+    base_url: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=8, max_length=1024),
+    ]
+    credentials: tuple[CredentialBindingConfiguration, ...] = ()
+    models: tuple[AIModelBindingConfiguration, ...] = ()
+    validated_routes: tuple[AIValidatedRouteConfiguration, ...] = ()
+    priority: int = Field(default=1, ge=1, le=100)
+
+    @model_validator(mode="after")
+    def validate_enabled_provider(self) -> AIProviderRuntimeConfiguration:
+        if self.enabled and self.provider_key != "OLLAMA" and not self.credentials:
+            raise ValueError("enabled hosted AI providers require at least one credential")
+        if self.enabled and not self.models:
+            raise ValueError("enabled AI providers require at least one validated model")
+        model_ids = [item.model_id for item in self.models]
+        if len(model_ids) != len(set(model_ids)):
+            raise ValueError("AI provider model IDs must be unique")
+        profile_keys = [item.profile_key for item in self.credentials]
+        if len(profile_keys) != len(set(profile_keys)):
+            raise ValueError("AI credential profile keys must be unique")
+        route_keys = [
+            (item.credential_profile_key, item.model_id, item.task_key)
+            for item in self.validated_routes
+        ]
+        if len(route_keys) != len(set(route_keys)):
+            raise ValueError("AI validated credential/model/task routes must be unique")
+        if self.enabled and self.provider_key != "OLLAMA":
+            expected = {
+                (credential.profile_key, model.model_id, task_key)
+                for credential in self.credentials
+                for model in self.models
+                for task_key in model.task_keys
+            }
+            actual = set(route_keys)
+            missing = sorted(expected - actual)
+            unexpected = sorted(actual - expected)
+            if missing or unexpected:
+                details: list[str] = []
+                if missing:
+                    details.append(f"missing={missing}")
+                if unexpected:
+                    details.append(f"unexpected={unexpected}")
+                raise ValueError(
+                    "every active AI credential/model/task combination requires an exact "
+                    "validation route: " + "; ".join(details)
+                )
+            route_receipts_by_profile: dict[str, set[str]] = {}
+            for route in self.validated_routes:
+                route_receipts_by_profile.setdefault(route.credential_profile_key, set()).add(
+                    route.validation_receipt_id
+                )
+            invalid_credentials = sorted(
+                credential.profile_key
+                for credential in self.credentials
+                if credential.validation_receipt_id
+                not in route_receipts_by_profile.get(credential.profile_key, set())
+            )
+            if invalid_credentials:
+                raise ValueError(
+                    "AI credential validation receipt must belong to one of its validated routes: "
+                    + ", ".join(invalid_credentials)
+                )
+        return self
+
+
+class DataSourceRuntimeConfiguration(StrictConfigModel):
+    source_key: NonBlank
+    source_type: Literal["MONGODB", "NEO4J", "SQLSERVER", "VALKEY", "TEMPORAL"]
+    enabled: bool = True
+    access_mode: Literal["READ_ONLY", "READ_WRITE"]
+    host: NonBlank | None = None
+    port: int | None = Field(default=None, ge=1, le=65_535)
+    uri: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=8, max_length=1024)]
+        | None
+    ) = None
+    username: NonBlank | None = None
+    database: NonBlank | None = None
+    credential: CredentialBindingConfiguration | None = None
+    required_datasets: tuple[NonBlank, ...] = ()
+    validation_receipt_id: NonBlank | None = None
+    validation_configuration_checksum: (
+        Annotated[
+            str,
+            StringConstraints(pattern=r"^[a-f0-9]{64}$"),
+        ]
+        | None
+    ) = None
+    bootstrap_managed: bool = False
+    priority: int = Field(default=1, ge=1, le=100)
+
+    @model_validator(mode="after")
+    def validate_source(self) -> DataSourceRuntimeConfiguration:
+        if self.source_type in {"MONGODB", "NEO4J"} and self.uri is None:
+            raise ValueError(f"{self.source_type} data sources require a URI")
+        if self.source_type in {"SQLSERVER", "VALKEY", "TEMPORAL"} and (
+            self.host is None or self.port is None
+        ):
+            raise ValueError(f"{self.source_type} data sources require host and port")
+        if (
+            self.enabled
+            and not self.bootstrap_managed
+            and (
+                self.validation_receipt_id is None or self.validation_configuration_checksum is None
+            )
+        ):
+            raise ValueError(
+                "control-plane data sources require a validation receipt and configuration checksum"
+            )
+        if self.enabled and not self.bootstrap_managed and self.credential is None:
+            raise ValueError("control-plane data sources require a Vault credential binding")
+        if self.credential is not None and (
+            self.credential.bootstrap_managed != self.bootstrap_managed
+        ):
+            raise ValueError("data-source and credential bootstrap modes must match")
+        if self.enabled and not self.bootstrap_managed and self.credential is not None:
+            if self.credential.validation_receipt_id != self.validation_receipt_id:
+                raise ValueError("data-source and credential validation receipt IDs must match")
+            if (
+                self.credential.validation_configuration_checksum
+                != self.validation_configuration_checksum
+            ):
+                raise ValueError("data-source and credential validation checksums must match")
+        return self
+
+
+class RuntimeIntegrationsConfiguration(StrictConfigModel):
+    ai_providers: tuple[AIProviderRuntimeConfiguration, ...] = ()
+    data_sources: tuple[DataSourceRuntimeConfiguration, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_unique_keys(self) -> RuntimeIntegrationsConfiguration:
+        providers = [item.provider_key for item in self.ai_providers]
+        if len(providers) != len(set(providers)):
+            raise ValueError("runtime AI provider keys must be unique")
+        sources = [item.source_key for item in self.data_sources]
+        if len(sources) != len(set(sources)):
+            raise ValueError("runtime data-source keys must be unique")
+        source_map = {item.source_key: item for item in self.data_sources}
+        read_only_sources = {"source-mongodb", "omc-sqlserver"}
+        violations = sorted(
+            key
+            for key in read_only_sources
+            if key in source_map and source_map[key].access_mode != "READ_ONLY"
+        )
+        if violations:
+            raise ValueError(
+                "authoritative external sources must remain read-only: " + ", ".join(violations)
+            )
+        return self
+
+
 class ReturnPlatformConfiguration(StrictConfigModel):
     schema_version: NonBlank
     assumption_set_version: NonBlank
@@ -238,6 +516,10 @@ class ReturnPlatformConfiguration(StrictConfigModel):
     bay: BayConfiguration
     integrations: IntegrationConfiguration
     extensions: ExtensionConfiguration
+    runtime_integrations: RuntimeIntegrationsConfiguration = Field(
+        default_factory=RuntimeIntegrationsConfiguration
+    )
+    feature_flags: FeatureFlagsConfiguration = Field(default_factory=FeatureFlagsConfiguration)
 
     @model_validator(mode="after")
     def validate_required_agents(self) -> ReturnPlatformConfiguration:

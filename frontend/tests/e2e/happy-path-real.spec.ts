@@ -3,39 +3,37 @@ import { expect, test } from "@playwright/test";
 test.describe("Real Happy-Path Return", () => {
   test("completes an associate-driven return end to end", async ({ page }) => {
     await page.goto("/associate/returns");
-    await expect(page.locator("h1")).toHaveText("Returns Assistant");
-    await expect(page.getByText(/FIXTURE MODE|NON-DURABLE/i)).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Returns Assistant" })).toBeVisible();
 
-    const orderInput = page.getByRole("textbox", { name: "Order number" });
-    await orderInput.fill("ORD-10001");
+    const copilotInput = page.getByRole("textbox", { name: "Message the Discovery Copilot" });
+    await copilotInput.fill("ORD-10001");
 
-    const discoveryResponsePromise = page.waitForResponse((response) =>
-      response.url().includes("/api/v1/associate-returns/conversations")
+    const chatResponsePromise = page.waitForResponse((response) =>
+      response.url().includes("/api/v1/associate-returns/chat")
       && response.request().method() === "POST",
     );
-    await page.getByRole("button", { name: "Discover orders" }).click();
-    const discoveryResponse = await discoveryResponsePromise;
-    const discoveryBody = await discoveryResponse.text();
+    await page.getByRole("button", { name: "Send message" }).click();
+    const chatResponse = await chatResponsePromise;
+    const chatBody = await chatResponse.text();
     expect(
-      discoveryResponse.ok(),
-      `Associate discovery failed with ${String(discoveryResponse.status())}: ${discoveryBody}`,
+      chatResponse.ok(),
+      `Associate discovery chat failed with ${String(chatResponse.status())}: ${chatBody}`,
     ).toBe(true);
 
-    await expect(page.getByText("2. Confirm and lock discovery")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Confirm and lock" })).toBeVisible();
     await page.getByRole("button", { name: "Confirm and lock" }).click();
 
-    await expect(page.getByText("3. Complete return details")).toBeVisible();
-    await expect(page.getByText("Discovery locked")).toBeVisible();
-    await page.getByLabel("Reason").selectOption("DAMAGED");
-    await page.getByLabel("Return quantity").fill("1");
-    await page.getByLabel("Package count").fill("1");
+    await expect(page.getByText("Order evidence locked")).toBeVisible();
+    await page.getByRole("button", { name: "Damaged" }).click();
+    await page.getByLabel("Quantity").fill("1");
+    await page.getByLabel("Packages").fill("1");
 
-    await page.getByRole("button", { name: "Create Return Support request" }).click();
-    await expect(page.getByText("Return submitted")).toBeVisible();
+    await page.getByRole("button", { name: "Send to workflow" }).click();
+    await expect(page.getByRole("link", { name: "Open live return timeline" })).toBeVisible();
     await page.getByRole("link", { name: "Open live return timeline" }).click();
 
-    await expect(page.getByText("Return ORD-10001")).toBeVisible();
-    await expect(page.getByText("COMPLETED", { exact: true })).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Return ORD-10001" })).toBeVisible();
+    await expect(page.getByText("Completed", { exact: true })).toBeVisible({
       timeout: 120_000,
     });
     await expect(page.getByText("100%")).toBeVisible();

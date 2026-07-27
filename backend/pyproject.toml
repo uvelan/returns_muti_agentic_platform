@@ -30,7 +30,8 @@ packages = [
 ]
 
 include = [
-    { path = "src/return_platform/py.typed", format = ["sdist", "wheel"] }
+    { path = "src/return_platform/py.typed", format = ["sdist", "wheel"] },
+    { path = "src/return_platform/data_platform/graph/migrations/*.cypher", format = ["sdist", "wheel"] }
 ]
 
 [tool.poetry.group.dev.dependencies]

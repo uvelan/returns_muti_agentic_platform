@@ -52,7 +52,7 @@ export function BrowserLandingPage() {
           <h2 className="text-lg leading-6 font-medium text-gray-900">Available Assets</h2>
           <p className="mt-1 max-w-2xl text-sm text-gray-500">
             Select an asset to inspect redacted records. Use AI Studio for governed test-data
-            proposals and sandbox application.
+            proposals and isolated workspace application.
           </p>
         </div>
         <DataTable

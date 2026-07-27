@@ -40,7 +40,7 @@ export function ScenarioCreatePage() {
           <label htmlFor="sc-ws" className="block text-sm font-medium text-gray-700 mb-1">Base Workspace ID</label>
           <input id="sc-ws" type="text" required
             className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-            placeholder="ws-sandbox-1" value={baseWorkspaceId} onChange={(e) => { setBaseWorkspaceId(e.target.value); }} />
+            placeholder="ws-isolated-1" value={baseWorkspaceId} onChange={(e) => { setBaseWorkspaceId(e.target.value); }} />
         </div>
         <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
           <button type="button" onClick={() => { setLocation("/data-console/scenarios"); }}

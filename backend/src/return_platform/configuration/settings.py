@@ -38,6 +38,30 @@ class Settings(BaseSettings):
     ai_gateway_configuration_path: Path = Field(default=DEFAULT_AI_GATEWAY_CONFIGURATION_PATH)
     environment: Literal["development", "test", "staging", "production"] = "development"
 
+    vault_enabled: bool = False
+    vault_address: str = "http://127.0.0.1:8201"
+    vault_token: SecretStr | None = None
+    vault_token_file: Path | None = None
+    vault_namespace: str | None = None
+    vault_verify_tls: bool = True
+    vault_timeout_seconds: float = Field(default=5.0, gt=0.0, le=30.0)
+    vault_secrets_resolved: bool = False
+    mongo_dsn_secret_reference: str | None = None
+    source_mongo_dsn_secret_reference: str | None = None
+    neo4j_password_secret_reference: str | None = None
+    valkey_password_secret_reference: str | None = None
+    sqlserver_password_secret_reference: str | None = None
+    google_api_key_references: tuple[str, ...] = ()
+    nvidia_api_key_references: tuple[str, ...] = ()
+    openai_api_key_references: tuple[str, ...] = ()
+    anthropic_api_key_references: tuple[str, ...] = ()
+    validation_fingerprint_key_secret_reference: str | None = None
+    validation_fingerprint_key: SecretStr = SecretStr(
+        "development-validation-fingerprint-key-change-me"
+    )
+    contact_lookup_hmac_key_secret_reference: str | None = None
+    contact_lookup_hmac_key: SecretStr = SecretStr("development-contact-lookup-hmac-key-change-me")
+
     probe_timeout_seconds: float = Field(default=2.0, gt=0.0, le=30.0)
     dependency_connect_timeout_seconds: float = Field(default=5.0, gt=0.0, le=30.0)
     operation_timeout_seconds: float = Field(default=10.0, ge=0.1, le=120.0)
@@ -90,7 +114,7 @@ class Settings(BaseSettings):
     graph_sync_batch_size: int = Field(default=250, ge=1, le=5_000)
     graph_sync_max_records: int = Field(default=10_000, ge=1, le=1_000_000)
 
-    ai_provider_order: str = "GOOGLE,NVIDIA,OPENAI,ANTHROPIC,OLLAMA,SIMULATOR"
+    ai_provider_order: str = "GOOGLE,NVIDIA,SIMULATOR"
     ai_timeout_seconds: float = Field(default=12.0, ge=0.5, le=60.0)
     ai_global_timeout_seconds: float = Field(default=30.0, ge=1.0, le=120.0)
     ai_max_attempts_per_provider: int = Field(default=2, ge=1, le=4)
@@ -99,35 +123,37 @@ class Settings(BaseSettings):
     ai_max_payload_bytes: int = Field(default=16_384, ge=1_024, le=1_048_576)
     ai_interception_default: bool = False
     ai_prompt_version: str = Field(default="return-eligibility-v1", min_length=1, max_length=128)
+    ai_allowed_endpoint_hosts: tuple[str, ...] = (
+        "generativelanguage.googleapis.com",
+        "integrate.api.nvidia.com",
+        "api.openai.com",
+        "api.anthropic.com",
+    )
+    data_source_allowed_hosts: tuple[str, ...] = (
+        "mongodb",
+        "source-mongodb",
+        "sqlserver",
+        "neo4j",
+        "localhost",
+        "127.0.0.1",
+        "::1",
+    )
 
     # Credential and model pools. List fields are the production path; single-value fields
     # remain as backward-compatible fallbacks during migration.
     google_api_keys: tuple[SecretStr, ...] = ()
-    google_lightweight_models: tuple[str, ...] = (
-        "gemini-3.5-flash-lite",
-        "gemini-3.1-flash-lite",
-    )
-    google_standard_models: tuple[str, ...] = (
-        "gemini-3.5-flash",
-        "gemini-2.5-flash",
-    )
+    google_lightweight_models: tuple[str, ...] = ()
+    google_standard_models: tuple[str, ...] = ()
     google_api_key: SecretStr | None = None
     google_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
-    google_model: str = "gemini-3.5-flash"
+    google_model: str | None = None
 
     nvidia_api_keys: tuple[SecretStr, ...] = ()
-    nvidia_lightweight_models: tuple[str, ...] = (
-        "meta/llama-3.2-3b-instruct",
-        "meta/llama-3.1-8b-instruct",
-        "nvidia/llama-3.1-nemotron-nano-vl-8b-v1",
-    )
-    nvidia_standard_models: tuple[str, ...] = (
-        "nvidia/nemotron-3-nano-30b-a3b",
-        "meta/llama-3.1-70b-instruct",
-    )
+    nvidia_lightweight_models: tuple[str, ...] = ()
+    nvidia_standard_models: tuple[str, ...] = ()
     nvidia_api_key: SecretStr | None = None
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
-    nvidia_model: str = "nvidia/nemotron-3-nano-30b-a3b"
+    nvidia_model: str | None = None
 
     openai_api_keys: tuple[SecretStr, ...] = ()
     openai_lightweight_models: tuple[str, ...] = ()
@@ -152,7 +178,7 @@ class Settings(BaseSettings):
     seed_version: str = Field(default="e2e-v1", min_length=1, max_length=64)
     ai_studio_max_records: int = Field(default=500, ge=1, le=10_000)
     # AI Studio write targets are deliberately separate from operational/source stores.
-    # Apply remains disabled until an operator supplies all sandbox-only coordinates.
+    # Apply remains disabled until an operator supplies all isolated validation coordinates.
     ai_studio_mongo_database: str | None = None
     ai_studio_sqlserver_host: str | None = None
     ai_studio_sqlserver_port: int = Field(default=1433, ge=1, le=65_535)
@@ -247,6 +273,90 @@ class Settings(BaseSettings):
         raise ValueError("AI credential setting must be a JSON list or comma-separated string.")
 
     @field_validator(
+        "google_api_key_references",
+        "nvidia_api_key_references",
+        "openai_api_key_references",
+        "anthropic_api_key_references",
+        mode="before",
+    )
+    @classmethod
+    def parse_reference_list(cls, value: object) -> object:
+        if value is None or value == "":
+            return ()
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return ()
+            if raw.startswith("["):
+                parsed = json.loads(raw)
+                if not isinstance(parsed, list):
+                    raise ValueError("Vault reference setting must contain a JSON list.")
+                values = [str(item).strip() for item in parsed if str(item).strip()]
+            else:
+                values = [item.strip() for item in raw.split(",") if item.strip()]
+        elif isinstance(value, (list, tuple)):
+            values = [str(item).strip() for item in value if str(item).strip()]
+        else:
+            raise ValueError(
+                "Vault reference setting must be a JSON list or comma-separated string."
+            )
+        if len(values) != len(set(values)):
+            raise ValueError("Vault reference lists must not contain duplicates.")
+        return tuple(values)
+
+    @field_validator("ai_allowed_endpoint_hosts", mode="before")
+    @classmethod
+    def parse_allowed_ai_hosts(cls, value: object) -> object:
+        if value is None or value == "":
+            return ()
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return ()
+            if raw.startswith("["):
+                parsed = json.loads(raw)
+                if not isinstance(parsed, list):
+                    raise ValueError("AI endpoint host allowlist must contain a JSON list.")
+                values = [str(item).strip().lower() for item in parsed if str(item).strip()]
+            else:
+                values = [item.strip().lower() for item in raw.split(",") if item.strip()]
+        elif isinstance(value, (list, tuple)):
+            values = [str(item).strip().lower() for item in value if str(item).strip()]
+        else:
+            raise ValueError(
+                "AI endpoint host allowlist must be a JSON list or comma-separated string."
+            )
+        if len(values) != len(set(values)):
+            raise ValueError("AI endpoint host allowlist must not contain duplicates.")
+        return tuple(values)
+
+    @field_validator("data_source_allowed_hosts", mode="before")
+    @classmethod
+    def parse_allowed_data_source_hosts(cls, value: object) -> object:
+        if value is None or value == "":
+            return ()
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return ()
+            if raw.startswith("["):
+                parsed = json.loads(raw)
+                if not isinstance(parsed, list):
+                    raise ValueError("Data-source host allowlist must contain a JSON list.")
+                values = [str(item).strip().lower() for item in parsed if str(item).strip()]
+            else:
+                values = [item.strip().lower() for item in raw.split(",") if item.strip()]
+        elif isinstance(value, (list, tuple)):
+            values = [str(item).strip().lower() for item in value if str(item).strip()]
+        else:
+            raise ValueError(
+                "Data-source host allowlist must be a JSON list or comma-separated string."
+            )
+        if len(values) != len(set(values)):
+            raise ValueError("Data-source host allowlist must not contain duplicates.")
+        return tuple(values)
+
+    @field_validator(
         "google_lightweight_models",
         "google_standard_models",
         "nvidia_lightweight_models",
@@ -299,7 +409,14 @@ class Settings(BaseSettings):
             return None
         return value
 
-    @field_validator("openai_model", "anthropic_model", "ollama_model", mode="before")
+    @field_validator(
+        "google_model",
+        "nvidia_model",
+        "openai_model",
+        "anthropic_model",
+        "ollama_model",
+        mode="before",
+    )
     @classmethod
     def normalize_optional_models(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
@@ -323,7 +440,6 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             normalized = value.strip().upper()
             aliases = {
-                "SANDBOX_AUTO": "INTERNAL",
                 "EXTERNAL": "EXTERNAL_AUTHORITY",
             }
             return aliases.get(normalized, normalized)
@@ -416,8 +532,17 @@ class Settings(BaseSettings):
     @field_validator("ai_provider_order")
     @classmethod
     def validate_provider_order(cls, value: str) -> str:
-        allowed = {"GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC", "OLLAMA", "SIMULATOR"}
+        allowed = {
+            "GOOGLE",
+            "NVIDIA",
+            "OPENAI",
+            "ANTHROPIC",
+            "OLLAMA",
+            "SIMULATOR",
+        }
         providers = tuple(part.strip().upper() for part in value.split(",") if part.strip())
+        if providers == ("NONE",):
+            return "NONE"
         if (
             not providers
             or len(set(providers)) != len(providers)
@@ -487,4 +612,44 @@ class Settings(BaseSettings):
             and self.support_ticket_base_url is None
         ):
             raise ValueError("Configured external Return Support integration requires a base URL.")
+        if self.environment == "production":
+            if not self.vault_enabled:
+                raise ValueError("Vault must be enabled in production.")
+            required_references = {
+                "mongo_dsn_secret_reference": self.mongo_dsn_secret_reference,
+                "source_mongo_dsn_secret_reference": self.source_mongo_dsn_secret_reference,
+                "neo4j_password_secret_reference": self.neo4j_password_secret_reference,
+                "valkey_password_secret_reference": self.valkey_password_secret_reference,
+                "sqlserver_password_secret_reference": self.sqlserver_password_secret_reference,
+                "validation_fingerprint_key_secret_reference": (
+                    self.validation_fingerprint_key_secret_reference
+                ),
+                "contact_lookup_hmac_key_secret_reference": (
+                    self.contact_lookup_hmac_key_secret_reference
+                ),
+            }
+            missing = sorted(name for name, value in required_references.items() if not value)
+            if missing:
+                raise ValueError("Production Vault references are missing: " + ", ".join(missing))
+            if self.vault_secrets_resolved:
+                if self.validation_fingerprint_key.get_secret_value().endswith("change-me"):
+                    raise ValueError("Production validation fingerprint key must be replaced.")
+                if self.contact_lookup_hmac_key.get_secret_value().endswith("change-me"):
+                    raise ValueError("Production contact lookup HMAC key must be replaced.")
+            hosted_ai_keys_present = any(
+                (
+                    self.google_api_keys,
+                    self.nvidia_api_keys,
+                    self.openai_api_keys,
+                    self.anthropic_api_keys,
+                    (self.google_api_key,) if self.google_api_key else (),
+                    (self.nvidia_api_key,) if self.nvidia_api_key else (),
+                    (self.openai_api_key,) if self.openai_api_key else (),
+                    (self.anthropic_api_key,) if self.anthropic_api_key else (),
+                )
+            )
+            if hosted_ai_keys_present and not self.vault_secrets_resolved:
+                raise ValueError(
+                    "Production AI keys must be resolved from validated Vault references"
+                )
         return self

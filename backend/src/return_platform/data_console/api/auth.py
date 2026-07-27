@@ -61,6 +61,10 @@ def require_write_roles(request: Request) -> str:
     return str(require_roles(WRITE_ROLES)(request))
 
 
+def require_admin_roles(request: Request) -> str:
+    return str(require_roles(ADMIN_ROLES)(request))
+
+
 def require_associate_roles(request: Request) -> str:
     return str(require_roles(ASSOCIATE_ROLES)(request))
 

@@ -4,8 +4,8 @@ import type { APIResponse } from "../../contracts/api";
 
 const MOCK_WORKSPACES: Workspace[] = [
   {
-    id: "ws-sandbox-1",
-    name: "Sales Q3 Pipeline Sandbox",
+    id: "ws-isolated-1",
+    name: "Sales Q3 Pipeline Workspace",
     description: "Temporary workspace for modeling Q3 adjustments.",
     isSandbox: true,
     owner: "alice@example.com",
@@ -15,7 +15,7 @@ const MOCK_WORKSPACES: Workspace[] = [
     recordCount: 15
   },
   {
-    id: "ws-sandbox-2",
+    id: "ws-isolated-2",
     name: "Compliance Drafts",
     description: "Review of compliance exceptions.",
     isSandbox: true,

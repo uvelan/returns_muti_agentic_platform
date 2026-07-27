@@ -1,5 +1,5 @@
 import { lazy } from "react";
-import { LayoutDashboard, Database, FileCheck2, HardDrive, Search, Network, Import, Download, Activity, Briefcase, Zap, Shield, Settings, CheckSquare, RotateCcw, Headphones, Bot, TestTube2, ShieldAlert, ServerCog, DatabaseZap } from "lucide-react";
+import { LayoutDashboard, Database, FileCheck2, HardDrive, Search, Network, Import, Download, Activity, Briefcase, Zap, Shield, Settings, CheckSquare, RotateCcw, Headphones, Bot, TestTube2, ShieldAlert, ServerCog, DatabaseZap, ShieldCheck } from "lucide-react";
 
 export type RouteCapability =
   | "LIVE"
@@ -13,7 +13,7 @@ export type RouteDefinition = {
   capability: RouteCapability;
   component: React.LazyExoticComponent<React.ComponentType<unknown>>;
   navigable: boolean;
-  group?: "Associate" | "Customer" | "Support" | "Operations" | "Logistics" | "Warehouse" | "Tracking" | "AI Gateway" | "Explore" | "Data Operations" | "Sandbox & AI" | "Governance" | "System";
+  group?: "Associate" | "Customer" | "Support" | "Operations" | "Logistics" | "Warehouse" | "Tracking" | "AI Gateway" | "Explore" | "Data Operations" | "Data & AI Validation" | "Governance" | "System";
 };
 
 export const routes: RouteDefinition[] = [
@@ -323,8 +323,17 @@ export const routes: RouteDefinition[] = [
     icon: Bot,
     capability: "LIVE",
     navigable: true,
-    group: "Sandbox & AI",
+    group: "Data & AI Validation",
     component: lazy(() => import("./features/data-console/pages/DataStudioPages").then(m => ({ default: m.AIStudioPage }))),
+  },
+  {
+    path: "/data-console/copilot/operations",
+    name: "Copilot Console",
+    icon: Bot,
+    capability: "LIVE",
+    navigable: true,
+    group: "Data & AI Validation",
+    component: lazy(() => import("./features/data-console/pages/copilot/CopilotOperationsConsolePage").then(m => ({ default: m.CopilotOperationsConsolePage }))),
   },
   {
     path: "/data-console/graph-sync",
@@ -499,7 +508,7 @@ export const routes: RouteDefinition[] = [
     icon: Briefcase,
     capability: "LIVE",
     navigable: true,
-    group: "Sandbox & AI",
+    group: "Data & AI Validation",
     component: lazy(() => import("./features/data-console/pages/workspaces/WorkspacesListPage").then(m => ({ default: m.WorkspacesListPage }))),
   },
   {
@@ -536,7 +545,7 @@ export const routes: RouteDefinition[] = [
     icon: Zap,
     capability: "LIVE",
     navigable: true,
-    group: "Sandbox & AI",
+    group: "Data & AI Validation",
     component: lazy(() => import("./features/data-console/pages/scenarios/ScenariosListPage").then(m => ({ default: m.ScenariosListPage }))),
   },
   {
@@ -593,6 +602,24 @@ export const routes: RouteDefinition[] = [
     navigable: true,
     group: "Governance",
     component: lazy(() => import("./features/data-console/pages/settings/SettingsPage").then(m => ({ default: m.SettingsPage }))),
+  },
+  {
+    path: "/data-console/configuration",
+    name: "Graph Config",
+    icon: Network,
+    capability: "LIVE",
+    navigable: true,
+    group: "Governance",
+    component: lazy(() => import("./features/data-console/pages/settings/ConfigurationStudioPage").then(m => ({ default: m.ConfigurationStudioPage }))),
+  },
+  {
+    path: "/data-console/runtime-validation",
+    name: "Runtime Validation",
+    icon: ShieldCheck,
+    capability: "LIVE",
+    navigable: true,
+    group: "Governance",
+    component: lazy(() => import("./features/data-console/pages/settings/RuntimeValidationPage").then(m => ({ default: m.RuntimeValidationPage }))),
   },
   {
     path: "/data-console/hardening",

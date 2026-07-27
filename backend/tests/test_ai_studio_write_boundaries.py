@@ -14,9 +14,10 @@ def test_customer_order_prompt_builds_relationship_aware_plan() -> None:
     assert _parse_customer_order_prompt(
         "Create 500 customers and 100 orders for each customer"
     ) == (500, 100)
-    assert _parse_customer_order_prompt(
-        "create 500 customes and 100 orders for each cusotmer"
-    ) == (500, 100)
+    assert _parse_customer_order_prompt("create 500 customes and 100 orders for each cusotmer") == (
+        500,
+        100,
+    )
 
 
 def test_bulk_order_context_keeps_customer_identity_across_orders() -> None:

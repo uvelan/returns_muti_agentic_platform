@@ -2,12 +2,12 @@
   "stage": "Stage 4 \u2014 HLD Alignment and Data Console Completion",
   "validationLevel": "SOURCE_VALIDATED",
   "environment": {
-    "python": "3.13.14",
-    "platform": "win32",
+    "python": "3.13.5",
+    "platform": "linux",
     "dockerAvailable": false
   },
   "command": "python3.13 scripts/validate_stage4_source.py",
-  "generatedAt": "2026-07-26T06:08:47.616143+00:00",
+  "generatedAt": "2026-07-27T13:57:41.491397+00:00",
   "exitCode": 0,
   "status": "PASSED",
   "checks": [
@@ -21,14 +21,14 @@
       "status": "PASS",
       "evidence": {
         "missing": [],
-        "routeCount": 53
+        "routeCount": 75
       }
     },
     {
       "name": "frontend_routes_live_only",
       "status": "PASS",
       "evidence": {
-        "liveCount": 53
+        "liveCount": 75
       }
     },
     {
@@ -36,10 +36,11 @@
       "status": "PASS",
       "evidence": {
         "required": [
-          "Minimal evidence",
-          "Confirm and lock",
-          "Complete return details",
-          "Create Return Support request"
+          "OrderDiscoveryCopilot",
+          "OrderContextPanel",
+          "confirmAssociateDiscovery",
+          "submitAssociateReturnDetails",
+          "candidateSetId"
         ]
       }
     },
@@ -83,8 +84,8 @@
       "status": "PASS",
       "evidence": {
         "mongoAssets": 52,
-        "sqlAssets": 10,
-        "totalAssets": 62,
+        "sqlAssets": 9,
+        "totalAssets": 61,
         "missingMongoCollections": []
       }
     },
@@ -100,8 +101,8 @@
       "name": "ai_studio_generator_coverage",
       "status": "PASS",
       "evidence": {
-        "declared": 91,
-        "supported": 91,
+        "declared": 90,
+        "supported": 90,
         "missingImplementations": [],
         "unusedImplementations": []
       }
@@ -137,24 +138,10 @@
           "workspaces"
         ],
         "directSql": [
-          "platform.sql.bay_assignment",
-          "platform.sql.bay_configuration",
-          "platform.sql.feedback_recommendation",
-          "platform.sql.return_support_ticket",
-          "source.sql.return_fulfillment",
-          "source.sql.return_items",
-          "source.sql.return_requests",
-          "source.sql.return_tracking"
+          "platform.sql.bay_configuration"
         ],
         "writableSql": [
-          "platform.sql.bay_assignment",
-          "platform.sql.bay_configuration",
-          "platform.sql.feedback_recommendation",
-          "platform.sql.return_support_ticket",
-          "source.sql.return_fulfillment",
-          "source.sql.return_items",
-          "source.sql.return_requests",
-          "source.sql.return_tracking"
+          "platform.sql.bay_configuration"
         ]
       }
     },
@@ -162,13 +149,13 @@
       "name": "data_console_services_present",
       "status": "PASS",
       "evidence": [
-        "backend\\src\\return_platform\\data_platform\\ai_studio.py",
-        "backend\\src\\return_platform\\data_platform\\graph\\schema.py",
-        "backend\\src\\return_platform\\data_platform\\graph\\sync_service.py",
-        "backend\\src\\return_platform\\data_console\\api\\schema_catalog.py",
-        "backend\\src\\return_platform\\data_console\\api\\ai_studio.py",
-        "backend\\src\\return_platform\\data_console\\api\\graph_sync.py",
-        "backend\\src\\return_platform\\data_console\\api\\feedback_learning.py"
+        "backend/src/return_platform/data_platform/ai_studio.py",
+        "backend/src/return_platform/data_platform/graph/schema.py",
+        "backend/src/return_platform/data_platform/graph/sync_service.py",
+        "backend/src/return_platform/data_console/api/schema_catalog.py",
+        "backend/src/return_platform/data_console/api/ai_studio.py",
+        "backend/src/return_platform/data_console/api/graph_sync.py",
+        "backend/src/return_platform/data_console/api/feedback_learning.py"
       ]
     },
     {
@@ -228,19 +215,22 @@
           "backend",
           "data-job-worker",
           "frontend",
+          "integration-outbox-worker",
           "mongodb",
           "mongodb-rs-init",
           "neo4j",
           "outbox-publisher",
           "return-orchestrator",
           "return-workflow-worker",
+          "runtime-configuration-init",
           "seed-runner",
           "sqlserver",
           "sqlserver-init",
           "temporal",
           "temporal-postgresql",
           "temporal-ui",
-          "valkey"
+          "valkey",
+          "vault"
         ]
       }
     },

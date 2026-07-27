@@ -26,7 +26,7 @@ export function WorkspaceDetailPage() {
   const records = recordsQuery.data ?? [];
 
   const handleDelete = (recordId: string, expectedVersion: number) => {
-    if (!window.confirm("Delete this sandbox record? This operation is audited.")) return;
+    if (!window.confirm("Delete this isolated workspace record? This operation is audited.")) return;
     deleteRecord.mutate({ workspaceId, recordId, expectedVersion });
   };
 
@@ -42,7 +42,7 @@ export function WorkspaceDetailPage() {
       </PageHeader>
 
       <div className="mb-6 rounded-r border-l-4 border-amber-500 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm">
-        <p className="font-semibold uppercase tracking-wide">Durable sandbox isolation</p>
+        <p className="font-semibold uppercase tracking-wide">Durable workspace isolation</p>
         <p className="mt-1">Records persist in Platform MongoDB and never mutate authoritative source systems.</p>
       </div>
 
@@ -101,7 +101,7 @@ export function WorkspaceDetailPage() {
           <h3 className="mb-4 text-lg font-medium">Metadata</h3>
           <PropertyList properties={[
             { label: "ID", value: workspace.id },
-            { label: "Type", value: workspace.isSandbox ? "Sandbox" : "Standard" },
+            { label: "Type", value: workspace.isSandbox ? "Isolated" : "Standard" },
             { label: "Owner", value: workspace.owner },
             { label: "Created", value: new Date(workspace.createdAt).toLocaleString() },
             { label: "Updated", value: new Date(workspace.updatedAt).toLocaleString() },

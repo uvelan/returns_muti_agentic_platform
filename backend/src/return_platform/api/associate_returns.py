@@ -17,6 +17,9 @@ from return_platform.operations.associate_flow import (
     ReturnDetailsRequest,
     StartAssociateConversationRequest,
 )
+from return_platform.operations.associate_service_factory import (
+    build_associate_conversation_service,
+)
 from return_platform.operations.production_workflow import ProductionWorkflowCoordinator
 from return_platform.operations.repository import OperationalRepository
 from return_platform.resources import RuntimeResources
@@ -30,33 +33,7 @@ def _meta(request: Request) -> ResponseMeta:
 
 
 def _service(request: Request) -> AssociateConversationService:
-    resources = getattr(request.app.state, "resources", None)
-    if (
-        not isinstance(resources, RuntimeResources)
-        or resources.mongo is None
-        or resources.source_mongo is None
-        or resources.neo4j is None
-    ):
-        raise HTTPException(
-            status_code=503,
-            detail="Associate discovery dependencies are unavailable.",
-        )
-    repository = OperationalRepository(
-        resources.mongo,
-        resources.settings,
-        resources.source_mongo,
-    )
-    loaded = getattr(request.app.state, "return_configuration", None)
-    return AssociateConversationService(
-        platform_client=resources.mongo,
-        source_client=resources.source_mongo,
-        graph=resources.neo4j,
-        settings=resources.settings,
-        repository=repository,
-        return_configuration=(
-            loaded.configuration if isinstance(loaded, LoadedReturnConfiguration) else None
-        ),
-    )
+    return build_associate_conversation_service(request)
 
 
 @router.get("/conversations", response_model=APIResponse[list[AssociateConversationView]])

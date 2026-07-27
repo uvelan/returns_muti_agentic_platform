@@ -17,14 +17,14 @@ export function WorkspacesListPage() {
   const workspaces = data ?? [];
 
   const handleDelete = (id: string, expectedVersion: number) => {
-    if (window.confirm("Are you sure you want to delete this sandbox workspace?")) {
+    if (window.confirm("Are you sure you want to delete this isolated workspace?")) {
       deleteWorkspace.mutate({ workspaceId: id, expectedVersion });
     }
   };
 
   return (
     <div className="p-6">
-      <PageHeader title="Workspaces" description="Manage temporary sandbox workspaces for safe data modeling.">
+      <PageHeader title="Workspaces" description="Manage isolated workspaces for controlled data modeling.">
         <button onClick={() => { setLocation("/data-console/workspaces/new"); }}
           className="bg-blue-600 text-white px-4 py-2 rounded shadow text-sm font-medium hover:bg-blue-700">
           New Workspace
@@ -32,15 +32,15 @@ export function WorkspacesListPage() {
       </PageHeader>
 
       <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-6 text-sm text-amber-900 rounded-r shadow-sm">
-        <p className="font-semibold uppercase tracking-wide">Local Sandbox Area</p>
-        <p className="mt-1">Workspaces are durable Platform MongoDB sandboxes and never mutate source data.</p>
+        <p className="font-semibold uppercase tracking-wide">Isolated workspace area</p>
+        <p className="mt-1">Workspaces are durable Platform MongoDB isolation boundaries and never mutate source data.</p>
       </div>
 
       <DataTable<Workspace>
         keyExtractor={(row) => row.id}
         columns={[
           { header: "Name", accessor: (row) => <Link href={`/data-console/workspaces/${row.id}`} className="text-blue-600 hover:underline font-medium">{row.name}</Link> },
-          { header: "Type", accessor: (row) => <span className="text-xs font-semibold bg-gray-100 px-2 py-1 rounded">{row.isSandbox ? "SANDBOX" : "STANDARD"}</span> },
+          { header: "Type", accessor: (row) => <span className="text-xs font-semibold bg-gray-100 px-2 py-1 rounded">{row.isSandbox ? "ISOLATED" : "STANDARD"}</span> },
           { header: "Records", accessor: (row) => String(row.recordCount) },
           { header: "Created At", accessor: (row) => new Date(row.createdAt).toLocaleString() },
           { header: "Owner", accessor: (row) => row.owner },

@@ -310,10 +310,7 @@ def _bulk_order_context(
         customer_reference=customer,
         customer_name=f"Sandbox Customer {customer_index + 1}",
         party_id=f"PTY-{customer_suffix}",
-        phone=(
-            f"+1-555-{customer_rng.randrange(100, 999)}-"
-            f"{customer_rng.randrange(1000, 9999)}"
-        ),
+        phone=(f"+1-555-{customer_rng.randrange(100, 999)}-{customer_rng.randrange(1000, 9999)}"),
         email=f"sandbox.customer.{customer_suffix}@example.invalid",
         order_reference=order,
         order_line_reference=f"{order}-L1",
@@ -667,19 +664,14 @@ class AIStudioService:
         customer_assets = [
             self._registry.asset(asset_id) for asset_id in RELATIONAL_CUSTOMER_ASSETS
         ]
-        product_assets = [
-            self._registry.asset(asset_id) for asset_id in RELATIONAL_PRODUCT_ASSETS
-        ]
-        order_assets = [
-            self._registry.asset(asset_id) for asset_id in RELATIONAL_ORDER_ASSETS
-        ]
+        product_assets = [self._registry.asset(asset_id) for asset_id in RELATIONAL_PRODUCT_ASSETS]
+        order_assets = [self._registry.asset(asset_id) for asset_id in RELATIONAL_ORDER_ASSETS]
         bay_asset = self._registry.asset("platform.sql.bay_configuration")
         preview_customers = min(customer_count, 5)
         preview_orders = min(orders_per_customer, 2)
         warehouses, bays = _reference_records(bay_asset, seed=request.seed)
         records: dict[str, list[dict[str, Any]]] = {
-            asset.asset_id: []
-            for asset in (*customer_assets, *product_assets, *order_assets)
+            asset.asset_id: [] for asset in (*customer_assets, *product_assets, *order_assets)
         }
         records["sandbox.mongodb.warehouses"] = warehouses
         records[bay_asset.asset_id] = bays
@@ -690,9 +682,7 @@ class AIStudioService:
                     generate_asset_record(
                         asset,
                         customer_context,
-                        random.Random(
-                            f"{request.seed}:preview:{asset.asset_id}:{customer_index}"
-                        ),
+                        random.Random(f"{request.seed}:preview:{asset.asset_id}:{customer_index}"),
                     )
                 )
             for order_index in range(preview_orders):
@@ -719,18 +709,13 @@ class AIStudioService:
                     generate_asset_record(
                         asset,
                         product_context,
-                        random.Random(
-                            f"{request.seed}:preview:{asset.asset_id}:{product_index}"
-                        ),
+                        random.Random(f"{request.seed}:preview:{asset.asset_id}:{product_index}"),
                     )
                 )
         record_counts = {
             **{asset.asset_id: customer_count for asset in customer_assets},
             **{asset.asset_id: orders_per_customer for asset in product_assets},
-            **{
-                asset.asset_id: customer_count * orders_per_customer
-                for asset in order_assets
-            },
+            **{asset.asset_id: customer_count * orders_per_customer for asset in order_assets},
             "sandbox.mongodb.warehouses": len(warehouses),
             bay_asset.asset_id: len(bays),
         }
@@ -895,12 +880,8 @@ class AIStudioService:
         customer_assets = [
             self._registry.asset(asset_id) for asset_id in RELATIONAL_CUSTOMER_ASSETS
         ]
-        product_assets = [
-            self._registry.asset(asset_id) for asset_id in RELATIONAL_PRODUCT_ASSETS
-        ]
-        order_assets = [
-            self._registry.asset(asset_id) for asset_id in RELATIONAL_ORDER_ASSETS
-        ]
+        product_assets = [self._registry.asset(asset_id) for asset_id in RELATIONAL_PRODUCT_ASSETS]
+        order_assets = [self._registry.asset(asset_id) for asset_id in RELATIONAL_ORDER_ASSETS]
         bay_asset = self._registry.asset("platform.sql.bay_configuration")
         sandbox_database = self._settings.ai_studio_mongo_database
         if not sandbox_database:
@@ -921,16 +902,12 @@ class AIStudioService:
             if not records:
                 return
             await target_db[collection_name].bulk_write(
-                [
-                    ReplaceOne({"_id": record["_id"]}, record, upsert=True)
-                    for record in records
-                ],
+                [ReplaceOne({"_id": record["_id"]}, record, upsert=True) for record in records],
                 ordered=False,
             )
 
         batches: dict[str, list[dict[str, Any]]] = {
-            asset.asset_id: []
-            for asset in (*customer_assets, *product_assets, *order_assets)
+            asset.asset_id: [] for asset in (*customer_assets, *product_assets, *order_assets)
         }
         collections = {
             asset.asset_id: asset.name
@@ -965,9 +942,7 @@ class AIStudioService:
                     generate_asset_record(
                         asset,
                         customer_context,
-                        random.Random(
-                            f"{view.seed}:apply:{asset.asset_id}:{customer_index}"
-                        ),
+                        random.Random(f"{view.seed}:apply:{asset.asset_id}:{customer_index}"),
                     ),
                 )
             for order_index in range(orders_per_customer):
@@ -983,8 +958,7 @@ class AIStudioService:
                             asset,
                             order_context,
                             random.Random(
-                                f"{view.seed}:apply:{asset.asset_id}:"
-                                f"{customer_index}:{order_index}"
+                                f"{view.seed}:apply:{asset.asset_id}:{customer_index}:{order_index}"
                             ),
                         ),
                     )
@@ -996,9 +970,7 @@ class AIStudioService:
                     generate_asset_record(
                         asset,
                         product_context,
-                        random.Random(
-                            f"{view.seed}:apply:{asset.asset_id}:{product_index}"
-                        ),
+                        random.Random(f"{view.seed}:apply:{asset.asset_id}:{product_index}"),
                     ),
                 )
         for asset_id, batch in batches.items():

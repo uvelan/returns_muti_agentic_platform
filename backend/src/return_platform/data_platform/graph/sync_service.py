@@ -18,6 +18,7 @@ from pymongo import AsyncMongoClient
 from return_platform.configuration.settings import Settings
 from return_platform.data_platform.graph.schema import GraphSchemaManager
 from return_platform.data_platform.schema_registry import SchemaRegistry
+from return_platform.security.contact_evidence import contact_lookup_digest
 
 
 class GraphSyncScope(StrEnum):
@@ -234,16 +235,20 @@ class GraphSyncService:
                     "customer_id": customer_id,
                     "customer_name": _text(document.get("customerName")),
                     "phone_hash": (
-                        hashlib.sha256(
-                            str(document.get("phoneNumber", "")).strip().lower().encode()
-                        ).hexdigest()
+                        contact_lookup_digest(
+                            str(document.get("phoneNumber", "")),
+                            "PHONE",
+                            self._settings.contact_lookup_hmac_key.get_secret_value(),
+                        )
                         if _text(document.get("phoneNumber"))
                         else None
                     ),
                     "email_hash": (
-                        hashlib.sha256(
-                            str(document.get("email", "")).strip().lower().encode()
-                        ).hexdigest()
+                        contact_lookup_digest(
+                            str(document.get("email", "")),
+                            "EMAIL",
+                            self._settings.contact_lookup_hmac_key.get_secret_value(),
+                        )
                         if _text(document.get("email"))
                         else None
                     ),

@@ -7,7 +7,7 @@ const MOCK_SCENARIOS: Scenario[] = [
     id: "scen-1",
     name: "Q4 +10% Growth",
     description: "What-if scenario projecting 10% volume growth over Q3 actuals.",
-    baseWorkspaceId: "ws-sandbox-1",
+    baseWorkspaceId: "ws-isolated-1",
     status: "READY",
     parameters: { growthRate: 0.1 },
     createdAt: "2026-07-22T14:00:00Z",

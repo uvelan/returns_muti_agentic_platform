@@ -73,6 +73,7 @@ export async function confirmAssociateDiscovery(payload: {
   candidateIndex: number;
   orderLineId: string;
   expectedVersion: number;
+  candidateSetId?: string | null;
 }): Promise<AssociateConversation> {
   return requireData((await apiClient<AssociateConversation>(
     `/api/v1/associate-returns/conversations/${encodeURIComponent(payload.conversationId)}/confirm`,
@@ -80,6 +81,7 @@ export async function confirmAssociateDiscovery(payload: {
       candidateIndex: payload.candidateIndex,
       orderLineId: payload.orderLineId,
       expectedVersion: payload.expectedVersion,
+      candidateSetId: payload.candidateSetId ?? null,
     }),
   )).data);
 }

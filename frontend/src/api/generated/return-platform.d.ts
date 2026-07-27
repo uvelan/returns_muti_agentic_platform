@@ -2142,7 +2142,7 @@ export interface components {
             recordsPerAsset: number;
             /**
              * Scenarioname
-             * @default return-sandbox
+             * @default return-reference-data
              */
             scenarioName: string;
             /**

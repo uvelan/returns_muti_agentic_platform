@@ -101,7 +101,7 @@ export function SourceDetailPage() {
                     "Kind",
                     "Ownership",
                     "Authoritative",
-                    "Sandbox Write",
+                    "Isolated Write",
                   ].map((heading) => (
                     <th
                       key={heading}
@@ -148,7 +148,7 @@ export function SourceDetailPage() {
           <p>Source browsing is read-only for every asset.</p>
           <p>
             Random or synthetic data is created through AI Studio proposals. Direct apply is
-            allowed only for registry-approved sandbox assets.
+            allowed only for registry-approved isolated workspace assets.
           </p>
           <p>Authoritative source systems are never mutated by the Data Browser.</p>
         </div>

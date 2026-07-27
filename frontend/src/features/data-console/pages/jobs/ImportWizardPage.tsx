@@ -78,7 +78,7 @@ export function ImportWizardPage() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <PageHeader title="New Data Import" description="Queue a bounded CSV, JSON, or JSONL import into a sandbox workspace." />
+      <PageHeader title="New Data Import" description="Queue a bounded CSV, JSON, or JSONL import into an isolated workspace." />
       {(localError || submitImport.isError) && (
         <div className="mb-4">
           <ErrorState message={localError || submitImport.error?.message || "Import submission failed."} />

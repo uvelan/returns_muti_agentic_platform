@@ -17,17 +17,19 @@ x-platform-environment: &platform-environment
   PLATFORM_PROBE_TIMEOUT_SECONDS: ${PLATFORM_PROBE_TIMEOUT_SECONDS:-5}
   PLATFORM_DEPENDENCY_CONNECT_TIMEOUT_SECONDS: ${PLATFORM_DEPENDENCY_CONNECT_TIMEOUT_SECONDS:-10}
   PLATFORM_OPERATION_TIMEOUT_SECONDS: ${PLATFORM_OPERATION_TIMEOUT_SECONDS:-15}
-  PLATFORM_MONGO_DSN: mongodb://${MONGO_ROOT_USERNAME:-mongoadmin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/return_platform?authSource=admin&replicaSet=rs0
+  # Runtime credentials are resolved from Vault before dependency clients are created.
+  # These non-secret sentinels only satisfy startup schema validation.
+  PLATFORM_MONGO_DSN: mongodb://vault-resolved.invalid/return_platform
   PLATFORM_MONGO_DATABASE: ${PLATFORM_MONGO_DATABASE:-return_platform}
-  PLATFORM_SOURCE_MONGO_DSN: mongodb://${MONGO_ROOT_USERNAME:-mongoadmin}:${MONGO_ROOT_PASSWORD}@mongodb:27017/return_source?authSource=admin&replicaSet=rs0
+  PLATFORM_SOURCE_MONGO_DSN: mongodb://vault-resolved.invalid/return_source
   PLATFORM_SOURCE_MONGO_DATABASE: ${PLATFORM_SOURCE_MONGO_DATABASE:-return_source}
   PLATFORM_GRAPH_EVIDENCE_COLLECTION: ${PLATFORM_GRAPH_EVIDENCE_COLLECTION:-graph_evidence_runs}
   PLATFORM_GRAPH_EVIDENCE_QUERY_TIMEOUT_SECONDS: ${PLATFORM_GRAPH_EVIDENCE_QUERY_TIMEOUT_SECONDS:-5}
   PLATFORM_GRAPH_SYNC_BATCH_SIZE: ${PLATFORM_GRAPH_SYNC_BATCH_SIZE:-250}
   PLATFORM_GRAPH_SYNC_MAX_RECORDS: ${PLATFORM_GRAPH_SYNC_MAX_RECORDS:-10000}
   PLATFORM_AI_STUDIO_MAX_RECORDS: ${PLATFORM_AI_STUDIO_MAX_RECORDS:-500}
-  PLATFORM_AI_STUDIO_MONGO_DATABASE: ${PLATFORM_AI_STUDIO_MONGO_DATABASE:-ai_studio_sandbox}
-  PLATFORM_SUPPORT_TICKET_MODE: ${PLATFORM_SUPPORT_TICKET_MODE:-SANDBOX_AUTO}
+  PLATFORM_AI_STUDIO_MONGO_DATABASE: ${PLATFORM_AI_STUDIO_MONGO_DATABASE:-ai_studio_validation}
+  PLATFORM_SUPPORT_TICKET_MODE: ${PLATFORM_SUPPORT_TICKET_MODE:-INTERNAL}
   PLATFORM_SUPPORT_TICKET_BASE_URL: ${PLATFORM_SUPPORT_TICKET_BASE_URL:-}
   PLATFORM_SUPPORT_TICKET_API_KEY: ${PLATFORM_SUPPORT_TICKET_API_KEY:-}
   PLATFORM_SUPPORT_TICKET_TIMEOUT_SECONDS: ${PLATFORM_SUPPORT_TICKET_TIMEOUT_SECONDS:-15}
@@ -36,11 +38,11 @@ x-platform-environment: &platform-environment
   PLATFORM_FEEDBACK_LEARNING_ENABLED: ${PLATFORM_FEEDBACK_LEARNING_ENABLED:-true}
   PLATFORM_NEO4J_URI: bolt://neo4j:7687
   PLATFORM_NEO4J_USER: neo4j
-  PLATFORM_NEO4J_PASSWORD: ${GRAPH_PASSWORD}
+  PLATFORM_NEO4J_PASSWORD: vault-resolved
   PLATFORM_NEO4J_DATABASE: ${PLATFORM_NEO4J_DATABASE:-neo4j}
   PLATFORM_VALKEY_HOST: valkey
   PLATFORM_VALKEY_PORT: 6379
-  PLATFORM_VALKEY_PASSWORD: ${VALKEY_PASSWORD}
+  PLATFORM_VALKEY_PASSWORD: vault-resolved
   PLATFORM_EVENT_STREAM_RETENTION: ${PLATFORM_EVENT_STREAM_RETENTION:-10000}
   PLATFORM_SSE_HEARTBEAT_SECONDS: ${PLATFORM_SSE_HEARTBEAT_SECONDS:-15}
   PLATFORM_SSE_REPLAY_LIMIT: ${PLATFORM_SSE_REPLAY_LIMIT:-1000}
@@ -51,9 +53,9 @@ x-platform-environment: &platform-environment
   PLATFORM_SQLSERVER_HOST: sqlserver
   PLATFORM_SQLSERVER_PORT: 1433
   PLATFORM_SQLSERVER_USER: sa
-  PLATFORM_SQLSERVER_PASSWORD: ${MSSQL_SA_PASSWORD}
+  PLATFORM_SQLSERVER_PASSWORD: vault-resolved
   PLATFORM_SQLSERVER_DATABASE: ${PLATFORM_SQLSERVER_DATABASE:-return_platform}
-  PLATFORM_AI_PROVIDER_ORDER: ${PLATFORM_AI_PROVIDER_ORDER:-GOOGLE,NVIDIA,SIMULATOR}
+  PLATFORM_AI_PROVIDER_ORDER: ${PLATFORM_AI_PROVIDER_ORDER:-NONE}
   PLATFORM_AI_TIMEOUT_SECONDS: ${PLATFORM_AI_TIMEOUT_SECONDS:-12}
   PLATFORM_AI_GLOBAL_TIMEOUT_SECONDS: ${PLATFORM_AI_GLOBAL_TIMEOUT_SECONDS:-30}
   PLATFORM_AI_MAX_ATTEMPTS_PER_PROVIDER: ${PLATFORM_AI_MAX_ATTEMPTS_PER_PROVIDER:-2}
@@ -62,22 +64,28 @@ x-platform-environment: &platform-environment
   PLATFORM_AI_MAX_PAYLOAD_BYTES: ${PLATFORM_AI_MAX_PAYLOAD_BYTES:-16384}
   PLATFORM_AI_INTERCEPTION_DEFAULT: ${PLATFORM_AI_INTERCEPTION_DEFAULT:-false}
   PLATFORM_AI_PROMPT_VERSION: ${PLATFORM_AI_PROMPT_VERSION:-return-eligibility-v1}
-  PLATFORM_GOOGLE_API_KEYS: ${PLATFORM_GOOGLE_API_KEYS:-[]}
-  PLATFORM_GOOGLE_LIGHTWEIGHT_MODELS: ${PLATFORM_GOOGLE_LIGHTWEIGHT_MODELS:-["gemini-3.5-flash-lite","gemini-3.1-flash-lite"]}
-  PLATFORM_GOOGLE_STANDARD_MODELS: ${PLATFORM_GOOGLE_STANDARD_MODELS:-["gemini-3.5-flash","gemini-2.5-flash"]}
-  PLATFORM_GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+  PLATFORM_AI_ALLOWED_ENDPOINT_HOSTS: ${PLATFORM_AI_ALLOWED_ENDPOINT_HOSTS:-generativelanguage.googleapis.com,integrate.api.nvidia.com,api.openai.com,api.anthropic.com}
+  PLATFORM_DATA_SOURCE_ALLOWED_HOSTS: ${PLATFORM_DATA_SOURCE_ALLOWED_HOSTS:-mongodb,source-mongodb,sqlserver,neo4j,localhost,127.0.0.1,::1}
+  PLATFORM_GOOGLE_API_KEYS: "[]"
+  PLATFORM_GOOGLE_API_KEY_REFERENCES: ${PLATFORM_GOOGLE_API_KEY_REFERENCES:-[]}
+  PLATFORM_GOOGLE_LIGHTWEIGHT_MODELS: ${PLATFORM_GOOGLE_LIGHTWEIGHT_MODELS:-[]}
+  PLATFORM_GOOGLE_STANDARD_MODELS: ${PLATFORM_GOOGLE_STANDARD_MODELS:-[]}
   PLATFORM_GOOGLE_BASE_URL: ${PLATFORM_GOOGLE_BASE_URL:-https://generativelanguage.googleapis.com/v1beta}
-  PLATFORM_GOOGLE_MODEL: ${PLATFORM_GOOGLE_MODEL:-gemini-3.5-flash}
-  PLATFORM_NVIDIA_API_KEYS: ${PLATFORM_NVIDIA_API_KEYS:-[]}
-  PLATFORM_NVIDIA_LIGHTWEIGHT_MODELS: ${PLATFORM_NVIDIA_LIGHTWEIGHT_MODELS:-["meta/llama-3.2-3b-instruct","meta/llama-3.1-8b-instruct","nvidia/llama-3.1-nemotron-nano-vl-8b-v1"]}
-  PLATFORM_NVIDIA_STANDARD_MODELS: ${PLATFORM_NVIDIA_STANDARD_MODELS:-["nvidia/nemotron-3-nano-30b-a3b","meta/llama-3.1-70b-instruct"]}
-  PLATFORM_NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+  PLATFORM_NVIDIA_API_KEYS: "[]"
+  PLATFORM_NVIDIA_API_KEY_REFERENCES: ${PLATFORM_NVIDIA_API_KEY_REFERENCES:-[]}
+  PLATFORM_NVIDIA_LIGHTWEIGHT_MODELS: ${PLATFORM_NVIDIA_LIGHTWEIGHT_MODELS:-[]}
+  PLATFORM_NVIDIA_STANDARD_MODELS: ${PLATFORM_NVIDIA_STANDARD_MODELS:-[]}
   PLATFORM_NVIDIA_BASE_URL: ${PLATFORM_NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
-  PLATFORM_NVIDIA_MODEL: ${PLATFORM_NVIDIA_MODEL:-nvidia/nemotron-3-nano-30b-a3b}
-  PLATFORM_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  PLATFORM_OPENAI_API_KEYS: "[]"
+  PLATFORM_OPENAI_API_KEY_REFERENCES: ${PLATFORM_OPENAI_API_KEY_REFERENCES:-[]}
+  PLATFORM_OPENAI_LIGHTWEIGHT_MODELS: ${PLATFORM_OPENAI_LIGHTWEIGHT_MODELS:-[]}
+  PLATFORM_OPENAI_STANDARD_MODELS: ${PLATFORM_OPENAI_STANDARD_MODELS:-[]}
   PLATFORM_OPENAI_BASE_URL: ${PLATFORM_OPENAI_BASE_URL:-https://api.openai.com/v1}
   PLATFORM_OPENAI_MODEL: ${PLATFORM_OPENAI_MODEL:-}
-  PLATFORM_ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  PLATFORM_ANTHROPIC_API_KEYS: "[]"
+  PLATFORM_ANTHROPIC_API_KEY_REFERENCES: ${PLATFORM_ANTHROPIC_API_KEY_REFERENCES:-[]}
+  PLATFORM_ANTHROPIC_LIGHTWEIGHT_MODELS: ${PLATFORM_ANTHROPIC_LIGHTWEIGHT_MODELS:-[]}
+  PLATFORM_ANTHROPIC_STANDARD_MODELS: ${PLATFORM_ANTHROPIC_STANDARD_MODELS:-[]}
   PLATFORM_ANTHROPIC_BASE_URL: ${PLATFORM_ANTHROPIC_BASE_URL:-https://api.anthropic.com/v1}
   PLATFORM_ANTHROPIC_MODEL: ${PLATFORM_ANTHROPIC_MODEL:-}
   PLATFORM_ANTHROPIC_VERSION: ${PLATFORM_ANTHROPIC_VERSION:-2023-06-01}
@@ -85,6 +93,19 @@ x-platform-environment: &platform-environment
   PLATFORM_OLLAMA_MODEL: ${PLATFORM_OLLAMA_MODEL:-}
   PLATFORM_SEED_VERSION: ${PLATFORM_SEED_VERSION:-e2e-v2}
   PLATFORM_AUDIT_RETENTION_DAYS: ${PLATFORM_AUDIT_RETENTION_DAYS:-90}
+  PLATFORM_VAULT_ENABLED: "true"
+  PLATFORM_VAULT_ADDRESS: http://vault:8200
+  PLATFORM_VAULT_TOKEN_FILE: /run/return-platform/vault.token
+  PLATFORM_VAULT_VERIFY_TLS: "false"
+  PLATFORM_MONGO_DSN_SECRET_REFERENCE: vault://secret/production/data-sources/mongodb#container_dsn
+  PLATFORM_SOURCE_MONGO_DSN_SECRET_REFERENCE: vault://secret/production/data-sources/mongodb#container_source_dsn
+  PLATFORM_NEO4J_PASSWORD_SECRET_REFERENCE: vault://secret/production/data-sources/neo4j#password
+  PLATFORM_VALKEY_PASSWORD_SECRET_REFERENCE: vault://secret/production/data-sources/valkey#password
+  PLATFORM_SQLSERVER_PASSWORD_SECRET_REFERENCE: vault://secret/production/data-sources/sqlserver#password
+  PLATFORM_VALIDATION_FINGERPRINT_KEY_SECRET_REFERENCE: vault://secret/production/platform/validation#fingerprint_key
+  PLATFORM_VALIDATION_FINGERPRINT_KEY: vault-resolved
+  PLATFORM_CONTACT_LOOKUP_HMAC_KEY_SECRET_REFERENCE: vault://secret/production/platform/contact-lookup#hmac_key
+  PLATFORM_CONTACT_LOOKUP_HMAC_KEY: vault-resolved
 
 x-backend-base: &backend-base
   image: return-platform-backend:local
@@ -97,9 +118,35 @@ x-backend-base: &backend-base
   networks: [platform]
   extra_hosts:
     - "host.docker.internal:host-gateway"
+  volumes:
+    - ./.vault-local/return-platform.token:/run/return-platform/vault.token:ro
   logging: *default-logging
 
 services:
+  vault:
+    image: hashicorp/vault:${VAULT_VERSION:-2.0.3}
+    cap_add:
+      - IPC_LOCK
+    command: ["vault", "server", "-config=/vault/config/vault.hcl"]
+    ports:
+      - "127.0.0.1:8200:8200"
+    volumes:
+      - ./infra/vault/config:/vault/config:ro
+      - vault_data:/vault/file
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          vault status -address=http://127.0.0.1:8200 >/dev/null 2>&1;
+          code=$$?; [ "$$code" -eq 0 ] || [ "$$code" -eq 2 ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+    networks: [platform]
+    logging: *default-logging
+
   sqlserver:
     image: mcr.microsoft.com/mssql/server:${MSSQL_VERSION:-2025-CU4-ubuntu-22.04}
     environment:
@@ -159,11 +206,12 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-mongoadmin}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_REPLICA_SET_KEY: ${MONGO_REPLICA_SET_KEY}
     entrypoint:
       - bash
       - -c
       - |
-        echo "returnPlatformMongodbKeyfileSandboxOnly1234567890" > /data/configdb/keyfile
+        printf '%s' "$${MONGO_REPLICA_SET_KEY}" > /data/configdb/keyfile
         chmod 400 /data/configdb/keyfile
         chown 999:999 /data/configdb/keyfile
         exec docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /data/configdb/keyfile --wiredTigerCacheSizeGB 1
@@ -307,11 +355,29 @@ services:
     logging: *default-logging
     mem_limit: 512m
 
+  runtime-configuration-init:
+    profiles: ["containerized-app"]
+    <<: *backend-base
+    command:
+      - sh
+      - -ec
+      - >-
+        python /app/scripts/apply_neo4j_migrations.py &&
+        python /app/scripts/bootstrap_graph_configuration.py
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+    restart: "no"
+
   seed-runner:
     profiles: ["containerized-app"]
     <<: *backend-base
     command: ["python", "/app/scripts/seed_e2e_data.py"]
     depends_on:
+      runtime-configuration-init:
+        condition: service_completed_successfully
       mongodb-rs-init:
         condition: service_completed_successfully
       sqlserver-init:
@@ -367,6 +433,8 @@ services:
     <<: *backend-base
     command: ["python", "/app/scripts/run_outbox_publisher.py"]
     depends_on:
+      runtime-configuration-init:
+        condition: service_completed_successfully
       mongodb-rs-init:
         condition: service_completed_successfully
       valkey:
@@ -377,8 +445,22 @@ services:
     <<: *backend-base
     command: ["python", "/app/scripts/run_data_job_worker.py"]
     depends_on:
+      runtime-configuration-init:
+        condition: service_completed_successfully
       mongodb-rs-init:
         condition: service_completed_successfully
+
+  integration-outbox-worker:
+    profiles: ["containerized-app"]
+    <<: *backend-base
+    command: ["python", "-m", "return_platform.workers.integration_outbox"]
+    depends_on:
+      runtime-configuration-init:
+        condition: service_completed_successfully
+      mongodb-rs-init:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
 
   frontend:
     profiles: ["containerized-app"]
@@ -403,6 +485,7 @@ networks:
     driver: bridge
 
 volumes:
+  vault_data:
   sqlserver_data:
   neo4j_data:
   neo4j_logs:

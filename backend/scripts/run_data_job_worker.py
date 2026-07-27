@@ -6,13 +6,15 @@ import uuid
 
 from pymongo import AsyncMongoClient
 
-from return_platform.configuration.settings import Settings
+from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
+from return_platform.configuration.runtime_loader import resolve_process_configuration
 from return_platform.data_console.api.jobs import JobService
 from return_platform.operations.repository import OperationalRepository
 
 
 async def _run() -> None:
-    settings = Settings()  # type: ignore[call-arg]
+    runtime = await resolve_process_configuration()
+    settings = runtime.settings
     mongo: AsyncMongoClient[dict[str, object]] = AsyncMongoClient(
         settings.mongo_dsn.get_secret_value()
     )
@@ -20,6 +22,11 @@ async def _run() -> None:
     jobs = JobService(mongo, settings.mongo_database)
     operations = OperationalRepository(mongo, settings)
     try:
+        await verify_runtime_validation_receipts(
+            mongo,
+            settings.mongo_database,
+            runtime.return_configuration.configuration,
+        )
         await jobs.ensure_indexes()
         await operations.ensure_indexes()
         while True:

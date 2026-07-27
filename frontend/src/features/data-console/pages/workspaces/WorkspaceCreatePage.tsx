@@ -20,11 +20,11 @@ export function WorkspaceCreatePage() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
-      <PageHeader title="Create Sandbox Workspace" description="Initialize a durable Platform MongoDB sandbox for isolated mutations." />
+      <PageHeader title="Create Isolated Workspace" description="Initialize a durable Platform MongoDB workspace for isolated mutations." />
 
       <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-6 text-sm text-amber-900 rounded-r shadow-sm">
-        <p className="font-semibold uppercase tracking-wide">Sandbox Isolation</p>
-        <p className="mt-1">Edits persist in the sandbox and do not affect source collections.</p>
+        <p className="font-semibold uppercase tracking-wide">Workspace isolation</p>
+        <p className="mt-1">Edits persist in the isolated workspace and do not affect source collections.</p>
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white p-6 rounded border border-gray-200 space-y-4 shadow-sm">
@@ -38,7 +38,7 @@ export function WorkspaceCreatePage() {
           <label htmlFor="ws-desc" className="block text-sm font-medium text-gray-700 mb-1">Description</label>
           <textarea id="ws-desc"
             className="w-full border border-gray-300 rounded px-3 py-2 text-sm h-24 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Purpose of this sandbox..." value={description} onChange={(e) => { setDescription(e.target.value); }} />
+            placeholder="Purpose of this isolated workspace..." value={description} onChange={(e) => { setDescription(e.target.value); }} />
         </div>
         <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
           <button type="button" onClick={() => { setLocation("/data-console/workspaces"); }}

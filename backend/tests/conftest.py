@@ -120,21 +120,21 @@ def isolated_lifespan_dependencies(
 ) -> None:
     """Prevent lifespan unit tests from opening external connections."""
 
-    def initialize_mongodb(
+    async def initialize_mongodb(
         settings: Settings,
         resources: RuntimeResources,
     ) -> None:
         del settings
         del resources
 
-    def initialize_neo4j(
+    async def initialize_neo4j(
         settings: Settings,
         resources: RuntimeResources,
     ) -> None:
         del settings
         del resources
 
-    def initialize_valkey(
+    async def initialize_valkey(
         settings: Settings,
         resources: RuntimeResources,
     ) -> None:

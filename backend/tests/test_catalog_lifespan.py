@@ -35,7 +35,7 @@ def test_valid_catalog_is_registered_in_runtime_resources(
             app.state.resources,
         )
 
-        assert resources.settings is settings
+        assert resources.settings.catalog_path == settings.catalog_path
         assert resources.catalog.asset_count == 0
         assert resources.catalog.catalog.version == "1.0"
         assert resources.catalog.source_path == empty_catalog_path

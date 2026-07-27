@@ -15,6 +15,9 @@ if [[ ! -f "$ROOT/.env" ]]; then
   chmod 600 "$ROOT/.env"
   echo "Created .env. Replace placeholder credentials before running services."
 fi
+python3.13 "$ROOT/scripts/linux/ensure_runtime_env_keys.py" --env-file "$ROOT/.env"
+python3.13 "$ROOT/scripts/linux/ensure_local_infrastructure_secrets.py"
+python3.13 "$ROOT/scripts/linux/ensure_local_replica_key.py"
 cd "$ROOT/backend"
 if command -v poetry >/dev/null; then
   poetry env use python3.13

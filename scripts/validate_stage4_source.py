@@ -203,14 +203,19 @@ def validate_frontend(checks: list[dict[str, Any]]) -> None:
         and 'capability: "BLOCKED"' not in route_text,
         {"liveCount": route_text.count('capability: "LIVE"')},
     )
-    assistant = (
-        ROOT / "frontend/src/features/operations/AssociateReturnsPage.tsx"
-    ).read_text(encoding="utf-8")
+    assistant_paths = (
+        ROOT / "frontend/src/features/operations/AssociateReturnsPage.tsx",
+        ROOT
+        / "frontend/src/features/operations/order_discovery/OrderDiscoveryCopilot.tsx",
+        ROOT / "frontend/src/features/operations/order_discovery/OrderContextPanel.tsx",
+    )
+    assistant = "\n".join(path.read_text(encoding="utf-8") for path in assistant_paths)
     required = [
-        "Minimal evidence",
-        "Confirm and lock",
-        "Complete return details",
-        "Create Return Support request",
+        "OrderDiscoveryCopilot",
+        "OrderContextPanel",
+        "confirmAssociateDiscovery",
+        "submitAssociateReturnDetails",
+        "candidateSetId",
     ]
     add(
         checks,
@@ -383,7 +388,7 @@ def validate_domain_flow(checks: list[dict[str, Any]]) -> None:
         and "supported_product_types" in sql,
         "feedback_review_queue": (
             "REVIEW_PENDING" in feedback
-            and "record_feedback_recommendation" in feedback
+            and 'self._records.replace_one({"sessionId": session.id}' in feedback
         ),
         "lock_release": "release_discovery_lock" in orchestrator,
     }

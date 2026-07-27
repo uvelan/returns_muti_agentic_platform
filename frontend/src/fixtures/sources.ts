@@ -42,10 +42,10 @@ export const FIXTURE_SOURCES: SourceItem[] = [
     lastInventoryTime: new Date(Date.now() - 900000).toISOString(),
   },
   {
-    id: "src-sandbox-1",
+    id: "src-isolated-1",
     name: "Test Scenario Workspace",
     engine: "PLATFORM",
-    environment: "SANDBOX",
+    environment: "LOCAL",
     ownership: "SYNTHETIC",
     health: "HEALTHY",
     capability: "WRITABLE",
@@ -86,12 +86,12 @@ export const FIXTURE_SOURCE_DETAILS: Record<string, SourceDetail> = {
     dependencyWarnings: [],
     assets: [],
   },
-  "src-sandbox-1": {
+  "src-isolated-1": {
     ...FIXTURE_SOURCES[4],
-    connectionIdentity: "sandbox-tenant-12a",
+    connectionIdentity: "isolated-tenant-12a",
     inventoryTotals: { assets: 4, records: 150 },
     lastMetadataRefresh: new Date().toISOString(),
-    dependencyWarnings: ["This is a synthetic sandbox workspace"],
+    dependencyWarnings: ["This is an isolated generated-data workspace"],
     assets: [],
   }
 };

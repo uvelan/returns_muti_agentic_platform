@@ -4,7 +4,7 @@
   "command": "node scripts/validate_frontend_syntax.mjs",
   "nodeVersion": "v22.16.0",
   "typescriptVersion": "5.8.3",
-  "filesParsed": 166,
+  "filesParsed": 176,
   "exitCode": 0,
   "status": "PASSED",
   "failures": [],

@@ -313,9 +313,7 @@ class OperationalRepository:
     @staticmethod
     def _attempt_view(document: dict[str, Any]) -> AIUsageAttemptView:
         payload = {
-            key: value
-            for key, value in document.items()
-            if key in AIUsageAttemptView.model_fields
+            key: value for key, value in document.items() if key in AIUsageAttemptView.model_fields
         }
         payload["id"] = str(document.get("_id") or document.get("id"))
         return AIUsageAttemptView.model_validate(payload)
@@ -1360,10 +1358,7 @@ class OperationalRepository:
         if task_id is not None:
             query["taskId"] = task_id
         cursor = self.ai_attempts.find(query).sort("createdAt", DESCENDING).limit(limit)
-        return [
-            self._attempt_view(cast(dict[str, Any], item))
-            async for item in cursor
-        ]
+        return [self._attempt_view(cast(dict[str, Any], item)) async for item in cursor]
 
     async def summarize_ai_attempt_metrics(self) -> AIUsageSummaryView:
         attempts = await self.list_ai_attempt_metrics(limit=10_000)

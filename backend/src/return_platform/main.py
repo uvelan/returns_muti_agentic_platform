@@ -28,11 +28,28 @@ from return_platform.api.returns import router as returns_router
 from return_platform.api.seed import router as seed_router
 from return_platform.api.support import router as support_router
 from return_platform.api.warehouse_placement import router as warehouse_placement_router
-from return_platform.configuration.return_configuration import load_return_configuration
+from return_platform.configuration.graph_repository import (
+    ConfigurationGraphRepository,
+    InMemoryConfigurationGraphRepository,
+    Neo4jConfigurationGraphRepository,
+)
+from return_platform.configuration.return_configuration import (
+    LoadedReturnConfiguration,
+    load_return_configuration,
+)
+from return_platform.configuration.runtime_integrations import (
+    apply_graph_runtime_configuration,
+    verify_runtime_validation_receipts,
+)
 from return_platform.configuration.settings import Settings
+from return_platform.configuration.snapshot import ConfigurationSnapshotBuilder
 from return_platform.data_console.api.ai_studio import router as ai_studio_router
 from return_platform.data_console.api.audit import router as audit_router
 from return_platform.data_console.api.browser import router as browser_router
+from return_platform.data_console.api.configuration import router as configuration_router
+from return_platform.data_console.api.copilot_operations import (
+    router as copilot_operations_router,
+)
 from return_platform.data_console.api.feedback_learning import router as feedback_learning_router
 from return_platform.data_console.api.graph import router as graph_router
 from return_platform.data_console.api.graph_evidence import router as graph_evidence_router
@@ -40,6 +57,9 @@ from return_platform.data_console.api.graph_sync import router as graph_sync_rou
 from return_platform.data_console.api.inventory import router as inventory_router
 from return_platform.data_console.api.jobs import router as jobs_router
 from return_platform.data_console.api.router import router as console_router
+from return_platform.data_console.api.runtime_validation import (
+    router as runtime_validation_router,
+)
 from return_platform.data_console.api.scenarios import router as scenarios_router
 from return_platform.data_console.api.schema_catalog import router as schema_catalog_router
 from return_platform.data_console.api.sources import router as sources_router
@@ -65,6 +85,7 @@ from return_platform.resources import (
     RuntimeResources,
     close_resources,
 )
+from return_platform.secrets.runtime import resolve_runtime_settings_from_vault
 from return_platform.security.principal import (
     AuthorizationError,
     PrincipalProvider,
@@ -152,7 +173,7 @@ def _create_error_response(
     return response
 
 
-def _initialize_mongodb(
+async def _initialize_mongodb(
     settings: Settings,
     resources: RuntimeResources,
 ) -> None:
@@ -174,14 +195,20 @@ def _initialize_mongodb(
             if source_dsn == settings.mongo_dsn.get_secret_value()
             else AsyncMongoClient[dict[str, object]](source_dsn)
         )
+        async with asyncio.timeout(settings.dependency_connect_timeout_seconds):
+            await mongo_client.admin.command("ping")
+            if resources.source_mongo is not mongo_client:
+                await resources.source_mongo.admin.command("ping")
     except Exception as exc:
         _log_initialization_failure(
             "mongodb",
             exc,
         )
+        if settings.environment == "production":
+            raise RuntimeError("Required MongoDB dependencies are unavailable") from exc
 
 
-def _initialize_neo4j(
+async def _initialize_neo4j(
     settings: Settings,
     resources: RuntimeResources,
 ) -> None:
@@ -195,14 +222,18 @@ def _initialize_neo4j(
                 settings.neo4j_password.get_secret_value(),
             ),
         )
+        async with asyncio.timeout(settings.dependency_connect_timeout_seconds):
+            await resources.neo4j.verify_connectivity()
     except Exception as exc:
         _log_initialization_failure(
             "neo4j",
             exc,
         )
+        if settings.environment == "production":
+            raise RuntimeError("Required Neo4j dependency is unavailable") from exc
 
 
-def _initialize_valkey(
+async def _initialize_valkey(
     settings: Settings,
     resources: RuntimeResources,
 ) -> None:
@@ -222,11 +253,16 @@ def _initialize_valkey(
             AsyncValkeyClient,
             valkey_client,
         )
+        async with asyncio.timeout(settings.dependency_connect_timeout_seconds):
+            if not await resources.valkey.ping():
+                raise RuntimeError("Valkey ping returned an unhealthy result")
     except Exception as exc:
         _log_initialization_failure(
             "valkey",
             exc,
         )
+        if settings.environment == "production":
+            raise RuntimeError("Required Valkey dependency is unavailable") from exc
 
 
 async def _initialize_temporal(
@@ -243,6 +279,8 @@ async def _initialize_temporal(
             "temporal",
             exc,
         )
+        if settings.environment == "production":
+            raise RuntimeError("Required Temporal dependency is unavailable") from exc
 
 
 @asynccontextmanager
@@ -257,52 +295,97 @@ async def lifespan(
     catalog therefore prevents the application from starting.
     """
 
-    settings = _get_settings(app)
-
-    loaded_catalog = load_asset_catalog(settings.catalog_path)
-    schema_registry = load_schema_registry(settings.schema_registry_path)
-    return_configuration = load_return_configuration(settings.return_configuration_path)
-    dependency_simulation_configuration = load_dependency_simulation_configuration(
-        settings.dependency_simulation_configuration_path
+    configured_settings = _get_settings(app)
+    bootstrap_settings, secret_resolver = await resolve_runtime_settings_from_vault(
+        configured_settings,
+        resolve_ai_credentials=False,
     )
-    ai_gateway_configuration = load_ai_gateway_configuration(settings.ai_gateway_configuration_path)
+    app.state.settings = bootstrap_settings
+    app.state.secret_resolver = secret_resolver
+
+    loaded_catalog = load_asset_catalog(bootstrap_settings.catalog_path)
+    schema_registry = load_schema_registry(bootstrap_settings.schema_registry_path)
+    baseline_return_configuration = load_return_configuration(
+        bootstrap_settings.return_configuration_path
+    )
+    dependency_simulation_configuration = load_dependency_simulation_configuration(
+        bootstrap_settings.dependency_simulation_configuration_path
+    )
+    ai_gateway_configuration = load_ai_gateway_configuration(
+        bootstrap_settings.ai_gateway_configuration_path
+    )
 
     resources = RuntimeResources(
-        settings=settings,
+        settings=bootstrap_settings,
         catalog=loaded_catalog,
         schema_registry=schema_registry,
     )
 
     try:
-        _initialize_mongodb(
+        await _initialize_neo4j(
+            bootstrap_settings,
+            resources,
+        )
+        graph_configuration_repository: ConfigurationGraphRepository
+        if resources.neo4j is not None:
+            graph_configuration_repository = Neo4jConfigurationGraphRepository(resources.neo4j)
+        else:
+            graph_configuration_repository = InMemoryConfigurationGraphRepository()
+        app.state.graph_configuration_repository = graph_configuration_repository
+
+        feature_flags = baseline_return_configuration.configuration.feature_flags
+        graph_first_enabled = feature_flags.graph_first_runtime_configuration
+        configuration_snapshot = await ConfigurationSnapshotBuilder(
+            graph_configuration_repository
+        ).build_snapshot(
+            baseline_return_configuration.configuration,
+            allow_baseline_fallback=(
+                not graph_first_enabled
+                or bootstrap_settings.environment in _DEVELOPMENT_ENVIRONMENTS
+            ),
+        )
+        return_configuration = LoadedReturnConfiguration(
+            configuration=configuration_snapshot.configuration,
+            path=baseline_return_configuration.path,
+            sha256=configuration_snapshot.checksum_sha256,
+        )
+        graph_settings = apply_graph_runtime_configuration(
+            bootstrap_settings,
+            return_configuration.configuration,
+        )
+        settings, resolved_secret_resolver = await resolve_runtime_settings_from_vault(
+            graph_settings
+        )
+        if resolved_secret_resolver is not None:
+            secret_resolver = resolved_secret_resolver
+            app.state.secret_resolver = secret_resolver
+        resources.settings = settings
+        app.state.settings = settings
+
+        await _initialize_mongodb(
             settings,
             resources,
         )
-
-        _initialize_neo4j(
+        await _initialize_valkey(
             settings,
             resources,
         )
-
-        _initialize_valkey(
-            settings,
-            resources,
-        )
-
         await _initialize_temporal(
             settings,
             resources,
         )
 
         app.state.resources = resources
-        app.state.return_configuration = return_configuration
         app.state.dependency_simulation_configuration = dependency_simulation_configuration
         app.state.ai_gateway_configuration = ai_gateway_configuration
-        app.state.ai_gateway_route_pool = AIRoutePool(
-            build_routes(settings),
-            ai_gateway_configuration.configuration,
-        )
+        app.state.return_configuration = return_configuration
+        app.state.return_configuration_snapshot = configuration_snapshot
         if resources.mongo is not None:
+            await verify_runtime_validation_receipts(
+                resources.mongo,
+                settings.mongo_database,
+                return_configuration.configuration,
+            )
             operational_repository = OperationalRepository(
                 resources.mongo,
                 settings,
@@ -323,6 +406,10 @@ async def lifespan(
                 configuration=return_configuration.configuration,
                 operational_repository=operational_repository,
             ).ensure_indexes()
+        app.state.ai_gateway_route_pool = AIRoutePool(
+            build_routes(settings),
+            ai_gateway_configuration.configuration,
+        )
 
         logger.info(
             "application_resources_initialized",
@@ -333,6 +420,8 @@ async def lifespan(
                 "schema_registry_asset_count": len(schema_registry.assets),
                 "graph_node_count": len(schema_registry.graph.nodes),
                 "return_configuration_sha256": return_configuration.sha256,
+                "return_configuration_release_id": configuration_snapshot.release_id,
+                "return_configuration_source": configuration_snapshot.source,
                 "return_assumption_set": (
                     return_configuration.configuration.assumption_set_version
                 ),
@@ -463,12 +552,26 @@ def create_app(
                 "unknown",
             ),
         )
+        error_code = "CLIENT_ERROR" if exc.status_code < 500 else "INTERNAL_ERROR"
+        error_message = exc.detail if isinstance(exc.detail, str) else "Request failed."
+        if isinstance(exc.detail, dict):
+            candidate_code = exc.detail.get("code")
+            candidate_message = exc.detail.get("message")
+            if (
+                isinstance(candidate_code, str)
+                and candidate_code
+                and candidate_code.replace("_", "").isalnum()
+                and candidate_code.upper() == candidate_code
+            ):
+                error_code = candidate_code[:100]
+            if isinstance(candidate_message, str) and candidate_message.strip():
+                error_message = candidate_message.strip()[:500]
         return _create_error_response(
             status_code=exc.status_code,
             correlation_id=correlation_id,
             source="API",
-            code="CLIENT_ERROR" if exc.status_code < 500 else "INTERNAL_ERROR",
-            message=exc.detail if isinstance(exc.detail, str) else "Request failed.",
+            code=error_code,
+            message=error_message,
         )
 
     @fastapi_app.exception_handler(Exception)
@@ -561,6 +664,18 @@ def create_app(
                     "asset_count": resources.catalog.asset_count,
                 },
                 "dependencies": dependencies,
+                "configuration": {
+                    "release_id": getattr(
+                        getattr(request.app.state, "return_configuration_snapshot", None),
+                        "release_id",
+                        "unknown",
+                    ),
+                    "source": getattr(
+                        getattr(request.app.state, "return_configuration_snapshot", None),
+                        "source",
+                        "unknown",
+                    ),
+                },
             },
         )
 
@@ -578,6 +693,9 @@ def create_app(
     fastapi_app.include_router(jobs_router)
     fastapi_app.include_router(scenarios_router)
     fastapi_app.include_router(audit_router)
+    fastapi_app.include_router(configuration_router)
+    fastapi_app.include_router(copilot_operations_router)
+    fastapi_app.include_router(runtime_validation_router)
     fastapi_app.include_router(returns_router)
     fastapi_app.include_router(return_agents_router)
     fastapi_app.include_router(return_support_router)
@@ -592,5 +710,4 @@ def create_app(
     fastapi_app.include_router(seed_router)
     fastapi_app.include_router(dependencies_router)
     fastapi_app.include_router(dependency_simulator_router)
-
     return fastapi_app

@@ -26,16 +26,27 @@ REQUIRED_SIMULATION_VALUES = {
     "PLATFORM_FREIGHT_DEPENDENCY_MODE": "SIMULATED",
     "PLATFORM_LSI_DEPENDENCY_MODE": "SIMULATED",
 }
-REQUIRED_JSON_LISTS = (
+REQUIRED_VAULT_VALUES = {
+    "PLATFORM_VAULT_ENABLED": "true",
+}
+REQUIRED_VAULT_REFERENCES = (
+    "PLATFORM_MONGO_DSN_SECRET_REFERENCE",
+    "PLATFORM_SOURCE_MONGO_DSN_SECRET_REFERENCE",
+    "PLATFORM_NEO4J_PASSWORD_SECRET_REFERENCE",
+    "PLATFORM_VALKEY_PASSWORD_SECRET_REFERENCE",
+    "PLATFORM_SQLSERVER_PASSWORD_SECRET_REFERENCE",
+    "PLATFORM_VALIDATION_FINGERPRINT_KEY_SECRET_REFERENCE",
+    "PLATFORM_CONTACT_LOOKUP_HMAC_KEY_SECRET_REFERENCE",
+)
+TEMPLATE_JSON_LISTS = (
+    "PLATFORM_AI_ALLOWED_ENDPOINT_HOSTS",
+    "PLATFORM_DATA_SOURCE_ALLOWED_HOSTS",
     "PLATFORM_GOOGLE_API_KEYS",
     "PLATFORM_GOOGLE_LIGHTWEIGHT_MODELS",
     "PLATFORM_GOOGLE_STANDARD_MODELS",
     "PLATFORM_NVIDIA_API_KEYS",
     "PLATFORM_NVIDIA_LIGHTWEIGHT_MODELS",
     "PLATFORM_NVIDIA_STANDARD_MODELS",
-)
-TEMPLATE_JSON_LISTS = (
-    *REQUIRED_JSON_LISTS,
     "PLATFORM_OPENAI_API_KEYS",
     "PLATFORM_OPENAI_LIGHTWEIGHT_MODELS",
     "PLATFORM_OPENAI_STANDARD_MODELS",
@@ -134,24 +145,30 @@ def validate(path: Path, *, simulation: bool, template_mode: bool = False) -> in
             if observed is None or observed.value != expected:
                 raise ValueError(f"{name} must equal {expected}")
 
-        for name in REQUIRED_JSON_LISTS:
-            parsed_value = values.get(name)
-            if parsed_value is None:
-                raise ValueError(f"{name} is missing")
-            items = _parse_json_list(name, parsed_value, require_non_empty=True)
-            for item in items:
-                _validate_non_placeholder(name, item)
+    for name, expected in REQUIRED_VAULT_VALUES.items():
+        observed = values.get(name)
+        if observed is None or observed.value.lower() != expected:
+            raise ValueError(f"{name} must equal {expected}")
+    for name in REQUIRED_VAULT_REFERENCES:
+        observed = values.get(name)
+        if observed is None:
+            raise ValueError(f"{name} is missing")
+        if not observed.value.startswith("vault://"):
+            raise ValueError(f"{name} must be a Vault reference")
 
-        for name in (
-            "MSSQL_SA_PASSWORD",
-            "GRAPH_PASSWORD",
-            "MONGO_ROOT_PASSWORD",
-            "TEMPORAL_DB_PASSWORD",
-            "VALKEY_PASSWORD",
-        ):
-            parsed_value = values.get(name)
-            if parsed_value is None:
-                raise ValueError(f"{name} is missing")
+    infrastructure_secrets = (
+        "MSSQL_SA_PASSWORD",
+        "GRAPH_PASSWORD",
+        "MONGO_ROOT_PASSWORD",
+        "MONGO_REPLICA_SET_KEY",
+        "TEMPORAL_DB_PASSWORD",
+        "VALKEY_PASSWORD",
+    )
+    for name in infrastructure_secrets:
+        parsed_value = values.get(name)
+        if parsed_value is None:
+            raise ValueError(f"{name} is missing")
+        if not template_mode:
             _validate_non_placeholder(name, parsed_value.value)
 
     print(f"Validated {len(values)} dotenv assignments without displaying values.")

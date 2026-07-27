@@ -75,7 +75,7 @@ export function ExportWizardPage() {
                 onChange={(event) => { setFieldText(event.target.value); }}
               />
             </label>
-            <p className="text-xs text-orange-700">Only sandbox workspace records are exportable through this screen.</p>
+            <p className="text-xs text-orange-700">Only isolated workspace records are exportable through this screen.</p>
           </div>
         )}
 
