@@ -15,16 +15,33 @@ export function Panel({ title, children, className = "" }: { title?: string; chi
   );
 }
 
+export function formatBadgeLabel(value: string): string {
+  if (!value) return "—";
+  return value
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 export function ToneBadge({ value }: { value: string }) {
-  const normalized = value.toUpperCase();
-  const tone = normalized.includes("HEALTHY") || normalized.includes("COMPLETED") || normalized.includes("APPROVED") || normalized.includes("RESOLVED")
-    ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
-    : normalized.includes("FAILED") || normalized.includes("REJECT") || normalized.includes("UNAVAILABLE") || normalized.includes("CANCEL") || normalized.includes("BLOCKED")
-      ? "bg-red-50 text-red-700 ring-red-600/20"
-      : normalized.includes("PENDING") || normalized.includes("REVIEW") || normalized.includes("DEGRADED") || normalized.includes("OPEN")
-        ? "bg-amber-50 text-amber-700 ring-amber-600/20"
-        : "bg-blue-50 text-blue-700 ring-blue-600/20";
-  return <span className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ring-1 ring-inset ${tone}`}>{value}</span>;
+  const normalized = (value || "").toUpperCase();
+  const tone =
+    normalized.includes("HEALTHY") || normalized.includes("COMPLETED") || normalized.includes("APPROVED") || normalized.includes("RESOLVED") || normalized.includes("SUBMITTED")
+      ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
+      : normalized.includes("FAILED") || normalized.includes("REJECT") || normalized.includes("UNAVAILABLE") || normalized.includes("CANCEL") || normalized.includes("BLOCKED")
+        ? "bg-red-50 text-red-700 ring-red-600/20"
+        : normalized.includes("NO_MATCH") || normalized.includes("NO MATCH")
+          ? "bg-amber-50 text-amber-800 ring-amber-600/20"
+          : normalized.includes("PENDING") || normalized.includes("REVIEW") || normalized.includes("DEGRADED") || normalized.includes("OPEN") || normalized.includes("DETAILS")
+            ? "bg-amber-50 text-amber-700 ring-amber-600/20"
+            : normalized.includes("AWAITING") || normalized.includes("GREETING") || normalized.includes("READY") || normalized.includes("DISCOVERY")
+              ? "bg-teal-50 text-teal-800 ring-teal-600/20"
+              : "bg-blue-50 text-blue-700 ring-blue-600/20";
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${tone}`}>
+      {formatBadgeLabel(value)}
+    </span>
+  );
 }
 
 export function KeyValue({ label, value }: { label: string; value: ReactNode }) {

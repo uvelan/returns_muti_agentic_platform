@@ -100,6 +100,26 @@ discovery:
       patterns:
         - "\\b(?:SKU|PRD)-[A-Z0-9-]{3,}\\b"
   free_text_fallback_anchor: PRODUCT_DESCRIPTION
+  conversation:
+    greeting_patterns:
+      - "^(?:hi|hello|hey|greetings|good\\s+(?:morning|afternoon|evening)|help|start|howdy|hi\\s+there|hello\\s+there)[\\s!.,]*$"
+    greeting_response: "Hello! I am your AI Returns Assistant. I can help you locate customer orders, verify return eligibility, and process RMA requests. To get started, please share an order number (e.g., SO-00010001 or W000000001), customer ID, tracking number, or SKU."
+    greeting_status: "AWAITING_ANCHOR"
+    greeting_next_question: "How can I assist you with your return today?"
+    greeting_title: "Return Assistance"
+    initial_match_template: "I located {count} matching order(s) for {anchor_type} '{anchor_value}'. Please review the evidence below and confirm the exact customer and order line to proceed."
+    initial_no_match_template: "I searched our order records for {anchor_type} '{anchor_value}', but couldn't find a direct match. Could you provide another identifier such as an order number, customer ID, tracking number, or SKU?"
+    continue_match_template: "Great! Using {anchor_type} '{anchor_value}', I found {count} matching candidate order(s). Please review the updated list and confirm the item being returned."
+    continue_no_match_template: "I checked for {anchor_type} '{anchor_value}', but still couldn't locate a matching order in our systems. Please double-check the number or try searching by customer phone, email, or exact SKU."
+    confirmation_associate_template: "Confirmed order {order_reference}, line item {order_line_id}."
+    confirmation_assistant_template: "Order line {order_line_id} is now locked for return processing. Please provide the return reason, quantity, number of packages, preferred shipping method, and any optional notes."
+    submission_associate_template: "Confirmed return handling details."
+    submission_assistant_template: "Return session {session_id} has been created and transferred to Return Support processing."
+    fallback_question_template: "Could you please provide {subject}?"
+    default_discovery_question: "Which order and order line should be returned?"
+    default_no_match_question: "What additional order evidence can you provide?"
+    default_continue_no_match_question: "What other order evidence can you provide?"
+    default_details_question: "Why is the item being returned?"
 
 source_resolution:
   sales_invoice_collection: salesInv

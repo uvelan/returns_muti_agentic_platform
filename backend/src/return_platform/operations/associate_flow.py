@@ -252,6 +252,15 @@ class AssociateConversationService:
             operational_repository=repository,
         )
 
+    def _is_greeting(self, value: str) -> bool:
+        for pattern in self._return_configuration.discovery.conversation.greeting_patterns:
+            if re.search(pattern, value.strip(), re.IGNORECASE) is not None:
+                return True
+        return False
+
+    def _format_anchor_type(self, anchor_type: AnchorType) -> str:
+        return anchor_type.value.lower().replace("_", " ")
+
     def _extract_anchor(self, message: str) -> StartAssociateConversationRequest:
         matches: list[tuple[AnchorType, str]] = []
         for extractor in self._return_configuration.discovery.anchor_extractors:
@@ -284,13 +293,18 @@ class AssociateConversationService:
                 matches,
                 key=lambda item: priority.get(item[0], len(priority)),
             )
+            if anchor_type in {
+                AnchorType.ORDER_NUMBER,
+                AnchorType.SKU,
+                AnchorType.TRACKING_NUMBER,
+                AnchorType.CUSTOMER_ID,
+            }:
+                value = value.upper()
             return StartAssociateConversationRequest(
                 anchorType=anchor_type,
                 anchorValue=value,
             )
-        fallback = AnchorType(
-            self._return_configuration.discovery.free_text_fallback_anchor
-        )
+        fallback = AnchorType(self._return_configuration.discovery.free_text_fallback_anchor)
         return StartAssociateConversationRequest(
             anchorType=fallback,
             anchorValue=message,
@@ -300,6 +314,8 @@ class AssociateConversationService:
         self,
         conversation: AssociateConversationView,
     ) -> str:
+        if conversation.status == self._return_configuration.discovery.conversation.greeting_status:
+            return self._return_configuration.discovery.conversation.greeting_next_question
         strong = list(self._return_configuration.discovery.strong_anchors)
         known = [
             f"recognized evidence category: {conversation.anchorType.value}",
@@ -343,7 +359,9 @@ class AssociateConversationService:
             if conversation.candidates
             else (missing[0] if missing else "one more order detail")
         )
-        return f"Could you provide {subject}?"
+        return self._return_configuration.discovery.conversation.fallback_question_template.format(
+            subject=subject
+        )
 
     async def _apply_chat_copy(
         self,
@@ -357,7 +375,10 @@ class AssociateConversationService:
         sequence = max(1, conversation.lastMessageSequence - 1)
         assistant_sequence = max(1, conversation.lastMessageSequence)
         assistant_text = conversation.messages[-1].content
-        planned_response = f"{assistant_text} {question}"
+        if conversation.status == self._return_configuration.discovery.conversation.greeting_status:
+            planned_response = assistant_text
+        else:
+            planned_response = f"{assistant_text} {question}"
         updated = await self._conversations.find_one_and_update(
             {"_id": conversation.id, "version": conversation.version},
             {
@@ -528,7 +549,9 @@ class AssociateConversationService:
         normalized_hash = hashlib.sha256(anchor_value.strip().lower().encode()).hexdigest()
         queries = {
             AnchorType.ORDER_NUMBER: (
-                "MATCH (c:Customer)-[:PLACED_ORDER]->(o:SalesOrder {sales_order_number:$value}) "
+                "MATCH (c:Customer)-[:PLACED_ORDER]->(o:SalesOrder) "
+                "WHERE o.sales_order_number = $value "
+                "OR toLower(o.sales_order_number) = toLower($value) "
                 "OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine) "
                 "OPTIONAL MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
                 "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
@@ -537,6 +560,8 @@ class AssociateConversationService:
             AnchorType.CUSTOMER_ID: (
                 "MATCH (c:Customer)-[:PLACED_ORDER]->(o:SalesOrder) "
                 "WHERE c.customer_id=$value OR c.customer_key=$value "
+                "OR toLower(c.customer_id)=toLower($value) "
+                "OR toLower(c.customer_key)=toLower($value) "
                 "OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine) "
                 "OPTIONAL MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
                 "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
@@ -557,8 +582,8 @@ class AssociateConversationService:
                 normalized_hash,
             ),
             AnchorType.TRACKING_NUMBER: (
-                "MATCH (o:SalesOrder)-[:HAS_ORIGINAL_SHIPMENT]->"
-                "(:Shipment {tracking_number:$value}) "
+                "MATCH (o:SalesOrder)-[:HAS_ORIGINAL_SHIPMENT]->(s:Shipment) "
+                "WHERE s.tracking_number=$value OR toLower(s.tracking_number)=toLower($value) "
                 "MATCH (c:Customer)-[:PLACED_ORDER]->(o) "
                 "OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine) "
                 "OPTIONAL MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
@@ -569,6 +594,8 @@ class AssociateConversationService:
                 "MATCH (o:SalesOrder)-[:HAS_ORDER_LINE]->(l:OrderLine) "
                 "MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
                 "WHERE p.sku=$value OR p.product_id=$value "
+                "OR toLower(p.sku)=toLower($value) "
+                "OR toLower(p.product_id)=toLower($value) "
                 "MATCH (c:Customer)-[:PLACED_ORDER]->(o) "
                 "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
                 anchor_value,
@@ -630,25 +657,27 @@ class AssociateConversationService:
                 )
         return candidates
 
+    def _case_insensitive_query(self, value: str) -> dict[str, Any]:
+        return {"$regex": f"^{re.escape(value.strip())}$", "$options": "i"}
+
     async def _source_documents(
         self, anchor_type: AnchorType, anchor_value: str
     ) -> list[dict[str, Any]]:
         config = self._source_config
         sales = self._source[config.sales_invoice_collection]
+        matcher = self._case_insensitive_query(anchor_value)
         if anchor_type is AnchorType.ORDER_NUMBER:
             query: dict[str, Any] = {
                 "$or": [
-                    {path: anchor_value}
+                    {path: matcher}
                     for path in dict.fromkeys((*config.order_number_paths, *config.web_order_paths))
                 ]
             }
         elif anchor_type is AnchorType.CUSTOMER_ID:
-            query = {"$or": [{path: anchor_value} for path in config.customer_id_paths]}
+            query = {"$or": [{path: matcher} for path in config.customer_id_paths]}
         elif anchor_type in {AnchorType.PHONE, AnchorType.EMAIL}:
             field = config.phone_field if anchor_type is AnchorType.PHONE else config.email_field
-            customer = await self._source[config.customer_collection].find_one(
-                {field: anchor_value}
-            )
+            customer = await self._source[config.customer_collection].find_one({field: matcher})
             customer_id = (
                 _nested(cast(dict[str, Any], customer), config.customer_master_id_field)
                 if customer
@@ -656,10 +685,11 @@ class AssociateConversationService:
             )
             if customer_id is None:
                 return []
-            query = {"$or": [{path: customer_id} for path in config.customer_id_paths]}
+            cust_matcher = self._case_insensitive_query(str(customer_id))
+            query = {"$or": [{path: cust_matcher} for path in config.customer_id_paths]}
         elif anchor_type is AnchorType.TRACKING_NUMBER:
             shipment = await self._source[config.shipment_collection].find_one(
-                {config.tracking_field: anchor_value}
+                {config.tracking_field: matcher}
             )
             order_id = (
                 _nested(cast(dict[str, Any], shipment), config.tracking_order_field)
@@ -668,11 +698,12 @@ class AssociateConversationService:
             )
             if order_id is None:
                 return []
-            query = {"$or": [{path: order_id} for path in config.order_number_paths]}
+            order_matcher = self._case_insensitive_query(str(order_id))
+            query = {"$or": [{path: order_matcher} for path in config.order_number_paths]}
         elif anchor_type is AnchorType.SKU:
             query = {
                 "$or": [
-                    {f"salesLines.lineData.{path}": anchor_value}
+                    {f"salesLines.lineData.{path}": matcher}
                     for path in dict.fromkeys((*config.sku_paths, *config.product_id_paths))
                 ]
             }
@@ -854,41 +885,53 @@ class AssociateConversationService:
         actor_id: str,
     ) -> AssociateConversationView:
         await self.ensure_indexes()
-        candidates = await self._graph_candidates(payload.anchorType, payload.anchorValue)
-        if not candidates:
-            documents = await self._source_documents(payload.anchorType, payload.anchorValue)
-            candidates = [
-                candidate
-                for document in documents
-                if (candidate := self._source_candidate(document))
-            ]
-            await self._targeted_graph_upsert(candidates)
-        candidates, discovery_assessment, order_source = self._assess_candidates(
-            payload, candidates
-        )
-        now = _now()
-        if candidates:
-            assistant_text = (
-                f"I found {len(candidates)} source-backed candidate order(s). "
-                "Review the evidence and confirm the customer, order, and exact order line."
-            )
-            status = "DISCOVERY_READY"
-            next_question = (
-                discovery_assessment.get("nextQuestion")
-                or "Which order and order line should be returned?"
-            )
+        conv_config = self._return_configuration.discovery.conversation
+        if self._is_greeting(payload.anchorValue):
+            candidates = []
+            discovery_assessment: dict[str, Any] = {}
+            order_source = OrderSource.UNKNOWN
+            assistant_text = conv_config.greeting_response
+            status = conv_config.greeting_status
+            next_question = conv_config.greeting_next_question
+            masked_value = conv_config.greeting_title
         else:
-            assistant_text = (
-                "No order matched that evidence. Add a stronger anchor such as order "
-                "number, customer ID, tracking number, or SKU."
+            candidates = await self._graph_candidates(payload.anchorType, payload.anchorValue)
+            if not candidates:
+                documents = await self._source_documents(payload.anchorType, payload.anchorValue)
+                candidates = [
+                    candidate
+                    for document in documents
+                    if (candidate := self._source_candidate(document))
+                ]
+                await self._targeted_graph_upsert(candidates)
+            candidates, discovery_assessment, order_source = self._assess_candidates(
+                payload, candidates
             )
-            status = "NO_MATCH"
-            next_question = "What additional order evidence can you provide?"
+            if candidates:
+                assistant_text = conv_config.initial_match_template.format(
+                    count=len(candidates),
+                    anchor_type=self._format_anchor_type(payload.anchorType),
+                    anchor_value=payload.anchorValue,
+                )
+                status = "DISCOVERY_READY"
+                next_question = (
+                    discovery_assessment.get("nextQuestion")
+                    or conv_config.default_discovery_question
+                )
+            else:
+                assistant_text = conv_config.initial_no_match_template.format(
+                    anchor_type=self._format_anchor_type(payload.anchorType),
+                    anchor_value=payload.anchorValue,
+                )
+                status = "NO_MATCH"
+                next_question = conv_config.default_no_match_question
+            masked_value = _mask(payload.anchorValue, payload.anchorType)
+        now = _now()
         conversation_id = str(uuid.uuid4())
         initial_messages = [
             self._message(
                 "ASSOCIATE",
-                f"Start return lookup using {payload.anchorType.value}.",
+                payload.anchorValue,
             ),
             self._message("AI_ASSISTANT", assistant_text),
         ]
@@ -896,7 +939,7 @@ class AssociateConversationService:
             "_id": conversation_id,
             "status": status,
             "anchorType": payload.anchorType.value,
-            "anchorValueMasked": _mask(payload.anchorValue, payload.anchorType),
+            "anchorValueMasked": masked_value,
             "orderSource": order_source.value,
             "discoveryAssessment": discovery_assessment,
             "anchorDigest": _digest(
@@ -982,39 +1025,49 @@ class AssociateConversationService:
         if conversation.discoveryLock is not None:
             raise ValueError("Discovery is already locked for this conversation")
 
-        lookup = StartAssociateConversationRequest(
-            anchorType=payload.anchorType,
-            anchorValue=payload.anchorValue,
-        )
-        candidates = await self._graph_candidates(lookup.anchorType, lookup.anchorValue)
-        if not candidates:
-            documents = await self._source_documents(lookup.anchorType, lookup.anchorValue)
-            candidates = [
-                candidate
-                for document in documents
-                if (candidate := self._source_candidate(document))
-            ]
-            await self._targeted_graph_upsert(candidates)
-        candidates, discovery_assessment, order_source = self._assess_candidates(
-            lookup, candidates
-        )
-        if candidates:
-            assistant_text = (
-                f"I found {len(candidates)} source-backed candidate order(s) using that "
-                "additional evidence. Review and confirm the exact order line."
-            )
-            status = "DISCOVERY_READY"
-            next_question = (
-                discovery_assessment.get("nextQuestion")
-                or "Which order and order line should be returned?"
-            )
+        conv_config = self._return_configuration.discovery.conversation
+        if self._is_greeting(payload.anchorValue):
+            candidates = []
+            discovery_assessment: dict[str, Any] = {}
+            order_source = OrderSource.UNKNOWN
+            assistant_text = conv_config.greeting_response
+            status = conv_config.greeting_status
+            next_question = conv_config.greeting_next_question
         else:
-            assistant_text = (
-                "I still could not find a matching order. You can keep chatting and try "
-                "another order number, customer ID, tracking number, email, phone, or SKU."
+            lookup = StartAssociateConversationRequest(
+                anchorType=payload.anchorType,
+                anchorValue=payload.anchorValue,
             )
-            status = "NO_MATCH"
-            next_question = "What other evidence can you provide?"
+            candidates = await self._graph_candidates(lookup.anchorType, lookup.anchorValue)
+            if not candidates:
+                documents = await self._source_documents(lookup.anchorType, lookup.anchorValue)
+                candidates = [
+                    candidate
+                    for document in documents
+                    if (candidate := self._source_candidate(document))
+                ]
+                await self._targeted_graph_upsert(candidates)
+            candidates, discovery_assessment, order_source = self._assess_candidates(
+                lookup, candidates
+            )
+            if candidates:
+                assistant_text = conv_config.continue_match_template.format(
+                    count=len(candidates),
+                    anchor_type=self._format_anchor_type(payload.anchorType),
+                    anchor_value=payload.anchorValue,
+                )
+                status = "DISCOVERY_READY"
+                next_question = (
+                    discovery_assessment.get("nextQuestion")
+                    or conv_config.default_discovery_question
+                )
+            else:
+                assistant_text = conv_config.continue_no_match_template.format(
+                    anchor_type=self._format_anchor_type(payload.anchorType),
+                    anchor_value=payload.anchorValue,
+                )
+                status = "NO_MATCH"
+                next_question = conv_config.default_continue_no_match_question
 
         messages = [
             self._message(
@@ -1035,9 +1088,7 @@ class AssociateConversationService:
                     ),
                     "orderSource": order_source.value,
                     "discoveryAssessment": discovery_assessment,
-                    "candidates": [
-                        candidate.model_dump(mode="json") for candidate in candidates
-                    ],
+                    "candidates": [candidate.model_dump(mode="json") for candidate in candidates],
                     "nextQuestion": next_question,
                     "updatedAt": _now(),
                 },
@@ -1060,9 +1111,7 @@ class AssociateConversationService:
             payload={
                 "anchorType": payload.anchorType.value,
                 "anchorValueMasked": _mask(payload.anchorValue, payload.anchorType),
-                "candidates": [
-                    candidate.model_dump(mode="json") for candidate in candidates
-                ],
+                "candidates": [candidate.model_dump(mode="json") for candidate in candidates],
                 "assessment": discovery_assessment,
             },
             actor_id=actor_id,
@@ -1160,15 +1209,20 @@ class AssociateConversationService:
                 raise RuntimeError(
                     "Order line is already locked by another return session"
                 ) from error
+        conv_config = self._return_configuration.discovery.conversation
         confirmation_messages = [
             self._message(
                 "ASSOCIATE",
-                f"Confirmed {candidate.orderReference} / {line.orderLineId}.",
+                conv_config.confirmation_associate_template.format(
+                    order_reference=candidate.orderReference,
+                    order_line_id=line.orderLineId,
+                ),
             ),
             self._message(
                 "AI_ASSISTANT",
-                "Discovery is locked. Provide reason, quantity, package count, "
-                "shipping path, and optional notes.",
+                conv_config.confirmation_assistant_template.format(
+                    order_line_id=line.orderLineId,
+                ),
             ),
         ]
         updated = await self._conversations.find_one_and_update(
@@ -1182,7 +1236,7 @@ class AssociateConversationService:
                         else conversation.orderSource.value
                     ),
                     "discoveryLock": lock.model_dump(mode="json"),
-                    "nextQuestion": "Why is the item being returned?",
+                    "nextQuestion": conv_config.default_details_question,
                     "updatedAt": _now(),
                 },
                 "$push": {"messages": {"$each": confirmation_messages}},
@@ -1410,11 +1464,17 @@ class AssociateConversationService:
                 }
             },
         )
+        conv_config = self._return_configuration.discovery.conversation
         submission_messages = [
-            self._message("ASSOCIATE", "Confirmed return handling details."),
+            self._message(
+                "ASSOCIATE",
+                conv_config.submission_associate_template,
+            ),
             self._message(
                 "AI_ASSISTANT",
-                f"Return session {session.id} was created and handed to Return Support processing.",
+                conv_config.submission_assistant_template.format(
+                    session_id=session.id,
+                ),
             ),
         ]
         updated = await self._conversations.find_one_and_update(

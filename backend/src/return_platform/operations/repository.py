@@ -310,6 +310,16 @@ class OperationalRepository:
         payload["id"] = str(document["_id"])
         return AITraceView.model_validate(payload)
 
+    @staticmethod
+    def _attempt_view(document: dict[str, Any]) -> AIUsageAttemptView:
+        payload = {
+            key: value
+            for key, value in document.items()
+            if key in AIUsageAttemptView.model_fields
+        }
+        payload["id"] = str(document.get("_id") or document.get("id"))
+        return AIUsageAttemptView.model_validate(payload)
+
     async def create_return(
         self,
         payload: ReturnCreateRequest,
@@ -1335,7 +1345,7 @@ class OperationalRepository:
         payload.setdefault("id", str(payload["_id"]))
         payload.setdefault("createdAt", utc_now())
         await self.ai_attempts.insert_one(payload)
-        return AIUsageAttemptView.model_validate({**payload, "id": str(payload["_id"])})
+        return self._attempt_view(payload)
 
     async def list_ai_attempt_metrics(
         self,
@@ -1351,9 +1361,7 @@ class OperationalRepository:
             query["taskId"] = task_id
         cursor = self.ai_attempts.find(query).sort("createdAt", DESCENDING).limit(limit)
         return [
-            AIUsageAttemptView.model_validate(
-                {**cast(dict[str, Any], item), "id": str(item["_id"])}
-            )
+            self._attempt_view(cast(dict[str, Any], item))
             async for item in cursor
         ]
 

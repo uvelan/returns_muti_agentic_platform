@@ -1,4 +1,4 @@
-import { useState, type SyntheticEvent } from "react";
+import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -6,6 +6,7 @@ import {
   Check,
   CheckCircle2,
   Clock3,
+  Loader2,
   LockKeyhole,
   MessageSquarePlus,
   Send,
@@ -26,6 +27,7 @@ import type {
 } from "../../contracts/associateReturns";
 import { ErrorState } from "../../components/ErrorState";
 import {
+  formatBadgeLabel,
   inputClass,
   primaryButton,
   secondaryButton,
@@ -49,14 +51,24 @@ const shippingPaths = [
   "FIELD_SCRAP",
 ] as const;
 
-function formatLabel(value: string) {
-  return value.toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function ConversationMessages({ conversation }: { readonly conversation: AssociateConversation | null }) {
+function ConversationMessages({
+  conversation,
+  isPending,
+}: {
+  readonly conversation: AssociateConversation | null;
+  readonly isPending?: boolean;
+}) {
   const messages = conversation?.messages ?? [];
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages.length, isPending]);
+
   return (
-    <div className="flex-1 space-y-5 overflow-y-auto px-5 py-6 sm:px-8">
+    <div ref={scrollRef} className="flex-1 space-y-5 overflow-y-auto px-5 py-6 sm:px-8">
       {messages.length === 0 ? (
         <div className="mx-auto mt-8 max-w-2xl">
           <div className="mb-5 inline-flex rounded-2xl bg-teal-950 p-3 text-white shadow-sm">
@@ -96,12 +108,20 @@ function ConversationMessages({ conversation }: { readonly conversation: Associa
                 <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-6 ${
                   assistant
                     ? "border border-stone-200 bg-white text-slate-800 shadow-sm"
-                    : "bg-slate-900 text-white"
+                    : "bg-slate-900 text-white shadow-sm"
                 }`}>
-                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] opacity-60">
-                    {assistant ? "Returns Assistant" : "You"}
-                  </p>
-                  {message.content}
+                  <div className="mb-1 flex items-center justify-between gap-4">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-60">
+                      {assistant ? "Order Discovery Agent" : "Associate"}
+                    </span>
+                    {assistant ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-teal-700">
+                        <Sparkles size={11} className="text-teal-600" />
+                        AI Verified
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="whitespace-pre-wrap font-normal">{message.content}</div>
                 </div>
                 {!assistant ? (
                   <div className="mt-1 h-fit rounded-xl border border-stone-200 bg-white p-2 text-slate-700">
@@ -111,6 +131,17 @@ function ConversationMessages({ conversation }: { readonly conversation: Associa
               </div>
             );
           })}
+          {isPending ? (
+            <div className="flex gap-3">
+              <div className="mt-1 h-fit rounded-xl bg-teal-950 p-2 text-white shadow-sm">
+                <Bot size={17} />
+              </div>
+              <div className="max-w-[85%] rounded-2xl border border-teal-200 bg-teal-50/70 px-4 py-3 text-sm leading-6 text-teal-950 shadow-sm flex items-center gap-2.5 animate-pulse">
+                <Loader2 className="animate-spin text-teal-700 shrink-0" size={17} />
+                <span className="font-medium">AI Returns Assistant is analyzing evidence and searching orders…</span>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
     </div>
@@ -124,6 +155,7 @@ function CandidatePanel({
   setCandidateIndex,
   setOrderLineId,
   confirm,
+  isPending,
 }: {
   readonly conversation: AssociateConversation;
   readonly candidateIndex: number;
@@ -131,6 +163,7 @@ function CandidatePanel({
   readonly setCandidateIndex: (value: number) => void;
   readonly setOrderLineId: (value: string) => void;
   readonly confirm: () => void;
+  readonly isPending?: boolean;
 }) {
   return (
     <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
@@ -143,7 +176,7 @@ function CandidatePanel({
       </p>
       <div className="mt-4 space-y-3">
         {conversation.candidates.map((candidate: OrderCandidate, index) => (
-          <div key={candidate.orderReference} className={`rounded-xl border p-3 ${
+          <div key={`${candidate.orderReference}-${String(index)}`} className={`rounded-xl border p-3 ${
             candidateIndex === index ? "border-teal-700 bg-teal-50" : "border-stone-200"
           }`}>
             <button
@@ -161,7 +194,7 @@ function CandidatePanel({
               <ToneBadge value={candidate.orderStatus ?? "UNKNOWN"} />
             </button>
             {candidateIndex === index ? (
-              <div className="mt-3 space-y-2 border-t border-teal-200 pt-3">
+              <div className="mt-3 space-y-2 border-t border-stone-100 pt-3">
                 {candidate.lines.map((line) => (
                   <button
                     key={line.orderLineId}
@@ -184,8 +217,9 @@ function CandidatePanel({
           </div>
         ))}
       </div>
-      <button type="button" className={`${primaryButton} mt-4 w-full justify-center`} disabled={!orderLineId} onClick={confirm}>
-        <LockKeyhole size={16} />Confirm and lock
+      <button type="button" className={`${primaryButton} mt-4 w-full justify-center`} disabled={!orderLineId || isPending} onClick={confirm}>
+        {isPending ? <Loader2 className="animate-spin mr-1" size={16} /> : <LockKeyhole size={16} />}
+        {isPending ? "Locking order evidence..." : "Confirm and lock"}
       </button>
     </section>
   );
@@ -248,9 +282,9 @@ export function AssociateReturnsPage() {
   }
 
   return (
-    <div className="-m-4 min-h-[calc(100vh-4rem)] bg-stone-50 sm:-m-6">
-      <div className="grid min-h-[calc(100vh-4rem)] xl:grid-cols-[17rem_minmax(0,1fr)_21rem]">
-        <aside className="hidden border-r border-stone-200 bg-white p-4 xl:block">
+    <div className="-m-4 h-[calc(100vh-4rem)] bg-stone-50 sm:-m-6 overflow-hidden">
+      <div className="grid h-full xl:grid-cols-[17rem_minmax(0,1fr)_21rem]">
+        <aside className="hidden h-full overflow-y-auto border-r border-stone-200 bg-white p-4 xl:block">
           <button
             type="button"
             className={`${primaryButton} w-full justify-center`}
@@ -270,8 +304,8 @@ export function AssociateReturnsPage() {
               <button
                 key={item.id}
                 type="button"
-                className={`w-full rounded-xl px-3 py-3 text-left ${
-                  conversation?.id === item.id ? "bg-teal-50 text-teal-950" : "hover:bg-stone-50"
+                className={`w-full rounded-xl px-3 py-3 text-left transition ${
+                  conversation?.id === item.id ? "bg-teal-50 text-teal-950 ring-1 ring-teal-200" : "hover:bg-stone-50"
                 }`}
                 onClick={() => {
                   setConversation(item);
@@ -282,29 +316,33 @@ export function AssociateReturnsPage() {
                 <span className="block truncate text-sm font-medium">{item.anchorValueMasked || "Return conversation"}</span>
                 <span className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
                   <span>{new Date(item.updatedAt).toLocaleDateString()}</span>
-                  <span>{formatLabel(item.status)}</span>
+                  <span>{formatBadgeLabel(item.status)}</span>
                 </span>
               </button>
             ))}
           </div>
         </aside>
 
-        <main className="flex min-h-[calc(100vh-4rem)] min-w-0 flex-col">
+        <main className="flex h-full min-w-0 flex-col overflow-hidden">
           <header className="flex items-center justify-between border-b border-stone-200 bg-white/90 px-5 py-4 backdrop-blur sm:px-8">
             <div>
               <div className="flex items-center gap-2">
                 <span className="rounded-lg bg-teal-950 p-1.5 text-white"><Bot size={17} /></span>
                 <h2 className="font-semibold text-slate-950">Returns Assistant</h2>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Agentic AI v2.0
+                </span>
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                Conversation context is saved and available to the next workflow agent.
+                Driven by graph-first order discovery and dynamic operational configuration.
               </p>
             </div>
             {conversation ? <ToneBadge value={conversation.status} /> : null}
           </header>
 
           {error ? <div className="mx-5 mt-4 sm:mx-8"><ErrorState message={error.message} /></div> : null}
-          <ConversationMessages conversation={conversation} />
+          <ConversationMessages conversation={conversation} isPending={chat.isPending} />
 
           {!isComplete ? (
             <div className="border-t border-stone-200 bg-white p-4 sm:px-8">
@@ -325,12 +363,12 @@ export function AssociateReturnsPage() {
                     aria-label="Message the Returns Assistant"
                   />
                   <button
-                    className="rounded-xl bg-teal-950 p-3 text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-xl bg-teal-950 p-3 text-white disabled:cursor-not-allowed disabled:opacity-40 flex items-center justify-center min-w-[42px] min-h-[42px]"
                     disabled={chat.isPending || !message.trim()}
                     type="submit"
                     aria-label="Send message"
                   >
-                    <Send size={18} />
+                    {chat.isPending ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
                   </button>
                 </div>
                 <p className="mt-2 text-center text-[11px] text-slate-400">
@@ -338,7 +376,7 @@ export function AssociateReturnsPage() {
                 </p>
               </form>
             </div>
-          ) : conversation?.returnSessionId ? (
+          ) : conversation.returnSessionId ? (
             <div className="border-t border-stone-200 bg-white p-5 text-center">
               <Link className={primaryButton} href={`/customer/returns/${conversation.returnSessionId}`}>
                 <CheckCircle2 size={16} />Open live return timeline
@@ -347,7 +385,7 @@ export function AssociateReturnsPage() {
           ) : null}
         </main>
 
-        <aside className="border-l border-stone-200 bg-stone-100/70 p-4">
+        <aside className="h-full overflow-y-auto border-l border-stone-200 bg-stone-100/70 p-4">
           <div className="mb-4 xl:hidden">
             <button
               type="button"
@@ -364,6 +402,7 @@ export function AssociateReturnsPage() {
               orderLineId={orderLineId}
               setCandidateIndex={setCandidateIndex}
               setOrderLineId={setOrderLineId}
+              isPending={confirm.isPending}
               confirm={() => {
                 confirm.mutate({
                   conversationId: conversation.id,
@@ -401,7 +440,7 @@ export function AssociateReturnsPage() {
                   <div className="mt-2 flex flex-wrap gap-2">
                     {reasonCodes.map((value) => (
                       <button key={value} type="button" onClick={() => { setReasonCode(value); }} className={`rounded-full border px-3 py-1.5 text-xs ${reasonCode === value ? "border-teal-800 bg-teal-50 text-teal-950" : "border-stone-200"}`}>
-                        {formatLabel(value)}
+                        {formatBadgeLabel(value)}
                       </button>
                     ))}
                   </div>
@@ -411,7 +450,7 @@ export function AssociateReturnsPage() {
                   <div className="mt-2 flex flex-wrap gap-2">
                     {shippingPaths.map((value) => (
                       <button key={value} type="button" onClick={() => { setShippingPath(value); }} className={`rounded-full border px-3 py-1.5 text-xs ${shippingPath === value ? "border-teal-800 bg-teal-50 text-teal-950" : "border-stone-200"}`}>
-                        {formatLabel(value)}
+                        {formatBadgeLabel(value)}
                       </button>
                     ))}
                   </div>
@@ -422,7 +461,8 @@ export function AssociateReturnsPage() {
                 </div>
                 <label className="block text-xs font-medium text-slate-600">Notes<textarea className={inputClass} rows={3} value={notes} onChange={(event) => { setNotes(event.target.value); }} /></label>
                 <button className={`${primaryButton} w-full justify-center`} disabled={details.isPending} type="submit">
-                  <Send size={16} />Send to workflow
+                  {details.isPending ? <Loader2 className="animate-spin mr-1" size={16} /> : <Send size={16} />}
+                  {details.isPending ? "Submitting to workflow..." : "Send to workflow"}
                 </button>
               </form>
             </section>

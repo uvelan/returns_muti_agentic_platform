@@ -30,6 +30,57 @@ class AnchorExtractorConfiguration(StrictConfigModel):
     patterns: tuple[NonBlank, ...] = Field(min_length=1)
 
 
+class ConversationPromptsConfiguration(StrictConfigModel):
+    greeting_patterns: tuple[NonBlank, ...] = Field(min_length=1)
+    greeting_response: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=1000)
+    ]
+    greeting_status: NonBlank
+    greeting_next_question: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)
+    ]
+    greeting_title: NonBlank
+    initial_match_template: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=1000)
+    ]
+    initial_no_match_template: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=1000)
+    ]
+    continue_match_template: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=1000)
+    ]
+    continue_no_match_template: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=1000)
+    ]
+    confirmation_associate_template: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=1000)
+    ]
+    confirmation_assistant_template: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=1000)
+    ]
+    submission_associate_template: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=1000)
+    ]
+    submission_assistant_template: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=1000)
+    ]
+    fallback_question_template: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)
+    ]
+    default_discovery_question: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)
+    ]
+    default_no_match_question: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)
+    ]
+    default_continue_no_match_question: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)
+    ]
+    default_details_question: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)
+    ]
+
+
 class DiscoveryConfiguration(StrictConfigModel):
     web_order_pattern: NonBlank
     ambiguity_gap_millionths: int = Field(ge=0, le=1_000_000)
@@ -39,6 +90,7 @@ class DiscoveryConfiguration(StrictConfigModel):
     strong_anchors: tuple[NonBlank, ...] = Field(min_length=1)
     anchor_extractors: tuple[AnchorExtractorConfiguration, ...] = Field(min_length=1)
     free_text_fallback_anchor: NonBlank
+    conversation: ConversationPromptsConfiguration
 
     @model_validator(mode="after")
     def validate_weights(self) -> DiscoveryConfiguration:

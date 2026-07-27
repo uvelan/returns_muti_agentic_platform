@@ -39,3 +39,9 @@ def test_chat_uses_product_description_when_no_structured_anchor_is_present() ->
     extracted = service()._extract_anchor(message)
     assert extracted.anchorType is AnchorType.PRODUCT_DESCRIPTION
     assert extracted.anchorValue == message
+
+
+def test_chat_extracts_and_normalizes_lowercase_order_number() -> None:
+    extracted = service()._extract_anchor("can you check w000000001 please")
+    assert extracted.anchorType is AnchorType.ORDER_NUMBER
+    assert extracted.anchorValue == "W000000001"
