@@ -14,34 +14,56 @@ else
   echo "Poetry is required for safe live model probing." >&2
   exit 2
 fi
-PYTHONPATH="$REPO_ROOT/backend/src${PYTHONPATH:+:$PYTHONPATH}" \
-  "${POETRY[@]}" run python "$REPO_ROOT/scripts/probe_configured_ai_models.py" \
-  >"$EVIDENCE_DIR/ai-model-probe.json"
-jq -e '
-  .GOOGLE.configured == true
-  and .GOOGLE.catalogStatus == 200
-  and .GOOGLE.allConfiguredCredentialsWorking == true
-  and .GOOGLE.configuredModelCount == 4
-  and .GOOGLE.allConfiguredModelsWorking == true
-  and ([.GOOGLE.modelResults[].model] | sort) == ([
-    "gemini-3.1-flash-lite",
-    "gemini-2.5-flash-lite",
-    "gemini-3.5-flash",
-    "gemini-2.5-flash"
-  ] | sort)
-  and .NVIDIA.configured == true
-  and .NVIDIA.catalogStatus == 200
-  and .NVIDIA.allConfiguredCredentialsWorking == true
-  and .NVIDIA.configuredModelCount == 5
-  and .NVIDIA.allConfiguredModelsWorking == true
-  and ([.NVIDIA.modelResults[].model] | sort) == ([
-    "meta/llama-3.2-3b-instruct",
-    "meta/llama-3.1-8b-instruct",
-    "nvidia/llama-3.1-nemotron-nano-vl-8b-v1",
-    "nvidia/nemotron-3-nano-30b-a3b",
-    "abacusai/dracarys-llama-3.1-70b-instruct"
-  ] | sort)
-' "$EVIDENCE_DIR/ai-model-probe.json" >/dev/null
+AI_MODEL_PROBE_MAX_ATTEMPTS="${AI_MODEL_PROBE_MAX_ATTEMPTS:-4}"
+probe_passed=false
+gate="$EVIDENCE_DIR/ai-model-gate.json"
+
+for attempt in $(seq 1 "$AI_MODEL_PROBE_MAX_ATTEMPTS"); do
+  echo "AI model probe attempt $attempt/$AI_MODEL_PROBE_MAX_ATTEMPTS"
+
+  PYTHONPATH="$REPO_ROOT/backend/src${PYTHONPATH:+:$PYTHONPATH}" \
+    "${POETRY[@]}" run python "$REPO_ROOT/scripts/probe_configured_ai_models.py" \
+    >"$EVIDENCE_DIR/ai-model-probe.json"
+
+  set +e
+  PYTHONPATH="$REPO_ROOT/backend/src${PYTHONPATH:+:$PYTHONPATH}" \
+    "${POETRY[@]}" run python "$REPO_ROOT/scripts/evaluate_ai_model_probe.py" \
+    "$EVIDENCE_DIR/ai-model-probe.json" \
+    --output "$gate"
+  gate_rc=$?
+  set -e
+
+  if [[ "$gate_rc" -eq 0 ]]; then
+    probe_passed=true
+    echo "AI model gate passed on attempt $attempt"
+    jq '{
+      overallStatus,
+      providerStatus:
+        (.providerResults | with_entries(.value = .value.status)),
+      tierCoverage,
+      warnings
+    }' "$gate"
+    break
+  fi
+
+  echo "AI model probe attempt $attempt did not pass." >&2
+  jq -r '
+    .hardFailures[]? | "FAIL: \(.)",
+    .warnings[]? | "WARN: \(.)"
+  ' "$gate" >&2
+
+  if (( attempt < AI_MODEL_PROBE_MAX_ATTEMPTS )); then
+    delay=$((10 * (2 ** (attempt - 1)) + RANDOM % 5))
+    echo "Retrying after $delay seconds..." >&2
+    sleep "$delay"
+  fi
+done
+
+if [[ "$probe_passed" != true ]]; then
+  echo "AI model validation failed after $AI_MODEL_PROBE_MAX_ATTEMPTS attempts." >&2
+  echo "Gate evidence: $gate" >&2
+  exit 1
+fi
 
 cd "$REPO_ROOT"
 RETURN_PLATFORM_API="$API" "$REPO_ROOT/scripts/run_stage4n_live_stack_e2e.sh" | tee "$log"

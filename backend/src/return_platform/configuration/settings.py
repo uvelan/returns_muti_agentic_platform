@@ -123,7 +123,7 @@ class Settings(BaseSettings):
     )
     nvidia_standard_models: tuple[str, ...] = (
         "nvidia/nemotron-3-nano-30b-a3b",
-        "abacusai/dracarys-llama-3.1-70b-instruct",
+        "meta/llama-3.1-70b-instruct",
     )
     nvidia_api_key: SecretStr | None = None
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
