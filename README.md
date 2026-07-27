@@ -339,6 +339,23 @@ Linux development convenience command:
 ./scripts/run_all_host.sh
 ```
 
+### Temporary Linux Python CA compatibility
+
+Linux application startup enables a temporary Python 3.13 CA compatibility layer
+from `scripts/linux/enable_python_ca_compat.sh`. Windows startup is unaffected.
+The layer continues to require certificate verification and hostname verification;
+it removes only Python's `VERIFY_X509_STRICT` flag from newly created default TLS
+contexts while the corporate CA chain is being corrected.
+
+To disable it for a Linux process:
+
+```bash
+RETURNS_ENABLE_PYTHON_CA_COMPAT=false ./scripts/run_all_host.sh
+```
+
+This compatibility layer is temporary. The permanent solution is to install the
+complete corporate CA chain in the Linux trust store and remove the helper.
+
 Endpoints:
 
 - Frontend: `http://localhost:5173`

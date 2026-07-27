@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/enable_python_ca_compat.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 API="${RETURN_PLATFORM_API:-http://127.0.0.1:8000}"

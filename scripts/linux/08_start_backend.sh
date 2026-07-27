@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/enable_python_ca_compat.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 start_managed_process backend "$REPO_ROOT/scripts/run_backend_host.sh"
 for attempt in {1..60}; do
