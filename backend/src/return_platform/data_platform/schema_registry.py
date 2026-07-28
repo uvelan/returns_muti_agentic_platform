@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class RegistryModel(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
+
 WritePolicy = Literal[
     "DENIED",
     "DOMAIN_API_ONLY",

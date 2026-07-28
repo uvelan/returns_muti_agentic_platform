@@ -16,12 +16,12 @@ class HallucinationGuard:
         proposal: OperationProposal,
         resolver: ExistenceResolver | None = None,
         tenant_id: str | None = None,
-        pii_validator: Callable[[str, Any], bool] | None = None
+        pii_validator: Callable[[str, Any], bool] | None = None,
     ) -> ValidationResult:
         return validate_proposal(
             self.registry,
             proposal,
             resolver=resolver,
             tenant_id=tenant_id,
-            pii_validator=pii_validator
+            pii_validator=pii_validator,
         )

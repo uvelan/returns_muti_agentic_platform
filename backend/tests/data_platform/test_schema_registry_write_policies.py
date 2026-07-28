@@ -31,7 +31,9 @@ def test_schema_registry_write_policies() -> None:
 
         # Enabled assets have a write_adapter_key
         if asset.generated_data_policy == "ENABLED":
-            assert asset.write_adapter_key is not None, f"Asset {asset.asset_id} missing write_adapter_key"
+            assert asset.write_adapter_key is not None, (
+                f"Asset {asset.asset_id} missing write_adapter_key"
+            )
             generation_enabled.append(asset.asset_id)
 
         # OMC assets are DENIED
@@ -46,17 +48,23 @@ def test_schema_registry_write_policies() -> None:
 
         # Derived projections are DERIVED_PROJECTION
         if asset.ownership == "DERIVED_PROJECTION":
-            assert asset.write_policy == "DERIVED_PROJECTION", f"Derived asset {asset.asset_id} must be DERIVED_PROJECTION"
+            assert asset.write_policy == "DERIVED_PROJECTION", (
+                f"Derived asset {asset.asset_id} must be DERIVED_PROJECTION"
+            )
 
         if asset.write_policy == "DENIED":
-            assert not asset.allowed_operations, f"DENIED asset {asset.asset_id} cannot have operations"
+            assert not asset.allowed_operations, (
+                f"DENIED asset {asset.asset_id} cannot have operations"
+            )
             denied_assets.append(asset.asset_id)
 
         if not asset.write_policy:
             unclassified.append(asset.asset_id)
 
         assets_by_owner[asset.owner] = assets_by_owner.get(asset.owner, 0) + 1
-        assets_by_write_policy[asset.write_policy] = assets_by_write_policy.get(asset.write_policy, 0) + 1
+        assets_by_write_policy[asset.write_policy] = (
+            assets_by_write_policy.get(asset.write_policy, 0) + 1
+        )
 
     assert not omc_writable, f"OMC assets must not be writable: {omc_writable}"
     assert not unclassified, f"All assets must have a write policy: {unclassified}"
@@ -71,7 +79,7 @@ def test_schema_registry_write_policies() -> None:
         "deniedAssets": sorted(denied_assets),
         "omcWritableAssets": sorted(omc_writable),
         "unclassifiedAssets": sorted(unclassified),
-        "validationStatus": "PASS"
+        "validationStatus": "PASS",
     }
 
     evidence_dir = project_root / "docs" / "evidence" / "ai_studio_operational_generation" / "aig1"
