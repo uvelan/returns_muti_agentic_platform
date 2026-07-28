@@ -305,6 +305,23 @@ Host URLs:
 ./scripts/run_frontend_host.sh
 ```
 
+### Redeploy after source changes
+
+To rebuild and restart the backend, workers, and frontend without rerunning
+infrastructure bootstrap, graph publication, seed data, or AI validation:
+
+```bash
+./scripts/linux/redeploy_app.sh
+```
+
+If either lockfile changed, synchronize dependencies during the redeploy:
+
+```bash
+./scripts/linux/redeploy_app.sh --install-dependencies
+```
+
+Use `--skip-frontend-build` for a restart-only deployment.
+
 Each backend or worker launcher prepares runtime configuration unless `PLATFORM_SKIP_RUNTIME_PREPARE=true` is explicitly supplied by the aggregate launcher.
 
 ## Fully containerized application mode
