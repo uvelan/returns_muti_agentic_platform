@@ -131,7 +131,7 @@ def test_run_gate_redaction(tmp_path: Path) -> None:
         "--",
         sys.executable,
         "-c",
-        "import os; print('connecting to ' + os.environ.get('PLATFORM_MONGO_DSN', '')); print('key is ' + os.environ.get('API_KEY', ''))",  # noqa: E501
+        "import os; print('connecting to ' + os.environ.get('PLATFORM_MONGO_DSN', '')); print('key is ' + os.environ.get('API_KEY', ''))",
     ]
     res = subprocess.run(cmd, env=env, capture_output=True, text=True)
     assert res.returncode == 0

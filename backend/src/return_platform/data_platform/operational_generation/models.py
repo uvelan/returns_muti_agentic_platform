@@ -1,19 +1,19 @@
 from collections.abc import Mapping
 from datetime import datetime
-from enum import Enum, StrEnum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 
-class GuardSeverity(str, Enum):
+class GuardSeverity(StrEnum):
     ERROR = "ERROR"
     WARNING = "WARNING"
     DENIAL = "DENIAL"
 
 
-class FindingCode(str, Enum):
+class FindingCode(StrEnum):
     UNKNOWN_FIELD = "UNKNOWN_FIELD"
     MISSING_REQUIRED_FIELD = "MISSING_REQUIRED_FIELD"
     INVALID_TYPE = "INVALID_TYPE"
@@ -44,7 +44,7 @@ class GuardFinding(BaseModel):
     remediation_hint: str | None = None
 
 
-class ValidationResultState(str, Enum):
+class ValidationResultState(StrEnum):
     VALID = "VALID"
     INVALID_RECORD = "INVALID_RECORD"
     INVALID_PROPOSAL = "INVALID_PROPOSAL"

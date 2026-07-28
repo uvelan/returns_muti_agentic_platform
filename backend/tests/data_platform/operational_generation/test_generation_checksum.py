@@ -31,7 +31,9 @@ def generator(registry: SchemaRegistry, guard: HallucinationGuard) -> Operationa
 
 
 @pytest.mark.asyncio
-async def test_generation_checksum(generator: OperationalGenerator, registry: SchemaRegistry):
+async def test_generation_checksum(
+    generator: OperationalGenerator, registry: SchemaRegistry
+) -> None:
     asset = next(
         a
         for a in registry.assets

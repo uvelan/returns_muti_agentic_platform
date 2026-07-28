@@ -2,6 +2,8 @@ import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, Bot, CheckCircle2, Database, Network, RefreshCw, ShieldAlert } from "lucide-react";
 
+export { OperationalGenerationPage } from "./ai-studio/operational-generation/OperationalGenerationPage";
+
 import {
   applyAIStudioProposal,
   applyGraphSchema,

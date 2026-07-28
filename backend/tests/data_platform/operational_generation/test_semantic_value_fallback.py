@@ -33,7 +33,7 @@ def generator(registry: SchemaRegistry, guard: HallucinationGuard) -> Operationa
 @pytest.mark.asyncio
 async def test_semantic_value_fallback_passes_guard(
     generator: OperationalGenerator, registry: SchemaRegistry
-):
+) -> None:
     asset = next(
         a
         for a in registry.assets
@@ -58,7 +58,7 @@ async def test_semantic_value_fallback_passes_guard(
 
     # Verify semantic values are deterministic fallback
     for rec in proposal.records:
-        for k, v in rec.values.items():
+        for _k, v in rec.values.items():
             if isinstance(v, str) and (
                 "Synthetic" in v or "Operationally generated" in v or "Deterministic" in v
             ):

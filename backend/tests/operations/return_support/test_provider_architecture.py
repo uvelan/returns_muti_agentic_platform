@@ -22,8 +22,8 @@ def test_clean_import_no_db_dependencies() -> None:
         sys.executable,
         "-c",
         "import sys\n"
-        "from return_platform.operations.return_support.providers import contracts, factory, sandbox, external\n"  # noqa: E501
-        "if 'pymssql' in sys.modules or 'pymongo' in sys.modules or 'return_platform.operations.models' in sys.modules:\n"  # noqa: E501
+        "from return_platform.operations.return_support.providers import contracts, factory, sandbox, external\n"
+        "if 'pymssql' in sys.modules or 'pymongo' in sys.modules or 'return_platform.operations.models' in sys.modules:\n"
         "    sys.exit(1)\n",
     ]
     res = subprocess.run(cmd)

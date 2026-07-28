@@ -33,7 +33,7 @@ def generator(registry: SchemaRegistry, guard: HallucinationGuard) -> Operationa
 @pytest.mark.asyncio
 async def test_deterministic_generator_identical_proposals(
     generator: OperationalGenerator, registry: SchemaRegistry
-):
+) -> None:
     # Find a safe writable asset
     asset = next(
         a
@@ -64,7 +64,7 @@ async def test_deterministic_generator_identical_proposals(
 @pytest.mark.asyncio
 async def test_deterministic_generator_different_seed(
     generator: OperationalGenerator, registry: SchemaRegistry
-):
+) -> None:
     asset = next(
         a
         for a in registry.assets
@@ -105,7 +105,7 @@ async def test_deterministic_generator_different_seed(
 @pytest.mark.asyncio
 async def test_all_generated_fields_exist_in_schema(
     generator: OperationalGenerator, registry: SchemaRegistry
-):
+) -> None:
     asset = next(
         a
         for a in registry.assets
@@ -134,7 +134,7 @@ async def test_all_generated_fields_exist_in_schema(
 
 
 @pytest.mark.asyncio
-async def test_prohibited_assets(generator: OperationalGenerator, registry: SchemaRegistry):
+async def test_prohibited_assets(generator: OperationalGenerator, registry: SchemaRegistry) -> None:
     req_base = {
         "record_count": 1,
         "deterministic_seed": 1,

@@ -76,6 +76,7 @@ select = [
     "ASYNC",
     "RUF",
 ]
+ignore = ["E501", "RUF100"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"

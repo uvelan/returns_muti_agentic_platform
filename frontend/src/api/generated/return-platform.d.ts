@@ -329,6 +329,142 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/data-console/ai-studio/operational/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Proposal */
+        post: operations["create_proposal_api_v1_data_console_ai_studio_operational_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Proposal */
+        get: operations["get_proposal_api_v1_data_console_ai_studio_operational_proposals__proposalId__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Plan Endpoint */
+        post: operations["apply_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Plan Endpoint */
+        post: operations["approve_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Plan Proposal Endpoint */
+        post: operations["plan_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate Proposal Endpoint */
+        post: operations["validate_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-console/ai-studio/operational/runs/{runId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["get_run_api_v1_data_console_ai_studio_operational_runs__runId__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data-console/ai-studio/operational/runs/{runId}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rollback Run Endpoint */
+        post: operations["rollback_run_endpoint_api_v1_data_console_ai_studio_operational_runs__runId__rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dependency-simulator/ai-metrics": {
         parameters: {
             query?: never;
@@ -3258,6 +3394,39 @@ export interface components {
          * @enum {string}
          */
         AnchorType: "ORDER_NUMBER" | "CUSTOMER_ID" | "PHONE" | "EMAIL" | "TRACKING_NUMBER" | "SKU" | "CUSTOMER_NAME" | "PRODUCT_DESCRIPTION";
+        /** ApprovalRecord */
+        ApprovalRecord: {
+            /**
+             * Approval Id
+             * Format: uuid
+             */
+            approval_id: string;
+            /**
+             * Approved At
+             * Format: date-time
+             */
+            approved_at: string;
+            /** Approved By */
+            approved_by: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Plan Checksum */
+            plan_checksum: string;
+            /**
+             * Plan Id
+             * Format: uuid
+             */
+            plan_id: string;
+            /** Proposal Checksum */
+            proposal_checksum: string;
+            /** Schema Release Id */
+            schema_release_id: string;
+            /** Target Environment */
+            target_environment: string;
+        };
         /** AssociateChatTurnRequest */
         AssociateChatTurnRequest: {
             /** Expectedversion */
@@ -3987,6 +4156,37 @@ export interface components {
             /** Storageprovider */
             storageProvider: string;
         };
+        /** ExecutionRun */
+        ExecutionRun: {
+            /** Error */
+            error?: string | null;
+            /**
+             * Plan Id
+             * Format: uuid
+             */
+            plan_id: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            state: components["schemas"]["ExecutionRunState"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ExecutionRunState
+         * @enum {string}
+         */
+        ExecutionRunState: "DRAFT" | "GENERATED" | "VALIDATING" | "VALIDATION_FAILED" | "VALIDATED" | "PENDING_APPROVAL" | "APPROVED" | "APPLYING" | "APPLIED" | "PARTIALLY_FAILED" | "COMPENSATING" | "COMPENSATED" | "ROLLING_BACK" | "ROLLED_BACK" | "ROLLBACK_BLOCKED" | "ROLLBACK_FAILED" | "EXPIRED";
         /**
          * FallbackStrategy
          * @enum {string}
@@ -4088,6 +4288,42 @@ export interface components {
             reference?: string | null;
             /** Status */
             status: string;
+        };
+        /** GeneratedRecord */
+        GeneratedRecord: {
+            /** Asset Id */
+            asset_id: string;
+            /** Dependency Keys */
+            dependency_keys: string[];
+            /** Generation Index */
+            generation_index: number;
+            /** Temporary Record Key */
+            temporary_record_key: string;
+            /** Values */
+            values: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+        };
+        /**
+         * GenerationMode
+         * @enum {string}
+         */
+        GenerationMode: "DETERMINISTIC" | "AI_ASSISTED";
+        /** GenerationProvenance */
+        GenerationProvenance: {
+            /** Ai Traces */
+            ai_traces?: unknown[];
+            /** Generator Version */
+            generator_version: string;
+            /** Metrics */
+            metrics?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
         };
         /** GovernanceSummary */
         GovernanceSummary: {
@@ -4573,6 +4809,68 @@ export interface components {
          * @enum {string}
          */
         NormalizedReturnMethod: "PREPAID_PARCEL" | "BRANCH_UPS" | "BRANCH_LTL" | "OFFSITE_PARCEL" | "OFFSITE_LTL" | "DIRECT_VENDOR" | "FIELD_SCRAP" | "NO_PHYSICAL_RETURN" | "CUSTOMER_KEEP" | "UNKNOWN";
+        /** Operation */
+        Operation: {
+            /** Asset Id */
+            asset_id: string;
+            /** Dependencies */
+            dependencies: string[];
+            /** Operation Id */
+            operation_id: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Target Channel */
+            target_channel: string;
+            type: components["schemas"]["OperationType"];
+        };
+        /**
+         * OperationType
+         * @enum {string}
+         */
+        OperationType: "INSERT" | "DOMAIN_COMMAND" | "GRAPH_SYNC_REQUEST";
+        /** OperationalGenerationProposal */
+        OperationalGenerationProposal: {
+            /** Deterministic Seed */
+            deterministic_seed: number;
+            generation_mode: components["schemas"]["GenerationMode"];
+            /** Proposal Checksum */
+            proposal_checksum: string;
+            /**
+             * Proposal Id
+             * Format: uuid
+             */
+            proposal_id: string;
+            provenance: components["schemas"]["GenerationProvenance"];
+            /** Records */
+            records: components["schemas"]["GeneratedRecord"][];
+            /** Schema Checksum */
+            schema_checksum: string;
+            /** Schema Release Id */
+            schema_release_id: string;
+        };
+        /** OperationalWritePlan */
+        OperationalWritePlan: {
+            /** Idempotency Key */
+            idempotency_key: string;
+            impact: components["schemas"]["PlanImpact"];
+            /** Plan Checksum */
+            plan_checksum: string;
+            /**
+             * Plan Id
+             * Format: uuid
+             */
+            plan_id: string;
+            /** Proposal Checksum */
+            proposal_checksum: string;
+            /** Saga Steps */
+            saga_steps: components["schemas"]["SagaStep"][];
+            /** Schema Checksum */
+            schema_checksum: string;
+            /** Schema Release Id */
+            schema_release_id: string;
+        };
         /** OrderCandidate */
         OrderCandidate: {
             /** Accounttype */
@@ -4711,6 +5009,19 @@ export interface components {
             scheduledWindowStart?: string | null;
             /** Servicelevel */
             serviceLevel?: string | null;
+        };
+        /** PlanImpact */
+        PlanImpact: {
+            /** Affected Channels */
+            affected_channels: string[];
+            /** Domain Commands */
+            domain_commands: number;
+            /** Graph Sync Requests */
+            graph_sync_requests: number;
+            /** Inserts */
+            inserts: number;
+            /** Total Operations */
+            total_operations: number;
         };
         /**
          * ProductPresence
@@ -5079,6 +5390,11 @@ export interface components {
             sessionId: string;
         };
         /**
+         * RollbackFeasibility
+         * @enum {string}
+         */
+        RollbackFeasibility: "SAFE" | "BLOCKED" | "COMPENSATION_REQUIRED" | "NOT_SUPPORTED";
+        /**
          * SQLServerColumnMetadata
          * @description Observed metadata for one SQL Server column.
          */
@@ -5198,6 +5514,14 @@ export interface components {
          * @enum {string}
          */
         SafetyStatus: "SAFE" | "PROMPT_INJECTION_SUSPECTED" | "OUT_OF_DOMAIN_REQUEST" | "UNAUTHORIZED_ACTION_REQUEST";
+        /** SagaStep */
+        SagaStep: {
+            rollback_feasibility: components["schemas"]["RollbackFeasibility"];
+            /** Step Index */
+            step_index: number;
+            /** Transaction Groups */
+            transaction_groups: components["schemas"]["TransactionGroup"][];
+        };
         /** SandboxIssue */
         SandboxIssue: {
             /** Field */
@@ -5290,6 +5614,8 @@ export interface components {
         SchemaField: {
             /** Description */
             description: string;
+            /** Enum */
+            enum?: string[] | null;
             /** Generator */
             generator?: string | null;
             /** Items */
@@ -5299,8 +5625,18 @@ export interface components {
              * @default false
              */
             key: boolean;
+            /** Max Length */
+            max_length?: number | null;
+            /** Maximum */
+            maximum?: number | null;
+            /** Min Length */
+            min_length?: number | null;
+            /** Minimum */
+            minimum?: number | null;
             /** Name */
             name: string;
+            /** Pattern */
+            pattern?: string | null;
             /**
              * Required
              * @default false
@@ -5911,6 +6247,15 @@ export interface components {
             sequence: number;
             /** Streamid */
             streamId: string;
+        };
+        /** TransactionGroup */
+        TransactionGroup: {
+            /** Group Id */
+            group_id: string;
+            /** Operations */
+            operations: components["schemas"]["Operation"][];
+            /** Target Channel */
+            target_channel: string;
         };
         /**
          * UnifiedInventory
@@ -6668,6 +7013,271 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_AssociateConversationView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_proposal_api_v1_data_console_ai_studio_operational_proposals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationalGenerationProposal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_proposal_api_v1_data_console_ai_studio_operational_proposals__proposalId__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationalGenerationProposal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__apply_post: {
+        parameters: {
+            query: {
+                plan_id: string;
+                approval_id: string;
+                target_environment: string;
+            };
+            header?: never;
+            path: {
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionRun"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__approve_post: {
+        parameters: {
+            query: {
+                plan_id: string;
+                target_environment: string;
+            };
+            header?: never;
+            path: {
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    plan_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__plan_post: {
+        parameters: {
+            query: {
+                plan_salt: string;
+            };
+            header?: never;
+            path: {
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationalWritePlan"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_api_v1_data_console_ai_studio_operational_runs__runId__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionRun"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rollback_run_endpoint_api_v1_data_console_ai_studio_operational_runs__runId__rollback_post: {
+        parameters: {
+            query: {
+                plan_id: string;
+            };
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecutionRun"];
                 };
             };
             /** @description Validation Error */

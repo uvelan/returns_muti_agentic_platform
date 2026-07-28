@@ -118,6 +118,16 @@ RETURN_PROGRESSIVE_DISAMBIGUATION_V1
 
 AI authority is restricted to approved wording and structured interpretation. State transitions and candidate selection remain deterministic.
 
+## AI Studio and Operational Generation
+
+The AI Studio provides a deterministic Operational Generation engine to seed synthetic, high-fidelity business data without executing manual frontend workflows.
+
+- **Deterministic Proposals**: AI generates natural language attributes (names, reasons) but core relational constraints (IDs, keys, foreign keys) and structural constraints (quantities, dates) are purely deterministic.
+- **Saga Execution**: Generated proposals are broken into transactional write plans and executed through a durable saga. 
+- **Rollback**: If a write transaction fails, or if requested by the administrator, the entire generated proposal is safely rolled back using inverse compensation transactions.
+- **Graph Synchronization**: Records written to source systems (MongoDB/SQL Server) are securely synchronized to the Neo4j graph, matching the exact path used by production integration events. Generated data is fully discoverable by the production Copilot.
+- **Data Policies**: AI Studio evaluates strict read/write policies. Data is not generated for assets marked with `DENIED` write policies. Generation gracefully falls back to deterministic values if AI is unavailable.
+
 ## Data-source configuration
 
 Data-source metadata, dataset requirements, access mode, routing, Vault references, and validation receipts are graph-configured.

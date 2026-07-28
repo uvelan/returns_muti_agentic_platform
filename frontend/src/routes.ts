@@ -327,6 +327,15 @@ export const routes: RouteDefinition[] = [
     component: lazy(() => import("./features/data-console/pages/DataStudioPages").then(m => ({ default: m.AIStudioPage }))),
   },
   {
+    path: "/data-console/ai-studio/operational",
+    name: "Operational Generation",
+    icon: Bot,
+    capability: "LIVE",
+    navigable: true,
+    group: "Data & AI Validation",
+    component: lazy(() => import("./features/data-console/pages/DataStudioPages").then(m => ({ default: m.OperationalGenerationPage }))),
+  },
+  {
     path: "/data-console/copilot/operations",
     name: "Copilot Console",
     icon: Bot,

@@ -31,7 +31,9 @@ def generator(registry: SchemaRegistry, guard: HallucinationGuard) -> Operationa
 
 
 @pytest.mark.asyncio
-async def test_synthetic_email_policy(generator: OperationalGenerator, registry: SchemaRegistry):
+async def test_synthetic_email_policy(
+    generator: OperationalGenerator, registry: SchemaRegistry
+) -> None:
     asset = next(
         a
         for a in registry.assets
@@ -54,12 +56,14 @@ async def test_synthetic_email_policy(generator: OperationalGenerator, registry:
 
     proposal = await generator.generate_proposal(req)
     email = proposal.records[0].values.get("email")
-    assert email.startswith("generated+")
-    assert email.endswith("@example.invalid")
+    assert isinstance(email, str) and email.startswith("generated+")
+    assert isinstance(email, str) and email.endswith("@example.invalid")
 
 
 @pytest.mark.asyncio
-async def test_synthetic_phone_policy(generator: OperationalGenerator, registry: SchemaRegistry):
+async def test_synthetic_phone_policy(
+    generator: OperationalGenerator, registry: SchemaRegistry
+) -> None:
     asset = next(
         a
         for a in registry.assets
@@ -82,4 +86,4 @@ async def test_synthetic_phone_policy(generator: OperationalGenerator, registry:
 
     proposal = await generator.generate_proposal(req)
     phone = proposal.records[0].values.get("phoneNumber")
-    assert phone.startswith("555-01")
+    assert isinstance(phone, str) and phone.startswith("555-01")

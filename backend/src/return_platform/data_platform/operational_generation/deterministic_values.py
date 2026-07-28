@@ -2,6 +2,7 @@ import hashlib
 import random
 import uuid
 from datetime import datetime, timedelta
+from typing import Any
 
 OPERATIONAL_GENERATION_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_OID, "operational.returns.platform")
 
@@ -45,7 +46,7 @@ def get_synthetic_name(stable_number: int) -> str:
     return f"Synthetic Customer {stable_number}"
 
 
-def calculate_monetary_values(lines: list[dict]):
+def calculate_monetary_values(lines: list[dict[str, Any]]) -> dict[str, float]:
     # line subtotal = quantity * unit price
     order_subtotal = sum(line.get("quantity", 1) * line.get("unit_price", 0.0) for line in lines)
     tax_rate = 0.08  # deterministic configured calculation

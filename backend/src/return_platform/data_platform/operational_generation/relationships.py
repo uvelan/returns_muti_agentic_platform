@@ -1,3 +1,4 @@
+import random
 from collections.abc import Iterable
 
 from return_platform.data_platform.schema_registry import SchemaRegistry
@@ -25,16 +26,16 @@ def construct_dependency_graph(registry: SchemaRegistry, asset_ids: Iterable[str
 
 
 class RelationshipResolver:
-    def __init__(self):
+    def __init__(self) -> None:
         # Maps generator type (e.g. "customer_reference") to a list of available valid keys
         self.available_keys: dict[str, list[str]] = {}
 
-    def add_key(self, generator_type: str, value: str):
+    def add_key(self, generator_type: str, value: str) -> None:
         if generator_type not in self.available_keys:
             self.available_keys[generator_type] = []
         self.available_keys[generator_type].append(value)
 
-    def get_key(self, generator_type: str, rng) -> str | None:
+    def get_key(self, generator_type: str, rng: random.Random) -> str | None:
         keys = self.available_keys.get(generator_type)
         if keys:
             return rng.choice(keys)

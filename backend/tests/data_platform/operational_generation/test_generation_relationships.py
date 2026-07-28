@@ -33,7 +33,7 @@ def generator(registry: SchemaRegistry, guard: HallucinationGuard) -> Operationa
 @pytest.mark.asyncio
 async def test_generation_relationships_valid(
     generator: OperationalGenerator, registry: SchemaRegistry
-):
+) -> None:
     # Test customer -> order -> line -> shipment dependencies (or a subset)
     # Actually we just pass valid generated_data_policy="ENABLED" assets
     assets = [

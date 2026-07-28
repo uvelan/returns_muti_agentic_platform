@@ -55,7 +55,7 @@ class OperationalGenerator:
 
         # 3. Validate request distribution
         rng = random.Random(request.deterministic_seed)
-        scenarios = distribute_scenarios(rng, request.scenario_distribution)
+        distribute_scenarios(rng, request.scenario_distribution)
 
         # 4. Generate records
         generated_records = []
@@ -65,9 +65,11 @@ class OperationalGenerator:
             asset = self.registry.asset(asset_id)
             for i in range(request.record_count):
                 record_rng = deterministic_random(request.deterministic_seed, asset_id, i, "record")
-                scenario = scenarios[i % len(scenarios)] if scenarios else None
+                # scenario unused
 
-                values = {}
+                from typing import Any
+
+                values: dict[str, Any] = {}
                 dep_keys = []
 
                 # Assign Tenant
@@ -85,7 +87,7 @@ class OperationalGenerator:
                         )
 
                     elif field.name in asset.dependency_fields:
-                        val = resolver.get_key(field.generator, record_rng)
+                        val = resolver.get_key(field.generator or "", record_rng)
                         if val:
                             values[field.name] = val
                             dep_keys.append(field.name)

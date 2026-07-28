@@ -7,7 +7,7 @@
     "dockerAvailable": false
   },
   "command": "python3.13 scripts/validate_stage4_source.py",
-  "generatedAt": "2026-07-28T04:41:43.450196+00:00",
+  "generatedAt": "2026-07-28T06:09:03.680678+00:00",
   "exitCode": 0,
   "status": "PASSED",
   "checks": [
@@ -21,14 +21,14 @@
       "status": "PASS",
       "evidence": {
         "missing": [],
-        "routeCount": 75
+        "routeCount": 76
       }
     },
     {
       "name": "frontend_routes_live_only",
       "status": "PASS",
       "evidence": {
-        "liveCount": 75
+        "liveCount": 76
       }
     },
     {

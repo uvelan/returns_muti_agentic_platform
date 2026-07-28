@@ -3996,6 +3996,64 @@
         "title": "AnchorType",
         "type": "string"
       },
+      "ApprovalRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_id": {
+            "format": "uuid",
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "approved_at": {
+            "format": "date-time",
+            "title": "Approved At",
+            "type": "string"
+          },
+          "approved_by": {
+            "title": "Approved By",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "plan_checksum": {
+            "title": "Plan Checksum",
+            "type": "string"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "proposal_checksum": {
+            "title": "Proposal Checksum",
+            "type": "string"
+          },
+          "schema_release_id": {
+            "title": "Schema Release Id",
+            "type": "string"
+          },
+          "target_environment": {
+            "title": "Target Environment",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approval_id",
+          "plan_id",
+          "proposal_checksum",
+          "plan_checksum",
+          "schema_release_id",
+          "target_environment",
+          "approved_by",
+          "approved_at",
+          "expires_at"
+        ],
+        "title": "ApprovalRecord",
+        "type": "object"
+      },
       "AssociateChatTurnRequest": {
         "additionalProperties": false,
         "properties": {
@@ -5931,6 +5989,77 @@
         "title": "DocumentArtifactRegistration",
         "type": "object"
       },
+      "ExecutionRun": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ExecutionRunState"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "plan_id",
+          "state",
+          "started_at",
+          "updated_at"
+        ],
+        "title": "ExecutionRun",
+        "type": "object"
+      },
+      "ExecutionRunState": {
+        "enum": [
+          "DRAFT",
+          "GENERATED",
+          "VALIDATING",
+          "VALIDATION_FAILED",
+          "VALIDATED",
+          "PENDING_APPROVAL",
+          "APPROVED",
+          "APPLYING",
+          "APPLIED",
+          "PARTIALLY_FAILED",
+          "COMPENSATING",
+          "COMPENSATED",
+          "ROLLING_BACK",
+          "ROLLED_BACK",
+          "ROLLBACK_BLOCKED",
+          "ROLLBACK_FAILED",
+          "EXPIRED"
+        ],
+        "title": "ExecutionRunState",
+        "type": "string"
+      },
       "FallbackStrategy": {
         "enum": [
           "TEMPLATE",
@@ -6242,6 +6371,84 @@
           "evidenceReference"
         ],
         "title": "FulfillmentFact",
+        "type": "object"
+      },
+      "GeneratedRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "dependency_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dependency Keys",
+            "type": "array"
+          },
+          "generation_index": {
+            "title": "Generation Index",
+            "type": "integer"
+          },
+          "temporary_record_key": {
+            "title": "Temporary Record Key",
+            "type": "string"
+          },
+          "values": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "asset_id",
+          "temporary_record_key",
+          "values",
+          "dependency_keys",
+          "generation_index"
+        ],
+        "title": "GeneratedRecord",
+        "type": "object"
+      },
+      "GenerationMode": {
+        "enum": [
+          "DETERMINISTIC",
+          "AI_ASSISTED"
+        ],
+        "title": "GenerationMode",
+        "type": "string"
+      },
+      "GenerationProvenance": {
+        "additionalProperties": false,
+        "properties": {
+          "ai_traces": {
+            "items": {},
+            "title": "Ai Traces",
+            "type": "array"
+          },
+          "generator_version": {
+            "title": "Generator Version",
+            "type": "string"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "title": "Metrics",
+            "type": "object"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "timestamp",
+          "generator_version"
+        ],
+        "title": "GenerationProvenance",
         "type": "object"
       },
       "GovernanceSummary": {
@@ -7392,6 +7599,160 @@
         "title": "NormalizedReturnMethod",
         "type": "string"
       },
+      "Operation": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "operation_id": {
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "target_channel": {
+            "title": "Target Channel",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/OperationType"
+          }
+        },
+        "required": [
+          "operation_id",
+          "type",
+          "asset_id",
+          "payload",
+          "target_channel",
+          "dependencies"
+        ],
+        "title": "Operation",
+        "type": "object"
+      },
+      "OperationType": {
+        "enum": [
+          "INSERT",
+          "DOMAIN_COMMAND",
+          "GRAPH_SYNC_REQUEST"
+        ],
+        "title": "OperationType",
+        "type": "string"
+      },
+      "OperationalGenerationProposal": {
+        "additionalProperties": false,
+        "properties": {
+          "deterministic_seed": {
+            "title": "Deterministic Seed",
+            "type": "integer"
+          },
+          "generation_mode": {
+            "$ref": "#/components/schemas/GenerationMode"
+          },
+          "proposal_checksum": {
+            "title": "Proposal Checksum",
+            "type": "string"
+          },
+          "proposal_id": {
+            "format": "uuid",
+            "title": "Proposal Id",
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/GenerationProvenance"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/GeneratedRecord"
+            },
+            "title": "Records",
+            "type": "array"
+          },
+          "schema_checksum": {
+            "title": "Schema Checksum",
+            "type": "string"
+          },
+          "schema_release_id": {
+            "title": "Schema Release Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "proposal_id",
+          "schema_release_id",
+          "schema_checksum",
+          "deterministic_seed",
+          "generation_mode",
+          "records",
+          "provenance",
+          "proposal_checksum"
+        ],
+        "title": "OperationalGenerationProposal",
+        "type": "object"
+      },
+      "OperationalWritePlan": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "impact": {
+            "$ref": "#/components/schemas/PlanImpact"
+          },
+          "plan_checksum": {
+            "title": "Plan Checksum",
+            "type": "string"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "proposal_checksum": {
+            "title": "Proposal Checksum",
+            "type": "string"
+          },
+          "saga_steps": {
+            "items": {
+              "$ref": "#/components/schemas/SagaStep"
+            },
+            "title": "Saga Steps",
+            "type": "array"
+          },
+          "schema_checksum": {
+            "title": "Schema Checksum",
+            "type": "string"
+          },
+          "schema_release_id": {
+            "title": "Schema Release Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan_id",
+          "proposal_checksum",
+          "schema_release_id",
+          "schema_checksum",
+          "idempotency_key",
+          "saga_steps",
+          "impact",
+          "plan_checksum"
+        ],
+        "title": "OperationalWritePlan",
+        "type": "object"
+      },
       "OrderCandidate": {
         "additionalProperties": false,
         "properties": {
@@ -7894,6 +8255,43 @@
           "reason"
         ],
         "title": "PickupActionRequest",
+        "type": "object"
+      },
+      "PlanImpact": {
+        "additionalProperties": false,
+        "properties": {
+          "affected_channels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Affected Channels",
+            "type": "array"
+          },
+          "domain_commands": {
+            "title": "Domain Commands",
+            "type": "integer"
+          },
+          "graph_sync_requests": {
+            "title": "Graph Sync Requests",
+            "type": "integer"
+          },
+          "inserts": {
+            "title": "Inserts",
+            "type": "integer"
+          },
+          "total_operations": {
+            "title": "Total Operations",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_operations",
+          "inserts",
+          "domain_commands",
+          "graph_sync_requests",
+          "affected_channels"
+        ],
+        "title": "PlanImpact",
         "type": "object"
       },
       "ProductPresence": {
@@ -9054,6 +9452,16 @@
         "title": "ReturnWorkflowAssessmentRequest",
         "type": "object"
       },
+      "RollbackFeasibility": {
+        "enum": [
+          "SAFE",
+          "BLOCKED",
+          "COMPENSATION_REQUIRED",
+          "NOT_SUPPORTED"
+        ],
+        "title": "RollbackFeasibility",
+        "type": "string"
+      },
       "SQLServerColumnMetadata": {
         "additionalProperties": false,
         "description": "Observed metadata for one SQL Server column.",
@@ -9318,6 +9726,32 @@
         "title": "SafetyStatus",
         "type": "string"
       },
+      "SagaStep": {
+        "additionalProperties": false,
+        "properties": {
+          "rollback_feasibility": {
+            "$ref": "#/components/schemas/RollbackFeasibility"
+          },
+          "step_index": {
+            "title": "Step Index",
+            "type": "integer"
+          },
+          "transaction_groups": {
+            "items": {
+              "$ref": "#/components/schemas/TransactionGroup"
+            },
+            "title": "Transaction Groups",
+            "type": "array"
+          }
+        },
+        "required": [
+          "step_index",
+          "transaction_groups",
+          "rollback_feasibility"
+        ],
+        "title": "SagaStep",
+        "type": "object"
+      },
       "SandboxIssue": {
         "additionalProperties": false,
         "properties": {
@@ -9553,6 +9987,20 @@
             "title": "Description",
             "type": "string"
           },
+          "enum": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enum"
+          },
           "generator": {
             "anyOf": [
               {
@@ -9584,11 +10032,66 @@
             "title": "Key",
             "type": "boolean"
           },
+          "max_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Length"
+          },
+          "maximum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum"
+          },
+          "min_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Length"
+          },
+          "minimum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum"
+          },
           "name": {
             "maxLength": 255,
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern"
           },
           "required": {
             "default": false,
@@ -11265,6 +11768,33 @@
         "title": "TimelineEvent",
         "type": "object"
       },
+      "TransactionGroup": {
+        "additionalProperties": false,
+        "properties": {
+          "group_id": {
+            "title": "Group Id",
+            "type": "string"
+          },
+          "operations": {
+            "items": {
+              "$ref": "#/components/schemas/Operation"
+            },
+            "title": "Operations",
+            "type": "array"
+          },
+          "target_channel": {
+            "title": "Target Channel",
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "target_channel",
+          "operations"
+        ],
+        "title": "TransactionGroup",
+        "type": "object"
+      },
       "UnifiedInventory": {
         "additionalProperties": false,
         "description": "Partial-capable inventory across configured database engines.",
@@ -12449,6 +12979,390 @@
         "tags": [
           "Associate Returns"
         ]
+      }
+    },
+    "/api/v1/data-console/ai-studio/operational/proposals": {
+      "post": {
+        "operationId": "create_proposal_api_v1_data_console_ai_studio_operational_proposals_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Config",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationalGenerationProposal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Proposal"
+      }
+    },
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}": {
+      "get": {
+        "operationId": "get_proposal_api_v1_data_console_ai_studio_operational_proposals__proposalId__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposalId",
+            "required": true,
+            "schema": {
+              "title": "Proposalid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationalGenerationProposal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Proposal"
+      }
+    },
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}/apply": {
+      "post": {
+        "operationId": "apply_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposalId",
+            "required": true,
+            "schema": {
+              "title": "Proposalid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Approval Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_environment",
+            "required": true,
+            "schema": {
+              "title": "Target Environment",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Plan Endpoint"
+      }
+    },
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}/approve": {
+      "post": {
+        "operationId": "approve_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposalId",
+            "required": true,
+            "schema": {
+              "title": "Proposalid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_environment",
+            "required": true,
+            "schema": {
+              "title": "Target Environment",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Plan Endpoint"
+      }
+    },
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}/plan": {
+      "post": {
+        "operationId": "plan_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__plan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposalId",
+            "required": true,
+            "schema": {
+              "title": "Proposalid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "plan_salt",
+            "required": true,
+            "schema": {
+              "title": "Plan Salt",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationalWritePlan"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Plan Proposal Endpoint"
+      }
+    },
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}/validate": {
+      "post": {
+        "operationId": "validate_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposalId",
+            "required": true,
+            "schema": {
+              "title": "Proposalid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Validate Proposal Endpoint Api V1 Data Console Ai Studio Operational Proposals  Proposalid  Validate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate Proposal Endpoint"
+      }
+    },
+    "/api/v1/data-console/ai-studio/operational/runs/{runId}": {
+      "get": {
+        "operationId": "get_run_api_v1_data_console_ai_studio_operational_runs__runId__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Runid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run"
+      }
+    },
+    "/api/v1/data-console/ai-studio/operational/runs/{runId}/rollback": {
+      "post": {
+        "operationId": "rollback_run_endpoint_api_v1_data_console_ai_studio_operational_runs__runId__rollback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Runid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rollback Run Endpoint"
       }
     },
     "/api/v1/dependency-simulator/ai-metrics": {

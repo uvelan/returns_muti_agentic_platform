@@ -56,6 +56,9 @@ from return_platform.data_console.api.graph_evidence import router as graph_evid
 from return_platform.data_console.api.graph_sync import router as graph_sync_router
 from return_platform.data_console.api.inventory import router as inventory_router
 from return_platform.data_console.api.jobs import router as jobs_router
+from return_platform.data_console.api.operational_generation import (
+    router as operational_generation_router,
+)
 from return_platform.data_console.api.router import router as console_router
 from return_platform.data_console.api.runtime_validation import (
     router as runtime_validation_router,
@@ -681,6 +684,7 @@ def create_app(
 
     fastapi_app.include_router(console_router)
     fastapi_app.include_router(schema_catalog_router)
+    fastapi_app.include_router(operational_generation_router)
     fastapi_app.include_router(ai_studio_router)
     fastapi_app.include_router(graph_sync_router)
     fastapi_app.include_router(feedback_learning_router)
