@@ -110,10 +110,10 @@ def test_adapter_registry_deterministic() -> None:
 
 
 @pytest.mark.asyncio
-async def test_execution_remains_disabled_before_aig6() -> None:
+async def test_source_execution_requires_runtime_configuration() -> None:
     adapter = create_adapter("source_admin")
-    with pytest.raises(NotImplementedError, match="disabled before AIG6"):
+    with pytest.raises(RuntimeError, match="not configured"):
         await adapter.execute([])
 
-    with pytest.raises(NotImplementedError, match="disabled before AIG6"):
+    with pytest.raises(RuntimeError, match="not configured"):
         await adapter.compensate([])

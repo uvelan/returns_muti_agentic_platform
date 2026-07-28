@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import uuid
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal
@@ -104,6 +105,68 @@ class GraphSyncService:
     async def ensure_indexes(self) -> None:
         await self._runs.create_index([("startedAt", -1)])
         await self._runs.create_index("status")
+
+    async def remove_source_mongodb_records(
+        self, records: Sequence[tuple[str, Mapping[str, object]]]
+    ) -> None:
+        """Remove projections for authoritative source records that were rolled back."""
+        keys: dict[str, list[str]] = {
+            "customers": [],
+            "orders": [],
+            "products": [],
+            "shipments": [],
+        }
+        for asset_id, payload in records:
+            if asset_id == "source.mongodb.customer_outbound_cdm":
+                for field in ("partyId", "customerId"):
+                    if value := _text(payload.get(field)):
+                        keys["customers"].append(value)
+            elif asset_id == "source.mongodb.sales_inv":
+                if value := _text(payload.get("salesHdrEventData.orderId")):
+                    keys["orders"].append(value)
+                if value := _text(payload.get("salesHdr.salesHdrData.custId")):
+                    keys["customers"].append(value)
+            elif asset_id == "source.mongodb.product_search":
+                if value := _text(payload.get("productId")):
+                    keys["products"].append(value)
+            elif asset_id == "source.mongodb.shipment_info":
+                if value := _text(payload.get("shipmentInfoEventData.trkNum")):
+                    keys["shipments"].append(value)
+
+        await self._write(
+            """
+            UNWIND $rows AS row
+            MATCH (s:Shipment {tracking_number: row.key})
+            DETACH DELETE s
+            """,
+            [{"key": key} for key in keys["shipments"]],
+        )
+        await self._write(
+            """
+            UNWIND $rows AS row
+            MATCH (o:SalesOrder {sales_order_number: row.key})
+            OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(line:OrderLine)
+            DETACH DELETE line, o
+            """,
+            [{"key": key} for key in keys["orders"]],
+        )
+        await self._write(
+            """
+            UNWIND $rows AS row
+            MATCH (p:Product {product_id: row.key})
+            DETACH DELETE p
+            """,
+            [{"key": key} for key in keys["products"]],
+        )
+        await self._write(
+            """
+            UNWIND $rows AS row
+            MATCH (c:Customer {customer_key: row.key})
+            OPTIONAL MATCH (c)-[:HAS_ACCOUNT]->(account:CustomerAccount)
+            DETACH DELETE account, c
+            """,
+            [{"key": key} for key in keys["customers"]],
+        )
 
     @staticmethod
     def _view(document: dict[str, Any]) -> GraphSyncRunView:

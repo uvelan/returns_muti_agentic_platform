@@ -77,6 +77,13 @@ from return_platform.data_console.infrastructure.probes import (
     probe_valkey,
 )
 from return_platform.data_governance import load_asset_catalog
+from return_platform.data_platform.graph.sync_service import GraphSyncService
+from return_platform.data_platform.operational_generation.adapters.graph_sync import (
+    configure_graph_sync,
+)
+from return_platform.data_platform.operational_generation.adapters.source_mongodb import (
+    configure_source_mongodb,
+)
 from return_platform.data_platform.schema_registry import load_schema_registry
 from return_platform.dependency_simulation.configuration import (
     load_dependency_simulation_configuration,
@@ -370,6 +377,26 @@ async def lifespan(
             settings,
             resources,
         )
+        if resources.source_mongo is not None:
+            configure_source_mongodb(
+                resources.source_mongo,
+                settings.source_mongo_database,
+                schema_registry,
+            )
+        if (
+            resources.mongo is not None
+            and resources.source_mongo is not None
+            and resources.neo4j is not None
+        ):
+            configure_graph_sync(
+                GraphSyncService(
+                    platform_client=resources.mongo,
+                    source_client=resources.source_mongo,
+                    driver=resources.neo4j,
+                    settings=settings,
+                    registry=schema_registry,
+                )
+            )
         await _initialize_valkey(
             settings,
             resources,
@@ -437,6 +464,8 @@ async def lifespan(
 
         yield
     finally:
+        configure_graph_sync(None)
+        configure_source_mongodb(None)
         if (
             getattr(
                 app.state,

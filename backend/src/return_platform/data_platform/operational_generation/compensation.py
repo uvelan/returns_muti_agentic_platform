@@ -27,15 +27,26 @@ async def compensate_saga(
     repository.save_run(run)
 
     partial = False
+    delayed_graph_groups = []
 
     for idx, step in reversed(list(enumerate(plan.saga_steps))):
         if idx in successful_step_indices:
             for tg in reversed(step.transaction_groups):
+                if tg.target_channel == "GRAPH_SYNC_ADAPTER":
+                    delayed_graph_groups.append(tg)
+                    continue
                 try:
                     await compensate_transaction_group(tg)
                 except Exception as e:
                     logger.error(f"Failed to compensate step {idx}, group {tg.target_channel}: {e}")
                     partial = True
+
+    for tg in delayed_graph_groups:
+        try:
+            await compensate_transaction_group(tg)
+        except Exception as e:
+            logger.error(f"Failed to refresh graph projection after compensation: {e}")
+            partial = True
 
     if partial:
         run.state = ExecutionRunState.PARTIALLY_FAILED

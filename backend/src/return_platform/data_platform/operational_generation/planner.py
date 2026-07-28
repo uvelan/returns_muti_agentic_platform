@@ -18,7 +18,13 @@ from .plan_checksum import calculate_plan_checksum
 from .policy_resolver import is_domain_api, resolve_execution_channel
 from .rollback_analysis import classify_rollback_feasibility
 from .transaction_groups import partition_transaction_groups
-from .write_models import Operation, OperationalWritePlan, OperationType, SagaStep
+from .write_models import (
+    Operation,
+    OperationalWritePlan,
+    OperationType,
+    RollbackFeasibility,
+    SagaStep,
+)
 
 
 class OperationalPlanner:
@@ -47,7 +53,7 @@ class OperationalPlanner:
 
         # 4. Guard validation
         for asset_id in {r.asset_id for r in proposal.records}:
-            recs = [r.values for r in proposal.records if r.asset_id == asset_id]
+            recs = [dict(r.values) for r in proposal.records if r.asset_id == asset_id]
             op_prop = OperationProposal(asset_id=asset_id, records=recs)
             res = self.guard.validate(op_prop)
             if res.state != ValidationResultState.VALID:
@@ -92,7 +98,13 @@ class OperationalPlanner:
 
         for idx, tg in enumerate(tgs):
             rf = classify_rollback_feasibility(
-                [SagaStep(step_index=0, transaction_groups=(tg,), rollback_feasibility="SAFE")]
+                [
+                    SagaStep(
+                        step_index=0,
+                        transaction_groups=(tg,),
+                        rollback_feasibility=RollbackFeasibility.SAFE,
+                    )
+                ]
             )  # hack to reuse
             saga_steps.append(
                 SagaStep(step_index=idx, transaction_groups=(tg,), rollback_feasibility=rf)
@@ -112,7 +124,14 @@ class OperationalPlanner:
                         operation_id=str(uuid.uuid4()),
                         type=OperationType.GRAPH_SYNC_REQUEST,
                         asset_id=asset_id,
-                        payload={"sync": "true"},
+                        payload={
+                            "sync": "true",
+                            "records": [
+                                dict(record.values)
+                                for record in proposal.records
+                                if record.asset_id == asset_id
+                            ],
+                        },
                         target_channel="GRAPH_SYNC_ADAPTER",
                         dependencies=(),
                     )
@@ -129,7 +148,7 @@ class OperationalPlanner:
                             SagaStep(
                                 step_index=0,
                                 transaction_groups=tuple(sync_tg),
-                                rollback_feasibility="SAFE",
+                                rollback_feasibility=RollbackFeasibility.SAFE,
                             )
                         ]
                     ),

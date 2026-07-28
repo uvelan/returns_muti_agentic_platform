@@ -346,7 +346,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}": {
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposal_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -354,7 +354,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Proposal */
-        get: operations["get_proposal_api_v1_data_console_ai_studio_operational_proposals__proposalId__get"];
+        get: operations["get_proposal_api_v1_data_console_ai_studio_operational_proposals__proposal_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -363,7 +363,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}/apply": {
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposal_id}/apply": {
         parameters: {
             query?: never;
             header?: never;
@@ -373,14 +373,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Apply Plan Endpoint */
-        post: operations["apply_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__apply_post"];
+        post: operations["apply_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposal_id__apply_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}/approve": {
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposal_id}/approve": {
         parameters: {
             query?: never;
             header?: never;
@@ -390,14 +390,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Approve Plan Endpoint */
-        post: operations["approve_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__approve_post"];
+        post: operations["approve_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposal_id__approve_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}/plan": {
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposal_id}/plan": {
         parameters: {
             query?: never;
             header?: never;
@@ -407,14 +407,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Plan Proposal Endpoint */
-        post: operations["plan_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__plan_post"];
+        post: operations["plan_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposal_id__plan_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}/validate": {
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposal_id}/validate": {
         parameters: {
             query?: never;
             header?: never;
@@ -424,14 +424,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Validate Proposal Endpoint */
-        post: operations["validate_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__validate_post"];
+        post: operations["validate_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposal_id__validate_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/data-console/ai-studio/operational/runs/{runId}": {
+    "/api/v1/data-console/ai-studio/operational/runs/{run_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -439,7 +439,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Run */
-        get: operations["get_run_api_v1_data_console_ai_studio_operational_runs__runId__get"];
+        get: operations["get_run_api_v1_data_console_ai_studio_operational_runs__run_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -448,7 +448,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/data-console/ai-studio/operational/runs/{runId}/rollback": {
+    "/api/v1/data-console/ai-studio/operational/runs/{run_id}/rollback": {
         parameters: {
             query?: never;
             header?: never;
@@ -458,7 +458,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Rollback Run Endpoint */
-        post: operations["rollback_run_endpoint_api_v1_data_console_ai_studio_operational_runs__runId__rollback_post"];
+        post: operations["rollback_run_endpoint_api_v1_data_console_ai_studio_operational_runs__run_id__rollback_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -972,6 +972,26 @@ export interface paths {
         };
         /** Stream Return Events */
         get: operations["stream_return_events_api_v1_returns__session_id__stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runtime-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Runtime Config
+         * @description Retrieve safe runtime configuration for the frontend.
+         */
+        get: operations["get_runtime_config_api_v1_runtime_config_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2900,6 +2920,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[ApprovalRecord] */
+        APIResponse_ApprovalRecord_: {
+            data?: components["schemas"]["ApprovalRecord"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[AssociateConversationView] */
         APIResponse_AssociateConversationView_: {
             data?: components["schemas"]["AssociateConversationView"] | null;
@@ -2951,6 +2977,12 @@ export interface components {
         /** APIResponse[DiscoveryAssessment] */
         APIResponse_DiscoveryAssessment_: {
             data?: components["schemas"]["DiscoveryAssessment"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[ExecutionRun] */
+        APIResponse_ExecutionRun_: {
+            data?: components["schemas"]["ExecutionRun"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -3017,6 +3049,18 @@ export interface components {
         /** APIResponse[Job] */
         APIResponse_Job_: {
             data?: components["schemas"]["Job"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[OperationalGenerationProposal] */
+        APIResponse_OperationalGenerationProposal_: {
+            data?: components["schemas"]["OperationalGenerationProposal"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[OperationalWritePlan] */
+        APIResponse_OperationalWritePlan_: {
+            data?: components["schemas"]["OperationalWritePlan"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -7035,19 +7079,17 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
+                "application/json": components["schemas"]["AIStudioGenerationRequest"];
             };
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationalGenerationProposal"];
+                    "application/json": components["schemas"]["APIResponse_OperationalGenerationProposal_"];
                 };
             };
             /** @description Validation Error */
@@ -7061,12 +7103,12 @@ export interface operations {
             };
         };
     };
-    get_proposal_api_v1_data_console_ai_studio_operational_proposals__proposalId__get: {
+    get_proposal_api_v1_data_console_ai_studio_operational_proposals__proposal_id__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                proposalId: string;
+                proposal_id: string;
             };
             cookie?: never;
         };
@@ -7078,7 +7120,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationalGenerationProposal"];
+                    "application/json": components["schemas"]["APIResponse_OperationalGenerationProposal_"];
                 };
             };
             /** @description Validation Error */
@@ -7092,7 +7134,7 @@ export interface operations {
             };
         };
     };
-    apply_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__apply_post: {
+    apply_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposal_id__apply_post: {
         parameters: {
             query: {
                 plan_id: string;
@@ -7101,7 +7143,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                proposalId: string;
+                proposal_id: string;
             };
             cookie?: never;
         };
@@ -7113,7 +7155,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExecutionRun"];
+                    "application/json": components["schemas"]["APIResponse_ExecutionRun_"];
                 };
             };
             /** @description Validation Error */
@@ -7127,7 +7169,7 @@ export interface operations {
             };
         };
     };
-    approve_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__approve_post: {
+    approve_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposal_id__approve_post: {
         parameters: {
             query: {
                 plan_id: string;
@@ -7135,7 +7177,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                proposalId: string;
+                proposal_id: string;
             };
             cookie?: never;
         };
@@ -7147,7 +7189,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApprovalRecord"];
+                    "application/json": components["schemas"]["APIResponse_ApprovalRecord_"];
                 };
             };
             /** @description Validation Error */
@@ -7161,14 +7203,14 @@ export interface operations {
             };
         };
     };
-    plan_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__plan_post: {
+    plan_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposal_id__plan_post: {
         parameters: {
             query: {
                 plan_salt: string;
             };
             header?: never;
             path: {
-                proposalId: string;
+                proposal_id: string;
             };
             cookie?: never;
         };
@@ -7180,7 +7222,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationalWritePlan"];
+                    "application/json": components["schemas"]["APIResponse_OperationalWritePlan_"];
                 };
             };
             /** @description Validation Error */
@@ -7194,12 +7236,12 @@ export interface operations {
             };
         };
     };
-    validate_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__validate_post: {
+    validate_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposal_id__validate_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                proposalId: string;
+                proposal_id: string;
             };
             cookie?: never;
         };
@@ -7211,9 +7253,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
                 };
             };
             /** @description Validation Error */
@@ -7227,12 +7267,12 @@ export interface operations {
             };
         };
     };
-    get_run_api_v1_data_console_ai_studio_operational_runs__runId__get: {
+    get_run_api_v1_data_console_ai_studio_operational_runs__run_id__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                runId: string;
+                run_id: string;
             };
             cookie?: never;
         };
@@ -7244,7 +7284,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExecutionRun"];
+                    "application/json": components["schemas"]["APIResponse_ExecutionRun_"];
                 };
             };
             /** @description Validation Error */
@@ -7258,14 +7298,14 @@ export interface operations {
             };
         };
     };
-    rollback_run_endpoint_api_v1_data_console_ai_studio_operational_runs__runId__rollback_post: {
+    rollback_run_endpoint_api_v1_data_console_ai_studio_operational_runs__run_id__rollback_post: {
         parameters: {
             query: {
                 plan_id: string;
             };
             header?: never;
             path: {
-                runId: string;
+                run_id: string;
             };
             cookie?: never;
         };
@@ -7277,7 +7317,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExecutionRun"];
+                    "application/json": components["schemas"]["APIResponse_ExecutionRun_"];
                 };
             };
             /** @description Validation Error */
@@ -8413,6 +8453,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_runtime_config_api_v1_runtime_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__object__"];
                 };
             };
         };

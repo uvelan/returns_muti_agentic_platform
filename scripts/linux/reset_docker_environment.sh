@@ -163,7 +163,7 @@ fi
 
 if [[ -x "scripts/infra.sh" ]]; then
     log "Recreating infrastructure."
-    scripts/infra.sh up
+    scripts/infra.sh start
 elif docker compose config >/dev/null 2>&1; then
     docker compose up -d --remove-orphans
 else

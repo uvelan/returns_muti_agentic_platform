@@ -25,6 +25,15 @@ from .relationships import RelationshipResolver, construct_dependency_graph
 from .scenarios import distribute_scenarios
 from .semantic_values import SemanticValueProvider, get_deterministic_semantic_fallback
 
+_RELATIONAL_SOURCE_ASSETS = frozenset(
+    {
+        "source.mongodb.customer_outbound_cdm",
+        "source.mongodb.product_search",
+        "source.mongodb.sales_inv",
+        "source.mongodb.shipment_info",
+    }
+)
+
 
 class OperationalGenerator:
     def __init__(
@@ -131,13 +140,61 @@ class OperationalGenerator:
                         else:
                             values[field.name] = record_rng.randint(1, 100)
                     elif field.type == "array":
-                        values[field.name] = []
+                        if field.generator == "customer_accounts":
+                            customer_id = resolver.get_key("customer_reference", record_rng)
+                            values[field.name] = (
+                                [{"accountNumber": customer_id, "status": "ACTIVE"}]
+                                if customer_id
+                                else []
+                            )
+                        elif field.generator == "sales_lines":
+                            product_id = resolver.get_key("product_reference", record_rng)
+                            if product_id:
+                                order_id = str(
+                                    values.get(
+                                        "salesHdrEventData.orderId",
+                                        generate_stable_string(
+                                            request.deterministic_seed,
+                                            asset_id,
+                                            i,
+                                            "order_reference",
+                                        ),
+                                    )
+                                )
+                                values[field.name] = [
+                                    {
+                                        "lineData": {
+                                            "orderLineId": f"{order_id}-L1",
+                                            "productId": product_id,
+                                            "masterProductId": resolver.get_key(
+                                                "master_product_reference", record_rng
+                                            ),
+                                            "sku": resolver.get_key("sku", record_rng),
+                                            "productDesc": resolver.get_key(
+                                                "product_description", record_rng
+                                            ),
+                                            "productType": resolver.get_key(
+                                                "product_type", record_rng
+                                            ),
+                                            "orderQty": 1,
+                                            "shipQty": 1,
+                                        }
+                                    }
+                                ]
+                            else:
+                                values[field.name] = []
+                        else:
+                            values[field.name] = []
                     elif field.type == "object":
                         values[field.name] = {}
 
-                    # Registration of natural keys to resolver
-                    if field.name in asset.natural_keys and field.generator:
-                        resolver.add_key(field.generator, values[field.name])
+                    generated_value = values.get(field.name)
+                    if (
+                        asset_id in _RELATIONAL_SOURCE_ASSETS
+                        and field.generator
+                        and isinstance(generated_value, str)
+                    ):
+                        resolver.add_key(field.generator, generated_value)
 
                 record_key = str(
                     generate_stable_uuid(request.deterministic_seed, asset_id, i, "record_key")
@@ -155,7 +212,7 @@ class OperationalGenerator:
 
         # 5. Hallucination Guard
         for asset_id in sorted_assets:
-            recs = [r.values for r in generated_records if r.asset_id == asset_id]
+            recs = [dict(r.values) for r in generated_records if r.asset_id == asset_id]
             if not recs:
                 continue
 

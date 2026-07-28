@@ -101,8 +101,10 @@ assets:
   generated_data_policy: ENABLED
   allowed_operations:
   - INSERT
-  dependency_fields: []
-  natural_keys: []
+  dependency_fields:
+  - salesHdr.salesHdrData.custId
+  natural_keys:
+  - salesHdrEventData.orderId
   collision_policy: REJECT
   pii_policy: NONE
   rollback_policy: DELETE
@@ -173,7 +175,8 @@ assets:
   allowed_operations:
   - INSERT
   dependency_fields: []
-  natural_keys: []
+  natural_keys:
+  - customerId
   collision_policy: REJECT
   pii_policy: NONE
   rollback_policy: DELETE
@@ -230,8 +233,10 @@ assets:
   generated_data_policy: ENABLED
   allowed_operations:
   - INSERT
-  dependency_fields: []
-  natural_keys: []
+  dependency_fields:
+  - shipmentInfoEventData.trilOrdNum
+  natural_keys:
+  - shipmentInfoEventData.trkNum
   collision_policy: REJECT
   pii_policy: NONE
   rollback_policy: DELETE
@@ -295,7 +300,8 @@ assets:
   allowed_operations:
   - INSERT
   dependency_fields: []
-  natural_keys: []
+  natural_keys:
+  - productId
   collision_policy: REJECT
   pii_policy: NONE
   rollback_policy: DELETE

@@ -58,7 +58,7 @@ export function RollbackAction() {
       {result && (
         <div className="p-3 bg-green-50 border border-green-200 rounded">
           <p className="font-semibold text-green-800">
-            Rollback Status: {result.status}
+            Rollback Status: {result.state}
           </p>
           <p className="text-sm text-green-700">Run ID: {result.run_id}</p>
         </div>

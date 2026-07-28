@@ -38,6 +38,17 @@ def read_env_file(path: Path) -> dict[str, str]:
     return values
 
 
+def is_placeholder_secret(value: str) -> bool:
+    normalized = value.strip().lower()
+    return (
+        not normalized
+        or normalized == "vault-resolved"
+        or normalized.startswith("placeholder")
+        or normalized.endswith("changeme")
+        or normalized.endswith("change-me")
+    )
+
+
 def request_json(
     method: str,
     path: str,
@@ -118,6 +129,33 @@ def put_kv(root_token: str, secret_path: str, values: dict[str, str]) -> None:
         body={"data": values},
         allowed_statuses=(200, 204),
     )
+
+
+def resolve_bootstrap_secret(
+    root_token: str,
+    secret_path: str,
+    field_name: str,
+    configured_value: str,
+) -> str:
+    if not is_placeholder_secret(configured_value):
+        return configured_value
+    try:
+        current = request_json(
+            "GET",
+            f"/v1/secret/data/{secret_path}",
+            token=root_token,
+            allowed_statuses=(200,),
+        )
+        stored = current.get("data", {}).get("data", {}).get(field_name)
+        if (
+            isinstance(stored, str)
+            and not is_placeholder_secret(stored)
+            and len(stored.encode("utf-8")) >= 32
+        ):
+            return stored
+    except RuntimeError:
+        pass
+    return os.urandom(32).hex()
 
 
 def main() -> int:
@@ -231,17 +269,23 @@ path "secret/delete/production/*" {
         "production/data-sources/sqlserver",
         {"password": require_value(env, "MSSQL_SA_PASSWORD")},
     )
-    validation_key = env.get("PLATFORM_VALIDATION_FINGERPRINT_KEY", "").strip()
-    if not validation_key or validation_key.endswith("ChangeMe"):
-        validation_key = os.urandom(32).hex()
+    validation_key = resolve_bootstrap_secret(
+        root_token,
+        "production/platform/validation",
+        "fingerprint_key",
+        env.get("PLATFORM_VALIDATION_FINGERPRINT_KEY", "").strip(),
+    )
     put_kv(
         root_token,
         "production/platform/validation",
         {"fingerprint_key": validation_key},
     )
-    contact_lookup_key = env.get("PLATFORM_CONTACT_LOOKUP_HMAC_KEY", "").strip()
-    if not contact_lookup_key or contact_lookup_key.endswith("ChangeMe"):
-        contact_lookup_key = os.urandom(32).hex()
+    contact_lookup_key = resolve_bootstrap_secret(
+        root_token,
+        "production/platform/contact-lookup",
+        "hmac_key",
+        env.get("PLATFORM_CONTACT_LOOKUP_HMAC_KEY", "").strip(),
+    )
     put_kv(
         root_token,
         "production/platform/contact-lookup",

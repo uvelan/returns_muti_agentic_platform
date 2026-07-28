@@ -1525,6 +1525,39 @@
         "title": "APIResponse[AIUsageSummaryView]",
         "type": "object"
       },
+      "APIResponse_ApprovalRecord_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ApprovalRecord]",
+        "type": "object"
+      },
       "APIResponse_AssociateConversationView_": {
         "additionalProperties": false,
         "properties": {
@@ -1820,6 +1853,39 @@
           "meta"
         ],
         "title": "APIResponse[DiscoveryAssessment]",
+        "type": "object"
+      },
+      "APIResponse_ExecutionRun_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExecutionRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ExecutionRun]",
         "type": "object"
       },
       "APIResponse_FeedbackAssessment_": {
@@ -2183,6 +2249,72 @@
           "meta"
         ],
         "title": "APIResponse[Job]",
+        "type": "object"
+      },
+      "APIResponse_OperationalGenerationProposal_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OperationalGenerationProposal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[OperationalGenerationProposal]",
+        "type": "object"
+      },
+      "APIResponse_OperationalWritePlan_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OperationalWritePlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[OperationalWritePlan]",
         "type": "object"
       },
       "APIResponse_ReturnSessionView_": {
@@ -12988,20 +13120,18 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "title": "Config",
-                "type": "object"
+                "$ref": "#/components/schemas/AIStudioGenerationRequest"
               }
             }
           },
           "required": true
         },
         "responses": {
-          "200": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationalGenerationProposal"
+                  "$ref": "#/components/schemas/APIResponse_OperationalGenerationProposal_"
                 }
               }
             },
@@ -13021,16 +13151,16 @@
         "summary": "Create Proposal"
       }
     },
-    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}": {
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposal_id}": {
       "get": {
-        "operationId": "get_proposal_api_v1_data_console_ai_studio_operational_proposals__proposalId__get",
+        "operationId": "get_proposal_api_v1_data_console_ai_studio_operational_proposals__proposal_id__get",
         "parameters": [
           {
             "in": "path",
-            "name": "proposalId",
+            "name": "proposal_id",
             "required": true,
             "schema": {
-              "title": "Proposalid",
+              "title": "Proposal Id",
               "type": "string"
             }
           }
@@ -13040,7 +13170,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationalGenerationProposal"
+                  "$ref": "#/components/schemas/APIResponse_OperationalGenerationProposal_"
                 }
               }
             },
@@ -13060,16 +13190,16 @@
         "summary": "Get Proposal"
       }
     },
-    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}/apply": {
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposal_id}/apply": {
       "post": {
-        "operationId": "apply_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__apply_post",
+        "operationId": "apply_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposal_id__apply_post",
         "parameters": [
           {
             "in": "path",
-            "name": "proposalId",
+            "name": "proposal_id",
             "required": true,
             "schema": {
-              "title": "Proposalid",
+              "title": "Proposal Id",
               "type": "string"
             }
           },
@@ -13108,7 +13238,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ExecutionRun"
+                  "$ref": "#/components/schemas/APIResponse_ExecutionRun_"
                 }
               }
             },
@@ -13128,16 +13258,16 @@
         "summary": "Apply Plan Endpoint"
       }
     },
-    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}/approve": {
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposal_id}/approve": {
       "post": {
-        "operationId": "approve_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__approve_post",
+        "operationId": "approve_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposal_id__approve_post",
         "parameters": [
           {
             "in": "path",
-            "name": "proposalId",
+            "name": "proposal_id",
             "required": true,
             "schema": {
-              "title": "Proposalid",
+              "title": "Proposal Id",
               "type": "string"
             }
           },
@@ -13166,7 +13296,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApprovalRecord"
+                  "$ref": "#/components/schemas/APIResponse_ApprovalRecord_"
                 }
               }
             },
@@ -13186,16 +13316,16 @@
         "summary": "Approve Plan Endpoint"
       }
     },
-    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}/plan": {
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposal_id}/plan": {
       "post": {
-        "operationId": "plan_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__plan_post",
+        "operationId": "plan_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposal_id__plan_post",
         "parameters": [
           {
             "in": "path",
-            "name": "proposalId",
+            "name": "proposal_id",
             "required": true,
             "schema": {
-              "title": "Proposalid",
+              "title": "Proposal Id",
               "type": "string"
             }
           },
@@ -13214,7 +13344,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OperationalWritePlan"
+                  "$ref": "#/components/schemas/APIResponse_OperationalWritePlan_"
                 }
               }
             },
@@ -13234,16 +13364,16 @@
         "summary": "Plan Proposal Endpoint"
       }
     },
-    "/api/v1/data-console/ai-studio/operational/proposals/{proposalId}/validate": {
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposal_id}/validate": {
       "post": {
-        "operationId": "validate_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposalId__validate_post",
+        "operationId": "validate_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposal_id__validate_post",
         "parameters": [
           {
             "in": "path",
-            "name": "proposalId",
+            "name": "proposal_id",
             "required": true,
             "schema": {
-              "title": "Proposalid",
+              "title": "Proposal Id",
               "type": "string"
             }
           }
@@ -13253,9 +13383,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Validate Proposal Endpoint Api V1 Data Console Ai Studio Operational Proposals  Proposalid  Validate Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
                 }
               }
             },
@@ -13275,17 +13403,17 @@
         "summary": "Validate Proposal Endpoint"
       }
     },
-    "/api/v1/data-console/ai-studio/operational/runs/{runId}": {
+    "/api/v1/data-console/ai-studio/operational/runs/{run_id}": {
       "get": {
-        "operationId": "get_run_api_v1_data_console_ai_studio_operational_runs__runId__get",
+        "operationId": "get_run_api_v1_data_console_ai_studio_operational_runs__run_id__get",
         "parameters": [
           {
             "in": "path",
-            "name": "runId",
+            "name": "run_id",
             "required": true,
             "schema": {
               "format": "uuid",
-              "title": "Runid",
+              "title": "Run Id",
               "type": "string"
             }
           }
@@ -13295,7 +13423,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ExecutionRun"
+                  "$ref": "#/components/schemas/APIResponse_ExecutionRun_"
                 }
               }
             },
@@ -13315,17 +13443,17 @@
         "summary": "Get Run"
       }
     },
-    "/api/v1/data-console/ai-studio/operational/runs/{runId}/rollback": {
+    "/api/v1/data-console/ai-studio/operational/runs/{run_id}/rollback": {
       "post": {
-        "operationId": "rollback_run_endpoint_api_v1_data_console_ai_studio_operational_runs__runId__rollback_post",
+        "operationId": "rollback_run_endpoint_api_v1_data_console_ai_studio_operational_runs__run_id__rollback_post",
         "parameters": [
           {
             "in": "path",
-            "name": "runId",
+            "name": "run_id",
             "required": true,
             "schema": {
               "format": "uuid",
-              "title": "Runid",
+              "title": "Run Id",
               "type": "string"
             }
           },
@@ -13345,7 +13473,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ExecutionRun"
+                  "$ref": "#/components/schemas/APIResponse_ExecutionRun_"
                 }
               }
             },
@@ -15003,6 +15131,28 @@
         "summary": "Stream Return Events",
         "tags": [
           "Returns"
+        ]
+      }
+    },
+    "/api/v1/runtime-config": {
+      "get": {
+        "description": "Retrieve safe runtime configuration for the frontend.",
+        "operationId": "get_runtime_config_api_v1_runtime_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__object__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Runtime Config",
+        "tags": [
+          "runtime-config"
         ]
       }
     },

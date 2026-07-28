@@ -60,9 +60,15 @@ async def test_generation_relationships_valid(
 
     proposal = await generator.generate_proposal(req)
 
-    # Check that record generation followed topological order, implicitly done by dependency keys
-    # Also verify timestamps
-    # Since we use random date within interval, we should check if they are within [date_from, date_to]
+    records = {record.asset_id: record for record in proposal.records}
+    customer = records["source.mongodb.customer_outbound_cdm"].values
+    order = records["source.mongodb.sales_inv"].values
+    shipment = records["source.mongodb.shipment_info"].values
+    product = records["source.mongodb.product_search"].values
+    assert order["salesHdr.salesHdrData.custId"] == customer["customerId"]
+    assert shipment["shipmentInfoEventData.trilOrdNum"] == order["salesHdrEventData.orderId"]
+    assert order["salesLines"][0]["lineData"]["productId"] == product["productId"]
+
     for rec in proposal.records:
         for k, v in rec.values.items():
             if (

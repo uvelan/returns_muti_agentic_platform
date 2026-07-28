@@ -8,6 +8,7 @@ import {
 type ProposalApplyDialogProps = {
   isOpen: boolean;
   onClose: () => void;
+  proposalChecksum: string;
   planId: string;
   targetEnvironment: string;
 }
@@ -15,6 +16,7 @@ type ProposalApplyDialogProps = {
 export function ProposalApplyDialog({
   isOpen,
   onClose,
+  proposalChecksum,
   planId,
   targetEnvironment,
 }: ProposalApplyDialogProps) {
@@ -28,8 +30,13 @@ export function ProposalApplyDialog({
     setLoading(true);
     setError(null);
     try {
-      const approval = await approvePlan(planId, targetEnvironment);
+      const approval = await approvePlan(
+        proposalChecksum,
+        planId,
+        targetEnvironment,
+      );
       const executionRun = await applyPlan(
+        proposalChecksum,
         planId,
         approval.approval_id,
         targetEnvironment,

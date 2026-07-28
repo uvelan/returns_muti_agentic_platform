@@ -22,7 +22,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test tests/e2e.spec.ts",
     "test:a11y": "playwright test tests/a11y.spec.ts",
-    "contracts:export": "python -m poetry -C ../backend run python ../backend/scripts/export_openapi.py openapi/return-platform.openapi.json",
+    "contracts:export": "node scripts/export-contracts.js",
     "contracts:generate": "npm run contracts:export && openapi-typescript openapi/return-platform.openapi.json -o src/api/generated/return-platform.d.ts",
     "contracts:check": "npm run contracts:generate && git diff --exit-code openapi/return-platform.openapi.json src/api/generated/return-platform.d.ts",
     "test:e2e:real": "playwright test --config=playwright.real.config.ts"

@@ -11,6 +11,9 @@ import { ProposalApplyDialog } from "./ProposalApplyDialog";
 import { RollbackAction } from "./RollbackAction";
 
 export function OperationalGenerationPage() {
+  const [assetId, setAssetId] = useState("source.mongodb.customers");
+  const [recordsPerAsset, setRecordsPerAsset] = useState(5);
+  const [seed, setSeed] = useState(42);
   const [proposal, setProposal] =
     useState<OperationalGenerationProposal | null>(null);
   const [validationResult, setValidationResult] =
@@ -23,10 +26,11 @@ export function OperationalGenerationPage() {
     try {
       setError(null);
       const res = await createProposal({
-        asset_ids: ["example_asset"],
-        record_count: 5,
-        deterministic_seed: 42,
-        tenant_id: "T1",
+        assetIds: [assetId.trim()],
+        recordsPerAsset,
+        seed,
+        mode: "DETERMINISTIC",
+        scenarioName: "operational-generation",
       });
       setProposal(res);
     } catch (e: unknown) {
@@ -64,10 +68,43 @@ export function OperationalGenerationPage() {
         <div className="p-4 bg-red-100 text-red-800 rounded">{error}</div>
       )}
 
-      <div className="space-x-4">
+      <div className="grid max-w-2xl gap-3 sm:grid-cols-3">
+        <label className="text-sm">
+          Asset ID
+          <input
+            className="mt-1 w-full rounded border px-3 py-2"
+            value={assetId}
+            onChange={(event) => { setAssetId(event.target.value); }}
+          />
+        </label>
+        <label className="text-sm">
+          Records
+          <input
+            className="mt-1 w-full rounded border px-3 py-2"
+            type="number"
+            min={1}
+            max={500}
+            value={recordsPerAsset}
+            onChange={(event) => { setRecordsPerAsset(Number(event.target.value)); }}
+          />
+        </label>
+        <label className="text-sm">
+          Seed
+          <input
+            className="mt-1 w-full rounded border px-3 py-2"
+            type="number"
+            min={0}
+            value={seed}
+            onChange={(event) => { setSeed(Number(event.target.value)); }}
+          />
+        </label>
+      </div>
+
+      <div className="flex flex-wrap gap-4">
         <button
           className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           onClick={() => { void handleCreate(); }}
+          disabled={!assetId.trim() || recordsPerAsset < 1 || recordsPerAsset > 500}
         >
           Generate Proposal
         </button>
@@ -131,10 +168,11 @@ export function OperationalGenerationPage() {
         </div>
       )}
 
-      {plan && (
+      {plan && proposal && (
         <ProposalApplyDialog
           isOpen={isApplyDialogOpen}
           onClose={() => { setIsApplyDialogOpen(false); }}
+          proposalChecksum={proposal.proposal_checksum}
           planId={plan.plan_id}
           targetEnvironment="production"
         />

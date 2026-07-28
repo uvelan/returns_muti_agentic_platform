@@ -21,7 +21,10 @@ def construct_dependency_graph(registry: SchemaRegistry, asset_ids: Iterable[str
         "workspaces": 5,
     }
 
-    sorted_assets = sorted(list(asset_ids), key=lambda aid: asset_order_heuristic.get(aid, 100))
+    sorted_assets = sorted(
+        asset_ids,
+        key=lambda asset_id: asset_order_heuristic.get(registry.asset(asset_id).name, 100),
+    )
     return sorted_assets
 
 

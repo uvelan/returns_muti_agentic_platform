@@ -1,6 +1,12 @@
-import os
-from collections.abc import Sequence
+from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING
+
+from return_platform.data_platform.graph.sync_service import (
+    GraphSyncRequest,
+    GraphSyncScope,
+)
 from return_platform.data_platform.operational_generation.capability import (
     CompensationCapability,
     TransactionCapability,
@@ -11,6 +17,17 @@ from return_platform.data_platform.operational_generation.write_models import (
 )
 
 from .registry import register_adapter
+
+if TYPE_CHECKING:
+    from return_platform.data_platform.graph.sync_service import GraphSyncService
+
+_service: GraphSyncService | None = None
+
+
+def configure_graph_sync(service: GraphSyncService | None) -> None:
+    """Inject or clear the canonical graph projection service."""
+    global _service  # noqa: PLW0603
+    _service = service
 
 
 class GraphSyncAdapter:
@@ -49,15 +66,36 @@ class GraphSyncAdapter:
         return CompensationCapability.NONE
 
     async def is_ready(self) -> bool:
-        if not os.environ.get("VAULT_GRAPH_SYNC_CREDENTIALS"):
-            return False
-        return True
+        return _service is not None
 
     async def execute(self, operations: Sequence[Operation]) -> None:
-        raise NotImplementedError("Execution remains disabled before AIG6")
+        if _service is None:
+            raise RuntimeError("Graph synchronization adapter is not configured")
+        if operations:
+            result = await _service.sync(
+                GraphSyncRequest(
+                    mode=GraphSyncScope.SOURCE_MONGODB,
+                    applySchema=False,
+                ),
+                actor_id="operational-generation",
+            )
+            if result.status != "COMPLETED":
+                raise RuntimeError("Graph synchronization did not complete")
 
     async def compensate(self, operations: Sequence[Operation]) -> None:
-        raise NotImplementedError("Execution remains disabled before AIG6")
+        await self.execute(operations)
+        if _service is None:
+            raise RuntimeError("Graph synchronization adapter is not configured")
+        records: list[tuple[str, Mapping[str, object]]] = []
+        for operation in operations:
+            raw_records = operation.payload.get("records", [])
+            if isinstance(raw_records, list):
+                records.extend(
+                    (operation.asset_id, record)
+                    for record in raw_records
+                    if isinstance(record, Mapping)
+                )
+        await _service.remove_source_mongodb_records(records)
 
 
 register_adapter("GRAPH_SYNC_ADAPTER", GraphSyncAdapter)
