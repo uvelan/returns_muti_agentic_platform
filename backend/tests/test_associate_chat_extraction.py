@@ -9,6 +9,7 @@ from return_platform.operations.associate_flow import (
     OrderCandidate,
     OrderLineCandidate,
     _is_expired,
+    _normalize_utc_datetime,
 )
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -109,3 +110,11 @@ def test_clarification_prompt_exposes_only_the_selected_field_values() -> None:
 
 def test_candidate_expiry_accepts_naive_mongodb_datetimes() -> None:
     assert _is_expired(datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=1))
+
+
+def test_mongodb_datetimes_are_serialized_as_utc() -> None:
+    normalized = _normalize_utc_datetime(datetime(2026, 7, 28, 10, 53, 16))
+
+    assert normalized is not None
+    assert normalized.tzinfo is UTC
+    assert normalized.isoformat() == "2026-07-28T10:53:16+00:00"

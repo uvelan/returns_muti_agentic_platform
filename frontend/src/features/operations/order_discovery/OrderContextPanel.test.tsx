@@ -2,9 +2,15 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { FIXTURE_ASSOCIATE_CONVERSATIONS } from "../../../fixtures/associateReturns";
-import { OrderContextPanel } from "./OrderContextPanel";
+import { OrderContextPanel, parseApiUtcTimestamp } from "./OrderContextPanel";
 
 describe("OrderContextPanel progressive clarification", () => {
+  it("treats timezone-less API timestamps as UTC", () => {
+    expect(parseApiUtcTimestamp("2026-07-28T10:53:16.996000")).toBe(
+      Date.parse("2026-07-28T10:53:16.996000Z"),
+    );
+  });
+
   it("shows only the selected field values while candidates remain ambiguous", () => {
     const onSelectClarification = vi.fn();
     const conversation = {

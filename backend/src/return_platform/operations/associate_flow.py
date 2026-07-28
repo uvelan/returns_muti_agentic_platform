@@ -49,6 +49,13 @@ from return_platform.security.contact_evidence import contact_lookup_digest
 
 logger = logging.getLogger("return_platform.operations.associate_flow")
 
+
+def _normalize_utc_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
 _FUZZY_STOP_WORDS = {
     "a",
     "an",
@@ -95,6 +102,11 @@ class ConversationMessage(AssociateModel):
     role: str
     content: str
     createdAt: datetime
+
+    @field_validator("createdAt", mode="after")
+    @classmethod
+    def normalize_created_at(cls, value: datetime) -> datetime:
+        return cast(datetime, _normalize_utc_datetime(value))
 
 
 class OrderLineCandidate(AssociateModel):
@@ -150,6 +162,11 @@ class DiscoveryLock(AssociateModel):
     confirmedBy: str
     confirmedAt: datetime
 
+    @field_validator("confirmedAt", mode="after")
+    @classmethod
+    def normalize_confirmed_at(cls, value: datetime) -> datetime:
+        return cast(datetime, _normalize_utc_datetime(value))
+
 
 class AssociateConversationView(AssociateModel):
     id: str
@@ -178,6 +195,16 @@ class AssociateConversationView(AssociateModel):
     version: int = Field(ge=0)
     createdAt: datetime
     updatedAt: datetime
+
+    @field_validator(
+        "candidateSetExpiresAt",
+        "createdAt",
+        "updatedAt",
+        mode="after",
+    )
+    @classmethod
+    def normalize_timestamps(cls, value: datetime | None) -> datetime | None:
+        return _normalize_utc_datetime(value)
 
 
 class StartAssociateConversationRequest(AssociateModel):
@@ -236,9 +263,9 @@ def _now() -> datetime:
 
 
 def _is_expired(value: datetime | None) -> bool:
-    if value is None:
+    normalized = _normalize_utc_datetime(value)
+    if normalized is None:
         return False
-    normalized = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
     return normalized <= _now()
 
 
