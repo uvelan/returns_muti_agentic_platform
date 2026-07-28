@@ -15,6 +15,10 @@ describe('Shell', () => {
 
     // Sidebar link (Overview is one of the routes)
     expect(screen.getByLabelText('Return Platform overview')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'AI Studio' })).toHaveAttribute(
+      'href',
+      '/data-console/ai-studio',
+    );
 
     // Child content
     expect(screen.getByTestId('child-content')).toBeInTheDocument();

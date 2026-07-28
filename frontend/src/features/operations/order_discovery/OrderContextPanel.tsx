@@ -82,7 +82,7 @@ export function OrderContextPanel({
   const photoEvidenceRequired = ["DAMAGED", "DEFECTIVE", "WRONG_ITEM"].includes(reasonCode);
 
   return (
-    <aside className="flex h-full flex-col overflow-y-auto border-l border-stone-200 bg-stone-100/70 p-4 lg:p-5">
+    <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto border-l border-stone-200 bg-stone-100/70 p-4 lg:p-5">
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <LockKeyhole size={17} className="text-teal-800" />
@@ -144,6 +144,20 @@ export function OrderContextPanel({
           <p className="text-xs leading-5 text-slate-500">
             The agent ranked these candidates. Select the exact order line below to verify and lock evidence.
           </p>
+          <div className="sticky top-0 z-20 -mx-1 rounded-xl border border-teal-200 bg-white/95 p-2 shadow-sm backdrop-blur">
+            <button
+              type="button"
+              className={`${primaryButton} w-full justify-center`}
+              disabled={!selectedLineId || isConfirming || candidateSetExpired}
+              onClick={onConfirmDiscovery}
+            >
+              {isConfirming ? <Loader2 className="mr-1.5 animate-spin" size={16} /> : <LockKeyhole className="mr-1.5" size={16} />}
+              {isConfirming ? "Locking order evidence..." : "Confirm selected item and continue"}
+            </button>
+            <p className="mt-1.5 text-center text-[11px] text-slate-500">
+              Selecting an item does not submit it until you confirm here.
+            </p>
+          </div>
           <CandidateList
             candidates={conversation.candidates}
             selectedIndex={candidateIndex}
@@ -152,15 +166,6 @@ export function OrderContextPanel({
             onSelectLine={onSelectLine}
             isLoading={isConfirming}
           />
-          <button
-            type="button"
-            className={`${primaryButton} mt-2 w-full justify-center`}
-            disabled={!selectedLineId || isConfirming || candidateSetExpired}
-            onClick={onConfirmDiscovery}
-          >
-            {isConfirming ? <Loader2 className="mr-1.5 animate-spin" size={16} /> : <LockKeyhole className="mr-1.5" size={16} />}
-            {isConfirming ? "Locking order evidence..." : "Confirm and lock"}
-          </button>
         </section>
       ) : null}
 

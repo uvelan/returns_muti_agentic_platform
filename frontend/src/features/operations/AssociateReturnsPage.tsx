@@ -147,8 +147,8 @@ export function AssociateReturnsPage() {
           ) : null}
         </main>
 
-        <div className="h-full overflow-hidden">
-          <div className="mb-4 p-4 pb-0 xl:hidden">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden">
+          <div className="mb-4 shrink-0 p-4 pb-0 xl:hidden">
             <button
               type="button"
               className={`${secondaryButton} w-full justify-center`}
