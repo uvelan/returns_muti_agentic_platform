@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Shell } from "./components/Shell";
 import { ToastProvider } from "./components/ToastProvider";
+import { RuntimeConfigProvider } from "./components/RuntimeConfigProvider";
 import { LoadingState } from "./components/LoadingState";
 import { routes } from "./routes";
 
@@ -30,8 +31,9 @@ export function App() {
   return (
     <ErrorBoundary>
       <ToastProvider>
-        <Shell>
-          <Suspense fallback={<LoadingState message="Loading module..." />}>
+        <RuntimeConfigProvider>
+          <Shell>
+            <Suspense fallback={<LoadingState message="Loading module..." />}>
             <Switch>
               {routes.map((route) => (
                 <Route key={route.path} path={route.path} component={route.component} />
@@ -43,6 +45,7 @@ export function App() {
             </Switch>
           </Suspense>
         </Shell>
+        </RuntimeConfigProvider>
       </ToastProvider>
     </ErrorBoundary>
   );

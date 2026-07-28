@@ -25,6 +25,7 @@ from return_platform.api.return_agents import router as return_agents_router
 from return_platform.api.return_artifacts import router as return_artifacts_router
 from return_platform.api.return_support import router as return_support_router
 from return_platform.api.returns import router as returns_router
+from return_platform.api.runtime_config import router as runtime_config_router
 from return_platform.api.seed import router as seed_router
 from return_platform.api.support import router as support_router
 from return_platform.api.warehouse_placement import router as warehouse_placement_router
@@ -700,6 +701,7 @@ def create_app(
     fastapi_app.include_router(configuration_router)
     fastapi_app.include_router(copilot_operations_router)
     fastapi_app.include_router(runtime_validation_router)
+    fastapi_app.include_router(runtime_config_router)
     fastapi_app.include_router(returns_router)
     fastapi_app.include_router(return_agents_router)
     fastapi_app.include_router(return_support_router)
