@@ -15,7 +15,7 @@ export type RuntimeConfig = {
 };
 
 export async function fetchRuntimeConfig(): Promise<RuntimeConfig> {
-  const response = await apiClient<RuntimeConfig>("/v1/runtime-config");
+  const response = await apiClient<RuntimeConfig>("/api/v1/runtime-config");
   if (!response.data) {
     throw new Error("No runtime configuration returned from the server.");
   }
