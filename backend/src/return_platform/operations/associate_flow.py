@@ -49,6 +49,31 @@ from return_platform.security.contact_evidence import contact_lookup_digest
 
 logger = logging.getLogger("return_platform.operations.associate_flow")
 
+_FUZZY_STOP_WORDS = {
+    "a",
+    "an",
+    "and",
+    "bought",
+    "customer",
+    "find",
+    "for",
+    "have",
+    "i",
+    "is",
+    "last",
+    "looking",
+    "name",
+    "named",
+    "order",
+    "return",
+    "the",
+    "this",
+    "to",
+    "week",
+    "who",
+    "with",
+}
+
 
 class AssociateModel(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
@@ -363,13 +388,20 @@ class AssociateConversationService:
     def _is_strong_anchor(self, anchor_type: AnchorType) -> bool:
         return anchor_type.value in set(self._return_configuration.discovery.strong_anchors)
 
-    def _fuzzy_query(self, value: str) -> str:
+    @staticmethod
+    def _fuzzy_tokens(value: str) -> tuple[str, ...]:
+        return tuple(
+            token
+            for token in re.findall(r"[A-Za-z0-9]+", value)[:32]
+            if token.lower() not in _FUZZY_STOP_WORDS and len(token) >= 3
+        )[:8]
+
+    def _fuzzy_query(self, value: str, *, require_all: bool = True) -> str:
         """Build a bounded Lucene fuzzy query without exposing query syntax injection."""
 
         config = self._return_configuration.discovery.progressive
-        tokens = re.findall(r"[A-Za-z0-9]+", value)[:8]
         fuzzy_tokens: list[str] = []
-        for token in tokens:
+        for token in self._fuzzy_tokens(value):
             if len(token) >= config.two_edit_min_token_length:
                 edits = min(config.max_edit_distance, 2)
             elif len(token) >= config.one_edit_min_token_length:
@@ -377,7 +409,7 @@ class AssociateConversationService:
             else:
                 edits = 0
             fuzzy_tokens.append(f"{token}~{edits}" if edits else token)
-        return " AND ".join(fuzzy_tokens)
+        return (" AND " if require_all else " OR ").join(fuzzy_tokens)
 
     @staticmethod
     def _candidate_value(candidate: OrderCandidate, field: str) -> str | None:
@@ -736,10 +768,10 @@ class AssociateConversationService:
                 database_=self._graph_database,
             )
         elif progressive.enabled and anchor_type is AnchorType.PRODUCT_DESCRIPTION:
-            fuzzy_query = self._fuzzy_query(anchor_value)
+            fuzzy_query = self._fuzzy_query(anchor_value, require_all=False)
             if not fuzzy_query:
                 return []
-            records, _, _ = await self._graph.execute_query(
+            product_records, _, _ = await self._graph.execute_query(
                 """
                 CALL db.index.fulltext.queryNodes($indexName, $query, {limit: $limit})
                 YIELD node AS p, score
@@ -757,6 +789,23 @@ class AssociateConversationService:
                 limit=progressive.candidate_limit,
                 database_=self._graph_database,
             )
+            customer_records, _, _ = await self._graph.execute_query(
+                """
+                CALL db.index.fulltext.queryNodes($indexName, $query, {limit: $limit})
+                YIELD node AS c, score
+                MATCH (c)-[:PLACED_ORDER]->(o:SalesOrder)
+                OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine)
+                OPTIONAL MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product)
+                RETURN c,o,score,collect({line:l,product:p}) AS lines
+                ORDER BY score DESC
+                LIMIT $limit
+                """,
+                indexName=progressive.customer_fulltext_index,
+                query=fuzzy_query,
+                limit=progressive.candidate_limit,
+                database_=self._graph_database,
+            )
+            records = [*product_records, *customer_records]
         else:
             records = []
         queries = {
@@ -821,7 +870,7 @@ class AssociateConversationService:
             records, _, _ = await self._graph.execute_query(
                 query, value=query_value, database_=self._graph_database
             )
-        candidates: list[OrderCandidate] = []
+        candidates_by_key: dict[tuple[str, str], OrderCandidate] = {}
         for record in records:
             customer = dict(record["c"])
             order = dict(record["o"])
@@ -846,50 +895,58 @@ class AssociateConversationService:
                     )
                 )
             if lines:
-                candidates.append(
-                    OrderCandidate(
-                        customerReference=str(
-                            customer.get("customer_id") or customer.get("customer_key")
-                        ),
-                        customerName=cast(str | None, customer.get("customer_name")),
-                        orderReference=str(order.get("sales_order_number")),
-                        sourceWebOrderNumber=cast(str | None, order.get("source_web_order_number")),
-                        trilogieOrderNumber=cast(
-                            str | None,
-                            order.get("trilogie_order_number") or order.get("sales_order_number"),
-                        ),
-                        orderSource=(
-                            OrderSource.FERGUSONHOME_WEB
-                            if order.get("source_web_order_number")
-                            else OrderSource.UNKNOWN
-                        ),
-                        orderStatus=cast(str | None, order.get("order_status")),
-                        sellWarehouseId=cast(str | None, order.get("sell_warehouse_id")),
-                        shipFromWarehouseId=cast(str | None, order.get("ship_from_warehouse_id")),
-                        shippingMethod=cast(str | None, order.get("shipping_method")),
-                        billingCity=cast(
-                            str | None,
-                            customer.get("billing_city")
-                            or customer.get("city")
-                            or customer.get("normalized_city"),
-                        ),
-                        postalCode=cast(
-                            str | None,
-                            customer.get("postal_code") or customer.get("billing_postal_code"),
-                        ),
-                        accountType=cast(str | None, customer.get("account_type")),
-                        retrievalScore=retrieval_score,
-                        confidenceMillionths=(
-                            self._return_configuration.discovery.anchor_weights.get(
-                                anchor_type.value,
-                                0,
-                            )
-                        ),
-                        evidenceSource="NEO4J_GRAPH",
-                        lines=lines,
-                    )
+                candidate = OrderCandidate(
+                    customerReference=str(
+                        customer.get("customer_id") or customer.get("customer_key")
+                    ),
+                    customerName=cast(str | None, customer.get("customer_name")),
+                    orderReference=str(order.get("sales_order_number")),
+                    sourceWebOrderNumber=cast(str | None, order.get("source_web_order_number")),
+                    trilogieOrderNumber=cast(
+                        str | None,
+                        order.get("trilogie_order_number") or order.get("sales_order_number"),
+                    ),
+                    orderSource=(
+                        OrderSource.FERGUSONHOME_WEB
+                        if order.get("source_web_order_number")
+                        else OrderSource.UNKNOWN
+                    ),
+                    orderStatus=cast(str | None, order.get("order_status")),
+                    sellWarehouseId=cast(str | None, order.get("sell_warehouse_id")),
+                    shipFromWarehouseId=cast(str | None, order.get("ship_from_warehouse_id")),
+                    shippingMethod=cast(str | None, order.get("shipping_method")),
+                    billingCity=cast(
+                        str | None,
+                        customer.get("billing_city")
+                        or customer.get("city")
+                        or customer.get("normalized_city"),
+                    ),
+                    postalCode=cast(
+                        str | None,
+                        customer.get("postal_code") or customer.get("billing_postal_code"),
+                    ),
+                    accountType=cast(str | None, customer.get("account_type")),
+                    retrievalScore=retrieval_score,
+                    confidenceMillionths=(
+                        self._return_configuration.discovery.anchor_weights.get(
+                            anchor_type.value,
+                            0,
+                        )
+                    ),
+                    evidenceSource="NEO4J_GRAPH",
+                    lines=lines,
                 )
-        return candidates
+                key = (candidate.customerReference, candidate.orderReference)
+                current = candidates_by_key.get(key)
+                if current is None or (candidate.retrievalScore or 0) > (
+                    current.retrievalScore or 0
+                ):
+                    candidates_by_key[key] = candidate
+        return sorted(
+            candidates_by_key.values(),
+            key=lambda item: item.retrievalScore or 0,
+            reverse=True,
+        )[: progressive.candidate_limit]
 
     def _case_insensitive_query(self, value: str) -> dict[str, Any]:
         return {"$regex": f"^{re.escape(value.strip())}$", "$options": "i"}
@@ -942,24 +999,27 @@ class AssociateConversationService:
                 ]
             }
         elif anchor_type is AnchorType.CUSTOMER_NAME:
-            escaped = re.escape(anchor_value.strip())
+            tokens = self._fuzzy_tokens(anchor_value) or (anchor_value.strip(),)
             query = {
                 "$or": [
-                    {path: {"$regex": escaped, "$options": "i"}}
+                    {path: {"$regex": re.escape(token), "$options": "i"}}
                     for path in config.customer_name_paths
+                    for token in tokens
                 ]
             }
         else:
-            escaped = re.escape(anchor_value.strip())
+            tokens = self._fuzzy_tokens(anchor_value) or (anchor_value.strip(),)
             query = {
                 "$or": [
-                    {
-                        f"salesLines.lineData.{path}": {
-                            "$regex": escaped,
-                            "$options": "i",
-                        }
-                    }
-                    for path in config.product_description_paths
+                    {field: {"$regex": re.escape(token), "$options": "i"}}
+                    for field in (
+                        *config.customer_name_paths,
+                        *(
+                            f"salesLines.lineData.{path}"
+                            for path in config.product_description_paths
+                        ),
+                    )
+                    for token in tokens
                 ]
             }
         cursor = sales.find(query).limit(20)
@@ -1835,6 +1895,11 @@ class AssociateConversationService:
         )
         if selected_candidate is None:
             raise RuntimeError("Locked order candidate is absent from discovery context")
+        resolved_branch_reference = (
+            payload.branchReference
+            or selected_candidate.sellWarehouseId
+            or selected_candidate.shipFromWarehouseId
+        )
         order_source = (
             selected_candidate.orderSource
             if selected_candidate.orderSource is not OrderSource.UNKNOWN
@@ -1846,7 +1911,7 @@ class AssociateConversationService:
                 orderSource=order_source,
                 productPresence=payload.productPresence,
                 proposedReturnMethod=payload.shippingPathExpectation,
-                branchId=payload.branchReference,
+                branchId=resolved_branch_reference,
                 associateId=payload.associateReference or actor_id,
                 items=(
                     ReturnItemInput(
@@ -1897,7 +1962,7 @@ class AssociateConversationService:
                 sourceWebOrderNumber=selected_candidate.sourceWebOrderNumber,
                 trilogieOrderNumber=(selected_candidate.trilogieOrderNumber or lock.orderReference),
                 productPresence=payload.productPresence.value,
-                branchReference=payload.branchReference,
+                branchReference=resolved_branch_reference,
                 associateReference=payload.associateReference or actor_id,
                 pickupAssessment=payload.pickupAssessment,
                 assumptionSetVersion=self._return_configuration.assumption_set_version,

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from temporalio.client import Client
 from temporalio.exceptions import WorkflowAlreadyStartedError
+from temporalio.service import RPCError
 
 from return_platform.agents.contracts import (
     FeedbackAssessmentRequest,
@@ -307,17 +309,30 @@ class ProductionWorkflowCoordinator:
         business_payload: dict[str, Any] | None = None,
     ) -> ProductionReturnWorkflowState:
         handle = self._temporal.get_workflow_handle(production_workflow_id(session_id))
-        state = cast(
-            ProductionReturnWorkflowState,
-            await handle.execute_update(
-                ProductionReturnWorkflow.record_production_event,
-                ProductionReturnEvent(
-                    event_id=event_id,
-                    event_type=event_type,
-                    evidence_reference=evidence_reference,
-                ),
-            ),
+        event = ProductionReturnEvent(
+            event_id=event_id,
+            event_type=event_type,
+            evidence_reference=evidence_reference,
         )
+        state: ProductionReturnWorkflowState | None = None
+        for attempt in range(3):
+            try:
+                state = cast(
+                    ProductionReturnWorkflowState,
+                    await handle.execute_update(
+                        ProductionReturnWorkflow.record_production_event,
+                        event,
+                        id=event_id,
+                        rpc_timeout=timedelta(seconds=10),
+                    ),
+                )
+                break
+            except RPCError:
+                if attempt == 2:
+                    raise
+                await asyncio.sleep(0.25 * (2**attempt))
+        if state is None:
+            raise RuntimeError("Production workflow update returned no state")
         projection_payload = business_payload or {}
         await self._project_business_event(
             session_id,

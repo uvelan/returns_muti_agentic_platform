@@ -13,13 +13,17 @@ const reasonCodes = [
 ] as const;
 
 const shippingPaths = [
-  "PPL",
-  "BOL",
-  "CUSTOMER_SHIP",
-  "NO_LABEL",
-  "DIRECT_VENDOR",
-  "FIELD_SCRAP",
+  { label: "PPL", value: "PREPAID_PARCEL" },
+  { label: "Branch UPS", value: "BRANCH_UPS" },
+  { label: "BOL", value: "BRANCH_LTL" },
+  { label: "Customer Ship", value: "OFFSITE_PARCEL" },
+  { label: "Offsite LTL", value: "OFFSITE_LTL" },
+  { label: "Direct Vendor", value: "DIRECT_VENDOR" },
+  { label: "Field Scrap", value: "FIELD_SCRAP" },
+  { label: "No Physical Return", value: "NO_PHYSICAL_RETURN" },
 ] as const;
+
+type ShippingPath = (typeof shippingPaths)[number]["value"];
 
 export type OrderContextPanelProps = {
   readonly conversation: AssociateConversation | null;
@@ -33,7 +37,9 @@ export type OrderContextPanelProps = {
     reasonCode: (typeof reasonCodes)[number];
     returnQuantity: number;
     packageCount: number;
-    shippingPathExpectation: (typeof shippingPaths)[number];
+    shippingPathExpectation: ShippingPath;
+    branchReference?: string;
+    attachmentIds?: readonly string[];
     notes?: string;
   }) => void;
   readonly isSubmittingDetails?: boolean;
@@ -53,7 +59,9 @@ export function OrderContextPanel({
   const [reasonCode, setReasonCode] = useState<(typeof reasonCodes)[number]>("DAMAGED");
   const [returnQuantity, setReturnQuantity] = useState(1);
   const [packageCount, setPackageCount] = useState(1);
-  const [shippingPath, setShippingPath] = useState<(typeof shippingPaths)[number]>("PPL");
+  const [shippingPath, setShippingPath] = useState<ShippingPath>("PREPAID_PARCEL");
+  const [branchReference, setBranchReference] = useState("");
+  const [photoEvidenceReference, setPhotoEvidenceReference] = useState("");
   const [notes, setNotes] = useState("");
 
   const isComplete = conversation?.status === "SUBMITTED";
@@ -62,6 +70,16 @@ export function OrderContextPanel({
     conversation?.candidateSetExpiresAt
       && new Date(conversation.candidateSetExpiresAt).getTime() <= now,
   );
+  const lockedCandidate = conversation?.candidates.find(
+    (candidate) => candidate.orderReference === conversation.discoveryLock?.orderReference,
+  );
+  const inferredBranchReference = (
+    lockedCandidate?.sellWarehouseId
+    ?? lockedCandidate?.shipFromWarehouseId
+    ?? ""
+  );
+  const effectiveBranchReference = branchReference.trim() || inferredBranchReference;
+  const photoEvidenceRequired = ["DAMAGED", "DEFECTIVE", "WRONG_ITEM"].includes(reasonCode);
 
   return (
     <aside className="flex h-full flex-col overflow-y-auto border-l border-stone-200 bg-stone-100/70 p-4 lg:p-5">
@@ -187,6 +205,10 @@ export function OrderContextPanel({
                 returnQuantity,
                 packageCount,
                 shippingPathExpectation: shippingPath,
+                branchReference: effectiveBranchReference || undefined,
+                attachmentIds: photoEvidenceReference.trim()
+                  ? [photoEvidenceReference.trim()]
+                  : [],
                 notes: notes || undefined,
               });
             }}
@@ -213,22 +235,48 @@ export function OrderContextPanel({
             <fieldset>
               <legend className="text-xs font-semibold uppercase tracking-wide text-slate-500">Expected route</legend>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {shippingPaths.map((value) => (
+                {shippingPaths.map((option) => (
                   <button
-                    key={value}
+                    key={option.value}
                     type="button"
-                    onClick={() => { setShippingPath(value); }}
+                    onClick={() => { setShippingPath(option.value); }}
                     className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
-                      shippingPath === value
+                      shippingPath === option.value
                         ? "border-teal-800 bg-teal-50 text-teal-950 shadow-2xs"
                         : "border-stone-200 bg-white hover:bg-stone-50 text-slate-700"
                     }`}
                   >
-                    {formatBadgeLabel(value)}
+                    {option.label}
                   </button>
                 ))}
               </div>
             </fieldset>
+            <label className="block text-xs font-medium text-slate-600">
+              Processing branch
+              <input
+                type="text"
+                className={inputClass}
+                value={branchReference || inferredBranchReference}
+                onChange={(event) => { setBranchReference(event.target.value); }}
+                placeholder="Required when the product is at a branch"
+              />
+            </label>
+            {photoEvidenceRequired ? (
+              <label className="block text-xs font-medium text-slate-600">
+                Photo evidence reference
+                <input
+                  type="text"
+                  required
+                  className={inputClass}
+                  value={photoEvidenceReference}
+                  onChange={(event) => { setPhotoEvidenceReference(event.target.value); }}
+                  placeholder="Attachment or evidence ID"
+                />
+                <span className="mt-1 block text-[11px] text-amber-700">
+                  Photo evidence is required by policy for {formatBadgeLabel(reasonCode).toLowerCase()} returns.
+                </span>
+              </label>
+            ) : null}
             <div className="grid grid-cols-2 gap-3">
               <label className="text-xs font-medium text-slate-600">
                 Quantity
@@ -261,7 +309,15 @@ export function OrderContextPanel({
                 placeholder="Optional associate notes..."
               />
             </label>
-            <button className={`${primaryButton} w-full justify-center`} disabled={isSubmittingDetails} type="submit">
+            <button
+              className={`${primaryButton} w-full justify-center`}
+              disabled={
+                isSubmittingDetails
+                || !effectiveBranchReference
+                || (photoEvidenceRequired && !photoEvidenceReference.trim())
+              }
+              type="submit"
+            >
               {isSubmittingDetails ? <Loader2 className="mr-1.5 animate-spin" size={16} /> : <Send className="mr-1.5" size={16} />}
               {isSubmittingDetails ? "Submitting to workflow..." : "Send to workflow"}
             </button>

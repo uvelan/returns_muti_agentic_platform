@@ -45,3 +45,18 @@ def test_chat_extracts_and_normalizes_lowercase_order_number() -> None:
     extracted = service()._extract_anchor("can you check w000000001 please")
     assert extracted.anchorType is AnchorType.ORDER_NUMBER
     assert extracted.anchorValue == "W000000001"
+
+
+def test_fuzzy_query_removes_conversation_noise_and_keeps_typo_tolerance() -> None:
+    query = service()._fuzzy_query(
+        "Find the customer named Jhn Smtih who bought a cordles dril last week.",
+        require_all=False,
+    )
+
+    assert query == "Jhn OR Smtih~1 OR cordles~1 OR dril~1"
+    assert "customer" not in query.lower()
+    assert "named" not in query.lower()
+
+
+def test_fuzzy_query_for_customer_name_requires_all_name_tokens() -> None:
+    assert service()._fuzzy_query("name Demo Customer") == "Demo~1"

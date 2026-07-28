@@ -156,6 +156,46 @@ export function AssociateReturnsPage() {
             >
               <MessageSquarePlus size={16} />New return conversation
             </button>
+            <div className="mt-3 rounded-xl border border-stone-200 bg-white p-2 shadow-xs">
+              <div className="flex items-center justify-between px-2 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                <span className="flex items-center gap-1.5"><Clock3 size={13} />Recent sessions</span>
+                <span>{String(sessions.data?.length ?? 0)}</span>
+              </div>
+              <div className="mt-1 max-h-40 space-y-1 overflow-y-auto">
+                {sessions.isPending ? (
+                  <p className="px-2 py-2 text-xs text-slate-500">Loading sessions...</p>
+                ) : null}
+                {sessions.isError ? (
+                  <p className="px-2 py-2 text-xs text-rose-700">Unable to load sessions.</p>
+                ) : null}
+                {sessions.data?.slice(0, 8).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left text-xs transition ${
+                      conversation?.id === item.id
+                        ? "bg-teal-50 text-teal-950 ring-1 ring-teal-200"
+                        : "hover:bg-stone-50"
+                    }`}
+                    onClick={() => {
+                      setConversation(item);
+                      setCandidateIndex(0);
+                      setOrderLineId(item.candidates.at(0)?.lines.at(0)?.orderLineId ?? "");
+                    }}
+                  >
+                    <span className="truncate font-medium">
+                      {item.anchorValueMasked || "Return conversation"}
+                    </span>
+                    <span className="shrink-0 text-[10px] text-slate-500">
+                      {formatBadgeLabel(item.status)}
+                    </span>
+                  </button>
+                ))}
+                {!sessions.isPending && sessions.data?.length === 0 ? (
+                  <p className="px-2 py-2 text-xs text-slate-500">No sessions yet.</p>
+                ) : null}
+              </div>
+            </div>
           </div>
           <OrderContextPanel
             conversation={conversation}

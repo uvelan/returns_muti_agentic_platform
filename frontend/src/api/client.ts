@@ -51,6 +51,27 @@ function extractErrorDetails(
     return {};
   }
 
+  const detail = payload.detail;
+  if (typeof detail === "string") {
+    return { message: detail };
+  }
+  if (Array.isArray(detail)) {
+    const messages = detail.flatMap((item) => {
+      if (!isRecord(item) || typeof item.msg !== "string") {
+        return [];
+      }
+      const location = Array.isArray(item.loc)
+        ? item.loc.filter((part): part is string | number => (
+          typeof part === "string" || typeof part === "number"
+        )).join(".")
+        : "";
+      return [`${location ? `${location}: ` : ""}${item.msg}`];
+    });
+    if (messages.length > 0) {
+      return { message: messages.join(" ") };
+    }
+  }
+
   const meta = payload.meta;
 
   if (!isRecord(meta)) {

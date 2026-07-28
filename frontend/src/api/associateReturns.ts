@@ -107,7 +107,9 @@ export async function submitAssociateReturnDetails(payload: {
   reasonCode: string;
   returnQuantity: number;
   packageCount: number;
-  shippingPathExpectation: "PPL" | "BOL" | "CUSTOMER_SHIP" | "NO_LABEL" | "DIRECT_VENDOR" | "FIELD_SCRAP";
+  shippingPathExpectation: "PREPAID_PARCEL" | "BRANCH_UPS" | "BRANCH_LTL" | "OFFSITE_PARCEL" | "OFFSITE_LTL" | "DIRECT_VENDOR" | "FIELD_SCRAP" | "NO_PHYSICAL_RETURN" | "CUSTOMER_KEEP";
+  branchReference?: string;
+  attachmentIds?: readonly string[];
   notes?: string;
   expectedVersion: number;
 }): Promise<AssociateSubmitResult> {
@@ -118,6 +120,8 @@ export async function submitAssociateReturnDetails(payload: {
       returnQuantity: payload.returnQuantity,
       packageCount: payload.packageCount,
       shippingPathExpectation: payload.shippingPathExpectation,
+      branchReference: payload.branchReference ?? null,
+      attachmentIds: payload.attachmentIds ?? [],
       notes: payload.notes ?? null,
       expectedVersion: payload.expectedVersion,
     }),
