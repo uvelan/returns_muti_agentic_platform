@@ -24,6 +24,20 @@ if (-not $allLinuxShellScripts) {
 
 foreach ($script in $allLinuxShellScripts) {
     $content = Get-Content -Raw -LiteralPath $script.FullName
+    $relativePath = $script.FullName.Substring(
+        $RepositoryRoot.Length
+    ).TrimStart('\', '/').Replace('\', '/')
+    $stageEntry = git -C $RepositoryRoot ls-files --stage -- $relativePath
+
+    if (
+        $LASTEXITCODE -ne 0 -or
+        $stageEntry -notmatch '^100755\s'
+    ) {
+        $failures.Add(
+            "Linux script is not executable in Git (expected mode 100755): " +
+            $script.Name
+        )
+    }
 
     if ($content -notmatch '^#!/usr/bin/env bash') {
         $failures.Add(
