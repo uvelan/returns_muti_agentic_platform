@@ -45,7 +45,7 @@ require_command flock
 require_command curl
 require_command npm
 
-exec 9>"$RUNTIME_ROOT/redeploy.lock"
+exec 9>"$RUNTIME_ROOT/redeploy-v2.lock"
 if ! flock -n 9; then
   echo "Another application redeploy is already running." >&2
   exit 1

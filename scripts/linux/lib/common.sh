@@ -109,6 +109,9 @@ start_managed_process() {
     rm -f "$pid_file"
   fi
   (
+    # Redeploy/runtime preparation uses descriptor 9 for flock. Long-running
+    # children must not inherit it or they keep the deployment lock forever.
+    exec 9>&-
     cd "$REPO_ROOT"
     exec "$@"
   ) >"$log" 2>&1 &
