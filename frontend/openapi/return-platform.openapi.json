@@ -4266,6 +4266,16 @@
             "title": "Candidates",
             "type": "array"
           },
+          "clarificationPrompt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClarificationPrompt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "configurationChecksum": {
             "anyOf": [
               {
@@ -4795,6 +4805,60 @@
         ],
         "title": "CircuitState",
         "type": "string"
+      },
+      "ClarificationOption": {
+        "additionalProperties": false,
+        "properties": {
+          "candidateCount": {
+            "minimum": 1.0,
+            "title": "Candidatecount",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label",
+          "candidateCount"
+        ],
+        "title": "ClarificationOption",
+        "type": "object"
+      },
+      "ClarificationPrompt": {
+        "additionalProperties": false,
+        "properties": {
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/ClarificationOption"
+            },
+            "maxItems": 12,
+            "minItems": 2,
+            "title": "Options",
+            "type": "array"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "slot": {
+            "title": "Slot",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot",
+          "question",
+          "options"
+        ],
+        "title": "ClarificationPrompt",
+        "type": "object"
       },
       "ConfirmDiscoveryRequest": {
         "additionalProperties": false,

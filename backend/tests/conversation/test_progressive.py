@@ -70,3 +70,26 @@ def test_progressive_engine_never_invents_a_state_from_one_candidate() -> None:
 def test_response_matching_rejects_empty_and_accepts_bounded_natural_answer() -> None:
     assert not ProgressiveConversationEngine.response_matches("Dallas", "")
     assert ProgressiveConversationEngine.response_matches("Dallas", "the Dallas account")
+
+
+def test_progressive_engine_uses_candidate_values_not_a_fixed_field_order() -> None:
+    engine = ProgressiveConversationEngine[Candidate](
+        rules=(
+            DisambiguationRule("postal", "postal", "Which postal code?", 100),
+            DisambiguationRule("city", "city", "Which city?", 50),
+        ),
+        candidate_ttl_seconds=300,
+        states=STATES,
+        max_clarification_options=3,
+    )
+    candidates = [
+        Candidate("Dallas", "75001"),
+        Candidate("Dallas", "75002"),
+        Candidate("Austin", "75003"),
+        Candidate("Austin", "75004"),
+    ]
+
+    selected = engine.select_rule(candidates, value_for=value_for)
+
+    assert selected is not None
+    assert selected.slot == "city"

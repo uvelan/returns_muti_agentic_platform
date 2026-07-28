@@ -43,6 +43,16 @@ export type OrderCandidate = {
   readonly lines: readonly OrderLineCandidate[];
 };
 
+export type ClarificationPrompt = {
+  readonly slot: string;
+  readonly question: string;
+  readonly options: readonly {
+    readonly value: string;
+    readonly label: string;
+    readonly candidateCount: number;
+  }[];
+};
+
 export type DiscoveryLock = {
   readonly customerReference: string;
   readonly orderReference: string;
@@ -66,6 +76,7 @@ export type AssociateConversation = {
   readonly nextQuestion: string | null;
   readonly activeDialogueState: string;
   readonly activeRequestedSlots: readonly string[];
+  readonly clarificationPrompt: ClarificationPrompt | null;
   readonly candidateSetId: string | null;
   readonly candidateSetExpiresAt: string | null;
   readonly configurationReleaseId: string | null;

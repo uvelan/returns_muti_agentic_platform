@@ -203,6 +203,7 @@ export function AssociateReturnsPage() {
             selectedLineId={orderLineId}
             onSelectCandidate={setCandidateIndex}
             onSelectLine={setOrderLineId}
+            onSelectClarification={(value) => { chat.mutate(value); }}
             onConfirmDiscovery={() => {
               if (conversation) {
                 confirm.mutate({
@@ -215,6 +216,7 @@ export function AssociateReturnsPage() {
               }
             }}
             isConfirming={confirm.isPending}
+            isClarifying={chat.isPending}
             onSubmitDetails={(payload) => {
               if (conversation) {
                 details.mutate({

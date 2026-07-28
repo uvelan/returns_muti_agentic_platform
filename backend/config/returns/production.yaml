@@ -129,6 +129,7 @@ discovery:
     one_edit_min_token_length: 4
     two_edit_min_token_length: 8
     candidate_ttl_seconds: 900
+    max_clarification_options: 6
     dialogue_states:
       no_candidates: ENTITY_IDENTIFICATION
       single_candidate: LINE_SELECTION
@@ -140,6 +141,10 @@ discovery:
       - CUSTOMER_NAME
       - PRODUCT_DESCRIPTION
     disambiguation_attributes:
+      - slot: customer_name
+        candidate_field: customerName
+        question: "Which customer are you referring to?"
+        priority: 120
       - slot: billing_city
         candidate_field: billingCity
         question: "Which city is the customer account located in?"
@@ -152,10 +157,18 @@ discovery:
         candidate_field: accountType
         question: "Is this a showroom, branch, or direct customer account?"
         priority: 80
+      - slot: product_description
+        candidate_field: productDescription
+        question: "Which product are you referring to?"
+        priority: 75
+      - slot: order_status
+        candidate_field: orderStatus
+        question: "What is the current order status?"
+        priority: 70
       - slot: order_number
         candidate_field: orderReference
         question: "Which order number should be used?"
-        priority: 70
+        priority: 10
 
 source_resolution:
   sales_invoice_collection: salesInv

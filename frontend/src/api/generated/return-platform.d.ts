@@ -3496,6 +3496,7 @@ export interface components {
             candidateSetId?: string | null;
             /** Candidates */
             candidates: components["schemas"]["OrderCandidate"][];
+            clarificationPrompt?: components["schemas"]["ClarificationPrompt"] | null;
             /** Configurationchecksum */
             configurationChecksum?: string | null;
             /** Configurationreleaseid */
@@ -3714,6 +3715,24 @@ export interface components {
          * @enum {string}
          */
         CircuitState: "CLOSED" | "OPEN" | "HALF_OPEN";
+        /** ClarificationOption */
+        ClarificationOption: {
+            /** Candidatecount */
+            candidateCount: number;
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
+        /** ClarificationPrompt */
+        ClarificationPrompt: {
+            /** Options */
+            options: components["schemas"]["ClarificationOption"][];
+            /** Question */
+            question: string;
+            /** Slot */
+            slot: string;
+        };
         /** ConfirmDiscoveryRequest */
         ConfirmDiscoveryRequest: {
             /** Candidateindex */

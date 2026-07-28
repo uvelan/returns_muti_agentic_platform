@@ -53,6 +53,7 @@ export const FIXTURE_ASSOCIATE_CONVERSATIONS: AssociateConversation[] = [
     nextQuestion: null,
     activeDialogueState: "DISCOVERY",
     activeRequestedSlots: [],
+    clarificationPrompt: null,
     candidateSetId: null,
     candidateSetExpiresAt: null,
     configurationReleaseId: null,

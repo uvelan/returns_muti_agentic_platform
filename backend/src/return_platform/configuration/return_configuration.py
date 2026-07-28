@@ -110,6 +110,7 @@ class ProgressiveDiscoveryConfiguration(StrictConfigModel):
     one_edit_min_token_length: int = Field(default=4, ge=3, le=64)
     two_edit_min_token_length: int = Field(default=8, ge=4, le=128)
     candidate_ttl_seconds: int = Field(default=900, ge=60, le=3_600)
+    max_clarification_options: int = Field(default=6, ge=2, le=12)
     dialogue_states: ProgressiveDialogueStateConfiguration = Field(
         default_factory=ProgressiveDialogueStateConfiguration
     )

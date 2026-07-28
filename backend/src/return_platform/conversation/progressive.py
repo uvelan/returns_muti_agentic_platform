@@ -62,9 +62,12 @@ class ProgressiveConversationEngine[CandidateT]:
         rules: Sequence[DisambiguationRule],
         candidate_ttl_seconds: int,
         states: ConversationStatePolicy,
+        max_clarification_options: int = 6,
     ) -> None:
         if candidate_ttl_seconds <= 0:
             raise ValueError("candidate_ttl_seconds must be positive")
+        if max_clarification_options < 2:
+            raise ValueError("max_clarification_options must be at least 2")
         normalized_rules = tuple(sorted(rules, key=lambda item: -item.priority))
         slots = tuple(item.slot for item in normalized_rules)
         if not normalized_rules or len(slots) != len(set(slots)):
@@ -72,6 +75,7 @@ class ProgressiveConversationEngine[CandidateT]:
         self._rules = normalized_rules
         self._candidate_ttl_seconds = candidate_ttl_seconds
         self._states = states
+        self._max_clarification_options = max_clarification_options
 
     @property
     def rules(self) -> tuple[DisambiguationRule, ...]:
@@ -101,18 +105,35 @@ class ProgressiveConversationEngine[CandidateT]:
         excluded_slots: set[str] | None = None,
     ) -> DisambiguationRule | None:
         excluded = excluded_slots or set()
+        ranked_rules: list[tuple[int, int, int, DisambiguationRule]] = []
         for rule in self._rules:
             if rule.slot in excluded:
                 continue
-            values = {
+            values = [
                 normalized.casefold()
                 for candidate in candidates
                 if (value := value_for(candidate, rule.candidate_field))
                 if (normalized := " ".join(value.split()).strip())
-            }
-            if len(values) > 1:
-                return rule
-        return None
+            ]
+            distinct_values = set(values)
+            if (
+                len(values) != len(candidates)
+                or len(distinct_values) <= 1
+                or len(distinct_values) > self._max_clarification_options
+            ):
+                continue
+            largest_partition = max(values.count(value) for value in distinct_values)
+            ranked_rules.append(
+                (
+                    largest_partition,
+                    len(distinct_values),
+                    -rule.priority,
+                    rule,
+                )
+            )
+        if not ranked_rules:
+            return None
+        return min(ranked_rules, key=lambda item: item[:3])[3]
 
     def project(
         self,

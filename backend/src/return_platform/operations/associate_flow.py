@@ -126,6 +126,18 @@ class OrderCandidate(AssociateModel):
     lines: list[OrderLineCandidate]
 
 
+class ClarificationOption(AssociateModel):
+    value: str
+    label: str
+    candidateCount: int = Field(ge=1)
+
+
+class ClarificationPrompt(AssociateModel):
+    slot: str
+    question: str
+    options: list[ClarificationOption] = Field(min_length=2, max_length=12)
+
+
 class DiscoveryLock(AssociateModel):
     customerReference: str
     orderReference: str
@@ -155,6 +167,7 @@ class AssociateConversationView(AssociateModel):
     confirmationSnapshotId: str | None = None
     activeDialogueState: str = "ENTITY_IDENTIFICATION"
     activeRequestedSlots: list[str] = Field(default_factory=list)
+    clarificationPrompt: ClarificationPrompt | None = None
     candidateSetId: str | None = None
     candidateSetExpiresAt: datetime | None = None
     configurationReleaseId: str | None = None
@@ -220,6 +233,13 @@ class ReturnDetailsRequest(AssociateModel):
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _is_expired(value: datetime | None) -> bool:
+    if value is None:
+        return False
+    normalized = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    return normalized <= _now()
 
 
 def _digest(value: object) -> str:
@@ -311,6 +331,7 @@ class AssociateConversationService:
                 for item in progressive.disambiguation_attributes
             ),
             candidate_ttl_seconds=progressive.candidate_ttl_seconds,
+            max_clarification_options=progressive.max_clarification_options,
             states=ConversationStatePolicy(
                 no_candidates=progressive.dialogue_states.no_candidates,
                 single_candidate=progressive.dialogue_states.single_candidate,
@@ -413,6 +434,26 @@ class AssociateConversationService:
 
     @staticmethod
     def _candidate_value(candidate: OrderCandidate, field: str) -> str | None:
+        if field == "productDescription":
+            descriptions = tuple(
+                dict.fromkeys(
+                    value
+                    for line in candidate.lines
+                    if (
+                        value := " ".join((line.productDescription or "").split()).strip()
+                    )
+                )
+            )
+            return " / ".join(descriptions) or None
+        if field == "sku":
+            skus = tuple(
+                dict.fromkeys(
+                    value
+                    for line in candidate.lines
+                    if (value := " ".join((line.sku or "").split()).strip())
+                )
+            )
+            return " / ".join(skus) or None
         value = getattr(candidate, field, None)
         if value is None:
             return None
@@ -431,6 +472,60 @@ class AssociateConversationService:
             excluded_slots=excluded_slots,
         )
         return (selected.slot, selected.question) if selected is not None else None
+
+    def _clarification_prompt(
+        self,
+        candidates: list[OrderCandidate],
+        requested_slots: list[str],
+        question: str | None,
+    ) -> ClarificationPrompt | None:
+        if not requested_slots or not question:
+            return None
+        slot = requested_slots[0]
+        attribute = next(
+            (
+                item
+                for item in (
+                    self._return_configuration.discovery.progressive.disambiguation_attributes
+                )
+                if item.slot == slot
+            ),
+            None,
+        )
+        if attribute is None:
+            return None
+        counts: dict[str, int] = {}
+        labels: dict[str, str] = {}
+        for candidate in candidates:
+            value = self._candidate_value(candidate, attribute.candidate_field)
+            if value is None:
+                continue
+            normalized = value.casefold()
+            counts[normalized] = counts.get(normalized, 0) + 1
+            labels.setdefault(normalized, value)
+        options = [
+            ClarificationOption(
+                value=labels[normalized],
+                label=labels[normalized],
+                candidateCount=count,
+            )
+            for normalized, count in sorted(
+                counts.items(),
+                key=lambda item: (labels[item[0]].casefold(), item[0]),
+            )
+        ]
+        if len(options) < 2:
+            return None
+        return ClarificationPrompt(slot=slot, question=question, options=options)
+
+    def _clarification_prompt_payload(
+        self,
+        candidates: list[OrderCandidate],
+        requested_slots: list[str],
+        question: str | None,
+    ) -> dict[str, Any] | None:
+        prompt = self._clarification_prompt(candidates, requested_slots, question)
+        return None if prompt is None else prompt.model_dump(mode="json")
 
     def _dialogue_projection(
         self,
@@ -570,6 +665,13 @@ class AssociateConversationService:
             planned_response = assistant_text
         else:
             planned_response = f"{assistant_text} {question}"
+        clarification_prompt = (
+            conversation.clarificationPrompt.model_copy(
+                update={"question": question}
+            ).model_dump(mode="json")
+            if conversation.clarificationPrompt is not None
+            else None
+        )
         updated = await self._conversations.find_one_and_update(
             {"_id": conversation.id, "version": conversation.version},
             {
@@ -577,6 +679,7 @@ class AssociateConversationService:
                     f"messages.{message_index}.content": raw_message,
                     f"messages.{assistant_index}.content": planned_response,
                     "nextQuestion": question,
+                    "clarificationPrompt": clarification_prompt,
                     "updatedAt": _now(),
                 }
             },
@@ -1294,6 +1397,10 @@ class AssociateConversationService:
                 )
                 if requested_slots:
                     status = "DISCOVERY_CLARIFICATION_REQUIRED"
+                    assistant_text = (
+                        "I found multiple source-backed matches and need one detail "
+                        "to narrow them safely."
+                    )
             else:
                 assistant_text = conv_config.initial_no_match_template.format(
                     anchor_type=self._format_anchor_type(payload.anchorType),
@@ -1330,6 +1437,11 @@ class AssociateConversationService:
             "nextQuestion": next_question,
             "activeDialogueState": dialogue_state,
             "activeRequestedSlots": requested_slots,
+            "clarificationPrompt": self._clarification_prompt_payload(
+                candidates,
+                requested_slots,
+                next_question,
+            ),
             "candidateSetId": candidate_set_id,
             "candidateSetExpiresAt": candidate_set_expires_at,
             "configurationReleaseId": self._configuration_release_id,
@@ -1455,6 +1567,10 @@ class AssociateConversationService:
                 )
                 if requested_slots:
                     status = "DISCOVERY_CLARIFICATION_REQUIRED"
+                    assistant_text = (
+                        "I found multiple source-backed matches and need one detail "
+                        "to narrow them safely."
+                    )
             else:
                 assistant_text = conv_config.continue_no_match_template.format(
                     anchor_type=self._format_anchor_type(payload.anchorType),
@@ -1486,6 +1602,11 @@ class AssociateConversationService:
                     "nextQuestion": next_question,
                     "activeDialogueState": dialogue_state,
                     "activeRequestedSlots": requested_slots,
+                    "clarificationPrompt": self._clarification_prompt_payload(
+                        candidates,
+                        requested_slots,
+                        next_question,
+                    ),
                     "candidateSetId": candidate_set_id,
                     "candidateSetExpiresAt": candidate_set_expires_at,
                     "updatedAt": _now(),
@@ -1534,10 +1655,7 @@ class AssociateConversationService:
             raise RuntimeError("Conversation version conflict")
         if not conversation.activeRequestedSlots:
             raise ValueError("Conversation is not requesting a disambiguation slot")
-        if (
-            conversation.candidateSetExpiresAt is not None
-            and conversation.candidateSetExpiresAt <= _now()
-        ):
+        if _is_expired(conversation.candidateSetExpiresAt):
             raise RuntimeError("Candidate set expired; restart order discovery")
 
         slot = conversation.activeRequestedSlots[0]
@@ -1563,8 +1681,7 @@ class AssociateConversationService:
         )
         if not matched:
             assistant_text = (
-                f"I could not match that {slot.replace('_', ' ')} to the current candidates. "
-                f"{attribute.question}"
+                f"I could not match that {slot.replace('_', ' ')} to the current candidates."
             )
             next_state = conversation.activeDialogueState
             next_slots = conversation.activeRequestedSlots
@@ -1572,7 +1689,7 @@ class AssociateConversationService:
             next_candidates = conversation.candidates
         elif len(matched) > 1 and next_attribute is not None:
             next_slot, next_question = next_attribute
-            assistant_text = f"I narrowed the result to {len(matched)} candidates. {next_question}"
+            assistant_text = f"I narrowed the result to {len(matched)} candidates."
             next_state = dialogue_states.slot_disambiguation
             next_slots = [next_slot]
             next_candidates = matched
@@ -1608,6 +1725,11 @@ class AssociateConversationService:
                     "activeDialogueState": next_state,
                     "activeRequestedSlots": next_slots,
                     "nextQuestion": next_question,
+                    "clarificationPrompt": self._clarification_prompt_payload(
+                        next_candidates,
+                        next_slots,
+                        next_question,
+                    ),
                     "updatedAt": _now(),
                 },
                 "$push": {"messages": {"$each": messages}},
@@ -1656,11 +1778,17 @@ class AssociateConversationService:
         if existing is None:
             raise KeyError(conversation_id)
         if existing.activeRequestedSlots:
-            return await self._continue_requested_slot(
+            conversation = await self._continue_requested_slot(
                 existing,
                 payload,
                 actor_id=actor_id,
             )
+            if conversation.activeRequestedSlots:
+                return await self._apply_chat_copy(
+                    conversation,
+                    raw_message=payload.message,
+                )
+            return conversation
         lookup = self._extract_anchor(payload.message)
         conversation = await self.continue_discovery(
             conversation_id,
@@ -1690,10 +1818,7 @@ class AssociateConversationService:
             raise RuntimeError("Conversation version conflict")
         if conversation.discoveryLock is not None:
             return conversation
-        if (
-            conversation.candidateSetExpiresAt is not None
-            and conversation.candidateSetExpiresAt <= _now()
-        ):
+        if _is_expired(conversation.candidateSetExpiresAt):
             raise RuntimeError("Candidate set expired; restart order discovery")
         if (
             conversation.candidateSetId is not None
@@ -1779,6 +1904,7 @@ class AssociateConversationService:
                     "discoveryLock": lock.model_dump(mode="json"),
                     "activeDialogueState": "CONFIRMED",
                     "activeRequestedSlots": [],
+                    "clarificationPrompt": None,
                     "nextQuestion": conv_config.default_details_question,
                     "updatedAt": _now(),
                 },

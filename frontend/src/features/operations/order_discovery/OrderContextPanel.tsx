@@ -31,8 +31,10 @@ export type OrderContextPanelProps = {
   readonly selectedLineId: string;
   readonly onSelectCandidate: (index: number) => void;
   readonly onSelectLine: (lineId: string) => void;
+  readonly onSelectClarification: (value: string) => void;
   readonly onConfirmDiscovery: () => void;
   readonly isConfirming: boolean;
+  readonly isClarifying: boolean;
   readonly onSubmitDetails?: (payload: {
     reasonCode: (typeof reasonCodes)[number];
     returnQuantity: number;
@@ -51,8 +53,10 @@ export function OrderContextPanel({
   selectedLineId,
   onSelectCandidate,
   onSelectLine,
+  onSelectClarification,
   onConfirmDiscovery,
   isConfirming,
+  isClarifying,
   onSubmitDetails,
   isSubmittingDetails = false,
 }: OrderContextPanelProps) {
@@ -134,7 +138,48 @@ export function OrderContextPanel({
         </section>
       ) : null}
 
-      {conversation?.candidates.length && !conversation.discoveryLock ? (
+      {conversation?.candidates.length
+        && !conversation.discoveryLock
+        && conversation.clarificationPrompt ? (
+          <section className="rounded-2xl border border-teal-200 bg-white p-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal-700">
+              One detail needed
+            </p>
+            <h3 className="mt-2 text-base font-semibold leading-6 text-slate-950">
+              {conversation.clarificationPrompt.question}
+            </h3>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Choose a verified value. The assistant will use only this field to narrow the
+              candidate set, then ask for the next useful detail if needed.
+            </p>
+            <div className="mt-4 grid gap-2">
+              {conversation.clarificationPrompt.options.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className="flex items-center justify-between gap-3 rounded-xl border border-stone-200 bg-stone-50 px-3 py-3 text-left text-sm font-medium text-slate-800 transition hover:border-teal-600 hover:bg-teal-50 disabled:cursor-wait disabled:opacity-50"
+                  disabled={isClarifying}
+                  onClick={() => { onSelectClarification(option.value); }}
+                >
+                  <span>{option.label}</span>
+                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-slate-500 ring-1 ring-stone-200">
+                    {option.candidateCount} {option.candidateCount === 1 ? "match" : "matches"}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {isClarifying ? (
+              <p className="mt-3 flex items-center justify-center gap-2 text-xs font-medium text-teal-800">
+                <Loader2 className="animate-spin" size={14} />
+                Narrowing verified candidates...
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+
+      {conversation?.candidates.length
+        && !conversation.discoveryLock
+        && !conversation.clarificationPrompt ? (
         <section className="flex flex-col gap-3">
           {candidateSetExpired ? (
             <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-950">
@@ -167,7 +212,7 @@ export function OrderContextPanel({
             isLoading={isConfirming}
           />
         </section>
-      ) : null}
+        ) : null}
 
       {conversation?.discoveryLock && !isComplete ? (
         <section className="rounded-2xl border border-stone-200 bg-white p-4 shadow-xs">
