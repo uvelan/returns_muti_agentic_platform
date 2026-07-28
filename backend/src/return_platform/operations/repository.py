@@ -1675,12 +1675,13 @@ class OperationalRepository:
 
     async def get_ai_settings(self) -> AIGatewaySettingsView:
         document = await self.ai_settings.find_one({"_id": "global"})
+        runtime_provider_order = self._settings.ai_provider_order.split(",")
         if document is None:
             now = utc_now()
             document = {
                 "_id": "global",
                 "interceptMode": self._settings.ai_interception_default,
-                "providerOrder": self._settings.ai_provider_order.split(","),
+                "providerOrder": runtime_provider_order,
                 "version": 0,
                 "updatedAt": now,
                 "updatedBy": "system",
@@ -1690,6 +1691,21 @@ class OperationalRepository:
             except DuplicateKeyError:
                 document = await self.ai_settings.find_one({"_id": "global"})
                 assert document is not None
+        elif document.get("providerOrder") == ["NONE"] and runtime_provider_order != ["NONE"]:
+            migrated = await self.ai_settings.find_one_and_update(
+                {"_id": "global", "providerOrder": ["NONE"]},
+                {
+                    "$set": {
+                        "providerOrder": runtime_provider_order,
+                        "updatedAt": utc_now(),
+                        "updatedBy": "runtime-configuration-migration",
+                    },
+                    "$inc": {"version": 1},
+                },
+                return_document=ReturnDocument.AFTER,
+            )
+            if migrated is not None:
+                document = migrated
         return AIGatewaySettingsView.model_validate(
             {key: value for key, value in document.items() if key != "_id"}
         )

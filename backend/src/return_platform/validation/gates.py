@@ -116,6 +116,33 @@ class SecretValidationGate:
         )
 
     @staticmethod
+    def receipt_for_validated_secret(
+        *,
+        resolved: ResolvedSecret,
+        tests: tuple[str, ...],
+        subject_type: str,
+        subject_key: str,
+        configuration_checksum: str,
+        fingerprint_key: bytes,
+        actor_id: str,
+    ) -> ValidationReceipt:
+        """Build a receipt after an external probe validated an existing Vault secret."""
+
+        if not tests:
+            raise ValueError("Validated secret receipt requires completed tests")
+        return SecretValidationGate._receipt(
+            reference=resolved.reference,
+            value=resolved.value,
+            secret_version=resolved.secret_version,
+            actor_id=actor_id,
+            fingerprint_key=fingerprint_key,
+            tests=tests,
+            subject_type=subject_type,
+            subject_key=subject_key,
+            configuration_checksum=configuration_checksum,
+        )
+
+    @staticmethod
     def _receipt(
         *,
         reference: SecretReference,

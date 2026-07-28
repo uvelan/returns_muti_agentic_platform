@@ -62,52 +62,52 @@ def apply_graph_runtime_configuration(
     sources = _source_map(configuration)
 
     platform_mongo = sources.get("platform-mongodb")
-    if platform_mongo is not None and not platform_mongo.bootstrap_managed:
-        if platform_mongo.uri is not None:
+    if platform_mongo is not None:
+        if not platform_mongo.bootstrap_managed and platform_mongo.uri is not None:
             updates["mongo_dsn"] = SecretStr(platform_mongo.uri)
-        if platform_mongo.database is not None:
+        if not platform_mongo.bootstrap_managed and platform_mongo.database is not None:
             updates["mongo_database"] = platform_mongo.database
         if platform_mongo.credential is not None:
             updates["mongo_dsn_secret_reference"] = platform_mongo.credential.vault_reference
 
     source_mongo = sources.get("source-mongodb")
-    if source_mongo is not None and not source_mongo.bootstrap_managed:
-        if source_mongo.uri is not None:
+    if source_mongo is not None:
+        if not source_mongo.bootstrap_managed and source_mongo.uri is not None:
             updates["source_mongo_dsn"] = SecretStr(source_mongo.uri)
-        if source_mongo.database is not None:
+        if not source_mongo.bootstrap_managed and source_mongo.database is not None:
             updates["source_mongo_database"] = source_mongo.database
         if source_mongo.credential is not None:
             updates["source_mongo_dsn_secret_reference"] = source_mongo.credential.vault_reference
 
     neo4j = sources.get("configuration-neo4j") or sources.get("neo4j")
-    if neo4j is not None and not neo4j.bootstrap_managed:
-        if neo4j.uri is not None:
+    if neo4j is not None:
+        if not neo4j.bootstrap_managed and neo4j.uri is not None:
             updates["neo4j_uri"] = neo4j.uri
-        if neo4j.username is not None:
+        if not neo4j.bootstrap_managed and neo4j.username is not None:
             updates["neo4j_user"] = neo4j.username
-        if neo4j.database is not None:
+        if not neo4j.bootstrap_managed and neo4j.database is not None:
             updates["neo4j_database"] = neo4j.database
         if neo4j.credential is not None:
             updates["neo4j_password_secret_reference"] = neo4j.credential.vault_reference
 
     sqlserver = sources.get("omc-sqlserver") or sources.get("sqlserver")
-    if sqlserver is not None and not sqlserver.bootstrap_managed:
-        if sqlserver.host is not None:
+    if sqlserver is not None:
+        if not sqlserver.bootstrap_managed and sqlserver.host is not None:
             updates["sqlserver_host"] = sqlserver.host
-        if sqlserver.port is not None:
+        if not sqlserver.bootstrap_managed and sqlserver.port is not None:
             updates["sqlserver_port"] = sqlserver.port
-        if sqlserver.username is not None:
+        if not sqlserver.bootstrap_managed and sqlserver.username is not None:
             updates["sqlserver_user"] = sqlserver.username
-        if sqlserver.database is not None:
+        if not sqlserver.bootstrap_managed and sqlserver.database is not None:
             updates["sqlserver_database"] = sqlserver.database
         if sqlserver.credential is not None:
             updates["sqlserver_password_secret_reference"] = sqlserver.credential.vault_reference
 
     valkey = sources.get("valkey")
-    if valkey is not None and not valkey.bootstrap_managed:
-        if valkey.host is not None:
+    if valkey is not None:
+        if not valkey.bootstrap_managed and valkey.host is not None:
             updates["valkey_host"] = valkey.host
-        if valkey.port is not None:
+        if not valkey.bootstrap_managed and valkey.port is not None:
             updates["valkey_port"] = valkey.port
         if valkey.credential is not None:
             updates["valkey_password_secret_reference"] = valkey.credential.vault_reference

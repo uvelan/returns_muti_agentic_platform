@@ -181,8 +181,16 @@ async def _cards(request: Request) -> list[dict[str, Any]]:
             settings.resolved_nvidia_api_keys
             and (settings.nvidia_lightweight_models or settings.resolved_nvidia_standard_models)
         ),
-        "OPENAI": bool(settings.openai_api_key and settings.openai_model),
-        "ANTHROPIC": bool(settings.anthropic_api_key and settings.anthropic_model),
+        "OPENAI": bool(
+            settings.resolved_openai_api_keys
+            and (settings.openai_lightweight_models or settings.resolved_openai_standard_models)
+        ),
+        "ANTHROPIC": bool(
+            settings.resolved_anthropic_api_keys
+            and (
+                settings.anthropic_lightweight_models or settings.resolved_anthropic_standard_models
+            )
+        ),
         "OLLAMA": bool(settings.ollama_model),
         "SIMULATOR": settings.environment in {"development", "test"},
     }
@@ -194,15 +202,12 @@ async def _cards(request: Request) -> list[dict[str, Any]]:
                 "id": f"ai-{provider.lower()}",
                 "name": f"AI Provider {provider}",
                 "category": "AI_PROVIDER",
-                "status": "HEALTHY"
-                if configured and is_simulator
-                else ("UNKNOWN" if configured else "UNAVAILABLE"),
+                "status": "HEALTHY" if configured else "UNAVAILABLE",
                 "message": (
                     "Deterministic simulator is available in this non-production environment."
                     if configured and is_simulator
                     else (
-                        "Provider is configured; use the AI comparison/replay screen for "
-                        "live validation."
+                        "Provider credential and model bindings passed bootstrap validation."
                         if configured
                         else "Provider credentials or model are not configured."
                     )
@@ -212,7 +217,7 @@ async def _cards(request: Request) -> list[dict[str, Any]]:
                     "provider": provider,
                     "configured": configured,
                     "interceptMode": ai_settings.interceptMode,
-                    "validationLevel": "CONFIGURED_NOT_CALLED"
+                    "validationLevel": "VALIDATED_VAULT_BINDING"
                     if configured and not is_simulator
                     else "LOCAL_POLICY_CHECK",
                 },

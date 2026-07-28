@@ -12,18 +12,22 @@ Push-Location (Join-Path $Root "backend")
 try {
   $env:PYTHONPATH = (Join-Path $Root "backend\src")
   if ($Worker -eq "integration-outbox") {
-    if (Get-Command uv -ErrorAction SilentlyContinue) {
+    if (Test-Path -LiteralPath ".\.venv\Scripts\python.exe") {
+      & .\.venv\Scripts\python.exe -m return_platform.workers.integration_outbox
+    } elseif (Get-Command uv -ErrorAction SilentlyContinue) {
       uv run python -m return_platform.workers.integration_outbox
     } elseif (Get-Command poetry -ErrorAction SilentlyContinue) {
       poetry run python -m return_platform.workers.integration_outbox
     } else {
-      & .\.venv\Scripts\python.exe -m return_platform.workers.integration_outbox
+      throw "No backend Python environment is available."
     }
+  } elseif (Test-Path -LiteralPath ".\.venv\Scripts\python.exe") {
+    & .\.venv\Scripts\python.exe (Join-Path "scripts" $Scripts[$Worker])
   } elseif (Get-Command uv -ErrorAction SilentlyContinue) {
     uv run python (Join-Path "scripts" $Scripts[$Worker])
   } elseif (Get-Command poetry -ErrorAction SilentlyContinue) {
     poetry run python (Join-Path "scripts" $Scripts[$Worker])
   } else {
-    & .\.venv\Scripts\python.exe (Join-Path "scripts" $Scripts[$Worker])
+    throw "No backend Python environment is available."
   }
 } finally { Pop-Location }

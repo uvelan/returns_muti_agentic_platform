@@ -19,7 +19,9 @@ STATE_DIR = ROOT / ".vault-local"
 INIT_FILE = STATE_DIR / "init.json"
 TOKEN_FILE = STATE_DIR / "return-platform.token"
 ENV_FILE = ROOT / ".env"
-VAULT_ADDR = os.environ.get("PLATFORM_VAULT_ADDRESS", "http://127.0.0.1:8200").rstrip("/")
+VAULT_ADDR = os.environ.get("PLATFORM_VAULT_ADDRESS", "http://127.0.0.1:8200").rstrip(
+    "/"
+)
 
 
 def read_env_file(path: Path) -> dict[str, str]:
@@ -77,7 +79,9 @@ def request_json(
         if exc.code in allowed_statuses:
             payload = exc.read()
             return json.loads(payload) if payload else {}
-        raise RuntimeError(f"Vault request failed with HTTP {exc.code} for {path}") from exc
+        raise RuntimeError(
+            f"Vault request failed with HTTP {exc.code} for {path}"
+        ) from exc
 
 
 def wait_for_vault() -> dict[str, Any]:
@@ -105,6 +109,18 @@ def require_value(values: dict[str, str], key: str) -> str:
     if not value:
         raise RuntimeError(f"Required environment value {key} is missing")
     return value
+
+
+def parse_list(values: dict[str, str], key: str) -> tuple[str, ...]:
+    raw = values.get(key, "").strip()
+    if not raw:
+        return ()
+    if raw.startswith("["):
+        parsed = json.loads(raw)
+        if not isinstance(parsed, list):
+            raise RuntimeError(f"Environment value {key} must be a JSON list")
+        return tuple(str(item).strip() for item in parsed if str(item).strip())
+    return tuple(item.strip() for item in raw.split(",") if item.strip())
 
 
 def put_kv(root_token: str, secret_path: str, values: dict[str, str]) -> None:
@@ -193,7 +209,7 @@ def main() -> int:
             allowed_statuses=(200, 204),
         )
 
-    policy = '''
+    policy = """
 path "secret/data/production/*" {
   capabilities = ["create", "read", "update"]
 }
@@ -203,7 +219,7 @@ path "secret/metadata/production/*" {
 path "secret/delete/production/*" {
   capabilities = ["update"]
 }
-'''.strip()
+""".strip()
     request_json(
         "PUT",
         "/v1/sys/policies/acl/return-platform",
@@ -212,7 +228,9 @@ path "secret/delete/production/*" {
         allowed_statuses=(200, 204),
     )
 
-    app_token = TOKEN_FILE.read_text(encoding="utf-8").strip() if TOKEN_FILE.exists() else ""
+    app_token = (
+        TOKEN_FILE.read_text(encoding="utf-8").strip() if TOKEN_FILE.exists() else ""
+    )
     token_valid = False
     if app_token:
         try:
@@ -291,6 +309,16 @@ path "secret/delete/production/*" {
         "production/platform/contact-lookup",
         {"hmac_key": contact_lookup_key},
     )
+    for provider in ("google", "nvidia", "openai", "anthropic"):
+        keys = parse_list(env, f"PLATFORM_{provider.upper()}_API_KEYS")
+        for index, api_key in enumerate(keys, start=1):
+            if is_placeholder_secret(api_key):
+                continue
+            put_kv(
+                root_token,
+                f"production/ai/{provider}/credentials/key-{index}",
+                {"api_key": api_key},
+            )
 
     print("vault_status=READY")
     print(f"application_token_file={TOKEN_FILE}")

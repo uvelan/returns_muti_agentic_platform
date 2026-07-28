@@ -73,6 +73,29 @@ def _checksum(payload: dict[str, Any]) -> str:
     ).hexdigest()
 
 
+def ai_binding_checksum(
+    *,
+    provider: str,
+    base_url: str,
+    model_id: str,
+    model_class: str,
+    task_key: str,
+    vault_reference: str,
+) -> str:
+    """Checksum the non-secret fields that bind one AI runtime route."""
+
+    return _checksum(
+        {
+            "provider": provider,
+            "baseUrl": base_url,
+            "modelId": model_id,
+            "modelClass": model_class,
+            "taskKey": task_key,
+            "vaultReference": vault_reference.split("?", 1)[0],
+        }
+    )
+
+
 def _validate_vault_prefix(reference_uri: str, prefix: str) -> None:
     reference = parse_secret_reference(reference_uri)
     expected = f"production/{prefix.strip('/')}/"
@@ -298,6 +321,41 @@ async def _validate_anthropic(
     return ("AUTHENTICATION", "MODEL_DISCOVERY", "MODEL_ACCESS", "INFERENCE_PROBE")
 
 
+async def probe_ai_provider_model(
+    *,
+    provider: str,
+    base_url: str,
+    api_key: str,
+    model_id: str,
+    settings: Settings,
+) -> tuple[str, ...]:
+    """Probe one hosted provider credential/model pair without persisting its secret."""
+
+    if provider == "GOOGLE":
+        return await _validate_google(
+            base_url=base_url,
+            api_key=api_key,
+            model_id=model_id,
+            timeout_seconds=settings.ai_timeout_seconds,
+        )
+    if provider in {"NVIDIA", "OPENAI"}:
+        return await _validate_openai_compatible(
+            base_url=base_url,
+            api_key=api_key,
+            model_id=model_id,
+            timeout_seconds=settings.ai_timeout_seconds,
+        )
+    if provider == "ANTHROPIC":
+        return await _validate_anthropic(
+            base_url=base_url,
+            api_key=api_key,
+            model_id=model_id,
+            timeout_seconds=settings.ai_timeout_seconds,
+            version=settings.anthropic_version,
+        )
+    raise ValueError(f"Unsupported hosted AI provider: {provider}")
+
+
 async def _persist_receipt(request: Request, receipt: ValidationReceipt) -> None:
     resources = _resources(request)
     if resources.mongo is None:
@@ -340,38 +398,23 @@ async def validate_and_stage_ai_configuration(
         model_class=body.modelClass,
         task_key=body.taskKey,
     )
-    non_secret_configuration = {
-        "provider": provider,
-        "baseUrl": base_url,
-        "modelId": body.modelId,
-        "modelClass": body.modelClass,
-        "taskKey": body.taskKey,
-        "vaultReference": reference.to_uri().split("?", 1)[0],
-    }
-    configuration_checksum = _checksum(non_secret_configuration)
+    configuration_checksum = ai_binding_checksum(
+        provider=provider,
+        base_url=base_url,
+        model_id=body.modelId,
+        model_class=body.modelClass,
+        task_key=body.taskKey,
+        vault_reference=reference.to_uri(),
+    )
     previous_secret = await resolver.get_secret(reference.model_copy(update={"version": None}))
 
     async def probe(api_key: str) -> tuple[str, ...]:
-        if provider == "GOOGLE":
-            return await _validate_google(
-                base_url=base_url,
-                api_key=api_key,
-                model_id=body.modelId,
-                timeout_seconds=settings.ai_timeout_seconds,
-            )
-        if provider in {"NVIDIA", "OPENAI"}:
-            return await _validate_openai_compatible(
-                base_url=base_url,
-                api_key=api_key,
-                model_id=body.modelId,
-                timeout_seconds=settings.ai_timeout_seconds,
-            )
-        return await _validate_anthropic(
+        return await probe_ai_provider_model(
+            provider=provider,
             base_url=base_url,
             api_key=api_key,
             model_id=body.modelId,
-            timeout_seconds=settings.ai_timeout_seconds,
-            version=settings.anthropic_version,
+            settings=settings,
         )
 
     try:

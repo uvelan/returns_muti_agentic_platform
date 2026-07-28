@@ -4,11 +4,13 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Push-Location (Join-Path $Root "backend")
 try {
   $env:PYTHONPATH = (Join-Path $Root "backend\src")
-  if (Get-Command uv -ErrorAction SilentlyContinue) {
+  if (Test-Path -LiteralPath ".\.venv\Scripts\python.exe") {
+    & .\.venv\Scripts\python.exe -m uvicorn return_platform.asgi:app --host 0.0.0.0 --port 8000 --reload
+  } elseif (Get-Command uv -ErrorAction SilentlyContinue) {
     uv run uvicorn return_platform.asgi:app --host 0.0.0.0 --port 8000 --reload
   } elseif (Get-Command poetry -ErrorAction SilentlyContinue) {
     poetry run uvicorn return_platform.asgi:app --host 0.0.0.0 --port 8000 --reload
   } else {
-    & .\.venv\Scripts\python.exe -m uvicorn return_platform.asgi:app --host 0.0.0.0 --port 8000 --reload
+    throw "No backend Python environment is available."
   }
 } finally { Pop-Location }
