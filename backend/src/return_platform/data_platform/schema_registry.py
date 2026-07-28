@@ -35,6 +35,12 @@ class SchemaField(RegistryModel):
     description: str = Field(min_length=1, max_length=500)
     generator: str | None = Field(default=None, min_length=1, max_length=128)
     items: str | None = Field(default=None, min_length=1, max_length=128)
+    pattern: str | None = None
+    min_length: int | None = None
+    max_length: int | None = None
+    minimum: float | None = None
+    maximum: float | None = None
+    enum: list[str] | None = None
 
 
 class DataAssetSchema(RegistryModel):
