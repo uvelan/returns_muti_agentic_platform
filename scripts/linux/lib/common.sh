@@ -121,21 +121,51 @@ start_managed_process() {
   }
 }
 
+process_tree_postorder() {
+  local root_pid="$1" child_pid
+  while read -r child_pid; do
+    [[ -n "$child_pid" ]] || continue
+    process_tree_postorder "$child_pid"
+  done < <(
+    ps -eo pid=,ppid= |
+      awk -v parent="$root_pid" '$2 == parent { print $1 }'
+  )
+  printf '%s\n' "$root_pid"
+}
+
 stop_managed_process() {
   local name="$1" pid_file="$PID_DIR/${name}.pid"
   [[ -s "$pid_file" ]] || return 0
-  local pid
+  local pid process_id attempt alive
+  local -a process_ids=()
   pid="$(cat "$pid_file")"
   if kill -0 "$pid" 2>/dev/null; then
-    kill "$pid"
-    local attempt
+    mapfile -t process_ids < <(process_tree_postorder "$pid")
+    for process_id in "${process_ids[@]}"; do
+      kill "$process_id" 2>/dev/null || true
+    done
     for attempt in {1..20}; do
-      kill -0 "$pid" 2>/dev/null || break
+      alive=false
+      for process_id in "${process_ids[@]}"; do
+        if kill -0 "$process_id" 2>/dev/null; then
+          alive=true
+        fi
+      done
+      [[ "$alive" == false ]] && break
       sleep 0.5
     done
-    if kill -0 "$pid" 2>/dev/null; then
-      printf 'Process %s (PID %s) did not stop cleanly.\n' "$name" "$pid" >&2
-      return 1
+    if [[ "$alive" == true ]]; then
+      for process_id in "${process_ids[@]}"; do
+        kill -KILL "$process_id" 2>/dev/null || true
+      done
+      sleep 1
+      for process_id in "${process_ids[@]}"; do
+        if kill -0 "$process_id" 2>/dev/null; then
+          printf 'Process %s (PID %s) did not stop cleanly.\n' \
+            "$name" "$process_id" >&2
+          return 1
+        fi
+      done
     fi
   fi
   rm -f "$pid_file"

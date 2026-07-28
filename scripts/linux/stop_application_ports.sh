@@ -25,6 +25,15 @@ port_pids() {
   lsof -n -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true
 }
 
+port_is_listening() {
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    [[ -n "$(ss -H -ltn "sport = :$port" 2>/dev/null)" ]]
+    return
+  fi
+  [[ -n "$(port_pids "$port")" ]]
+}
+
 belongs_to_repository() {
   local pid="$1" process_root
   process_root="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)"
@@ -33,7 +42,11 @@ belongs_to_repository() {
 
 for port in "${ports[@]}"; do
   pids=()
-  read -r -a pids <<<"$(port_pids "$port")"
+  mapfile -t pids < <(
+    port_pids "$port" |
+      tr ' ' '\n' |
+      awk '/^[0-9]+$/ && !seen[$0]++'
+  )
   for pid in "${pids[@]:-}"; do
     [[ "$pid" =~ ^[0-9]+$ ]] || continue
     kill -0 "$pid" 2>/dev/null || continue
@@ -51,7 +64,7 @@ done
 for attempt in {1..20}; do
   busy=false
   for port in "${ports[@]}"; do
-    if [[ -n "$(port_pids "$port")" ]]; then
+    if port_is_listening "$port"; then
       busy=true
     fi
   done
