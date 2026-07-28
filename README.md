@@ -276,11 +276,18 @@ The command also initializes/unseals Vault and stores local infrastructure crede
 
 Before starting processes, this command:
 
-1. serializes initialization with `flock`;
-2. verifies Vault access;
-3. applies checksum-tracked Neo4j migrations;
-4. publishes the initial graph configuration release when no active release exists;
-5. starts the API, all workers, and the frontend.
+1. stops previously managed application processes;
+2. closes repository-owned listeners on ports `8000` and `5173`, while refusing
+   to terminate unrelated processes;
+3. serializes initialization with `flock`;
+4. verifies Vault access;
+5. applies checksum-tracked Neo4j migrations;
+6. publishes and validates the initial graph configuration only when no active
+   release exists;
+7. starts the API, all workers, and the frontend.
+
+Normal restarts reuse the active graph release and its Vault references. They do
+not rerun live AI provider/model validation.
 
 Host URLs:
 

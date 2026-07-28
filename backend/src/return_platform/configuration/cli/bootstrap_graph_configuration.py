@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import hashlib
 import json
@@ -19,27 +20,13 @@ from return_platform.configuration.snapshot import RETURN_PLATFORM_DOMAIN_KEY
 from return_platform.secrets.runtime import resolve_runtime_settings_from_vault
 
 
-async def main() -> None:
+async def main(*, if_missing: bool = False) -> None:
     settings, resolver = await resolve_runtime_settings_from_vault(
         Settings(),
         resolve_ai_credentials=False,
     )
     if resolver is None:
         raise RuntimeError("Runtime bootstrap requires the Vault secret resolver")
-    loaded = load_return_configuration(settings.return_configuration_path)
-    loaded_ai_gateway = load_ai_gateway_configuration(settings.ai_gateway_configuration_path)
-    configuration = await build_bootstrap_runtime_configuration(
-        settings=settings,
-        resolver=resolver,
-        loaded_ai_gateway=loaded_ai_gateway,
-        configuration=loaded.configuration,
-    )
-    baseline_payload = configuration.model_dump(mode="json")
-    payload_checksum = hashlib.sha256(
-        json.dumps(baseline_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
-    base_release_id = f"return-platform-{payload_checksum[:16]}"
-    release_id = base_release_id
     driver = AsyncGraphDatabase.driver(
         settings.neo4j_uri,
         auth=(settings.neo4j_user, settings.neo4j_password.get_secret_value()),
@@ -48,6 +35,29 @@ async def main() -> None:
         await driver.verify_connectivity()
         repository = Neo4jConfigurationGraphRepository(driver)
         active = await repository.get_active_release()
+        if if_missing and active is not None:
+            print(f"graph_configuration_release={active.release_id}")
+            print("graph_configuration_status=EXISTING")
+            return
+
+        loaded = load_return_configuration(settings.return_configuration_path)
+        loaded_ai_gateway = load_ai_gateway_configuration(settings.ai_gateway_configuration_path)
+        configuration = await build_bootstrap_runtime_configuration(
+            settings=settings,
+            resolver=resolver,
+            loaded_ai_gateway=loaded_ai_gateway,
+            configuration=loaded.configuration,
+        )
+        baseline_payload = configuration.model_dump(mode="json")
+        payload_checksum = hashlib.sha256(
+            json.dumps(
+                baseline_payload,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        base_release_id = f"return-platform-{payload_checksum[:16]}"
+        release_id = base_release_id
         if active is not None:
             active_payload = await repository.get_domain_config(
                 active.release_id,
@@ -109,7 +119,14 @@ async def main() -> None:
 
 
 def run() -> None:
-    asyncio.run(main())
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--if-missing",
+        action="store_true",
+        help="Publish bootstrap configuration only when no active release exists.",
+    )
+    args = parser.parse_args()
+    asyncio.run(main(if_missing=args.if_missing))
 
 
 if __name__ == "__main__":

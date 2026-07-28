@@ -76,6 +76,7 @@ fi
 
 echo "Stopping application host processes..."
 "$LINUX_SCRIPT_DIR/17_stop_host_processes.sh"
+"$LINUX_SCRIPT_DIR/stop_application_ports.sh" 8000 5173
 
 echo "Starting backend and workers..."
 "$LINUX_SCRIPT_DIR/08_start_backend.sh"
