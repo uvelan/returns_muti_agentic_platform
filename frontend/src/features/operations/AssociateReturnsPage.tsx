@@ -74,7 +74,7 @@ export function AssociateReturnsPage() {
 
   return (
     <div className="-m-4 h-[calc(100vh-4rem)] bg-stone-50 sm:-m-6 overflow-hidden">
-      <div className="grid h-full xl:grid-cols-[17rem_minmax(0,1fr)_21rem]">
+      <div className="grid h-full md:grid-cols-[minmax(0,1fr)_18rem] lg:grid-cols-[minmax(0,1fr)_21rem] xl:grid-cols-[17rem_minmax(0,1fr)_21rem]">
         <aside className="hidden h-full overflow-y-auto border-r border-stone-200 bg-white p-4 xl:block">
           <button
             type="button"

@@ -153,7 +153,8 @@ services:
       ACCEPT_EULA: "Y"
       MSSQL_PID: Developer
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
-      MSSQL_MEMORY_LIMIT_MB: 2048
+      MSSQL_MEMORY_LIMIT_MB: 3072
+      MSSQL_TRACE_FLAGS: "3459"
     ports:
       - "127.0.0.1:14330:1433"
     volumes:
@@ -167,7 +168,7 @@ services:
     restart: unless-stopped
     networks: [platform]
     logging: *default-logging
-    mem_limit: 3g
+    mem_limit: 4g
 
   sqlserver-init:
     image: mcr.microsoft.com/mssql/server:${MSSQL_VERSION:-2025-CU4-ubuntu-22.04}

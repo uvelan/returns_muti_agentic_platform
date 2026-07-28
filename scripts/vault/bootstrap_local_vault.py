@@ -204,15 +204,16 @@ path "secret/delete/production/*" {
     encoded_password = urllib.parse.quote_plus(mongo_password)
     host_base = f"mongodb://{encoded_user}:{encoded_password}@127.0.0.1:27017"
     container_base = f"mongodb://{encoded_user}:{encoded_password}@mongodb:27017"
-    common = "authSource=admin&replicaSet=rs0"
+    host_common = "authSource=admin&directConnection=true"
+    container_common = "authSource=admin&replicaSet=rs0"
     put_kv(
         root_token,
         "production/data-sources/mongodb",
         {
-            "dsn": f"{host_base}/return_platform?{common}",
-            "source_dsn": f"{host_base}/return_source?{common}",
-            "container_dsn": f"{container_base}/return_platform?{common}",
-            "container_source_dsn": f"{container_base}/return_source?{common}",
+            "dsn": f"{host_base}/return_platform?{host_common}",
+            "source_dsn": f"{host_base}/return_source?{host_common}",
+            "container_dsn": f"{container_base}/return_platform?{container_common}",
+            "container_source_dsn": f"{container_base}/return_source?{container_common}",
         },
     )
     put_kv(

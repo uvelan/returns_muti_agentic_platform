@@ -562,11 +562,11 @@ def bind_stage_activity_result(
         IntakeActivityResult
         | OrderDiscoveryActivityResult
         | EligibilityActivityResult
-        | None
         | ReturnRequestActivityResult
         | FulfillmentTrackingActivityResult
         | BayAssignmentActivityResult
         | FeedbackLearningActivityResult
+        | None
     ),
 ) -> StageContextBinding:
     """Validate one result and produce its deterministic context binding."""

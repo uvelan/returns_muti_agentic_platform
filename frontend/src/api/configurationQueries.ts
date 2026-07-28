@@ -3,7 +3,7 @@ import { apiClient } from "./client";
 
 export type ReleaseNode = {
   release_id: string;
-  status: "DRAFT" | "VALIDATED" | "RELEASED" | "SUPERSEDED" | "ARCHIVED";
+  status: "DRAFT" | "VALIDATED" | "RELEASED" | "SUPERSEDED" | "ARCHIVED" | "PINNED";
   created_at: string;
   created_by: string;
   checksum_sha256: string;
@@ -13,10 +13,10 @@ export type ReleaseNode = {
 
 export type ActiveSnapshot = {
   release_id: string;
-  head_revision: number;
+  head_revision?: number;
   checksum_sha256: string;
   loaded_at: string;
-  source: "NEO4J_CONFIGURATION_GRAPH" | "VERSION_CONTROLLED_BASELINE";
+  source: "NEO4J_CONFIGURATION_GRAPH" | "VERSION_CONTROLLED_BASELINE" | "NEO4J" | "YAML_FALLBACK";
   configuration: Record<string, unknown>;
   domain_payloads: Record<string, unknown>;
 }

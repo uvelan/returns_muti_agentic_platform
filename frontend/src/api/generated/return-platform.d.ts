@@ -209,6 +209,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/associate-returns/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Chat */
+        post: operations["start_chat_api_v1_associate_returns_chat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/associate-returns/conversations": {
         parameters: {
             query?: never;
@@ -244,6 +261,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/associate-returns/conversations/{conversation_id}/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Continue Chat */
+        post: operations["continue_chat_api_v1_associate_returns_conversations__conversation_id__chat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/associate-returns/conversations/{conversation_id}/confirm": {
         parameters: {
             query?: never;
@@ -272,6 +306,23 @@ export interface paths {
         put?: never;
         /** Submit Return Details */
         post: operations["submit_return_details_api_v1_associate_returns_conversations__conversation_id__details_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/associate-returns/conversations/{conversation_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Continue Conversation */
+        post: operations["continue_conversation_api_v1_associate_returns_conversations__conversation_id__messages_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -998,6 +1049,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/data-console/v1/ai-studio/proposals/from-prompt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Prompt Proposal */
+        post: operations["generate_prompt_proposal_data_console_v1_ai_studio_proposals_from_prompt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/data-console/v1/ai-studio/proposals/{proposal_id}": {
         parameters: {
             query?: never;
@@ -1111,6 +1179,156 @@ export interface paths {
         get: operations["get_record_data_console_v1_browser__engine___asset_id__records__record_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/configuration/active-snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Active Snapshot
+         * @description Return the active validated runtime configuration snapshot.
+         */
+        get: operations["get_active_snapshot_data_console_v1_configuration_active_snapshot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/configuration/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Releases */
+        get: operations["list_releases_data_console_v1_configuration_releases_get"];
+        put?: never;
+        /**
+         * Create Release
+         * @description Create a draft by cloning the active release or current validated baseline.
+         */
+        post: operations["create_release_data_console_v1_configuration_releases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/configuration/releases/{release_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Release Detail */
+        get: operations["get_release_detail_data_console_v1_configuration_releases__release_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/configuration/releases/{release_id}/domains/{domain_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Domain Config
+         * @description Save a validated domain payload into a mutable draft release.
+         */
+        put: operations["save_domain_config_data_console_v1_configuration_releases__release_id__domains__domain_key__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/configuration/releases/{release_id}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Promote Release Status
+         * @description Promote a validated immutable release through an explicit lifecycle.
+         */
+        post: operations["promote_release_status_data_console_v1_configuration_releases__release_id__promote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/copilot-operations/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Sessions */
+        get: operations["list_sessions_data_console_v1_copilot_operations_sessions_get"];
+        put?: never;
+        /** Start Session */
+        post: operations["start_session_data_console_v1_copilot_operations_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/copilot-operations/sessions/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Session */
+        get: operations["get_session_data_console_v1_copilot_operations_sessions__conversation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/copilot-operations/sessions/{conversation_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Continue Session */
+        post: operations["continue_session_data_console_v1_copilot_operations_sessions__conversation_id__messages_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1637,6 +1855,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/data-console/v1/runtime-validation/ai/validate-and-stage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate And Stage Ai Configuration
+         * @description Validate a provider key/model/task binding before writing the key to Vault.
+         */
+        post: operations["validate_and_stage_ai_configuration_data_console_v1_runtime_validation_ai_validate_and_stage_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/runtime-validation/data-sources/validate-and-stage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate And Stage Data Source
+         * @description Validate connectivity and declared datasets before storing a source credential.
+         */
+        post: operations["validate_and_stage_data_source_data_console_v1_runtime_validation_data_sources_validate_and_stage_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data-console/v1/runtime-validation/receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Validation Receipts */
+        get: operations["list_validation_receipts_data_console_v1_runtime_validation_receipts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/data-console/v1/scenarios": {
         parameters: {
             query?: never;
@@ -2142,7 +2417,22 @@ export interface components {
             recordsPerAsset: number;
             /**
              * Scenarioname
-             * @default return-reference-data
+             * @default return-sandbox
+             */
+            scenarioName: string;
+            /**
+             * Seed
+             * @default 20260724
+             */
+            seed: number;
+        };
+        /** AIStudioPromptRequest */
+        AIStudioPromptRequest: {
+            /** Prompt */
+            prompt: string;
+            /**
+             * Scenarioname
+             * @default customer-order-sandbox
              */
             scenarioName: string;
             /**
@@ -2176,6 +2466,12 @@ export interface components {
             createdBy: string;
             /** Digest */
             digest: string;
+            /** Generationplan */
+            generationPlan?: {
+                [key: string]: number;
+            };
+            /** Generationprompt */
+            generationPrompt?: string | null;
             /** Id */
             id: string;
             /** Mode */
@@ -2414,6 +2710,30 @@ export interface components {
             /** Totaltokens */
             totalTokens: number;
         };
+        /** AIValidateAndStageRequest */
+        AIValidateAndStageRequest: {
+            /**
+             * Apikey
+             * Format: password
+             */
+            apiKey: string;
+            /**
+             * Modelclass
+             * @enum {string}
+             */
+            modelClass: "LIGHTWEIGHT" | "STANDARD";
+            /** Modelid */
+            modelId: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "GOOGLE" | "NVIDIA" | "OPENAI" | "ANTHROPIC";
+            /** Taskkey */
+            taskKey: string;
+            /** Vaultreference */
+            vaultReference: string;
+        };
         /** APIResponse[AIGatewaySettingsView] */
         APIResponse_AIGatewaySettingsView_: {
             data?: components["schemas"]["AIGatewaySettingsView"] | null;
@@ -2636,6 +2956,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[ValidationReceipt] */
+        APIResponse_ValidationReceipt_: {
+            data?: components["schemas"]["ValidationReceipt"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[Workspace] */
         APIResponse_Workspace_: {
             data?: components["schemas"]["Workspace"] | null;
@@ -2855,6 +3181,13 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[list[ValidationReceipt]] */
+        APIResponse_list_ValidationReceipt__: {
+            /** Data */
+            data?: components["schemas"]["ValidationReceipt"][] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[list[Workspace]] */
         APIResponse_list_Workspace__: {
             /** Data */
@@ -2925,13 +3258,40 @@ export interface components {
          * @enum {string}
          */
         AnchorType: "ORDER_NUMBER" | "CUSTOMER_ID" | "PHONE" | "EMAIL" | "TRACKING_NUMBER" | "SKU" | "CUSTOMER_NAME" | "PRODUCT_DESCRIPTION";
+        /** AssociateChatTurnRequest */
+        AssociateChatTurnRequest: {
+            /** Expectedversion */
+            expectedVersion?: number | null;
+            /** Message */
+            message: string;
+        };
         /** AssociateConversationView */
         AssociateConversationView: {
+            /**
+             * Activedialoguestate
+             * @default ENTITY_IDENTIFICATION
+             */
+            activeDialogueState: string;
+            /** Activerequestedslots */
+            activeRequestedSlots?: string[];
             anchorType: components["schemas"]["AnchorType"];
             /** Anchorvaluemasked */
             anchorValueMasked: string;
+            /** Candidatesetexpiresat */
+            candidateSetExpiresAt?: string | null;
+            /** Candidatesetid */
+            candidateSetId?: string | null;
             /** Candidates */
             candidates: components["schemas"]["OrderCandidate"][];
+            /** Configurationchecksum */
+            configurationChecksum?: string | null;
+            /** Configurationreleaseid */
+            configurationReleaseId?: string | null;
+            /**
+             * Configurationsource
+             * @default VERSION_CONTROLLED_BASELINE
+             */
+            configurationSource: string;
             /** Confirmationsnapshotid */
             confirmationSnapshotId?: string | null;
             /**
@@ -3145,6 +3505,8 @@ export interface components {
         ConfirmDiscoveryRequest: {
             /** Candidateindex */
             candidateIndex: number;
+            /** Candidatesetid */
+            candidateSetId?: string | null;
             /** Expectedversion */
             expectedVersion: number;
             /** Orderlineid */
@@ -3166,6 +3528,14 @@ export interface components {
             seedVersion: string;
             /** Strictmode */
             strictMode: boolean;
+        };
+        /** ContinueAssociateConversationRequest */
+        ContinueAssociateConversationRequest: {
+            anchorType: components["schemas"]["AnchorType"];
+            /** Anchorvalue */
+            anchorValue: string;
+            /** Expectedversion */
+            expectedVersion: number;
         };
         /** ConversationMessage */
         ConversationMessage: {
@@ -3213,6 +3583,16 @@ export interface components {
             format: "CSV" | "JSON" | "JSONL";
             /** Target */
             target: string;
+        };
+        /** CreateReleasePayload */
+        CreateReleasePayload: {
+            /**
+             * From Active
+             * @default true
+             */
+            from_active: boolean;
+            /** Release Id */
+            release_id: string;
         };
         /** CreateScenarioPayload */
         CreateScenarioPayload: {
@@ -3356,12 +3736,23 @@ export interface components {
         };
         /** DataAssetSchema */
         DataAssetSchema: {
+            /** Allowed Operations */
+            allowed_operations?: string[];
             /** Asset Id */
             asset_id: string;
             /** Authoritative */
-            authoritative: boolean;
+            authoritative?: boolean | null;
+            /** Authoritative System */
+            authoritative_system: string;
+            /**
+             * Collision Policy
+             * @enum {string}
+             */
+            collision_policy: "REJECT" | "GENERATE_NEW_KEYS" | "SKIP_EXISTING";
             /** Database */
             database: string;
+            /** Dependency Fields */
+            dependency_fields?: string[];
             /** Description */
             description: string;
             /**
@@ -3371,17 +3762,88 @@ export interface components {
             engine: "MONGODB" | "SQLSERVER";
             /** Fields */
             fields: components["schemas"]["SchemaField"][];
+            /**
+             * Generated Data Policy
+             * @enum {string}
+             */
+            generated_data_policy: "ENABLED" | "DISABLED";
+            /**
+             * Graph Sync Policy
+             * @enum {string}
+             */
+            graph_sync_policy: "SYNC_IMMEDIATELY" | "BACKGROUND" | "NONE";
             /** Name */
             name: string;
             /** Namespace */
             namespace?: string | null;
+            /** Natural Keys */
+            natural_keys?: string[];
+            /** Owner */
+            owner: string;
+            /** Ownership */
+            ownership?: ("SOURCE_SYSTEM" | "PLATFORM_OWNED" | "DERIVED_PROJECTION") | null;
             /**
-             * Ownership
+             * Pii Policy
              * @enum {string}
              */
-            ownership: "SOURCE_SYSTEM" | "PLATFORM_OWNED" | "DERIVED_PROJECTION";
+            pii_policy: "STRICT_SYNTHETIC" | "NONE";
+            /**
+             * Rollback Policy
+             * @enum {string}
+             */
+            rollback_policy: "DELETE" | "DOMAIN_COMPENSATE" | "NO_ACTION";
             /** Writable In Sandbox */
-            writable_in_sandbox: boolean;
+            writable_in_sandbox?: boolean | null;
+            /** Write Adapter Key */
+            write_adapter_key?: string | null;
+            /**
+             * Write Policy
+             * @enum {string}
+             */
+            write_policy: "DENIED" | "DOMAIN_API_ONLY" | "SOURCE_ADMIN_WRITER" | "DIRECT_OPERATIONAL_INSERT" | "DERIVED_PROJECTION";
+        };
+        /** DataSourceValidateAndStageRequest */
+        DataSourceValidateAndStageRequest: {
+            /**
+             * Accessmode
+             * @default READ_ONLY
+             * @enum {string}
+             */
+            accessMode: "READ_ONLY" | "READ_WRITE";
+            /**
+             * Credential
+             * Format: password
+             */
+            credential: string;
+            /**
+             * Credentialkind
+             * @enum {string}
+             */
+            credentialKind: "DSN" | "PASSWORD";
+            /** Database */
+            database: string;
+            /** Host */
+            host?: string | null;
+            /** Port */
+            port?: number | null;
+            /**
+             * Requireddatasets
+             * @default []
+             */
+            requiredDatasets: string[];
+            /** Sourcekey */
+            sourceKey: string;
+            /**
+             * Sourcetype
+             * @enum {string}
+             */
+            sourceType: "MONGODB" | "NEO4J" | "SQLSERVER";
+            /** Uri */
+            uri?: string | null;
+            /** Username */
+            username?: string | null;
+            /** Vaultreference */
+            vaultReference: string;
         };
         /**
          * DependencyErrorCode
@@ -4113,6 +4575,10 @@ export interface components {
         NormalizedReturnMethod: "PREPAID_PARCEL" | "BRANCH_UPS" | "BRANCH_LTL" | "OFFSITE_PARCEL" | "OFFSITE_LTL" | "DIRECT_VENDOR" | "FIELD_SCRAP" | "NO_PHYSICAL_RETURN" | "CUSTOMER_KEEP" | "UNKNOWN";
         /** OrderCandidate */
         OrderCandidate: {
+            /** Accounttype */
+            accountType?: string | null;
+            /** Billingcity */
+            billingCity?: string | null;
             /** Confidencemillionths */
             confidenceMillionths: number;
             /** Customername */
@@ -4129,6 +4595,10 @@ export interface components {
             orderSource: components["schemas"]["OrderSource"];
             /** Orderstatus */
             orderStatus?: string | null;
+            /** Postalcode */
+            postalCode?: string | null;
+            /** Retrievalscore */
+            retrievalScore?: number | null;
             /** Sellwarehouseid */
             sellWarehouseId?: string | null;
             /** Shipfromwarehouseid */
@@ -4264,6 +4734,16 @@ export interface components {
          * @enum {string}
          */
         ProductionReturnEventType: "DISCOVERY_CONFIRMED" | "RETURN_DETAILS_CONFIRMED" | "SUPPORT_REQUEST_CREATED" | "SUPPORT_ACKNOWLEDGED" | "OMC_RETURN_CREATED" | "SHIPPING_INSTRUCTIONS_ISSUED" | "BOL_TENDERED" | "CARRIER_BOOKING_CONFIRMED" | "PHYSICAL_HANDOFF_CONFIRMED" | "PHYSICAL_RETURN_NOT_REQUIRED" | "RECEIPT_CONFIRMED" | "LICENSE_PLATE_NOT_REQUIRED" | "WAREHOUSE_PROCESSING_NOT_REQUIRED" | "LICENSE_PLATE_ASSIGNED" | "CUSTOMER_RESOLUTION_COMPLETED" | "PRODUCT_DISPOSITION_COMPLETED" | "WAREHOUSE_PROCESSING_COMPLETED" | "VENDOR_RECOVERY_REQUIRED" | "VENDOR_RECOVERY_COMPLETED" | "CANCELLED";
+        /** PromoteReleasePayload */
+        PromoteReleasePayload: {
+            /** Expected Head Revision */
+            expected_head_revision?: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "VALIDATED" | "RELEASED" | "ARCHIVED";
+        };
         /** RankedDiscoveryCandidate */
         RankedDiscoveryCandidate: {
             /** Candidateid */
@@ -4749,6 +5229,13 @@ export interface components {
             validationStatus: string;
             /** Version */
             version: number;
+        };
+        /** SaveDomainPayload */
+        SaveDomainPayload: {
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
         };
         /** Scenario */
         Scenario: {
@@ -5447,6 +5934,59 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** ValidationReceipt */
+        ValidationReceipt: {
+            /** Checksum Sha256 */
+            checksum_sha256: string;
+            /** Configuration Checksum */
+            configuration_checksum?: string | null;
+            /**
+             * Receipt Id
+             * Format: uuid
+             */
+            receipt_id?: string;
+            /** Secret Fingerprint */
+            secret_fingerprint?: string | null;
+            /** Secret Version */
+            secret_version?: number | null;
+            /**
+             * Status
+             * @default PASSED
+             */
+            status: string;
+            /**
+             * Subject Key
+             * @default unknown
+             */
+            subject_key: string;
+            /**
+             * Subject Type
+             * @default SECRET_REFERENCE
+             */
+            subject_type: string;
+            /** Target Uri */
+            target_uri: string;
+            /**
+             * Tests
+             * @default []
+             */
+            tests: string[];
+            /**
+             * Valid Until
+             * Format: date-time
+             */
+            valid_until?: string;
+            /**
+             * Verified At
+             * Format: date-time
+             */
+            verified_at?: string;
+            /**
+             * Verified By
+             * @default system
+             */
+            verified_by: string;
+        };
         /** WarningMeta */
         WarningMeta: {
             /** Code */
@@ -5873,6 +6413,39 @@ export interface operations {
             };
         };
     };
+    start_chat_api_v1_associate_returns_chat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssociateChatTurnRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AssociateConversationView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_conversations_api_v1_associate_returns_conversations_get: {
         parameters: {
             query?: {
@@ -5968,6 +6541,41 @@ export interface operations {
             };
         };
     };
+    continue_chat_api_v1_associate_returns_conversations__conversation_id__chat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssociateChatTurnRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AssociateConversationView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     confirm_discovery_api_v1_associate_returns_conversations__conversation_id__confirm_post: {
         parameters: {
             query?: never;
@@ -6025,6 +6633,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    continue_conversation_api_v1_associate_returns_conversations__conversation_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContinueAssociateConversationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AssociateConversationView_"];
                 };
             };
             /** @description Validation Error */
@@ -7537,6 +8180,39 @@ export interface operations {
             };
         };
     };
+    generate_prompt_proposal_data_console_v1_ai_studio_proposals_from_prompt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIStudioPromptRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AIStudioProposalView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_proposal_data_console_v1_ai_studio_proposals__proposal_id__get: {
         parameters: {
             query?: never;
@@ -7729,6 +8405,322 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_active_snapshot_data_console_v1_configuration_active_snapshot_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+        };
+    };
+    list_releases_data_console_v1_configuration_releases_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_dict_str__Any___"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_release_data_console_v1_configuration_releases_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateReleasePayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_release_detail_data_console_v1_configuration_releases__release_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_domain_config_data_console_v1_configuration_releases__release_id__domains__domain_key__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+                domain_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveDomainPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    promote_release_status_data_console_v1_configuration_releases__release_id__promote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromoteReleasePayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sessions_data_console_v1_copilot_operations_sessions_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_AssociateConversationView__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_session_data_console_v1_copilot_operations_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssociateChatTurnRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AssociateConversationView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_session_data_console_v1_copilot_operations_sessions__conversation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AssociateConversationView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    continue_session_data_console_v1_copilot_operations_sessions__conversation_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssociateChatTurnRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AssociateConversationView_"];
                 };
             };
             /** @description Validation Error */
@@ -8658,6 +9650,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_dict_str__DependencyProbeResult__"];
+                };
+            };
+        };
+    };
+    validate_and_stage_ai_configuration_data_console_v1_runtime_validation_ai_validate_and_stage_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIValidateAndStageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ValidationReceipt_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_and_stage_data_source_data_console_v1_runtime_validation_data_sources_validate_and_stage_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DataSourceValidateAndStageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ValidationReceipt_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_validation_receipts_data_console_v1_runtime_validation_receipts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_ValidationReceipt__"];
                 };
             };
         };

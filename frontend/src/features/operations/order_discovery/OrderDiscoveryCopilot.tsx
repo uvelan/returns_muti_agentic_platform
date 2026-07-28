@@ -23,7 +23,11 @@ export function OrderDiscoveryCopilot({
 
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      if (messages.length > 0) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      } else {
+        scrollRef.current.scrollTop = 0;
+      }
     }
   }, [messages.length, isPending]);
 

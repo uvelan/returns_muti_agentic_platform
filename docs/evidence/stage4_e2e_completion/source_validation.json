@@ -2,12 +2,12 @@
   "stage": "Stage 4 \u2014 HLD Alignment and Data Console Completion",
   "validationLevel": "SOURCE_VALIDATED",
   "environment": {
-    "python": "3.13.5",
-    "platform": "linux",
+    "python": "3.13.14",
+    "platform": "win32",
     "dockerAvailable": false
   },
   "command": "python3.13 scripts/validate_stage4_source.py",
-  "generatedAt": "2026-07-27T13:57:41.491397+00:00",
+  "generatedAt": "2026-07-28T03:58:46.937091+00:00",
   "exitCode": 0,
   "status": "PASSED",
   "checks": [
@@ -149,13 +149,13 @@
       "name": "data_console_services_present",
       "status": "PASS",
       "evidence": [
-        "backend/src/return_platform/data_platform/ai_studio.py",
-        "backend/src/return_platform/data_platform/graph/schema.py",
-        "backend/src/return_platform/data_platform/graph/sync_service.py",
-        "backend/src/return_platform/data_console/api/schema_catalog.py",
-        "backend/src/return_platform/data_console/api/ai_studio.py",
-        "backend/src/return_platform/data_console/api/graph_sync.py",
-        "backend/src/return_platform/data_console/api/feedback_learning.py"
+        "backend\\src\\return_platform\\data_platform\\ai_studio.py",
+        "backend\\src\\return_platform\\data_platform\\graph\\schema.py",
+        "backend\\src\\return_platform\\data_platform\\graph\\sync_service.py",
+        "backend\\src\\return_platform\\data_console\\api\\schema_catalog.py",
+        "backend\\src\\return_platform\\data_console\\api\\ai_studio.py",
+        "backend\\src\\return_platform\\data_console\\api\\graph_sync.py",
+        "backend\\src\\return_platform\\data_console\\api\\feedback_learning.py"
       ]
     },
     {

@@ -11,7 +11,20 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class RegistryModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+WritePolicy = Literal[
+    "DENIED",
+    "DOMAIN_API_ONLY",
+    "SOURCE_ADMIN_WRITER",
+    "DIRECT_OPERATIONAL_INSERT",
+    "DERIVED_PROJECTION",
+]
+GeneratedDataPolicy = Literal["ENABLED", "DISABLED"]
+CollisionPolicy = Literal["REJECT", "GENERATE_NEW_KEYS", "SKIP_EXISTING"]
+PiiPolicy = Literal["STRICT_SYNTHETIC", "NONE"]
+RollbackPolicy = Literal["DELETE", "DOMAIN_COMPENSATE", "NO_ACTION"]
+GraphSyncPolicy = Literal["SYNC_IMMEDIATELY", "BACKGROUND", "NONE"]
 
 
 class SchemaField(RegistryModel):
@@ -30,11 +43,24 @@ class DataAssetSchema(RegistryModel):
     database: str = Field(min_length=1, max_length=128)
     namespace: str | None = Field(default=None, min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=128)
-    ownership: Literal["SOURCE_SYSTEM", "PLATFORM_OWNED", "DERIVED_PROJECTION"]
-    authoritative: bool
-    writable_in_sandbox: bool
+    ownership: Literal["SOURCE_SYSTEM", "PLATFORM_OWNED", "DERIVED_PROJECTION"] | None = None
+    authoritative: bool | None = None
+    writable_in_sandbox: bool | None = None
     description: str = Field(min_length=1, max_length=500)
     fields: tuple[SchemaField, ...] = Field(min_length=1)
+
+    owner: str = Field(min_length=1, max_length=128)
+    authoritative_system: str = Field(min_length=1, max_length=128)
+    write_policy: WritePolicy
+    write_adapter_key: str | None = Field(default=None, max_length=128)
+    generated_data_policy: GeneratedDataPolicy
+    allowed_operations: tuple[str, ...] = Field(default_factory=tuple)
+    dependency_fields: tuple[str, ...] = Field(default_factory=tuple)
+    natural_keys: tuple[str, ...] = Field(default_factory=tuple)
+    collision_policy: CollisionPolicy
+    pii_policy: PiiPolicy
+    rollback_policy: RollbackPolicy
+    graph_sync_policy: GraphSyncPolicy
 
     @model_validator(mode="after")
     def validate_asset(self) -> Self:
@@ -47,6 +73,18 @@ class DataAssetSchema(RegistryModel):
             raise ValueError(f"MongoDB asset {self.asset_id} cannot declare namespace")
         if not any(field.key for field in self.fields):
             raise ValueError(f"Asset {self.asset_id} must declare at least one key field")
+
+        if self.owner == "OMC" and self.write_policy != "DENIED":
+            raise ValueError(f"OMC asset {self.asset_id} must be marked DENIED")
+        if self.owner == "PLATFORM_SYSTEM" and self.write_policy != "DENIED":
+            raise ValueError(f"Protected platform asset {self.asset_id} must be marked DENIED")
+        if self.generated_data_policy == "ENABLED" and not self.write_adapter_key:
+            raise ValueError(f"Asset {self.asset_id} enables generation without an adapter")
+        if self.write_policy == "DERIVED_PROJECTION" and self.allowed_operations:
+            raise ValueError(f"Derived asset {self.asset_id} configured for direct writes")
+        if self.write_policy == "DENIED" and self.allowed_operations:
+            raise ValueError(f"Denied asset {self.asset_id} cannot have allowed operations")
+
         return self
 
 

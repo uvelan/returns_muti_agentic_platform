@@ -94,6 +94,19 @@ assets:
     key: false
     description: Updatedat
     generator: recent_datetime
+  owner: SOURCE
+  authoritative_system: SOURCE_ERP
+  write_policy: SOURCE_ADMIN_WRITER
+  write_adapter_key: source_admin
+  generated_data_policy: ENABLED
+  allowed_operations:
+  - INSERT
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: DELETE
+  graph_sync_policy: SYNC_IMMEDIATELY
 - asset_id: source.mongodb.customer_outbound_cdm
   engine: MONGODB
   database: return_source
@@ -152,6 +165,19 @@ assets:
     key: false
     description: Updatedat
     generator: recent_datetime
+  owner: SOURCE
+  authoritative_system: SOURCE_ERP
+  write_policy: SOURCE_ADMIN_WRITER
+  write_adapter_key: source_admin
+  generated_data_policy: ENABLED
+  allowed_operations:
+  - INSERT
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: DELETE
+  graph_sync_policy: SYNC_IMMEDIATELY
 - asset_id: source.mongodb.shipment_info
   engine: MONGODB
   database: return_source
@@ -197,6 +223,19 @@ assets:
     key: false
     description: Updatedat
     generator: recent_datetime
+  owner: SOURCE
+  authoritative_system: SOURCE_ERP
+  write_policy: SOURCE_ADMIN_WRITER
+  write_adapter_key: source_admin
+  generated_data_policy: ENABLED
+  allowed_operations:
+  - INSERT
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: DELETE
+  graph_sync_policy: SYNC_IMMEDIATELY
 - asset_id: source.mongodb.product_search
   engine: MONGODB
   database: return_source
@@ -248,6 +287,19 @@ assets:
     key: false
     description: Updatedat
     generator: recent_datetime
+  owner: SOURCE
+  authoritative_system: SOURCE_ERP
+  write_policy: SOURCE_ADMIN_WRITER
+  write_adapter_key: source_admin
+  generated_data_policy: ENABLED
+  allowed_operations:
+  - INSERT
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: DELETE
+  graph_sync_policy: SYNC_IMMEDIATELY
 - asset_id: source.mongodb.customers
   engine: MONGODB
   database: return_source
@@ -255,7 +307,8 @@ assets:
   ownership: SOURCE_SYSTEM
   authoritative: true
   writable_in_sandbox: true
-  description: Transitional customer fixtures retained for compatibility with existing sandbox flows.
+  description: Transitional customer fixtures retained for compatibility with existing
+    sandbox flows.
   fields:
   - name: _id
     type: string
@@ -293,6 +346,19 @@ assets:
     key: false
     description: Synthetic seed digest.
     generator: sha256
+  owner: SOURCE
+  authoritative_system: SOURCE_ERP
+  write_policy: SOURCE_ADMIN_WRITER
+  write_adapter_key: source_admin
+  generated_data_policy: ENABLED
+  allowed_operations:
+  - INSERT
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: DELETE
+  graph_sync_policy: SYNC_IMMEDIATELY
 - asset_id: source.mongodb.products
   engine: MONGODB
   database: return_source
@@ -300,7 +366,8 @@ assets:
   ownership: SOURCE_SYSTEM
   authoritative: true
   writable_in_sandbox: true
-  description: Transitional product fixtures retained for compatibility with existing sandbox flows.
+  description: Transitional product fixtures retained for compatibility with existing
+    sandbox flows.
   fields:
   - name: _id
     type: string
@@ -338,6 +405,19 @@ assets:
     key: false
     description: Synthetic seed digest.
     generator: sha256
+  owner: SOURCE
+  authoritative_system: SOURCE_ERP
+  write_policy: SOURCE_ADMIN_WRITER
+  write_adapter_key: source_admin
+  generated_data_policy: ENABLED
+  allowed_operations:
+  - INSERT
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: DELETE
+  graph_sync_policy: SYNC_IMMEDIATELY
 - asset_id: source.mongodb.orders
   engine: MONGODB
   database: return_source
@@ -345,7 +425,8 @@ assets:
   ownership: SOURCE_SYSTEM
   authoritative: true
   writable_in_sandbox: true
-  description: Transitional order fixtures retained as a bounded sandbox fallback; salesInv is primary.
+  description: Transitional order fixtures retained as a bounded sandbox fallback;
+    salesInv is primary.
   fields:
   - name: _id
     type: string
@@ -408,6 +489,19 @@ assets:
     key: false
     description: Synthetic seed digest.
     generator: sha256
+  owner: SOURCE
+  authoritative_system: SOURCE_ERP
+  write_policy: SOURCE_ADMIN_WRITER
+  write_adapter_key: source_admin
+  generated_data_policy: ENABLED
+  allowed_operations:
+  - INSERT
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: DELETE
+  graph_sync_policy: SYNC_IMMEDIATELY
 - asset_id: platform.mongodb.operational_returns
   engine: MONGODB
   database: return_platform
@@ -441,6 +535,19 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DIRECT_OPERATIONAL_INSERT
+  write_adapter_key: direct_operational
+  generated_data_policy: ENABLED
+  allowed_operations:
+  - INSERT
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: DELETE
+  graph_sync_policy: BACKGROUND
 - asset_id: platform.mongodb.operational_events
   engine: MONGODB
   database: return_platform
@@ -474,6 +581,19 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DIRECT_OPERATIONAL_INSERT
+  write_adapter_key: direct_operational
+  generated_data_policy: ENABLED
+  allowed_operations:
+  - INSERT
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: DELETE
+  graph_sync_policy: BACKGROUND
 - asset_id: platform.mongodb.support_cases
   engine: MONGODB
   database: return_platform
@@ -507,6 +627,19 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DOMAIN_API_ONLY
+  write_adapter_key: domain_api
+  generated_data_policy: ENABLED
+  allowed_operations:
+  - INSERT
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: DOMAIN_COMPENSATE
+  graph_sync_policy: BACKGROUND
 - asset_id: platform.mongodb.ai_gateway_traces
   engine: MONGODB
   database: return_platform
@@ -540,6 +673,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.ai_gateway_settings
   engine: MONGODB
   database: return_platform
@@ -573,6 +718,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.ai_gateway_rate_limits
   engine: MONGODB
   database: return_platform
@@ -606,6 +763,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.worker_heartbeats
   engine: MONGODB
   database: return_platform
@@ -639,6 +808,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.seed_metadata
   engine: MONGODB
   database: return_platform
@@ -672,6 +853,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.workspaces
   engine: MONGODB
   database: return_platform
@@ -705,6 +898,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.sandbox_records
   engine: MONGODB
   database: return_platform
@@ -738,6 +943,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.jobs
   engine: MONGODB
   database: return_platform
@@ -771,6 +988,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.job_commands
   engine: MONGODB
   database: return_platform
@@ -804,6 +1033,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.job_artifacts
   engine: MONGODB
   database: return_platform
@@ -837,6 +1078,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.scenarios
   engine: MONGODB
   database: return_platform
@@ -870,6 +1123,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.scenario_records
   engine: MONGODB
   database: return_platform
@@ -903,6 +1168,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.audit
   engine: MONGODB
   database: return_platform
@@ -936,6 +1213,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.graph_evidence_runs
   engine: MONGODB
   database: return_platform
@@ -969,6 +1258,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DERIVED_PROJECTION
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.associate_conversations
   engine: MONGODB
   database: return_platform
@@ -1002,6 +1303,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.discovery_locks
   engine: MONGODB
   database: return_platform
@@ -1035,6 +1348,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.ai_studio_proposals
   engine: MONGODB
   database: return_platform
@@ -1068,6 +1393,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.graph_sync_runs
   engine: MONGODB
   database: return_platform
@@ -1101,6 +1438,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DERIVED_PROJECTION
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.feedback_learning_records
   engine: MONGODB
   database: return_platform
@@ -1188,6 +1537,18 @@ assets:
     key: false
     description: Human review state for feedback recommendations.
     generator: review_status
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.return_sessions
   engine: MONGODB
   database: return_platform
@@ -1195,7 +1556,8 @@ assets:
   ownership: PLATFORM_OWNED
   authoritative: true
   writable_in_sandbox: false
-  description: Transactional Temporal workflow aggregate and immutable stage-context bindings.
+  description: Transactional Temporal workflow aggregate and immutable stage-context
+    bindings.
   fields:
   - name: _id
     type: string
@@ -1240,6 +1602,19 @@ assets:
     key: false
     description: Canonical aggregate digest.
     generator: sha256
+  owner: PLATFORM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DOMAIN_API_ONLY
+  write_adapter_key: domain_api
+  generated_data_policy: ENABLED
+  allowed_operations:
+  - INSERT
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: DOMAIN_COMPENSATE
+  graph_sync_policy: BACKGROUND
 - asset_id: platform.mongodb.return_session_audit_events
   engine: MONGODB
   database: return_platform
@@ -1322,6 +1697,18 @@ assets:
     description: Bound evidence references.
     generator: evidence_references
     items: string
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.return_session_outbox_events
   engine: MONGODB
   database: return_platform
@@ -1397,6 +1784,18 @@ assets:
     key: false
     description: UTC publication timestamp.
     generator: 'null'
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.return_session_agent_decisions
   engine: MONGODB
   database: return_platform
@@ -1497,6 +1896,18 @@ assets:
     key: false
     description: Optional reviewer identity.
     generator: 'null'
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: source.sql.return_requests
   engine: SQLSERVER
   database: return_platform
@@ -1573,6 +1984,18 @@ assets:
     description: Updated At
     generator: recent_datetime
   namespace: dbo
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: source.sql.return_items
   engine: SQLSERVER
   database: return_platform
@@ -1637,6 +2060,18 @@ assets:
     description: Created At
     generator: recent_datetime
   namespace: dbo
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: source.sql.return_fulfillment
   engine: SQLSERVER
   database: return_platform
@@ -1701,6 +2136,18 @@ assets:
     description: Updated At
     generator: recent_datetime
   namespace: dbo
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: source.sql.return_tracking
   engine: SQLSERVER
   database: return_platform
@@ -1753,6 +2200,18 @@ assets:
     description: Event At
     generator: recent_datetime
   namespace: dbo
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.sql.return_support_ticket
   engine: SQLSERVER
   database: return_platform
@@ -1817,6 +2276,19 @@ assets:
     description: Updated At
     generator: recent_datetime
   namespace: integration
+  owner: PLATFORM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DOMAIN_API_ONLY
+  write_adapter_key: domain_api
+  generated_data_policy: ENABLED
+  allowed_operations:
+  - INSERT
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: DOMAIN_COMPENSATE
+  graph_sync_policy: BACKGROUND
 - asset_id: platform.sql.bay_configuration
   engine: SQLSERVER
   database: return_platform
@@ -1935,6 +2407,19 @@ assets:
     description: Updated At
     generator: recent_datetime
   namespace: platform
+  owner: PLATFORM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DIRECT_OPERATIONAL_INSERT
+  write_adapter_key: direct_operational
+  generated_data_policy: ENABLED
+  allowed_operations:
+  - INSERT
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: DELETE
+  graph_sync_policy: BACKGROUND
 - asset_id: platform.sql.bay_assignment
   engine: SQLSERVER
   database: return_platform
@@ -2065,6 +2550,19 @@ assets:
     description: Updated At
     generator: recent_datetime
   namespace: platform
+  owner: PLATFORM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DIRECT_OPERATIONAL_INSERT
+  write_adapter_key: direct_operational
+  generated_data_policy: ENABLED
+  allowed_operations:
+  - INSERT
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: DELETE
+  graph_sync_policy: BACKGROUND
 - asset_id: platform.mongodb.associate_messages
   engine: MONGODB
   database: return_platform
@@ -2098,6 +2596,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.discovery_snapshots
   engine: MONGODB
   database: return_platform
@@ -2131,6 +2641,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.return_request_snapshots
   engine: MONGODB
   database: return_platform
@@ -2164,6 +2686,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.operational_return_items
   engine: MONGODB
   database: return_platform
@@ -2197,6 +2731,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.handling_units
   engine: MONGODB
   database: return_platform
@@ -2230,6 +2776,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.pickup_sites
   engine: MONGODB
   database: return_platform
@@ -2263,6 +2821,19 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DOMAIN_API_ONLY
+  write_adapter_key: domain_api
+  generated_data_policy: ENABLED
+  allowed_operations:
+  - INSERT
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: DOMAIN_COMPENSATE
+  graph_sync_policy: BACKGROUND
 - asset_id: platform.mongodb.pickup_requests
   engine: MONGODB
   database: return_platform
@@ -2296,6 +2867,19 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DOMAIN_API_ONLY
+  write_adapter_key: domain_api
+  generated_data_policy: ENABLED
+  allowed_operations:
+  - INSERT
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: DOMAIN_COMPENSATE
+  graph_sync_policy: BACKGROUND
 - asset_id: platform.mongodb.branch_staging_records
   engine: MONGODB
   database: return_platform
@@ -2329,6 +2913,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.document_artifacts
   engine: MONGODB
   database: return_platform
@@ -2362,6 +2958,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.shipping_instructions
   engine: MONGODB
   database: return_platform
@@ -2369,7 +2977,8 @@ assets:
   ownership: PLATFORM_OWNED
   authoritative: true
   writable_in_sandbox: false
-  description: Authoritative-system shipping instruction projections per handling unit.
+  description: Authoritative-system shipping instruction projections per handling
+    unit.
   fields:
   - name: _id
     type: string
@@ -2395,6 +3004,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.shipment_events
   engine: MONGODB
   database: return_platform
@@ -2428,6 +3049,19 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DOMAIN_API_ONLY
+  write_adapter_key: domain_api
+  generated_data_policy: ENABLED
+  allowed_operations:
+  - INSERT
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: DOMAIN_COMPENSATE
+  graph_sync_policy: BACKGROUND
 - asset_id: platform.mongodb.omc_command_records
   engine: MONGODB
   database: return_platform
@@ -2435,7 +3069,8 @@ assets:
   ownership: PLATFORM_OWNED
   authoritative: true
   writable_in_sandbox: false
-  description: Idempotency, dispatch, and authoritative readback evidence for OMC commands.
+  description: Idempotency, dispatch, and authoritative readback evidence for OMC
+    commands.
   fields:
   - name: _id
     type: string
@@ -2461,6 +3096,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: OMC
+  authoritative_system: OMC
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.agent_decisions
   engine: MONGODB
   database: return_platform
@@ -2494,6 +3141,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.vendor_return_links
   engine: MONGODB
   database: return_platform
@@ -2527,6 +3186,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.integration_outbox
   engine: MONGODB
   database: return_platform
@@ -2534,7 +3205,8 @@ assets:
   ownership: PLATFORM_OWNED
   authoritative: false
   writable_in_sandbox: false
-  description: Lease-based transactional outbox for ticket, OMC, carrier, and notification commands.
+  description: Lease-based transactional outbox for ticket, OMC, carrier, and notification
+    commands.
   fields:
   - name: _id
     type: string
@@ -2560,6 +3232,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.support_work_items
   engine: MONGODB
   database: return_platform
@@ -2593,6 +3277,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.support_messages
   engine: MONGODB
   database: return_platform
@@ -2626,6 +3322,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.schema_migrations
   engine: MONGODB
   database: return_platform
@@ -2659,6 +3367,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.sql.bay_reservation
   engine: SQLSERVER
   database: return_platform
@@ -2741,6 +3461,19 @@ assets:
     description: Row Version
     generator: zero
   namespace: platform
+  owner: PLATFORM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DIRECT_OPERATIONAL_INSERT
+  write_adapter_key: direct_operational
+  generated_data_policy: ENABLED
+  allowed_operations:
+  - INSERT
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: DELETE
+  graph_sync_policy: BACKGROUND
 - asset_id: platform.sql.return_policy_version
   engine: SQLSERVER
   database: return_platform
@@ -2787,6 +3520,18 @@ assets:
     description: Created By
     generator: associate_reference
   namespace: platform
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 - asset_id: platform.mongodb.return_configuration_snapshots
   engine: MONGODB
   database: return_platform
@@ -2820,6 +3565,18 @@ assets:
     key: false
     description: Version
     generator: zero
+  owner: PLATFORM_SYSTEM
+  authoritative_system: RETURNS_PLATFORM
+  write_policy: DENIED
+  write_adapter_key: null
+  generated_data_policy: DISABLED
+  allowed_operations: []
+  dependency_fields: []
+  natural_keys: []
+  collision_policy: REJECT
+  pii_policy: NONE
+  rollback_policy: NO_ACTION
+  graph_sync_policy: NONE
 graph:
   nodes:
   - label: Customer

@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import ts from "/opt/nvm/versions/node/v22.16.0/lib/node_modules/typescript/lib/typescript.js";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+const ts = require("../frontend/node_modules/typescript/lib/typescript.js");
 
 const root = path.resolve("frontend/src");
 const failures = [];

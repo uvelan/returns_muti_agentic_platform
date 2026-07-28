@@ -71,6 +71,8 @@ def _frontend_engine(asset: DataAssetSchema) -> str:
 
 
 def _ownership(asset: DataAssetSchema) -> str:
+    if not asset.ownership:
+        return "INTERNAL"
     return {
         "SOURCE_SYSTEM": "AUTHORITATIVE",
         "PLATFORM_OWNED": "INTERNAL",

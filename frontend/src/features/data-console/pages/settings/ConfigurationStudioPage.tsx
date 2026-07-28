@@ -54,7 +54,7 @@ export function ConfigurationStudioPage() {
       { releaseId: newReleaseId.trim(), fromActive: true },
       {
         onSuccess: (newRel) => {
-          setSelectedReleaseId(newRel.release_id);
+          if (newRel) setSelectedReleaseId(newRel.release_id);
           setNewReleaseId("");
           setIsCreating(false);
         },

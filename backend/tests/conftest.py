@@ -111,6 +111,7 @@ def test_settings(
         sqlserver_user="sa",
         sqlserver_password=SecretStr(_required_environment_variable("MSSQL_SA_PASSWORD")),
         sqlserver_database="test_db",
+        vault_token_file=REPOSITORY_ROOT / ".vault-local/return-platform.token",
     )
 
 

@@ -17,7 +17,7 @@ def main() -> int:
     if not path.is_file():
         raise SystemExit(".env is missing; run scripts/bootstrap_host.sh first")
     lines = path.read_text(encoding="utf-8").splitlines()
-    generated = secrets.token_urlsafe(48)
+    generated = secrets.token_hex(48)
     replaced = False
     found = False
     output: list[str] = []
