@@ -1,4 +1,4 @@
-import { apiClient } from "./client";
+import { APIError, apiClient } from "./client";
 import type {
   AnchorType,
   AssociateConversation,
@@ -75,15 +75,52 @@ export async function confirmAssociateDiscovery(payload: {
   expectedVersion: number;
   candidateSetId?: string | null;
 }): Promise<AssociateConversation> {
-  return requireData((await apiClient<AssociateConversation>(
-    `/api/v1/associate-returns/conversations/${encodeURIComponent(payload.conversationId)}/confirm`,
-    jsonInit({
-      candidateIndex: payload.candidateIndex,
-      orderLineId: payload.orderLineId,
-      expectedVersion: payload.expectedVersion,
+  const submit = async (
+    conversation: Pick<AssociateConversation, "version" | "candidateSetId">,
+    candidateIndex: number,
+  ): Promise<AssociateConversation> => requireData((
+    await apiClient<AssociateConversation>(
+      `/api/v1/associate-returns/conversations/${encodeURIComponent(payload.conversationId)}/confirm`,
+      jsonInit({
+        candidateIndex,
+        orderLineId: payload.orderLineId,
+        expectedVersion: conversation.version,
+        candidateSetId: conversation.candidateSetId ?? null,
+      }),
+    )
+  ).data);
+
+  try {
+    return await submit({
+      version: payload.expectedVersion,
       candidateSetId: payload.candidateSetId ?? null,
-    }),
-  )).data);
+    }, payload.candidateIndex);
+  } catch (error) {
+    if (
+      !(error instanceof APIError)
+      || error.status !== 409
+      || error.message !== "Conversation version conflict"
+    ) {
+      throw error;
+    }
+
+    const latest = await getAssociateConversation(payload.conversationId);
+    if (latest.discoveryLock !== null) {
+      return latest;
+    }
+    if (latest.candidateSetId !== (payload.candidateSetId ?? null)) {
+      throw error;
+    }
+
+    const latestCandidateIndex = latest.candidates.findIndex((candidate) => (
+      candidate.lines.some((line) => line.orderLineId === payload.orderLineId)
+    ));
+    if (latestCandidateIndex < 0) {
+      throw error;
+    }
+
+    return submit(latest, latestCandidateIndex);
+  }
 }
 
 export async function continueAssociateConversation(payload: {

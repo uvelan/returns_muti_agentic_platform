@@ -2,7 +2,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { FIXTURE_ASSOCIATE_CONVERSATIONS } from "../../../fixtures/associateReturns";
-import { OrderContextPanel, parseApiUtcTimestamp } from "./OrderContextPanel";
+import { OrderContextPanel } from "./OrderContextPanel";
+import { parseApiUtcTimestamp } from "./timestamps";
 
 describe("OrderContextPanel progressive clarification", () => {
   it("treats timezone-less API timestamps as UTC", () => {

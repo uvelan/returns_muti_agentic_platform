@@ -2,10 +2,15 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
+
 from return_platform.configuration.return_configuration import load_return_configuration
 from return_platform.operations.associate_flow import (
     AnchorType,
     AssociateConversationService,
+    AssociateConversationView,
+    ConfirmDiscoveryRequest,
+    DiscoveryLock,
     OrderCandidate,
     OrderLineCandidate,
     _is_expired,
@@ -118,3 +123,46 @@ def test_mongodb_datetimes_are_serialized_as_utc() -> None:
     assert normalized is not None
     assert normalized.tzinfo is UTC
     assert normalized.isoformat() == "2026-07-28T10:53:16+00:00"
+
+
+@pytest.mark.asyncio
+async def test_confirm_is_idempotent_after_conversation_version_advances() -> None:
+    now = datetime.now(UTC)
+    conversation = AssociateConversationView(
+        id="conversation-1",
+        status="DETAILS_REQUIRED",
+        anchorType=AnchorType.CUSTOMER_NAME,
+        anchorValueMasked="Maya",
+        messages=[],
+        candidates=[],
+        discoveryLock=DiscoveryLock(
+            customerReference="CUST-1",
+            orderReference="ORD-1",
+            orderLineId="ORD-1:LINE:1",
+            productId="PRODUCT-1",
+            lockDigest="0" * 64,
+            confirmedBy="associate-1",
+            confirmedAt=now,
+        ),
+        version=6,
+        createdAt=now,
+        updatedAt=now,
+    )
+    instance = service()
+
+    async def get_conversation(_conversation_id: str) -> AssociateConversationView:
+        return conversation
+
+    instance.get = get_conversation
+
+    result = await instance.confirm(
+        conversation.id,
+        ConfirmDiscoveryRequest(
+            candidateIndex=0,
+            orderLineId="ORD-1:LINE:1",
+            expectedVersion=5,
+        ),
+        actor_id="associate-1",
+    )
+
+    assert result is conversation

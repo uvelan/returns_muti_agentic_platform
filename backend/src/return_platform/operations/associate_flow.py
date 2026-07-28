@@ -1841,10 +1841,10 @@ class AssociateConversationService:
         conversation = await self.get(conversation_id)
         if conversation is None:
             raise KeyError(conversation_id)
-        if conversation.version != payload.expectedVersion:
-            raise RuntimeError("Conversation version conflict")
         if conversation.discoveryLock is not None:
             return conversation
+        if conversation.version != payload.expectedVersion:
+            raise RuntimeError("Conversation version conflict")
         if _is_expired(conversation.candidateSetExpiresAt):
             raise RuntimeError("Candidate set expired; restart order discovery")
         if (

@@ -3,6 +3,7 @@ import { CheckCircle2, Loader2, LockKeyhole, Send, ShieldCheck } from "lucide-re
 import type { AssociateConversation } from "../../../contracts/associateReturns";
 import { formatBadgeLabel, inputClass, primaryButton } from "../shared";
 import { CandidateList } from "./CandidateList";
+import { parseApiUtcTimestamp } from "./timestamps";
 
 const reasonCodes = [
   "DAMAGED",
@@ -24,11 +25,6 @@ const shippingPaths = [
 ] as const;
 
 type ShippingPath = (typeof shippingPaths)[number]["value"];
-
-export function parseApiUtcTimestamp(value: string): number {
-  const includesTimezone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(value);
-  return new Date(includesTimezone ? value : `${value}Z`).getTime();
-}
 
 export type OrderContextPanelProps = {
   readonly conversation: AssociateConversation | null;
