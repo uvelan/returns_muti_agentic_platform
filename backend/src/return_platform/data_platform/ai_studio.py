@@ -19,6 +19,9 @@ from pymongo import AsyncMongoClient, ReplaceOne, ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from return_platform.configuration.settings import Settings
+from return_platform.data_platform.operational_generation.deterministic_values import (
+    get_synthetic_name,
+)
 from return_platform.data_platform.schema_registry import DataAssetSchema, SchemaRegistry
 
 _SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -249,7 +252,7 @@ def _canonical_digest(records: dict[str, list[dict[str, Any]]]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _scenario_context(index: int, rng: random.Random) -> ScenarioContext:
+def _scenario_context(index: int, rng: random.Random, *, seed: int) -> ScenarioContext:
     suffix = f"{rng.randrange(100000, 999999)}{index:03d}"
     customer = f"CUST-{suffix}"
     order = f"SO-{suffix}"
@@ -259,7 +262,7 @@ def _scenario_context(index: int, rng: random.Random) -> ScenarioContext:
     return ScenarioContext(
         index=index,
         customer_reference=customer,
-        customer_name=f"Sandbox Customer {index + 1}",
+        customer_name=get_synthetic_name(index, seed=seed),
         party_id=f"PTY-{suffix}",
         phone=f"+1-555-{rng.randrange(100, 999)}-{rng.randrange(1000, 9999)}",
         email=f"sandbox.customer.{suffix}@example.invalid",
@@ -308,7 +311,7 @@ def _bulk_order_context(
     return ScenarioContext(
         index=(customer_index * 100_000) + order_index,
         customer_reference=customer,
-        customer_name=f"Sandbox Customer {customer_index + 1}",
+        customer_name=get_synthetic_name(customer_index, seed=seed),
         party_id=f"PTY-{customer_suffix}",
         phone=(f"+1-555-{customer_rng.randrange(100, 999)}-{customer_rng.randrange(1000, 9999)}"),
         email=f"sandbox.customer.{customer_suffix}@example.invalid",
@@ -618,7 +621,10 @@ class AIStudioService:
             raise ValueError("AI-assisted synthetic data generation is disabled in production")
         assets = [self._registry.asset(asset_id) for asset_id in request.assetIds]
         rng = random.Random(request.seed)
-        contexts = [_scenario_context(index, rng) for index in range(request.recordsPerAsset)]
+        contexts = [
+            _scenario_context(index, rng, seed=request.seed)
+            for index in range(request.recordsPerAsset)
+        ]
         records = {
             asset.asset_id: [generate_asset_record(asset, context, rng) for context in contexts]
             for asset in assets

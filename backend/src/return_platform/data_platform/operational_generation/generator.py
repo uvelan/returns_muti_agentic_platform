@@ -114,9 +114,13 @@ class OperationalGenerator:
                         elif field.name == "phoneNumber":
                             values[field.name] = get_synthetic_phone(record_rng)
                         elif field.name == "customerName":
-                            values[field.name] = get_synthetic_name(i)
+                            values[field.name] = get_synthetic_name(
+                                i, seed=request.deterministic_seed
+                            )
                         elif field.generator == "person_name":
-                            values[field.name] = get_synthetic_name(i)
+                            values[field.name] = get_synthetic_name(
+                                i, seed=request.deterministic_seed
+                            )
                         elif "date" in field.name.lower() or "time" in field.name.lower():
                             # Note: datetime fields should be handled by 'datetime' type, but string dates exist
                             dt = generate_stable_date(

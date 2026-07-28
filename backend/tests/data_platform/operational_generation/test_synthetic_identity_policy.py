@@ -11,6 +11,9 @@ from return_platform.data_platform.operational_generation import (
     OperationalGenerator,
     ScenarioType,
 )
+from return_platform.data_platform.operational_generation.deterministic_values import (
+    get_synthetic_name,
+)
 from return_platform.data_platform.schema_registry import SchemaRegistry, load_schema_registry
 
 
@@ -87,3 +90,14 @@ async def test_synthetic_phone_policy(
     proposal = await generator.generate_proposal(req)
     phone = proposal.records[0].values.get("phoneNumber")
     assert isinstance(phone, str) and phone.startswith("555-01")
+
+
+def test_synthetic_names_are_realistic_safe_and_deterministic() -> None:
+    name = get_synthetic_name(2, seed=20260728)
+
+    assert name == get_synthetic_name(2, seed=20260728)
+    assert len(name.split()) == 2
+    assert "Synthetic" not in name
+    assert "Sandbox" not in name
+    assert "Customer" not in name
+    assert name != get_synthetic_name(2, seed=20260729)

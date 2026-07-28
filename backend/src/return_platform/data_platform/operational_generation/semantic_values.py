@@ -2,6 +2,8 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel
 
+from .deterministic_values import get_synthetic_name
+
 
 class SemanticValueRequest(BaseModel):
     allowed_fields: tuple[str, ...]
@@ -23,7 +25,7 @@ def get_deterministic_semantic_fallback(
     asset_id: str, field_name: str, seed: int, record_index: int
 ) -> str:
     if field_name == "customerName" or "name" in field_name.lower():
-        return f"Synthetic Customer {seed}-{record_index}"
+        return get_synthetic_name(record_index, seed=seed)
     if (
         field_name == "productDescription"
         or "description" in field_name.lower()

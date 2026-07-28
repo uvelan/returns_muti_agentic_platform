@@ -25,6 +25,8 @@ def test_bulk_order_context_keeps_customer_identity_across_orders() -> None:
     second = _bulk_order_context(7, 99, seed=20260727)
     assert first.customer_reference == second.customer_reference
     assert first.customer_name == second.customer_name
+    assert "Sandbox Customer" not in first.customer_name
+    assert len(first.customer_name.split()) == 2
     assert first.order_reference != second.order_reference
     assert first.product_reference != second.product_reference
 
