@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any, Final, cast
 
 from fastapi import HTTPException, Request
-from pymongo import ASCENDING, DESCENDING, AsyncMongoClient, ReturnDocument
+from pymongo import ASCENDING, DESCENDING, AsyncMongoClient, ReplaceOne, ReturnDocument
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from return_platform.ai_gateway.models import AIUsageAttemptView, AIUsageSummaryView
@@ -28,13 +28,14 @@ from return_platform.operations.models import (
     utc_now,
 )
 from return_platform.operations.seed_manifest import (
-    SEED_CUSTOMERS,
-    SEED_PRODUCTS,
+    SEED_PROFILE,
+    SEED_RUN_ID,
     SEED_SCENARIOS,
     manifest_digest,
     materialize_domain_seed,
     materialize_seed,
     scenario_counts,
+    seed_counts,
 )
 from return_platform.resources import RuntimeResources
 
@@ -1852,17 +1853,26 @@ class OperationalRepository:
             "completedReturns": await self.returns.count_documents(
                 {"status": ReturnStatus.COMPLETED.value}
             ),
+            "seededReturns": await self.returns.count_documents(
+                {"seedProfile": SEED_PROFILE, "seedVersion": seed_version}
+            ),
             "supportCases": await self.support_cases.count_documents({}),
+            "seededSupportCases": await self.support_cases.count_documents(
+                {"seedProfile": SEED_PROFILE, "seedVersion": seed_version}
+            ),
             "aiTraces": await self.ai_traces.count_documents({}),
         }
+        generated_counts = seed_counts()
         expected_counts = {
-            "seededCustomers": len(SEED_CUSTOMERS),
-            "seededOrders": len(SEED_SCENARIOS),
-            "seededProducts": len(SEED_PRODUCTS),
-            "salesInv": len(SEED_SCENARIOS),
-            "customerOutboundCDM": len(SEED_CUSTOMERS),
-            "shipmentInfo": len(SEED_SCENARIOS),
-            "lkpSearchProduct": len(SEED_PRODUCTS),
+            "seededCustomers": generated_counts["customers"],
+            "seededOrders": generated_counts["orders"],
+            "seededProducts": generated_counts["products"],
+            "salesInv": generated_counts["orders"],
+            "customerOutboundCDM": generated_counts["customers"],
+            "shipmentInfo": generated_counts["shipments"],
+            "lkpSearchProduct": generated_counts["products"],
+            "seededReturns": 0,
+            "seededSupportCases": 0,
         }
         errors = [
             f"{name} expected {expected}, found {counts[name]}."
@@ -1903,105 +1913,14 @@ class OperationalRepository:
             (self._source_db[SOURCE_ORDERS], orders),
             *((self._source_db[name], records) for name, records in domain_records.items()),
         ):
-            for document in documents:
-                await collection.replace_one({"_id": document["_id"]}, document, upsert=True)
+            if not documents:
+                continue
+            operations = [
+                ReplaceOne({"_id": document["_id"]}, document, upsert=True)
+                for document in documents
+            ]
+            await collection.bulk_write(operations, ordered=False)
 
-        completed_session_id = str(
-            uuid.uuid5(uuid.NAMESPACE_URL, f"{seed_version}:completed-return")
-        )
-        completed_created_at = now - timedelta(hours=2)
-        completed_return: dict[str, Any] = {
-            "_id": completed_session_id,
-            "correlationId": str(
-                uuid.uuid5(uuid.NAMESPACE_URL, f"{seed_version}:completed-correlation")
-            ),
-            "workflowId": f"seed-completed-{completed_session_id}",
-            "workflowMode": "PRODUCTION_V2",
-            "customerReference": "CUST-1001",
-            "orderReference": "ORD-10001",
-            "itemReferences": ["ORD-10001:LINE:1"],
-            "productReferences": ["SKU-100"],
-            "processingWarehouseReference": "WH-CHENNAI-01",
-            "productType": "STANDARD",
-            "reasonCode": "DAMAGED",
-            "returnQuantity": 1,
-            "packageCount": 1,
-            "shippingPathExpectation": "PPL",
-            "orderSource": "OMC",
-            "sourceWebOrderNumber": None,
-            "trilogieOrderNumber": "ORD-10001",
-            "productPresence": "PRESENT_AT_BRANCH",
-            "branchReference": "BR-DEMO-01",
-            "associateReference": "seed-runner",
-            "pickupAssessment": None,
-            "assumptionSetVersion": "FERGUSON-RETURN-ASSUMPTIONS-1.0",
-            "productionWorkflowVersion": "return-platform-production-return-v2",
-            "returnRequestSnapshotId": f"SEED:{seed_version}:COMPLETED",
-            "notes": "Completed seed scenario for UI and workflow-status demonstrations.",
-            "channel": "SYSTEM",
-            "status": ReturnStatus.COMPLETED.value,
-            "currentStage": "COMPLETE",
-            "progressPercentage": 100,
-            "eligibilityDecision": "APPROVE",
-            "returnReference": "RMA-SEED-COMPLETED-001",
-            "supportTicketReference": "SUPPORT-SEED-COMPLETED-001",
-            "supportWorkItemId": "WORK-SEED-COMPLETED-001",
-            "supportStatus": "RESOLVED",
-            "omcReturnVersion": "v1",
-            "approvedReturnMethod": "PPL",
-            "shippingInstructionReference": "LABEL-SEED-COMPLETED-001",
-            "customerResolutionStatus": "REFUND_COMPLETED",
-            "physicalReturnStatus": "RECEIVED",
-            "warehouseStatus": "COMPLETED",
-            "vendorRecoveryStatus": "NOT_REQUIRED",
-            "caseClosureStatus": "CLOSED",
-            "trackingReference": "1ZSEEDCOMPLETED001",
-            "bayReference": "BAY-PPL-01",
-            "feedbackReference": "FEEDBACK-SEED-COMPLETED-001",
-            "supportCaseId": None,
-            "aiRequestId": None,
-            "failureCode": None,
-            "failureMessage": None,
-            "version": 1,
-            "lastEventSequence": 0,
-            "orchestrationState": "COMPLETED",
-            "orchestrationOwner": None,
-            "orchestrationLeaseUntil": None,
-            "idempotencyKey": f"{seed_version}-completed-return",
-            "seedVersion": seed_version,
-            "seedDigest": digest,
-            "createdBy": actor_id,
-            "createdAt": completed_created_at,
-            "updatedAt": now,
-        }
-        await self.events.delete_many({"streamId": completed_session_id})
-        await self.returns.replace_one(
-            {"_id": completed_session_id},
-            completed_return,
-            upsert=True,
-        )
-        for event_type, payload in (
-            (
-                "RETURN_REQUEST_ACCEPTED",
-                {"orderReference": "ORD-10001", "reasonCode": "DAMAGED"},
-            ),
-            (
-                "RETURN_APPROVED",
-                {"decision": "APPROVE", "returnReference": "RMA-SEED-COMPLETED-001"},
-            ),
-            (
-                "RETURN_COMPLETED",
-                {"trackingReference": "1ZSEEDCOMPLETED001", "outcome": "RECEIVED"},
-            ),
-        ):
-            await self.append_event(
-                completed_session_id,
-                event_type=event_type,
-                actor_type="SYSTEM",
-                actor_id=actor_id,
-                payload=payload,
-                deduplication_key=f"{seed_version}:{event_type}",
-            )
         await self._source_db["salesInv"].create_index(
             "salesHdrEventData.orderId", unique=True, name="sales_order_number_unique"
         )
@@ -2034,37 +1953,39 @@ class OperationalRepository:
             {"_id": seed_version},
             {
                 "_id": seed_version,
+                "profile": SEED_PROFILE,
+                "seedRunId": SEED_RUN_ID,
                 "digest": digest,
                 "appliedAt": now,
                 "appliedBy": actor_id,
                 "scenarioCounts": scenario_counts(),
+                "counts": seed_counts(),
             },
             upsert=True,
         )
         return await self.seed_status()
 
     async def reset_demo_data(self) -> None:
+        """Remove only this seed profile and preserve unrelated operational state."""
         seed_version = self._settings.seed_version
-        source_cleanup = {"seedVersion": seed_version}
+        order_references = [str(item["orderReference"]) for item in SEED_SCENARIOS]
+        linked_returns = await self.returns.count_documents(
+            {"orderReference": {"$in": order_references}}
+        )
+        if linked_returns:
+            raise RuntimeError(
+                "Seed reset is blocked because generated orders have linked return activity."
+            )
+        source_cleanup = {
+            "seedProfile": SEED_PROFILE,
+            "seedVersion": seed_version,
+        }
         await self._source_db[SOURCE_CUSTOMERS].delete_many(source_cleanup)
         await self._source_db[SOURCE_PRODUCTS].delete_many(source_cleanup)
         await self._source_db[SOURCE_ORDERS].delete_many(source_cleanup)
         for collection_name in DOMAIN_SOURCE_COLLECTIONS:
             await self._source_db[collection_name].delete_many(source_cleanup)
-        await self.seed_metadata.delete_many({"_id": seed_version})
-        await self.returns.delete_many({})
-        await self.events.delete_many({})
-        await self.support_cases.delete_many({})
-        await self.ai_traces.delete_many({})
-        await self.ai_rate_limits.delete_many({})
-        await self.worker_heartbeats.delete_many({})
-        await self._db["return_sessions"].delete_many({})
-        await self._db["return_session_audit_events"].delete_many({})
-        await self._db["return_session_outbox_events"].delete_many({})
-        await self._db["return_session_agent_decisions"].delete_many({})
-        await self._db["associate_conversations"].delete_many({})
-        await self._db["discovery_locks"].delete_many({})
-        await self._db["feedback_learning_records"].delete_many({})
+        await self.seed_metadata.delete_many({"_id": seed_version, "profile": SEED_PROFILE})
 
 
 def resolve_operational_repository(request: Request) -> OperationalRepository:

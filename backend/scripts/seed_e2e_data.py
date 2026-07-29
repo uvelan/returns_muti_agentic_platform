@@ -13,10 +13,15 @@ from return_platform.data_platform.schema_registry import load_schema_registry
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.seed_coordinator import SeedCoordinator
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
+from return_platform.secrets.runtime import resolve_runtime_settings_from_vault
 
 
 async def _run() -> None:
-    settings = Settings()  # type: ignore[call-arg]
+    configured_settings = Settings()  # type: ignore[call-arg]
+    settings, _secret_resolver = await resolve_runtime_settings_from_vault(
+        configured_settings,
+        resolve_ai_credentials=False,
+    )
     platform_dsn = settings.mongo_dsn.get_secret_value()
     source_dsn = (
         settings.source_mongo_dsn.get_secret_value()

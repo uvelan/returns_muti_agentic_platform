@@ -204,7 +204,13 @@ class GraphSyncService:
         document = await self._runs.find_one({"_id": run_id})
         return self._view(document) if document else None
 
-    async def sync(self, request: GraphSyncRequest, *, actor_id: str) -> GraphSyncRunView:
+    async def sync(
+        self,
+        request: GraphSyncRequest,
+        *,
+        actor_id: str,
+        source_filter: Mapping[str, object] | None = None,
+    ) -> GraphSyncRunView:
         limit = min(request.maxRecordsPerAsset, self._settings.graph_sync_max_records)
         run_id = str(uuid.uuid4())
         now = _now()
@@ -230,7 +236,11 @@ class GraphSyncService:
             node_writes = 0
             relationship_writes = 0
             if request.mode in {"FULL", "SOURCE_MONGODB"}:
-                counts, nodes, relationships = await self._sync_mongodb(run_id, limit)
+                counts, nodes, relationships = await self._sync_mongodb(
+                    run_id,
+                    limit,
+                    source_filter,
+                )
                 source_counts.update(counts)
                 node_writes += nodes
                 relationship_writes += relationships
@@ -272,14 +282,20 @@ class GraphSyncService:
                 result = await session.run(query, rows=rows[offset : offset + batch_size])
                 await result.consume()
 
-    async def _sync_mongodb(self, run_id: str, limit: int) -> tuple[dict[str, int], int, int]:
+    async def _sync_mongodb(
+        self,
+        run_id: str,
+        limit: int,
+        source_filter: Mapping[str, object] | None = None,
+    ) -> tuple[dict[str, int], int, int]:
         now = _now().isoformat()
+        query = dict(source_filter or {})
         counts: dict[str, int] = {}
         node_writes = 0
         relationship_writes = 0
 
         customer_documents = (
-            await self._source_db["customerOutboundCDM"].find({}).limit(limit).to_list()
+            await self._source_db["customerOutboundCDM"].find(query).limit(limit).to_list()
         )
         counts["customerOutboundCDM"] = len(customer_documents)
         customers: list[dict[str, Any]] = []
@@ -360,7 +376,7 @@ class GraphSyncService:
         node_writes += len(customers) + len(accounts)
         relationship_writes += len(accounts)
 
-        orders_docs = await self._source_db["salesInv"].find({}).limit(limit).to_list()
+        orders_docs = await self._source_db["salesInv"].find(query).limit(limit).to_list()
         counts["salesInv"] = len(orders_docs)
         order_rows: list[dict[str, Any]] = []
         line_rows: list[dict[str, Any]] = []
@@ -453,7 +469,7 @@ class GraphSyncService:
         node_writes += len(order_rows) + (2 * len(line_rows))
         relationship_writes += len(order_rows) + (2 * len(line_rows))
 
-        shipment_docs = await self._source_db["shipmentInfo"].find({}).limit(limit).to_list()
+        shipment_docs = await self._source_db["shipmentInfo"].find(query).limit(limit).to_list()
         counts["shipmentInfo"] = len(shipment_docs)
         shipments = []
         for document in shipment_docs:
@@ -486,7 +502,7 @@ class GraphSyncService:
         node_writes += len(shipments)
         relationship_writes += len(shipments)
 
-        product_docs = await self._source_db["lkpSearchProduct"].find({}).limit(limit).to_list()
+        product_docs = await self._source_db["lkpSearchProduct"].find(query).limit(limit).to_list()
         counts["lkpSearchProduct"] = len(product_docs)
         products = []
         for document in product_docs:

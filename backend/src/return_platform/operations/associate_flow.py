@@ -384,6 +384,160 @@ class AssociateConversationService:
     def _format_anchor_type(self, anchor_type: AnchorType) -> str:
         return anchor_type.value.lower().replace("_", " ")
 
+    @staticmethod
+    def _normalize_customer_name_candidate(value: str) -> str | None:
+        normalized = " ".join(value.strip().split())
+        normalized = re.sub(
+            r"(?i)\b(?:please|pls|thanks|thank\s+you|now)\b[.!?]*$",
+            "",
+            normalized,
+        ).strip()
+        normalized = normalized.strip(" \t\r\n.,;:!?\"'`")
+        normalized = re.sub(
+            r"(?i)^(?:the\s+)?(?:customer|client|account)\s+",
+            "",
+            normalized,
+        ).strip()
+        normalized = re.sub(r"(?i)[\'\u2019]s$", "", normalized).strip()
+
+        if not 2 <= len(normalized) <= 100:
+            return None
+
+        tokens = normalized.split()
+        if not 1 <= len(tokens) <= 6:
+            return None
+
+        blocked_phrases = {
+            "all customers",
+            "last week",
+            "my account",
+            "recent orders",
+            "the customer",
+            "this account",
+            "this customer",
+            "this week",
+            "today",
+            "yesterday",
+        }
+        if normalized.casefold() in blocked_phrases:
+            return None
+
+        blocked_tokens = {
+            "all",
+            "item",
+            "items",
+            "last",
+            "list",
+            "oder",
+            "oders",
+            "order",
+            "orders",
+            "product",
+            "products",
+            "recent",
+            "return",
+            "returns",
+            "today",
+            "week",
+            "yesterday",
+        }
+
+        cleaned_tokens: list[str] = []
+        for token in tokens:
+            cleaned = token.strip(".,")
+            if cleaned == "&":
+                cleaned_tokens.append(cleaned)
+                continue
+
+            parts = re.split(r"[-\'\u2019]", cleaned)
+            if not parts or any(not part or not part.isalpha() for part in parts):
+                return None
+            cleaned_tokens.append(cleaned)
+
+        if all(token.casefold() in blocked_tokens for token in cleaned_tokens):
+            return None
+
+        return " ".join(cleaned_tokens)
+
+    @classmethod
+    def _is_name_like_customer_candidate(
+        cls,
+        value: str,
+        *,
+        explicit_customer: bool,
+    ) -> str | None:
+        candidate = cls._normalize_customer_name_candidate(value)
+        if candidate is None:
+            return None
+
+        if explicit_customer:
+            return candidate
+
+        tokens = [token for token in candidate.split() if token != "&"]
+        if len(tokens) == 1:
+            return candidate
+
+        if tokens and all(token[0].isupper() for token in tokens):
+            return candidate
+
+        return None
+
+    @classmethod
+    def _extract_customer_name_intent(cls, message: str) -> str | None:
+        text = " ".join(message.strip().split())
+        order_word = r"(?:orders?|oders?|ordres?|odrers?)"
+        end = (
+            r"(?=\s*(?:please|pls|thanks|thank\s+you|now)?"
+            r"[.!?]*\s*$)"
+        )
+
+        patterns: tuple[tuple[str, bool], ...] = (
+            (
+                rf"\b{order_word}\b(?:\s+list)?\s+"
+                rf"(?:from|form|frmo|frm)\s+"
+                rf"(?P<name>[^\n,;:!?]{{2,100}}?){end}",
+                False,
+            ),
+            (
+                rf"\b{order_word}\b(?:\s+list)?\s+"
+                rf"(?:for|of|under)\s+(?:the\s+)?"
+                rf"(?:customer|client|account)\s+"
+                rf"(?P<name>[^\n,;:!?]{{2,100}}?){end}",
+                True,
+            ),
+            (
+                rf"\b{order_word}\b(?:\s+list)?\s+"
+                rf"(?:for|of|under)\s+"
+                rf"(?P<name>[^\n,;:!?]{{2,100}}?){end}",
+                False,
+            ),
+            (
+                rf"\b(?:customer|client|account)\s+"
+                rf"(?P<name>[^\n,;:!?]{{2,100}}?)\s+"
+                rf"{order_word}\b",
+                True,
+            ),
+            (
+                rf"\b(?P<name>[^\n,;:!?]{{2,100}}?)"
+                rf"[\'\u2019]s\s+{order_word}\b",
+                True,
+            ),
+        )
+
+        for pattern, explicit_customer in patterns:
+            found = re.search(pattern, text, re.IGNORECASE)
+            if found is None:
+                continue
+
+            candidate = cls._is_name_like_customer_candidate(
+                found.group("name"),
+                explicit_customer=explicit_customer,
+            )
+            if candidate is not None:
+                return candidate
+
+        return None
+
     def _extract_anchor(self, message: str) -> StartAssociateConversationRequest:
         matches: list[tuple[AnchorType, str]] = []
         for extractor in self._return_configuration.discovery.anchor_extractors:
@@ -395,6 +549,7 @@ class AssociateConversationService:
                 if found is not None:
                     matches.append((anchor_type, found.group(0)))
                     break
+
         strong = tuple(
             AnchorType(value)
             for value in self._return_configuration.discovery.strong_anchors
@@ -411,6 +566,7 @@ class AssociateConversationService:
                 )
             )
         }
+
         if matches:
             anchor_type, value = min(
                 matches,
@@ -427,11 +583,103 @@ class AssociateConversationService:
                 anchorType=anchor_type,
                 anchorValue=value,
             )
+
+        customer_name = self._extract_customer_name_intent(message)
+        if customer_name is not None:
+            return StartAssociateConversationRequest(
+                anchorType=AnchorType.CUSTOMER_NAME,
+                anchorValue=customer_name,
+            )
+
         fallback = AnchorType(self._return_configuration.discovery.free_text_fallback_anchor)
         return StartAssociateConversationRequest(
             anchorType=fallback,
             anchorValue=message,
         )
+
+    async def _extract_anchor_with_ai(
+        self,
+        message: str,
+        *,
+        session_id: str | None,
+    ) -> StartAssociateConversationRequest:
+        # Resolve natural-language discovery through the governed AI Gateway.
+        deterministic = self._extract_anchor(message)
+
+        if self._is_greeting(message):
+            return deterministic
+
+        try:
+            evaluation = await self._ai.evaluate(
+                session_id=session_id,
+                redacted_input={
+                    "utterance": message,
+                    "allowedAnchorTypes": [anchor_type.value for anchor_type in AnchorType],
+                },
+                task_id="RETURN_DISCOVERY_INTENT_V1",
+            )
+
+            if evaluation.pending_interception:
+                raise ValueError("AI intent resolution is awaiting interception")
+
+            if evaluation.trace.fallbackUsed:
+                raise ValueError("AI Gateway used deterministic fallback")
+
+            confidence = int(evaluation.trace.confidenceMillionths or 0)
+            if confidence < 500_000:
+                raise ValueError("AI intent confidence is below threshold")
+
+            raw_explanation = (evaluation.trace.explanation or "").strip()
+            decoded = json.loads(raw_explanation)
+            if not isinstance(decoded, dict):
+                raise ValueError("AI intent explanation must decode to an object")
+            if set(decoded) != {"anchorType", "anchorValue"}:
+                raise ValueError("AI intent output contains unexpected fields")
+
+            ai_lookup = StartAssociateConversationRequest.model_validate(decoded)
+
+            compact_value = re.sub(
+                r"[^A-Za-z0-9@._+\-]",
+                "",
+                ai_lookup.anchorValue,
+            )
+            if (
+                ai_lookup.anchorType
+                in {
+                    AnchorType.ORDER_NUMBER,
+                    AnchorType.CUSTOMER_ID,
+                    AnchorType.TRACKING_NUMBER,
+                    AnchorType.SKU,
+                }
+                and len(compact_value) < 3
+            ):
+                raise ValueError("AI returned an identifier fragment that is too short")
+
+            deterministic_extracted = (
+                deterministic.anchorValue.casefold() != message.strip().casefold()
+            )
+            deterministic_priority = self._is_strong_anchor(
+                deterministic.anchorType
+            ) or deterministic.anchorType in {
+                AnchorType.PHONE,
+                AnchorType.EMAIL,
+                AnchorType.SKU,
+            }
+            if deterministic_extracted and deterministic_priority:
+                return deterministic
+
+            return ai_lookup
+
+        except Exception as exc:
+            logger.warning(
+                "discovery_intent_ai_unavailable_using_deterministic_fallback",
+                extra={
+                    "session_id": session_id,
+                    "error_type": type(exc).__name__,
+                    "task_id": "RETURN_DISCOVERY_INTENT_V1",
+                },
+            )
+            return deterministic
 
     def _is_strong_anchor(self, anchor_type: AnchorType) -> bool:
         return anchor_type.value in set(self._return_configuration.discovery.strong_anchors)
@@ -466,9 +714,7 @@ class AssociateConversationService:
                 dict.fromkeys(
                     value
                     for line in candidate.lines
-                    if (
-                        value := " ".join((line.productDescription or "").split()).strip()
-                    )
+                    if (value := " ".join((line.productDescription or "").split()).strip())
                 )
             )
             return " / ".join(descriptions) or None
@@ -481,10 +727,10 @@ class AssociateConversationService:
                 )
             )
             return " / ".join(skus) or None
-        value = getattr(candidate, field, None)
-        if value is None:
+        raw_value: object = getattr(candidate, field, None)
+        if raw_value is None:
             return None
-        normalized = " ".join(str(value).split()).strip()
+        normalized = " ".join(str(raw_value).split()).strip()
         return normalized or None
 
     def _select_disambiguation_attribute(
@@ -693,9 +939,9 @@ class AssociateConversationService:
         else:
             planned_response = f"{assistant_text} {question}"
         clarification_prompt = (
-            conversation.clarificationPrompt.model_copy(
-                update={"question": question}
-            ).model_dump(mode="json")
+            conversation.clarificationPrompt.model_copy(update={"question": question}).model_dump(
+                mode="json"
+            )
             if conversation.clarificationPrompt is not None
             else None
         )
@@ -1078,15 +1324,31 @@ class AssociateConversationService:
             reverse=True,
         )[: progressive.candidate_limit]
 
-    def _case_insensitive_query(self, value: str) -> dict[str, Any]:
-        return {"$regex": f"^{re.escape(value.strip())}$", "$options": "i"}
+    def _case_insensitive_query(
+        self,
+        value: str,
+        *,
+        prefix: bool = False,
+    ) -> dict[str, Any]:
+        escaped = re.escape(value.strip())
+        pattern = f"^{escaped}" if prefix else f"^{escaped}$"
+        return {"$regex": pattern, "$options": "i"}
 
     async def _source_documents(
         self, anchor_type: AnchorType, anchor_value: str
     ) -> list[dict[str, Any]]:
         config = self._source_config
         sales = self._source[config.sales_invoice_collection]
-        matcher = self._case_insensitive_query(anchor_value)
+        matcher = self._case_insensitive_query(
+            anchor_value,
+            prefix=anchor_type
+            in {
+                AnchorType.ORDER_NUMBER,
+                AnchorType.CUSTOMER_ID,
+                AnchorType.TRACKING_NUMBER,
+                AnchorType.SKU,
+            },
+        )
         if anchor_type is AnchorType.ORDER_NUMBER:
             query: dict[str, Any] = {
                 "$or": [
@@ -1517,7 +1779,10 @@ class AssociateConversationService:
         *,
         actor_id: str,
     ) -> AssociateConversationView:
-        lookup = self._extract_anchor(payload.message)
+        lookup = await self._extract_anchor_with_ai(
+            payload.message,
+            session_id=None,
+        )
         conversation = await self.start(lookup, actor_id=actor_id)
         return await self._apply_chat_copy(
             conversation,
@@ -1816,7 +2081,10 @@ class AssociateConversationService:
                     raw_message=payload.message,
                 )
             return conversation
-        lookup = self._extract_anchor(payload.message)
+        lookup = await self._extract_anchor_with_ai(
+            payload.message,
+            session_id=conversation_id,
+        )
         conversation = await self.continue_discovery(
             conversation_id,
             ContinueAssociateConversationRequest(

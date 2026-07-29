@@ -33,7 +33,14 @@ def _frozenset_assignment(name: str) -> frozenset[str]:
 
 
 def test_seed_matrix_has_required_positive_negative_and_review_coverage() -> None:
-    assert scenario_counts() == {"positive": 5, "negative": 3, "reviewRequired": 2, "total": 10}
+    counts = scenario_counts()
+
+    assert counts["total"] == len(SEED_SCENARIOS) == 1250
+    assert counts["positive"] + counts["negative"] + counts["reviewRequired"] == counts["total"]
+    assert counts["positive"] > 0
+    assert counts["negative"] > 0
+    assert counts["reviewRequired"] > 0
+
     assert len({str(item["id"]) for item in SEED_SCENARIOS}) == len(SEED_SCENARIOS)
 
 

@@ -15,12 +15,15 @@ from return_platform.data_platform.graph.sync_service import (
 from return_platform.data_platform.schema_registry import SchemaRegistry
 from return_platform.operations.models import SeedStatusView, utc_now
 from return_platform.operations.repository import OperationalRepository
-from return_platform.operations.seed_manifest import SEED_SCENARIOS
+from return_platform.operations.seed_manifest import (
+    SEED_SCENARIOS,
+    manifest_digest,
+)
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
 
 
 class SeedCoordinator:
-    """Apply deterministic sandbox fixtures, then rebuild the canonical graph projection."""
+    """Apply deterministic operational synthetic data, then rebuild the graph projection."""
 
     def __init__(
         self,
@@ -110,6 +113,10 @@ class SeedCoordinator:
                 applySchema=True,
             ),
             actor_id=actor_id,
+            source_filter={
+                "seedVersion": self._settings.seed_version,
+                "seedDigest": manifest_digest(self._settings.seed_version),
+            },
         )
         if graph_run.status != "COMPLETED":
             raise RuntimeError("Canonical graph synchronization did not complete.")
@@ -121,9 +128,6 @@ class SeedCoordinator:
         seed_version = self._settings.seed_version
         await self._repository.reset_demo_data()
         await self._sql.reset_demo_business_state(seed_version)
-        # Neo4j is a derived projection. A sandbox reset may safely rebuild it from sources.
-        await self._neo4j.execute_query(
-            "MATCH (node) DETACH DELETE node",
-            database_=self._settings.neo4j_database,
-        )
+        # Neo4j is derived. Reapplying and synchronizing the same deterministic
+        # identities updates this profile without deleting unrelated graph data.
         return await self.apply(actor_id)
