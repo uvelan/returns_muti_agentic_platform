@@ -44,7 +44,7 @@ export function CandidateList({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="min-w-0 space-y-3">
       {candidates.map((candidate, index) => (
         <CandidateCard
           key={`${candidate.orderReference}-${String(index)}`}

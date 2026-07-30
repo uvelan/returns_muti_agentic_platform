@@ -73,8 +73,8 @@ export function AssociateReturnsPage() {
   const isComplete = conversation?.status === "SUBMITTED";
 
   return (
-    <div className="-m-4 h-[calc(100vh-4rem)] bg-stone-50 sm:-m-6 overflow-hidden">
-      <div className="grid h-full md:grid-cols-[minmax(0,1fr)_18rem] lg:grid-cols-[minmax(0,1fr)_21rem] xl:grid-cols-[17rem_minmax(0,1fr)_21rem]">
+    <div className="-m-4 min-h-[calc(100dvh-4rem)] overflow-x-hidden bg-stone-50 sm:-m-6 xl:h-[calc(100dvh-4rem)] xl:overflow-hidden">
+      <div className="grid min-h-full min-w-0 grid-cols-1 xl:h-full xl:grid-cols-[17rem_minmax(0,1fr)_21rem]">
         <aside className="hidden h-full overflow-y-auto border-r border-stone-200 bg-white p-4 xl:block">
           <button
             type="button"
@@ -113,8 +113,8 @@ export function AssociateReturnsPage() {
           </div>
         </aside>
 
-        <main className="flex h-full min-w-0 flex-col overflow-hidden">
-          <header className="flex items-center justify-between border-b border-stone-200 bg-white/90 px-5 py-4 backdrop-blur sm:px-8">
+        <main className="flex min-h-[70dvh] min-w-0 flex-col overflow-hidden xl:h-full xl:min-h-0">
+          <header className="flex min-w-0 flex-wrap items-start justify-between gap-3 border-b border-stone-200 bg-white/90 px-4 py-4 backdrop-blur sm:px-8">
             <div>
               <div className="flex items-center gap-2">
                 <span className="rounded-lg bg-teal-950 p-1.5 text-white"><Bot size={17} /></span>
@@ -147,7 +147,7 @@ export function AssociateReturnsPage() {
           ) : null}
         </main>
 
-        <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <div className="min-w-0 overflow-x-hidden border-t border-stone-200 xl:flex xl:h-full xl:min-h-0 xl:flex-col xl:overflow-hidden xl:border-t-0">
           <div className="mb-4 shrink-0 p-4 pb-0 xl:hidden">
             <button
               type="button"
@@ -161,7 +161,7 @@ export function AssociateReturnsPage() {
                 <span className="flex items-center gap-1.5"><Clock3 size={13} />Recent sessions</span>
                 <span>{String(sessions.data?.length ?? 0)}</span>
               </div>
-              <div className="mt-1 max-h-40 space-y-1 overflow-y-auto">
+              <div className="mt-1 max-h-28 space-y-1 overflow-y-auto overscroll-contain">
                 {sessions.isPending ? (
                   <p className="px-2 py-2 text-xs text-slate-500">Loading sessions...</p>
                 ) : null}
@@ -172,7 +172,7 @@ export function AssociateReturnsPage() {
                   <button
                     key={item.id}
                     type="button"
-                    className={`flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left text-xs transition ${
+                    className={`flex w-full min-w-0 items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left text-xs transition ${
                       conversation?.id === item.id
                         ? "bg-teal-50 text-teal-950 ring-1 ring-teal-200"
                         : "hover:bg-stone-50"
@@ -183,10 +183,10 @@ export function AssociateReturnsPage() {
                       setOrderLineId(item.candidates.at(0)?.lines.at(0)?.orderLineId ?? "");
                     }}
                   >
-                    <span className="truncate font-medium">
+                    <span className="min-w-0 flex-1 truncate font-medium">
                       {item.anchorValueMasked || "Return conversation"}
                     </span>
-                    <span className="shrink-0 text-[10px] text-slate-500">
+                    <span className="max-w-[8rem] shrink-0 truncate text-[10px] text-slate-500">
                       {formatBadgeLabel(item.status)}
                     </span>
                   </button>

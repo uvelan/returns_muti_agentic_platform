@@ -47,14 +47,14 @@ export function OrderDiscoveryCopilot({
   }
 
   return (
-    <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-stone-50/50">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-stone-50/50">
       {error ? (
         <div className="mx-5 mt-4 sm:mx-8">
           <ErrorState message={error.message} />
         </div>
       ) : null}
 
-      <div ref={scrollRef} className="flex-1 space-y-5 overflow-y-auto px-5 py-6 sm:px-8">
+      <div ref={scrollRef} className="min-w-0 flex-1 space-y-5 overflow-x-hidden overflow-y-auto px-4 py-6 sm:px-8">
         {messages.length === 0 ? (
           <div className="mx-auto mt-6 max-w-2xl text-center sm:text-left">
             <div className="mb-4 inline-flex rounded-2xl bg-teal-950 p-3.5 text-white shadow-md">
@@ -102,13 +102,13 @@ export function OrderDiscoveryCopilot({
                     </div>
                   ) : null}
                   <div
-                    className={`max-w-[85%] rounded-2xl px-4 py-3.5 text-sm leading-6 ${
+                    className={`min-w-0 max-w-[85%] break-words rounded-2xl px-4 py-3.5 text-sm leading-6 ${
                       assistant
                         ? "border border-stone-200 bg-white text-slate-800 shadow-xs"
                         : "bg-slate-900 text-white shadow-sm"
                     }`}
                   >
-                    <div className="mb-1 flex items-center justify-between gap-4">
+                    <div className="mb-1 flex min-w-0 flex-wrap items-center justify-between gap-2">
                       <span className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-60">
                         {assistant ? "Discovery Agent" : "Associate"}
                       </span>
@@ -119,7 +119,7 @@ export function OrderDiscoveryCopilot({
                         </span>
                       ) : null}
                     </div>
-                    <div className="whitespace-pre-wrap font-normal">{item.content}</div>
+                    <div className="break-words whitespace-pre-wrap font-normal">{item.content}</div>
                   </div>
                   {!assistant ? (
                     <div className="mt-1 h-fit rounded-xl border border-stone-200 bg-white p-2 text-slate-700 shadow-xs">
@@ -149,10 +149,10 @@ export function OrderDiscoveryCopilot({
       {!isComplete ? (
         <div className="border-t border-stone-200 bg-white p-4 sm:px-8">
           <form className="mx-auto max-w-3xl" onSubmit={handleSend}>
-            <div className="flex items-end gap-2 rounded-2xl border border-stone-300 bg-white p-2 shadow-xs transition-all focus-within:border-teal-700 focus-within:ring-2 focus-within:ring-teal-100">
+            <div className="flex min-w-0 items-end gap-2 rounded-2xl border border-stone-300 bg-white p-2 shadow-xs transition-all focus-within:border-teal-700 focus-within:ring-2 focus-within:ring-teal-100">
               <textarea
                 rows={2}
-                className="min-h-12 flex-1 resize-none border-0 bg-transparent px-2.5 py-2 text-sm leading-6 text-slate-900 placeholder:text-slate-400 outline-none"
+                className="min-h-12 min-w-0 flex-1 resize-none border-0 bg-transparent px-2.5 py-2 text-sm leading-6 text-slate-900 placeholder:text-slate-400 outline-none"
                 value={message}
                 onChange={(event) => { setMessage(event.target.value); }}
                 onKeyDown={(event) => {
@@ -173,7 +173,7 @@ export function OrderDiscoveryCopilot({
                 {isPending ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
               </button>
             </div>
-            <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400 px-1">
+            <div className="mt-2 flex flex-col gap-1 px-1 text-[11px] text-slate-400 sm:flex-row sm:items-center sm:justify-between">
               <span>Press Enter to send, Shift+Enter for newline</span>
               <span>Exact identifiers first · controlled full-text retrieval</span>
             </div>

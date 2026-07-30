@@ -25,7 +25,7 @@ export function CandidateCard({
 
   return (
     <div
-      className={`rounded-xl border p-3.5 transition-all ${
+      className={`min-w-0 overflow-hidden rounded-xl border p-3.5 transition-all ${
         isSelected
           ? "border-teal-700 bg-teal-50/80 shadow-sm ring-1 ring-teal-700/20"
           : "border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50/50"
@@ -33,7 +33,7 @@ export function CandidateCard({
     >
       <button
         type="button"
-        className="flex w-full items-center justify-between gap-2 text-left"
+        className="flex w-full min-w-0 flex-wrap items-start justify-between gap-2 text-left"
         onClick={() => {
           onSelectCandidate(index);
           const firstLine = candidate.lines.at(0);
@@ -42,17 +42,17 @@ export function CandidateCard({
           }
         }}
       >
-        <div>
-          <div className="flex items-center gap-2">
-            <strong className="block text-sm font-semibold text-slate-900">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <strong className="block break-all text-sm font-semibold text-slate-900">
               {candidate.orderReference}
             </strong>
-            <span className="inline-flex items-center gap-1 rounded-full bg-teal-100/80 px-2 py-0.5 text-[10px] font-semibold text-teal-800">
+            <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-teal-100/80 px-2 py-0.5 text-[10px] font-semibold text-teal-800">
               <Database size={11} className="text-teal-600" />
               {matchLabel}
             </span>
           </div>
-          <span className="mt-0.5 block text-xs text-slate-500">
+          <span className="mt-0.5 block break-words text-xs text-slate-500">
             {candidate.customerName ?? candidate.customerReference} · {candidate.evidenceSource || "Source not reported"}
           </span>
           {candidate.billingCity || candidate.postalCode || candidate.accountType ? (
@@ -68,7 +68,7 @@ export function CandidateCard({
             </span>
           ) : null}
         </div>
-        <ToneBadge value={candidate.orderStatus ?? "UNKNOWN"} />
+        <span className="shrink-0"><ToneBadge value={candidate.orderStatus ?? "UNKNOWN"} /></span>
       </button>
 
       {isSelected ? (
@@ -81,7 +81,7 @@ export function CandidateCard({
                 key={line.orderLineId}
                 type="button"
                 onClick={() => { onSelectLine(line.orderLineId); }}
-                className={`flex w-full items-start gap-2 rounded-lg border p-2.5 text-left text-xs transition ${
+                className={`flex w-full min-w-0 items-start gap-2 rounded-lg border p-2.5 text-left text-xs transition ${
                   isLineSelected
                     ? "border-teal-700 bg-white shadow-xs font-medium text-slate-900"
                     : "border-transparent bg-teal-100/40 text-slate-700 hover:bg-teal-100/70"
@@ -96,11 +96,11 @@ export function CandidateCard({
                 >
                   <Check size={10} strokeWidth={3} />
                 </span>
-                <span className="flex-1">
-                  <strong className="block font-semibold text-slate-900">
+                <span className="min-w-0 flex-1">
+                  <strong className="block break-all font-semibold text-slate-900">
                     {line.sku ?? line.productId}
                   </strong>
-                  <span className="text-slate-600">
+                  <span className="block break-words text-slate-600">
                     {line.productDescription ?? `Line ID: ${line.orderLineId}`}
                   </span>
                 </span>

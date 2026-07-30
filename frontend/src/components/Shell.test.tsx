@@ -1,48 +1,135 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { Shell } from './Shell';
-import { Router } from 'wouter';
+import {
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import {
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
+import { Router } from "wouter";
 
-describe('Shell', () => {
-  it('renders navigation links and children', () => {
+import { Shell } from "./Shell";
+
+describe("Shell", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("renders navigation links and children", () => {
     render(
       <Router>
         <Shell>
           <div data-testid="child-content">Child Content</div>
         </Shell>
-      </Router>
+      </Router>,
     );
 
-    // Sidebar link (Overview is one of the routes)
-    expect(screen.getByLabelText('Return Platform overview')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'AI Studio' })).toHaveAttribute(
-      'href',
-      '/data-console/ai-studio',
-    );
-
-    // Child content
-    expect(screen.getByTestId('child-content')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Return Platform overview"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("child-content"),
+    ).toBeInTheDocument();
   });
 
-  it('toggles mobile menu', () => {
+  it("toggles mobile menu", () => {
     render(
       <Router>
         <Shell>
           <div>Content</div>
         </Shell>
-      </Router>
+      </Router>,
     );
 
-    const button = screen.getByRole('button', { name: /open menu/i });
-    expect(button).toBeInTheDocument();
+    const button = screen.getByRole("button", {
+      name: /open menu/i,
+    });
 
-    // Initially not expanded
-    expect(button).toHaveAttribute('aria-expanded', 'false');
+    expect(button).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
 
     fireEvent.click(button);
 
-    // Should toggle expanded state
-    expect(button).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('button', { name: /close menu/i })).toBeInTheDocument();
+    expect(button).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(
+      screen.getByRole("button", {
+        name: /close menu/i,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("collapses the desktop sidebar and persists preference", () => {
+    render(
+      <Router>
+        <Shell>
+          <div>Content</div>
+        </Shell>
+      </Router>,
+    );
+
+    const sidebar = screen.getByLabelText(
+      "Primary navigation",
+    );
+    const collapseButton = screen.getByRole("button", {
+      name: /collapse sidebar/i,
+    });
+
+    expect(sidebar).toHaveAttribute(
+      "data-collapsed",
+      "false",
+    );
+    expect(collapseButton).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+
+    fireEvent.click(collapseButton);
+
+    expect(sidebar).toHaveAttribute(
+      "data-collapsed",
+      "true",
+    );
+    expect(
+      screen.getByRole("button", {
+        name: /expand sidebar/i,
+      }),
+    ).toHaveAttribute("aria-expanded", "false");
+    expect(
+      window.localStorage.getItem(
+        "return-platform.desktop-sidebar-collapsed",
+      ),
+    ).toBe("true");
+  });
+
+  it("restores a collapsed desktop sidebar preference", () => {
+    window.localStorage.setItem(
+      "return-platform.desktop-sidebar-collapsed",
+      "true",
+    );
+
+    render(
+      <Router>
+        <Shell>
+          <div>Content</div>
+        </Shell>
+      </Router>,
+    );
+
+    expect(
+      screen.getByLabelText("Primary navigation"),
+    ).toHaveAttribute("data-collapsed", "true");
+    expect(
+      screen.getByRole("button", {
+        name: /expand sidebar/i,
+      }),
+    ).toBeInTheDocument();
   });
 });

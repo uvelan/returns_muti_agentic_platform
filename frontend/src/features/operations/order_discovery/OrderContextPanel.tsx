@@ -87,7 +87,7 @@ export function OrderContextPanel({
   const photoEvidenceRequired = ["DAMAGED", "DEFECTIVE", "WRONG_ITEM"].includes(reasonCode);
 
   return (
-    <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto border-l border-stone-200 bg-stone-100/70 p-4 lg:p-5">
+    <aside className="flex min-w-0 flex-col overflow-x-hidden border-t border-stone-200 bg-stone-100/70 p-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:border-l xl:border-t-0 lg:p-5">
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <LockKeyhole size={17} className="text-teal-800" />
@@ -181,7 +181,7 @@ export function OrderContextPanel({
       {conversation?.candidates.length
         && !conversation.discoveryLock
         && !conversation.clarificationPrompt ? (
-        <section className="flex flex-col gap-3">
+        <section className="flex min-w-0 flex-col gap-3">
           {candidateSetExpired ? (
             <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-950">
               These candidates expired. Send the details again to refresh verified evidence.
@@ -190,20 +190,6 @@ export function OrderContextPanel({
           <p className="text-xs leading-5 text-slate-500">
             The agent ranked these candidates. Select the exact order line below to verify and lock evidence.
           </p>
-          <div className="sticky top-0 z-20 -mx-1 rounded-xl border border-teal-200 bg-white/95 p-2 shadow-sm backdrop-blur">
-            <button
-              type="button"
-              className={`${primaryButton} w-full justify-center`}
-              disabled={!selectedLineId || isConfirming || candidateSetExpired}
-              onClick={onConfirmDiscovery}
-            >
-              {isConfirming ? <Loader2 className="mr-1.5 animate-spin" size={16} /> : <LockKeyhole className="mr-1.5" size={16} />}
-              {isConfirming ? "Locking order evidence..." : "Confirm selected item and continue"}
-            </button>
-            <p className="mt-1.5 text-center text-[11px] text-slate-500">
-              Selecting an item does not submit it until you confirm here.
-            </p>
-          </div>
           <CandidateList
             candidates={conversation.candidates}
             selectedIndex={candidateIndex}
@@ -212,6 +198,20 @@ export function OrderContextPanel({
             onSelectLine={onSelectLine}
             isLoading={isConfirming}
           />
+          <div className="mt-1 min-w-0 rounded-xl border border-teal-200 bg-white/95 p-2 shadow-sm backdrop-blur xl:sticky xl:bottom-0 xl:z-20">
+            <button
+              type="button"
+              className={`${primaryButton} w-full min-w-0 justify-center whitespace-normal text-center text-sm leading-5`}
+              disabled={!selectedLineId || isConfirming || candidateSetExpired}
+              onClick={onConfirmDiscovery}
+            >
+              {isConfirming ? <Loader2 className="mr-1.5 shrink-0 animate-spin" size={16} /> : <LockKeyhole className="mr-1.5 shrink-0" size={16} />}
+              {isConfirming ? "Locking order evidence..." : "Confirm selected item"}
+            </button>
+            <p className="mt-1.5 text-center text-[11px] leading-4 text-slate-500">
+              Review the selected line, then confirm to continue.
+            </p>
+          </div>
         </section>
         ) : null}
 
@@ -328,7 +328,7 @@ export function OrderContextPanel({
                 </span>
               </label>
             ) : null}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="text-xs font-medium text-slate-600">
                 Quantity
                 <input
