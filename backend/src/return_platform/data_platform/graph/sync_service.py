@@ -204,7 +204,16 @@ class GraphSyncService:
         document = await self._runs.find_one({"_id": run_id})
         return self._view(document) if document else None
 
-    async def sync(self, request: GraphSyncRequest, *, actor_id: str) -> GraphSyncRunView:
+    async def sync(
+        self,
+        request: GraphSyncRequest,
+        *,
+        actor_id: str,
+        seed_version: str | None = None,
+        seed_digest: str | None = None,
+    ) -> GraphSyncRunView:
+        if (seed_version is None) is not (seed_digest is None):
+            raise ValueError("Seed version and digest must be supplied together.")
         limit = min(request.maxRecordsPerAsset, self._settings.graph_sync_max_records)
         run_id = str(uuid.uuid4())
         now = _now()
@@ -230,7 +239,12 @@ class GraphSyncService:
             node_writes = 0
             relationship_writes = 0
             if request.mode in {"FULL", "SOURCE_MONGODB"}:
-                counts, nodes, relationships = await self._sync_mongodb(run_id, limit)
+                counts, nodes, relationships = await self._sync_mongodb(
+                    run_id,
+                    limit,
+                    seed_version=seed_version,
+                    seed_digest=seed_digest,
+                )
                 source_counts.update(counts)
                 node_writes += nodes
                 relationship_writes += relationships
@@ -272,14 +286,45 @@ class GraphSyncService:
                 result = await session.run(query, rows=rows[offset : offset + batch_size])
                 await result.consume()
 
-    async def _sync_mongodb(self, run_id: str, limit: int) -> tuple[dict[str, int], int, int]:
+    async def _source_seed_documents(
+        self,
+        collection_name: str,
+        *,
+        limit: int,
+        seed_version: str | None,
+        seed_digest: str | None,
+    ) -> list[dict[str, Any]]:
+        collection = self._source_db[collection_name]
+        if seed_version is None or seed_digest is None:
+            return await collection.find({}).limit(limit).to_list()
+        mismatch_count = await collection.count_documents(
+            {"seedVersion": seed_version, "seedDigest": {"$ne": seed_digest}},
+            limit=1,
+        )
+        if mismatch_count:
+            raise ValueError(f"Seed digest mismatch in {collection_name}.")
+        return await collection.find(
+            {"seedVersion": seed_version, "seedDigest": seed_digest}
+        ).to_list()
+
+    async def _sync_mongodb(
+        self,
+        run_id: str,
+        limit: int,
+        *,
+        seed_version: str | None = None,
+        seed_digest: str | None = None,
+    ) -> tuple[dict[str, int], int, int]:
         now = _now().isoformat()
         counts: dict[str, int] = {}
         node_writes = 0
         relationship_writes = 0
 
-        customer_documents = (
-            await self._source_db["customerOutboundCDM"].find({}).limit(limit).to_list()
+        customer_documents = await self._source_seed_documents(
+            "customerOutboundCDM",
+            limit=limit,
+            seed_version=seed_version,
+            seed_digest=seed_digest,
         )
         counts["customerOutboundCDM"] = len(customer_documents)
         customers: list[dict[str, Any]] = []
@@ -318,6 +363,8 @@ class GraphSyncService:
                     "source_system": "CUSTOMER_CDM",
                     "source_record_id": _text(document.get("_id")),
                     "source_updated_at": _iso(document.get("updatedAt")),
+                    "seed_version": _text(document.get("seedVersion")),
+                    "seed_digest": _text(document.get("seedDigest")),
                     "graph_synced_at": now,
                     "sync_run_id": run_id,
                 }
@@ -335,6 +382,8 @@ class GraphSyncService:
                                 "customer_key": customer_key,
                                 "account_number": number,
                                 "customer_id": customer_id or number,
+                                "seed_version": _text(document.get("seedVersion")),
+                                "seed_digest": _text(document.get("seedDigest")),
                                 "graph_synced_at": now,
                                 "sync_run_id": run_id,
                             }
@@ -360,7 +409,12 @@ class GraphSyncService:
         node_writes += len(customers) + len(accounts)
         relationship_writes += len(accounts)
 
-        orders_docs = await self._source_db["salesInv"].find({}).limit(limit).to_list()
+        orders_docs = await self._source_seed_documents(
+            "salesInv",
+            limit=limit,
+            seed_version=seed_version,
+            seed_digest=seed_digest,
+        )
         counts["salesInv"] = len(orders_docs)
         order_rows: list[dict[str, Any]] = []
         line_rows: list[dict[str, Any]] = []
@@ -386,6 +440,8 @@ class GraphSyncService:
                     "shipping_method": _text(_nested(document, "salesHdr.shipping.shipViaCode")),
                     "delivered_at": _iso(document.get("deliveredAt")),
                     "source_updated_at": _iso(document.get("updatedAt")),
+                    "seed_version": _text(document.get("seedVersion")),
+                    "seed_digest": _text(document.get("seedDigest")),
                     "graph_synced_at": now,
                     "sync_run_id": run_id,
                 }
@@ -414,6 +470,8 @@ class GraphSyncService:
                             "ordered_quantity": line.get("orderQty"),
                             "shipped_quantity": line.get("shipQty"),
                             "source_updated_at": _iso(document.get("updatedAt")),
+                            "seed_version": _text(document.get("seedVersion")),
+                            "seed_digest": _text(document.get("seedDigest")),
                             "graph_synced_at": now,
                             "sync_run_id": run_id,
                         }
@@ -444,6 +502,7 @@ class GraphSyncService:
             MERGE (p:Product {product_id: row.product_id})
             SET p.sku=row.sku, p.master_product_id=row.master_product_id,
                 p.product_description=row.product_description, p.product_type=row.product_type,
+                p.seed_version=row.seed_version, p.seed_digest=row.seed_digest,
                 p.graph_synced_at=row.graph_synced_at, p.sync_run_id=row.sync_run_id
             MERGE (o)-[:HAS_ORDER_LINE]->(l)
             MERGE (l)-[:REFERENCES_PRODUCT]->(p)
@@ -453,7 +512,12 @@ class GraphSyncService:
         node_writes += len(order_rows) + (2 * len(line_rows))
         relationship_writes += len(order_rows) + (2 * len(line_rows))
 
-        shipment_docs = await self._source_db["shipmentInfo"].find({}).limit(limit).to_list()
+        shipment_docs = await self._source_seed_documents(
+            "shipmentInfo",
+            limit=limit,
+            seed_version=seed_version,
+            seed_digest=seed_digest,
+        )
         counts["shipmentInfo"] = len(shipment_docs)
         shipments = []
         for document in shipment_docs:
@@ -469,6 +533,8 @@ class GraphSyncService:
                         ),
                         "shipped_at": _iso(_nested(document, "shipmentInfoEventData.shippedAt")),
                         "source_updated_at": _iso(document.get("updatedAt")),
+                        "seed_version": _text(document.get("seedVersion")),
+                        "seed_digest": _text(document.get("seedDigest")),
                         "graph_synced_at": now,
                         "sync_run_id": run_id,
                     }
@@ -486,7 +552,12 @@ class GraphSyncService:
         node_writes += len(shipments)
         relationship_writes += len(shipments)
 
-        product_docs = await self._source_db["lkpSearchProduct"].find({}).limit(limit).to_list()
+        product_docs = await self._source_seed_documents(
+            "lkpSearchProduct",
+            limit=limit,
+            seed_version=seed_version,
+            seed_digest=seed_digest,
+        )
         counts["lkpSearchProduct"] = len(product_docs)
         products = []
         for document in product_docs:
@@ -500,6 +571,8 @@ class GraphSyncService:
                         "product_description": _text(document.get("productDescription")),
                         "product_type": _text(document.get("productType")),
                         "source_updated_at": _iso(document.get("updatedAt")),
+                        "seed_version": _text(document.get("seedVersion")),
+                        "seed_digest": _text(document.get("seedDigest")),
                         "graph_synced_at": now,
                         "sync_run_id": run_id,
                     }

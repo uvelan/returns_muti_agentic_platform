@@ -38,7 +38,11 @@ def test_seed_matrix_has_required_positive_negative_and_review_coverage() -> Non
 
 
 def test_domain_seed_keys_are_coherent_across_hld_source_collections() -> None:
-    records = materialize_domain_seed("contract-test", datetime(2026, 7, 24, tzinfo=UTC))
+    records = materialize_domain_seed(
+        "contract-test",
+        datetime(2026, 7, 24, tzinfo=UTC),
+        "contract-test-evidence-key",
+    )
     assert set(records) == {
         "salesInv",
         "customerOutboundCDM",
@@ -48,22 +52,20 @@ def test_domain_seed_keys_are_coherent_across_hld_source_collections() -> None:
 
     customers = {str(item["customerId"]) for item in records["customerOutboundCDM"]}
     products = {str(item["productId"]) for item in records["lkpSearchProduct"]}
-    shipments = {
-        str(item["shipmentInfoEventData"]["trilOrdNum"]) for item in records["shipmentInfo"]
-    }
-
-    observed_orders: set[str] = set()
-    for order in records["salesInv"]:
+    assert len(records["salesInv"]) == 1_000_000
+    assert len(records["shipmentInfo"]) == 1_000_000
+    sample_indexes = (0, 9, 999, 99_999, 999_999)
+    for index in sample_indexes:
+        order = records["salesInv"][index]
+        shipment = records["shipmentInfo"][index]
         header = order["salesHdrEventData"]
         customer = order["salesHdr"]["salesHdrData"]
         line = order["salesLines"][0]["lineData"]
         order_reference = str(header["orderId"])
-        observed_orders.add(order_reference)
         assert str(customer["custId"]) in customers
         assert str(line["productId"]) in products
         assert str(line["orderLineId"]).startswith(order_reference)
-
-    assert observed_orders == shipments
+        assert str(shipment["shipmentInfoEventData"]["trilOrdNum"]) == order_reference
 
 
 def test_schema_registry_models_every_required_physical_store_and_graph_type() -> None:

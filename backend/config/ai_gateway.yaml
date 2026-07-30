@@ -49,6 +49,16 @@ providerLimits:
     tokensPerMinute: 10000000
     maximumConcurrency: 32
 tasks:
+  RETURN_DISCOVERY_INTENT_V1:
+    tier: LIGHTWEIGHT
+    promptVersion: return-discovery-intent-v1
+    fallbackStrategy: TEMPLATE
+    fallbackTemplate: RETURN_DISCOVERY_INTENT_DETERMINISTIC_V1
+    maximumOutputTokens: 160
+    maximumInputTokens: 1000
+    allowTierEscalation: false
+    allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA, SIMULATOR]
+    allowedInputKeys: [utterance]
   RETURN_ELIGIBILITY_V1:
     tier: LIGHTWEIGHT
     promptVersion: return-eligibility-v2

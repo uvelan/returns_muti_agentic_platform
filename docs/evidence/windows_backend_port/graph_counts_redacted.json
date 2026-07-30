@@ -1,0 +1,11 @@
+{
+  "validationLevel": "WINDOWS_SOURCE_AND_UNIT_EVIDENCE",
+  "expectedGraphOrders": 1000000,
+  "expectedGraphCustomerLinks": 1000000,
+  "expectedGraphOrderLines": 1249998,
+  "inputSelection": ["seedVersion", "seedDigest"],
+  "digestMismatch": "FAIL_CLOSED",
+  "staleSeedVersions": "EXCLUDED",
+  "activeSeedUsesArbitraryLimit": false,
+  "liveDependencyCountsCaptured": false
+}

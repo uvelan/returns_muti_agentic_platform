@@ -6,6 +6,7 @@ fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/linux/lib/common.sh"
 supervisor_pid_file="$PID_DIR/run-all-host.pid"
+application_ports=(8000 5173)
 
 cleanup() {
   local code=$?
@@ -49,7 +50,9 @@ printf '%s\n' "$$" >"$supervisor_pid_file"
 trap cleanup INT TERM EXIT
 
 "$LINUX_SCRIPT_DIR/17_stop_host_processes.sh"
-"$LINUX_SCRIPT_DIR/stop_application_ports.sh" 8000 5173
+"$LINUX_SCRIPT_DIR/stop_application_ports.sh" "${application_ports[@]}"
+"$LINUX_SCRIPT_DIR/stop_application_ports.sh" \
+  --check-only "${application_ports[@]}"
 
 "$ROOT/scripts/prepare_runtime_configuration.sh"
 export PLATFORM_SKIP_RUNTIME_PREPARE=true

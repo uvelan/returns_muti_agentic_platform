@@ -4,6 +4,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 install_dependencies=false
 skip_frontend_build=false
+application_ports=(8000 5173)
 
 usage() {
   cat <<'EOF'
@@ -76,7 +77,11 @@ fi
 
 echo "Stopping application host processes..."
 "$LINUX_SCRIPT_DIR/17_stop_host_processes.sh"
-"$LINUX_SCRIPT_DIR/stop_application_ports.sh" 8000 5173
+"$LINUX_SCRIPT_DIR/stop_application_ports.sh" "${application_ports[@]}"
+
+echo "Verifying all application ports are closed before startup..."
+"$LINUX_SCRIPT_DIR/stop_application_ports.sh" \
+  --check-only "${application_ports[@]}"
 
 echo "Starting backend and workers..."
 "$LINUX_SCRIPT_DIR/08_start_backend.sh"

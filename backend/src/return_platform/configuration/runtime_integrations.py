@@ -67,7 +67,7 @@ def apply_graph_runtime_configuration(
             updates["mongo_dsn"] = SecretStr(platform_mongo.uri)
         if not platform_mongo.bootstrap_managed and platform_mongo.database is not None:
             updates["mongo_database"] = platform_mongo.database
-        if platform_mongo.credential is not None:
+        if not platform_mongo.bootstrap_managed and platform_mongo.credential is not None:
             updates["mongo_dsn_secret_reference"] = platform_mongo.credential.vault_reference
 
     source_mongo = sources.get("source-mongodb")
@@ -76,7 +76,7 @@ def apply_graph_runtime_configuration(
             updates["source_mongo_dsn"] = SecretStr(source_mongo.uri)
         if not source_mongo.bootstrap_managed and source_mongo.database is not None:
             updates["source_mongo_database"] = source_mongo.database
-        if source_mongo.credential is not None:
+        if not source_mongo.bootstrap_managed and source_mongo.credential is not None:
             updates["source_mongo_dsn_secret_reference"] = source_mongo.credential.vault_reference
 
     neo4j = sources.get("configuration-neo4j") or sources.get("neo4j")
@@ -87,7 +87,7 @@ def apply_graph_runtime_configuration(
             updates["neo4j_user"] = neo4j.username
         if not neo4j.bootstrap_managed and neo4j.database is not None:
             updates["neo4j_database"] = neo4j.database
-        if neo4j.credential is not None:
+        if not neo4j.bootstrap_managed and neo4j.credential is not None:
             updates["neo4j_password_secret_reference"] = neo4j.credential.vault_reference
 
     sqlserver = sources.get("omc-sqlserver") or sources.get("sqlserver")
@@ -100,7 +100,7 @@ def apply_graph_runtime_configuration(
             updates["sqlserver_user"] = sqlserver.username
         if not sqlserver.bootstrap_managed and sqlserver.database is not None:
             updates["sqlserver_database"] = sqlserver.database
-        if sqlserver.credential is not None:
+        if not sqlserver.bootstrap_managed and sqlserver.credential is not None:
             updates["sqlserver_password_secret_reference"] = sqlserver.credential.vault_reference
 
     valkey = sources.get("valkey")
@@ -109,7 +109,7 @@ def apply_graph_runtime_configuration(
             updates["valkey_host"] = valkey.host
         if not valkey.bootstrap_managed and valkey.port is not None:
             updates["valkey_port"] = valkey.port
-        if valkey.credential is not None:
+        if not valkey.bootstrap_managed and valkey.credential is not None:
             updates["valkey_password_secret_reference"] = valkey.credential.vault_reference
 
     temporal = sources.get("temporal")

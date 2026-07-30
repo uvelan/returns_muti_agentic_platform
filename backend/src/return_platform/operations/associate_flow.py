@@ -39,7 +39,7 @@ from return_platform.conversation.progressive import (
     DisambiguationRule,
     ProgressiveConversationEngine,
 )
-from return_platform.operations.models import ReturnCreateRequest, ReturnSessionView
+from return_platform.operations.models import AIDecision, ReturnCreateRequest, ReturnSessionView
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_support.service import (
     CreateSupportWorkItemRequest,
@@ -80,6 +80,7 @@ _FUZZY_STOP_WORDS = {
     "who",
     "with",
 }
+_DISCOVERY_INTENT_CONFIDENCE_THRESHOLD = 700_000
 
 
 class AssociateModel(BaseModel):
@@ -95,6 +96,16 @@ class AnchorType(StrEnum):
     SKU = "SKU"
     CUSTOMER_NAME = "CUSTOMER_NAME"
     PRODUCT_DESCRIPTION = "PRODUCT_DESCRIPTION"
+
+
+_PROTECTED_ANCHOR_TYPES = {
+    AnchorType.ORDER_NUMBER,
+    AnchorType.CUSTOMER_ID,
+    AnchorType.PHONE,
+    AnchorType.EMAIL,
+    AnchorType.TRACKING_NUMBER,
+    AnchorType.SKU,
+}
 
 
 class ConversationMessage(AssociateModel):
@@ -433,6 +444,135 @@ class AssociateConversationService:
             anchorValue=message,
         )
 
+    def _deterministic_intent_fallback(
+        self,
+        message: str,
+    ) -> StartAssociateConversationRequest:
+        """Extract only bounded fragments; never synthesize missing identifier characters."""
+        configured = self._extract_anchor(message)
+        if configured.anchorType in _PROTECTED_ANCHOR_TYPES:
+            return configured
+        contextual_patterns: tuple[tuple[AnchorType, str], ...] = (
+            (
+                AnchorType.ORDER_NUMBER,
+                r"\b(?:orders?|oders?|odr)\s*(?:number|no|id)?\s*"
+                r"((?:SO|ORD)-[A-Z0-9-]+)\b",
+            ),
+            (
+                AnchorType.CUSTOMER_ID,
+                r"\b(?:customer|cust)\s*(?:number|no|id)?\s*((?:CUST|PTY)-[A-Z0-9-]+)\b",
+            ),
+            (
+                AnchorType.TRACKING_NUMBER,
+                r"\b(?:shipment\s+)?(?:tracking|track)\s*(?:number|no|id)?\s*"
+                r"([A-Z0-9][A-Z0-9-]+)\b",
+            ),
+            (
+                AnchorType.SKU,
+                r"\bsku\s*(?:number|no|id)?\s*([A-Z0-9][A-Z0-9-]+)\b",
+            ),
+        )
+        for anchor_type, pattern in contextual_patterns:
+            match = re.search(pattern, message, re.IGNORECASE)
+            if match is not None:
+                return StartAssociateConversationRequest(
+                    anchorType=anchor_type,
+                    anchorValue=match.group(1).upper(),
+                )
+        product_match = re.search(
+            r"\b(?:containing|contains|product)\s+(.+?)\s*[?.!]*$",
+            message,
+            re.IGNORECASE,
+        )
+        if product_match is not None:
+            return StartAssociateConversationRequest(
+                anchorType=AnchorType.PRODUCT_DESCRIPTION,
+                anchorValue=product_match.group(1).strip(),
+            )
+        customer_match = re.search(
+            r"\b(?:from|for|named?)\s+([A-Z][A-Z'-]*(?:\s+[A-Z][A-Z'-]*){0,2})\s*[?.!]*$",
+            message,
+            re.IGNORECASE,
+        )
+        if customer_match is not None:
+            return StartAssociateConversationRequest(
+                anchorType=AnchorType.CUSTOMER_NAME,
+                anchorValue=customer_match.group(1).strip(),
+            )
+        return configured
+
+    def _validated_ai_anchor(
+        self,
+        message: str,
+        *,
+        explanation: str | None,
+        confidence_millionths: int | None,
+    ) -> StartAssociateConversationRequest | None:
+        if (
+            explanation is None
+            or confidence_millionths is None
+            or confidence_millionths < _DISCOVERY_INTENT_CONFIDENCE_THRESHOLD
+        ):
+            return None
+        try:
+            payload = json.loads(explanation)
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(payload, dict) or set(payload) != {"anchorType", "anchorValue"}:
+            return None
+        raw_type = payload.get("anchorType")
+        raw_value = payload.get("anchorValue")
+        if not isinstance(raw_type, str) or raw_type not in AnchorType._value2member_map_:
+            return None
+        if not isinstance(raw_value, str):
+            return None
+        try:
+            anchor = StartAssociateConversationRequest(
+                anchorType=AnchorType(raw_type),
+                anchorValue=raw_value,
+            )
+        except ValueError:
+            return None
+        configured = self._extract_anchor(message)
+        if configured.anchorType in _PROTECTED_ANCHOR_TYPES:
+            return configured
+        if (
+            anchor.anchorType in _PROTECTED_ANCHOR_TYPES
+            and anchor.anchorValue.casefold() not in message.casefold()
+        ):
+            return None
+        return anchor
+
+    async def _resolve_discovery_intent(
+        self,
+        message: str,
+    ) -> StartAssociateConversationRequest:
+        configured = self._extract_anchor(message)
+        if configured.anchorType in _PROTECTED_ANCHOR_TYPES:
+            return configured
+        try:
+            evaluation = await self._ai.evaluate(
+                session_id=None,
+                redacted_input={"utterance": message},
+                task_id="RETURN_DISCOVERY_INTENT_V1",
+            )
+            trace = evaluation.trace
+            if (
+                not evaluation.pending_interception
+                and not trace.fallbackUsed
+                and trace.decision is AIDecision.REVIEW_REQUIRED
+            ):
+                validated = self._validated_ai_anchor(
+                    message,
+                    explanation=trace.explanation,
+                    confidence_millionths=trace.confidenceMillionths,
+                )
+                if validated is not None:
+                    return validated
+        except Exception:
+            logger.warning("Discovery intent gateway failed; using deterministic fallback.")
+        return self._deterministic_intent_fallback(message)
+
     def _is_strong_anchor(self, anchor_type: AnchorType) -> bool:
         return anchor_type.value in set(self._return_configuration.discovery.strong_anchors)
 
@@ -459,6 +599,24 @@ class AssociateConversationService:
             fuzzy_tokens.append(f"{token}~{edits}" if edits else token)
         return (" AND " if require_all else " OR ").join(fuzzy_tokens)
 
+    def _customer_name_query(self, value: str) -> str:
+        """Combine safe prefix matching with configured fuzzy variants."""
+        config = self._return_configuration.discovery.progressive
+        clauses: list[str] = []
+        tokens = tuple(
+            token
+            for token in re.findall(r"[A-Za-z0-9]+", value)[:8]
+            if token.lower() not in _FUZZY_STOP_WORDS and len(token) >= 2
+        )
+        for token in tokens:
+            variants = [f"{token}*"]
+            if len(token) >= config.two_edit_min_token_length:
+                variants.append(f"{token}~{min(config.max_edit_distance, 2)}")
+            elif len(token) >= config.one_edit_min_token_length:
+                variants.append(f"{token}~{min(config.max_edit_distance, 1)}")
+            clauses.append(variants[0] if len(variants) == 1 else f"({' OR '.join(variants)})")
+        return " AND ".join(clauses)
+
     @staticmethod
     def _candidate_value(candidate: OrderCandidate, field: str) -> str | None:
         if field == "productDescription":
@@ -466,9 +624,7 @@ class AssociateConversationService:
                 dict.fromkeys(
                     value
                     for line in candidate.lines
-                    if (
-                        value := " ".join((line.productDescription or "").split()).strip()
-                    )
+                    if (value := " ".join((line.productDescription or "").split()).strip())
                 )
             )
             return " / ".join(descriptions) or None
@@ -481,10 +637,10 @@ class AssociateConversationService:
                 )
             )
             return " / ".join(skus) or None
-        value = getattr(candidate, field, None)
-        if value is None:
+        candidate_value = getattr(candidate, field, None)
+        if candidate_value is None:
             return None
-        normalized = " ".join(str(value).split()).strip()
+        normalized = " ".join(str(candidate_value).split()).strip()
         return normalized or None
 
     def _select_disambiguation_attribute(
@@ -693,9 +849,9 @@ class AssociateConversationService:
         else:
             planned_response = f"{assistant_text} {question}"
         clarification_prompt = (
-            conversation.clarificationPrompt.model_copy(
-                update={"question": question}
-            ).model_dump(mode="json")
+            conversation.clarificationPrompt.model_copy(update={"question": question}).model_dump(
+                mode="json"
+            )
             if conversation.clarificationPrompt is not None
             else None
         )
@@ -878,7 +1034,7 @@ class AssociateConversationService:
         )
         progressive = self._return_configuration.discovery.progressive
         if progressive.enabled and anchor_type is AnchorType.CUSTOMER_NAME:
-            fuzzy_query = self._fuzzy_query(anchor_value)
+            fuzzy_query = self._customer_name_query(anchor_value)
             if not fuzzy_query:
                 return []
             records, _, _ = await self._graph.execute_query(
@@ -941,21 +1097,25 @@ class AssociateConversationService:
         queries = {
             AnchorType.ORDER_NUMBER: (
                 "MATCH (c:Customer)-[:PLACED_ORDER]->(o:SalesOrder) "
-                "WHERE o.sales_order_number = $value "
-                "OR toLower(o.sales_order_number) = toLower($value) "
+                "WHERE toLower(o.sales_order_number) STARTS WITH toLower($value) "
                 "OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine) "
                 "OPTIONAL MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
-                "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
+                "RETURN c,o,collect({line:l,product:p}) AS lines, "
+                "CASE WHEN toLower(o.sales_order_number)=toLower($value) "
+                "THEN 1.0 ELSE 0.5 END AS score "
+                "ORDER BY score DESC LIMIT 20",
                 anchor_value,
             ),
             AnchorType.CUSTOMER_ID: (
                 "MATCH (c:Customer)-[:PLACED_ORDER]->(o:SalesOrder) "
-                "WHERE c.customer_id=$value OR c.customer_key=$value "
-                "OR toLower(c.customer_id)=toLower($value) "
-                "OR toLower(c.customer_key)=toLower($value) "
+                "WHERE toLower(c.customer_id) STARTS WITH toLower($value) "
+                "OR toLower(c.customer_key) STARTS WITH toLower($value) "
                 "OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine) "
                 "OPTIONAL MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
-                "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
+                "RETURN c,o,collect({line:l,product:p}) AS lines, "
+                "CASE WHEN toLower(c.customer_id)=toLower($value) "
+                "OR toLower(c.customer_key)=toLower($value) THEN 1.0 ELSE 0.5 END AS score "
+                "ORDER BY score DESC LIMIT 20",
                 anchor_value,
             ),
             AnchorType.PHONE: (
@@ -974,21 +1134,26 @@ class AssociateConversationService:
             ),
             AnchorType.TRACKING_NUMBER: (
                 "MATCH (o:SalesOrder)-[:HAS_ORIGINAL_SHIPMENT]->(s:Shipment) "
-                "WHERE s.tracking_number=$value OR toLower(s.tracking_number)=toLower($value) "
+                "WHERE toLower(s.tracking_number) STARTS WITH toLower($value) "
                 "MATCH (c:Customer)-[:PLACED_ORDER]->(o) "
                 "OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine) "
                 "OPTIONAL MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
-                "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
+                "RETURN c,o,collect({line:l,product:p}) AS lines, "
+                "CASE WHEN toLower(s.tracking_number)=toLower($value) "
+                "THEN 1.0 ELSE 0.5 END AS score "
+                "ORDER BY score DESC LIMIT 20",
                 anchor_value,
             ),
             AnchorType.SKU: (
                 "MATCH (o:SalesOrder)-[:HAS_ORDER_LINE]->(l:OrderLine) "
                 "MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
-                "WHERE p.sku=$value OR p.product_id=$value "
-                "OR toLower(p.sku)=toLower($value) "
-                "OR toLower(p.product_id)=toLower($value) "
+                "WHERE toLower(p.sku) STARTS WITH toLower($value) "
+                "OR toLower(p.product_id) STARTS WITH toLower($value) "
                 "MATCH (c:Customer)-[:PLACED_ORDER]->(o) "
-                "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
+                "RETURN c,o,collect({line:l,product:p}) AS lines, "
+                "CASE WHEN toLower(p.sku)=toLower($value) "
+                "OR toLower(p.product_id)=toLower($value) THEN 1.0 ELSE 0.5 END AS score "
+                "ORDER BY score DESC LIMIT 20",
                 anchor_value,
             ),
         }
@@ -1078,8 +1243,25 @@ class AssociateConversationService:
             reverse=True,
         )[: progressive.candidate_limit]
 
-    def _case_insensitive_query(self, value: str) -> dict[str, Any]:
-        return {"$regex": f"^{re.escape(value.strip())}$", "$options": "i"}
+    def _case_insensitive_query(self, value: str, *, exact: bool = True) -> dict[str, Any]:
+        suffix = "$" if exact else ""
+        return {"$regex": f"^{re.escape(value.strip())}{suffix}", "$options": "i"}
+
+    def _direct_source_query(
+        self,
+        anchor_type: AnchorType,
+        matcher: dict[str, Any],
+    ) -> dict[str, Any]:
+        config = self._source_config
+        if anchor_type is AnchorType.ORDER_NUMBER:
+            paths = dict.fromkeys((*config.order_number_paths, *config.web_order_paths))
+            return {"$or": [{path: matcher} for path in paths]}
+        if anchor_type is AnchorType.CUSTOMER_ID:
+            return {"$or": [{path: matcher} for path in config.customer_id_paths]}
+        if anchor_type is AnchorType.SKU:
+            paths = dict.fromkeys((*config.sku_paths, *config.product_id_paths))
+            return {"$or": [{f"salesLines.lineData.{path}": matcher} for path in paths]}
+        raise ValueError("Unsupported direct source anchor.")
 
     async def _source_documents(
         self, anchor_type: AnchorType, anchor_value: str
@@ -1087,16 +1269,22 @@ class AssociateConversationService:
         config = self._source_config
         sales = self._source[config.sales_invoice_collection]
         matcher = self._case_insensitive_query(anchor_value)
-        if anchor_type is AnchorType.ORDER_NUMBER:
-            query: dict[str, Any] = {
-                "$or": [
-                    {path: matcher}
-                    for path in dict.fromkeys((*config.order_number_paths, *config.web_order_paths))
-                ]
-            }
-        elif anchor_type is AnchorType.CUSTOMER_ID:
-            query = {"$or": [{path: matcher} for path in config.customer_id_paths]}
-        elif anchor_type in {AnchorType.PHONE, AnchorType.EMAIL}:
+        if anchor_type in {
+            AnchorType.ORDER_NUMBER,
+            AnchorType.CUSTOMER_ID,
+            AnchorType.SKU,
+        }:
+            exact_query = self._direct_source_query(anchor_type, matcher)
+            exact_documents = await sales.find(exact_query).limit(20).to_list()
+            if exact_documents:
+                return [cast(dict[str, Any], item) for item in exact_documents]
+            prefix_query = self._direct_source_query(
+                anchor_type,
+                self._case_insensitive_query(anchor_value, exact=False),
+            )
+            prefix_documents = await sales.find(prefix_query).limit(20).to_list()
+            return [cast(dict[str, Any], item) for item in prefix_documents]
+        if anchor_type in {AnchorType.PHONE, AnchorType.EMAIL}:
             field = config.phone_field if anchor_type is AnchorType.PHONE else config.email_field
             customer = await self._source[config.customer_collection].find_one({field: matcher})
             customer_id = (
@@ -1109,32 +1297,49 @@ class AssociateConversationService:
             cust_matcher = self._case_insensitive_query(str(customer_id))
             query = {"$or": [{path: cust_matcher} for path in config.customer_id_paths]}
         elif anchor_type is AnchorType.TRACKING_NUMBER:
-            shipment = await self._source[config.shipment_collection].find_one(
-                {config.tracking_field: matcher}
+            shipments = (
+                await self._source[config.shipment_collection]
+                .find({config.tracking_field: matcher})
+                .limit(20)
+                .to_list()
             )
-            order_id = (
-                _nested(cast(dict[str, Any], shipment), config.tracking_order_field)
-                if shipment
-                else None
-            )
-            if order_id is None:
+            if not shipments:
+                prefix_matcher = self._case_insensitive_query(anchor_value, exact=False)
+                shipments = (
+                    await self._source[config.shipment_collection]
+                    .find({config.tracking_field: prefix_matcher})
+                    .limit(20)
+                    .to_list()
+                )
+            order_ids = [
+                str(value)
+                for shipment in shipments
+                if (
+                    value := _nested(
+                        cast(dict[str, Any], shipment),
+                        config.tracking_order_field,
+                    )
+                )
+            ]
+            if not order_ids:
                 return []
-            order_matcher = self._case_insensitive_query(str(order_id))
-            query = {"$or": [{path: order_matcher} for path in config.order_number_paths]}
-        elif anchor_type is AnchorType.SKU:
-            query = {
-                "$or": [
-                    {f"salesLines.lineData.{path}": matcher}
-                    for path in dict.fromkeys((*config.sku_paths, *config.product_id_paths))
-                ]
-            }
+            query = {"$or": [{path: {"$in": order_ids}} for path in config.order_number_paths]}
         elif anchor_type is AnchorType.CUSTOMER_NAME:
-            tokens = self._fuzzy_tokens(anchor_value) or (anchor_value.strip(),)
+            tokens = tuple(
+                token for token in re.findall(r"[A-Za-z0-9]+", anchor_value)[:8] if len(token) >= 2
+            )
+            if not tokens:
+                return []
+            name_prefix = r"\s+".join(re.escape(token) for token in tokens)
             query = {
                 "$or": [
-                    {path: {"$regex": re.escape(token), "$options": "i"}}
+                    {
+                        path: {
+                            "$regex": f"^{name_prefix}",
+                            "$options": "i",
+                        }
+                    }
                     for path in config.customer_name_paths
-                    for token in tokens
                 ]
             }
         else:
@@ -1517,7 +1722,7 @@ class AssociateConversationService:
         *,
         actor_id: str,
     ) -> AssociateConversationView:
-        lookup = self._extract_anchor(payload.message)
+        lookup = await self._resolve_discovery_intent(payload.message)
         conversation = await self.start(lookup, actor_id=actor_id)
         return await self._apply_chat_copy(
             conversation,
@@ -1816,7 +2021,7 @@ class AssociateConversationService:
                     raw_message=payload.message,
                 )
             return conversation
-        lookup = self._extract_anchor(payload.message)
+        lookup = await self._resolve_discovery_intent(payload.message)
         conversation = await self.continue_discovery(
             conversation_id,
             ContinueAssociateConversationRequest(

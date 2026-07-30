@@ -1,0 +1,5 @@
+Implementation files are listed in changed_files.txt.
+Pre-existing worktree changes preserved:
+ M docs/evidence/ai_studio_operational_generation/aig1/asset_policy_inventory.json
+ M openapi/return-platform.openapi.json
+Excluded frontend files modified: none

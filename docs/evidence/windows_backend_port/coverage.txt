@@ -1,0 +1,5 @@
+PLATFORM_VAULT_ENABLED=false (process only)
+1111 passed, 3 skipped
+Total coverage: 66.50%
+Configured minimum: 90%
+Result: FAILED (repository-wide baseline coverage gap)

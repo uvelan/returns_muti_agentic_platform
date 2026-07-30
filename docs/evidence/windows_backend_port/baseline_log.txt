@@ -1,0 +1,10 @@
+97836a7 prevent redeploy lock inheritance
+78c1236 stop frontend process tree before restart
+8290a28 make Linux host startup restart safe
+6fcbb37 fix Linux shell script permissions
+7392854 add Linux application redeploy script
+f8ac991 remove repeated AI model validation
+c7ed95a make return confirmation concurrency safe
+7e50654 fix UTC candidate expiry in browser
+4d8e121 add progressive field-based order clarification
+1ae74c4 generate realistic synthetic customer names

@@ -154,21 +154,21 @@ def test_bootstrap_managed_sources_do_not_override_deployment_settings(
     assert configured.temporal_target == test_settings.temporal_target
     assert (
         configured.mongo_dsn_secret_reference
-        == "vault://secret/production/data-sources/mongodb#dsn"
+        == test_settings.mongo_dsn_secret_reference
     )
     assert (
         configured.source_mongo_dsn_secret_reference
-        == "vault://secret/production/data-sources/mongodb#source_dsn"
+        == test_settings.source_mongo_dsn_secret_reference
     )
     assert (
         configured.neo4j_password_secret_reference
-        == "vault://secret/production/data-sources/neo4j#password"
+        == test_settings.neo4j_password_secret_reference
     )
     assert (
         configured.sqlserver_password_secret_reference
-        == "vault://secret/production/data-sources/sqlserver#password"
+        == test_settings.sqlserver_password_secret_reference
     )
     assert (
         configured.valkey_password_secret_reference
-        == "vault://secret/production/data-sources/valkey#password"
+        == test_settings.valkey_password_secret_reference
     )

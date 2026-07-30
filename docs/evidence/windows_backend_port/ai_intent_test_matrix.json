@@ -1,0 +1,28 @@
+{
+  "task": "RETURN_DISCOVERY_INTENT_V1",
+  "validationLevel": "WINDOWS_UNIT_EVIDENCE",
+  "covered": [
+    "misspelled customer request",
+    "partial customer name",
+    "order number",
+    "customer ID",
+    "tracking number",
+    "SKU",
+    "product description",
+    "strong identifier precedence",
+    "invalid JSON",
+    "unexpected output field",
+    "unknown anchor type",
+    "low confidence",
+    "provider exception",
+    "gateway fallback",
+    "prompt injection",
+    "unrelated request",
+    "regex escaping",
+    "one-character rejection",
+    "active seed filtering",
+    "digest mismatch rejection"
+  ],
+  "focusedResult": "49 passed",
+  "liveProviderValidated": false
+}

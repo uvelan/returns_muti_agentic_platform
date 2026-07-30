@@ -14,7 +14,7 @@ import pymssql
 from return_platform.configuration.settings import Settings
 from return_platform.operations.models import ReturnSessionView
 from return_platform.operations.return_support.providers.contracts import ReturnSupportResult
-from return_platform.operations.seed_manifest import SEED_SCENARIOS, manifest_digest
+from return_platform.operations.seed_manifest import SEED_ORDERS, SEED_SCENARIOS, manifest_digest
 
 T = TypeVar("T")
 
@@ -154,7 +154,10 @@ class SQLBusinessStateRepository:
         await self._run(operation)
 
     async def apply_seed_manifest(self, seed_version: str, applied_at: datetime) -> int:
-        digest = manifest_digest(seed_version)
+        digest = manifest_digest(
+            seed_version,
+            self._settings.validation_fingerprint_key.get_secret_value(),
+        )
         rows: Sequence[tuple[Any, ...]] = tuple(
             (
                 scenario["id"],
@@ -190,7 +193,10 @@ class SQLBusinessStateRepository:
         return await self._run(operation)
 
     async def seed_status(self, seed_version: str) -> dict[str, Any]:
-        digest = manifest_digest(seed_version)
+        digest = manifest_digest(
+            seed_version,
+            self._settings.validation_fingerprint_key.get_secret_value(),
+        )
 
         def operation() -> dict[str, Any]:
             with self._connect() as connection:
@@ -229,22 +235,29 @@ class SQLBusinessStateRepository:
     async def reset_demo_business_state(self, seed_version: str) -> None:
         """Delete business facts created from deterministic E2E seed orders."""
 
-        order_references = tuple(str(item["orderReference"]) for item in SEED_SCENARIOS)
-
         def operation() -> None:
             with self._connect() as connection:
                 try:
                     with connection.cursor() as cursor:
-                        placeholders = ",".join("%s" for _ in order_references)
-                        cursor.execute(
-                            f"""
-                            SELECT session_id, return_reference
-                            FROM dbo.return_requests
-                            WHERE order_reference IN ({placeholders})
-                            """,
-                            order_references,
-                        )
-                        rows = cursor.fetchall()
+                        rows: list[tuple[Any, ...]] = []
+                        for offset in range(0, len(SEED_ORDERS), 1_000):
+                            order_batch = tuple(
+                                str(SEED_ORDERS[index]["orderReference"])
+                                for index in range(
+                                    offset,
+                                    min(offset + 1_000, len(SEED_ORDERS)),
+                                )
+                            )
+                            placeholders = ",".join("%s" for _ in order_batch)
+                            cursor.execute(
+                                f"""
+                                SELECT session_id, return_reference
+                                FROM dbo.return_requests
+                                WHERE order_reference IN ({placeholders})
+                                """,
+                                order_batch,
+                            )
+                            rows.extend(cursor.fetchall())
                         session_ids = tuple(str(row[0]) for row in rows)
                         return_references = tuple(str(row[1]) for row in rows if row[1] is not None)
 
@@ -253,13 +266,13 @@ class SQLBusinessStateRepository:
                             column: str,
                             values: tuple[str, ...],
                         ) -> None:
-                            if not values:
-                                return
-                            value_placeholders = ",".join("%s" for _ in values)
-                            cursor.execute(
-                                f"DELETE FROM {table} WHERE {column} IN ({value_placeholders})",
-                                values,
-                            )
+                            for offset in range(0, len(values), 1_000):
+                                value_batch = values[offset : offset + 1_000]
+                                value_placeholders = ",".join("%s" for _ in value_batch)
+                                cursor.execute(
+                                    f"DELETE FROM {table} WHERE {column} IN ({value_placeholders})",
+                                    value_batch,
+                                )
 
                         delete_many(
                             "platform.bay_assignment",

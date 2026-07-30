@@ -1,0 +1,16 @@
+{
+  "validationLevel": "WINDOWS_DEVELOPMENT_EVIDENCE",
+  "manifest": "backend/config/seed/e2e_seed_manifest.json",
+  "customers": 10000,
+  "firstNameCatalogEntries": 120,
+  "lastNameCatalogEntries": 70,
+  "products": 20000,
+  "orders": 1000000,
+  "shipments": 1000000,
+  "orderLines": 1249998,
+  "returns": 0,
+  "supportCases": 0,
+  "multiLineOrders": true,
+  "digestAlgorithm": "HMAC-SHA256",
+  "secretMaterialIncluded": false
+}

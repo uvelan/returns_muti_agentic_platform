@@ -1,0 +1,3 @@
+ruff check .: PASSED
+ruff format --check for changed Python files: PASSED
+repository-wide format check: two pre-existing operational-generation files would reformat

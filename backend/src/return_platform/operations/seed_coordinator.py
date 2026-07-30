@@ -15,7 +15,11 @@ from return_platform.data_platform.graph.sync_service import (
 from return_platform.data_platform.schema_registry import SchemaRegistry
 from return_platform.operations.models import SeedStatusView, utc_now
 from return_platform.operations.repository import OperationalRepository
-from return_platform.operations.seed_manifest import SEED_SCENARIOS
+from return_platform.operations.seed_manifest import (
+    SEED_ORDERS,
+    manifest_digest,
+    seed_order_line_count,
+)
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
 
 
@@ -43,11 +47,15 @@ class SeedCoordinator:
         )
 
     async def _graph_status(self) -> dict[str, Any]:
-        order_references = [str(item["orderReference"]) for item in SEED_SCENARIOS]
+        seed_version = self._settings.seed_version
+        seed_digest = manifest_digest(
+            seed_version,
+            self._settings.validation_fingerprint_key.get_secret_value(),
+        )
         records, _, _ = await self._neo4j.execute_query(
             """
             MATCH (order:SalesOrder)
-            WHERE order.sales_order_number IN $orderReferences
+            WHERE order.seed_version = $seedVersion AND order.seed_digest = $seedDigest
             OPTIONAL MATCH (order)-[:HAS_ORDER_LINE]->(line:OrderLine)
             OPTIONAL MATCH (customer:Customer)-[:PLACED_ORDER]->(order)
             RETURN count(DISTINCT order) AS orders,
@@ -55,19 +63,23 @@ class SeedCoordinator:
                    count(DISTINCT CASE WHEN customer IS NOT NULL THEN order.sales_order_number END)
                      AS customerLinks
             """,
-            orderReferences=order_references,
+            seedVersion=seed_version,
+            seedDigest=seed_digest,
             database_=self._settings.neo4j_database,
         )
         row = records[0] if records else {}
         orders = int(row.get("orders", 0))
         lines = int(row.get("lines", 0))
         customer_links = int(row.get("customerLinks", 0))
-        expected = len(SEED_SCENARIOS)
+        expected = len(SEED_ORDERS)
+        expected_lines = seed_order_line_count()
         return {
             "orders": orders,
             "lines": lines,
             "customerLinks": customer_links,
-            "ready": orders == expected and lines >= expected and customer_links == expected,
+            "ready": (
+                orders == expected and lines == expected_lines and customer_links == expected
+            ),
         }
 
     async def status(self) -> SeedStatusView:
@@ -106,10 +118,17 @@ class SeedCoordinator:
         graph_run = await self._graph_sync.sync(
             GraphSyncRequest(
                 mode=GraphSyncScope.SOURCE_MONGODB,
-                maxRecordsPerAsset=max(100, len(SEED_SCENARIOS)),
+                # Active-seed selection ignores the generic safety limit and reads
+                # every version/digest-matched source record.
+                maxRecordsPerAsset=min(len(SEED_ORDERS), 100_000),
                 applySchema=True,
             ),
             actor_id=actor_id,
+            seed_version=self._settings.seed_version,
+            seed_digest=manifest_digest(
+                self._settings.seed_version,
+                self._settings.validation_fingerprint_key.get_secret_value(),
+            ),
         )
         if graph_run.status != "COMPLETED":
             raise RuntimeError("Canonical graph synchronization did not complete.")

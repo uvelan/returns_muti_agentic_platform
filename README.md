@@ -113,10 +113,17 @@ Multiple keys and models are routed through bounded lists. Authentication failur
 The following task is implemented for Order Discovery:
 
 ```text
+RETURN_DISCOVERY_INTENT_V1
 RETURN_PROGRESSIVE_DISAMBIGUATION_V1
 ```
 
-AI authority is restricted to approved wording and structured interpretation. State transitions and candidate selection remain deterministic.
+`RETURN_DISCOVERY_INTENT_V1` may classify an untrusted utterance and extract one
+validated lookup anchor. Explicit identifiers always win over conflicting AI
+output, and invalid, unsafe, low-confidence, intercepted, rate-limited, or
+unavailable AI routes fall back to bounded deterministic extraction. AI
+authority is restricted to approved wording and structured interpretation.
+Database access, state transitions, and candidate selection remain
+deterministic.
 
 ## AI Studio and Operational Generation
 
@@ -127,6 +134,25 @@ The AI Studio provides a deterministic Operational Generation engine to seed syn
 - **Rollback**: If a write transaction fails, or if requested by the administrator, the entire generated proposal is safely rolled back using inverse compensation transactions.
 - **Graph Synchronization**: Records written to source systems (MongoDB/SQL Server) are securely synchronized to the Neo4j graph, matching the exact path used by production integration events. Generated data is fully discoverable by the production Copilot.
 - **Data Policies**: AI Studio evaluates strict read/write policies. Data is not generated for assets marked with `DENIED` write policies. Generation gracefully falls back to deterministic values if AI is unavailable.
+
+### Deterministic E2E seed
+
+The cross-store E2E seed is configured in
+`backend/config/seed/e2e_seed_manifest.json`. Counts, customer/product catalogs,
+fixed products, and scenario rows can be changed or extended in JSON without
+editing the Python materializer. The default manifest expands deterministically
+to 10,000 customers, 20,000 products, 1,000,000 orders, and 1,000,000
+shipments, including
+multi-line orders and the positive, negative, and review-required scenarios.
+Return and support-case collections remain empty before a demo.
+Million-order definitions are lazy and source writes use bounded bulk batches,
+so configuration loading and validation do not materialize the entire dataset
+in memory.
+
+Seed evidence uses the Vault-aware validation fingerprint key to produce a
+keyed digest. Graph synchronization selects every record matching the active
+seed version and digest, rejects digest drift, and does not use an arbitrary
+record limit for an active seed projection.
 
 ## Data-source configuration
 
@@ -267,6 +293,13 @@ This starts:
 - Temporal UI.
 
 The command also initializes/unseals Vault and stores local infrastructure credentials under the approved production Vault paths. Existing `.env` files are upgraded before validation so older Linux installations receive the required Vault references safely.
+
+Seed volume is controlled by `backend/config/seed/e2e_seed_manifest.json`. Linux and
+other full-scale environments use those JSON counts when
+`PLATFORM_SEED_RECORD_LIMIT` is empty. Set the optional environment variable to a
+positive integer of at least `10` to cap each generated customer, product, order,
+sales, and shipment collection for a lower-resource validation run; for example,
+`PLATFORM_SEED_RECORD_LIMIT=1000`.
 
 ### 2. Start backend, workers, and frontend
 
