@@ -36,9 +36,6 @@ class ConversationPromptsConfiguration(StrictConfigModel):
         str, StringConstraints(strip_whitespace=True, min_length=3, max_length=1000)
     ]
     greeting_status: NonBlank
-    greeting_next_question: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)
-    ]
     greeting_title: NonBlank
     initial_match_template: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=3, max_length=1000)
@@ -64,21 +61,6 @@ class ConversationPromptsConfiguration(StrictConfigModel):
     submission_assistant_template: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=3, max_length=1000)
     ]
-    fallback_question_template: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)
-    ]
-    default_discovery_question: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)
-    ]
-    default_no_match_question: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)
-    ]
-    default_continue_no_match_question: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)
-    ]
-    default_details_question: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)
-    ]
 
 
 class DisambiguationAttributeConfiguration(StrictConfigModel):
@@ -86,7 +68,7 @@ class DisambiguationAttributeConfiguration(StrictConfigModel):
 
     slot: NonBlank
     candidate_field: NonBlank
-    question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)]
+    label: NonBlank
     priority: int = Field(ge=0, le=10_000)
 
 
@@ -193,14 +175,42 @@ class SourceResolutionConfiguration(StrictConfigModel):
 
 class SmartQuestion(StrictConfigModel):
     field: NonBlank
-    question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=500)]
+    label: NonBlank
     priority: int = Field(ge=0, le=10_000)
     customer_answerable: bool
+    field_group: NonBlank
+    anchor_type: NonBlank | None = None
+    candidate_field: NonBlank | None = None
+
+
+class SmartQuestionGoal(StrictConfigModel):
+    preferred_field_groups: tuple[NonBlank, ...] = Field(min_length=1)
+    preferred_fields: tuple[NonBlank, ...] = Field(min_length=1)
 
 
 class SmartQuestionConfiguration(StrictConfigModel):
-    max_questions_per_turn: int = Field(ge=1, le=5)
+    version: NonBlank
+    max_prompts_per_turn: int = Field(ge=1, le=5)
+    max_fields_per_turn: int = Field(ge=1, le=5)
+    phrasing_owner: Literal["LLM", "CONFIG"]
+    field_selection_owner: Literal["LLM", "CONFIG"]
     fields: tuple[SmartQuestion, ...] = Field(min_length=1)
+    goals: dict[NonBlank, SmartQuestionGoal] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_policy(self) -> SmartQuestionConfiguration:
+        field_names = [item.field for item in self.fields]
+        if len(field_names) != len(set(field_names)):
+            raise ValueError("smart-question fields must be unique")
+        known_fields = set(field_names)
+        for goal_name, goal in self.goals.items():
+            unknown = set(goal.preferred_fields) - known_fields
+            if unknown:
+                raise ValueError(
+                    f"smart-question goal {goal_name} references unknown fields: "
+                    f"{', '.join(sorted(unknown))}"
+                )
+        return self
 
 
 class BranchStagingConfiguration(StrictConfigModel):
@@ -509,7 +519,7 @@ class ReturnPlatformConfiguration(StrictConfigModel):
     agents: dict[NonBlank, AgentConfiguration]
     discovery: DiscoveryConfiguration
     source_resolution: SourceResolutionConfiguration
-    smart_questions: SmartQuestionConfiguration
+    clarification_policy: SmartQuestionConfiguration
     return_policy: ReturnPolicyConfiguration
     workflow: WorkflowConfiguration
     support: SupportConfiguration

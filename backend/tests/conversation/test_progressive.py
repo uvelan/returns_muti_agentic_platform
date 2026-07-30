@@ -32,8 +32,8 @@ STATES = ConversationStatePolicy(
 def test_progressive_engine_requests_highest_priority_distinguishing_slot() -> None:
     engine = ProgressiveConversationEngine[Candidate](
         rules=(
-            DisambiguationRule("city", "city", "Which city?", 100),
-            DisambiguationRule("postal", "postal", "Which postal code?", 50),
+            DisambiguationRule("city", "city", "city", 100),
+            DisambiguationRule("postal", "postal", "postal code", 50),
         ),
         candidate_ttl_seconds=300,
         states=STATES,
@@ -47,14 +47,14 @@ def test_progressive_engine_requests_highest_priority_distinguishing_slot() -> N
     )
     assert decision.state == "ATTRIBUTE_REQUIRED"
     assert decision.requested_slots == ("city",)
-    assert decision.question == "Which city?"
+    assert decision.question == "Which city matches the order?"
     assert decision.candidate_set_id is not None
     assert decision.candidate_set_expires_at == now + timedelta(seconds=300)
 
 
 def test_progressive_engine_never_invents_a_state_from_one_candidate() -> None:
     engine = ProgressiveConversationEngine[Candidate](
-        rules=(DisambiguationRule("city", "city", "Which city?", 100),),
+        rules=(DisambiguationRule("city", "city", "city", 100),),
         candidate_ttl_seconds=300,
         states=STATES,
     )
@@ -75,8 +75,8 @@ def test_response_matching_rejects_empty_and_accepts_bounded_natural_answer() ->
 def test_progressive_engine_uses_candidate_values_not_a_fixed_field_order() -> None:
     engine = ProgressiveConversationEngine[Candidate](
         rules=(
-            DisambiguationRule("postal", "postal", "Which postal code?", 100),
-            DisambiguationRule("city", "city", "Which city?", 50),
+            DisambiguationRule("postal", "postal", "postal code", 100),
+            DisambiguationRule("city", "city", "city", 50),
         ),
         candidate_ttl_seconds=300,
         states=STATES,

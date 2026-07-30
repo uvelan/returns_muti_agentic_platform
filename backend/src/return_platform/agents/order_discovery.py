@@ -66,9 +66,9 @@ class OrderDiscoveryAgent:
         supplied = {key for key, value in request.suppliedEvidence.items() if value.strip()}
         question = next(
             (
-                item.question
+                f"Could you provide the {item.label}?"
                 for item in sorted(
-                    self._root.smart_questions.fields,
+                    self._root.clarification_policy.fields,
                     key=lambda value: -value.priority,
                 )
                 if item.customer_answerable and item.field not in supplied

@@ -90,7 +90,7 @@ class AIUsageSummaryView(Contract):
 
 
 class AISafetyTestRequest(Contract):
-    taskId: str = Field(default="RETURN_SMART_QUESTION_V1", min_length=1, max_length=128)
+    taskId: str = Field(default="RETURN_CLARIFICATION_FIELD_V2", min_length=1, max_length=128)
     payload: dict[str, Any]
 
 

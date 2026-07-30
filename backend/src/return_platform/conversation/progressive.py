@@ -17,7 +17,7 @@ class DisambiguationRule:
 
     slot: str
     candidate_field: str
-    question: str
+    label: str
     priority: int
 
 
@@ -176,7 +176,7 @@ class ProgressiveConversationEngine[CandidateT]:
                 requested_slots=(rule.slot,),
                 candidate_set_id=candidate_set_id,
                 candidate_set_expires_at=expires_at,
-                question=rule.question,
+                question=f"Which {rule.label} matches the order?",
             )
         return DialogueDecision(
             state=self._states.generic_disambiguation,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -183,6 +184,7 @@ class AssociateConversationView(AssociateModel):
     id: str
     status: str
     anchorType: AnchorType
+    anchorTypes: list[AnchorType] = Field(default_factory=list, max_length=4)
     anchorValueMasked: str
     orderSource: OrderSource = OrderSource.UNKNOWN
     discoveryAssessment: dict[str, Any] | None = None
@@ -363,7 +365,7 @@ class AssociateConversationService:
                 DisambiguationRule(
                     slot=item.slot,
                     candidate_field=item.candidate_field,
-                    question=item.question,
+                    label=item.label,
                     priority=item.priority,
                 )
                 for item in progressive.disambiguation_attributes
@@ -448,10 +450,44 @@ class AssociateConversationService:
         self,
         message: str,
     ) -> StartAssociateConversationRequest:
+        return self._deterministic_intent_fallbacks(message)[0]
+
+    @staticmethod
+    def _deduplicate_anchors(
+        anchors: list[StartAssociateConversationRequest],
+    ) -> list[StartAssociateConversationRequest]:
+        unique: dict[tuple[AnchorType, str], StartAssociateConversationRequest] = {}
+        for anchor in anchors:
+            key = (anchor.anchorType, anchor.anchorValue.casefold())
+            unique.setdefault(key, anchor)
+        return list(unique.values())[:4]
+
+    def _deterministic_intent_fallbacks(
+        self,
+        message: str,
+    ) -> list[StartAssociateConversationRequest]:
         """Extract only bounded fragments; never synthesize missing identifier characters."""
-        configured = self._extract_anchor(message)
-        if configured.anchorType in _PROTECTED_ANCHOR_TYPES:
-            return configured
+        anchors: list[StartAssociateConversationRequest] = []
+        for extractor in self._return_configuration.discovery.anchor_extractors:
+            if extractor.anchor_type not in AnchorType._value2member_map_:
+                continue
+            anchor_type = AnchorType(extractor.anchor_type)
+            for pattern in extractor.patterns:
+                match = re.search(pattern, message, re.IGNORECASE)
+                if match is not None:
+                    value = match.group(0)
+                    if anchor_type in _PROTECTED_ANCHOR_TYPES - {
+                        AnchorType.PHONE,
+                        AnchorType.EMAIL,
+                    }:
+                        value = value.upper()
+                    anchors.append(
+                        StartAssociateConversationRequest(
+                            anchorType=anchor_type,
+                            anchorValue=value,
+                        )
+                    )
+                    break
         contextual_patterns: tuple[tuple[AnchorType, str], ...] = (
             (
                 AnchorType.ORDER_NUMBER,
@@ -475,39 +511,56 @@ class AssociateConversationService:
         for anchor_type, pattern in contextual_patterns:
             match = re.search(pattern, message, re.IGNORECASE)
             if match is not None:
-                return StartAssociateConversationRequest(
-                    anchorType=anchor_type,
-                    anchorValue=match.group(1).upper(),
+                anchors.append(
+                    StartAssociateConversationRequest(
+                        anchorType=anchor_type,
+                        anchorValue=match.group(1).upper(),
+                    )
                 )
         product_match = re.search(
-            r"\b(?:containing|contains|product)\s+(.+?)\s*[?.!]*$",
+            r"\b(?:containing|contains|product|item)\s*(?:is|:|named)?\s+"
+            r"(.+?)(?=\s+(?:for|from|customer)\b|[,.;?]|$)",
             message,
             re.IGNORECASE,
         )
         if product_match is not None:
-            return StartAssociateConversationRequest(
-                anchorType=AnchorType.PRODUCT_DESCRIPTION,
-                anchorValue=product_match.group(1).strip(),
+            anchors.append(
+                StartAssociateConversationRequest(
+                    anchorType=AnchorType.PRODUCT_DESCRIPTION,
+                    anchorValue=product_match.group(1).strip(),
+                )
             )
         customer_match = re.search(
-            r"\b(?:from|for|named?)\s+([A-Z][A-Z'-]*(?:\s+[A-Z][A-Z'-]*){0,2})\s*[?.!]*$",
+            r"\b(?:from|for|named?|customer(?:\s+name)?\s*(?:is|:))\s+"
+            r"(.+?)(?=\s+(?:the\s+)?(?:product|item)\b|[,.;?]|$)",
             message,
             re.IGNORECASE,
         )
         if customer_match is not None:
-            return StartAssociateConversationRequest(
-                anchorType=AnchorType.CUSTOMER_NAME,
-                anchorValue=customer_match.group(1).strip(),
+            value = re.sub(
+                r"^(?:customer|name)\s+",
+                "",
+                customer_match.group(1).strip(),
+                flags=re.IGNORECASE,
             )
-        return configured
+            if len(value) >= 2:
+                anchors.append(
+                    StartAssociateConversationRequest(
+                        anchorType=AnchorType.CUSTOMER_NAME,
+                        anchorValue=value,
+                    )
+                )
+        if not anchors:
+            anchors.append(self._extract_anchor(message))
+        return self._deduplicate_anchors(anchors)
 
-    def _validated_ai_anchor(
+    def _validated_ai_anchors(
         self,
         message: str,
         *,
         explanation: str | None,
         confidence_millionths: int | None,
-    ) -> StartAssociateConversationRequest | None:
+    ) -> list[StartAssociateConversationRequest] | None:
         if (
             explanation is None
             or confidence_millionths is None
@@ -518,38 +571,43 @@ class AssociateConversationService:
             payload = json.loads(explanation)
         except (TypeError, ValueError):
             return None
-        if not isinstance(payload, dict) or set(payload) != {"anchorType", "anchorValue"}:
+        if not isinstance(payload, dict) or set(payload) != {"anchors"}:
             return None
-        raw_type = payload.get("anchorType")
-        raw_value = payload.get("anchorValue")
-        if not isinstance(raw_type, str) or raw_type not in AnchorType._value2member_map_:
+        raw_anchors = payload.get("anchors")
+        if not isinstance(raw_anchors, list) or not 1 <= len(raw_anchors) <= 4:
             return None
-        if not isinstance(raw_value, str):
-            return None
-        try:
-            anchor = StartAssociateConversationRequest(
-                anchorType=AnchorType(raw_type),
-                anchorValue=raw_value,
-            )
-        except ValueError:
-            return None
-        configured = self._extract_anchor(message)
-        if configured.anchorType in _PROTECTED_ANCHOR_TYPES:
-            return configured
-        if (
-            anchor.anchorType in _PROTECTED_ANCHOR_TYPES
-            and anchor.anchorValue.casefold() not in message.casefold()
-        ):
-            return None
-        return anchor
+        anchors: list[StartAssociateConversationRequest] = []
+        for item in raw_anchors:
+            if not isinstance(item, dict) or set(item) != {"anchorType", "anchorValue"}:
+                return None
+            raw_type = item.get("anchorType")
+            raw_value = item.get("anchorValue")
+            if (
+                not isinstance(raw_type, str)
+                or raw_type not in AnchorType._value2member_map_
+                or not isinstance(raw_value, str)
+            ):
+                return None
+            try:
+                anchor = StartAssociateConversationRequest(
+                    anchorType=AnchorType(raw_type),
+                    anchorValue=raw_value,
+                )
+            except ValueError:
+                return None
+            if (
+                anchor.anchorType in _PROTECTED_ANCHOR_TYPES
+                and anchor.anchorValue.casefold() not in message.casefold()
+            ):
+                return None
+            anchors.append(anchor)
+        return self._deduplicate_anchors(anchors)
 
-    async def _resolve_discovery_intent(
+    async def _resolve_discovery_intents(
         self,
         message: str,
-    ) -> StartAssociateConversationRequest:
-        configured = self._extract_anchor(message)
-        if configured.anchorType in _PROTECTED_ANCHOR_TYPES:
-            return configured
+    ) -> list[StartAssociateConversationRequest]:
+        deterministic = self._deterministic_intent_fallbacks(message)
         try:
             evaluation = await self._ai.evaluate(
                 session_id=None,
@@ -562,16 +620,30 @@ class AssociateConversationService:
                 and not trace.fallbackUsed
                 and trace.decision is AIDecision.REVIEW_REQUIRED
             ):
-                validated = self._validated_ai_anchor(
+                validated = self._validated_ai_anchors(
                     message,
                     explanation=trace.explanation,
                     confidence_millionths=trace.confidenceMillionths,
                 )
                 if validated is not None:
-                    return validated
+                    independently_extracted = [
+                        item
+                        for item in deterministic
+                        if not (
+                            item.anchorType is AnchorType.PRODUCT_DESCRIPTION
+                            and item.anchorValue.casefold() == message.casefold()
+                        )
+                    ]
+                    return self._deduplicate_anchors([*independently_extracted, *validated])
         except Exception:
             logger.warning("Discovery intent gateway failed; using deterministic fallback.")
-        return self._deterministic_intent_fallback(message)
+        return deterministic
+
+    async def _resolve_discovery_intent(
+        self,
+        message: str,
+    ) -> StartAssociateConversationRequest:
+        return (await self._resolve_discovery_intents(message))[0]
 
     def _is_strong_anchor(self, anchor_type: AnchorType) -> bool:
         return anchor_type.value in set(self._return_configuration.discovery.strong_anchors)
@@ -654,7 +726,11 @@ class AssociateConversationService:
             value_for=self._candidate_value,
             excluded_slots=excluded_slots,
         )
-        return (selected.slot, selected.question) if selected is not None else None
+        return (
+            (selected.slot, f"Which {selected.label} matches the order?")
+            if selected is not None
+            else None
+        )
 
     def _clarification_prompt(
         self,
@@ -720,7 +796,7 @@ class AssociateConversationService:
             candidates,
             value_for=self._candidate_value,
             default_ambiguity_question=(
-                self._return_configuration.discovery.conversation.default_discovery_question
+                f"What additional detail would distinguish these {len(candidates)} orders?"
             ),
         )
         return (
@@ -735,18 +811,154 @@ class AssociateConversationService:
     def _slot_response_matches(candidate_value: str | None, response: str) -> bool:
         return ProgressiveConversationEngine.response_matches(candidate_value, response)
 
+    def _smart_question_goal(self, conversation: AssociateConversationView) -> str:
+        if conversation.discoveryLock is not None:
+            return "CAPTURE_RETURN_CONTEXT"
+        if len(conversation.candidates) > 1:
+            return "DISAMBIGUATE_MULTIPLE_ORDERS"
+        if len(conversation.candidates) == 1:
+            return "IDENTIFY_ORDER_LINE"
+        if conversation.anchorType in {
+            AnchorType.CUSTOMER_ID,
+            AnchorType.CUSTOMER_NAME,
+            AnchorType.EMAIL,
+            AnchorType.PHONE,
+        }:
+            return "IDENTIFY_CUSTOMER"
+        return "IDENTIFY_ORDER"
+
+    def _eligible_smart_questions(
+        self,
+        conversation: AssociateConversationView,
+        goal_name: str,
+    ) -> list[Any]:
+        """Return configured fields that this conversation can safely consume."""
+
+        policy = self._return_configuration.clarification_policy
+        goal = policy.goals.get(goal_name)
+        if goal is None:
+            return []
+        preferred_order = {
+            field_name: index for index, field_name in enumerate(goal.preferred_fields)
+        }
+        preferred_groups = set(goal.preferred_field_groups)
+        supplied_anchor_types = set(conversation.anchorTypes) or {conversation.anchorType}
+        candidates = [
+            item
+            for item in policy.fields
+            if item.customer_answerable
+            and (item.field in preferred_order or item.field_group in preferred_groups)
+            and (
+                conversation.discoveryLock is not None
+                or (
+                    item.anchor_type is not None
+                    and item.anchor_type in AnchorType._value2member_map_
+                    and AnchorType(item.anchor_type) not in supplied_anchor_types
+                )
+            )
+        ]
+        if conversation.candidates:
+            def ambiguity_rank(item: Any) -> tuple[int, int, int, int, int, str]:
+                values = [
+                    value.casefold()
+                    for candidate in conversation.candidates
+                    if item.candidate_field is not None
+                    if (value := self._candidate_value(candidate, item.candidate_field))
+                ]
+                distinct = set(values)
+                usable = len(values) == len(conversation.candidates) and len(distinct) > 1
+                largest_partition = (
+                    max(values.count(value) for value in distinct)
+                    if usable
+                    else len(conversation.candidates) + 1
+                )
+                return (
+                    0 if usable else 1,
+                    largest_partition,
+                    len(distinct) if usable else 0,
+                    preferred_order.get(item.field, len(preferred_order)),
+                    -item.priority,
+                    item.field,
+                )
+
+            candidates.sort(key=ambiguity_rank)
+        else:
+            candidates.sort(
+                key=lambda item: (
+                    preferred_order.get(item.field, len(preferred_order)),
+                    -item.priority,
+                    item.field,
+                )
+            )
+        return candidates
+
+    def _smart_question_field_stats(
+        self,
+        conversation: AssociateConversationView,
+        candidate_field: str | None,
+    ) -> dict[str, int]:
+        if candidate_field is None or not conversation.candidates:
+            return {"populatedCount": 0, "distinctCount": 0, "largestGroupCount": 0}
+        values = [
+            value.casefold()
+            for candidate in conversation.candidates
+            if (value := self._candidate_value(candidate, candidate_field))
+        ]
+        distinct = set(values)
+        return {
+            "populatedCount": len(values),
+            "distinctCount": len(distinct),
+            "largestGroupCount": (
+                max(values.count(value) for value in distinct) if distinct else 0
+            ),
+        }
+
+    @staticmethod
+    def _validated_smart_question(
+        explanation: str | None,
+        *,
+        confidence_millionths: int | None,
+        allowed_fields: set[str],
+    ) -> str | None:
+        if (
+            explanation is None
+            or confidence_millionths is None
+            or confidence_millionths < _DISCOVERY_INTENT_CONFIDENCE_THRESHOLD
+        ):
+            return None
+        try:
+            payload = json.loads(explanation)
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(payload, dict) or set(payload) != {"field", "question"}:
+            return None
+        field = payload.get("field")
+        question = payload.get("question")
+        if (
+            not isinstance(field, str)
+            or field not in allowed_fields
+            or not isinstance(question, str)
+        ):
+            return None
+        normalized = " ".join(question.split()).strip()
+        if not normalized.endswith("?") or not 3 <= len(normalized) <= 500:
+            return None
+        return normalized
+
     async def _generate_smart_question(
         self,
         conversation: AssociateConversationView,
     ) -> str:
-        if conversation.status == self._return_configuration.discovery.conversation.greeting_status:
-            return self._return_configuration.discovery.conversation.greeting_next_question
-
         configured_question: str | None = None
-        task_id = "RETURN_SMART_QUESTION_V1"
-        strong = list(self._return_configuration.discovery.strong_anchors)
+        allowed_fields: set[str] = set()
+        redacted_input: dict[str, Any]
+        task_id = "RETURN_CLARIFICATION_FIELD_V2"
         known = [
-            f"recognized evidence category: {conversation.anchorType.value}",
+            "recognized evidence categories: "
+            + ", ".join(
+                item.value
+                for item in (conversation.anchorTypes or [conversation.anchorType])
+            ),
             f"source-backed candidate count: {len(conversation.candidates)}",
             f"discovery status: {conversation.status}",
             f"confirmation lock present: {conversation.discoveryLock is not None}",
@@ -757,7 +969,7 @@ class AssociateConversationService:
             attributes = self._return_configuration.discovery.progressive.disambiguation_attributes
             attribute = next((item for item in attributes if item.slot == requested), None)
             if attribute is not None:
-                configured_question = attribute.question
+                configured_question = f"Which {attribute.label} matches the order?"
                 approved_values = sorted(
                     {
                         value
@@ -780,57 +992,81 @@ class AssociateConversationService:
                 )
             missing = [requested.replace("_", " ").lower()]
             task_id = "RETURN_PROGRESSIVE_DISAMBIGUATION_V1"
+            redacted_input = {
+                "missingFields": missing,
+                "knownFacts": known,
+                "returnPath": "associate conversational discovery",
+            }
         else:
-            missing = (
-                [
-                    item.field.replace("_", " ").lower()
-                    for item in sorted(
-                        self._return_configuration.smart_questions.fields,
-                        key=lambda item: -item.priority,
-                    )
-                    if item.customer_answerable
-                ]
-                if conversation.discoveryLock is not None
-                else [
-                    value.replace("_", " ").lower()
-                    for value in strong
-                    if value != conversation.anchorType.value
-                ]
-            )
+            goal = self._smart_question_goal(conversation)
+            allowed_questions = self._eligible_smart_questions(conversation, goal)
+            if allowed_questions:
+                configured_question = f"Could you provide the {allowed_questions[0].label}?"
+            allowed_fields = {item.field for item in allowed_questions}
+            redacted_input = {
+                "goal": goal,
+                "allowedFields": [
+                    {
+                        "field": item.field,
+                        "label": item.label,
+                        "fieldGroup": item.field_group,
+                        "priority": item.priority,
+                        "candidateStats": self._smart_question_field_stats(
+                            conversation,
+                            item.candidate_field,
+                        ),
+                    }
+                    for item in allowed_questions
+                ],
+                "knownFacts": known,
+                "returnPath": "associate conversational discovery",
+            }
 
-        try:
-            evaluation = await self._ai.evaluate(
-                session_id=conversation.id,
-                redacted_input={
-                    "missingFields": missing,
-                    "knownFacts": known,
-                    "returnPath": "associate conversational discovery",
-                },
-                task_id=task_id,
-            )
-            question = (evaluation.trace.explanation or "").strip()
-            if question and question.endswith("?") and len(question) <= 500:
-                return question
-        except Exception as exc:
-            logger.warning(
-                "smart_question_ai_unavailable_using_deterministic_fallback",
-                extra={
-                    "conversation_id": conversation.id,
-                    "error_type": type(exc).__name__,
-                    "task_id": task_id,
-                },
-            )
+        policy = self._return_configuration.clarification_policy
+        if task_id == "RETURN_PROGRESSIVE_DISAMBIGUATION_V1" or (
+            policy.field_selection_owner == "LLM" and redacted_input.get("allowedFields")
+        ):
+            try:
+                evaluation = await self._ai.evaluate(
+                    session_id=conversation.id,
+                    redacted_input=redacted_input,
+                    task_id=task_id,
+                )
+                trace = evaluation.trace
+                if (
+                    not evaluation.pending_interception
+                    and not trace.fallbackUsed
+                    and trace.decision is AIDecision.REVIEW_REQUIRED
+                ):
+                    if task_id == "RETURN_CLARIFICATION_FIELD_V2":
+                        question = self._validated_smart_question(
+                            trace.explanation,
+                            confidence_millionths=trace.confidenceMillionths,
+                            allowed_fields=allowed_fields,
+                        )
+                    else:
+                        candidate = (trace.explanation or "").strip()
+                        question = (
+                            candidate
+                            if candidate.endswith("?") and 3 <= len(candidate) <= 500
+                            else None
+                        )
+                    if question is not None:
+                        return question
+            except Exception as exc:
+                logger.warning(
+                    "smart_question_ai_unavailable_using_deterministic_fallback",
+                    extra={
+                        "conversation_id": conversation.id,
+                        "error_type": type(exc).__name__,
+                        "task_id": task_id,
+                    },
+                )
 
         if configured_question is not None:
             return configured_question
-        subject = (
-            "the matching order and item"
-            if conversation.candidates
-            else (missing[0] if missing else "one more order detail")
-        )
-        return self._return_configuration.discovery.conversation.fallback_question_template.format(
-            subject=subject
-        )
+        subject = "the matching order and item" if conversation.candidates else "one more order detail"
+        return f"Could you provide {subject}?"
 
     async def _apply_chat_copy(
         self,
@@ -1531,21 +1767,80 @@ class AssociateConversationService:
                 )
         return candidates
 
+    async def _discover_candidates_for_anchors(
+        self,
+        anchors: tuple[StartAssociateConversationRequest, ...],
+    ) -> list[OrderCandidate]:
+        """Run bounded searches for every supplied anchor and retain only shared orders."""
+
+        if len(anchors) == 1:
+            return await self._discover_candidates(
+                anchors[0].anchorType,
+                anchors[0].anchorValue,
+            )
+        result_sets = await asyncio.gather(
+            *(
+                self._discover_candidates(anchor.anchorType, anchor.anchorValue)
+                for anchor in anchors
+            )
+        )
+        if any(not candidates for candidates in result_sets):
+            return []
+        keyed_sets = [
+            {
+                (candidate.customerReference, candidate.orderReference): candidate
+                for candidate in candidates
+            }
+            for candidates in result_sets
+        ]
+        common_keys = set(keyed_sets[0])
+        for keyed in keyed_sets[1:]:
+            common_keys.intersection_update(keyed)
+        combined: list[OrderCandidate] = []
+        for key in common_keys:
+            matches = [keyed[key] for keyed in keyed_sets]
+            richest = max(matches, key=lambda item: len(item.lines))
+            retrieval_scores = [
+                item.retrievalScore for item in matches if item.retrievalScore is not None
+            ]
+            combined.append(
+                richest.model_copy(
+                    update={
+                        "retrievalScore": (
+                            sum(retrieval_scores) / len(retrieval_scores)
+                            if retrieval_scores
+                            else None
+                        ),
+                        "evidenceSource": "MULTI_ANCHOR_INTERSECTION",
+                    }
+                )
+            )
+        return sorted(
+            combined,
+            key=lambda item: (
+                -(item.retrievalScore or 0),
+                item.customerReference,
+                item.orderReference,
+            ),
+        )[: self._return_configuration.discovery.progressive.candidate_limit]
+
     def _assess_candidates(
         self,
         payload: StartAssociateConversationRequest,
         candidates: list[OrderCandidate],
+        additional_anchors: tuple[StartAssociateConversationRequest, ...] = (),
     ) -> tuple[list[OrderCandidate], dict[str, Any], OrderSource]:
-        evidence_key = {
+        evidence_keys = {
             AnchorType.ORDER_NUMBER: "order_number",
             AnchorType.CUSTOMER_ID: "customer_id",
-            AnchorType.PHONE: "phone_or_email",
-            AnchorType.EMAIL: "phone_or_email",
+            AnchorType.PHONE: "phone",
+            AnchorType.EMAIL: "email",
             AnchorType.TRACKING_NUMBER: "tracking_number",
-            AnchorType.SKU: "product_model",
+            AnchorType.SKU: "product_sku",
             AnchorType.CUSTOMER_NAME: "customer_name",
-            AnchorType.PRODUCT_DESCRIPTION: "product_model",
-        }[payload.anchorType]
+            AnchorType.PRODUCT_DESCRIPTION: "product_description",
+        }
+        anchors = (payload, *additional_anchors)
         candidate_by_id: dict[str, OrderCandidate] = {}
         inputs: list[DiscoveryCandidateInput] = []
         for candidate in candidates:
@@ -1557,13 +1852,15 @@ class AssociateConversationService:
                     orderReference=candidate.orderReference,
                     customerReference=candidate.customerReference,
                     orderSource=candidate.orderSource,
-                    matchedAnchors=(payload.anchorType.value,),
+                    matchedAnchors=tuple(anchor.anchorType.value for anchor in anchors),
                     evidenceReferences=(f"{candidate.evidenceSource}:{candidate.orderReference}",),
                 )
             )
         assessment = self._order_discovery_agent.assess(
             DiscoveryAssessmentRequest(
-                suppliedEvidence={evidence_key: payload.anchorValue},
+                suppliedEvidence={
+                    evidence_keys[anchor.anchorType]: anchor.anchorValue for anchor in anchors
+                },
                 candidates=tuple(inputs),
             )
         )
@@ -1583,6 +1880,7 @@ class AssociateConversationService:
         payload: StartAssociateConversationRequest,
         *,
         actor_id: str,
+        additional_anchors: tuple[StartAssociateConversationRequest, ...] = (),
     ) -> AssociateConversationView:
         await self.ensure_indexes()
         conv_config = self._return_configuration.discovery.conversation
@@ -1592,7 +1890,7 @@ class AssociateConversationService:
             order_source = OrderSource.UNKNOWN
             assistant_text = conv_config.greeting_response
             status = conv_config.greeting_status
-            next_question = conv_config.greeting_next_question
+            next_question = None
             masked_value = conv_config.greeting_title
             dialogue_state = (
                 self._return_configuration.discovery.progressive.dialogue_states.no_candidates
@@ -1601,12 +1899,14 @@ class AssociateConversationService:
             candidate_set_id = None
             candidate_set_expires_at = None
         else:
-            candidates = await self._discover_candidates(
-                payload.anchorType,
-                payload.anchorValue,
+            anchors = (payload, *additional_anchors)
+            candidates = await self._discover_candidates_for_anchors(
+                anchors,
             )
             candidates, discovery_assessment, order_source = self._assess_candidates(
-                payload, candidates
+                payload,
+                candidates,
+                additional_anchors,
             )
             (
                 dialogue_state,
@@ -1619,13 +1919,13 @@ class AssociateConversationService:
                 assistant_text = conv_config.initial_match_template.format(
                     count=len(candidates),
                     anchor_type=self._format_anchor_type(payload.anchorType),
-                    anchor_value=payload.anchorValue,
+                    anchor_value=", ".join(anchor.anchorValue for anchor in anchors),
                 )
                 status = "DISCOVERY_READY"
                 next_question = (
                     disambiguation_question
                     or discovery_assessment.get("nextQuestion")
-                    or conv_config.default_discovery_question
+                    or f"What detail distinguishes these {len(candidates)} matching orders?"
                 )
                 if requested_slots:
                     status = "DISCOVERY_CLARIFICATION_REQUIRED"
@@ -1636,10 +1936,10 @@ class AssociateConversationService:
             else:
                 assistant_text = conv_config.initial_no_match_template.format(
                     anchor_type=self._format_anchor_type(payload.anchorType),
-                    anchor_value=payload.anchorValue,
+                    anchor_value=", ".join(anchor.anchorValue for anchor in anchors),
                 )
                 status = "NO_MATCH"
-                next_question = conv_config.default_no_match_question
+                next_question = "What additional searchable order detail can narrow this request?"
             masked_value = _mask(payload.anchorValue, payload.anchorType)
         now = _now()
         conversation_id = str(uuid.uuid4())
@@ -1654,11 +1954,17 @@ class AssociateConversationService:
             "_id": conversation_id,
             "status": status,
             "anchorType": payload.anchorType.value,
+            "anchorTypes": [
+                anchor.anchorType.value for anchor in (payload, *additional_anchors)
+            ],
             "anchorValueMasked": masked_value,
             "orderSource": order_source.value,
             "discoveryAssessment": discovery_assessment,
             "anchorDigest": _digest(
-                {"type": payload.anchorType.value, "value": payload.anchorValue}
+                [
+                    {"type": anchor.anchorType.value, "value": anchor.anchorValue}
+                    for anchor in (payload, *additional_anchors)
+                ]
             ),
             "messages": initial_messages,
             "lastMessageSequence": len(initial_messages),
@@ -1694,6 +2000,13 @@ class AssociateConversationService:
             payload={
                 "anchorType": payload.anchorType.value,
                 "anchorValueMasked": document["anchorValueMasked"],
+                "anchors": [
+                    {
+                        "anchorType": anchor.anchorType.value,
+                        "anchorValueMasked": _mask(anchor.anchorValue, anchor.anchorType),
+                    }
+                    for anchor in (payload, *additional_anchors)
+                ],
                 "orderSource": order_source.value,
                 "candidates": document["candidates"],
                 "assessment": discovery_assessment,
@@ -1722,8 +2035,12 @@ class AssociateConversationService:
         *,
         actor_id: str,
     ) -> AssociateConversationView:
-        lookup = await self._resolve_discovery_intent(payload.message)
-        conversation = await self.start(lookup, actor_id=actor_id)
+        lookups = await self._resolve_discovery_intents(payload.message)
+        conversation = await self.start(
+            lookups[0],
+            actor_id=actor_id,
+            additional_anchors=tuple(lookups[1:]),
+        )
         return await self._apply_chat_copy(
             conversation,
             raw_message=payload.message,
@@ -1743,6 +2060,7 @@ class AssociateConversationService:
         payload: ContinueAssociateConversationRequest,
         *,
         actor_id: str,
+        additional_anchors: tuple[StartAssociateConversationRequest, ...] = (),
     ) -> AssociateConversationView:
         conversation = await self.get(conversation_id)
         if conversation is None:
@@ -1753,13 +2071,17 @@ class AssociateConversationService:
             raise ValueError("Discovery is already locked for this conversation")
 
         conv_config = self._return_configuration.discovery.conversation
+        lookup = StartAssociateConversationRequest(
+            anchorType=payload.anchorType,
+            anchorValue=payload.anchorValue,
+        )
         if self._is_greeting(payload.anchorValue):
             candidates = []
             discovery_assessment: dict[str, Any] = {}
             order_source = OrderSource.UNKNOWN
             assistant_text = conv_config.greeting_response
             status = conv_config.greeting_status
-            next_question = conv_config.greeting_next_question
+            next_question = None
             dialogue_state = (
                 self._return_configuration.discovery.progressive.dialogue_states.no_candidates
             )
@@ -1767,16 +2089,13 @@ class AssociateConversationService:
             candidate_set_id = None
             candidate_set_expires_at = None
         else:
-            lookup = StartAssociateConversationRequest(
-                anchorType=payload.anchorType,
-                anchorValue=payload.anchorValue,
-            )
-            candidates = await self._discover_candidates(
-                lookup.anchorType,
-                lookup.anchorValue,
+            candidates = await self._discover_candidates_for_anchors(
+                (lookup, *additional_anchors),
             )
             candidates, discovery_assessment, order_source = self._assess_candidates(
-                lookup, candidates
+                lookup,
+                candidates,
+                additional_anchors,
             )
             (
                 dialogue_state,
@@ -1789,13 +2108,15 @@ class AssociateConversationService:
                 assistant_text = conv_config.continue_match_template.format(
                     count=len(candidates),
                     anchor_type=self._format_anchor_type(payload.anchorType),
-                    anchor_value=payload.anchorValue,
+                    anchor_value=", ".join(
+                        anchor.anchorValue for anchor in (lookup, *additional_anchors)
+                    ),
                 )
                 status = "DISCOVERY_READY"
                 next_question = (
                     disambiguation_question
                     or discovery_assessment.get("nextQuestion")
-                    or conv_config.default_discovery_question
+                    or f"What detail distinguishes these {len(candidates)} matching orders?"
                 )
                 if requested_slots:
                     status = "DISCOVERY_CLARIFICATION_REQUIRED"
@@ -1806,10 +2127,12 @@ class AssociateConversationService:
             else:
                 assistant_text = conv_config.continue_no_match_template.format(
                     anchor_type=self._format_anchor_type(payload.anchorType),
-                    anchor_value=payload.anchorValue,
+                    anchor_value=", ".join(
+                        anchor.anchorValue for anchor in (lookup, *additional_anchors)
+                    ),
                 )
                 status = "NO_MATCH"
-                next_question = conv_config.default_continue_no_match_question
+                next_question = "What other searchable order detail can narrow this request?"
 
         messages = [
             self._message(
@@ -1824,9 +2147,15 @@ class AssociateConversationService:
                 "$set": {
                     "status": status,
                     "anchorType": payload.anchorType.value,
+                    "anchorTypes": [
+                        anchor.anchorType.value for anchor in (lookup, *additional_anchors)
+                    ],
                     "anchorValueMasked": _mask(payload.anchorValue, payload.anchorType),
                     "anchorDigest": _digest(
-                        {"type": payload.anchorType.value, "value": payload.anchorValue}
+                        [
+                            {"type": anchor.anchorType.value, "value": anchor.anchorValue}
+                            for anchor in (lookup, *additional_anchors)
+                        ]
                     ),
                     "orderSource": order_source.value,
                     "discoveryAssessment": discovery_assessment,
@@ -1862,6 +2191,13 @@ class AssociateConversationService:
             payload={
                 "anchorType": payload.anchorType.value,
                 "anchorValueMasked": _mask(payload.anchorValue, payload.anchorType),
+                "anchors": [
+                    {
+                        "anchorType": anchor.anchorType.value,
+                        "anchorValueMasked": _mask(anchor.anchorValue, anchor.anchorType),
+                    }
+                    for anchor in (lookup, *additional_anchors)
+                ],
                 "candidates": [candidate.model_dump(mode="json") for candidate in candidates],
                 "assessment": discovery_assessment,
             },
@@ -1917,7 +2253,7 @@ class AssociateConversationService:
             )
             next_state = conversation.activeDialogueState
             next_slots = conversation.activeRequestedSlots
-            next_question = attribute.question
+            next_question = f"Which {attribute.label} matches the order?"
             next_candidates = conversation.candidates
         elif len(matched) > 1 and next_attribute is not None:
             next_slot, next_question = next_attribute
@@ -1926,17 +2262,13 @@ class AssociateConversationService:
             next_slots = [next_slot]
             next_candidates = matched
         elif len(matched) > 1:
-            next_question = (
-                self._return_configuration.discovery.conversation.default_discovery_question
-            )
+            next_question = f"What detail distinguishes these {len(matched)} matching orders?"
             assistant_text = f"I narrowed the result to {len(matched)} orders. {next_question}"
             next_state = dialogue_states.generic_disambiguation
             next_slots = []
             next_candidates = matched
         else:
-            next_question = (
-                self._return_configuration.discovery.conversation.default_discovery_question
-            )
+            next_question = "Which source-backed order line is being returned?"
             assistant_text = f"I found the matching customer and order. {next_question}"
             next_state = dialogue_states.single_candidate
             next_slots = []
@@ -2021,7 +2353,8 @@ class AssociateConversationService:
                     raw_message=payload.message,
                 )
             return conversation
-        lookup = await self._resolve_discovery_intent(payload.message)
+        lookups = await self._resolve_discovery_intents(payload.message)
+        lookup = lookups[0]
         conversation = await self.continue_discovery(
             conversation_id,
             ContinueAssociateConversationRequest(
@@ -2030,6 +2363,7 @@ class AssociateConversationService:
                 expectedVersion=payload.expectedVersion,
             ),
             actor_id=actor_id,
+            additional_anchors=tuple(lookups[1:]),
         )
         return await self._apply_chat_copy(
             conversation,
@@ -2137,7 +2471,7 @@ class AssociateConversationService:
                     "activeDialogueState": "CONFIRMED",
                     "activeRequestedSlots": [],
                     "clarificationPrompt": None,
-                    "nextQuestion": conv_config.default_details_question,
+                    "nextQuestion": "What return detail should be captured next?",
                     "updatedAt": _now(),
                 },
                 "$push": {"messages": {"$each": confirmation_messages}},

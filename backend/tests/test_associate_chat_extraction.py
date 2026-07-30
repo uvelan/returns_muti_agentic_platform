@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -13,9 +14,11 @@ from return_platform.operations.associate_flow import (
     DiscoveryLock,
     OrderCandidate,
     OrderLineCandidate,
+    StartAssociateConversationRequest,
     _is_expired,
     _normalize_utc_datetime,
 )
+from return_platform.operations.models import AIDecision
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
@@ -26,6 +29,47 @@ def service() -> Any:
         BACKEND_ROOT / "config" / "returns" / "production.yaml"
     ).configuration
     return instance
+
+
+class SmartQuestionGateway:
+    def __init__(
+        self,
+        explanation: str | None,
+        *,
+        confidence: int = 900_000,
+        fallback_used: bool = False,
+    ) -> None:
+        self.explanation = explanation
+        self.confidence = confidence
+        self.fallback_used = fallback_used
+        self.calls: list[dict[str, Any]] = []
+
+    async def evaluate(self, **kwargs: Any) -> Any:
+        self.calls.append(kwargs)
+        return SimpleNamespace(
+            pending_interception=False,
+            trace=SimpleNamespace(
+                fallbackUsed=self.fallback_used,
+                decision=AIDecision.REVIEW_REQUIRED,
+                explanation=self.explanation,
+                confidenceMillionths=self.confidence,
+            ),
+        )
+
+
+def conversation_without_candidates() -> AssociateConversationView:
+    now = datetime.now(UTC)
+    return AssociateConversationView(
+        id="conversation-smart-question",
+        status="NO_MATCH",
+        anchorType=AnchorType.PRODUCT_DESCRIPTION,
+        anchorValueMasked="pressure valve",
+        messages=[],
+        candidates=[],
+        version=0,
+        createdAt=now,
+        updatedAt=now,
+    )
 
 
 def test_chat_extracts_configured_strong_anchor_from_raw_sentence() -> None:
@@ -111,6 +155,125 @@ def test_clarification_prompt_exposes_only_the_selected_field_values() -> None:
         ("Maya Foster", 2),
         ("Nadia Diaz", 1),
     ]
+
+
+def test_smart_question_configuration_contains_ported_goal_policy() -> None:
+    policy = service()._return_configuration.clarification_policy
+
+    assert policy.field_selection_owner == "LLM"
+    assert "DISAMBIGUATE_MULTIPLE_ORDERS" in policy.goals
+    assert {"invoice_number", "customer_po_number", "approximate_purchase_date"} <= {
+        item.field for item in policy.fields
+    }
+    assert all(not hasattr(item, "question") for item in policy.fields)
+
+
+@pytest.mark.asyncio
+async def test_llm_can_choose_any_consumable_field_from_configured_goal() -> None:
+    instance = service()
+    gateway = SmartQuestionGateway(
+        '{"field":"email","question":"Which email address was used for this order?"}'
+    )
+    instance._ai = gateway
+
+    question = await instance._generate_smart_question(conversation_without_candidates())
+
+    assert question == "Which email address was used for this order?"
+    call = gateway.calls[0]
+    assert call["task_id"] == "RETURN_CLARIFICATION_FIELD_V2"
+    assert call["redacted_input"]["goal"] == "IDENTIFY_ORDER"
+    allowed = {item["field"] for item in call["redacted_input"]["allowedFields"]}
+    assert "email" in allowed
+    assert "order_number" in allowed
+    assert "invoice_number" not in allowed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "explanation",
+    (
+        '{"field":"bank_account","question":"What is the bank account number?"}',
+        '{"field":"email","question":"Tell me your email"}',
+        '{"field":"email","question":"What email was used?","extra":true}',
+        "What email was used?",
+    ),
+)
+async def test_unconfigured_or_invalid_llm_question_uses_configured_fallback(
+    explanation: str,
+) -> None:
+    instance = service()
+    instance._ai = SmartQuestionGateway(explanation)
+
+    question = await instance._generate_smart_question(conversation_without_candidates())
+
+    assert question == "Could you provide the Ferguson order number or web order number?"
+
+
+@pytest.mark.asyncio
+async def test_gateway_fallback_cannot_replace_configured_question_policy() -> None:
+    instance = service()
+    instance._ai = SmartQuestionGateway(
+        '{"field":"email","question":"What email was used?"}',
+        fallback_used=True,
+    )
+
+    question = await instance._generate_smart_question(conversation_without_candidates())
+
+    assert question == "Could you provide the Ferguson order number or web order number?"
+
+
+@pytest.mark.asyncio
+async def test_multi_anchor_search_retains_only_orders_matching_every_anchor() -> None:
+    instance = service()
+
+    def candidate(customer: str, order: str, product: str) -> OrderCandidate:
+        return OrderCandidate(
+            customerReference=customer,
+            customerName=customer,
+            orderReference=order,
+            confidenceMillionths=500_000,
+            evidenceSource="TEST",
+            lines=[
+                OrderLineCandidate(
+                    orderLineId=f"{order}:1",
+                    productId=product,
+                    productDescription=product,
+                )
+            ],
+        )
+
+    by_anchor = {
+        AnchorType.CUSTOMER_NAME: [
+            candidate("Enmen", "SO-1", "faucet"),
+            candidate("Enmen", "SO-2", "valve"),
+        ],
+        AnchorType.PRODUCT_DESCRIPTION: [
+            candidate("Enmen", "SO-1", "faucet"),
+            candidate("Other", "SO-3", "faucet"),
+        ],
+    }
+
+    async def discover(anchor_type: AnchorType, _anchor_value: str) -> list[OrderCandidate]:
+        return by_anchor[anchor_type]
+
+    instance._discover_candidates = discover
+    results = await instance._discover_candidates_for_anchors(
+        (
+            StartAssociateConversationRequest(
+                anchorType=AnchorType.CUSTOMER_NAME,
+                anchorValue="Enmen",
+            ),
+            StartAssociateConversationRequest(
+                anchorType=AnchorType.PRODUCT_DESCRIPTION,
+                anchorValue="faucet",
+            ),
+        )
+    )
+
+    assert [(item.customerReference, item.orderReference) for item in results] == [
+        ("Enmen", "SO-1")
+    ]
+    assert results[0].evidenceSource == "MULTI_ANCHOR_INTERSECTION"
 
 
 def test_candidate_expiry_accepts_naive_mongodb_datetimes() -> None:

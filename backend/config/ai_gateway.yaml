@@ -77,16 +77,16 @@ tasks:
       - orderStatus
       - daysSinceDelivery
       - requestedDecision
-  RETURN_SMART_QUESTION_V1:
+  RETURN_CLARIFICATION_FIELD_V2:
     tier: LIGHTWEIGHT
-    promptVersion: return-smart-question-v1
+    promptVersion: return-clarification-field-v2
     fallbackStrategy: TEMPLATE
-    fallbackTemplate: SMART_QUESTION_V1
+    fallbackTemplate: DYNAMIC_CLARIFICATION_V2
     maximumOutputTokens: 192
     maximumInputTokens: 3000
     allowTierEscalation: false
     allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
-    allowedInputKeys: [missingFields, knownFacts, returnPath]
+    allowedInputKeys: [goal, allowedFields, knownFacts, returnPath]
   RETURN_PROGRESSIVE_DISAMBIGUATION_V1:
     tier: LIGHTWEIGHT
     promptVersion: return-progressive-disambiguation-v1

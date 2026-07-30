@@ -13,7 +13,7 @@ agents:
       - classify_order_source
       - rank_candidates
       - explain_candidate_evidence
-      - recommend_next_question
+      - recommend_dynamic_clarification
   return_workflow:
     name: "Return Workflow Agent"
     version: "2.0"
@@ -105,7 +105,6 @@ discovery:
       - "^(?:hi|hello|hey|greetings|good\\s+(?:morning|afternoon|evening)|help|start|howdy|hi\\s+there|hello\\s+there)[\\s!.,]*$"
     greeting_response: "Hello! I am your AI Returns Assistant. I can help you locate customer orders, verify return eligibility, and process RMA requests. To get started, please share an order number (e.g., SO-00010001 or W000000001), customer ID, tracking number, or SKU."
     greeting_status: "AWAITING_ANCHOR"
-    greeting_next_question: "How can I assist you with your return today?"
     greeting_title: "Return Assistance"
     initial_match_template: "I located {count} matching order(s) for {anchor_type} '{anchor_value}'. Please review the evidence below and confirm the exact customer and order line to proceed."
     initial_no_match_template: "I searched our order records for {anchor_type} '{anchor_value}', but couldn't find a direct match. Could you provide another identifier such as an order number, customer ID, tracking number, or SKU?"
@@ -115,11 +114,6 @@ discovery:
     confirmation_assistant_template: "Order line {order_line_id} is now locked for return processing. Please provide the return reason, quantity, number of packages, preferred shipping method, and any optional notes."
     submission_associate_template: "Confirmed return handling details."
     submission_assistant_template: "Return session {session_id} has been created and transferred to Return Support processing."
-    fallback_question_template: "Could you please provide {subject}?"
-    default_discovery_question: "Which order and order line should be returned?"
-    default_no_match_question: "What additional order evidence can you provide?"
-    default_continue_no_match_question: "What other order evidence can you provide?"
-    default_details_question: "Why is the item being returned?"
   progressive:
     enabled: true
     customer_fulltext_index: customer_name_search_v2
@@ -143,31 +137,31 @@ discovery:
     disambiguation_attributes:
       - slot: customer_name
         candidate_field: customerName
-        question: "Which customer are you referring to?"
+        label: "customer name"
         priority: 120
       - slot: billing_city
         candidate_field: billingCity
-        question: "Which city is the customer account located in?"
+        label: "customer account city"
         priority: 100
       - slot: postal_code
         candidate_field: postalCode
-        question: "What postal code is associated with the customer account?"
+        label: "customer account postal code"
         priority: 90
       - slot: account_type
         candidate_field: accountType
-        question: "Is this a showroom, branch, or direct customer account?"
+        label: "customer account type"
         priority: 80
       - slot: product_description
         candidate_field: productDescription
-        question: "Which product are you referring to?"
+        label: "product"
         priority: 75
       - slot: order_status
         candidate_field: orderStatus
-        question: "What is the current order status?"
+        label: "order status"
         priority: 70
       - slot: order_number
         candidate_field: orderReference
-        question: "Which order number should be used?"
+        label: "order number"
         priority: 10
 
 source_resolution:
@@ -228,29 +222,171 @@ source_resolution:
   tracking_field: shipmentInfoEventData.trkNum
   tracking_order_field: shipmentInfoEventData.trilOrdNum
 
-smart_questions:
-  max_questions_per_turn: 1
+clarification_policy:
+  version: v2
+  max_prompts_per_turn: 1
+  max_fields_per_turn: 1
+  phrasing_owner: LLM
+  field_selection_owner: LLM
   fields:
     - field: order_number
-      question: "Do you have the Ferguson order number or web order number?"
+      label: "Ferguson order number or web order number"
+      priority: 120
+      customer_answerable: true
+      field_group: ORDER_ANCHOR
+      anchor_type: ORDER_NUMBER
+      candidate_field: orderReference
+    - field: customer_id
+      label: "customer ID"
+      priority: 115
+      customer_answerable: true
+      field_group: CUSTOMER_ANCHOR
+      anchor_type: CUSTOMER_ID
+      candidate_field: customerReference
+    - field: tracking_number
+      label: "tracking number"
+      priority: 110
+      customer_answerable: true
+      field_group: SHIPMENT_ANCHOR
+      anchor_type: TRACKING_NUMBER
+    - field: invoice_number
+      label: "invoice number"
+      priority: 105
+      customer_answerable: true
+      field_group: ORDER_ANCHOR
+    - field: customer_po_number
+      label: "customer PO number"
       priority: 100
       customer_answerable: true
-    - field: phone_or_email
-      question: "What phone number or email was used for the purchase?"
+      field_group: ORDER_ANCHOR
+    - field: email
+      label: "email used on the order"
+      priority: 95
+      customer_answerable: true
+      field_group: CUSTOMER_ANCHOR
+      anchor_type: EMAIL
+    - field: phone
+      label: "phone number used on the order"
       priority: 90
       customer_answerable: true
-    - field: product_model
-      question: "What model number, SKU, or product description is on the item?"
+      field_group: CUSTOMER_ANCHOR
+      anchor_type: PHONE
+    - field: customer_name
+      label: "name on the order"
+      priority: 85
+      customer_answerable: true
+      field_group: CUSTOMER_NARROWING
+      anchor_type: CUSTOMER_NAME
+      candidate_field: customerName
+    - field: company_name
+      label: "company name"
       priority: 80
       customer_answerable: true
-    - field: product_presence
-      question: "Is the product at this branch, at a residence, or at a jobsite?"
+      field_group: CUSTOMER_NARROWING
+    - field: zip_code
+      label: "ZIP code on the order"
+      priority: 75
+      customer_answerable: true
+      field_group: CUSTOMER_NARROWING
+      candidate_field: postalCode
+    - field: product_sku
+      label: "SKU or item number"
       priority: 70
       customer_answerable: true
-    - field: return_reason
-      question: "Why is the item being returned?"
+      field_group: LINE_NARROWING
+      anchor_type: SKU
+      candidate_field: sku
+    - field: product_description
+      label: "product description"
+      priority: 65
+      customer_answerable: true
+      field_group: LINE_NARROWING
+      anchor_type: PRODUCT_DESCRIPTION
+      candidate_field: productDescription
+    - field: approximate_purchase_date
+      label: "approximate purchase date"
       priority: 60
       customer_answerable: true
+      field_group: DATE_NARROWING
+    - field: purchase_channel_hint
+      label: "where the order was placed"
+      priority: 55
+      customer_answerable: true
+      field_group: SOURCE_NARROWING
+    - field: product_presence
+      label: "current product location"
+      priority: 50
+      customer_answerable: true
+      field_group: RETURN_CONTEXT
+    - field: return_reason
+      label: "reason for return"
+      priority: 45
+      customer_answerable: true
+      field_group: RETURN_CONTEXT
+  goals:
+    IDENTIFY_ORDER:
+      preferred_field_groups:
+        - ORDER_ANCHOR
+        - SHIPMENT_ANCHOR
+        - CUSTOMER_ANCHOR
+        - DATE_NARROWING
+      preferred_fields:
+        - order_number
+        - tracking_number
+        - customer_id
+        - invoice_number
+        - customer_po_number
+        - email
+        - phone
+        - approximate_purchase_date
+    IDENTIFY_CUSTOMER:
+      preferred_field_groups:
+        - CUSTOMER_ANCHOR
+        - CUSTOMER_NARROWING
+      preferred_fields:
+        - customer_id
+        - phone
+        - email
+        - customer_name
+        - company_name
+        - zip_code
+    IDENTIFY_ORDER_LINE:
+      preferred_field_groups:
+        - LINE_NARROWING
+        - ORDER_ANCHOR
+      preferred_fields:
+        - product_sku
+        - product_description
+        - order_number
+        - invoice_number
+    DISAMBIGUATE_MULTIPLE_ORDERS:
+      preferred_field_groups:
+        - ORDER_ANCHOR
+        - DATE_NARROWING
+        - LINE_NARROWING
+      preferred_fields:
+        - order_number
+        - invoice_number
+        - customer_po_number
+        - approximate_purchase_date
+        - product_sku
+        - product_description
+    IDENTIFY_SOURCE_CHANNEL:
+      preferred_field_groups:
+        - ORDER_ANCHOR
+        - SOURCE_NARROWING
+        - CUSTOMER_ANCHOR
+      preferred_fields:
+        - order_number
+        - purchase_channel_hint
+        - email
+        - phone
+    CAPTURE_RETURN_CONTEXT:
+      preferred_field_groups:
+        - RETURN_CONTEXT
+      preferred_fields:
+        - return_reason
+        - product_presence
 
 return_policy:
   photo_required_reason_codes:
