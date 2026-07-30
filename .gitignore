@@ -4,6 +4,7 @@ dist/
 dist-ssr/
 *.local
 .tmp/
+.design-temp/
 coverage/
 
 # Python & Backend

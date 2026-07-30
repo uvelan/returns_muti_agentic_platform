@@ -300,7 +300,7 @@
             "type": "object"
           },
           "taskId": {
-            "default": "RETURN_SMART_QUESTION_V1",
+            "default": "RETURN_CLARIFICATION_FIELD_V2",
             "maxLength": 128,
             "minLength": 1,
             "title": "Taskid",
@@ -4232,6 +4232,14 @@
           "anchorType": {
             "$ref": "#/components/schemas/AnchorType"
           },
+          "anchorTypes": {
+            "items": {
+              "$ref": "#/components/schemas/AnchorType"
+            },
+            "maxItems": 4,
+            "title": "Anchortypes",
+            "type": "array"
+          },
           "anchorValueMasked": {
             "title": "Anchorvaluemasked",
             "type": "string"
@@ -4265,6 +4273,16 @@
             },
             "title": "Candidates",
             "type": "array"
+          },
+          "clarificationPrompt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClarificationPrompt"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "configurationChecksum": {
             "anyOf": [
@@ -4795,6 +4813,60 @@
         ],
         "title": "CircuitState",
         "type": "string"
+      },
+      "ClarificationOption": {
+        "additionalProperties": false,
+        "properties": {
+          "candidateCount": {
+            "minimum": 1.0,
+            "title": "Candidatecount",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label",
+          "candidateCount"
+        ],
+        "title": "ClarificationOption",
+        "type": "object"
+      },
+      "ClarificationPrompt": {
+        "additionalProperties": false,
+        "properties": {
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/ClarificationOption"
+            },
+            "maxItems": 12,
+            "minItems": 2,
+            "title": "Options",
+            "type": "array"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "slot": {
+            "title": "Slot",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot",
+          "question",
+          "options"
+        ],
+        "title": "ClarificationPrompt",
+        "type": "object"
       },
       "ConfirmDiscoveryRequest": {
         "additionalProperties": false,
@@ -15575,6 +15647,381 @@
         "summary": "Recommend Bay",
         "tags": [
           "Warehouse Placement"
+        ]
+      }
+    },
+    "/api/v2/copilot/chat": {
+      "post": {
+        "operationId": "start_copilot_chat_api_v2_copilot_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssociateChatTurnRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AssociateConversationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Copilot Chat",
+        "tags": [
+          "Order Discovery Copilot v2"
+        ]
+      }
+    },
+    "/api/v2/copilot/conversations": {
+      "get": {
+        "operationId": "list_copilot_conversations_api_v2_copilot_conversations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_AssociateConversationView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Copilot Conversations",
+        "tags": [
+          "Order Discovery Copilot v2"
+        ]
+      },
+      "post": {
+        "operationId": "start_copilot_conversation_api_v2_copilot_conversations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartAssociateConversationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AssociateConversationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Copilot Conversation",
+        "tags": [
+          "Order Discovery Copilot v2"
+        ]
+      }
+    },
+    "/api/v2/copilot/conversations/{conversation_id}": {
+      "get": {
+        "operationId": "get_copilot_conversation_api_v2_copilot_conversations__conversation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AssociateConversationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Copilot Conversation",
+        "tags": [
+          "Order Discovery Copilot v2"
+        ]
+      }
+    },
+    "/api/v2/copilot/conversations/{conversation_id}/chat": {
+      "post": {
+        "operationId": "continue_copilot_chat_api_v2_copilot_conversations__conversation_id__chat_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssociateChatTurnRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AssociateConversationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Continue Copilot Chat",
+        "tags": [
+          "Order Discovery Copilot v2"
+        ]
+      }
+    },
+    "/api/v2/copilot/conversations/{conversation_id}/confirm": {
+      "post": {
+        "operationId": "confirm_copilot_discovery_api_v2_copilot_conversations__conversation_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmDiscoveryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AssociateConversationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Copilot Discovery",
+        "tags": [
+          "Order Discovery Copilot v2"
+        ]
+      }
+    },
+    "/api/v2/copilot/conversations/{conversation_id}/details": {
+      "post": {
+        "operationId": "submit_copilot_return_details_api_v2_copilot_conversations__conversation_id__details_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnDetailsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Copilot Return Details",
+        "tags": [
+          "Order Discovery Copilot v2"
+        ]
+      }
+    },
+    "/api/v2/copilot/conversations/{conversation_id}/messages": {
+      "post": {
+        "operationId": "continue_copilot_conversation_api_v2_copilot_conversations__conversation_id__messages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContinueAssociateConversationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AssociateConversationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Continue Copilot Conversation",
+        "tags": [
+          "Order Discovery Copilot v2"
         ]
       }
     },

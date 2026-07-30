@@ -55,7 +55,12 @@ The associate Copilot is the real order-discovery entry point for the return flo
 8. The confirmed customer, order, and line continue into the return workflow.
 9. AI failure returns a deterministic response and does not break the business flow.
 
-The production UI is available through the Associate Returns route. The internal Copilot Operations Console uses the same persistent conversation service and is restricted by backend administrative authorization.
+The existing console is canonical under `/v1` (including `/v1/associate/returns`);
+legacy unversioned browser routes redirect to their `/v1` equivalents. The
+responsive Order Discovery Copilot v2 workspace is available at
+`/v2/copilot` and calls only the `/api/v2/copilot` API family. The internal
+Copilot Operations Console uses the same persistent conversation service and
+is restricted by backend administrative authorization.
 
 ## Graph-first runtime configuration
 
@@ -408,10 +413,10 @@ Frontend routes:
 
 | Capability | Route |
 |---|---|
-| Configuration Studio | `/data-console/configuration` |
-| Runtime credential validation | `/data-console/runtime-validation` |
-| Copilot Operations Console | `/data-console/copilot/operations` |
-| General settings | `/data-console/settings` |
+| Configuration Studio | `/v1/data-console/configuration` |
+| Runtime credential validation | `/v1/data-console/runtime-validation` |
+| Copilot Operations Console | `/v1/data-console/copilot/operations` |
+| General settings | `/v1/data-console/settings` |
 
 Configuration publication requires backend write authorization. The Copilot Operations Console requires an administrative role and cannot bypass production APIs, configuration publication, Vault, or safety ceilings.
 

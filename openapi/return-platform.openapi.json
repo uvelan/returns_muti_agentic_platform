@@ -300,7 +300,7 @@
             "type": "object"
           },
           "taskId": {
-            "default": "RETURN_SMART_QUESTION_V1",
+            "default": "RETURN_CLARIFICATION_FIELD_V2",
             "maxLength": 128,
             "minLength": 1,
             "title": "Taskid",
@@ -462,6 +462,36 @@
         "title": "AIStudioGenerationRequest",
         "type": "object"
       },
+      "AIStudioPromptRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "prompt": {
+            "maxLength": 1000,
+            "minLength": 10,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "scenarioName": {
+            "default": "customer-order-sandbox",
+            "maxLength": 128,
+            "minLength": 3,
+            "title": "Scenarioname",
+            "type": "string"
+          },
+          "seed": {
+            "default": 20260724,
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Seed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "title": "AIStudioPromptRequest",
+        "type": "object"
+      },
       "AIStudioProposalView": {
         "additionalProperties": false,
         "properties": {
@@ -528,6 +558,24 @@
           "digest": {
             "title": "Digest",
             "type": "string"
+          },
+          "generationPlan": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Generationplan",
+            "type": "object"
+          },
+          "generationPrompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generationprompt"
           },
           "id": {
             "title": "Id",
@@ -1255,6 +1303,63 @@
         "title": "AIUsageSummaryView",
         "type": "object"
       },
+      "AIValidateAndStageRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "apiKey": {
+            "format": "password",
+            "title": "Apikey",
+            "type": "string",
+            "writeOnly": true
+          },
+          "modelClass": {
+            "enum": [
+              "LIGHTWEIGHT",
+              "STANDARD"
+            ],
+            "title": "Modelclass",
+            "type": "string"
+          },
+          "modelId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Modelid",
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "GOOGLE",
+              "NVIDIA",
+              "OPENAI",
+              "ANTHROPIC"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "taskKey": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Taskkey",
+            "type": "string"
+          },
+          "vaultReference": {
+            "maxLength": 768,
+            "minLength": 16,
+            "title": "Vaultreference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "modelId",
+          "modelClass",
+          "taskKey",
+          "apiKey",
+          "vaultReference"
+        ],
+        "title": "AIValidateAndStageRequest",
+        "type": "object"
+      },
       "APIResponse_AIGatewaySettingsView_": {
         "additionalProperties": false,
         "properties": {
@@ -1418,6 +1523,39 @@
           "meta"
         ],
         "title": "APIResponse[AIUsageSummaryView]",
+        "type": "object"
+      },
+      "APIResponse_ApprovalRecord_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApprovalRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ApprovalRecord]",
         "type": "object"
       },
       "APIResponse_AssociateConversationView_": {
@@ -1715,6 +1853,39 @@
           "meta"
         ],
         "title": "APIResponse[DiscoveryAssessment]",
+        "type": "object"
+      },
+      "APIResponse_ExecutionRun_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExecutionRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ExecutionRun]",
         "type": "object"
       },
       "APIResponse_FeedbackAssessment_": {
@@ -2078,6 +2249,72 @@
           "meta"
         ],
         "title": "APIResponse[Job]",
+        "type": "object"
+      },
+      "APIResponse_OperationalGenerationProposal_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OperationalGenerationProposal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[OperationalGenerationProposal]",
+        "type": "object"
+      },
+      "APIResponse_OperationalWritePlan_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OperationalWritePlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[OperationalWritePlan]",
         "type": "object"
       },
       "APIResponse_ReturnSessionView_": {
@@ -2474,6 +2711,39 @@
           "meta"
         ],
         "title": "APIResponse[UnifiedInventory]",
+        "type": "object"
+      },
+      "APIResponse_ValidationReceipt_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidationReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ValidationReceipt]",
         "type": "object"
       },
       "APIResponse_Workspace_": {
@@ -3578,6 +3848,43 @@
         "title": "APIResponse[list[TimelineEvent]]",
         "type": "object"
       },
+      "APIResponse_list_ValidationReceipt__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ValidationReceipt"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[list[ValidationReceipt]]",
+        "type": "object"
+      },
       "APIResponse_list_Workspace__": {
         "additionalProperties": false,
         "properties": {
@@ -3821,15 +4128,144 @@
         "title": "AnchorType",
         "type": "string"
       },
+      "ApprovalRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_id": {
+            "format": "uuid",
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "approved_at": {
+            "format": "date-time",
+            "title": "Approved At",
+            "type": "string"
+          },
+          "approved_by": {
+            "title": "Approved By",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "plan_checksum": {
+            "title": "Plan Checksum",
+            "type": "string"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "proposal_checksum": {
+            "title": "Proposal Checksum",
+            "type": "string"
+          },
+          "schema_release_id": {
+            "title": "Schema Release Id",
+            "type": "string"
+          },
+          "target_environment": {
+            "title": "Target Environment",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approval_id",
+          "plan_id",
+          "proposal_checksum",
+          "plan_checksum",
+          "schema_release_id",
+          "target_environment",
+          "approved_by",
+          "approved_at",
+          "expires_at"
+        ],
+        "title": "ApprovalRecord",
+        "type": "object"
+      },
+      "AssociateChatTurnRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedVersion": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedversion"
+          },
+          "message": {
+            "maxLength": 2000,
+            "minLength": 2,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "AssociateChatTurnRequest",
+        "type": "object"
+      },
       "AssociateConversationView": {
         "additionalProperties": false,
         "properties": {
+          "activeDialogueState": {
+            "default": "ENTITY_IDENTIFICATION",
+            "title": "Activedialoguestate",
+            "type": "string"
+          },
+          "activeRequestedSlots": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Activerequestedslots",
+            "type": "array"
+          },
           "anchorType": {
             "$ref": "#/components/schemas/AnchorType"
+          },
+          "anchorTypes": {
+            "items": {
+              "$ref": "#/components/schemas/AnchorType"
+            },
+            "maxItems": 4,
+            "title": "Anchortypes",
+            "type": "array"
           },
           "anchorValueMasked": {
             "title": "Anchorvaluemasked",
             "type": "string"
+          },
+          "candidateSetExpiresAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidatesetexpiresat"
+          },
+          "candidateSetId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidatesetid"
           },
           "candidates": {
             "items": {
@@ -3837,6 +4273,43 @@
             },
             "title": "Candidates",
             "type": "array"
+          },
+          "clarificationPrompt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClarificationPrompt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "configurationChecksum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configurationchecksum"
+          },
+          "configurationReleaseId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configurationreleaseid"
+          },
+          "configurationSource": {
+            "default": "VERSION_CONTROLLED_BASELINE",
+            "title": "Configurationsource",
+            "type": "string"
           },
           "confirmationSnapshotId": {
             "anyOf": [
@@ -4341,6 +4814,60 @@
         "title": "CircuitState",
         "type": "string"
       },
+      "ClarificationOption": {
+        "additionalProperties": false,
+        "properties": {
+          "candidateCount": {
+            "minimum": 1.0,
+            "title": "Candidatecount",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label",
+          "candidateCount"
+        ],
+        "title": "ClarificationOption",
+        "type": "object"
+      },
+      "ClarificationPrompt": {
+        "additionalProperties": false,
+        "properties": {
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/ClarificationOption"
+            },
+            "maxItems": 12,
+            "minItems": 2,
+            "title": "Options",
+            "type": "array"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "slot": {
+            "title": "Slot",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot",
+          "question",
+          "options"
+        ],
+        "title": "ClarificationPrompt",
+        "type": "object"
+      },
       "ConfirmDiscoveryRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4349,6 +4876,19 @@
             "minimum": 0.0,
             "title": "Candidateindex",
             "type": "integer"
+          },
+          "candidateSetId": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidatesetid"
           },
           "expectedVersion": {
             "minimum": 0.0,
@@ -4417,6 +4957,32 @@
           "seedVersion"
         ],
         "title": "ConsoleSettingsView",
+        "type": "object"
+      },
+      "ContinueAssociateConversationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "anchorType": {
+            "$ref": "#/components/schemas/AnchorType"
+          },
+          "anchorValue": {
+            "maxLength": 256,
+            "minLength": 2,
+            "title": "Anchorvalue",
+            "type": "string"
+          },
+          "expectedVersion": {
+            "minimum": 0.0,
+            "title": "Expectedversion",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "anchorType",
+          "anchorValue",
+          "expectedVersion"
+        ],
+        "title": "ContinueAssociateConversationRequest",
         "type": "object"
       },
       "ConversationMessage": {
@@ -4532,6 +5098,28 @@
           "content"
         ],
         "title": "CreateImportPayload",
+        "type": "object"
+      },
+      "CreateReleasePayload": {
+        "additionalProperties": false,
+        "properties": {
+          "from_active": {
+            "default": true,
+            "title": "From Active",
+            "type": "boolean"
+          },
+          "release_id": {
+            "maxLength": 128,
+            "minLength": 3,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]+$",
+            "title": "Release Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "release_id"
+        ],
+        "title": "CreateReleasePayload",
         "type": "object"
       },
       "CreateScenarioPayload": {
@@ -4873,8 +5461,14 @@
         "type": "object"
       },
       "DataAssetSchema": {
-        "additionalProperties": false,
         "properties": {
+          "allowed_operations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Operations",
+            "type": "array"
+          },
           "asset_id": {
             "maxLength": 255,
             "pattern": "^[a-z][a-z0-9_.-]+$",
@@ -4882,14 +5476,43 @@
             "type": "string"
           },
           "authoritative": {
-            "title": "Authoritative",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authoritative"
+          },
+          "authoritative_system": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Authoritative System",
+            "type": "string"
+          },
+          "collision_policy": {
+            "enum": [
+              "REJECT",
+              "GENERATE_NEW_KEYS",
+              "SKIP_EXISTING"
+            ],
+            "title": "Collision Policy",
+            "type": "string"
           },
           "database": {
             "maxLength": 128,
             "minLength": 1,
             "title": "Database",
             "type": "string"
+          },
+          "dependency_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dependency Fields",
+            "type": "array"
           },
           "description": {
             "maxLength": 500,
@@ -4913,6 +5536,23 @@
             "title": "Fields",
             "type": "array"
           },
+          "generated_data_policy": {
+            "enum": [
+              "ENABLED",
+              "DISABLED"
+            ],
+            "title": "Generated Data Policy",
+            "type": "string"
+          },
+          "graph_sync_policy": {
+            "enum": [
+              "SYNC_IMMEDIATELY",
+              "BACKGROUND",
+              "NONE"
+            ],
+            "title": "Graph Sync Policy",
+            "type": "string"
+          },
           "name": {
             "maxLength": 128,
             "minLength": 1,
@@ -4932,18 +5572,85 @@
             ],
             "title": "Namespace"
           },
+          "natural_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Natural Keys",
+            "type": "array"
+          },
+          "owner": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Owner",
+            "type": "string"
+          },
           "ownership": {
-            "enum": [
-              "SOURCE_SYSTEM",
-              "PLATFORM_OWNED",
-              "DERIVED_PROJECTION"
+            "anyOf": [
+              {
+                "enum": [
+                  "SOURCE_SYSTEM",
+                  "PLATFORM_OWNED",
+                  "DERIVED_PROJECTION"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Ownership",
+            "title": "Ownership"
+          },
+          "pii_policy": {
+            "enum": [
+              "STRICT_SYNTHETIC",
+              "NONE"
+            ],
+            "title": "Pii Policy",
+            "type": "string"
+          },
+          "rollback_policy": {
+            "enum": [
+              "DELETE",
+              "DOMAIN_COMPENSATE",
+              "NO_ACTION"
+            ],
+            "title": "Rollback Policy",
             "type": "string"
           },
           "writable_in_sandbox": {
-            "title": "Writable In Sandbox",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Writable In Sandbox"
+          },
+          "write_adapter_key": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Write Adapter Key"
+          },
+          "write_policy": {
+            "enum": [
+              "DENIED",
+              "DOMAIN_API_ONLY",
+              "SOURCE_ADMIN_WRITER",
+              "DIRECT_OPERATIONAL_INSERT",
+              "DERIVED_PROJECTION"
+            ],
+            "title": "Write Policy",
+            "type": "string"
           }
         },
         "required": [
@@ -4951,13 +5658,141 @@
           "engine",
           "database",
           "name",
-          "ownership",
-          "authoritative",
-          "writable_in_sandbox",
           "description",
-          "fields"
+          "fields",
+          "owner",
+          "authoritative_system",
+          "write_policy",
+          "generated_data_policy",
+          "collision_policy",
+          "pii_policy",
+          "rollback_policy",
+          "graph_sync_policy"
         ],
         "title": "DataAssetSchema",
+        "type": "object"
+      },
+      "DataSourceValidateAndStageRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "accessMode": {
+            "default": "READ_ONLY",
+            "enum": [
+              "READ_ONLY",
+              "READ_WRITE"
+            ],
+            "title": "Accessmode",
+            "type": "string"
+          },
+          "credential": {
+            "format": "password",
+            "title": "Credential",
+            "type": "string",
+            "writeOnly": true
+          },
+          "credentialKind": {
+            "enum": [
+              "DSN",
+              "PASSWORD"
+            ],
+            "title": "Credentialkind",
+            "type": "string"
+          },
+          "database": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Database",
+            "type": "string"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "requiredDatasets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Requireddatasets",
+            "type": "array"
+          },
+          "sourceKey": {
+            "maxLength": 128,
+            "minLength": 2,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]+$",
+            "title": "Sourcekey",
+            "type": "string"
+          },
+          "sourceType": {
+            "enum": [
+              "MONGODB",
+              "NEO4J",
+              "SQLSERVER"
+            ],
+            "title": "Sourcetype",
+            "type": "string"
+          },
+          "uri": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uri"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          },
+          "vaultReference": {
+            "maxLength": 768,
+            "minLength": 16,
+            "title": "Vaultreference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceKey",
+          "sourceType",
+          "database",
+          "credential",
+          "credentialKind",
+          "vaultReference"
+        ],
+        "title": "DataSourceValidateAndStageRequest",
         "type": "object"
       },
       "DependencyErrorCode": {
@@ -5358,6 +6193,77 @@
         "title": "DocumentArtifactRegistration",
         "type": "object"
       },
+      "ExecutionRun": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ExecutionRunState"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "plan_id",
+          "state",
+          "started_at",
+          "updated_at"
+        ],
+        "title": "ExecutionRun",
+        "type": "object"
+      },
+      "ExecutionRunState": {
+        "enum": [
+          "DRAFT",
+          "GENERATED",
+          "VALIDATING",
+          "VALIDATION_FAILED",
+          "VALIDATED",
+          "PENDING_APPROVAL",
+          "APPROVED",
+          "APPLYING",
+          "APPLIED",
+          "PARTIALLY_FAILED",
+          "COMPENSATING",
+          "COMPENSATED",
+          "ROLLING_BACK",
+          "ROLLED_BACK",
+          "ROLLBACK_BLOCKED",
+          "ROLLBACK_FAILED",
+          "EXPIRED"
+        ],
+        "title": "ExecutionRunState",
+        "type": "string"
+      },
       "FallbackStrategy": {
         "enum": [
           "TEMPLATE",
@@ -5671,6 +6577,84 @@
         "title": "FulfillmentFact",
         "type": "object"
       },
+      "GeneratedRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "dependency_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dependency Keys",
+            "type": "array"
+          },
+          "generation_index": {
+            "title": "Generation Index",
+            "type": "integer"
+          },
+          "temporary_record_key": {
+            "title": "Temporary Record Key",
+            "type": "string"
+          },
+          "values": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "asset_id",
+          "temporary_record_key",
+          "values",
+          "dependency_keys",
+          "generation_index"
+        ],
+        "title": "GeneratedRecord",
+        "type": "object"
+      },
+      "GenerationMode": {
+        "enum": [
+          "DETERMINISTIC",
+          "AI_ASSISTED"
+        ],
+        "title": "GenerationMode",
+        "type": "string"
+      },
+      "GenerationProvenance": {
+        "additionalProperties": false,
+        "properties": {
+          "ai_traces": {
+            "items": {},
+            "title": "Ai Traces",
+            "type": "array"
+          },
+          "generator_version": {
+            "title": "Generator Version",
+            "type": "string"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "title": "Metrics",
+            "type": "object"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "timestamp",
+          "generator_version"
+        ],
+        "title": "GenerationProvenance",
+        "type": "object"
+      },
       "GovernanceSummary": {
         "additionalProperties": false,
         "properties": {
@@ -5833,7 +6817,6 @@
         "type": "object"
       },
       "GraphNodeSchema": {
-        "additionalProperties": false,
         "properties": {
           "key_property": {
             "pattern": "^[a-z][a-z0-9_]{0,63}$",
@@ -5913,7 +6896,6 @@
         "type": "object"
       },
       "GraphRelationshipSchema": {
-        "additionalProperties": false,
         "properties": {
           "from_key": {
             "pattern": "^[a-z][a-z0-9_]{0,63}$",
@@ -5952,7 +6934,6 @@
         "type": "object"
       },
       "GraphSchema": {
-        "additionalProperties": false,
         "properties": {
           "nodes": {
             "items": {
@@ -6822,9 +7803,185 @@
         "title": "NormalizedReturnMethod",
         "type": "string"
       },
+      "Operation": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "operation_id": {
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "target_channel": {
+            "title": "Target Channel",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/OperationType"
+          }
+        },
+        "required": [
+          "operation_id",
+          "type",
+          "asset_id",
+          "payload",
+          "target_channel",
+          "dependencies"
+        ],
+        "title": "Operation",
+        "type": "object"
+      },
+      "OperationType": {
+        "enum": [
+          "INSERT",
+          "DOMAIN_COMMAND",
+          "GRAPH_SYNC_REQUEST"
+        ],
+        "title": "OperationType",
+        "type": "string"
+      },
+      "OperationalGenerationProposal": {
+        "additionalProperties": false,
+        "properties": {
+          "deterministic_seed": {
+            "title": "Deterministic Seed",
+            "type": "integer"
+          },
+          "generation_mode": {
+            "$ref": "#/components/schemas/GenerationMode"
+          },
+          "proposal_checksum": {
+            "title": "Proposal Checksum",
+            "type": "string"
+          },
+          "proposal_id": {
+            "format": "uuid",
+            "title": "Proposal Id",
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/GenerationProvenance"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/GeneratedRecord"
+            },
+            "title": "Records",
+            "type": "array"
+          },
+          "schema_checksum": {
+            "title": "Schema Checksum",
+            "type": "string"
+          },
+          "schema_release_id": {
+            "title": "Schema Release Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "proposal_id",
+          "schema_release_id",
+          "schema_checksum",
+          "deterministic_seed",
+          "generation_mode",
+          "records",
+          "provenance",
+          "proposal_checksum"
+        ],
+        "title": "OperationalGenerationProposal",
+        "type": "object"
+      },
+      "OperationalWritePlan": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "impact": {
+            "$ref": "#/components/schemas/PlanImpact"
+          },
+          "plan_checksum": {
+            "title": "Plan Checksum",
+            "type": "string"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "proposal_checksum": {
+            "title": "Proposal Checksum",
+            "type": "string"
+          },
+          "saga_steps": {
+            "items": {
+              "$ref": "#/components/schemas/SagaStep"
+            },
+            "title": "Saga Steps",
+            "type": "array"
+          },
+          "schema_checksum": {
+            "title": "Schema Checksum",
+            "type": "string"
+          },
+          "schema_release_id": {
+            "title": "Schema Release Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan_id",
+          "proposal_checksum",
+          "schema_release_id",
+          "schema_checksum",
+          "idempotency_key",
+          "saga_steps",
+          "impact",
+          "plan_checksum"
+        ],
+        "title": "OperationalWritePlan",
+        "type": "object"
+      },
       "OrderCandidate": {
         "additionalProperties": false,
         "properties": {
+          "accountType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accounttype"
+          },
+          "billingCity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billingcity"
+          },
           "confidenceMillionths": {
             "maximum": 1000000.0,
             "minimum": 0.0,
@@ -6875,6 +8032,29 @@
               }
             ],
             "title": "Orderstatus"
+          },
+          "postalCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postalcode"
+          },
+          "retrievalScore": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrievalscore"
           },
           "sellWarehouseId": {
             "anyOf": [
@@ -7281,6 +8461,43 @@
         "title": "PickupActionRequest",
         "type": "object"
       },
+      "PlanImpact": {
+        "additionalProperties": false,
+        "properties": {
+          "affected_channels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Affected Channels",
+            "type": "array"
+          },
+          "domain_commands": {
+            "title": "Domain Commands",
+            "type": "integer"
+          },
+          "graph_sync_requests": {
+            "title": "Graph Sync Requests",
+            "type": "integer"
+          },
+          "inserts": {
+            "title": "Inserts",
+            "type": "integer"
+          },
+          "total_operations": {
+            "title": "Total Operations",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_operations",
+          "inserts",
+          "domain_commands",
+          "graph_sync_requests",
+          "affected_channels"
+        ],
+        "title": "PlanImpact",
+        "type": "object"
+      },
       "ProductPresence": {
         "enum": [
           "PRESENT_AT_BRANCH",
@@ -7351,6 +8568,37 @@
         ],
         "title": "ProductionReturnEventType",
         "type": "string"
+      },
+      "PromoteReleasePayload": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_head_revision": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Head Revision"
+          },
+          "status": {
+            "enum": [
+              "VALIDATED",
+              "RELEASED",
+              "ARCHIVED"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "PromoteReleasePayload",
+        "type": "object"
       },
       "RankedDiscoveryCandidate": {
         "additionalProperties": false,
@@ -8408,6 +9656,16 @@
         "title": "ReturnWorkflowAssessmentRequest",
         "type": "object"
       },
+      "RollbackFeasibility": {
+        "enum": [
+          "SAFE",
+          "BLOCKED",
+          "COMPENSATION_REQUIRED",
+          "NOT_SUPPORTED"
+        ],
+        "title": "RollbackFeasibility",
+        "type": "string"
+      },
       "SQLServerColumnMetadata": {
         "additionalProperties": false,
         "description": "Observed metadata for one SQL Server column.",
@@ -8672,6 +9930,32 @@
         "title": "SafetyStatus",
         "type": "string"
       },
+      "SagaStep": {
+        "additionalProperties": false,
+        "properties": {
+          "rollback_feasibility": {
+            "$ref": "#/components/schemas/RollbackFeasibility"
+          },
+          "step_index": {
+            "title": "Step Index",
+            "type": "integer"
+          },
+          "transaction_groups": {
+            "items": {
+              "$ref": "#/components/schemas/TransactionGroup"
+            },
+            "title": "Transaction Groups",
+            "type": "array"
+          }
+        },
+        "required": [
+          "step_index",
+          "transaction_groups",
+          "rollback_feasibility"
+        ],
+        "title": "SagaStep",
+        "type": "object"
+      },
       "SandboxIssue": {
         "additionalProperties": false,
         "properties": {
@@ -8746,6 +10030,21 @@
           "version"
         ],
         "title": "SandboxRecord",
+        "type": "object"
+      },
+      "SaveDomainPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          }
+        },
+        "required": [
+          "payload"
+        ],
+        "title": "SaveDomainPayload",
         "type": "object"
       },
       "Scenario": {
@@ -8885,13 +10184,26 @@
         "type": "object"
       },
       "SchemaField": {
-        "additionalProperties": false,
         "properties": {
           "description": {
             "maxLength": 500,
             "minLength": 1,
             "title": "Description",
             "type": "string"
+          },
+          "enum": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enum"
           },
           "generator": {
             "anyOf": [
@@ -8924,11 +10236,66 @@
             "title": "Key",
             "type": "boolean"
           },
+          "max_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Length"
+          },
+          "maximum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum"
+          },
+          "min_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Length"
+          },
+          "minimum": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum"
+          },
           "name": {
             "maxLength": 255,
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern"
           },
           "required": {
             "default": false,
@@ -8958,7 +10325,6 @@
         "type": "object"
       },
       "SchemaRegistry": {
-        "additionalProperties": false,
         "properties": {
           "assets": {
             "items": {
@@ -10606,6 +11972,33 @@
         "title": "TimelineEvent",
         "type": "object"
       },
+      "TransactionGroup": {
+        "additionalProperties": false,
+        "properties": {
+          "group_id": {
+            "title": "Group Id",
+            "type": "string"
+          },
+          "operations": {
+            "items": {
+              "$ref": "#/components/schemas/Operation"
+            },
+            "title": "Operations",
+            "type": "array"
+          },
+          "target_channel": {
+            "title": "Target Channel",
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "target_channel",
+          "operations"
+        ],
+        "title": "TransactionGroup",
+        "type": "object"
+      },
       "UnifiedInventory": {
         "additionalProperties": false,
         "description": "Partial-capable inventory across configured database engines.",
@@ -10682,6 +12075,101 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "ValidationReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "checksum_sha256": {
+            "title": "Checksum Sha256",
+            "type": "string"
+          },
+          "configuration_checksum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configuration Checksum"
+          },
+          "receipt_id": {
+            "format": "uuid",
+            "title": "Receipt Id",
+            "type": "string"
+          },
+          "secret_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret Fingerprint"
+          },
+          "secret_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret Version"
+          },
+          "status": {
+            "default": "PASSED",
+            "title": "Status",
+            "type": "string"
+          },
+          "subject_key": {
+            "default": "unknown",
+            "title": "Subject Key",
+            "type": "string"
+          },
+          "subject_type": {
+            "default": "SECRET_REFERENCE",
+            "title": "Subject Type",
+            "type": "string"
+          },
+          "target_uri": {
+            "title": "Target Uri",
+            "type": "string"
+          },
+          "tests": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Tests",
+            "type": "array"
+          },
+          "valid_until": {
+            "format": "date-time",
+            "title": "Valid Until",
+            "type": "string"
+          },
+          "verified_at": {
+            "format": "date-time",
+            "title": "Verified At",
+            "type": "string"
+          },
+          "verified_by": {
+            "default": "system",
+            "title": "Verified By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_uri",
+          "checksum_sha256"
+        ],
+        "title": "ValidationReceipt",
         "type": "object"
       },
       "WarningMeta": {
@@ -11322,6 +12810,47 @@
         ]
       }
     },
+    "/api/v1/associate-returns/chat": {
+      "post": {
+        "operationId": "start_chat_api_v1_associate_returns_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssociateChatTurnRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AssociateConversationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Chat",
+        "tags": [
+          "Associate Returns"
+        ]
+      }
+    },
     "/api/v1/associate-returns/conversations": {
       "get": {
         "operationId": "list_conversations_api_v1_associate_returns_conversations_get",
@@ -11448,6 +12977,58 @@
         ]
       }
     },
+    "/api/v1/associate-returns/conversations/{conversation_id}/chat": {
+      "post": {
+        "operationId": "continue_chat_api_v1_associate_returns_conversations__conversation_id__chat_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssociateChatTurnRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AssociateConversationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Continue Chat",
+        "tags": [
+          "Associate Returns"
+        ]
+      }
+    },
     "/api/v1/associate-returns/conversations/{conversation_id}/confirm": {
       "post": {
         "operationId": "confirm_discovery_api_v1_associate_returns_conversations__conversation_id__confirm_post",
@@ -11550,6 +13131,438 @@
         "tags": [
           "Associate Returns"
         ]
+      }
+    },
+    "/api/v1/associate-returns/conversations/{conversation_id}/messages": {
+      "post": {
+        "operationId": "continue_conversation_api_v1_associate_returns_conversations__conversation_id__messages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContinueAssociateConversationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AssociateConversationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Continue Conversation",
+        "tags": [
+          "Associate Returns"
+        ]
+      }
+    },
+    "/api/v1/data-console/ai-studio/operational/proposals": {
+      "post": {
+        "operationId": "create_proposal_api_v1_data_console_ai_studio_operational_proposals_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIStudioGenerationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_OperationalGenerationProposal_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Proposal"
+      }
+    },
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposal_id}": {
+      "get": {
+        "operationId": "get_proposal_api_v1_data_console_ai_studio_operational_proposals__proposal_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_OperationalGenerationProposal_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Proposal"
+      }
+    },
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposal_id}/apply": {
+      "post": {
+        "operationId": "apply_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposal_id__apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Approval Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_environment",
+            "required": true,
+            "schema": {
+              "title": "Target Environment",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ExecutionRun_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Plan Endpoint"
+      }
+    },
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposal_id}/approve": {
+      "post": {
+        "operationId": "approve_plan_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposal_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_environment",
+            "required": true,
+            "schema": {
+              "title": "Target Environment",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ApprovalRecord_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Plan Endpoint"
+      }
+    },
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposal_id}/plan": {
+      "post": {
+        "operationId": "plan_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposal_id__plan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "plan_salt",
+            "required": true,
+            "schema": {
+              "title": "Plan Salt",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_OperationalWritePlan_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Plan Proposal Endpoint"
+      }
+    },
+    "/api/v1/data-console/ai-studio/operational/proposals/{proposal_id}/validate": {
+      "post": {
+        "operationId": "validate_proposal_endpoint_api_v1_data_console_ai_studio_operational_proposals__proposal_id__validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate Proposal Endpoint"
+      }
+    },
+    "/api/v1/data-console/ai-studio/operational/runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_api_v1_data_console_ai_studio_operational_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ExecutionRun_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run"
+      }
+    },
+    "/api/v1/data-console/ai-studio/operational/runs/{run_id}/rollback": {
+      "post": {
+        "operationId": "rollback_run_endpoint_api_v1_data_console_ai_studio_operational_runs__run_id__rollback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ExecutionRun_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rollback Run Endpoint"
       }
     },
     "/api/v1/dependency-simulator/ai-metrics": {
@@ -13193,6 +15206,28 @@
         ]
       }
     },
+    "/api/v1/runtime-config": {
+      "get": {
+        "description": "Retrieve safe runtime configuration for the frontend.",
+        "operationId": "get_runtime_config_api_v1_runtime_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__object__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Runtime Config",
+        "tags": [
+          "runtime-config"
+        ]
+      }
+    },
     "/api/v1/seed-data": {
       "get": {
         "operationId": "seed_status_api_v1_seed_data_get",
@@ -13615,6 +15650,381 @@
         ]
       }
     },
+    "/api/v2/copilot/chat": {
+      "post": {
+        "operationId": "start_copilot_chat_api_v2_copilot_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssociateChatTurnRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AssociateConversationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Copilot Chat",
+        "tags": [
+          "Order Discovery Copilot v2"
+        ]
+      }
+    },
+    "/api/v2/copilot/conversations": {
+      "get": {
+        "operationId": "list_copilot_conversations_api_v2_copilot_conversations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_AssociateConversationView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Copilot Conversations",
+        "tags": [
+          "Order Discovery Copilot v2"
+        ]
+      },
+      "post": {
+        "operationId": "start_copilot_conversation_api_v2_copilot_conversations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartAssociateConversationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AssociateConversationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Copilot Conversation",
+        "tags": [
+          "Order Discovery Copilot v2"
+        ]
+      }
+    },
+    "/api/v2/copilot/conversations/{conversation_id}": {
+      "get": {
+        "operationId": "get_copilot_conversation_api_v2_copilot_conversations__conversation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AssociateConversationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Copilot Conversation",
+        "tags": [
+          "Order Discovery Copilot v2"
+        ]
+      }
+    },
+    "/api/v2/copilot/conversations/{conversation_id}/chat": {
+      "post": {
+        "operationId": "continue_copilot_chat_api_v2_copilot_conversations__conversation_id__chat_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssociateChatTurnRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AssociateConversationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Continue Copilot Chat",
+        "tags": [
+          "Order Discovery Copilot v2"
+        ]
+      }
+    },
+    "/api/v2/copilot/conversations/{conversation_id}/confirm": {
+      "post": {
+        "operationId": "confirm_copilot_discovery_api_v2_copilot_conversations__conversation_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmDiscoveryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AssociateConversationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Copilot Discovery",
+        "tags": [
+          "Order Discovery Copilot v2"
+        ]
+      }
+    },
+    "/api/v2/copilot/conversations/{conversation_id}/details": {
+      "post": {
+        "operationId": "submit_copilot_return_details_api_v2_copilot_conversations__conversation_id__details_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnDetailsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Copilot Return Details",
+        "tags": [
+          "Order Discovery Copilot v2"
+        ]
+      }
+    },
+    "/api/v2/copilot/conversations/{conversation_id}/messages": {
+      "post": {
+        "operationId": "continue_copilot_conversation_api_v2_copilot_conversations__conversation_id__messages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContinueAssociateConversationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AssociateConversationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Continue Copilot Conversation",
+        "tags": [
+          "Order Discovery Copilot v2"
+        ]
+      }
+    },
     "/data-console/v1/ai-studio/proposals": {
       "get": {
         "operationId": "list_proposals_data_console_v1_ai_studio_proposals_get",
@@ -13694,6 +16104,47 @@
           }
         },
         "summary": "Generate Proposal",
+        "tags": [
+          "AI Studio"
+        ]
+      }
+    },
+    "/data-console/v1/ai-studio/proposals/from-prompt": {
+      "post": {
+        "operationId": "generate_prompt_proposal_data_console_v1_ai_studio_proposals_from_prompt_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIStudioPromptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AIStudioProposalView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Prompt Proposal",
         "tags": [
           "AI Studio"
         ]
@@ -14009,6 +16460,448 @@
         "summary": "Get Record",
         "tags": [
           "Data Browser"
+        ]
+      }
+    },
+    "/data-console/v1/configuration/active-snapshot": {
+      "get": {
+        "description": "Return the active validated runtime configuration snapshot.",
+        "operationId": "get_active_snapshot_data_console_v1_configuration_active_snapshot_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Active Snapshot",
+        "tags": [
+          "Graph Configuration"
+        ]
+      }
+    },
+    "/data-console/v1/configuration/releases": {
+      "get": {
+        "operationId": "list_releases_data_console_v1_configuration_releases_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_dict_str__Any___"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Releases",
+        "tags": [
+          "Graph Configuration"
+        ]
+      },
+      "post": {
+        "description": "Create a draft by cloning the active release or current validated baseline.",
+        "operationId": "create_release_data_console_v1_configuration_releases_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReleasePayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Release",
+        "tags": [
+          "Graph Configuration"
+        ]
+      }
+    },
+    "/data-console/v1/configuration/releases/{release_id}": {
+      "get": {
+        "operationId": "get_release_detail_data_console_v1_configuration_releases__release_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Release Detail",
+        "tags": [
+          "Graph Configuration"
+        ]
+      }
+    },
+    "/data-console/v1/configuration/releases/{release_id}/domains/{domain_key}": {
+      "put": {
+        "description": "Save a validated domain payload into a mutable draft release.",
+        "operationId": "save_domain_config_data_console_v1_configuration_releases__release_id__domains__domain_key__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "domain_key",
+            "required": true,
+            "schema": {
+              "title": "Domain Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveDomainPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Domain Config",
+        "tags": [
+          "Graph Configuration"
+        ]
+      }
+    },
+    "/data-console/v1/configuration/releases/{release_id}/promote": {
+      "post": {
+        "description": "Promote a validated immutable release through an explicit lifecycle.",
+        "operationId": "promote_release_status_data_console_v1_configuration_releases__release_id__promote_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromoteReleasePayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Promote Release Status",
+        "tags": [
+          "Graph Configuration"
+        ]
+      }
+    },
+    "/data-console/v1/copilot-operations/sessions": {
+      "get": {
+        "operationId": "list_sessions_data_console_v1_copilot_operations_sessions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_AssociateConversationView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Sessions",
+        "tags": [
+          "Copilot Operations"
+        ]
+      },
+      "post": {
+        "operationId": "start_session_data_console_v1_copilot_operations_sessions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssociateChatTurnRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AssociateConversationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Session",
+        "tags": [
+          "Copilot Operations"
+        ]
+      }
+    },
+    "/data-console/v1/copilot-operations/sessions/{conversation_id}": {
+      "get": {
+        "operationId": "get_session_data_console_v1_copilot_operations_sessions__conversation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AssociateConversationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session",
+        "tags": [
+          "Copilot Operations"
+        ]
+      }
+    },
+    "/data-console/v1/copilot-operations/sessions/{conversation_id}/messages": {
+      "post": {
+        "operationId": "continue_session_data_console_v1_copilot_operations_sessions__conversation_id__messages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssociateChatTurnRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AssociateConversationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Continue Session",
+        "tags": [
+          "Copilot Operations"
         ]
       }
     },
@@ -15318,6 +18211,111 @@
         "summary": "Get Infrastructure Overview",
         "tags": [
           "Infrastructure"
+        ]
+      }
+    },
+    "/data-console/v1/runtime-validation/ai/validate-and-stage": {
+      "post": {
+        "description": "Validate a provider key/model/task binding before writing the key to Vault.",
+        "operationId": "validate_and_stage_ai_configuration_data_console_v1_runtime_validation_ai_validate_and_stage_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIValidateAndStageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ValidationReceipt_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate And Stage Ai Configuration",
+        "tags": [
+          "Runtime Configuration Validation"
+        ]
+      }
+    },
+    "/data-console/v1/runtime-validation/data-sources/validate-and-stage": {
+      "post": {
+        "description": "Validate connectivity and declared datasets before storing a source credential.",
+        "operationId": "validate_and_stage_data_source_data_console_v1_runtime_validation_data_sources_validate_and_stage_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataSourceValidateAndStageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ValidationReceipt_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate And Stage Data Source",
+        "tags": [
+          "Runtime Configuration Validation"
+        ]
+      }
+    },
+    "/data-console/v1/runtime-validation/receipts": {
+      "get": {
+        "operationId": "list_validation_receipts_data_console_v1_runtime_validation_receipts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_ValidationReceipt__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Validation Receipts",
+        "tags": [
+          "Runtime Configuration Validation"
         ]
       }
     },

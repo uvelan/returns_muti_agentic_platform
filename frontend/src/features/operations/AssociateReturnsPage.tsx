@@ -57,12 +57,16 @@ export function AssociateReturnsPage() {
   });
 
   const confirm = useMutation({
-    mutationFn: confirmAssociateDiscovery,
+    mutationFn: (payload: Parameters<typeof confirmAssociateDiscovery>[0]) => (
+      confirmAssociateDiscovery(payload)
+    ),
     onSuccess: setConversation,
   });
 
   const details = useMutation({
-    mutationFn: submitAssociateReturnDetails,
+    mutationFn: (payload: Parameters<typeof submitAssociateReturnDetails>[0]) => (
+      submitAssociateReturnDetails(payload)
+    ),
     onSuccess: (value) => {
       setConversation(value.conversation);
       void queryClient.invalidateQueries({ queryKey: conversationKey });

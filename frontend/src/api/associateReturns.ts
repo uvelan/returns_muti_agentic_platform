@@ -5,6 +5,9 @@ import type {
   AssociateSubmitResult,
 } from "../contracts/associateReturns";
 
+export const ASSOCIATE_RETURNS_V1_BASE = "/api/v1/associate-returns";
+export const COPILOT_V2_BASE = "/api/v2/copilot";
+
 function requireData<T>(value: T | null): T {
   if (value === null) throw new Error("The API returned no data.");
   return value;
@@ -18,9 +21,12 @@ function jsonInit(body: unknown): RequestInit {
   };
 }
 
-export async function listAssociateConversations(signal?: AbortSignal): Promise<readonly AssociateConversation[]> {
+export async function listAssociateConversations(
+  signal?: AbortSignal,
+  basePath = ASSOCIATE_RETURNS_V1_BASE,
+): Promise<readonly AssociateConversation[]> {
   return requireData((await apiClient<AssociateConversation[]>(
-    "/api/v1/associate-returns/conversations",
+    `${basePath}/conversations`,
     { signal },
   )).data);
 }
@@ -28,18 +34,19 @@ export async function listAssociateConversations(signal?: AbortSignal): Promise<
 export async function getAssociateConversation(
   conversationId: string,
   signal?: AbortSignal,
+  basePath = ASSOCIATE_RETURNS_V1_BASE,
 ): Promise<AssociateConversation> {
   return requireData((await apiClient<AssociateConversation>(
-    `/api/v1/associate-returns/conversations/${encodeURIComponent(conversationId)}`,
+    `${basePath}/conversations/${encodeURIComponent(conversationId)}`,
     { signal },
   )).data);
 }
 
 export async function startAssociateChat(payload: {
   message: string;
-}): Promise<AssociateConversation> {
+}, basePath = ASSOCIATE_RETURNS_V1_BASE): Promise<AssociateConversation> {
   return requireData((await apiClient<AssociateConversation>(
-    "/api/v1/associate-returns/chat",
+    `${basePath}/chat`,
     jsonInit(payload),
   )).data);
 }
@@ -48,9 +55,9 @@ export async function continueAssociateChat(payload: {
   conversationId: string;
   message: string;
   expectedVersion: number;
-}): Promise<AssociateConversation> {
+}, basePath = ASSOCIATE_RETURNS_V1_BASE): Promise<AssociateConversation> {
   return requireData((await apiClient<AssociateConversation>(
-    `/api/v1/associate-returns/conversations/${encodeURIComponent(payload.conversationId)}/chat`,
+    `${basePath}/conversations/${encodeURIComponent(payload.conversationId)}/chat`,
     jsonInit({
       message: payload.message,
       expectedVersion: payload.expectedVersion,
@@ -61,9 +68,9 @@ export async function continueAssociateChat(payload: {
 export async function startAssociateConversation(payload: {
   anchorType: AnchorType;
   anchorValue: string;
-}): Promise<AssociateConversation> {
+}, basePath = ASSOCIATE_RETURNS_V1_BASE): Promise<AssociateConversation> {
   return requireData((await apiClient<AssociateConversation>(
-    "/api/v1/associate-returns/conversations",
+    `${basePath}/conversations`,
     jsonInit(payload),
   )).data);
 }
@@ -74,13 +81,13 @@ export async function confirmAssociateDiscovery(payload: {
   orderLineId: string;
   expectedVersion: number;
   candidateSetId?: string | null;
-}): Promise<AssociateConversation> {
+}, basePath = ASSOCIATE_RETURNS_V1_BASE): Promise<AssociateConversation> {
   const submit = async (
     conversation: Pick<AssociateConversation, "version" | "candidateSetId">,
     candidateIndex: number,
   ): Promise<AssociateConversation> => requireData((
     await apiClient<AssociateConversation>(
-      `/api/v1/associate-returns/conversations/${encodeURIComponent(payload.conversationId)}/confirm`,
+      `${basePath}/conversations/${encodeURIComponent(payload.conversationId)}/confirm`,
       jsonInit({
         candidateIndex,
         orderLineId: payload.orderLineId,
@@ -104,7 +111,7 @@ export async function confirmAssociateDiscovery(payload: {
       throw error;
     }
 
-    const latest = await getAssociateConversation(payload.conversationId);
+    const latest = await getAssociateConversation(payload.conversationId, undefined, basePath);
     if (latest.discoveryLock !== null) {
       return latest;
     }
@@ -128,9 +135,9 @@ export async function continueAssociateConversation(payload: {
   anchorType: AnchorType;
   anchorValue: string;
   expectedVersion: number;
-}): Promise<AssociateConversation> {
+}, basePath = ASSOCIATE_RETURNS_V1_BASE): Promise<AssociateConversation> {
   return requireData((await apiClient<AssociateConversation>(
-    `/api/v1/associate-returns/conversations/${encodeURIComponent(payload.conversationId)}/messages`,
+    `${basePath}/conversations/${encodeURIComponent(payload.conversationId)}/messages`,
     jsonInit({
       anchorType: payload.anchorType,
       anchorValue: payload.anchorValue,
@@ -149,9 +156,9 @@ export async function submitAssociateReturnDetails(payload: {
   attachmentIds?: readonly string[];
   notes?: string;
   expectedVersion: number;
-}): Promise<AssociateSubmitResult> {
+}, basePath = ASSOCIATE_RETURNS_V1_BASE): Promise<AssociateSubmitResult> {
   return requireData((await apiClient<AssociateSubmitResult>(
-    `/api/v1/associate-returns/conversations/${encodeURIComponent(payload.conversationId)}/details`,
+    `${basePath}/conversations/${encodeURIComponent(payload.conversationId)}/details`,
     jsonInit({
       reasonCode: payload.reasonCode,
       returnQuantity: payload.returnQuantity,

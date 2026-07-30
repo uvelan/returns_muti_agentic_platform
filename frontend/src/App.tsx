@@ -1,5 +1,5 @@
-import { Link, Route, Switch } from "wouter";
-import { Suspense } from "react";
+import { Link, Redirect, Route, Router, Switch } from "wouter";
+import { lazy, Suspense } from "react";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Shell } from "./components/Shell";
@@ -7,6 +7,16 @@ import { ToastProvider } from "./components/ToastProvider";
 import { RuntimeConfigProvider } from "./components/RuntimeConfigProvider";
 import { LoadingState } from "./components/LoadingState";
 import { routes } from "./routes";
+import {
+  COPILOT_V2_PATH,
+  legacyRouteDestination,
+  normalizeBrowserPath,
+  VERSION_ONE_PREFIX,
+} from "./versioning";
+
+const CopilotV2Page = lazy(() => import("./features/copilot-v2/CopilotV2Page").then(
+  (module) => ({ default: module.CopilotV2Page }),
+));
 
 function NotFoundPage() {
   return (
@@ -27,24 +37,47 @@ function NotFoundPage() {
   );
 }
 
+function VersionOneApp() {
+  return (
+    <Router base="/v1">
+      <Shell>
+        <Suspense fallback={<LoadingState message="Loading module..." />}>
+          <Switch>
+            {routes.map((route) => (
+              <Route key={route.path} path={route.path} component={route.component} />
+            ))}
+            <Route path="/" component={routes.find(r => r.path === "/associate/returns")?.component} />
+            <Route>
+              <NotFoundPage />
+            </Route>
+          </Switch>
+        </Suspense>
+      </Shell>
+    </Router>
+  );
+}
+
 export function App() {
+  const pathname = normalizeBrowserPath(window.location.pathname);
+  const legacyDestination = legacyRouteDestination(
+    pathname,
+    window.location.search,
+    window.location.hash,
+  );
+
   return (
     <ErrorBoundary>
       <ToastProvider>
         <RuntimeConfigProvider>
-          <Shell>
-            <Suspense fallback={<LoadingState message="Loading module..." />}>
-            <Switch>
-              {routes.map((route) => (
-                <Route key={route.path} path={route.path} component={route.component} />
-              ))}
-              <Route path="/" component={routes.find(r => r.path === '/associate/returns')?.component} />
-              <Route>
-                <NotFoundPage />
-              </Route>
-            </Switch>
-          </Suspense>
-        </Shell>
+          {pathname === COPILOT_V2_PATH ? (
+            <Suspense fallback={<LoadingState message="Loading Order Discovery Copilot..." />}>
+              <CopilotV2Page />
+            </Suspense>
+          ) : pathname === VERSION_ONE_PREFIX || pathname.startsWith(`${VERSION_ONE_PREFIX}/`) ? (
+            <VersionOneApp />
+          ) : (
+            <Redirect to={legacyDestination} replace />
+          )}
         </RuntimeConfigProvider>
       </ToastProvider>
     </ErrorBoundary>
