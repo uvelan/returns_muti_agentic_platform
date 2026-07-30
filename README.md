@@ -62,6 +62,46 @@ responsive Order Discovery Copilot v2 workspace is available at
 Copilot Operations Console uses the same persistent conversation service and
 is restricted by backend administrative authorization.
 
+### Versioned UI routes
+
+| Experience | Canonical route | Notes |
+|---|---|---|
+| Existing Returns Assistant | `/v1/associate/returns` | All existing console routes are canonical below `/v1` |
+| Order Discovery Copilot v2 | `/v2/copilot` | Responsive desktop, tablet, and mobile workspace |
+| Legacy unversioned routes | `/associate/returns`, `/overview`, and others | Redirect to the matching `/v1/...` route |
+
+### Copilot v2 API endpoints
+
+The v2 API surface is intentionally limited to Order Discovery Copilot
+operations. It delegates to the same production conversation, evidence,
+authorization, locking, and return-submission services used by v1.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/v2/copilot/conversations` | List recent Copilot conversations |
+| `POST` | `/api/v2/copilot/conversations` | Start discovery with a structured anchor |
+| `POST` | `/api/v2/copilot/chat` | Start discovery from natural language |
+| `GET` | `/api/v2/copilot/conversations/{conversation_id}` | Load one conversation |
+| `POST` | `/api/v2/copilot/conversations/{conversation_id}/chat` | Continue with natural language |
+| `POST` | `/api/v2/copilot/conversations/{conversation_id}/messages` | Submit a structured clarification anchor |
+| `POST` | `/api/v2/copilot/conversations/{conversation_id}/confirm` | Confirm and lock the selected order line |
+| `POST` | `/api/v2/copilot/conversations/{conversation_id}/details` | Submit return details to the production workflow |
+
+Start a natural-language discovery conversation:
+
+```bash
+curl -fsS \
+  -H 'Content-Type: application/json' \
+  -H 'X-Correlation-ID: readme-copilot-v2-001' \
+  -d '{"message":"Find the damaged faucet order for customer ZIP 30301"}' \
+  http://127.0.0.1:8000/api/v2/copilot/chat | jq
+```
+
+The response uses the standard `APIResponse` envelope. Use the returned
+conversation `id`, `version`, candidate-set metadata, and requested
+clarification fields for subsequent calls; do not invent or reuse stale
+versions.
+
 ## Graph-first runtime configuration
 
 Neo4j is the authoritative control-plane store for versioned configuration. Runtime processes do not traverse the configuration graph for each request.
@@ -371,6 +411,8 @@ Each backend or worker launcher prepares runtime configuration unless `PLATFORM_
 
 ## Fully containerized application mode
 
+### Build and run with the repository script
+
 ```bash
 ./scripts/infra.sh full-containerized
 ```
@@ -385,6 +427,47 @@ infrastructure health
   -> seed initialization
   -> backend and workers
   -> frontend
+```
+
+### Build and run with Docker Compose directly
+
+The backend API, workers, initialization jobs, seed runner, and frontend are
+declared in the `containerized-app` profile. Always enable that profile when
+building or starting the application:
+
+```bash
+docker compose --profile containerized-app build
+docker compose --profile containerized-app up -d
+```
+
+The backend image is shared by the API, workers, and initialization jobs.
+Compose therefore reports two built application images:
+
+```text
+return-platform-backend:local
+return-platform-frontend:local
+```
+
+Containerized URLs:
+
+| Service | URL |
+|---|---|
+| Copilot v2 UI | `http://localhost:3000/v2/copilot` |
+| Existing v1 Returns Assistant | `http://localhost:3000/v1/associate/returns` |
+| Backend API | `http://localhost:8000` |
+| OpenAPI document | `http://localhost:8000/openapi.json` |
+| API documentation | `http://localhost:8000/docs` |
+| Liveness | `http://localhost:8000/health/live` |
+| Readiness | `http://localhost:8000/health/ready` |
+
+Verify the deployment:
+
+```bash
+docker compose --profile containerized-app ps
+curl -fsS http://127.0.0.1:8000/health/live | jq
+curl -fsS http://127.0.0.1:8000/health/ready | jq
+curl -fsS http://127.0.0.1:8000/openapi.json |
+  jq '.paths | keys | map(select(startswith("/api/v2/copilot")))'
 ```
 
 Inspect status:
