@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from typing import Any, Final, cast
 
@@ -28,9 +29,7 @@ from return_platform.operations.models import (
     utc_now,
 )
 from return_platform.operations.seed_manifest import (
-    SEED_CUSTOMERS,
-    SEED_ORDERS,
-    SEED_PRODUCTS,
+    effective_seed_counts,
     manifest_digest,
     materialize_domain_seed,
     materialize_seed,
@@ -1828,11 +1827,15 @@ class OperationalRepository:
 
     async def seed_status(self) -> SeedStatusView:
         seed_version = self._settings.seed_version
+        metadata = await self.seed_metadata.find_one({"_id": seed_version})
+        raw_record_limit = metadata.get("recordLimit") if metadata is not None else None
+        record_limit = raw_record_limit if isinstance(raw_record_limit, int) else None
+        expected_counts_by_asset = effective_seed_counts(record_limit)
         expected_digest = manifest_digest(
             seed_version,
             self._settings.validation_fingerprint_key.get_secret_value(),
+            record_limit,
         )
-        metadata = await self.seed_metadata.find_one({"_id": seed_version})
         seeded_query = {"seedVersion": seed_version, "seedDigest": expected_digest}
         counts = {
             "sourceCustomers": await self._source_db[SOURCE_CUSTOMERS].count_documents({}),
@@ -1863,13 +1866,13 @@ class OperationalRepository:
         counts["products"] = counts["seededProducts"]
         counts["shipments"] = counts["shipmentInfo"]
         expected_counts = {
-            "seededCustomers": len(SEED_CUSTOMERS),
-            "seededOrders": len(SEED_ORDERS),
-            "seededProducts": len(SEED_PRODUCTS),
-            "salesInv": len(SEED_ORDERS),
-            "customerOutboundCDM": len(SEED_CUSTOMERS),
-            "shipmentInfo": len(SEED_ORDERS),
-            "lkpSearchProduct": len(SEED_PRODUCTS),
+            "seededCustomers": expected_counts_by_asset["customers"],
+            "seededOrders": expected_counts_by_asset["orders"],
+            "seededProducts": expected_counts_by_asset["products"],
+            "salesInv": expected_counts_by_asset["orders"],
+            "customerOutboundCDM": expected_counts_by_asset["customers"],
+            "shipmentInfo": expected_counts_by_asset["orders"],
+            "lkpSearchProduct": expected_counts_by_asset["products"],
             "returns": 0,
             "supportCases": 0,
         }
@@ -1894,9 +1897,17 @@ class OperationalRepository:
             counts=counts,
             scenarioCounts=scenario_counts(),
             validationErrors=errors,
+            requestedRecordLimit=record_limit,
         )
 
-    async def apply_seed(self, *, actor_id: str) -> SeedStatusView:
+    async def apply_seed(
+        self,
+        *,
+        actor_id: str,
+        record_limit: int,
+        cancel_check: Callable[[], None],
+        progress: Callable[[int, str], Awaitable[None]],
+    ) -> SeedStatusView:
         if self._settings.environment not in {"development", "test"}:
             raise PermissionError(
                 "Deterministic source seed apply is restricted to development and test."
@@ -1904,22 +1915,39 @@ class OperationalRepository:
         now = utc_now()
         seed_version = self._settings.seed_version
         evidence_hmac_key = self._settings.validation_fingerprint_key.get_secret_value()
-        digest = manifest_digest(seed_version, evidence_hmac_key)
-        customers, products, orders = materialize_seed(seed_version, now, evidence_hmac_key)
-        domain_records = materialize_domain_seed(seed_version, now, evidence_hmac_key)
+        digest = manifest_digest(seed_version, evidence_hmac_key, record_limit)
+        customers, products, orders = materialize_seed(
+            seed_version,
+            now,
+            evidence_hmac_key,
+            record_limit,
+        )
+        domain_records = materialize_domain_seed(
+            seed_version,
+            now,
+            evidence_hmac_key,
+            record_limit,
+        )
         for collection, documents in (
             (self._source_db[SOURCE_CUSTOMERS], customers),
             (self._source_db[SOURCE_PRODUCTS], products),
             (self._source_db[SOURCE_ORDERS], orders),
             *((self._source_db[name], records) for name, records in domain_records.items()),
         ):
+            cancel_check()
+            await collection.delete_many({"seedVersion": seed_version})
             for offset in range(0, len(documents), 1_000):
+                cancel_check()
                 operations = [
                     ReplaceOne({"_id": document["_id"]}, document, upsert=True)
                     for document in documents[offset : offset + 1_000]
                 ]
                 if operations:
                     await collection.bulk_write(operations, ordered=False)
+                    await progress(
+                        len(operations),
+                        f"Writing {collection.name}",
+                    )
 
         # Seed readiness begins before a demo return or support case is created.
         await self.returns.delete_many({"seedVersion": seed_version})
@@ -1961,10 +1989,25 @@ class OperationalRepository:
                 "appliedAt": now,
                 "appliedBy": actor_id,
                 "scenarioCounts": scenario_counts(),
+                "recordLimit": record_limit,
             },
             upsert=True,
         )
         return await self.seed_status()
+
+    async def delete_seed_data(self) -> None:
+        """Delete only records owned by the active deterministic seed version."""
+        seed_version = self._settings.seed_version
+        source_cleanup = {"seedVersion": seed_version}
+        await self._source_db[SOURCE_CUSTOMERS].delete_many(source_cleanup)
+        await self._source_db[SOURCE_PRODUCTS].delete_many(source_cleanup)
+        await self._source_db[SOURCE_ORDERS].delete_many(source_cleanup)
+        for collection_name in DOMAIN_SOURCE_COLLECTIONS:
+            await self._source_db[collection_name].delete_many(source_cleanup)
+        await self.seed_metadata.delete_many({"_id": seed_version})
+        await self.returns.delete_many(source_cleanup)
+        await self.events.delete_many(source_cleanup)
+        await self.support_cases.delete_many(source_cleanup)
 
     async def reset_demo_data(self) -> None:
         seed_version = self._settings.seed_version

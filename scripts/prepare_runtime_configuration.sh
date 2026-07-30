@@ -24,4 +24,4 @@ fi
 
 "${PYTHON[@]}" "$ROOT/scripts/vault/bootstrap_local_vault.py"
 "${PYTHON[@]}" "$ROOT/scripts/apply_neo4j_migrations.py"
-"${PYTHON[@]}" "$ROOT/scripts/bootstrap_graph_configuration.py" --if-missing
+"${PYTHON[@]}" "$ROOT/scripts/bootstrap_graph_configuration.py"

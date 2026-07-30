@@ -153,10 +153,16 @@ class SQLBusinessStateRepository:
 
         await self._run(operation)
 
-    async def apply_seed_manifest(self, seed_version: str, applied_at: datetime) -> int:
+    async def apply_seed_manifest(
+        self,
+        seed_version: str,
+        applied_at: datetime,
+        record_limit: int | None = None,
+    ) -> int:
         digest = manifest_digest(
             seed_version,
             self._settings.validation_fingerprint_key.get_secret_value(),
+            record_limit,
         )
         rows: Sequence[tuple[Any, ...]] = tuple(
             (
@@ -192,10 +198,15 @@ class SQLBusinessStateRepository:
 
         return await self._run(operation)
 
-    async def seed_status(self, seed_version: str) -> dict[str, Any]:
+    async def seed_status(
+        self,
+        seed_version: str,
+        record_limit: int | None = None,
+    ) -> dict[str, Any]:
         digest = manifest_digest(
             seed_version,
             self._settings.validation_fingerprint_key.get_secret_value(),
+            record_limit,
         )
 
         def operation() -> dict[str, Any]:
@@ -232,7 +243,11 @@ class SQLBusinessStateRepository:
 
         await self._run(operation)
 
-    async def reset_demo_business_state(self, seed_version: str) -> None:
+    async def reset_demo_business_state(
+        self,
+        seed_version: str,
+        order_count: int | None = None,
+    ) -> None:
         """Delete business facts created from deterministic E2E seed orders."""
 
         def operation() -> None:
@@ -240,12 +255,16 @@ class SQLBusinessStateRepository:
                 try:
                     with connection.cursor() as cursor:
                         rows: list[tuple[Any, ...]] = []
-                        for offset in range(0, len(SEED_ORDERS), 1_000):
+                        effective_order_count = min(
+                            len(SEED_ORDERS),
+                            order_count if order_count is not None else len(SEED_ORDERS),
+                        )
+                        for offset in range(0, effective_order_count, 1_000):
                             order_batch = tuple(
                                 str(SEED_ORDERS[index]["orderReference"])
                                 for index in range(
                                     offset,
-                                    min(offset + 1_000, len(SEED_ORDERS)),
+                                    min(offset + 1_000, effective_order_count),
                                 )
                             )
                             placeholders = ",".join("%s" for _ in order_batch)

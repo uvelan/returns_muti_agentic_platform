@@ -1034,6 +1034,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/seed-data/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Seed */
+        post: operations["cancel_seed_api_v1_seed_data_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seed-data/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete Seed */
+        post: operations["delete_seed_api_v1_seed_data_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/seed-data/operation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Seed Operation */
+        get: operations["seed_operation_api_v1_seed_data_operation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/seed-data/reset": {
         parameters: {
             query?: never;
@@ -3211,6 +3262,12 @@ export interface components {
         /** APIResponse[SchemaRegistry] */
         APIResponse_SchemaRegistry_: {
             data?: components["schemas"]["SchemaRegistry"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[SeedOperationView] */
+        APIResponse_SeedOperationView_: {
+            data?: components["schemas"]["SeedOperationView"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -5844,6 +5901,53 @@ export interface components {
              */
             schema_version: "1.0";
         };
+        /** SeedApplyRequest */
+        SeedApplyRequest: {
+            /** Recordlimit */
+            recordLimit: number;
+        };
+        /** SeedDeleteRequest */
+        SeedDeleteRequest: {
+            /** Confirmation */
+            confirmation: string;
+        };
+        /**
+         * SeedOperationStatus
+         * @enum {string}
+         */
+        SeedOperationStatus: "IDLE" | "RUNNING" | "CANCELLING" | "COMPLETED" | "CANCELLED" | "FAILED";
+        /** SeedOperationView */
+        SeedOperationView: {
+            /** Error */
+            error?: string | null;
+            /** Finishedat */
+            finishedAt?: string | null;
+            /** Kind */
+            kind?: string | null;
+            /** Operationid */
+            operationId?: string | null;
+            /**
+             * Phase
+             * @default Idle
+             */
+            phase: string;
+            /**
+             * Processedrecords
+             * @default 0
+             */
+            processedRecords: number;
+            /** Requestedrecordlimit */
+            requestedRecordLimit?: number | null;
+            /** Startedat */
+            startedAt?: string | null;
+            /** @default IDLE */
+            status: components["schemas"]["SeedOperationStatus"];
+            /**
+             * Totalrecords
+             * @default 0
+             */
+            totalRecords: number;
+        };
         /** SeedStatusView */
         SeedStatusView: {
             /** Appliedat */
@@ -5858,6 +5962,8 @@ export interface components {
             digest: string;
             /** Ready */
             ready: boolean;
+            /** Requestedrecordlimit */
+            requestedRecordLimit?: number | null;
             /** Scenariocounts */
             scenarioCounts: {
                 [key: string]: number;
@@ -8645,7 +8751,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SeedApplyRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -8656,9 +8766,18 @@ export interface operations {
                     "application/json": components["schemas"]["APIResponse_SeedStatusView_"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    reset_seed_api_v1_seed_data_reset_post: {
+    cancel_seed_api_v1_seed_data_cancel_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -8673,7 +8792,93 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["APIResponse_SeedOperationView_"];
+                };
+            };
+        };
+    };
+    delete_seed_api_v1_seed_data_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SeedDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["APIResponse_SeedStatusView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    seed_operation_api_v1_seed_data_operation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_SeedOperationView_"];
+                };
+            };
+        };
+    };
+    reset_seed_api_v1_seed_data_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SeedApplyRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_SeedStatusView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

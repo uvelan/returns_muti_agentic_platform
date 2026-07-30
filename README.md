@@ -346,6 +346,27 @@ positive integer of at least `10` to cap each generated customer, product, order
 sales, and shipment collection for a lower-resource validation run; for example,
 `PLATFORM_SEED_RECORD_LIMIT=1000`.
 
+The Seed Data page also accepts a per-run limit from `10` through `1,000,000`.
+The JSON manifest and `PLATFORM_SEED_RECORD_LIMIT` remain hard upper bounds, so
+the UI cannot exceed the configured environment capacity. The page polls the
+active operation, shows progress, and can request a cooperative stop at the next
+safe persistence boundary.
+
+Seed administration endpoints:
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/v1/seed-data` | Read seed readiness and the last applied record limit |
+| `POST` | `/api/v1/seed-data/apply` | Apply seed data with `{"recordLimit": 1000}` |
+| `POST` | `/api/v1/seed-data/reset` | Delete the active seed version and apply the requested limit |
+| `GET` | `/api/v1/seed-data/operation` | Read progress and cancellation state |
+| `POST` | `/api/v1/seed-data/cancel` | Stop the active operation at a safe boundary |
+| `POST` | `/api/v1/seed-data/delete` | Delete only active seed-owned data; requires `{"confirmation": "DELETE SEED DATA"}` |
+
+Apply, reset, and delete are restricted to development and test environments.
+Only one seed mutation can run in an API process at a time; concurrent requests
+receive HTTP `409`.
+
 ### 2. Start backend, workers, and frontend
 
 ```bash
@@ -505,6 +526,16 @@ Configuration publication requires backend write authorization. The Copilot Oper
 
 ## Adding an AI key and model
 
+For the repository-local bootstrap flow, add raw keys and the desired model lists to
+the host `.env`, then run `./scripts/infra.sh full-containerized`. Bootstrap copies
+non-placeholder keys into Vault, probes every configured provider/key/model/task
+combination, publishes the successful bindings in a graph release, and activates that
+release. Application containers receive Vault references only; they never receive the
+raw keys. Re-running the bootstrap refreshes the active release when keys or models
+change.
+
+For production or manually administered credentials:
+
 1. Open Runtime Credential Validation.
 2. Select the provider.
 3. Enter the key, exact model ID, model class, task, and a dedicated Vault reference.
@@ -514,7 +545,8 @@ Configuration publication requires backend write authorization. The Copilot Oper
 7. Validate the full release.
 8. Publish using the current head revision.
 
-Do not place raw AI keys in `.env`. Environment key lists must remain empty; active routes are resolved from published graph configuration and Vault.
+Do not place raw AI keys in a production application environment. Active application
+routes are always resolved from published graph configuration and Vault.
 
 ## Adding a data source
 

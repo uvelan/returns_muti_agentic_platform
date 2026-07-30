@@ -26,6 +26,7 @@ from return_platform.validation.gates import SecretValidationGate, ValidationRec
 
 _RECEIPT_COLLECTION = "configuration_validation_receipts"
 _HOSTED_PROVIDERS = ("GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC")
+_MAX_BOOTSTRAP_CREDENTIALS_PER_PROVIDER = 100
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,8 +50,38 @@ def _provider_models(settings: Settings, provider: str) -> tuple[tuple[str, str]
     )
 
 
-def _provider_credential_count(settings: Settings, provider: str) -> int:
-    return len(tuple(getattr(settings, f"resolved_{provider.lower()}_api_keys")))
+async def _resolve_provider_credentials(
+    *,
+    settings: Settings,
+    resolver: SecretResolver,
+    provider: str,
+) -> list[tuple[int, ResolvedSecret]]:
+    """Resolve configured references or discover contiguous bootstrap-managed Vault keys."""
+
+    key = provider.lower()
+    configured_references = tuple(getattr(settings, f"{key}_api_key_references"))
+    if configured_references:
+        resolved_credentials: list[tuple[int, ResolvedSecret]] = []
+        for index, reference_text in enumerate(configured_references, start=1):
+            resolved = await resolver.get_secret(parse_secret_reference(reference_text))
+            if resolved is not None:
+                resolved_credentials.append((index, resolved))
+        return resolved_credentials
+
+    # Local/container bootstrap writes non-placeholder .env keys to these contiguous
+    # paths. Discovering the paths avoids passing raw keys or generated references
+    # into application containers.
+    resolved_credentials = []
+    for index in range(1, _MAX_BOOTSTRAP_CREDENTIALS_PER_PROVIDER + 1):
+        reference = parse_secret_reference(
+            "vault://secret/production/"
+            f"ai/{key}/credentials/key-{index}#api_key"
+        )
+        resolved = await resolver.get_secret(reference)
+        if resolved is None:
+            break
+        resolved_credentials.append((index, resolved))
+    return resolved_credentials
 
 
 def _task_keys(
@@ -167,20 +198,17 @@ async def build_bootstrap_runtime_configuration(
         for provider_priority, provider in enumerate(configured_order, start=1):
             if provider not in _HOSTED_PROVIDERS:
                 continue
-            credential_count = _provider_credential_count(settings, provider)
             models = _provider_models(settings, provider)
-            if credential_count == 0 or not models:
+            if not models:
                 continue
 
-            resolved_credentials = []
-            for index in range(1, credential_count + 1):
-                reference = parse_secret_reference(
-                    "vault://secret/production/"
-                    f"ai/{provider.lower()}/credentials/key-{index}#api_key"
-                )
-                resolved = await resolver.get_secret(reference)
-                if resolved is not None:
-                    resolved_credentials.append((index, resolved))
+            resolved_credentials = await _resolve_provider_credentials(
+                settings=settings,
+                resolver=resolver,
+                provider=provider,
+            )
+            if not resolved_credentials:
+                continue
 
             validated_pairs: list[_ValidatedPair] = []
             for credential_index, resolved in resolved_credentials:

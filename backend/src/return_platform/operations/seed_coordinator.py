@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import suppress
 from typing import Any
 
 from neo4j import AsyncDriver
@@ -15,8 +17,9 @@ from return_platform.data_platform.graph.sync_service import (
 from return_platform.data_platform.schema_registry import SchemaRegistry
 from return_platform.operations.models import SeedStatusView, utc_now
 from return_platform.operations.repository import OperationalRepository
+from return_platform.operations.seed_control import SeedOperationCancelled, SeedOperationControl
 from return_platform.operations.seed_manifest import (
-    SEED_ORDERS,
+    effective_seed_counts,
     manifest_digest,
     seed_order_line_count,
 )
@@ -46,11 +49,12 @@ class SeedCoordinator:
             registry=registry,
         )
 
-    async def _graph_status(self) -> dict[str, Any]:
+    async def _graph_status(self, record_limit: int | None) -> dict[str, Any]:
         seed_version = self._settings.seed_version
         seed_digest = manifest_digest(
             seed_version,
             self._settings.validation_fingerprint_key.get_secret_value(),
+            record_limit,
         )
         records, _, _ = await self._neo4j.execute_query(
             """
@@ -71,8 +75,8 @@ class SeedCoordinator:
         orders = int(row.get("orders", 0))
         lines = int(row.get("lines", 0))
         customer_links = int(row.get("customerLinks", 0))
-        expected = len(SEED_ORDERS)
-        expected_lines = seed_order_line_count()
+        expected = effective_seed_counts(record_limit)["orders"]
+        expected_lines = seed_order_line_count(record_limit)
         return {
             "orders": orders,
             "lines": lines,
@@ -84,10 +88,14 @@ class SeedCoordinator:
 
     async def status(self) -> SeedStatusView:
         base = await self._repository.seed_status()
+        record_limit = base.requestedRecordLimit
         errors = list(base.validationErrors)
         counts = dict(base.counts)
         try:
-            sql_status = await self._sql.seed_status(self._settings.seed_version)
+            sql_status = await self._sql.seed_status(
+                self._settings.seed_version,
+                record_limit,
+            )
             counts["sqlSeedScenarios"] = int(sql_status["count"])
             if not sql_status["ready"]:
                 errors.append("SQL Server seed manifest is incomplete or has digest drift.")
@@ -95,7 +103,7 @@ class SeedCoordinator:
             counts["sqlSeedScenarios"] = 0
             errors.append("SQL Server seed manifest could not be validated.")
         try:
-            graph_status = await self._graph_status()
+            graph_status = await self._graph_status(record_limit)
             counts["graphSeedOrders"] = int(graph_status["orders"])
             counts["graphSeedOrderLines"] = int(graph_status["lines"])
             counts["graphSeedCustomerLinks"] = int(graph_status["customerLinks"])
@@ -110,39 +118,126 @@ class SeedCoordinator:
             update={"ready": not errors, "counts": counts, "validationErrors": errors}
         )
 
-    async def apply(self, actor_id: str) -> SeedStatusView:
+    async def apply(
+        self,
+        actor_id: str,
+        *,
+        record_limit: int,
+        control: SeedOperationControl,
+        operation_id: str,
+    ) -> SeedStatusView:
         applied_at = utc_now()
-        await self._repository.apply_seed(actor_id=actor_id)
-        await self._sql.apply_seed_manifest(self._settings.seed_version, applied_at)
-        await self._graph_sync.ensure_indexes()
-        graph_run = await self._graph_sync.sync(
-            GraphSyncRequest(
-                mode=GraphSyncScope.SOURCE_MONGODB,
-                # Active-seed selection ignores the generic safety limit and reads
-                # every version/digest-matched source record.
-                maxRecordsPerAsset=min(len(SEED_ORDERS), 100_000),
-                applySchema=True,
-            ),
+        await self._repository.apply_seed(
             actor_id=actor_id,
-            seed_version=self._settings.seed_version,
-            seed_digest=manifest_digest(
-                self._settings.seed_version,
-                self._settings.validation_fingerprint_key.get_secret_value(),
+            record_limit=record_limit,
+            cancel_check=lambda: control.raise_if_cancelled(operation_id),
+            progress=lambda count, phase: control.update(
+                operation_id,
+                processed_delta=count,
+                phase=phase,
             ),
         )
+        control.raise_if_cancelled(operation_id)
+        await control.update(operation_id, phase="Writing SQL seed manifest")
+        await self._sql.apply_seed_manifest(
+            self._settings.seed_version,
+            applied_at,
+            record_limit,
+        )
+        control.raise_if_cancelled(operation_id)
+        await control.update(operation_id, phase="Synchronizing Neo4j projection")
+        await self._graph_sync.ensure_indexes()
+        graph_task = asyncio.create_task(
+            self._graph_sync.sync(
+                GraphSyncRequest(
+                    mode=GraphSyncScope.SOURCE_MONGODB,
+                    maxRecordsPerAsset=min(record_limit, 100_000),
+                    applySchema=True,
+                ),
+                actor_id=actor_id,
+                seed_version=self._settings.seed_version,
+                seed_digest=manifest_digest(
+                    self._settings.seed_version,
+                    self._settings.validation_fingerprint_key.get_secret_value(),
+                    record_limit,
+                ),
+            )
+        )
+        cancel_task = asyncio.create_task(control.wait_for_cancel(operation_id))
+        done, _ = await asyncio.wait(
+            {graph_task, cancel_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if cancel_task in done:
+            graph_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await graph_task
+            raise SeedOperationCancelled("Seed operation stopped during graph synchronization.")
+        cancel_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await cancel_task
+        graph_run = await graph_task
         if graph_run.status != "COMPLETED":
             raise RuntimeError("Canonical graph synchronization did not complete.")
         return await self.status()
 
-    async def reset_and_apply(self, actor_id: str) -> SeedStatusView:
+    async def delete_all(
+        self,
+        *,
+        record_limit: int | None = None,
+        control: SeedOperationControl | None = None,
+        operation_id: str | None = None,
+    ) -> SeedStatusView:
         if self._settings.environment not in {"development", "test"}:
-            raise PermissionError("Seed reset is restricted to development and test.")
+            raise PermissionError("Seed deletion is restricted to development and test.")
+
+        def check_cancelled() -> None:
+            if control is not None and operation_id is not None:
+                control.raise_if_cancelled(operation_id)
+
+        async def update_phase(phase: str) -> None:
+            if control is not None and operation_id is not None:
+                await control.update(operation_id, phase=phase)
+
         seed_version = self._settings.seed_version
-        await self._repository.reset_demo_data()
-        await self._sql.reset_demo_business_state(seed_version)
-        # Neo4j is a derived projection. A sandbox reset may safely rebuild it from sources.
+        order_count = effective_seed_counts(record_limit)["orders"]
+        check_cancelled()
+        await update_phase("Deleting MongoDB seed records")
+        await self._repository.delete_seed_data()
+        check_cancelled()
+        await update_phase("Deleting SQL seed records")
+        await self._sql.reset_demo_business_state(seed_version, order_count)
+        check_cancelled()
+        await update_phase("Deleting Neo4j seed projection")
         await self._neo4j.execute_query(
-            "MATCH (node) DETACH DELETE node",
+            """
+            MATCH (node)
+            WHERE node.seed_version = $seedVersion
+            DETACH DELETE node
+            """,
+            seedVersion=seed_version,
             database_=self._settings.neo4j_database,
         )
-        return await self.apply(actor_id)
+        check_cancelled()
+        return await self.status()
+
+    async def reset_and_apply(
+        self,
+        actor_id: str,
+        *,
+        record_limit: int,
+        control: SeedOperationControl,
+        operation_id: str,
+    ) -> SeedStatusView:
+        current = await self._repository.seed_status()
+        await self.delete_all(
+            record_limit=current.requestedRecordLimit,
+            control=control,
+            operation_id=operation_id,
+        )
+        return await self.apply(
+            actor_id,
+            record_limit=record_limit,
+            control=control,
+            operation_id=operation_id,
+        )

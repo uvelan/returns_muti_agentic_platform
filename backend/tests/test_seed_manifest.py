@@ -9,6 +9,7 @@ from return_platform.operations.seed_manifest import (
     SEED_ORDERS,
     SEED_PRODUCTS,
     SEED_SCENARIOS,
+    effective_seed_counts,
     manifest_digest,
     materialize_domain_seed,
     materialize_seed,
@@ -87,6 +88,31 @@ def test_realistic_seed_has_required_counts_and_multi_line_orders() -> None:
     assert len(records["salesInv"]) == 1_000_000
     assert len(records["shipmentInfo"]) == 1_000_000
     assert any(len(order["salesLines"]) > 1 for order in records["salesInv"])
+
+
+def test_request_scoped_record_limit_bounds_each_seed_dataset() -> None:
+    counts = effective_seed_counts(25)
+    customers, products, orders = materialize_seed(
+        "limited-seed",
+        datetime(2026, 7, 24, tzinfo=UTC),
+        TEST_EVIDENCE_KEY,
+        25,
+    )
+    domain = materialize_domain_seed(
+        "limited-seed",
+        datetime(2026, 7, 24, tzinfo=UTC),
+        TEST_EVIDENCE_KEY,
+        25,
+    )
+
+    assert counts == {"customers": 25, "products": 25, "orders": 25}
+    assert len(customers) == 25
+    assert len(products) == 25
+    assert len(orders) == 25
+    assert len(domain["customerOutboundCDM"]) == 25
+    assert len(domain["lkpSearchProduct"]) == 25
+    assert len(domain["salesInv"]) == 25
+    assert len(domain["shipmentInfo"]) == 25
 
 
 def test_seed_evidence_is_keyed_and_never_contains_the_key() -> None:

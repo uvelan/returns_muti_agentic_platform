@@ -2482,6 +2482,39 @@
         "title": "APIResponse[SchemaRegistry]",
         "type": "object"
       },
+      "APIResponse_SeedOperationView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeedOperationView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[SeedOperationView]",
+        "type": "object"
+      },
       "APIResponse_SeedStatusView_": {
         "additionalProperties": false,
         "properties": {
@@ -10351,6 +10384,144 @@
         "title": "SchemaRegistry",
         "type": "object"
       },
+      "SeedApplyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "recordLimit": {
+            "maximum": 1000000.0,
+            "minimum": 10.0,
+            "title": "Recordlimit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "recordLimit"
+        ],
+        "title": "SeedApplyRequest",
+        "type": "object"
+      },
+      "SeedDeleteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmation": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Confirmation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmation"
+        ],
+        "title": "SeedDeleteRequest",
+        "type": "object"
+      },
+      "SeedOperationStatus": {
+        "enum": [
+          "IDLE",
+          "RUNNING",
+          "CANCELLING",
+          "COMPLETED",
+          "CANCELLED",
+          "FAILED"
+        ],
+        "title": "SeedOperationStatus",
+        "type": "string"
+      },
+      "SeedOperationView": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "operationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operationid"
+          },
+          "phase": {
+            "default": "Idle",
+            "title": "Phase",
+            "type": "string"
+          },
+          "processedRecords": {
+            "default": 0,
+            "title": "Processedrecords",
+            "type": "integer"
+          },
+          "requestedRecordLimit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestedrecordlimit"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SeedOperationStatus",
+            "default": "IDLE"
+          },
+          "totalRecords": {
+            "default": 0,
+            "title": "Totalrecords",
+            "type": "integer"
+          }
+        },
+        "title": "SeedOperationView",
+        "type": "object"
+      },
       "SeedStatusView": {
         "additionalProperties": false,
         "properties": {
@@ -10391,6 +10562,17 @@
           "ready": {
             "title": "Ready",
             "type": "boolean"
+          },
+          "requestedRecordLimit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestedrecordlimit"
           },
           "scenarioCounts": {
             "additionalProperties": {
@@ -15252,6 +15434,23 @@
     "/api/v1/seed-data/apply": {
       "post": {
         "operationId": "apply_seed_api_v1_seed_data_apply_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SeedApplyRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -15262,6 +15461,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Apply Seed",
@@ -15270,9 +15479,40 @@
         ]
       }
     },
-    "/api/v1/seed-data/reset": {
+    "/api/v1/seed-data/cancel": {
       "post": {
-        "operationId": "reset_seed_api_v1_seed_data_reset_post",
+        "operationId": "cancel_seed_api_v1_seed_data_cancel_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SeedOperationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Cancel Seed",
+        "tags": [
+          "Seed Data"
+        ]
+      }
+    },
+    "/api/v1/seed-data/delete": {
+      "post": {
+        "operationId": "delete_seed_api_v1_seed_data_delete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeedDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -15283,6 +15523,85 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Seed",
+        "tags": [
+          "Seed Data"
+        ]
+      }
+    },
+    "/api/v1/seed-data/operation": {
+      "get": {
+        "operationId": "seed_operation_api_v1_seed_data_operation_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SeedOperationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Seed Operation",
+        "tags": [
+          "Seed Data"
+        ]
+      }
+    },
+    "/api/v1/seed-data/reset": {
+      "post": {
+        "operationId": "reset_seed_api_v1_seed_data_reset_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SeedApplyRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SeedStatusView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Reset Seed",

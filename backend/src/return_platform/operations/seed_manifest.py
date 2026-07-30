@@ -75,6 +75,8 @@ _EFFECTIVE_COUNTS: Final = _effective_counts()
 SEED_CUSTOMER_COUNT: Final = _EFFECTIVE_COUNTS["customers"]
 SEED_PRODUCT_COUNT: Final = _EFFECTIVE_COUNTS["products"]
 SEED_ORDER_COUNT: Final = _EFFECTIVE_COUNTS["orders"]
+MINIMUM_SEED_RECORD_LIMIT: Final = int(_RUNTIME_OPTIONS.get("minimumRecordLimit", 1))
+MAXIMUM_SEED_RECORD_LIMIT: Final = max(int(value) for value in _COUNTS.values())
 _FIRST_NAMES: Final = tuple(str(value) for value in _CUSTOMER_CATALOG["firstNames"])
 _LAST_NAMES: Final = tuple(str(value) for value in _CUSTOMER_CATALOG["lastNames"])
 _REGIONS: Final = tuple(str(value) for value in _CUSTOMER_CATALOG["regions"])
@@ -181,19 +183,48 @@ SEED_ORDERS: Final[Sequence[dict[str, object]]] = GeneratedSequence(
 )
 
 
-def manifest_payload(seed_version: str) -> dict[str, object]:
+def effective_seed_counts(record_limit: int | None = None) -> dict[str, int]:
+    """Return configured counts capped by a validated per-operation limit."""
+    if record_limit is None:
+        return dict(_EFFECTIVE_COUNTS)
+    if record_limit < MINIMUM_SEED_RECORD_LIMIT:
+        raise ValueError(
+            f"recordLimit must be at least {MINIMUM_SEED_RECORD_LIMIT}."
+        )
+    if record_limit > MAXIMUM_SEED_RECORD_LIMIT:
+        raise ValueError(
+            f"recordLimit must not exceed {MAXIMUM_SEED_RECORD_LIMIT}."
+        )
+    return {
+        name: min(configured, record_limit)
+        for name, configured in _EFFECTIVE_COUNTS.items()
+    }
+
+
+def manifest_payload(
+    seed_version: str,
+    record_limit: int | None = None,
+) -> dict[str, object]:
     """Return the immutable manifest used for stable evidence calculation."""
     return {
         "seedVersion": seed_version,
         "configuration": _SEED_CONFIGURATION,
-        "effectiveCounts": _EFFECTIVE_COUNTS,
+        "effectiveCounts": effective_seed_counts(record_limit),
     }
 
 
-@lru_cache(maxsize=16)
-def manifest_digest(seed_version: str, evidence_hmac_key: str) -> str:
+@lru_cache(maxsize=64)
+def manifest_digest(
+    seed_version: str,
+    evidence_hmac_key: str,
+    record_limit: int | None = None,
+) -> str:
     """Return keyed evidence identity without persisting or exposing the runtime key."""
-    canonical = json.dumps(manifest_payload(seed_version), separators=(",", ":"), sort_keys=True)
+    canonical = json.dumps(
+        manifest_payload(seed_version, record_limit),
+        separators=(",", ":"),
+        sort_keys=True,
+    )
     return hmac.new(
         evidence_hmac_key.encode("utf-8"),
         canonical.encode("utf-8"),
@@ -217,27 +248,39 @@ def _order_items(order: dict[str, object]) -> list[dict[str, object]]:
     ]
 
 
-def seed_order_line_count() -> int:
-    generated_two_line_orders = (SEED_ORDER_COUNT // 4) - (len(SEED_SCENARIOS) // 4)
-    return SEED_ORDER_COUNT + max(0, generated_two_line_orders)
+def seed_order_line_count(record_limit: int | None = None) -> int:
+    order_count = effective_seed_counts(record_limit)["orders"]
+    scenario_count = min(order_count, len(SEED_SCENARIOS))
+    scenario_extra_lines = sum(
+        1 for item in SEED_SCENARIOS[:scenario_count] if item.get("additionalSku")
+    )
+    generated_extra_lines = max(
+        0,
+        (order_count // 4) - (len(SEED_SCENARIOS) // 4),
+    )
+    return order_count + scenario_extra_lines + generated_extra_lines
 
 
 def materialize_seed(
     seed_version: str,
     applied_at: datetime,
     evidence_hmac_key: str,
+    record_limit: int | None = None,
 ) -> tuple[
     list[dict[str, Any]],
     list[dict[str, Any]],
     Sequence[dict[str, Any]],
 ]:
     """Materialize source documents while keeping the manifest evidence stable."""
-    digest = manifest_digest(seed_version, evidence_hmac_key)
+    counts = effective_seed_counts(record_limit)
+    digest = manifest_digest(seed_version, evidence_hmac_key, record_limit)
     customers = [
-        {**item, "seedVersion": seed_version, "seedDigest": digest} for item in SEED_CUSTOMERS
+        {**item, "seedVersion": seed_version, "seedDigest": digest}
+        for item in SEED_CUSTOMERS[: counts["customers"]]
     ]
     products = [
-        {**item, "seedVersion": seed_version, "seedDigest": digest} for item in SEED_PRODUCTS
+        {**item, "seedVersion": seed_version, "seedDigest": digest}
+        for item in SEED_PRODUCTS[: counts["products"]]
     ]
 
     def build_order(index: int) -> dict[str, Any]:
@@ -257,7 +300,7 @@ def materialize_seed(
             "seedDigest": digest,
         }
 
-    orders: Sequence[dict[str, Any]] = GeneratedSequence(SEED_ORDER_COUNT, build_order)
+    orders: Sequence[dict[str, Any]] = GeneratedSequence(counts["orders"], build_order)
     return customers, products, orders
 
 
@@ -275,15 +318,19 @@ def materialize_domain_seed(
     seed_version: str,
     applied_at: datetime,
     evidence_hmac_key: str,
+    record_limit: int | None = None,
 ) -> dict[str, Sequence[dict[str, Any]]]:
     """Materialize the HLD source collections with coherent cross-collection keys."""
-    digest = manifest_digest(seed_version, evidence_hmac_key)
-    customer_by_id = {str(item["_id"]): item for item in SEED_CUSTOMERS}
-    product_by_id = {str(item["_id"]): item for item in SEED_PRODUCTS}
+    counts = effective_seed_counts(record_limit)
+    digest = manifest_digest(seed_version, evidence_hmac_key, record_limit)
+    selected_customers = SEED_CUSTOMERS[: counts["customers"]]
+    selected_products = SEED_PRODUCTS[: counts["products"]]
+    customer_by_id = {str(item["_id"]): item for item in selected_customers}
+    product_by_id = {str(item["_id"]): item for item in selected_products}
     customers: list[dict[str, Any]] = []
     products: list[dict[str, Any]] = []
 
-    for customer in SEED_CUSTOMERS:
+    for customer in selected_customers:
         customer_id = str(customer["_id"])
         ordinal = int(customer_id.rsplit("-", 1)[-1])
         customers.append(
@@ -301,7 +348,7 @@ def materialize_domain_seed(
             }
         )
 
-    for product in SEED_PRODUCTS:
+    for product in selected_products:
         sku = str(product["_id"])
         products.append(
             {
@@ -401,11 +448,11 @@ def materialize_domain_seed(
         }
 
     sales_inventory: Sequence[dict[str, Any]] = GeneratedSequence(
-        SEED_ORDER_COUNT,
+        counts["orders"],
         build_sales_inventory,
     )
     shipments: Sequence[dict[str, Any]] = GeneratedSequence(
-        SEED_ORDER_COUNT,
+        counts["orders"],
         build_shipment,
     )
 

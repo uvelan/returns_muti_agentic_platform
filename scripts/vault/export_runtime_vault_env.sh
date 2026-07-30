@@ -11,6 +11,6 @@ export PLATFORM_VALKEY_PASSWORD_SECRET_REFERENCE="vault://secret/production/data
 export PLATFORM_SQLSERVER_PASSWORD_SECRET_REFERENCE="vault://secret/production/data-sources/sqlserver#password"
 export PLATFORM_VALIDATION_FINGERPRINT_KEY_SECRET_REFERENCE="vault://secret/production/platform/validation#fingerprint_key"
 
-# AI credential references are published only after validation. Configure the
-# PLATFORM_*_API_KEY_REFERENCES lists explicitly; do not infer activation from
-# a raw process environment variable.
+# AI credential references are published only after provider/model validation.
+# Local bootstrap-managed keys are discovered at their fixed Vault paths, so raw
+# key values never need to be exported to an application process.

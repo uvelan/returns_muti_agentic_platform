@@ -307,6 +307,44 @@ class SeedStatusView(MutableContract):
     counts: dict[str, int]
     scenarioCounts: dict[str, int]
     validationErrors: list[str]
+    requestedRecordLimit: int | None = None
+
+
+class SeedOperationStatus(StrEnum):
+    IDLE = "IDLE"
+    RUNNING = "RUNNING"
+    CANCELLING = "CANCELLING"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+    FAILED = "FAILED"
+
+
+class SeedApplyRequest(MutableContract):
+    recordLimit: int = Field(ge=10, le=1_000_000)
+
+
+class SeedDeleteRequest(MutableContract):
+    confirmation: str = Field(min_length=1, max_length=64)
+
+    @field_validator("confirmation")
+    @classmethod
+    def require_delete_confirmation(cls, value: str) -> str:
+        if value != "DELETE SEED DATA":
+            raise ValueError('confirmation must equal "DELETE SEED DATA"')
+        return value
+
+
+class SeedOperationView(MutableContract):
+    operationId: str | None = None
+    kind: str | None = None
+    status: SeedOperationStatus = SeedOperationStatus.IDLE
+    requestedRecordLimit: int | None = None
+    processedRecords: int = 0
+    totalRecords: int = 0
+    phase: str = "Idle"
+    startedAt: datetime | None = None
+    finishedAt: datetime | None = None
+    error: str | None = None
 
 
 def normalize_utc_datetime(value: datetime) -> datetime:

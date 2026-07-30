@@ -6,6 +6,7 @@ import type {
   AITrace,
   OperationalDependency,
   ReturnSession,
+  SeedOperation,
   SeedStatus,
   SupportCase,
   TimelineEvent,
@@ -161,10 +162,34 @@ export async function getSeedStatus(signal?: AbortSignal): Promise<SeedStatus> {
   return requireData((await apiClient<SeedStatus>("/api/v1/seed-data", { signal })).data);
 }
 
-export async function applySeed(reset = false): Promise<SeedStatus> {
+export async function applySeed(payload: {
+  recordLimit: number;
+  reset?: boolean;
+}): Promise<SeedStatus> {
   return requireData((await apiClient<SeedStatus>(
-    reset ? "/api/v1/seed-data/reset" : "/api/v1/seed-data/apply",
+    payload.reset ? "/api/v1/seed-data/reset" : "/api/v1/seed-data/apply",
+    jsonInit("POST", { recordLimit: payload.recordLimit }),
+  )).data);
+}
+
+export async function getSeedOperation(signal?: AbortSignal): Promise<SeedOperation> {
+  return requireData((await apiClient<SeedOperation>(
+    "/api/v1/seed-data/operation",
+    { signal },
+  )).data);
+}
+
+export async function cancelSeedOperation(): Promise<SeedOperation> {
+  return requireData((await apiClient<SeedOperation>(
+    "/api/v1/seed-data/cancel",
     jsonInit("POST"),
+  )).data);
+}
+
+export async function deleteSeedData(): Promise<SeedStatus> {
+  return requireData((await apiClient<SeedStatus>(
+    "/api/v1/seed-data/delete",
+    jsonInit("POST", { confirmation: "DELETE SEED DATA" }),
   )).data);
 }
 

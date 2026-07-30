@@ -139,6 +139,20 @@ export type SeedStatus = {
   readonly counts: Readonly<Record<string, number>>;
   readonly scenarioCounts: Readonly<Record<string, number>>;
   readonly validationErrors: readonly string[];
+  readonly requestedRecordLimit: number | null;
+};
+
+export type SeedOperation = {
+  readonly operationId: string | null;
+  readonly kind: string | null;
+  readonly status: "IDLE" | "RUNNING" | "CANCELLING" | "COMPLETED" | "CANCELLED" | "FAILED";
+  readonly requestedRecordLimit: number | null;
+  readonly processedRecords: number;
+  readonly totalRecords: number;
+  readonly phase: string;
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+  readonly error: string | null;
 };
 
 export type OperationalDependency = {
