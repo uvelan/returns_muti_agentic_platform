@@ -48,4 +48,37 @@ describe("OrderContextPanel progressive clarification", () => {
     fireEvent.click(screen.getByRole("button", { name: /Maya Foster/ }));
     expect(onSelectClarification).toHaveBeenCalledWith("Maya Foster");
   });
+
+  it("never exposes order cards or confirmation for generic ambiguity", () => {
+    const firstCandidate = FIXTURE_ASSOCIATE_CONVERSATIONS[0].candidates[0];
+    const conversation = {
+      ...FIXTURE_ASSOCIATE_CONVERSATIONS[0],
+      status: "DISCOVERY_CLARIFICATION_REQUIRED",
+      nextQuestion: "What is the customer's full name?",
+      activeRequestedSlots: [],
+      clarificationPrompt: null,
+      candidates: [],
+    };
+
+    render(
+      <OrderContextPanel
+        conversation={conversation}
+        candidateIndex={0}
+        selectedLineId={firstCandidate.lines[0]?.orderLineId ?? ""}
+        onSelectCandidate={vi.fn()}
+        onSelectLine={vi.fn()}
+        onSelectClarification={vi.fn()}
+        onConfirmDiscovery={vi.fn()}
+        isConfirming={false}
+        isClarifying={false}
+      />,
+    );
+
+    expect(screen.getByText("What is the customer's full name?")).toBeInTheDocument();
+    expect(screen.getByText(/remain hidden until/i)).toBeInTheDocument();
+    expect(screen.queryByText("ORD-10001")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Confirm selected item/i }),
+    ).not.toBeInTheDocument();
+  });
 });

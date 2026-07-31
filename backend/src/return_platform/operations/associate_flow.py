@@ -220,6 +220,21 @@ class AssociateConversationView(AssociateModel):
         return _normalize_utc_datetime(value)
 
 
+def redact_ambiguous_candidates(
+    conversation: AssociateConversationView,
+) -> AssociateConversationView:
+    """Keep unresolved order details out of API responses until one candidate remains."""
+
+    if conversation.discoveryLock is None and len(conversation.candidates) > 1:
+        return conversation.model_copy(
+            update={
+                "candidates": [],
+                "discoveryAssessment": None,
+            }
+        )
+    return conversation
+
+
 class StartAssociateConversationRequest(AssociateModel):
     anchorType: AnchorType
     anchorValue: str = Field(min_length=2, max_length=256)
@@ -1916,23 +1931,27 @@ class AssociateConversationService:
                 disambiguation_question,
             ) = self._dialogue_projection(candidates)
             if candidates:
-                assistant_text = conv_config.initial_match_template.format(
-                    count=len(candidates),
-                    anchor_type=self._format_anchor_type(payload.anchorType),
-                    anchor_value=", ".join(anchor.anchorValue for anchor in anchors),
-                )
-                status = "DISCOVERY_READY"
                 next_question = (
                     disambiguation_question
                     or discovery_assessment.get("nextQuestion")
                     or f"What detail distinguishes these {len(candidates)} matching orders?"
                 )
-                if requested_slots:
+                if len(candidates) > 1:
                     status = "DISCOVERY_CLARIFICATION_REQUIRED"
                     assistant_text = (
-                        "I found multiple source-backed matches and need one detail "
-                        "to narrow them safely."
+                        f"I found {len(candidates)} possible matches for "
+                        f"{self._format_anchor_type(payload.anchorType)} "
+                        f"'{', '.join(anchor.anchorValue for anchor in anchors)}'. "
+                        "I will keep the order details hidden until we narrow this "
+                        "to the correct customer and order."
                     )
+                else:
+                    assistant_text = conv_config.initial_match_template.format(
+                        count=len(candidates),
+                        anchor_type=self._format_anchor_type(payload.anchorType),
+                        anchor_value=", ".join(anchor.anchorValue for anchor in anchors),
+                    )
+                    status = "DISCOVERY_READY"
             else:
                 assistant_text = conv_config.initial_no_match_template.format(
                     anchor_type=self._format_anchor_type(payload.anchorType),
@@ -2105,25 +2124,29 @@ class AssociateConversationService:
                 disambiguation_question,
             ) = self._dialogue_projection(candidates)
             if candidates:
-                assistant_text = conv_config.continue_match_template.format(
-                    count=len(candidates),
-                    anchor_type=self._format_anchor_type(payload.anchorType),
-                    anchor_value=", ".join(
-                        anchor.anchorValue for anchor in (lookup, *additional_anchors)
-                    ),
-                )
-                status = "DISCOVERY_READY"
                 next_question = (
                     disambiguation_question
                     or discovery_assessment.get("nextQuestion")
                     or f"What detail distinguishes these {len(candidates)} matching orders?"
                 )
-                if requested_slots:
+                if len(candidates) > 1:
                     status = "DISCOVERY_CLARIFICATION_REQUIRED"
                     assistant_text = (
-                        "I found multiple source-backed matches and need one detail "
-                        "to narrow them safely."
+                        f"I found {len(candidates)} possible matches for "
+                        f"{self._format_anchor_type(payload.anchorType)} "
+                        f"'{', '.join(anchor.anchorValue for anchor in (lookup, *additional_anchors))}'. "
+                        "I will keep the order details hidden until we narrow this "
+                        "to the correct customer and order."
                     )
+                else:
+                    assistant_text = conv_config.continue_match_template.format(
+                        count=len(candidates),
+                        anchor_type=self._format_anchor_type(payload.anchorType),
+                        anchor_value=", ".join(
+                            anchor.anchorValue for anchor in (lookup, *additional_anchors)
+                        ),
+                    )
+                    status = "DISCOVERY_READY"
             else:
                 assistant_text = conv_config.continue_no_match_template.format(
                     anchor_type=self._format_anchor_type(payload.anchorType),
@@ -2283,7 +2306,9 @@ class AssociateConversationService:
             {
                 "$set": {
                     "status": (
-                        "DISCOVERY_CLARIFICATION_REQUIRED" if next_slots else "DISCOVERY_READY"
+                        "DISCOVERY_CLARIFICATION_REQUIRED"
+                        if len(next_candidates) > 1
+                        else "DISCOVERY_READY"
                     ),
                     "candidates": [item.model_dump(mode="json") for item in next_candidates],
                     "activeDialogueState": next_state,
@@ -2391,6 +2416,10 @@ class AssociateConversationService:
             and payload.candidateSetId != conversation.candidateSetId
         ):
             raise RuntimeError("Candidate set version conflict")
+        if len(conversation.candidates) != 1:
+            raise ValueError(
+                "Order confirmation requires discovery to be narrowed to exactly one candidate"
+            )
         if payload.candidateIndex >= len(conversation.candidates):
             raise ValueError("candidateIndex is out of range")
         candidate = conversation.candidates[payload.candidateIndex]

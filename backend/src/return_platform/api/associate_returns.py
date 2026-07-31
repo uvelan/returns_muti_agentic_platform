@@ -16,6 +16,7 @@ from return_platform.operations.associate_flow import (
     ContinueAssociateConversationRequest,
     ReturnDetailsRequest,
     StartAssociateConversationRequest,
+    redact_ambiguous_candidates,
 )
 from return_platform.operations.associate_service_factory import (
     build_associate_conversation_service,
@@ -44,7 +45,11 @@ async def list_conversations(
 ) -> APIResponse[list[AssociateConversationView]]:
     service = _service(request)
     await service.ensure_indexes()
-    return APIResponse(data=await service.list(limit), meta=_meta(request))
+    conversations = await service.list(limit)
+    return APIResponse(
+        data=[redact_ambiguous_candidates(item) for item in conversations],
+        meta=_meta(request),
+    )
 
 
 @router.post(
@@ -67,7 +72,7 @@ async def start_conversation(
             status_code=502,
             detail=f"Associate discovery failed: {type(error).__name__}",
         ) from error
-    return APIResponse(data=data, meta=_meta(request))
+    return APIResponse(data=redact_ambiguous_candidates(data), meta=_meta(request))
 
 
 @router.post(
@@ -92,7 +97,7 @@ async def start_chat(
             status_code=502,
             detail=f"Associate chat start failed: {type(error).__name__}",
         ) from error
-    return APIResponse(data=data, meta=_meta(request))
+    return APIResponse(data=redact_ambiguous_candidates(data), meta=_meta(request))
 
 
 @router.get(
@@ -107,7 +112,7 @@ async def get_conversation(
     data = await _service(request).get(conversation_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Associate conversation not found.")
-    return APIResponse(data=data, meta=_meta(request))
+    return APIResponse(data=redact_ambiguous_candidates(data), meta=_meta(request))
 
 
 @router.post(
@@ -132,7 +137,7 @@ async def continue_conversation(
         raise HTTPException(status_code=409, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    return APIResponse(data=data, meta=_meta(request))
+    return APIResponse(data=redact_ambiguous_candidates(data), meta=_meta(request))
 
 
 @router.post(
@@ -157,7 +162,7 @@ async def continue_chat(
         raise HTTPException(status_code=409, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    return APIResponse(data=data, meta=_meta(request))
+    return APIResponse(data=redact_ambiguous_candidates(data), meta=_meta(request))
 
 
 @router.post(
@@ -178,7 +183,7 @@ async def confirm_discovery(
         raise HTTPException(status_code=409, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    return APIResponse(data=data, meta=_meta(request))
+    return APIResponse(data=redact_ambiguous_candidates(data), meta=_meta(request))
 
 
 @router.post(

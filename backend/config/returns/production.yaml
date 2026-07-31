@@ -123,7 +123,7 @@ discovery:
     one_edit_min_token_length: 4
     two_edit_min_token_length: 8
     candidate_ttl_seconds: 900
-    max_clarification_options: 6
+    max_clarification_options: 10
     dialogue_states:
       no_candidates: ENTITY_IDENTIFICATION
       single_candidate: LINE_SELECTION

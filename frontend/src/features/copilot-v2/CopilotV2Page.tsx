@@ -145,7 +145,11 @@ export function CopilotV2Page() {
     onSuccess: (value) => {
       setConversation(value);
       setCandidateIndex(0);
-      setOrderLineId(value.candidates.at(0)?.lines.at(0)?.orderLineId ?? "");
+      setOrderLineId(
+        value.candidates.length === 1
+          ? value.candidates[0]?.lines.at(0)?.orderLineId ?? ""
+          : "",
+      );
       setContextOpen(true);
       void queryClient.invalidateQueries({ queryKey: v2ConversationKey });
     },
@@ -236,7 +240,11 @@ export function CopilotV2Page() {
             onClick={() => {
               setConversation(session);
               setCandidateIndex(0);
-              setOrderLineId(session.candidates.at(0)?.lines.at(0)?.orderLineId ?? "");
+              setOrderLineId(
+                session.candidates.length === 1
+                  ? session.candidates[0]?.lines.at(0)?.orderLineId ?? ""
+                  : "",
+              );
               setContextTab("context");
             }}
           >
@@ -270,7 +278,11 @@ export function CopilotV2Page() {
           </div>
           <div className="flex justify-between gap-4">
             <dt className="text-[#6d7a77]">Candidates</dt>
-            <dd className="font-semibold">{conversation?.candidates.length ?? 0}</dd>
+            <dd className="font-semibold">
+              {conversation?.status === "DISCOVERY_CLARIFICATION_REQUIRED"
+                ? "Hidden while narrowing"
+                : conversation?.candidates.length ?? 0}
+            </dd>
           </div>
           <div className="flex justify-between gap-4">
             <dt className="text-[#6d7a77]">Evidence lock</dt>

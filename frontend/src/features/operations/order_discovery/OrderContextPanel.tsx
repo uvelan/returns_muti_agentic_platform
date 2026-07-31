@@ -85,6 +85,11 @@ export function OrderContextPanel({
   );
   const effectiveBranchReference = branchReference.trim() || inferredBranchReference;
   const photoEvidenceRequired = ["DAMAGED", "DEFECTIVE", "WRONG_ITEM"].includes(reasonCode);
+  const requiresClarification = Boolean(
+    conversation
+      && !conversation.discoveryLock
+      && conversation.status === "DISCOVERY_CLARIFICATION_REQUIRED",
+  );
 
   return (
     <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto border-l border-stone-200 bg-stone-100/70 p-4 lg:p-5">
@@ -127,7 +132,9 @@ export function OrderContextPanel({
         </section>
       ) : null}
 
-      {!conversation?.candidates.length && !conversation?.discoveryLock ? (
+      {!conversation?.candidates.length
+        && !conversation?.discoveryLock
+        && !requiresClarification ? (
         <section className="rounded-2xl border border-dashed border-stone-300 bg-white/70 p-5 text-center">
           <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-400">
             <ShieldCheck size={20} />
@@ -139,9 +146,8 @@ export function OrderContextPanel({
         </section>
       ) : null}
 
-      {conversation?.candidates.length
-        && !conversation.discoveryLock
-        && conversation.clarificationPrompt ? (
+      {requiresClarification
+        && conversation?.clarificationPrompt ? (
           <section className="rounded-2xl border border-teal-200 bg-white p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal-700">
               One detail needed
@@ -178,7 +184,24 @@ export function OrderContextPanel({
           </section>
         ) : null}
 
+      {requiresClarification && !conversation?.clarificationPrompt ? (
+        <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-800">
+            One more detail needed
+          </p>
+          <h3 className="mt-2 text-base font-semibold leading-6 text-slate-950">
+            {conversation?.nextQuestion
+              ?? "What customer or order detail can narrow these matches?"}
+          </h3>
+          <p className="mt-2 text-xs leading-5 text-slate-600">
+            Order numbers, products, and line details remain hidden until the search
+            narrows to one verified order.
+          </p>
+        </section>
+      ) : null}
+
       {conversation?.candidates.length
+        === 1
         && !conversation.discoveryLock
         && !conversation.clarificationPrompt ? (
         <section className="flex flex-col gap-3">

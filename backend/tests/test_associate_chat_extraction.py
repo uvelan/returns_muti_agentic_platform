@@ -6,6 +6,11 @@ from typing import Any, cast
 import pytest
 
 from return_platform.configuration.return_configuration import load_return_configuration
+from return_platform.conversation.progressive import (
+    ConversationStatePolicy,
+    DisambiguationRule,
+    ProgressiveConversationEngine,
+)
 from return_platform.operations.associate_flow import (
     AnchorType,
     AssociateConversationService,
@@ -17,6 +22,7 @@ from return_platform.operations.associate_flow import (
     StartAssociateConversationRequest,
     _is_expired,
     _normalize_utc_datetime,
+    redact_ambiguous_candidates,
 )
 from return_platform.operations.models import AIDecision
 
@@ -28,6 +34,26 @@ def service() -> Any:
     instance._return_configuration = load_return_configuration(
         BACKEND_ROOT / "config" / "returns" / "production.yaml"
     ).configuration
+    progressive = instance._return_configuration.discovery.progressive
+    instance._progressive_conversation = ProgressiveConversationEngine(
+        rules=tuple(
+            DisambiguationRule(
+                slot=item.slot,
+                candidate_field=item.candidate_field,
+                label=item.label,
+                priority=item.priority,
+            )
+            for item in progressive.disambiguation_attributes
+        ),
+        candidate_ttl_seconds=progressive.candidate_ttl_seconds,
+        max_clarification_options=progressive.max_clarification_options,
+        states=ConversationStatePolicy(
+            no_candidates=progressive.dialogue_states.no_candidates,
+            single_candidate=progressive.dialogue_states.single_candidate,
+            slot_disambiguation=progressive.dialogue_states.slot_disambiguation,
+            generic_disambiguation=progressive.dialogue_states.generic_disambiguation,
+        ),
+    )
     return instance
 
 
@@ -155,6 +181,105 @@ def test_clarification_prompt_exposes_only_the_selected_field_values() -> None:
         ("Maya Foster", 2),
         ("Nadia Diaz", 1),
     ]
+
+
+def test_typo_first_name_requests_possible_full_name_without_revealing_orders() -> None:
+    candidates = [
+        OrderCandidate(
+            customerReference=f"CUST-{index}",
+            customerName=f"Noah {last_name}",
+            orderReference=f"SO-2026-{index:07d}",
+            orderStatus="DELIVERED",
+            confidenceMillionths=500_000,
+            evidenceSource="TEST",
+            lines=[
+                OrderLineCandidate(
+                    orderLineId=f"LINE-{index}",
+                    productId=f"PRODUCT-{index}",
+                    productDescription="Faucet",
+                )
+            ],
+        )
+        for index, last_name in enumerate(
+            (
+                "Smith",
+                "Lewis",
+                "Carter",
+                "Singh",
+                "Brown",
+                "Wilson",
+                "Garcia",
+                "Martin",
+                "Taylor",
+            ),
+            start=1,
+        )
+    ]
+    instance = service()
+
+    state, requested_slots, _set_id, _expires_at, question = (
+        instance._dialogue_projection(candidates)
+    )
+    prompt = instance._clarification_prompt(candidates, requested_slots, question)
+
+    assert state == "CUSTOMER_DISAMBIGUATION"
+    assert requested_slots == ["customer_name"]
+    assert prompt is not None
+    assert [option.label for option in prompt.options] == [
+        "Noah Brown",
+        "Noah Carter",
+        "Noah Garcia",
+        "Noah Lewis",
+        "Noah Martin",
+        "Noah Singh",
+        "Noah Smith",
+        "Noah Taylor",
+        "Noah Wilson",
+    ]
+    assert all("SO-" not in option.label for option in prompt.options)
+
+
+def test_ambiguous_order_details_are_redacted_from_public_response() -> None:
+    now = datetime.now(UTC)
+    candidates = [
+        OrderCandidate(
+            customerReference=f"CUST-{index}",
+            customerName=f"Noah {index}",
+            orderReference=f"ORD-{index}",
+            confidenceMillionths=500_000,
+            evidenceSource="TEST",
+            lines=[
+                OrderLineCandidate(
+                    orderLineId=f"LINE-{index}",
+                    productId=f"PRODUCT-{index}",
+                )
+            ],
+        )
+        for index in (1, 2)
+    ]
+    conversation = AssociateConversationView(
+        id="conversation-redacted",
+        status="DISCOVERY_CLARIFICATION_REQUIRED",
+        anchorType=AnchorType.CUSTOMER_NAME,
+        anchorValueMasked="Naoh",
+        messages=[],
+        candidates=candidates,
+        discoveryAssessment={
+            "rankedCandidates": [
+                {"candidateId": "CUST-1:ORD-1", "orderReference": "ORD-1"}
+            ]
+        },
+        version=0,
+        createdAt=now,
+        updatedAt=now,
+    )
+
+    public = redact_ambiguous_candidates(conversation)
+
+    assert public.candidates == []
+    assert public.discoveryAssessment is None
+    assert conversation.candidates == candidates
+    assert conversation.discoveryAssessment is not None
 
 
 def test_smart_question_configuration_contains_ported_goal_policy() -> None:
@@ -329,3 +454,52 @@ async def test_confirm_is_idempotent_after_conversation_version_advances() -> No
     )
 
     assert result is conversation
+
+
+@pytest.mark.asyncio
+async def test_confirm_rejects_ambiguous_candidate_set() -> None:
+    now = datetime.now(UTC)
+
+    def candidate(index: int) -> OrderCandidate:
+        return OrderCandidate(
+            customerReference=f"CUST-{index}",
+            customerName=f"Noah {index}",
+            orderReference=f"ORD-{index}",
+            confidenceMillionths=500_000,
+            evidenceSource="TEST",
+            lines=[
+                OrderLineCandidate(
+                    orderLineId=f"LINE-{index}",
+                    productId=f"PRODUCT-{index}",
+                )
+            ],
+        )
+
+    conversation = AssociateConversationView(
+        id="conversation-ambiguous",
+        status="DISCOVERY_CLARIFICATION_REQUIRED",
+        anchorType=AnchorType.CUSTOMER_NAME,
+        anchorValueMasked="Naoh",
+        messages=[],
+        candidates=[candidate(1), candidate(2)],
+        version=1,
+        createdAt=now,
+        updatedAt=now,
+    )
+    instance = service()
+
+    async def get_conversation(_conversation_id: str) -> AssociateConversationView:
+        return conversation
+
+    instance.get = get_conversation
+
+    with pytest.raises(ValueError, match="exactly one candidate"):
+        await instance.confirm(
+            conversation.id,
+            ConfirmDiscoveryRequest(
+                candidateIndex=0,
+                orderLineId="LINE-1",
+                expectedVersion=1,
+            ),
+            actor_id="associate-1",
+        )
