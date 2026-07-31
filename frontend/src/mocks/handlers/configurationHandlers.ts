@@ -10,27 +10,26 @@ const FIXTURE_RELEASES: Record<string, ReleaseNode> = {
     created_by: "system",
     checksum_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     domains: {
-      ORDER_DISCOVERY: {
-        max_candidates: 5,
-        lucence_fuzzy_distance: 1,
-        min_score: 0.75,
-        search_fields: ["customer_name", "order_number", "product_description"],
+      RETURN_PLATFORM: {
+        agents: {
+          order_discovery: {
+            version: "2.0",
+            enabled: true,
+            human_confirmation_required: true,
+          },
+        },
       },
       AI_GATEWAY: {
-        primary_provider: "openai",
-        fallback_provider: "anthropic",
-        timeout_seconds: 15,
-        max_tokens: 1024,
+        tasks: {
+          RETURN_ELIGIBILITY_V1: {
+            promptVersion: "return-eligibility-v2",
+            systemPrompt: "Use only supplied operational facts and return a structured decision.",
+          },
+        },
       },
-      DISAMBIGUATION_ATTRIBUTES: {
-        required_confidence: 0.85,
-        max_clarification_turns: 3,
-        slot_order: ["ORDER_NUMBER", "CUSTOMER_NAME", "PRODUCT"],
-      },
-      SOURCE_RESOLUTION: {
-        routing_strategy: "graph_first",
-        fallback_strategy: "sql",
-        cache_ttl_seconds: 300,
+      DEPENDENCY_SIMULATION: {
+        enabled: true,
+        modeBanner: "SIMULATION MODE — no production dependency is called.",
       },
     },
   },

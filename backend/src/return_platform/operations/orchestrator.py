@@ -11,9 +11,14 @@ import httpx
 from temporalio.client import Client, WorkflowHandle
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
+from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
+from return_platform.ai_gateway.routing import AIRoutePool
 from return_platform.ai_gateway.service import AIGatewayService
 from return_platform.canonical.operations import ContextSnapshot, WorkflowStage
-from return_platform.configuration.return_configuration import load_return_configuration
+from return_platform.configuration.return_configuration import (
+    ReturnPlatformConfiguration,
+    load_return_configuration,
+)
 from return_platform.configuration.settings import Settings
 from return_platform.operations.feedback_service import FeedbackLearningService
 from return_platform.operations.models import (
@@ -96,6 +101,9 @@ class ReturnOrchestrator:
         temporal: Client,
         settings: Settings,
         worker_id: str,
+        return_configuration: ReturnPlatformConfiguration | None = None,
+        ai_gateway_configuration: LoadedAIGatewayConfiguration | None = None,
+        ai_gateway_route_pool: AIRoutePool | None = None,
     ) -> None:
         self._repository = repository
         self._temporal = temporal
@@ -103,12 +111,23 @@ class ReturnOrchestrator:
         self._worker_id = worker_id
         from return_platform.ai_gateway.service import AIGatewayRepository
 
-        self._ai = AIGatewayService(cast(AIGatewayRepository, repository), settings)
+        self._ai = AIGatewayService(
+            cast(AIGatewayRepository, repository),
+            settings,
+            loaded_configuration=ai_gateway_configuration,
+            route_pool=ai_gateway_route_pool,
+        )
         self._business_state = SQLBusinessStateRepository(settings)
         self._http_client = httpx.AsyncClient()
-        self._return_configuration = load_return_configuration(
-            settings.return_configuration_path
-        ).configuration
+        if return_configuration is None:
+            if settings.environment not in {"development", "test"}:
+                raise RuntimeError(
+                    "Production orchestrator behavior must come from the active graph release"
+                )
+            return_configuration = load_return_configuration(
+                settings.return_configuration_path
+            ).configuration
+        self._return_configuration = return_configuration
         self._internal_support = ReturnSupportService(
             client=repository.platform_client,
             settings=settings,

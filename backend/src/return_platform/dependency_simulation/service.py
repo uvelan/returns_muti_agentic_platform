@@ -8,6 +8,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
 from return_platform.ai_gateway.routing import AIRoutePool
 from return_platform.configuration.settings import Settings
 from return_platform.dependency_simulation.ai import SimulationNarrativeService
@@ -37,6 +38,7 @@ class DependencySimulationService:
         settings: Settings,
         loaded_configuration: LoadedDependencySimulationConfiguration,
         *,
+        loaded_ai_gateway: LoadedAIGatewayConfiguration | None = None,
         route_pool: AIRoutePool | None = None,
     ) -> None:
         self.repository = repository
@@ -47,6 +49,7 @@ class DependencySimulationService:
             repository,
             settings,
             self.configuration,
+            loaded_ai_gateway=loaded_ai_gateway,
             route_pool=route_pool,
         )
 

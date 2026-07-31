@@ -20,7 +20,7 @@ export function ConfigurationStudioPage() {
   const [selectedReleaseId, setSelectedReleaseId] = useState<string | null>(null);
   const [newReleaseId, setNewReleaseId] = useState("");
   const [isCreating, setIsCreating] = useState(false);
-  const selectedDomainKey = "RETURN_PLATFORM";
+  const [selectedDomainKey, setSelectedDomainKey] = useState("RETURN_PLATFORM");
   const [domainJsonText, setDomainJsonText] = useState<string>("");
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -64,6 +64,11 @@ export function ConfigurationStudioPage() {
 
   const currentDomainConfig = detail?.domains?.[selectedDomainKey] ?? {};
   const currentJsonString = JSON.stringify(currentDomainConfig, null, 2);
+  const domainKeys = Object.keys(detail?.domains ?? {}).sort((left, right) => {
+    if (left === "RETURN_PLATFORM") return -1;
+    if (right === "RETURN_PLATFORM") return 1;
+    return left.localeCompare(right);
+  });
 
   const handleDomainJsonChange = (val: string) => {
     setDomainJsonText(val);
@@ -301,10 +306,26 @@ export function ConfigurationStudioPage() {
                   </div>
                 </div>
 
-                <div className="mb-4 border-b border-gray-200">
-                  <div className="inline-flex border-b-2 border-blue-600 px-4 py-2 text-xs font-semibold text-blue-600">
-                    RETURN_PLATFORM
-                  </div>
+                <div className="mb-4 flex gap-1 overflow-x-auto border-b border-gray-200">
+                  {domainKeys.map((domainKey) => (
+                    <button
+                      key={domainKey}
+                      type="button"
+                      onClick={() => {
+                        setSelectedDomainKey(domainKey);
+                        setDomainJsonText("");
+                        setJsonError(null);
+                        setSaveSuccess(false);
+                      }}
+                      className={`inline-flex whitespace-nowrap border-b-2 px-4 py-2 text-xs font-semibold ${
+                        selectedDomainKey === domainKey
+                          ? "border-blue-600 text-blue-600"
+                          : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
+                      }`}
+                    >
+                      {domainKey}
+                    </button>
+                  ))}
                 </div>
 
                 {/* Domain Config Editor */}

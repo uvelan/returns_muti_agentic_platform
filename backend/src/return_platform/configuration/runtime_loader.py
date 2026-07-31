@@ -6,6 +6,11 @@ from dataclasses import dataclass
 
 from neo4j import AsyncGraphDatabase
 
+from return_platform.ai_gateway.configuration import (
+    LoadedAIGatewayConfiguration,
+    build_loaded_ai_gateway_configuration,
+    load_ai_gateway_configuration,
+)
 from return_platform.configuration.graph_repository import Neo4jConfigurationGraphRepository
 from return_platform.configuration.return_configuration import (
     LoadedReturnConfiguration,
@@ -17,6 +22,11 @@ from return_platform.configuration.snapshot import (
     ConfigurationSnapshotBuilder,
     PinnedConfigurationSnapshot,
 )
+from return_platform.dependency_simulation.configuration import (
+    LoadedDependencySimulationConfiguration,
+    build_loaded_dependency_simulation_configuration,
+    load_dependency_simulation_configuration,
+)
 from return_platform.secrets.runtime import resolve_runtime_settings_from_vault
 from return_platform.secrets.vault import VaultHTTPSecretResolver
 
@@ -27,6 +37,8 @@ _DEVELOPMENT_ENVIRONMENTS = frozenset({"development", "test"})
 class ResolvedProcessConfiguration:
     settings: Settings
     return_configuration: LoadedReturnConfiguration
+    ai_gateway_configuration: LoadedAIGatewayConfiguration
+    dependency_simulation_configuration: LoadedDependencySimulationConfiguration
     snapshot: PinnedConfigurationSnapshot
     secret_resolver: VaultHTTPSecretResolver | None
 
@@ -42,6 +54,12 @@ async def resolve_process_configuration(
         resolve_ai_credentials=False,
     )
     baseline = load_return_configuration(bootstrap.return_configuration_path)
+    baseline_ai_gateway = load_ai_gateway_configuration(
+        bootstrap.ai_gateway_configuration_path
+    )
+    baseline_dependency_simulation = load_dependency_simulation_configuration(
+        bootstrap.dependency_simulation_configuration_path
+    )
     driver = AsyncGraphDatabase.driver(
         bootstrap.neo4j_uri,
         auth=(bootstrap.neo4j_user, bootstrap.neo4j_password.get_secret_value()),
@@ -49,11 +67,17 @@ async def resolve_process_configuration(
     try:
         await driver.verify_connectivity()
         repository = Neo4jConfigurationGraphRepository(driver)
-        graph_first = baseline.configuration.feature_flags.graph_first_runtime_configuration
         snapshot = await ConfigurationSnapshotBuilder(repository).build_snapshot(
             baseline.configuration,
             allow_baseline_fallback=(
-                not graph_first or bootstrap.environment in _DEVELOPMENT_ENVIRONMENTS
+                bootstrap.environment in _DEVELOPMENT_ENVIRONMENTS
+            ),
+            default_ai_gateway_configuration=baseline_ai_gateway.configuration,
+            default_dependency_simulation_configuration=(
+                baseline_dependency_simulation.configuration
+            ),
+            require_all_behavior_domains=(
+                bootstrap.environment not in _DEVELOPMENT_ENVIRONMENTS
             ),
         )
     finally:
@@ -61,12 +85,26 @@ async def resolve_process_configuration(
 
     graph_settings = apply_graph_runtime_configuration(bootstrap, snapshot.configuration)
     resolved, resolved_resolver = await resolve_runtime_settings_from_vault(graph_settings)
+    if snapshot.ai_gateway_configuration is None:
+        raise RuntimeError("Runtime snapshot has no AI gateway configuration")
+    if snapshot.dependency_simulation_configuration is None:
+        raise RuntimeError("Runtime snapshot has no dependency simulation configuration")
     return ResolvedProcessConfiguration(
         settings=resolved,
         return_configuration=LoadedReturnConfiguration(
             configuration=snapshot.configuration,
             path=baseline.path,
             sha256=snapshot.checksum_sha256,
+        ),
+        ai_gateway_configuration=build_loaded_ai_gateway_configuration(
+            snapshot.ai_gateway_configuration,
+            path=baseline_ai_gateway.path,
+        ),
+        dependency_simulation_configuration=(
+            build_loaded_dependency_simulation_configuration(
+                snapshot.dependency_simulation_configuration,
+                path=baseline_dependency_simulation.path,
+            )
         ),
         snapshot=snapshot,
         secret_resolver=resolved_resolver or resolver,

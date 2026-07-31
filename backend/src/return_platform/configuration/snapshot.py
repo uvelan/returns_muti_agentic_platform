@@ -10,12 +10,18 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from return_platform.ai_gateway.configuration import AIGatewayConfiguration
 from return_platform.configuration.graph_repository import ConfigurationGraphRepository
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
+from return_platform.dependency_simulation.configuration import (
+    DependencySimulationConfiguration,
+)
 
 logger = logging.getLogger("return_platform.configuration.snapshot")
 
 RETURN_PLATFORM_DOMAIN_KEY = "RETURN_PLATFORM"
+AI_GATEWAY_DOMAIN_KEY = "AI_GATEWAY"
+DEPENDENCY_SIMULATION_DOMAIN_KEY = "DEPENDENCY_SIMULATION"
 _ACTIVE_RELEASE_STATUSES = frozenset({"RELEASED"})
 
 
@@ -30,6 +36,8 @@ class PinnedConfigurationSnapshot(BaseModel):
     loaded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     source: str
     configuration: ReturnPlatformConfiguration
+    ai_gateway_configuration: AIGatewayConfiguration | None = None
+    dependency_simulation_configuration: DependencySimulationConfiguration | None = None
     domain_payloads: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -50,16 +58,33 @@ class ConfigurationSnapshotBuilder:
     @staticmethod
     def _baseline_snapshot(
         default_configuration: ReturnPlatformConfiguration,
+        default_ai_gateway_configuration: AIGatewayConfiguration | None,
+        default_dependency_simulation_configuration: DependencySimulationConfiguration | None,
     ) -> PinnedConfigurationSnapshot:
         payload = default_configuration.model_dump(mode="json")
-        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        domain_payloads: dict[str, Any] = {RETURN_PLATFORM_DOMAIN_KEY: payload}
+        if default_ai_gateway_configuration is not None:
+            domain_payloads[AI_GATEWAY_DOMAIN_KEY] = default_ai_gateway_configuration.model_dump(
+                mode="json"
+            )
+        if default_dependency_simulation_configuration is not None:
+            domain_payloads[DEPENDENCY_SIMULATION_DOMAIN_KEY] = (
+                default_dependency_simulation_configuration.model_dump(mode="json")
+            )
+        encoded = json.dumps(
+            domain_payloads,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
         return PinnedConfigurationSnapshot(
             release_id="version-controlled-baseline",
             head_revision=0,
             checksum_sha256=hashlib.sha256(encoded).hexdigest(),
             source="VERSION_CONTROLLED_BASELINE",
             configuration=default_configuration,
-            domain_payloads={RETURN_PLATFORM_DOMAIN_KEY: payload},
+            ai_gateway_configuration=default_ai_gateway_configuration,
+            dependency_simulation_configuration=default_dependency_simulation_configuration,
+            domain_payloads=domain_payloads,
         )
 
     async def build_snapshot(
@@ -67,6 +92,11 @@ class ConfigurationSnapshotBuilder:
         default_configuration: ReturnPlatformConfiguration,
         *,
         allow_baseline_fallback: bool,
+        default_ai_gateway_configuration: AIGatewayConfiguration | None = None,
+        default_dependency_simulation_configuration: (
+            DependencySimulationConfiguration | None
+        ) = None,
+        require_all_behavior_domains: bool = False,
     ) -> PinnedConfigurationSnapshot:
         """Load and validate the active graph release or use an explicitly allowed baseline."""
 
@@ -97,12 +127,44 @@ class ConfigurationSnapshotBuilder:
                 )
 
             validated = ReturnPlatformConfiguration.model_validate(payload)
+            ai_gateway_payload = domain_payloads.get(AI_GATEWAY_DOMAIN_KEY)
+            dependency_simulation_payload = domain_payloads.get(
+                DEPENDENCY_SIMULATION_DOMAIN_KEY
+            )
+            if require_all_behavior_domains:
+                missing_domains = [
+                    key
+                    for key, value in (
+                        (AI_GATEWAY_DOMAIN_KEY, ai_gateway_payload),
+                        (DEPENDENCY_SIMULATION_DOMAIN_KEY, dependency_simulation_payload),
+                    )
+                    if value is None
+                ]
+                if missing_domains:
+                    raise RuntimeError(
+                        "Graph configuration release is missing behavior domains: "
+                        + ", ".join(missing_domains)
+                    )
+            validated_ai_gateway = (
+                AIGatewayConfiguration.model_validate(ai_gateway_payload)
+                if ai_gateway_payload is not None
+                else default_ai_gateway_configuration
+            )
+            validated_dependency_simulation = (
+                DependencySimulationConfiguration.model_validate(
+                    dependency_simulation_payload
+                )
+                if dependency_simulation_payload is not None
+                else default_dependency_simulation_configuration
+            )
             return PinnedConfigurationSnapshot(
                 release_id=active_release.release_id,
                 head_revision=await self._repo.get_head_revision(),
                 checksum_sha256=active_release.checksum_sha256,
                 source="NEO4J_CONFIGURATION_GRAPH",
                 configuration=validated,
+                ai_gateway_configuration=validated_ai_gateway,
+                dependency_simulation_configuration=validated_dependency_simulation,
                 domain_payloads=domain_payloads,
             )
         except Exception as exc:
@@ -112,4 +174,8 @@ class ConfigurationSnapshotBuilder:
                 "graph_configuration_unavailable_using_version_controlled_baseline",
                 extra={"error_type": type(exc).__name__},
             )
-            return self._baseline_snapshot(default_configuration)
+            return self._baseline_snapshot(
+                default_configuration,
+                default_ai_gateway_configuration,
+                default_dependency_simulation_configuration,
+            )

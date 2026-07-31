@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from enum import StrEnum
 from pathlib import Path
 from typing import Literal
@@ -65,6 +66,7 @@ class RateLimitConfiguration(StrictModel):
 class TaskConfiguration(StrictModel):
     tier: ModelTier
     promptVersion: str = Field(min_length=1, max_length=128)
+    systemPrompt: str = Field(min_length=20, max_length=12_000)
     fallbackStrategy: FallbackStrategy
     fallbackTemplate: str = Field(min_length=1, max_length=128)
     maximumOutputTokens: int = Field(ge=32, le=8192)
@@ -122,4 +124,23 @@ def load_ai_gateway_configuration(path: Path) -> LoadedAIGatewayConfiguration:
         path=resolved,
         sha256=hashlib.sha256(raw).hexdigest(),
         configuration=AIGatewayConfiguration.model_validate(payload),
+    )
+
+
+def build_loaded_ai_gateway_configuration(
+    configuration: AIGatewayConfiguration,
+    *,
+    path: Path,
+) -> LoadedAIGatewayConfiguration:
+    """Build a digest-addressed loaded view from a validated graph payload."""
+
+    encoded = json.dumps(
+        configuration.model_dump(mode="json"),
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return LoadedAIGatewayConfiguration(
+        path=path,
+        sha256=hashlib.sha256(encoded).hexdigest(),
+        configuration=configuration,
     )

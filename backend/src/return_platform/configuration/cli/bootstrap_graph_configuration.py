@@ -16,7 +16,14 @@ from return_platform.configuration.bootstrap_runtime_integrations import (
 from return_platform.configuration.graph_repository import Neo4jConfigurationGraphRepository
 from return_platform.configuration.return_configuration import load_return_configuration
 from return_platform.configuration.settings import Settings
-from return_platform.configuration.snapshot import RETURN_PLATFORM_DOMAIN_KEY
+from return_platform.configuration.snapshot import (
+    AI_GATEWAY_DOMAIN_KEY,
+    DEPENDENCY_SIMULATION_DOMAIN_KEY,
+    RETURN_PLATFORM_DOMAIN_KEY,
+)
+from return_platform.dependency_simulation.configuration import (
+    load_dependency_simulation_configuration,
+)
 from return_platform.secrets.runtime import resolve_runtime_settings_from_vault
 
 
@@ -42,6 +49,9 @@ async def main(*, if_missing: bool = False) -> None:
 
         loaded = load_return_configuration(settings.return_configuration_path)
         loaded_ai_gateway = load_ai_gateway_configuration(settings.ai_gateway_configuration_path)
+        loaded_dependency_simulation = load_dependency_simulation_configuration(
+            settings.dependency_simulation_configuration_path
+        )
         configuration = await build_bootstrap_runtime_configuration(
             settings=settings,
             resolver=resolver,
@@ -49,9 +59,16 @@ async def main(*, if_missing: bool = False) -> None:
             configuration=loaded.configuration,
         )
         baseline_payload = configuration.model_dump(mode="json")
+        domain_payloads = {
+            RETURN_PLATFORM_DOMAIN_KEY: baseline_payload,
+            AI_GATEWAY_DOMAIN_KEY: loaded_ai_gateway.configuration.model_dump(mode="json"),
+            DEPENDENCY_SIMULATION_DOMAIN_KEY: (
+                loaded_dependency_simulation.configuration.model_dump(mode="json")
+            ),
+        }
         payload_checksum = hashlib.sha256(
             json.dumps(
-                baseline_payload,
+                domain_payloads,
                 sort_keys=True,
                 separators=(",", ":"),
             ).encode("utf-8")
@@ -59,11 +76,8 @@ async def main(*, if_missing: bool = False) -> None:
         base_release_id = f"return-platform-{payload_checksum[:16]}"
         release_id = base_release_id
         if active is not None:
-            active_payload = await repository.get_domain_config(
-                active.release_id,
-                RETURN_PLATFORM_DOMAIN_KEY,
-            )
-            if active_payload == baseline_payload:
+            active_payloads = await repository.get_all_domain_configs(active.release_id)
+            if active_payloads == domain_payloads:
                 print(f"graph_configuration_release={active.release_id}")
                 print("graph_configuration_status=UNCHANGED")
                 return
@@ -77,13 +91,16 @@ async def main(*, if_missing: bool = False) -> None:
                 if existing is None or existing.status not in {"SUPERSEDED", "ARCHIVED"}:
                     break
                 revision += 1
-        if existing is None:
-            await repository.save_draft_domain(
-                release_id,
-                RETURN_PLATFORM_DOMAIN_KEY,
-                baseline_payload,
-                actor_id="linux-runtime-bootstrap",
-            )
+        if existing is None or existing.status == "DRAFT":
+            for domain_key, domain_payload in domain_payloads.items():
+                await repository.save_draft_domain(
+                    release_id,
+                    domain_key,
+                    domain_payload,
+                    actor_id="linux-runtime-bootstrap",
+                )
+            existing = await repository.get_release(release_id)
+        if existing is not None and existing.status == "DRAFT":
             await repository.promote_release(
                 release_id,
                 "VALIDATED",
@@ -93,13 +110,6 @@ async def main(*, if_missing: bool = False) -> None:
 
         if existing is None:
             raise RuntimeError(f"Configuration release {release_id} was not created")
-        if existing.status == "DRAFT":
-            await repository.promote_release(
-                release_id,
-                "VALIDATED",
-                actor_id="linux-runtime-bootstrap",
-            )
-            existing = await repository.get_release(release_id)
         if existing is not None and existing.status == "VALIDATED":
             await repository.promote_release(
                 release_id,

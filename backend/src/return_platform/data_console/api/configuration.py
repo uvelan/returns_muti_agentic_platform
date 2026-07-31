@@ -2,24 +2,36 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any, Final, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from return_platform.ai_gateway.configuration import (
+    AIGatewayConfiguration,
+    LoadedAIGatewayConfiguration,
+)
 from return_platform.configuration.graph_repository import (
     ConfigurationGraphRepository,
     ConfigurationRevisionConflict,
 )
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
+from return_platform.configuration.runtime_activation import RuntimeConfigurationActivator
 from return_platform.configuration.runtime_integrations import (
     verify_runtime_validation_receipts,
 )
 from return_platform.configuration.snapshot import (
+    AI_GATEWAY_DOMAIN_KEY,
+    DEPENDENCY_SIMULATION_DOMAIN_KEY,
     RETURN_PLATFORM_DOMAIN_KEY,
     ConfigurationSnapshotBuilder,
 )
 from return_platform.data_console.api.auth import require_read_roles, require_write_roles
+from return_platform.dependency_simulation.configuration import (
+    DependencySimulationConfiguration,
+    LoadedDependencySimulationConfiguration,
+)
 from return_platform.resources import RuntimeResources
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
@@ -58,12 +70,29 @@ async def get_active_snapshot(
     environment = (
         resources.settings.environment if isinstance(resources, RuntimeResources) else "production"
     )
-    graph_first_enabled = (
-        default_config.configuration.feature_flags.graph_first_runtime_configuration
+    default_ai_gateway = getattr(request.app.state, "ai_gateway_configuration", None)
+    default_dependency_simulation = getattr(
+        request.app.state,
+        "dependency_simulation_configuration",
+        None,
     )
     built = await ConfigurationSnapshotBuilder(repo).build_snapshot(
         default_config.configuration,
-        allow_baseline_fallback=(not graph_first_enabled or environment in {"development", "test"}),
+        allow_baseline_fallback=(environment in {"development", "test"}),
+        default_ai_gateway_configuration=(
+            default_ai_gateway.configuration
+            if isinstance(default_ai_gateway, LoadedAIGatewayConfiguration)
+            else None
+        ),
+        default_dependency_simulation_configuration=(
+            default_dependency_simulation.configuration
+            if isinstance(
+                default_dependency_simulation,
+                LoadedDependencySimulationConfiguration,
+            )
+            else None
+        ),
+        require_all_behavior_domains=(environment not in {"development", "test"}),
     )
     return APIResponse(data=built.model_dump(mode="json"), meta=_response_meta(request))
 
@@ -125,11 +154,32 @@ async def create_release(
     if active_release is not None and payload.from_active:
         domains_to_copy = await repo.get_all_domain_configs(active_release.release_id)
 
-    if not domains_to_copy:
-        loaded = getattr(request.app.state, "return_configuration", None)
-        if loaded is None:
-            raise HTTPException(status_code=503, detail="Runtime configuration is unavailable")
-        domains_to_copy = {RETURN_PLATFORM_DOMAIN_KEY: loaded.configuration.model_dump(mode="json")}
+    loaded = getattr(request.app.state, "return_configuration", None)
+    if loaded is None:
+        raise HTTPException(status_code=503, detail="Runtime configuration is unavailable")
+    domains_to_copy.setdefault(
+        RETURN_PLATFORM_DOMAIN_KEY,
+        loaded.configuration.model_dump(mode="json"),
+    )
+    loaded_ai_gateway = getattr(request.app.state, "ai_gateway_configuration", None)
+    if isinstance(loaded_ai_gateway, LoadedAIGatewayConfiguration):
+        domains_to_copy.setdefault(
+            AI_GATEWAY_DOMAIN_KEY,
+            loaded_ai_gateway.configuration.model_dump(mode="json"),
+        )
+    loaded_dependency_simulation = getattr(
+        request.app.state,
+        "dependency_simulation_configuration",
+        None,
+    )
+    if isinstance(
+        loaded_dependency_simulation,
+        LoadedDependencySimulationConfiguration,
+    ):
+        domains_to_copy.setdefault(
+            DEPENDENCY_SIMULATION_DOMAIN_KEY,
+            loaded_dependency_simulation.configuration.model_dump(mode="json"),
+        )
 
     for domain_key, domain_payload in domains_to_copy.items():
         await repo.save_draft_domain(
@@ -153,6 +203,30 @@ class SaveDomainPayload(BaseModel):
     payload: dict[str, Any]
 
 
+class PatchDomainPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    patch: dict[str, Any]
+
+
+def _apply_merge_patch(target: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    """Apply an RFC 7396-style object merge patch to a configuration document."""
+
+    merged = copy.deepcopy(target)
+    for key, value in patch.items():
+        if value is None:
+            merged.pop(key, None)
+        elif isinstance(value, dict):
+            current = merged.get(key)
+            merged[key] = _apply_merge_patch(
+                current if isinstance(current, dict) else {},
+                value,
+            )
+        else:
+            merged[key] = copy.deepcopy(value)
+    return merged
+
+
 @router.put(
     "/releases/{release_id}/domains/{domain_key}",
     response_model=APIResponse[dict[str, Any]],
@@ -172,6 +246,16 @@ async def save_domain_config(
             ReturnPlatformConfiguration.model_validate(body.payload)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+    elif domain_key == AI_GATEWAY_DOMAIN_KEY:
+        try:
+            AIGatewayConfiguration.model_validate(body.payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    elif domain_key == DEPENDENCY_SIMULATION_DOMAIN_KEY:
+        try:
+            DependencySimulationConfiguration.model_validate(body.payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
         await repo.save_draft_domain(release_id, domain_key, body.payload, actor_id=user_id)
     except ValueError as exc:
@@ -180,6 +264,57 @@ async def save_domain_config(
     updated = await repo.get_domain_config(release_id, domain_key)
     return APIResponse(
         data={"domain_key": domain_key, "payload": updated},
+        meta=_response_meta(request),
+    )
+
+
+@router.patch(
+    "/releases/{release_id}/domains/{domain_key}",
+    response_model=APIResponse[dict[str, Any]],
+)
+async def patch_domain_config(
+    release_id: str,
+    domain_key: str,
+    body: PatchDomainPayload,
+    request: Request,
+    user_id: str = Depends(require_write_roles),
+) -> APIResponse[dict[str, Any]]:
+    """Patch selected behavior fields in a draft without replacing the full graph document."""
+
+    repo = resolve_configuration_repository(request)
+    current = await repo.get_domain_config(release_id, domain_key)
+    if current is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Domain {domain_key} was not found in release {release_id}",
+        )
+    updated_payload = _apply_merge_patch(current, body.patch)
+    if domain_key == RETURN_PLATFORM_DOMAIN_KEY:
+        try:
+            ReturnPlatformConfiguration.model_validate(updated_payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    elif domain_key == AI_GATEWAY_DOMAIN_KEY:
+        try:
+            AIGatewayConfiguration.model_validate(updated_payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    elif domain_key == DEPENDENCY_SIMULATION_DOMAIN_KEY:
+        try:
+            DependencySimulationConfiguration.model_validate(updated_payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        await repo.save_draft_domain(
+            release_id,
+            domain_key,
+            updated_payload,
+            actor_id=user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return APIResponse(
+        data={"domain_key": domain_key, "payload": updated_payload},
         meta=_response_meta(request),
     )
 
@@ -217,14 +352,28 @@ async def promote_release_status(
         )
 
     if body.status in {"VALIDATED", "RELEASED"}:
-        payload = await repo.get_domain_config(release_id, RETURN_PLATFORM_DOMAIN_KEY)
-        if payload is None:
+        domain_payloads = await repo.get_all_domain_configs(release_id)
+        required_domains = {
+            RETURN_PLATFORM_DOMAIN_KEY,
+            AI_GATEWAY_DOMAIN_KEY,
+            DEPENDENCY_SIMULATION_DOMAIN_KEY,
+        }
+        missing_domains = sorted(required_domains - set(domain_payloads))
+        if missing_domains:
             raise HTTPException(
                 status_code=422,
-                detail=f"Release must contain the {RETURN_PLATFORM_DOMAIN_KEY} domain",
+                detail="Release is missing behavior domains: " + ", ".join(missing_domains),
             )
         try:
-            validated_configuration = ReturnPlatformConfiguration.model_validate(payload)
+            validated_configuration = ReturnPlatformConfiguration.model_validate(
+                domain_payloads[RETURN_PLATFORM_DOMAIN_KEY]
+            )
+            AIGatewayConfiguration.model_validate(
+                domain_payloads[AI_GATEWAY_DOMAIN_KEY]
+            )
+            DependencySimulationConfiguration.model_validate(
+                domain_payloads[DEPENDENCY_SIMULATION_DOMAIN_KEY]
+            )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         resources = getattr(request.app.state, "resources", None)
@@ -265,7 +414,36 @@ async def promote_release_status(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    activated_snapshot = None
+    if body.status == "RELEASED":
+        activator = getattr(request.app.state, "runtime_configuration_activator", None)
+        if not isinstance(activator, RuntimeConfigurationActivator):
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Configuration was released in the graph, but this process has no runtime "
+                    "configuration activator"
+                ),
+            )
+        try:
+            activated_snapshot = await activator.refresh(force=True)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Configuration was released in the graph but could not be activated in this "
+                    f"process: {type(exc).__name__}"
+                ),
+            ) from exc
+
     data = updated.model_dump(mode="json")
     data["domains"] = await repo.get_all_domain_configs(release_id)
     data["head_revision"] = await repo.get_head_revision()
+    if activated_snapshot is not None:
+        data["runtime_activation"] = {
+            "release_id": activated_snapshot.release_id,
+            "checksum_sha256": activated_snapshot.checksum_sha256,
+            "head_revision": activated_snapshot.head_revision,
+            "loaded_at": activated_snapshot.loaded_at,
+        }
     return APIResponse(data=data, meta=_response_meta(request))

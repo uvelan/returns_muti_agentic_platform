@@ -12,7 +12,10 @@ from neo4j import AsyncGraphDatabase
 from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
-from return_platform.ai_gateway.configuration import load_ai_gateway_configuration
+from return_platform.ai_gateway.configuration import (
+    build_loaded_ai_gateway_configuration,
+    load_ai_gateway_configuration,
+)
 from return_platform.ai_gateway.routing import AIRoutePool, build_routes
 from return_platform.api.ai_gateway import router as ai_gateway_router
 from return_platform.api.associate_returns import router as associate_returns_router
@@ -39,6 +42,7 @@ from return_platform.configuration.return_configuration import (
     LoadedReturnConfiguration,
     load_return_configuration,
 )
+from return_platform.configuration.runtime_activation import RuntimeConfigurationActivator
 from return_platform.configuration.runtime_integrations import (
     apply_graph_runtime_configuration,
     verify_runtime_validation_receipts,
@@ -87,6 +91,7 @@ from return_platform.data_platform.operational_generation.adapters.source_mongod
 )
 from return_platform.data_platform.schema_registry import load_schema_registry
 from return_platform.dependency_simulation.configuration import (
+    build_loaded_dependency_simulation_configuration,
     load_dependency_simulation_configuration,
 )
 from return_platform.dependency_simulation.repository import MongoSimulationRepository
@@ -320,10 +325,10 @@ async def lifespan(
     baseline_return_configuration = load_return_configuration(
         bootstrap_settings.return_configuration_path
     )
-    dependency_simulation_configuration = load_dependency_simulation_configuration(
+    baseline_dependency_simulation_configuration = load_dependency_simulation_configuration(
         bootstrap_settings.dependency_simulation_configuration_path
     )
-    ai_gateway_configuration = load_ai_gateway_configuration(
+    baseline_ai_gateway_configuration = load_ai_gateway_configuration(
         bootstrap_settings.ai_gateway_configuration_path
     )
 
@@ -345,21 +350,41 @@ async def lifespan(
             graph_configuration_repository = InMemoryConfigurationGraphRepository()
         app.state.graph_configuration_repository = graph_configuration_repository
 
-        feature_flags = baseline_return_configuration.configuration.feature_flags
-        graph_first_enabled = feature_flags.graph_first_runtime_configuration
         configuration_snapshot = await ConfigurationSnapshotBuilder(
             graph_configuration_repository
         ).build_snapshot(
             baseline_return_configuration.configuration,
             allow_baseline_fallback=(
-                not graph_first_enabled
-                or bootstrap_settings.environment in _DEVELOPMENT_ENVIRONMENTS
+                bootstrap_settings.environment in _DEVELOPMENT_ENVIRONMENTS
+            ),
+            default_ai_gateway_configuration=(
+                baseline_ai_gateway_configuration.configuration
+            ),
+            default_dependency_simulation_configuration=(
+                baseline_dependency_simulation_configuration.configuration
+            ),
+            require_all_behavior_domains=(
+                bootstrap_settings.environment not in _DEVELOPMENT_ENVIRONMENTS
             ),
         )
         return_configuration = LoadedReturnConfiguration(
             configuration=configuration_snapshot.configuration,
             path=baseline_return_configuration.path,
             sha256=configuration_snapshot.checksum_sha256,
+        )
+        if configuration_snapshot.ai_gateway_configuration is None:
+            raise RuntimeError("Runtime snapshot has no AI gateway configuration")
+        if configuration_snapshot.dependency_simulation_configuration is None:
+            raise RuntimeError("Runtime snapshot has no dependency simulation configuration")
+        ai_gateway_configuration = build_loaded_ai_gateway_configuration(
+            configuration_snapshot.ai_gateway_configuration,
+            path=baseline_ai_gateway_configuration.path,
+        )
+        dependency_simulation_configuration = (
+            build_loaded_dependency_simulation_configuration(
+                configuration_snapshot.dependency_simulation_configuration,
+                path=baseline_dependency_simulation_configuration.path,
+            )
         )
         graph_settings = apply_graph_runtime_configuration(
             bootstrap_settings,
@@ -412,6 +437,16 @@ async def lifespan(
         app.state.ai_gateway_configuration = ai_gateway_configuration
         app.state.return_configuration = return_configuration
         app.state.return_configuration_snapshot = configuration_snapshot
+        app.state.runtime_configuration_activator = RuntimeConfigurationActivator(
+            app_state=app.state,
+            repository=graph_configuration_repository,
+            baseline_path=baseline_return_configuration.path,
+            ai_gateway_baseline_path=baseline_ai_gateway_configuration.path,
+            dependency_simulation_baseline_path=(
+                baseline_dependency_simulation_configuration.path
+            ),
+            resources=resources,
+        )
         if resources.mongo is not None:
             await verify_runtime_validation_receipts(
                 resources.mongo,
@@ -430,6 +465,7 @@ async def lifespan(
                 schema_version=return_configuration.configuration.schema_version,
                 assumption_set_version=(return_configuration.configuration.assumption_set_version),
                 configuration=return_configuration.configuration.model_dump(mode="json"),
+                behavior_domains=configuration_snapshot.domain_payloads,
             )
             await MongoSimulationRepository(resources.mongo, settings).ensure_indexes()
             await ReturnSupportService(
@@ -564,6 +600,23 @@ def create_app(
                     code="PROVIDER_FAILURE",
                     message=("Principal resolution failed."),
                 )
+
+            activator = getattr(
+                request.app.state,
+                "runtime_configuration_activator",
+                None,
+            )
+            if isinstance(activator, RuntimeConfigurationActivator):
+                try:
+                    await activator.refresh()
+                except Exception as exc:
+                    logger.exception(
+                        "runtime_configuration_refresh_failed_using_last_good_snapshot",
+                        extra={
+                            "error_type": type(exc).__name__,
+                            "correlation_id": correlation_id,
+                        },
+                    )
 
         response = await call_next(request)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -11,9 +12,11 @@ from return_platform.configuration.graph_repository import (
     InMemoryConfigurationGraphRepository,
 )
 from return_platform.configuration.return_configuration import (
+    LoadedReturnConfiguration,
     ReturnPlatformConfiguration,
     load_return_configuration,
 )
+from return_platform.configuration.runtime_activation import RuntimeConfigurationActivator
 from return_platform.configuration.runtime_integrations import (
     apply_graph_runtime_configuration,
 )
@@ -138,6 +141,96 @@ async def test_snapshot_builder_loads_published_graph_release(
     assert snapshot.release_id == "release-graph-1"
     assert snapshot.head_revision == 1
     assert snapshot.domain_payloads[RETURN_PLATFORM_DOMAIN_KEY] == payload
+
+
+@pytest.mark.asyncio
+async def test_production_snapshot_requires_every_behavior_domain(
+    sample_config: ReturnPlatformConfiguration,
+) -> None:
+    repo = InMemoryConfigurationGraphRepository()
+    await repo.save_draft_domain(
+        "incomplete-release",
+        RETURN_PLATFORM_DOMAIN_KEY,
+        sample_config.model_dump(mode="json"),
+        actor_id="admin-1",
+    )
+    await repo.promote_release("incomplete-release", "VALIDATED", actor_id="admin-1")
+    await repo.promote_release(
+        "incomplete-release",
+        "RELEASED",
+        actor_id="admin-1",
+        expected_head_revision=0,
+    )
+
+    with pytest.raises(RuntimeError, match="Graph-first runtime configuration"):
+        await ConfigurationSnapshotBuilder(repo).build_snapshot(
+            sample_config,
+            allow_baseline_fallback=False,
+            require_all_behavior_domains=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_runtime_activator_reconciles_a_new_graph_head(
+    sample_config: ReturnPlatformConfiguration,
+) -> None:
+    repo = InMemoryConfigurationGraphRepository()
+    baseline_path = Path("config/returns/production.yaml")
+    baseline_snapshot = await ConfigurationSnapshotBuilder(repo).build_snapshot(
+        sample_config,
+        allow_baseline_fallback=True,
+    )
+    state = SimpleNamespace(
+        return_configuration=LoadedReturnConfiguration(
+            configuration=sample_config,
+            path=baseline_path,
+            sha256=baseline_snapshot.checksum_sha256,
+        ),
+        return_configuration_snapshot=baseline_snapshot,
+    )
+    activator = RuntimeConfigurationActivator(
+        app_state=state,
+        repository=repo,
+        baseline_path=baseline_path,
+        resources=None,
+        refresh_interval_seconds=0,
+    )
+
+    changed = sample_config.model_copy(
+        update={
+            "agents": {
+                **sample_config.agents,
+                "order_discovery": sample_config.agents["order_discovery"].model_copy(
+                    update={"version": "runtime-3.0"}
+                ),
+            }
+        }
+    )
+    await repo.save_draft_domain(
+        "runtime-agent-v3",
+        RETURN_PLATFORM_DOMAIN_KEY,
+        changed.model_dump(mode="json"),
+        actor_id="configuration-admin",
+    )
+    await repo.promote_release(
+        "runtime-agent-v3",
+        "VALIDATED",
+        actor_id="configuration-admin",
+    )
+    await repo.promote_release(
+        "runtime-agent-v3",
+        "RELEASED",
+        actor_id="configuration-admin",
+        expected_head_revision=0,
+    )
+
+    activated = await activator.refresh()
+
+    assert activated.release_id == "runtime-agent-v3"
+    assert activated.head_revision == 1
+    assert state.return_configuration.configuration.agents["order_discovery"].version == (
+        "runtime-3.0"
+    )
 
 
 def test_bootstrap_managed_sources_do_not_override_deployment_settings(

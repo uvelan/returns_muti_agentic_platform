@@ -220,6 +220,7 @@ class OperationalRepository:
         schema_version: str,
         assumption_set_version: str,
         configuration: dict[str, Any],
+        behavior_domains: dict[str, Any],
     ) -> None:
         """Persist one immutable, digest-addressed production configuration snapshot."""
         now = utc_now()
@@ -233,6 +234,7 @@ class OperationalRepository:
                     "schemaVersion": schema_version,
                     "assumptionSetVersion": assumption_set_version,
                     "configuration": configuration,
+                    "behaviorDomains": behavior_domains,
                     "activatedAt": now,
                     "createdAt": now,
                 },

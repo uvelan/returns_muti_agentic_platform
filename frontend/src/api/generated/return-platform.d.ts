@@ -1587,7 +1587,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Patch Domain Config
+         * @description Patch selected behavior fields in a draft without replacing the full graph document.
+         */
+        patch: operations["patch_domain_config_data_console_v1_configuration_releases__release_id__domains__domain_key__patch"];
         trace?: never;
     };
     "/data-console/v1/configuration/releases/{release_id}/promote": {
@@ -5220,6 +5224,13 @@ export interface components {
              * @default 50
              */
             page_size: number;
+        };
+        /** PatchDomainPayload */
+        PatchDomainPayload: {
+            /** Patch */
+            patch: {
+                [key: string]: unknown;
+            };
         };
         /**
          * PickupAction
@@ -9830,6 +9841,42 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["SaveDomainPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_domain_config_data_console_v1_configuration_releases__release_id__domains__domain_key__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+                domain_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchDomainPayload"];
             };
         };
         responses: {

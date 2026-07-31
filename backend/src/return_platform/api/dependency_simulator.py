@@ -6,6 +6,7 @@ from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
+from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
 from return_platform.data_console.api.auth import require_read_roles, require_write_roles
 from return_platform.dependency_simulation.configuration import (
@@ -45,6 +46,7 @@ def _service(
     resources = getattr(request.app.state, "resources", None)
     loaded = getattr(request.app.state, "dependency_simulation_configuration", None)
     loaded_returns = getattr(request.app.state, "return_configuration", None)
+    loaded_ai_gateway = getattr(request.app.state, "ai_gateway_configuration", None)
     if not isinstance(resources, RuntimeResources) or resources.mongo is None:
         raise HTTPException(
             status_code=503, detail="Platform MongoDB is required for dependency simulation."
@@ -66,6 +68,11 @@ def _service(
             repository,
             resources.settings,
             loaded,
+            loaded_ai_gateway=(
+                loaded_ai_gateway
+                if isinstance(loaded_ai_gateway, LoadedAIGatewayConfiguration)
+                else None
+            ),
             route_pool=getattr(request.app.state, "ai_gateway_route_pool", None),
         ),
         resources,

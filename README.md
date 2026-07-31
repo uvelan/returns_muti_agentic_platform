@@ -104,7 +104,9 @@ versions.
 
 ## Graph-first runtime configuration
 
-Neo4j is the authoritative control-plane store for versioned configuration. Runtime processes do not traverse the configuration graph for each request.
+Neo4j is the authoritative control-plane store for versioned configuration. Runtime processes
+periodically compare the graph head revision with their last-good immutable snapshot; they do not
+traverse the complete configuration graph for each request.
 
 Startup sequence:
 
@@ -134,6 +136,64 @@ DRAFT -> VALIDATED -> RELEASED -> SUPERSEDED -> ARCHIVED
 ```
 
 Published releases are immutable. Publication requires the expected head revision, preventing concurrent administrators from activating two releases.
+
+The Configuration Studio can clone the active release and edit every runtime behavior domain:
+
+- `RETURN_PLATFORM`: agents, discovery, clarification, workflow, return policy, integrations,
+  feature flags, and source-resolution behavior.
+- `AI_GATEWAY`: task system prompts, prompt versions, provider allowlists, token limits, retry,
+  rate limiting, circuit breakers, and deterministic fallback selection.
+- `DEPENDENCY_SIMULATION`: simulation contracts, operation sequences, narrative behavior, provider
+  order, timeouts, and pricing assumptions.
+
+A published release is activated atomically in the API process that accepted the publication.
+Other API processes detect the new graph-head revision within five seconds and activate the same
+validated domains without a restart. The AI route pool is rebuilt at the same activation boundary.
+MongoDB retains the digest-addressed runtime snapshot as audit evidence; it is not an editable
+configuration authority.
+
+For targeted automation, draft documents also support an object merge patch:
+
+```http
+PATCH /data-console/v1/configuration/releases/{release_id}/domains/RETURN_PLATFORM
+Content-Type: application/json
+
+{
+  "patch": {
+    "agents": {
+      "order_discovery": {
+        "version": "2.1",
+        "human_confirmation_required": true
+      }
+    }
+  }
+}
+```
+
+The merged document must pass complete `ReturnPlatformConfiguration` validation before it is
+written to the draft. Equivalent typed validation applies to the AI gateway and dependency
+simulation domains. Secrets remain in Vault; graph configuration stores only validated secret
+references and receipts. Deployment wiring, database schema definitions, and graph migrations
+remain version controlled because they are infrastructure contracts rather than agent behavior.
+
+### Migrating an existing environment
+
+Releases created before the graph-owned behavior migration may contain only `RETURN_PLATFORM`.
+Publish a complete three-domain release before starting the upgraded API or workers:
+
+```bash
+./scripts/prepare_runtime_configuration.sh
+```
+
+Production and staging fail closed when `AI_GATEWAY` or `DEPENDENCY_SIMULATION` is absent. Use this
+rollout order:
+
+1. Make the upgraded configuration bootstrap command available.
+2. Run `prepare_runtime_configuration.sh` while the existing application remains available.
+3. Confirm that the active release contains `RETURN_PLATFORM`, `AI_GATEWAY`, and
+   `DEPENDENCY_SIMULATION`.
+4. Roll the API and worker processes.
+5. Confirm `/data-console/v1/configuration/active-snapshot` reports the new release and checksum.
 
 Graph migrations are checksum-tracked in `ConfigurationMigration` nodes. Modified migration files are rejected after application.
 

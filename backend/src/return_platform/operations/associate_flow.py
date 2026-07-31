@@ -29,6 +29,8 @@ from return_platform.agents.contracts import (
 )
 from return_platform.agents.order_discovery import OrderDiscoveryAgent
 from return_platform.agents.return_workflow import ReturnWorkflowAgent
+from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
+from return_platform.ai_gateway.routing import AIRoutePool
 from return_platform.ai_gateway.service import AIGatewayRepository, AIGatewayService
 from return_platform.configuration.return_configuration import (
     ReturnPlatformConfiguration,
@@ -348,6 +350,8 @@ class AssociateConversationService:
         settings: Settings,
         repository: OperationalRepository,
         return_configuration: ReturnPlatformConfiguration | None = None,
+        ai_gateway_configuration: LoadedAIGatewayConfiguration | None = None,
+        ai_gateway_route_pool: AIRoutePool | None = None,
         configuration_release_id: str | None = None,
         configuration_checksum: str | None = None,
         configuration_source: str = "VERSION_CONTROLLED_BASELINE",
@@ -363,11 +367,21 @@ class AssociateConversationService:
         self._return_request_snapshots = self._db["return_request_snapshots"]
         self._locks = self._db["discovery_locks"]
         self._repository = repository
-        self._ai = AIGatewayService(cast(AIGatewayRepository, repository), settings)
-        self._return_configuration = (
-            return_configuration
-            or load_return_configuration(settings.return_configuration_path).configuration
+        self._ai = AIGatewayService(
+            cast(AIGatewayRepository, repository),
+            settings,
+            loaded_configuration=ai_gateway_configuration,
+            route_pool=ai_gateway_route_pool,
         )
+        if return_configuration is None:
+            if settings.environment not in {"development", "test"}:
+                raise RuntimeError(
+                    "Production associate behavior must come from the active graph release"
+                )
+            return_configuration = load_return_configuration(
+                settings.return_configuration_path
+            ).configuration
+        self._return_configuration = return_configuration
         self._source_config = self._return_configuration.source_resolution
         self._configuration_release_id = configuration_release_id
         self._configuration_checksum = configuration_checksum or _digest(

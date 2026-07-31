@@ -9,9 +9,6 @@ from pymongo import AsyncMongoClient
 
 from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
 from return_platform.configuration.runtime_loader import resolve_process_configuration
-from return_platform.dependency_simulation.configuration import (
-    load_dependency_simulation_configuration,
-)
 from return_platform.dependency_simulation.dispatchers import SimulationTopicDispatcher
 from return_platform.dependency_simulation.models import DependencyKind
 from return_platform.dependency_simulation.repository import MongoSimulationRepository
@@ -30,9 +27,7 @@ async def run() -> None:
     client: AsyncMongoClient[dict[str, object]] = AsyncMongoClient(
         settings.mongo_dsn.get_secret_value()
     )
-    loaded_simulation = load_dependency_simulation_configuration(
-        settings.dependency_simulation_configuration_path
-    )
+    loaded_simulation = runtime.dependency_simulation_configuration
     simulation_repository = MongoSimulationRepository(client, settings)
     await verify_runtime_validation_receipts(
         client,
@@ -41,7 +36,10 @@ async def run() -> None:
     )
     await simulation_repository.ensure_indexes()
     simulation_service = DependencySimulationService(
-        simulation_repository, settings, loaded_simulation
+        simulation_repository,
+        settings,
+        loaded_simulation,
+        loaded_ai_gateway=runtime.ai_gateway_configuration,
     )
     async with httpx.AsyncClient() as http_client:
         dispatchers: dict[str, TopicDispatcher] = {}

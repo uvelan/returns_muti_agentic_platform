@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from typing import Literal
 
@@ -84,4 +85,23 @@ def load_dependency_simulation_configuration(
         path=resolved,
         sha256=hashlib.sha256(raw).hexdigest(),
         configuration=DependencySimulationConfiguration.model_validate(payload),
+    )
+
+
+def build_loaded_dependency_simulation_configuration(
+    configuration: DependencySimulationConfiguration,
+    *,
+    path: Path,
+) -> LoadedDependencySimulationConfiguration:
+    """Build a digest-addressed loaded view from a validated graph payload."""
+
+    encoded = json.dumps(
+        configuration.model_dump(mode="json"),
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return LoadedDependencySimulationConfiguration(
+        path=path,
+        sha256=hashlib.sha256(encoded).hexdigest(),
+        configuration=configuration,
     )

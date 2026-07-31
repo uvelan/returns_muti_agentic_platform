@@ -48,6 +48,8 @@ vi.mock("../../../../api/configurationQueries", () => ({
       checksum_sha256: "def456",
       domains: {
         RETURN_PLATFORM: { max_candidates: 10, lucence_fuzzy_distance: 2 },
+        AI_GATEWAY: { tasks: { RETURN_ELIGIBILITY_V1: { promptVersion: "v2" } } },
+        DEPENDENCY_SIMULATION: { enabled: true },
       },
     } : {
       release_id: "rel-active-1",
@@ -118,6 +120,26 @@ describe("ConfigurationStudioPage", () => {
       expect.objectContaining({
         releaseId: "rel-draft-2",
         domainKey: "RETURN_PLATFORM",
+      }),
+      expect.any(Object)
+    );
+  });
+
+  it("allows editing every graph-backed behavior domain", async () => {
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <ConfigurationStudioPage />
+      </QueryClientProvider>
+    );
+
+    fireEvent.click(await screen.findByText("rel-draft-2"));
+    fireEvent.click(await screen.findByRole("button", { name: "AI_GATEWAY" }));
+    fireEvent.click(screen.getByText("Save Domain Config"));
+
+    expect(mockSaveDomain).toHaveBeenCalledWith(
+      expect.objectContaining({
+        releaseId: "rel-draft-2",
+        domainKey: "AI_GATEWAY",
       }),
       expect.any(Object)
     );

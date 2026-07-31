@@ -8349,6 +8349,21 @@
         "title": "PageMeta",
         "type": "object"
       },
+      "PatchDomainPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "patch": {
+            "additionalProperties": true,
+            "title": "Patch",
+            "type": "object"
+          }
+        },
+        "required": [
+          "patch"
+        ],
+        "title": "PatchDomainPayload",
+        "type": "object"
+      },
       "PickupAction": {
         "enum": [
           "AUTHORIZE",
@@ -16932,6 +16947,66 @@
       }
     },
     "/data-console/v1/configuration/releases/{release_id}/domains/{domain_key}": {
+      "patch": {
+        "description": "Patch selected behavior fields in a draft without replacing the full graph document.",
+        "operationId": "patch_domain_config_data_console_v1_configuration_releases__release_id__domains__domain_key__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "domain_key",
+            "required": true,
+            "schema": {
+              "title": "Domain Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchDomainPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Domain Config",
+        "tags": [
+          "Graph Configuration"
+        ]
+      },
       "put": {
         "description": "Save a validated domain payload into a mutable draft release.",
         "operationId": "save_domain_config_data_console_v1_configuration_releases__release_id__domains__domain_key__put",
