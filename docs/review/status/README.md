@@ -3,6 +3,13 @@
 Every implementation agent must write its walkthrough, self-review, handoff, or
 progress report in this directory.
 
+## Current context
+
+The active implementation context is
+[`runtime_graph_configuration_context.md`](runtime_graph_configuration_context.md). It records the
+graph-owned agent behavior domains, runtime activation model, migration order, verification status,
+and next live-validation action.
+
 ## Required convention
 
 - Use one Markdown file per stage or bounded work package.
