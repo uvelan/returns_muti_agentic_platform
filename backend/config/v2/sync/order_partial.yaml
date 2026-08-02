@@ -1,0 +1,21 @@
+module_id: sync.order_partial
+module_type: SYNC
+schema_version: "1.0"
+configuration_version: "1.0.0"
+owner: DATA_PLATFORM
+status: DRAFT
+dependencies:
+  - module_id: graph.order_discovery
+    version_constraint: "^2.0"
+payload:
+  mode: PARTIAL_ORDER_SYNC
+  projection_profile: ORDER_DISCOVERY_CANDIDATE
+  max_candidates: 20
+  strong_anchors:
+    - FULL_ORDER_ID
+    - ORDER_REFERENCE
+    - TRACKING_NUMBER
+    - INVOICE_NUMBER
+    - DELIVERY_TICKET
+    - CUSTOMER_PO
+  graph_readback_required: true

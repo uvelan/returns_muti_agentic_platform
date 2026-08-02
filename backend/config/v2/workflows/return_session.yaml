@@ -1,0 +1,18 @@
+module_id: workflow.return_session
+module_type: WORKFLOW
+schema_version: "1.0"
+configuration_version: "2.0.0"
+owner: RETURN_PLATFORM_ORCHESTRATION
+status: DRAFT
+dependencies: []
+payload:
+  context_only_handoffs: true
+  direct_agent_calls_allowed: false
+  stages:
+    - ORDER_DISCOVERY
+    - ORDER_SELECTION
+    - FULL_ORDER_SYNC
+    - LINE_CONFIRMATION
+    - ORDER_ANALYSIS
+    - RETURN_REQUEST
+    - FULFILLMENT

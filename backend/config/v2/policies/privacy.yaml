@@ -1,0 +1,17 @@
+module_id: policy.privacy
+module_type: POLICY
+schema_version: "1.0"
+configuration_version: "2.0.0"
+owner: SECURITY_GOVERNANCE
+status: DRAFT
+dependencies: []
+payload:
+  graph_property_mode: ALLOWLIST
+  prohibited_categories:
+    - PAYMENT_CREDENTIAL
+    - RAW_SECRET
+    - FULL_TRANSCRIPT
+    - DOCUMENT_BYTES
+    - UNRELATED_TELEMETRY
+  redact_sensitive_preview_values: true
+  require_authorization_scope: true

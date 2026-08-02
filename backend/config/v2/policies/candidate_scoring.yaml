@@ -1,0 +1,17 @@
+module_id: policy.candidate_scoring
+module_type: POLICY
+schema_version: "1.0"
+configuration_version: "2.0.0"
+owner: ORDER_DISCOVERY
+status: DRAFT
+dependencies: []
+payload:
+  high_confidence: 0.85
+  ambiguity_gap: 0.10
+  exact_anchor_required_for_auto_rank: true
+  strong_anchor_weights:
+    FULL_ORDER_ID: 100
+    TRACKING_NUMBER: 95
+    INVOICE_NUMBER: 95
+    DELIVERY_TICKET: 90
+    CUSTOMER_PO: 85

@@ -1,0 +1,28 @@
+module_id: graph.order_discovery
+module_type: GRAPH
+schema_version: "1.0"
+configuration_version: "2.0.0"
+owner: GRAPH_PLATFORM
+status: DRAFT
+dependencies:
+  - module_id: policy.privacy
+    version_constraint: "^2.0"
+payload:
+  schema_name: ORDER_DISCOVERY_MINIMAL
+  nodes:
+    SalesOrder:
+      unique_key: fullOrderId
+    OrderLine:
+      unique_key: fullOrderLineId
+  relationships:
+    - type: CONTAINS_LINE
+      from: SalesOrder
+      to: OrderLine
+      cardinality: ONE_TO_MANY
+  constraints:
+    - SalesOrder.fullOrderId UNIQUE
+    - OrderLine.fullOrderLineId UNIQUE
+  projection_profiles:
+    - ORDER_DISCOVERY_CANDIDATE
+    - FULL_ORDER
+  prohibit_raw_source_payload: true

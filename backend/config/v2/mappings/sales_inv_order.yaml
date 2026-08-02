@@ -1,0 +1,33 @@
+module_id: mapping.sales_inv_order
+module_type: MAPPING
+schema_version: "1.0"
+configuration_version: "2.0.0"
+owner: DATA_PLATFORM
+status: DRAFT
+dependencies:
+  - module_id: source.sales_inv
+    version_constraint: "^2.0"
+  - module_id: policy.privacy
+    version_constraint: "^2.0"
+payload:
+  canonical_entity: SalesOrder
+  full_order_id: ACCOUNT_OR_LOGON*ORDERNUMBER
+  full_order_line_id: FULL_ORDER_ID*IMMUTABLE_LINE_NUMBER
+  allowlisted_order_fields:
+    - fullOrderId
+    - account
+    - orderNumber
+    - customerId
+    - customerName
+    - customerPo
+    - deliveryTicket
+    - invoiceNumbers
+    - trackingNumbers
+    - sourceRevision
+  allowlisted_line_fields:
+    - fullOrderLineId
+    - lineNumber
+    - itemNumber
+    - description
+    - quantityOrdered
+    - quantityReturned

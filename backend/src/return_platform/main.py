@@ -2,6 +2,7 @@ import asyncio
 import logging
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import cast
 
 import redis.asyncio as redis
@@ -25,6 +26,7 @@ from return_platform.api.dependencies import router as dependencies_router
 from return_platform.api.dependency_simulator import router as dependency_simulator_router
 from return_platform.api.integration_outbox import router as integration_outbox_router
 from return_platform.api.physical_operations import router as physical_operations_router
+from return_platform.api.platform_v2 import router as platform_v2_router
 from return_platform.api.production_workflow import router as production_workflow_router
 from return_platform.api.return_agents import router as return_agents_router
 from return_platform.api.return_artifacts import router as return_artifacts_router
@@ -115,6 +117,11 @@ from return_platform.shared.contracts import (
     DependencyStatus,
     ResponseMeta,
     WarningMeta,
+)
+from return_platform.v2 import V2PlatformServices
+from return_platform.v2.runtime_adapters import (
+    MongoOrderSourceGateway,
+    Neo4jOrderProjectionStore,
 )
 
 logger = logging.getLogger("return_platform.main")
@@ -338,6 +345,11 @@ async def lifespan(
         catalog=loaded_catalog,
         schema_registry=schema_registry,
     )
+    v2_platform_services = V2PlatformServices()
+    await v2_platform_services.bootstrap(
+        Path(__file__).resolve().parents[2] / "config" / "v2"  # noqa: ASYNC240
+    )
+    app.state.v2_platform_services = v2_platform_services
 
     try:
         await _initialize_neo4j(
@@ -423,6 +435,14 @@ async def lifespan(
                     settings=settings,
                     registry=schema_registry,
                 )
+            )
+        if resources.source_mongo is not None and resources.neo4j is not None:
+            v2_platform_services.use_order_adapters(
+                MongoOrderSourceGateway(
+                    resources.source_mongo,
+                    settings.source_mongo_database,
+                ),
+                Neo4jOrderProjectionStore(resources.neo4j, settings.neo4j_database),
             )
         await _initialize_valkey(
             settings,
@@ -797,6 +817,7 @@ def create_app(
     fastapi_app.include_router(associate_returns_router)
     fastapi_app.include_router(copilot_v2_router)
     fastapi_app.include_router(data_source_config_v2_router)
+    fastapi_app.include_router(platform_v2_router)
     fastapi_app.include_router(support_router)
     fastapi_app.include_router(ai_gateway_router)
     fastapi_app.include_router(seed_router)

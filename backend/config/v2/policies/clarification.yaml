@@ -1,0 +1,12 @@
+module_id: policy.clarification
+module_type: POLICY
+schema_version: "1.0"
+configuration_version: "2.0.0"
+owner: ORDER_DISCOVERY
+status: DRAFT
+dependencies: []
+payload:
+  ask_smallest_unresolved_question: true
+  suppress_answered_questions: true
+  suppress_inferable_questions: true
+  candidate_cap_behavior: NARROW_BEFORE_DISCLOSURE

@@ -1,0 +1,14 @@
+module_id: policy.return_eligibility
+module_type: POLICY
+schema_version: "1.0"
+configuration_version: "2.0.0"
+owner: RETURN_POLICY
+status: DRAFT
+dependencies:
+  - module_id: policy.privacy
+    version_constraint: "^2.0"
+payload:
+  deterministic_facts_first: true
+  require_sealed_discovery_context: true
+  require_source_revision: true
+  require_prior_return_evidence: true

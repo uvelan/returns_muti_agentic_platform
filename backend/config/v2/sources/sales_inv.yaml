@@ -1,0 +1,21 @@
+module_id: source.sales_inv
+module_type: SOURCE
+schema_version: "1.0"
+configuration_version: "2.0.0"
+owner: SALES_DATA_OWNER
+status: DRAFT
+dependencies:
+  - module_id: policy.privacy
+    version_constraint: "^2.0"
+payload:
+  connector_type: MONGODB
+  connection_reference: source-mongodb
+  database_reference: SOURCE_MONGO_DATABASE
+  collection: salesInv
+  access_mode: READ_ONLY
+  record_identity_expression: ACCOUNT_OR_LOGON*ORDERNUMBER
+  order_id_path: salesHdr.salesHdrData.orderId
+  customer_id_path: salesHdr.salesHdrData.orderCust
+  line_path: salesDtl
+  line_number_path: salesDtlData.lineNumber
+  schema_fingerprint_required: true

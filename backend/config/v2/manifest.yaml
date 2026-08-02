@@ -18,4 +18,25 @@ modules:
     path: agents/learning.yaml
   agent.graph_schema_design:
     path: agents/graph_schema_design.yaml
-
+  policy.privacy:
+    path: policies/privacy.yaml
+  policy.clarification:
+    path: policies/clarification.yaml
+  policy.candidate_scoring:
+    path: policies/candidate_scoring.yaml
+  policy.return_eligibility:
+    path: policies/return_eligibility.yaml
+  workflow.return_session:
+    path: workflows/return_session.yaml
+  sync.order_partial:
+    path: sync/order_partial.yaml
+  sync.order_full:
+    path: sync/order_full.yaml
+  source.sales_inv:
+    path: sources/sales_inv.yaml
+  mapping.sales_inv_order:
+    path: mappings/sales_inv_order.yaml
+  graph.order_discovery:
+    path: graph/order_discovery.yaml
+  platform.system_store:
+    path: platform/system_store.yaml
