@@ -5,6 +5,10 @@ const envSchema = z
     MODE: z.string().min(1),
     DEV: z.boolean(),
     PROD: z.boolean(),
+    VITE_DATA_SOURCE_CREDENTIAL_REVEAL_ENABLED: z
+      .enum(["true", "false"])
+      .transform((value) => value === "true")
+      .default("false"),
 
     // Add browser-visible variables here using the VITE_ prefix.
     // Never expose passwords, credentials, or private connection strings.

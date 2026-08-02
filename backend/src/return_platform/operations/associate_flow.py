@@ -756,10 +756,26 @@ class AssociateConversationService:
             excluded_slots=excluded_slots,
         )
         return (
-            (selected.slot, f"Which {selected.label} matches the order?")
+            (
+                selected.slot,
+                self._disambiguation_question(selected.slot, selected.label),
+            )
             if selected is not None
             else None
         )
+
+    @staticmethod
+    def _disambiguation_question(slot: str, label: str) -> str:
+        natural_questions = {
+            "customer_name": "Which customer are you looking for?",
+            "billing_city": "Which city is the customer in?",
+            "postal_code": "What is the customer's postal code?",
+            "account_type": "Which account type applies?",
+            "product_description": "Which product are you looking for?",
+            "order_status": "What is the order status?",
+            "order_number": "Which order number is it?",
+        }
+        return natural_questions.get(slot, f"Which {label} should I use?")
 
     def _clarification_prompt(
         self,
@@ -828,12 +844,25 @@ class AssociateConversationService:
                 f"What additional detail would distinguish these {len(candidates)} orders?"
             ),
         )
+        question = decision.question
+        if decision.requested_slots:
+            requested = decision.requested_slots[0]
+            attribute = next(
+                (
+                    item
+                    for item in self._return_configuration.discovery.progressive.disambiguation_attributes
+                    if item.slot == requested
+                ),
+                None,
+            )
+            if attribute is not None:
+                question = self._disambiguation_question(attribute.slot, attribute.label)
         return (
             decision.state,
             list(decision.requested_slots),
             decision.candidate_set_id,
             decision.candidate_set_expires_at,
-            decision.question,
+            question,
         )
 
     @staticmethod
@@ -998,7 +1027,10 @@ class AssociateConversationService:
             attributes = self._return_configuration.discovery.progressive.disambiguation_attributes
             attribute = next((item for item in attributes if item.slot == requested), None)
             if attribute is not None:
-                configured_question = f"Which {attribute.label} matches the order?"
+                configured_question = self._disambiguation_question(
+                    attribute.slot,
+                    attribute.label,
+                )
                 approved_values = sorted(
                     {
                         value
@@ -1953,11 +1985,8 @@ class AssociateConversationService:
                 if len(candidates) > 1:
                     status = "DISCOVERY_CLARIFICATION_REQUIRED"
                     assistant_text = (
-                        f"I found {len(candidates)} possible matches for "
-                        f"{self._format_anchor_type(payload.anchorType)} "
-                        f"'{', '.join(anchor.anchorValue for anchor in anchors)}'. "
-                        "I will keep the order details hidden until we narrow this "
-                        "to the correct customer and order."
+                        f"I found {len(candidates)} matches for "
+                        f"'{', '.join(anchor.anchorValue for anchor in anchors)}'."
                     )
                 else:
                     assistant_text = conv_config.initial_match_template.format(
@@ -2146,11 +2175,8 @@ class AssociateConversationService:
                 if len(candidates) > 1:
                     status = "DISCOVERY_CLARIFICATION_REQUIRED"
                     assistant_text = (
-                        f"I found {len(candidates)} possible matches for "
-                        f"{self._format_anchor_type(payload.anchorType)} "
-                        f"'{', '.join(anchor.anchorValue for anchor in (lookup, *additional_anchors))}'. "
-                        "I will keep the order details hidden until we narrow this "
-                        "to the correct customer and order."
+                        f"I found {len(candidates)} matches for "
+                        f"'{', '.join(anchor.anchorValue for anchor in (lookup, *additional_anchors))}'."
                     )
                 else:
                     assistant_text = conv_config.continue_match_template.format(

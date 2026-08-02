@@ -138,6 +138,7 @@ class Settings(BaseSettings):
         "127.0.0.1",
         "::1",
     )
+    data_source_credential_reveal_enabled: bool = False
 
     # Credential and model pools. List fields are the production path; single-value fields
     # remain as backward-compatible fallbacks during migration.

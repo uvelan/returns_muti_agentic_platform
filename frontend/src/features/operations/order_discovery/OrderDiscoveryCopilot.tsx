@@ -64,8 +64,8 @@ export function OrderDiscoveryCopilot({
               Order Discovery Copilot
             </h1>
             <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
-              Powered by Neo4j graph relationships and controlled full-text retrieval.
-              Describe the return naturally—even with partial names, typos, or incomplete identifiers.
+              Describe the return naturally—even with a partial name, typo, or incomplete
+              order detail.
             </p>
             <div className="mt-6">
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
@@ -110,14 +110,8 @@ export function OrderDiscoveryCopilot({
                   >
                     <div className="mb-1 flex items-center justify-between gap-4">
                       <span className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-60">
-                        {assistant ? "Discovery Agent" : "Associate"}
+                        {assistant ? "Copilot" : "You"}
                       </span>
-                      {assistant ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-teal-700">
-                          <Sparkles size={11} className="text-teal-600" />
-                          Controlled response
-                        </span>
-                      ) : null}
                     </div>
                     <div className="whitespace-pre-wrap font-normal">{item.content}</div>
                   </div>
@@ -137,7 +131,7 @@ export function OrderDiscoveryCopilot({
                 <div className="max-w-[85%] rounded-2xl border border-teal-200 bg-teal-50/70 px-4 py-3 text-sm leading-6 text-teal-950 shadow-xs flex items-center gap-2.5 animate-pulse">
                   <Loader2 className="animate-spin text-teal-700 shrink-0" size={17} />
                   <span className="font-medium">
-                    Copilot is resolving verified graph and source evidence…
+                    Searching for matching orders…
                   </span>
                 </div>
               </div>
@@ -161,7 +155,7 @@ export function OrderDiscoveryCopilot({
                     event.currentTarget.form?.requestSubmit();
                   }
                 }}
-                placeholder="Type partial customer name, wrong spelling, SKU, or answer the copilot…"
+                placeholder="Enter a customer, order number, SKU, or other detail…"
                 aria-label="Message the Discovery Copilot"
               />
               <button
@@ -175,7 +169,7 @@ export function OrderDiscoveryCopilot({
             </div>
             <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400 px-1">
               <span>Press Enter to send, Shift+Enter for newline</span>
-              <span>Exact identifiers first · controlled full-text retrieval</span>
+              <span>Use any detail you have</span>
             </div>
           </form>
         </div>

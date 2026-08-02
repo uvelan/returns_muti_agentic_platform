@@ -224,6 +224,7 @@ def test_typo_first_name_requests_possible_full_name_without_revealing_orders() 
 
     assert state == "CUSTOMER_DISAMBIGUATION"
     assert requested_slots == ["customer_name"]
+    assert question == "Which customer are you looking for?"
     assert prompt is not None
     assert [option.label for option in prompt.options] == [
         "Noah Brown",

@@ -98,39 +98,7 @@ export function OrderContextPanel({
           <LockKeyhole size={17} className="text-teal-800" />
           <h2 className="font-semibold text-slate-950">Live Order Context</h2>
         </div>
-        {conversation ? (
-          <span className="rounded-md bg-stone-200/80 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
-            {conversation.status}
-          </span>
-        ) : null}
       </div>
-
-      {conversation ? (
-        <section className="mb-3 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-[11px] text-slate-600 shadow-xs">
-          <div className="flex items-center justify-between gap-3">
-            <span className="font-medium text-slate-500">Dialogue state</span>
-            <strong className="text-right text-slate-900">
-              {formatBadgeLabel(conversation.activeDialogueState)}
-            </strong>
-          </div>
-          {conversation.activeRequestedSlots.length ? (
-            <div className="mt-1.5 flex items-center justify-between gap-3">
-              <span className="font-medium text-slate-500">Requested detail</span>
-              <strong className="text-right text-teal-900">
-                {conversation.activeRequestedSlots.map(formatBadgeLabel).join(", ")}
-              </strong>
-            </div>
-          ) : null}
-          {conversation.configurationReleaseId ? (
-            <div className="mt-1.5 flex items-center justify-between gap-3">
-              <span className="font-medium text-slate-500">Configuration release</span>
-              <span className="max-w-[170px] truncate font-mono text-slate-700" title={conversation.configurationReleaseId}>
-                {conversation.configurationReleaseId}
-              </span>
-            </div>
-          ) : null}
-        </section>
-      ) : null}
 
       {!conversation?.candidates.length
         && !conversation?.discoveryLock
@@ -141,7 +109,7 @@ export function OrderContextPanel({
           </div>
           <p className="mt-3 text-sm font-semibold text-slate-800">Context appears here</p>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            Matching orders, item confirmation, and verified cryptographic locks stay beside your conversation without interrupting it.
+            Matching orders and items will appear here as you search.
           </p>
         </section>
       ) : null}
@@ -150,14 +118,13 @@ export function OrderContextPanel({
         && conversation?.clarificationPrompt ? (
           <section className="rounded-2xl border border-teal-200 bg-white p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal-700">
-              One detail needed
+              Please choose one
             </p>
             <h3 className="mt-2 text-base font-semibold leading-6 text-slate-950">
               {conversation.clarificationPrompt.question}
             </h3>
             <p className="mt-1 text-xs leading-5 text-slate-500">
-              Choose a verified value. The assistant will use only this field to narrow the
-              candidate set, then ask for the next useful detail if needed.
+              Select the right option below.
             </p>
             <div className="mt-4 grid gap-2">
               {conversation.clarificationPrompt.options.map((option) => (
@@ -169,16 +136,13 @@ export function OrderContextPanel({
                   onClick={() => { onSelectClarification(option.value); }}
                 >
                   <span>{option.label}</span>
-                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-slate-500 ring-1 ring-stone-200">
-                    {option.candidateCount} {option.candidateCount === 1 ? "match" : "matches"}
-                  </span>
                 </button>
               ))}
             </div>
             {isClarifying ? (
               <p className="mt-3 flex items-center justify-center gap-2 text-xs font-medium text-teal-800">
                 <Loader2 className="animate-spin" size={14} />
-                Narrowing verified candidates...
+                Checking your selection...
               </p>
             ) : null}
           </section>
@@ -194,8 +158,7 @@ export function OrderContextPanel({
               ?? "What customer or order detail can narrow these matches?"}
           </h3>
           <p className="mt-2 text-xs leading-5 text-slate-600">
-            Order numbers, products, and line details remain hidden until the search
-            narrows to one verified order.
+            Add another detail, such as a customer name, order number, or product.
           </p>
         </section>
       ) : null}
@@ -207,11 +170,11 @@ export function OrderContextPanel({
         <section className="flex flex-col gap-3">
           {candidateSetExpired ? (
             <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-950">
-              These candidates expired. Send the details again to refresh verified evidence.
+              These results expired. Search again to refresh them.
             </div>
           ) : null}
           <p className="text-xs leading-5 text-slate-500">
-            The agent ranked these candidates. Select the exact order line below to verify and lock evidence.
+            Select the order item you want to return.
           </p>
           <div className="sticky top-0 z-20 -mx-1 rounded-xl border border-teal-200 bg-white/95 p-2 shadow-sm backdrop-blur">
             <button
@@ -221,7 +184,7 @@ export function OrderContextPanel({
               onClick={onConfirmDiscovery}
             >
               {isConfirming ? <Loader2 className="mr-1.5 animate-spin" size={16} /> : <LockKeyhole className="mr-1.5" size={16} />}
-              {isConfirming ? "Locking order evidence..." : "Confirm selected item and continue"}
+              {isConfirming ? "Confirming item..." : "Confirm selected item and continue"}
             </button>
             <p className="mt-1.5 text-center text-[11px] text-slate-500">
               Selecting an item does not submit it until you confirm here.

@@ -43,6 +43,9 @@ describe("OrderContextPanel progressive clarification", () => {
     );
 
     expect(screen.getByText("Which customer are you referring to?")).toBeInTheDocument();
+    expect(screen.getByText("Select the right option below.")).toBeInTheDocument();
+    expect(screen.queryByText(/candidate set/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/configuration release/i)).not.toBeInTheDocument();
     expect(screen.queryByText("ORD-10001")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Maya Foster/ }));
@@ -75,7 +78,8 @@ describe("OrderContextPanel progressive clarification", () => {
     );
 
     expect(screen.getByText("What is the customer's full name?")).toBeInTheDocument();
-    expect(screen.getByText(/remain hidden until/i)).toBeInTheDocument();
+    expect(screen.getByText(/Add another detail/i)).toBeInTheDocument();
+    expect(screen.queryByText(/remain hidden until/i)).not.toBeInTheDocument();
     expect(screen.queryByText("ORD-10001")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /Confirm selected item/i }),

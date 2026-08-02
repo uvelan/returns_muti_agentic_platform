@@ -11,14 +11,16 @@ from pymongo import AsyncMongoClient
 from return_platform.configuration.settings import Settings
 from return_platform.data_platform.schema_registry import load_schema_registry
 from return_platform.operations.repository import OperationalRepository
+from return_platform.operations.seed_control import SeedOperationControl
 from return_platform.operations.seed_coordinator import SeedCoordinator
+from return_platform.operations.seed_manifest import effective_seed_counts
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
 from return_platform.secrets.runtime import resolve_runtime_settings_from_vault
 
 
 async def _run() -> None:
     settings, _secret_resolver = await resolve_runtime_settings_from_vault(
-        Settings(),  # type: ignore[call-arg]
+        Settings(),
         resolve_ai_credentials=False,
     )
     platform_dsn = settings.mongo_dsn.get_secret_value()
@@ -43,7 +45,24 @@ async def _run() -> None:
             settings,
             load_schema_registry(settings.schema_registry_path),
         )
-        status = await coordinator.apply("seed-runner")
+        record_limit = effective_seed_counts()["orders"]
+        counts = effective_seed_counts(record_limit)
+        control = SeedOperationControl()
+        operation_id = await control.begin(
+            kind="APPLY",
+            record_limit=record_limit,
+            total_records=(
+                (2 * counts["customers"])
+                + (2 * counts["products"])
+                + (3 * counts["orders"])
+            ),
+        )
+        status = await coordinator.apply(
+            "seed-runner",
+            record_limit=record_limit,
+            control=control,
+            operation_id=operation_id,
+        )
         print(json.dumps(status.model_dump(mode="json"), separators=(",", ":"), sort_keys=True))
         if not status.ready:
             raise RuntimeError("Cross-store seed validation failed.")

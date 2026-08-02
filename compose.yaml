@@ -8,7 +8,7 @@ x-logging: &default-logging
 
 x-platform-environment: &platform-environment
   PLATFORM_ENVIRONMENT: ${PLATFORM_ENVIRONMENT:-development}
-  PLATFORM_FRONTEND_CORS_ORIGIN: ${PLATFORM_CONTAINER_FRONTEND_CORS_ORIGIN:-http://localhost:3000}
+  PLATFORM_FRONTEND_CORS_ORIGIN: ${PLATFORM_CONTAINER_FRONTEND_CORS_ORIGIN:-http://localhost:3200}
   PLATFORM_CATALOG_PATH: /app/config/data_assets.yaml
   PLATFORM_SCHEMA_REGISTRY_PATH: /app/config/schema_registry.yaml
   PLATFORM_RETURN_CONFIGURATION_PATH: /app/config/returns/production.yaml
@@ -66,6 +66,7 @@ x-platform-environment: &platform-environment
   PLATFORM_AI_PROMPT_VERSION: ${PLATFORM_AI_PROMPT_VERSION:-return-eligibility-v1}
   PLATFORM_AI_ALLOWED_ENDPOINT_HOSTS: ${PLATFORM_AI_ALLOWED_ENDPOINT_HOSTS:-generativelanguage.googleapis.com,integrate.api.nvidia.com,api.openai.com,api.anthropic.com}
   PLATFORM_DATA_SOURCE_ALLOWED_HOSTS: ${PLATFORM_DATA_SOURCE_ALLOWED_HOSTS:-mongodb,source-mongodb,sqlserver,neo4j,localhost,127.0.0.1,::1}
+  PLATFORM_DATA_SOURCE_CREDENTIAL_REVEAL_ENABLED: ${PLATFORM_DATA_SOURCE_CREDENTIAL_REVEAL_ENABLED:-false}
   PLATFORM_GOOGLE_API_KEYS: "[]"
   PLATFORM_GOOGLE_API_KEY_REFERENCES: ${PLATFORM_GOOGLE_API_KEY_REFERENCES:-[]}
   PLATFORM_GOOGLE_LIGHTWEIGHT_MODELS: ${PLATFORM_GOOGLE_LIGHTWEIGHT_MODELS:-[]}
@@ -472,8 +473,9 @@ services:
       dockerfile: Dockerfile
       args:
         FRONTEND_BACKEND_TARGET: http://backend:8000
+        VITE_DATA_SOURCE_CREDENTIAL_REVEAL_ENABLED: ${PLATFORM_DATA_SOURCE_CREDENTIAL_REVEAL_ENABLED:-false}
     ports:
-      - "127.0.0.1:3000:8080"
+      - "127.0.0.1:3200:8080"
     depends_on:
       backend:
         condition: service_healthy

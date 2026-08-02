@@ -17,6 +17,9 @@ import {
 const CopilotV2Page = lazy(() => import("./features/copilot-v2/CopilotV2Page").then(
   (module) => ({ default: module.CopilotV2Page }),
 ));
+const DataSourceConfigApp = lazy(() => import("./features/data-source-config/DataSourceConfigApp").then(
+  (module) => ({ default: module.DataSourceConfigApp }),
+));
 
 function NotFoundPage() {
   return (
@@ -69,7 +72,11 @@ export function App() {
     <ErrorBoundary>
       <ToastProvider>
         <RuntimeConfigProvider>
-          {pathname === COPILOT_V2_PATH ? (
+          {pathname.startsWith("/v2/config") ? (
+            <Suspense fallback={<LoadingState message="Loading datasource configuration..." />}>
+              <DataSourceConfigApp />
+            </Suspense>
+          ) : pathname === COPILOT_V2_PATH ? (
             <Suspense fallback={<LoadingState message="Loading Order Discovery Copilot..." />}>
               <CopilotV2Page />
             </Suspense>
