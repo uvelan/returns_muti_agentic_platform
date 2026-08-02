@@ -1,0 +1,21 @@
+schema_version: "2.0"
+release_id: returns-platform-v2-baseline
+status: DRAFT
+modules:
+  agent.return_session_orchestrator:
+    path: agents/return_session_orchestrator.yaml
+  agent.order_discovery:
+    path: agents/order_discovery.yaml
+  agent.order_analysis:
+    path: agents/order_analysis.yaml
+  agent.return_workflow:
+    path: agents/return_workflow.yaml
+  agent.return_fulfillment:
+    path: agents/return_fulfillment.yaml
+  agent.bay_allocation:
+    path: agents/bay_allocation.yaml
+  agent.learning:
+    path: agents/learning.yaml
+  agent.graph_schema_design:
+    path: agents/graph_schema_design.yaml
+

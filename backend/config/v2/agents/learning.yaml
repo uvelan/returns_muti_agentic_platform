@@ -1,0 +1,27 @@
+module_id: agent.learning
+module_type: AGENT
+schema_version: "1.0"
+configuration_version: "2.0.0"
+owner: RETURN_PLATFORM_LEARNING
+status: DRAFT
+dependencies: []
+payload:
+  name: Learning Agent
+  enabled: true
+  execution_mode: REPORTING_ONLY
+  ai_assisted: true
+  input_contexts:
+    - DiscoveryContext
+    - OrderAnalysisContext
+    - ReturnRequestContext
+    - FulfillmentTrackingContext
+    - BayStagingContext
+  output_context: LearningFeedbackContext
+  capabilities:
+    - calculate_operational_metrics
+    - detect_rework_patterns
+    - detect_assumption_mismatches
+    - recommend_policy_changes
+  direct_agent_calls_allowed: false
+  idempotency_required: true
+

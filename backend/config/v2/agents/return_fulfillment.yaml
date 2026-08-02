@@ -1,0 +1,22 @@
+module_id: agent.return_fulfillment
+module_type: AGENT
+schema_version: "1.0"
+configuration_version: "2.0.0"
+owner: RETURN_FULFILLMENT
+status: DRAFT
+dependencies: []
+payload:
+  name: Return Fulfillment Agent
+  enabled: true
+  execution_mode: ADVISORY_ONLY
+  ai_assisted: false
+  input_contexts: [ReturnRequestContext, SupportEventContext]
+  output_context: FulfillmentTrackingContext
+  capabilities:
+    - normalize_omc_status
+    - distinguish_rma_rga
+    - interpret_parcel_and_freight_state
+    - detect_stale_or_conflicting_evidence
+  direct_agent_calls_allowed: false
+  idempotency_required: true
+

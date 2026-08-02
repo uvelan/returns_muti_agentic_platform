@@ -1,0 +1,24 @@
+module_id: agent.return_workflow
+module_type: AGENT
+schema_version: "1.0"
+configuration_version: "2.0.0"
+owner: RETURN_WORKFLOW
+status: DRAFT
+dependencies:
+  - module_id: workflow.return_session
+    version_constraint: "^2.0"
+payload:
+  name: Return Workflow Agent
+  enabled: true
+  execution_mode: HUMAN_APPROVAL_REQUIRED
+  ai_assisted: true
+  input_contexts: [DiscoveryContext, OrderAnalysisContext]
+  output_context: ReturnRequestContext
+  capabilities:
+    - identify_missing_fields
+    - enforce_evidence_requirements
+    - recommend_physical_path
+    - draft_support_request
+  direct_agent_calls_allowed: false
+  idempotency_required: true
+

@@ -1,0 +1,22 @@
+module_id: agent.bay_allocation
+module_type: AGENT
+schema_version: "1.0"
+configuration_version: "2.0.0"
+owner: BAY_OPERATIONS
+status: DRAFT
+dependencies: []
+payload:
+  name: Bay Allocation Agent
+  enabled: true
+  execution_mode: ADVISORY_ONLY
+  ai_assisted: false
+  input_contexts: [FulfillmentTrackingContext]
+  output_context: BayStagingContext
+  capabilities:
+    - filter_eligible_bays
+    - rank_bays
+    - recommend_overflow_or_hold
+    - explain_exclusions
+  direct_agent_calls_allowed: false
+  idempotency_required: true
+
