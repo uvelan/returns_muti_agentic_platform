@@ -44,6 +44,7 @@ from return_platform.v2.models import (
     ValidationResult,
     utc_now,
 )
+from return_platform.v2.state_store import V2StateStore
 
 
 class V2ConflictError(RuntimeError):
@@ -131,12 +132,6 @@ class ModularConfigurationService:
         self._imports: dict[str, ImportRecord] = {}
         self._active_release_id: str | None = None
 
-    def use_order_adapters(
-        self, source: OrderSourceGateway, graph: OrderProjectionStore
-    ) -> None:
-        """Replace degraded in-memory adapters with initialized runtime adapters."""
-        self.order_sync = OrderSyncService(source, graph)
-
     async def bootstrap(self, config_root: Path) -> None:
         manifest_path = config_root / "manifest.yaml"
         if not manifest_path.is_file():
@@ -175,6 +170,33 @@ class ModularConfigurationService:
             }
         )
 
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "modules": [item.model_dump(mode="json", by_alias=True) for item in self._modules.values()],
+            "releases": [item.model_dump(mode="json", by_alias=True) for item in self._releases.values()],
+            "imports": [item.model_dump(mode="json", by_alias=True) for item in self._imports.values()],
+            "activeReleaseId": self._active_release_id,
+        }
+
+    def restore(self, payload: Mapping[str, Any]) -> None:
+        persisted_modules = {
+            (item.module_id, item.configuration_version): item
+            for raw in payload.get("modules", [])
+            for item in (ConfigurationModule.model_validate(raw),)
+        }
+        self._modules.update(persisted_modules)
+        self._releases = {
+            item.release_id: item
+            for raw in payload.get("releases", [])
+            for item in (ReleaseManifest.model_validate(raw),)
+        }
+        self._imports = {
+            item.import_id: item
+            for raw in payload.get("imports", [])
+            for item in (ImportRecord.model_validate(raw),)
+        }
+        active = payload.get("activeReleaseId")
+        self._active_release_id = str(active) if active else None
     async def module_schemas(self) -> list[dict[str, Any]]:
         return [
             {
@@ -599,6 +621,17 @@ class SchemaDesignService:
         self._lock = asyncio.Lock()
         self._contexts: dict[str, SchemaDesignContext] = {}
 
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "contexts": [item.model_dump(mode="json", by_alias=True) for item in self._contexts.values()]
+        }
+
+    def restore(self, payload: Mapping[str, Any]) -> None:
+        self._contexts = {
+            item.request_id: item
+            for raw in payload.get("contexts", [])
+            for item in (SchemaDesignContext.model_validate(raw),)
+        }
     async def create(self, request: SchemaDesignCreate, actor: str) -> SchemaDesignContext:
         request_id = str(uuid.uuid4())
         context = SchemaDesignContext(
@@ -861,6 +894,22 @@ class OrderSyncService:
         self._idempotency: dict[str, str] = {}
         self._lock = asyncio.Lock()
 
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "results": [item.model_dump(mode="json", by_alias=True) for item in self._results.values()],
+            "idempotency": copy.deepcopy(self._idempotency),
+        }
+
+    def restore(self, payload: Mapping[str, Any]) -> None:
+        self._results = {
+            item.request_id: item
+            for raw in payload.get("results", [])
+            for item in (SyncResult.model_validate(raw),)
+        }
+        raw_idempotency = payload.get("idempotency", {})
+        if not isinstance(raw_idempotency, Mapping):
+            raise V2ValidationError("Persisted order-sync idempotency state must be an object")
+        self._idempotency = {str(key): str(value) for key, value in raw_idempotency.items()}
     @classmethod
     def normalize_full_order_id(cls, value: str) -> str:
         normalized = value.strip().upper()
@@ -1019,17 +1068,68 @@ class V2PlatformServices:
     """Application-owned aggregate for all V2 service domains."""
 
     def __init__(self) -> None:
+        from return_platform.v2.sync_jobs import DurableOrderSyncCoordinator
+
         source = InMemoryOrderSourceGateway()
         self.configuration = ModularConfigurationService()
         self.schema_design = SchemaDesignService()
         self.order_source = source
         self.order_sync = OrderSyncService(source, InMemoryOrderProjectionStore())
+        self.order_jobs = DurableOrderSyncCoordinator(self.order_sync)
+        self._state_store: V2StateStore | None = None
+        self._state_revisions = {
+            "configuration": 0,
+            "schema_design": 0,
+            "order_sync": 0,
+        }
+
+    async def bind_state_store(self, state_store: V2StateStore) -> None:
+        await state_store.prepare()
+        for namespace in self._state_revisions:
+            stored = await state_store.load(namespace)
+            if stored is None:
+                continue
+            payload, revision = stored
+            if namespace == "configuration":
+                self.configuration.restore(payload)
+            elif namespace == "schema_design":
+                self.schema_design.restore(payload)
+            else:
+                receipts = payload.get("receipts", payload)
+                jobs = payload.get("jobs", {})
+                if not isinstance(receipts, Mapping) or not isinstance(jobs, dict):
+                    raise V2ValidationError("Persisted order-sync state is invalid")
+                self.order_sync.restore(receipts)
+                self.order_jobs.restore(jobs)
+            self._state_revisions[namespace] = revision
+        self._state_store = state_store
+
+    async def persist_all(self) -> None:
+        if self._state_store is None:
+            return
+        snapshots = {
+            "configuration": self.configuration.snapshot(),
+            "schema_design": self.schema_design.snapshot(),
+            "order_sync": {
+                "receipts": self.order_sync.snapshot(),
+                "jobs": self.order_jobs.snapshot(),
+            },
+        }
+        for namespace, payload in snapshots.items():
+            revision = await self._state_store.save(
+                namespace,
+                payload,
+                self._state_revisions[namespace],
+            )
+            self._state_revisions[namespace] = revision
 
     def use_order_adapters(
         self, source: OrderSourceGateway, graph: OrderProjectionStore
     ) -> None:
-        """Replace degraded in-memory adapters with initialized runtime adapters."""
+        """Replace degraded in-memory adapters without losing restored receipts."""
+        restored_state = self.order_sync.snapshot()
         self.order_sync = OrderSyncService(source, graph)
-
+        self.order_sync.restore(restored_state)
+        self.order_jobs.use_sync_service(self.order_sync)
     async def bootstrap(self, config_root: Path) -> None:
         await self.configuration.bootstrap(config_root)

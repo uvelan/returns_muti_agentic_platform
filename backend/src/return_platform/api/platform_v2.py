@@ -40,6 +40,7 @@ from return_platform.v2.services import (
     V2PlatformServices,
     V2ValidationError,
 )
+from return_platform.v2.sync_jobs import JobClaimRequest, SyncJob
 
 router = APIRouter(prefix="/api/v2", tags=["Returns Platform V2"])
 
@@ -529,6 +530,98 @@ async def _require_active_release(request: Request, release_id: str) -> None:
     if active.release_id != release_id:
         raise HTTPException(status_code=409, detail="Requested release is not active")
 
+
+@router.post(
+    "/order-sync/jobs/partial",
+    response_model=APIResponse[SyncJob],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def enqueue_partial_order_sync(
+    body: PartialSyncRequest,
+    request: Request,
+    max_attempts: int = Query(default=3, alias="maxAttempts", ge=1, le=10),  # noqa: B008
+    _actor: str = Depends(require_associate_roles),
+) -> APIResponse[SyncJob]:
+    await _require_active_release(request, body.release_id)
+    data = await _services(request).order_jobs.enqueue_partial(body, max_attempts)
+    return APIResponse(data=data, meta=_meta(request))
+
+
+@router.post(
+    "/order-sync/jobs/full",
+    response_model=APIResponse[SyncJob],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def enqueue_full_order_sync(
+    body: FullSyncRequest,
+    request: Request,
+    max_attempts: int = Query(default=3, alias="maxAttempts", ge=1, le=10),  # noqa: B008
+    _actor: str = Depends(require_associate_roles),
+) -> APIResponse[SyncJob]:
+    await _require_active_release(request, body.release_id)
+    data = await _services(request).order_jobs.enqueue_full(body, max_attempts)
+    return APIResponse(data=data, meta=_meta(request))
+
+
+@router.post("/order-sync/jobs/claim", response_model=APIResponse[SyncJob])
+async def claim_order_sync_job(
+    body: JobClaimRequest,
+    request: Request,
+    _actor: str = Depends(require_admin_roles),
+) -> APIResponse[SyncJob]:
+    data = await _services(request).order_jobs.claim(body)
+    return APIResponse(data=data, meta=_meta(request))
+
+
+@router.post(
+    "/order-sync/jobs/{job_id}/heartbeat", response_model=APIResponse[SyncJob]
+)
+async def heartbeat_order_sync_job(
+    job_id: str,
+    body: JobClaimRequest,
+    request: Request,
+    _actor: str = Depends(require_admin_roles),
+) -> APIResponse[SyncJob]:
+    try:
+        data = await _services(request).order_jobs.heartbeat(job_id, body)
+    except (V2NotFoundError, V2ConflictError) as exc:
+        raise _translate(exc) from exc
+    return APIResponse(data=data, meta=_meta(request))
+
+
+@router.post(
+    "/order-sync/jobs/{job_id}/execute", response_model=APIResponse[dict[str, Any]]
+)
+async def execute_order_sync_job(
+    job_id: str,
+    request: Request,
+    worker_id: str = Query(alias="workerId", min_length=1, max_length=200),  # noqa: B008
+    _actor: str = Depends(require_admin_roles),
+) -> APIResponse[dict[str, Any]]:
+    try:
+        job, result = await _services(request).order_jobs.execute(job_id, worker_id)
+    except (V2NotFoundError, V2ConflictError) as exc:
+        raise _translate(exc) from exc
+    return APIResponse(
+        data={
+            "job": job.model_dump(mode="json", by_alias=True),
+            "result": result.model_dump(mode="json", by_alias=True) if result else None,
+        },
+        meta=_meta(request),
+    )
+
+
+@router.get("/order-sync/jobs/{job_id}", response_model=APIResponse[SyncJob])
+async def get_order_sync_job(
+    job_id: str,
+    request: Request,
+    _actor: str = Depends(require_associate_roles),
+) -> APIResponse[SyncJob]:
+    try:
+        data = await _services(request).order_jobs.get(job_id)
+    except V2NotFoundError as exc:
+        raise _translate(exc) from exc
+    return APIResponse(data=data, meta=_meta(request))
 
 @router.post("/order-sync/partial", response_model=APIResponse[SyncResult])
 async def partial_order_sync(

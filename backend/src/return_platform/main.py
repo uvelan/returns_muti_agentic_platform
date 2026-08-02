@@ -123,6 +123,7 @@ from return_platform.v2.runtime_adapters import (
     MongoOrderSourceGateway,
     Neo4jOrderProjectionStore,
 )
+from return_platform.v2.state_store import MongoV2StateStore
 
 logger = logging.getLogger("return_platform.main")
 
@@ -416,6 +417,13 @@ async def lifespan(
             settings,
             resources,
         )
+        if resources.mongo is not None:
+            await v2_platform_services.bind_state_store(
+                MongoV2StateStore(resources.mongo, settings.mongo_database)
+
+
+            )
+
         if resources.source_mongo is not None:
             configure_source_mongodb(
                 resources.source_mongo,
@@ -640,6 +648,15 @@ def create_app(
                     )
 
         response = await call_next(request)
+
+        if (
+            normalized_path.startswith("/api/v2/")
+            and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+            and response.status_code < 400
+        ):
+            services = getattr(request.app.state, "v2_platform_services", None)
+            if isinstance(services, V2PlatformServices):
+                await services.persist_all()
 
         response.headers["X-Correlation-ID"] = correlation_id
 
