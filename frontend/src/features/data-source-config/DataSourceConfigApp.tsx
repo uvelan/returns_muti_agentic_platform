@@ -43,6 +43,23 @@ import type {
   DataSourceWrite,
 } from "../../contracts/dataSourceConfig";
 import { env } from "../../env";
+import {
+  AgentConfigurationEditorPage,
+  AnalyticsPage,
+  AuditGovernancePage,
+  GraphCatalogPage,
+  HelpPage,
+  ImportExportPage,
+  ModuleCatalogPage,
+  PoliciesPage,
+  ProposalReviewPage,
+  RedesignWorkspacePage,
+  ReleaseComparisonPage,
+  ReleasesPage,
+  SchemaDesignPage,
+  StudioOverviewPage,
+  SyncOperationsPage,
+} from "../configuration-v2/StudioPages";
 
 const panel = "rounded-2xl border border-[#bcc9c6] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.05)]";
 const input = "mt-1.5 h-10 w-full rounded-lg border border-[#bcc9c6] bg-white px-3 text-sm text-[#171d1c] outline-none transition focus:border-[#00685f] focus:ring-4 focus:ring-[#00685f]/10";
@@ -111,6 +128,21 @@ function StatusPill({ status }: { readonly status: DataSourceStatus }) {
 
 function DataSourceShell({ children }: { readonly children: ReactNode }) {
   const [location] = useLocation();
+  const navigation = [
+    ["/", "Overview"],
+    ["/modules", "Agent Modules"],
+    ["/data-sources", "Data Sources"],
+    ["/graph-schema", "Graph Schema"],
+    ["/schema-design", "Schema Design Agent"],
+    ["/sync", "Order Sync"],
+    ["/releases", "Releases"],
+    ["/import-export", "Import / Export"],
+    ["/governance", "Governance"],
+    ["/analytics", "Analytics"],
+    ["/policies", "Policies"],
+    ["/help", "Help"],
+  ] as const;
+  const currentLabel = navigation.find(([href]) => href === "/" ? location === "/" : location.startsWith(href))?.[1] ?? "Configuration";
   return (
     <div className="min-h-screen bg-[#f5faf8] text-[#171d1c] lg:flex">
       <aside className="border-b border-[#bcc9c6] bg-[#00201d] text-white lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r">
@@ -123,13 +155,19 @@ function DataSourceShell({ children }: { readonly children: ReactNode }) {
             <div className="text-xs text-[#89f5e7]/70">Connection workspace</div>
           </div>
         </div>
-        <nav className="flex gap-2 overflow-x-auto p-3 lg:block lg:space-y-1 lg:p-4" aria-label="Configuration navigation">
-          <Link
-            href="/data-sources"
-            className={`flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${location.startsWith("/data-sources") ? "bg-[#008378] text-white" : "text-[#d6e0dd] hover:bg-white/10"}`}
-          >
-            <Server size={18} /> Data Sources
-          </Link>
+        <nav className="flex gap-2 overflow-x-auto p-3 lg:block lg:max-h-[calc(100vh-8rem)] lg:space-y-1 lg:overflow-y-auto lg:p-4" aria-label="Configuration navigation">
+          {navigation.map(([href, label]) => {
+            const active = href === "/" ? location === "/" : location.startsWith(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${active ? "bg-[#008378] text-white" : "text-[#d6e0dd] hover:bg-white/10"}`}
+              >
+                <Server size={18} /> {label}
+              </Link>
+            );
+          })}
         </nav>
         <div className="hidden border-t border-white/10 p-4 text-xs leading-5 text-[#d6e0dd]/75 lg:absolute lg:inset-x-0 lg:bottom-0 lg:block">
           Credentials are stored in Vault and never displayed after validation.
@@ -139,7 +177,7 @@ function DataSourceShell({ children }: { readonly children: ReactNode }) {
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-[#bcc9c6] bg-white/95 px-4 backdrop-blur sm:px-6 lg:px-8">
           <div className="flex items-center gap-2 text-sm text-[#6d7a77]">
             <Menu size={18} className="lg:hidden" />
-            <span>Configuration</span><ChevronRight size={15} /><strong className="text-[#171d1c]">Data Sources</strong>
+            <span>Configuration</span><ChevronRight size={15} /><strong className="text-[#171d1c]">{currentLabel}</strong>
           </div>
           <a href="/v1/associate/returns" className="text-sm font-semibold text-[#00685f] hover:underline">
             Return to Assistant
@@ -426,11 +464,26 @@ export function DataSourceConfigApp() {
     <Router base="/v2/config">
       <DataSourceShell>
         <Switch>
-          <Route path="/data-sources" component={DataSourcesPage}/>
+          <Route path="/data-sources/:sourceId/data/:datasetId" component={DataViewerPage}/>
           <Route path="/data-sources/:sourceId/validate" component={ValidateConnectionPage}/>
           <Route path="/data-sources/:sourceId/schema" component={SchemaExplorerPage}/>
-          <Route path="/data-sources/:sourceId/data/:datasetId" component={DataViewerPage}/>
-          <Route><Redirect to="/data-sources" replace/></Route>
+          <Route path="/data-sources" component={DataSourcesPage}/>
+          <Route path="/modules/:moduleId" component={AgentConfigurationEditorPage}/>
+          <Route path="/modules" component={ModuleCatalogPage}/>
+          <Route path="/graph-schema" component={GraphCatalogPage}/>
+          <Route path="/schema-design/proposals" component={ProposalReviewPage}/>
+          <Route path="/schema-design/redesign" component={RedesignWorkspacePage}/>
+          <Route path="/schema-design" component={SchemaDesignPage}/>
+          <Route path="/sync" component={SyncOperationsPage}/>
+          <Route path="/releases/compare" component={ReleaseComparisonPage}/>
+          <Route path="/releases" component={ReleasesPage}/>
+          <Route path="/import-export" component={ImportExportPage}/>
+          <Route path="/governance" component={AuditGovernancePage}/>
+          <Route path="/analytics" component={AnalyticsPage}/>
+          <Route path="/policies" component={PoliciesPage}/>
+          <Route path="/help" component={HelpPage}/>
+          <Route path="/" component={StudioOverviewPage}/>
+          <Route><Redirect to="/" replace/></Route>
         </Switch>
       </DataSourceShell>
     </Router>
