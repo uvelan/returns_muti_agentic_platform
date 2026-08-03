@@ -24,6 +24,7 @@ import {
   X,
   Activity,
   Bot,
+  Settings2,
   CircleHelp,
   Network,
   PackageCheck,
@@ -140,7 +141,7 @@ function DataSourceShell({ children }: { readonly children: ReactNode }) {
   const [location] = useLocation();
   const navigation = [
     ["/", "Overview", LayoutDashboard],
-    ["/modules", "Agent Modules", Bot],
+    ["/modules", "Module Config", Bot],
     ["/data-sources", "Data Sources", Database],
     ["/graph-schema", "Graph Schema", Network],
     ["/schema-design", "Schema Design Agent", Sparkles],
@@ -159,7 +160,7 @@ function DataSourceShell({ children }: { readonly children: ReactNode }) {
       <aside className={`border-b border-[#bcc9c6] bg-[#00201d] text-white lg:sticky lg:top-0 lg:h-screen lg:shrink-0 lg:border-b-0 lg:border-r transition-all duration-300 ${collapsed ? "lg:w-[72px]" : "lg:w-64"}`}>
         <div className={`flex h-16 items-center border-b border-white/10 ${collapsed ? "justify-center px-0" : "gap-3 px-5"}`}>
           <span className="flex shrink-0 size-9 items-center justify-center rounded-xl bg-[#008378]">
-            <Database size={19} />
+            <Settings2 size={19} />
           </span>
           {!collapsed && (
             <div className="min-w-0">
