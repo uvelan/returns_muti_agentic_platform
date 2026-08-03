@@ -26,9 +26,9 @@ from return_platform.agents.contracts import (
     ProductPresence,
     ReturnItemInput,
     ReturnWorkflowAssessmentRequest,
+    OrderAnalysisRequest,
 )
-from return_platform.agents.order_discovery import OrderDiscoveryAgent
-from return_platform.agents.return_workflow import ReturnWorkflowAgent
+from return_platform.agents.registry import ReturnAgentRegistry
 from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
 from return_platform.ai_gateway.routing import AIRoutePool
 from return_platform.ai_gateway.service import AIGatewayRepository, AIGatewayService
@@ -408,8 +408,10 @@ class AssociateConversationService:
                 generic_disambiguation=progressive.dialogue_states.generic_disambiguation,
             ),
         )
-        self._order_discovery_agent = OrderDiscoveryAgent(self._return_configuration)
-        self._return_workflow_agent = ReturnWorkflowAgent(self._return_configuration)
+        self._registry = ReturnAgentRegistry.build(self._return_configuration)
+        self._order_discovery_agent = self._registry.order_discovery
+        self._return_workflow_agent = self._registry.return_workflow
+        self._order_analysis_agent = self._registry.order_analysis
         self._return_support = ReturnSupportService(
             client=platform_client,
             settings=settings,
@@ -1984,7 +1986,26 @@ class AssociateConversationService:
                 )
                 if len(candidates) > 1:
                     status = "DISCOVERY_CLARIFICATION_REQUIRED"
-                    assistant_text = (
+                    inputs = [
+                        DiscoveryCandidateInput(
+                            candidateId=candidate.id,
+                            orderReference=candidate.orderReference,
+                            customerReference=candidate.customerReference,
+                            orderSource=candidate.orderSource,
+                            matchedAnchors=tuple(anchor.anchorType.value for anchor in anchors),
+                            evidenceReferences=(f"{candidate.evidenceSource}:{candidate.orderReference}",),
+                        )
+                        for candidate in candidates
+                    ]
+                    analysis_req = OrderAnalysisRequest(
+                        sessionId="temp-discovery",
+                        candidates=tuple(inputs),
+                        suppliedEvidence={
+                            anchor.anchorType.name: anchor.anchorValue for anchor in anchors
+                        }
+                    )
+                    analysis = await self._order_analysis_agent.analyze(analysis_req, self._ai)
+                    assistant_text = analysis.smartQuestion or (
                         f"I found {len(candidates)} matches for "
                         f"'{', '.join(anchor.anchorValue for anchor in anchors)}'."
                     )
@@ -2174,7 +2195,26 @@ class AssociateConversationService:
                 )
                 if len(candidates) > 1:
                     status = "DISCOVERY_CLARIFICATION_REQUIRED"
-                    assistant_text = (
+                    inputs = [
+                        DiscoveryCandidateInput(
+                            candidateId=candidate.id,
+                            orderReference=candidate.orderReference,
+                            customerReference=candidate.customerReference,
+                            orderSource=candidate.orderSource,
+                            matchedAnchors=tuple(anchor.anchorType.value for anchor in (lookup, *additional_anchors)),
+                            evidenceReferences=(f"{candidate.evidenceSource}:{candidate.orderReference}",),
+                        )
+                        for candidate in candidates
+                    ]
+                    analysis_req = OrderAnalysisRequest(
+                        sessionId="temp-discovery",
+                        candidates=tuple(inputs),
+                        suppliedEvidence={
+                            anchor.anchorType.name: anchor.anchorValue for anchor in (lookup, *additional_anchors)
+                        }
+                    )
+                    analysis = await self._order_analysis_agent.analyze(analysis_req, self._ai)
+                    assistant_text = analysis.smartQuestion or (
                         f"I found {len(candidates)} matches for "
                         f"'{', '.join(anchor.anchorValue for anchor in (lookup, *additional_anchors))}'."
                     )

@@ -10,8 +10,8 @@ dependencies:
 payload:
   name: Order Analysis Agent
   enabled: true
-  execution_mode: DETERMINISTIC_WITH_HUMAN_REVIEW
-  ai_assisted: false
+  execution_mode: AI_ASSISTED
+  ai_assisted: true
   input_contexts: [DiscoveryContext]
   output_context: OrderAnalysisContext
   capabilities:

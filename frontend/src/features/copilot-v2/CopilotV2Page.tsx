@@ -34,23 +34,23 @@ const v2ConversationKey = ["copilot-v2-conversations"] as const;
 const suggestions = [
   {
     icon: RotateCcw,
-    title: "Return for order SO-00010001",
-    description: "Search by exact ID",
+    title: "Customer Jane Doe wants to return a faucet",
+    description: "Search by customer and item",
   },
   {
     icon: FileSearch,
-    title: "Customer ZIP 30301",
-    description: "Find recent regional orders",
+    title: "Find a recent order in zip 90210",
+    description: "Regional search",
   },
   {
     icon: TriangleAlert,
-    title: "Faucet arrived damaged",
-    description: "Search by item issue",
+    title: "Order SO-00010001 arrived completely scratched",
+    description: "Report an issue directly",
   },
   {
     icon: PackageSearch,
-    title: "Partial SKU 10001",
-    description: "Fuzzy product match",
+    title: "Looking for a brass showerhead purchased last week",
+    description: "Fuzzy semantic search",
   },
 ] as const;
 

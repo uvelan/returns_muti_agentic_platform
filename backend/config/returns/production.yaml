@@ -103,7 +103,7 @@ discovery:
   conversation:
     greeting_patterns:
       - "^(?:hi|hello|hey|greetings|good\\s+(?:morning|afternoon|evening)|help|start|howdy|hi\\s+there|hello\\s+there)[\\s!.,]*$"
-    greeting_response: "Hello! I am your AI Returns Assistant. I can help you locate customer orders, verify return eligibility, and process RMA requests. To get started, please share an order number (e.g., SO-00010001 or W000000001), customer ID, tracking number, or SKU."
+    greeting_response: "Hi there! I'm your AI Copilot, ready to help you with this return. What details do you have? You can give me an order number, a customer's name and zip code, or even just tell me what's wrong with the item."
     greeting_status: "AWAITING_ANCHOR"
     greeting_title: "Return Assistance"
     initial_match_template: "I located {count} matching order(s) for {anchor_type} '{anchor_value}'. Please review the evidence below and confirm the exact customer and order line to proceed."

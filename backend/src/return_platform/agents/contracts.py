@@ -93,6 +93,18 @@ class DiscoveryAssessment(AgentModel):
     decision: AgentDecisionView
 
 
+class OrderAnalysisRequest(AgentModel):
+    sessionId: str
+    candidates: tuple[DiscoveryCandidateInput, ...]
+    suppliedEvidence: dict[str, str]
+
+
+class OrderAnalysisAssessment(AgentModel):
+    smartQuestion: str | None
+    analysisExplanation: str
+    decision: AgentDecisionView
+
+
 class ReturnItemInput(AgentModel):
     orderLineId: str
     productId: str

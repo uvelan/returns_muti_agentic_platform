@@ -6,6 +6,7 @@ from return_platform.agents.bay_assignment import BayAssignmentAgent
 from return_platform.agents.feedback import FeedbackLearningAgent
 from return_platform.agents.fulfillment import ReturnFulfillmentAgent
 from return_platform.agents.order_discovery import OrderDiscoveryAgent
+from return_platform.agents.order_analysis import OrderAnalysisAgent
 from return_platform.agents.return_workflow import ReturnWorkflowAgent
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 
@@ -13,6 +14,7 @@ from return_platform.configuration.return_configuration import ReturnPlatformCon
 @dataclass(frozen=True, slots=True)
 class ReturnAgentRegistry:
     order_discovery: OrderDiscoveryAgent
+    order_analysis: OrderAnalysisAgent
     return_workflow: ReturnWorkflowAgent
     return_fulfillment: ReturnFulfillmentAgent
     bay_assignment: BayAssignmentAgent
@@ -22,6 +24,7 @@ class ReturnAgentRegistry:
     def build(cls, configuration: ReturnPlatformConfiguration) -> "ReturnAgentRegistry":
         return cls(
             order_discovery=OrderDiscoveryAgent(configuration),
+            order_analysis=OrderAnalysisAgent(configuration),
             return_workflow=ReturnWorkflowAgent(configuration),
             return_fulfillment=ReturnFulfillmentAgent(configuration),
             bay_assignment=BayAssignmentAgent(configuration),

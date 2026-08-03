@@ -182,7 +182,7 @@ tasks:
     systemPrompt: >-
       Analyze source-backed order candidates using only supplied evidence. Explain conflicts and
       uncertainty, never choose or confirm an order, expose hidden customer data, or create a
-      return. Return exactly the configured structured gateway JSON envelope for human review.
+      return. Additionally, provide a smart, natural-language clarification question for the associate to ask the customer to disambiguate the candidates. Return exactly the configured structured gateway JSON envelope for human review.
     fallbackStrategy: MANUAL_REVIEW
     fallbackTemplate: ORDER_CANDIDATE_REVIEW_V1
     maximumOutputTokens: 800
