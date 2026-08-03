@@ -80,7 +80,7 @@ class OrderAnalysisAgent:
             pass
 
         return OrderAnalysisAssessment(
-            smartQuestion=smart_question or explanation,
+            smartQuestion=smart_question,
             analysisExplanation=explanation,
             decision=AgentDecisionView(
                 agent=self._config.name,

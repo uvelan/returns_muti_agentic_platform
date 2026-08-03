@@ -2193,11 +2193,16 @@ class AssociateConversationService:
                         )
                         for candidate in candidates
                     ]
+                    _ai_safe_keys = {
+                        AnchorType.CUSTOMER_NAME: "CUSTOMER_IDENTITY",
+                        AnchorType.PHONE: "CUSTOMER_CONTACT",
+                        AnchorType.EMAIL: "CUSTOMER_INBOX",
+                    }
                     analysis_req = OrderAnalysisRequest(
                         sessionId="temp-discovery",
                         candidates=tuple(inputs),
                         suppliedEvidence={
-                            anchor.anchorType.name: anchor.anchorValue for anchor in anchors
+                            _ai_safe_keys.get(anchor.anchorType, anchor.anchorType.name): anchor.anchorValue for anchor in anchors
                         }
                     )
                     analysis = await self._order_analysis_agent.analyze(analysis_req, self._ai)
