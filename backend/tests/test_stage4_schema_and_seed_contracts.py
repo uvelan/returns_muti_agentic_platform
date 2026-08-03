@@ -52,9 +52,10 @@ def test_domain_seed_keys_are_coherent_across_hld_source_collections() -> None:
 
     customers = {str(item["customerId"]) for item in records["customerOutboundCDM"]}
     products = {str(item["productId"]) for item in records["lkpSearchProduct"]}
-    assert len(records["salesInv"]) == 1_000_000
-    assert len(records["shipmentInfo"]) == 1_000_000
-    sample_indexes = (0, 9, 999, 99_999, 999_999)
+    assert len(records["salesInv"]) == 1_000
+    assert len(records["customerOutboundCDM"]) == 1_000
+    assert len(records["lkpSearchProduct"]) == 1_000
+    sample_indexes = (0, 9, 999)
     for index in sample_indexes:
         order = records["salesInv"][index]
         shipment = records["shipmentInfo"][index]

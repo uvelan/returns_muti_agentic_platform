@@ -99,6 +99,10 @@ class AnchorType(StrEnum):
     SKU = "SKU"
     CUSTOMER_NAME = "CUSTOMER_NAME"
     PRODUCT_DESCRIPTION = "PRODUCT_DESCRIPTION"
+    SHIPPING_ADDRESS = "SHIPPING_ADDRESS"
+    ZIP_CODE = "ZIP_CODE"
+    DATE_RANGE = "DATE_RANGE"
+    PRODUCT_COLOUR = "PRODUCT_COLOUR"
 
 
 _PROTECTED_ANCHOR_TYPES = {
@@ -130,6 +134,7 @@ class OrderLineCandidate(AssociateModel):
     productDescription: str | None = None
     productType: str | None = None
     shippedQuantity: int | float | None = None
+    productProperties: dict[str, Any] = Field(default_factory=dict)
 
 
 class OrderCandidate(AssociateModel):
@@ -150,6 +155,8 @@ class OrderCandidate(AssociateModel):
     confidenceMillionths: int = Field(ge=0, le=1_000_000)
     evidenceSource: str
     lines: list[OrderLineCandidate]
+    customerProperties: dict[str, Any] = Field(default_factory=dict)
+    orderProperties: dict[str, Any] = Field(default_factory=dict)
 
 
 class ClarificationOption(AssociateModel):
@@ -956,7 +963,7 @@ class AssociateConversationService:
         self,
         conversation: AssociateConversationView,
         candidate_field: str | None,
-    ) -> dict[str, int]:
+    ) -> dict[str, Any]:
         if candidate_field is None or not conversation.candidates:
             return {"populatedCount": 0, "distinctCount": 0, "largestGroupCount": 0}
         values = [
@@ -965,13 +972,17 @@ class AssociateConversationService:
             if (value := self._candidate_value(candidate, candidate_field))
         ]
         distinct = set(values)
-        return {
+        stats: dict[str, Any] = {
             "populatedCount": len(values),
             "distinctCount": len(distinct),
             "largestGroupCount": (
                 max(values.count(value) for value in distinct) if distinct else 0
             ),
         }
+        max_distinct = self._return_configuration.clarification_policy.smart_question.max_distinct_values_for_ai
+        if 0 < len(distinct) <= max_distinct:
+            stats["distinctValues"] = sorted(list(distinct))
+        return stats
 
     @staticmethod
     def _validated_smart_question(
@@ -1456,6 +1467,40 @@ class AssociateConversationService:
                 anchor_value,
             ),
         }
+        queries.update({
+            AnchorType.SHIPPING_ADDRESS: (
+                "MATCH (c:Customer)-[:PLACED_ORDER]->(o:SalesOrder) "
+                "WHERE toLower(o.shipping_address) STARTS WITH toLower($value) "
+                "OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine) "
+                "OPTIONAL MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
+                "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
+                anchor_value,
+            ),
+            AnchorType.ZIP_CODE: (
+                "MATCH (c:Customer)-[:PLACED_ORDER]->(o:SalesOrder) "
+                "WHERE toLower(c.postal_code) STARTS WITH toLower($value) "
+                "OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine) "
+                "OPTIONAL MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
+                "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
+                anchor_value,
+            ),
+            AnchorType.DATE_RANGE: (
+                "MATCH (c:Customer)-[:PLACED_ORDER]->(o:SalesOrder) "
+                "WHERE toLower(o.order_date) STARTS WITH toLower($value) "
+                "OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine) "
+                "OPTIONAL MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
+                "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
+                anchor_value,
+            ),
+            AnchorType.PRODUCT_COLOUR: (
+                "MATCH (o:SalesOrder)-[:HAS_ORDER_LINE]->(l:OrderLine) "
+                "MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
+                "WHERE toLower(p.product_color) STARTS WITH toLower($value) "
+                "MATCH (c:Customer)-[:PLACED_ORDER]->(o) "
+                "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
+                anchor_value,
+            ),
+        })
         if not records:
             query_definition = queries.get(anchor_type)
             if query_definition is None:
@@ -1486,6 +1531,7 @@ class AssociateConversationService:
                         productDescription=cast(str | None, product.get("product_description")),
                         productType=cast(str | None, product.get("product_type")),
                         shippedQuantity=cast(int | float | None, line.get("shipped_quantity")),
+                        productProperties=product,
                     )
                 )
             if lines:
@@ -1529,6 +1575,8 @@ class AssociateConversationService:
                     ),
                     evidenceSource="NEO4J_GRAPH",
                     lines=lines,
+                    customerProperties=customer,
+                    orderProperties=order,
                 )
                 key = (candidate.customerReference, candidate.orderReference)
                 current = candidates_by_key.get(key)
@@ -1696,6 +1744,10 @@ class AssociateConversationService:
                             int | float | None,
                             _first_line_value(line, config.shipped_quantity_paths),
                         ),
+                        productProperties={
+                            "product_color": line.get("productColor"),
+                            "product_category": line.get("productCategory"),
+                        },
                     )
                 )
         if not lines:
@@ -1733,6 +1785,14 @@ class AssociateConversationService:
             confidenceMillionths=900_000,
             evidenceSource="SOURCE_MONGODB_TARGETED_FALLBACK",
             lines=lines,
+            customerProperties={
+                "phone": _nested(document, "customerOutboundCDM.phone"),
+                "email": _nested(document, "customerOutboundCDM.email"),
+            },
+            orderProperties={
+                "shipping_address": _nested(document, "salesHdr.shipping.address"),
+                "order_date": _nested(document, "salesHdrEventData.orderDate"),
+            },
         )
 
     async def _targeted_graph_upsert(self, candidates: list[OrderCandidate]) -> None:
@@ -1747,6 +1807,7 @@ class AssociateConversationService:
                 c.billing_city=row.billingCity, c.postal_code=row.postalCode,
                 c.account_type=row.accountType,
                 c.graph_synced_at=$syncedAt, c.sync_run_id=$syncRunId
+            SET c += row.customerProperties
             MERGE (o:SalesOrder {sales_order_number: row.orderReference})
             SET o.order_status=row.orderStatus, o.sell_warehouse_id=row.sellWarehouseId,
                 o.ship_from_warehouse_id=row.shipFromWarehouseId,
@@ -1754,6 +1815,7 @@ class AssociateConversationService:
                 o.source_web_order_number=row.sourceWebOrderNumber,
                 o.trilogie_order_number=row.trilogieOrderNumber,
                 o.graph_synced_at=$syncedAt, o.sync_run_id=$syncRunId
+            SET o += row.orderProperties
             MERGE (c)-[:PLACED_ORDER]->(o)
             FOREACH (_ IN CASE WHEN row.sourceWebOrderNumber IS NULL THEN [] ELSE [1] END |
                 MERGE (w:WebOrder {web_order_number: row.sourceWebOrderNumber})
@@ -1830,6 +1892,126 @@ class AssociateConversationService:
                 )
         return candidates
 
+    async def _graph_candidates_combined(
+        self, anchors: tuple[StartAssociateConversationRequest, ...]
+    ) -> list[OrderCandidate]:
+        if not anchors:
+            return []
+            
+        conditions = []
+        params = {}
+        
+        for i, anchor in enumerate(anchors):
+            val_key = f"val_{i}"
+            val = anchor.anchorValue
+            
+            if anchor.anchorType in {AnchorType.PHONE, AnchorType.EMAIL}:
+                val = contact_lookup_digest(
+                    val,
+                    "PHONE" if anchor.anchorType is AnchorType.PHONE else "EMAIL",
+                    self._settings.contact_lookup_hmac_key.get_secret_value(),
+                )
+            
+            params[val_key] = val
+            
+            if anchor.anchorType == AnchorType.ORDER_NUMBER:
+                conditions.append(f"toLower(o.sales_order_number) STARTS WITH toLower(${val_key})")
+            elif anchor.anchorType == AnchorType.CUSTOMER_ID:
+                conditions.append(f"(toLower(c.customer_id) STARTS WITH toLower(${val_key}) OR toLower(c.customer_key) STARTS WITH toLower(${val_key}))")
+            elif anchor.anchorType == AnchorType.PHONE:
+                conditions.append(f"c.phone_hash = ${val_key}")
+            elif anchor.anchorType == AnchorType.EMAIL:
+                conditions.append(f"c.email_hash = ${val_key}")
+            elif anchor.anchorType == AnchorType.TRACKING_NUMBER:
+                conditions.append(f"toLower(s.tracking_number) STARTS WITH toLower(${val_key})")
+            elif anchor.anchorType == AnchorType.SKU:
+                conditions.append(f"(toLower(p.sku) STARTS WITH toLower(${val_key}) OR toLower(p.product_id) STARTS WITH toLower(${val_key}))")
+            elif anchor.anchorType == AnchorType.SHIPPING_ADDRESS:
+                conditions.append(f"toLower(o.shipping_address) STARTS WITH toLower(${val_key})")
+            elif anchor.anchorType == AnchorType.ZIP_CODE:
+                conditions.append(f"toLower(c.postal_code) STARTS WITH toLower(${val_key})")
+            elif anchor.anchorType == AnchorType.DATE_RANGE:
+                conditions.append(f"toLower(o.order_date) STARTS WITH toLower(${val_key})")
+            elif anchor.anchorType == AnchorType.PRODUCT_COLOUR:
+                conditions.append(f"toLower(p.product_color) STARTS WITH toLower(${val_key})")
+            elif anchor.anchorType == AnchorType.CUSTOMER_NAME:
+                conditions.append(f"toLower(c.customer_name) CONTAINS toLower(${val_key})")
+            elif anchor.anchorType == AnchorType.PRODUCT_DESCRIPTION:
+                conditions.append(f"toLower(p.product_description) CONTAINS toLower(${val_key})")
+
+        if not conditions:
+            return []
+
+        where_clause = " AND ".join(conditions)
+        
+        query = f"""
+        MATCH (c:Customer)-[:PLACED_ORDER]->(o:SalesOrder)
+        OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine)
+        OPTIONAL MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product)
+        OPTIONAL MATCH (o)-[:HAS_ORIGINAL_SHIPMENT]->(s:Shipment)
+        WHERE {where_clause}
+        RETURN c, o, collect({{line: l, product: p}}) AS lines
+        LIMIT 20
+        """
+
+        records, _, _ = await self._graph.execute_query(
+            query, **params, database_=self._graph_database
+        )
+
+        candidates_by_key: dict[tuple[str, str], OrderCandidate] = {}
+        for record in records:
+            customer = dict(record["c"]) if record.get("c") else {}
+            order = dict(record["o"]) if record.get("o") else {}
+            
+            lines: list[OrderLineCandidate] = []
+            for entry in record["lines"]:
+                if not entry:
+                    continue
+                line = dict(entry["line"]) if entry.get("line") is not None else {}
+                product = dict(entry["product"]) if entry.get("product") is not None else {}
+                if not line:
+                    continue
+                lines.append(
+                    OrderLineCandidate(
+                        orderLineId=str(line.get("order_line_key", "")),
+                        productId=str(product.get("product_id", line.get("product_id", ""))),
+                        sku=cast(str | None, product.get("sku")),
+                        productDescription=cast(str | None, product.get("product_description")),
+                        productType=cast(str | None, product.get("product_type")),
+                        shippedQuantity=cast(int | float | None, line.get("shipped_quantity")),
+                        productProperties=product,
+                    )
+                )
+            if lines:
+                candidate = OrderCandidate(
+                    customerReference=str(
+                        customer.get("customer_id") or customer.get("customer_key")
+                    ),
+                    customerName=cast(str | None, customer.get("customer_name")),
+                    orderReference=str(order.get("sales_order_number")),
+                    sourceWebOrderNumber=cast(str | None, order.get("source_web_order_number")),
+                    trilogieOrderNumber=cast(
+                        str | None,
+                        order.get("trilogie_order_number") or order.get("sales_order_number"),
+                    ),
+                    orderSource=(
+                        OrderSource.FERGUSONHOME_WEB
+                        if order.get("source_web_order_number")
+                        else OrderSource.UNKNOWN
+                    ),
+                    orderStatus=cast(str | None, order.get("order_status")),
+                    customerProperties=customer,
+                    orderProperties=order,
+                    lines=tuple(lines),
+                    evidenceSource="GRAPH_COMBINED_SEARCH",
+                    retrievalScore=1.0,
+                )
+                key = (candidate.customerReference, candidate.orderReference)
+                if key not in candidates_by_key:
+                    candidates_by_key[key] = candidate
+                    
+        return list(candidates_by_key.values())
+
     async def _discover_candidates_for_anchors(
         self,
         anchors: tuple[StartAssociateConversationRequest, ...],
@@ -1841,6 +2023,20 @@ class AssociateConversationService:
                 anchors[0].anchorType,
                 anchors[0].anchorValue,
             )
+            
+        try:
+            combined_candidates = await self._graph_candidates_combined(anchors)
+            if combined_candidates:
+                return combined_candidates
+        except (Neo4jError, ServiceUnavailable, SessionExpired) as exc:
+            logger.warning(
+                "order_discovery_graph_unavailable_for_combined_search",
+                extra={
+                    "anchor_count": len(anchors),
+                    "error_type": type(exc).__name__,
+                },
+            )
+
         result_sets = await asyncio.gather(
             *(
                 self._discover_candidates(anchor.anchorType, anchor.anchorValue)
@@ -2205,29 +2401,33 @@ class AssociateConversationService:
                 )
                 if len(candidates) > 1:
                     status = "DISCOVERY_CLARIFICATION_REQUIRED"
-                    inputs = [
-                        DiscoveryCandidateInput(
-                            candidateId=candidate.orderReference,
-                            orderReference=candidate.orderReference,
-                            customerReference=candidate.customerReference,
-                            orderSource=candidate.orderSource,
-                            matchedAnchors=tuple(anchor.anchorType.value for anchor in (lookup, *additional_anchors)),
-                            evidenceReferences=(f"{candidate.evidenceSource}:{candidate.orderReference}",),
-                        )
-                        for candidate in candidates
+                    allowed_fields = [
+                        f.model_dump(mode="json") 
+                        for f in self._return_configuration.clarification_policy.fields 
+                        if f.customer_answerable
                     ]
-                    analysis_req = OrderAnalysisRequest(
-                        sessionId="temp-discovery",
-                        candidates=tuple(inputs),
-                        suppliedEvidence={
-                            anchor.anchorType.name: anchor.anchorValue for anchor in (lookup, *additional_anchors)
-                        }
+                    selected_candidate_id, smart_question = await self._order_analysis_agent.disambiguate(
+                        candidates=candidates,
+                        user_response=payload.anchorValue,
+                        allowed_fields=allowed_fields,
+                        ai_gateway=self._ai,
+                        session_id="temp-discovery",
                     )
-                    analysis = await self._order_analysis_agent.analyze(analysis_req, self._ai)
-                    assistant_text = analysis.smartQuestion or (
-                        f"I found {len(candidates)} matches for "
-                        f"'{', '.join(anchor.anchorValue for anchor in (lookup, *additional_anchors))}'."
-                    )
+                    
+                    if selected_candidate_id:
+                        candidates = [c for c in candidates if c.orderReference == selected_candidate_id]
+                        status = "DISCOVERY_READY"
+                        assistant_text = conv_config.continue_match_template.format(
+                            count=1,
+                            anchor_type=self._format_anchor_type(payload.anchorType),
+                            anchor_value=payload.anchorValue,
+                        )
+                    else:
+                        assistant_text = smart_question or (
+                            f"I found {len(candidates)} matches for "
+                            f"'{', '.join(anchor.anchorValue for anchor in (lookup, *additional_anchors))}'."
+                        )
+                        requested_slots = ["ai_disambiguation"]
                 else:
                     assistant_text = conv_config.continue_match_template.format(
                         count=len(candidates),
@@ -2340,51 +2540,47 @@ class AssociateConversationService:
             raise RuntimeError("Candidate set expired; restart order discovery")
 
         slot = conversation.activeRequestedSlots[0]
-        attributes = self._return_configuration.discovery.progressive.disambiguation_attributes
-        attribute = next((item for item in attributes if item.slot == slot), None)
-        if attribute is None:
-            raise RuntimeError(f"Unsupported requested slot: {slot}")
 
-        matched = [
-            candidate
-            for candidate in conversation.candidates
-            if self._slot_response_matches(
-                self._candidate_value(candidate, attribute.candidate_field),
-                payload.message,
-            )
+        allowed_fields = [
+            f.model_dump(mode="json") 
+            for f in self._return_configuration.clarification_policy.fields 
+            if f.customer_answerable
         ]
+        
+        selected_candidate_id, smart_question = await self._order_analysis_agent.disambiguate(
+            candidates=conversation.candidates,
+            user_response=payload.message,
+            allowed_fields=allowed_fields,
+            ai_gateway=self._ai,
+            session_id=conversation.id,
+        )
 
         dialogue_states = self._return_configuration.discovery.progressive.dialogue_states
-        excluded = set(conversation.activeRequestedSlots)
-        next_attribute = self._select_disambiguation_attribute(
-            matched,
-            excluded_slots=excluded,
-        )
+
+        if selected_candidate_id:
+            matched = [c for c in conversation.candidates if c.orderReference == selected_candidate_id]
+        else:
+            # If no single candidate selected, keep all as matched to let them answer again
+            # or could we try to filter based on smart_question? No, AI is meant to return selected_candidate_id if it's narrowed down to one.
+            matched = conversation.candidates
+
         if not matched:
-            assistant_text = (
-                f"I could not match that {slot.replace('_', ' ')} to the current candidates."
-            )
+            assistant_text = "I could not match that to the current candidates."
             next_state = conversation.activeDialogueState
             next_slots = conversation.activeRequestedSlots
-            next_question = f"Which {attribute.label} matches the order?"
+            next_question = "Which detail matches the order?"
             next_candidates = conversation.candidates
-        elif len(matched) > 1 and next_attribute is not None:
-            next_slot, next_question = next_attribute
-            assistant_text = f"I narrowed the result to {len(matched)} candidates."
-            next_state = dialogue_states.slot_disambiguation
-            next_slots = [next_slot]
-            next_candidates = matched
-        elif len(matched) > 1:
-            next_question = f"What detail distinguishes these {len(matched)} matching orders?"
-            assistant_text = f"I narrowed the result to {len(matched)} orders. {next_question}"
-            next_state = dialogue_states.generic_disambiguation
-            next_slots = []
-            next_candidates = matched
-        else:
+        elif len(matched) == 1:
             next_question = "Which source-backed order line is being returned?"
             assistant_text = f"I found the matching customer and order. {next_question}"
             next_state = dialogue_states.single_candidate
             next_slots = []
+            next_candidates = matched
+        else:
+            assistant_text = smart_question or f"I narrowed the result to {len(matched)} orders. What detail distinguishes them?"
+            next_question = assistant_text
+            next_state = dialogue_states.slot_disambiguation
+            next_slots = ["ai_disambiguation"]
             next_candidates = matched
 
         messages = [

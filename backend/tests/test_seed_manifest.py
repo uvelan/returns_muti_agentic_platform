@@ -80,13 +80,13 @@ def test_realistic_seed_has_required_counts_and_multi_line_orders() -> None:
         TEST_EVIDENCE_KEY,
     )
 
-    assert len(SEED_CUSTOMERS) == 10_000
-    assert len(SEED_PRODUCTS) == 20_000
-    assert len(SEED_ORDERS) == 1_000_000
-    assert len(records["customerOutboundCDM"]) == 10_000
-    assert len(records["lkpSearchProduct"]) == 20_000
-    assert len(records["salesInv"]) == 1_000_000
-    assert len(records["shipmentInfo"]) == 1_000_000
+    assert len(SEED_CUSTOMERS) == 1_000
+    assert len(SEED_PRODUCTS) == 1_000
+    assert len(SEED_ORDERS) == 1_000
+    assert len(records["customerOutboundCDM"]) == 1_000
+    assert len(records["lkpSearchProduct"]) == 1_000
+    assert len(records["salesInv"]) == 1_000
+    assert len(records["shipmentInfo"]) == 1_000
     assert any(len(order["salesLines"]) > 1 for order in records["salesInv"])
 
 

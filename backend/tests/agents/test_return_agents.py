@@ -24,7 +24,7 @@ def registry() -> ReturnAgentRegistry:
     return ReturnAgentRegistry.build(load_return_configuration(CONFIG).configuration)
 
 
-def test_configuration_loads_all_five_agents() -> None:
+def test_configuration_loads_all_six_agents() -> None:
     loaded = load_return_configuration(CONFIG)
     assert set(loaded.configuration.agents) == {
         "order_discovery",
@@ -32,6 +32,7 @@ def test_configuration_loads_all_five_agents() -> None:
         "return_fulfillment",
         "bay_assignment",
         "feedback_learning",
+        "order_analysis",
     }
     assert loaded.configuration.discovery.auto_confirmation_allowed is False
     assert loaded.configuration.omc.rga_is_customer_return is False

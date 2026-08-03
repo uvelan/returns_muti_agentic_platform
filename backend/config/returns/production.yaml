@@ -87,6 +87,8 @@ discovery:
     - ORDER_NUMBER
     - CUSTOMER_ID
     - TRACKING_NUMBER
+    - PHONE
+    - EMAIL
   anchor_extractors:
     - anchor_type: ORDER_NUMBER
       patterns:
@@ -140,9 +142,14 @@ discovery:
       generic_disambiguation: ORDER_DISAMBIGUATION
     weak_anchor_source_fallback_enabled: true
     weak_anchor_targeted_graph_upsert_enabled: false
+
     fuzzy_search_anchors:
       - CUSTOMER_NAME
       - PRODUCT_DESCRIPTION
+      - SHIPPING_ADDRESS
+      - ZIP_CODE
+      - DATE_RANGE
+      - PRODUCT_COLOUR
     disambiguation_attributes:
       - slot: customer_name
         candidate_field: customerName
@@ -235,6 +242,7 @@ clarification_policy:
   version: v2
   max_prompts_per_turn: 1
   max_fields_per_turn: 1
+  max_distinct_values_for_ai: 5
   phrasing_owner: LLM
   field_selection_owner: LLM
   fields:
@@ -274,12 +282,14 @@ clarification_policy:
       customer_answerable: true
       field_group: CUSTOMER_ANCHOR
       anchor_type: EMAIL
+      candidate_field: email
     - field: phone
       label: "phone number used on the order"
       priority: 90
       customer_answerable: true
       field_group: CUSTOMER_ANCHOR
       anchor_type: PHONE
+      candidate_field: phone
     - field: customer_name
       label: "name on the order"
       priority: 85
@@ -297,6 +307,7 @@ clarification_policy:
       priority: 75
       customer_answerable: true
       field_group: CUSTOMER_NARROWING
+      anchor_type: ZIP_CODE
       candidate_field: postalCode
     - field: product_sku
       label: "SKU or item number"
@@ -317,6 +328,22 @@ clarification_policy:
       priority: 60
       customer_answerable: true
       field_group: DATE_NARROWING
+      anchor_type: DATE_RANGE
+      candidate_field: orderDate
+    - field: shipping_address
+      label: "shipping address"
+      priority: 58
+      customer_answerable: true
+      field_group: CUSTOMER_NARROWING
+      anchor_type: SHIPPING_ADDRESS
+      candidate_field: shippingAddress
+    - field: product_colour
+      label: "product colour"
+      priority: 56
+      customer_answerable: true
+      field_group: LINE_NARROWING
+      anchor_type: PRODUCT_COLOUR
+      candidate_field: productColor
     - field: purchase_channel_hint
       label: "where the order was placed"
       priority: 55

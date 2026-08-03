@@ -192,6 +192,7 @@ class SmartQuestionConfiguration(StrictConfigModel):
     version: NonBlank
     max_prompts_per_turn: int = Field(ge=1, le=5)
     max_fields_per_turn: int = Field(ge=1, le=5)
+    max_distinct_values_for_ai: int = Field(default=5, ge=1, le=20)
     phrasing_owner: Literal["LLM", "CONFIG"]
     field_selection_owner: Literal["LLM", "CONFIG"]
     fields: tuple[SmartQuestion, ...] = Field(min_length=1)

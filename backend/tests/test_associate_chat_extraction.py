@@ -382,7 +382,11 @@ async def test_multi_anchor_search_retains_only_orders_matching_every_anchor() -
     async def discover(anchor_type: AnchorType, _anchor_value: str) -> list[OrderCandidate]:
         return by_anchor[anchor_type]
 
+    async def graph_combined(anchors: tuple[StartAssociateConversationRequest, ...]) -> list[OrderCandidate]:
+        return []
+
     instance._discover_candidates = discover
+    instance._graph_candidates_combined = graph_combined
     results = await instance._discover_candidates_for_anchors(
         (
             StartAssociateConversationRequest(
