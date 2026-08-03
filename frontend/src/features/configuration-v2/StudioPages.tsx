@@ -86,20 +86,6 @@ function nextPatchVersion(version: string): string {
   return `${major}.${minor}.${String(Number(patch) + 1)}`;
 }
 
-function PayloadTree({ value, depth = 0 }: { value: unknown; depth?: number }) {
-  if (depth > 4) return <span className="text-[#6d7a77]">Nested configuration</span>;
-  if (Array.isArray(value)) return <div className="space-y-2">{(value as unknown[]).map((item, index) => <div key={index} className="border-l-2 border-[#c7d2cf] pl-3"><span className="mr-2 text-xs font-semibold text-[#6d7a77]">{index + 1}</span><PayloadTree value={item} depth={depth + 1} /></div>)}</div>;
-  if (typeof value === "object" && value !== null) return <dl className="space-y-2">{Object.entries(value as Record<string, unknown>).map(([key, nested]) => <div key={key} className="grid gap-1 sm:grid-cols-[180px_1fr]"><dt className="break-all text-xs font-semibold text-[#3d4947]">{key}</dt><dd className="min-w-0 text-sm"><PayloadTree value={nested} depth={depth + 1} /></dd></div>)}</dl>;
-  const display = value === null || value === undefined
-    ? "\u2014"
-    : typeof value === "string"
-      ? value
-      : typeof value === "number" || typeof value === "boolean" || typeof value === "bigint"
-        ? String(value)
-        : "Unsupported value";
-  return <span className="break-all font-mono text-xs">{display}</span>;
-}
-
 function flattenObject(obj: any, prefix = ""): Record<string, string> {
   const result: Record<string, string> = {};
   if (obj === null || obj === undefined) return result;
@@ -214,7 +200,8 @@ export function ModuleCatalogPage() {
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
         {filtered.map(module => {
           const key = `${module.moduleId}:${module.configurationVersion}`;
-          const displayName = module.payload?.name || module.moduleId;
+          const p = module.payload as Record<string, unknown> | null | undefined;
+          const displayName = typeof p?.name === "string" && p.name.trim() !== "" ? p.name : module.moduleId;
           return (
             <button
               type="button"
@@ -245,7 +232,11 @@ export function ModuleCatalogPage() {
             <div className="flex items-start justify-between border-b border-[#bcc9c6] bg-[#f5faf8] p-5">
               <div>
                 <div className="flex items-center gap-3">
-                  <h2 className="text-xl font-semibold">{selected.payload?.name || selected.moduleId}</h2>
+                  <h2 className="text-xl font-semibold">
+                    {typeof (selected.payload as Record<string, unknown> | null)?.name === "string" && (selected.payload as Record<string, unknown> | null)?.name
+                      ? String((selected.payload as Record<string, unknown> | null)?.name)
+                      : selected.moduleId}
+                  </h2>
                   <Status value={selected.status} />
                 </div>
                 <p className="mt-1 text-sm text-[#6d7a77]">
