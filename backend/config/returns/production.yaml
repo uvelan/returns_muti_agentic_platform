@@ -2,6 +2,15 @@ schema_version: "1.0"
 assumption_set_version: "FERGUSON-RETURN-ASSUMPTIONS-1.0"
 
 agents:
+  order_analysis:
+    name: "Order Analysis Agent"
+    version: "2.0"
+    enabled: true
+    ai_assisted: true
+    human_confirmation_required: true
+    capabilities:
+      - evaluate_candidates
+      - generate_smart_questions
   order_discovery:
     name: "Order Discovery Agent"
     version: "2.0"
