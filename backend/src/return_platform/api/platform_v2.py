@@ -24,6 +24,7 @@ from return_platform.v2.models import (
     ImportRequest,
     ModuleCreate,
     ModuleStatus,
+    PayloadUpdate,
     PartialSyncRequest,
     ReleaseCreate,
     ReleaseManifest,
@@ -155,6 +156,26 @@ async def patch_module_field(
 ) -> APIResponse[ConfigurationModule]:
     try:
         data = await _services(request).configuration.patch_fields(
+            module_id, version, body, actor
+        )
+    except (V2NotFoundError, V2ConflictError, V2ValidationError) as exc:
+        raise _translate(exc) from exc
+    return APIResponse(data=data, meta=_meta(request))
+
+
+@router.put(
+    "/configuration/modules/{module_id}/drafts/{version}/payload",
+    response_model=APIResponse[ConfigurationModule],
+)
+async def put_module_payload(
+    module_id: str,
+    version: str,
+    body: PayloadUpdate,
+    request: Request,
+    actor: str = Depends(require_admin_roles),
+) -> APIResponse[ConfigurationModule]:
+    try:
+        data = await _services(request).configuration.update_payload(
             module_id, version, body, actor
         )
     except (V2NotFoundError, V2ConflictError, V2ValidationError) as exc:

@@ -88,6 +88,11 @@ class FieldPatch(V2Model):
     expected_revision: int = Field(alias="expectedRevision", ge=1)
 
 
+class PayloadUpdate(V2Model):
+    payload: dict[str, Any]
+    expected_revision: int = Field(alias="expectedRevision", ge=1)
+
+
 class ValidationIssue(V2Model):
     code: str = Field(pattern=r"^[A-Z][A-Z0-9_]+$")
     path: tuple[str | int, ...] = ()

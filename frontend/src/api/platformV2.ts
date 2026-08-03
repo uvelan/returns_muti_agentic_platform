@@ -58,6 +58,24 @@ export function useModuleAction(action: "validate" | "submit" | "approve") {
   });
 }
 
+export function useUpdateModulePayload() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ moduleId, version, expectedRevision, payload }: {
+      moduleId: string;
+      version: string;
+      expectedRevision: number;
+      payload: unknown;
+    }) => (
+      await apiClient<ConfigurationModule>(
+        `${root}/configuration/modules/${encodeURIComponent(moduleId)}/drafts/${encodeURIComponent(version)}/payload`,
+        { method: "PUT", headers: jsonHeaders, body: JSON.stringify({ expectedRevision, payload }) },
+      )
+    ).data,
+    onSuccess: async () => client.invalidateQueries({ queryKey: keys.modules }),
+  });
+}
+
 export function useReleases() {
   return useQuery({
     queryKey: keys.releases,

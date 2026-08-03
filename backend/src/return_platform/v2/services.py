@@ -27,6 +27,7 @@ from return_platform.v2.models import (
     OrderAnchor,
     OrderLineProjection,
     OrderProjection,
+    PayloadUpdate,
     PartialSyncRequest,
     ProposalCommand,
     ReleaseCreate,
@@ -276,6 +277,30 @@ class ModularConfigurationService:
             self._apply_field_patch(payload, patch)
             data = current.model_dump(mode="json", by_alias=True)
             data["payload"] = payload
+            data["revision"] = current.revision + 1
+            data["status"] = ModuleStatus.DRAFT
+            data["checksum"] = _module_checksum(data)
+            updated = ConfigurationModule.model_validate(data)
+            self._modules[key] = updated
+            return copy.deepcopy(updated)
+
+    async def update_payload(
+        self, module_id: str, version: str, update: PayloadUpdate, actor: str
+    ) -> ConfigurationModule:
+        del actor
+        key = (module_id, version)
+        async with self._lock:
+            current = self._modules.get(key)
+            if current is None:
+                raise V2NotFoundError(f"Module {module_id}@{version} was not found")
+            if current.status not in {ModuleStatus.DRAFT, ModuleStatus.QUARANTINED}:
+                raise V2ConflictError("Only draft or quarantined modules can be edited")
+            if current.revision != update.expected_revision:
+                raise V2ConflictError(
+                    f"Revision conflict: expected {update.expected_revision}, current {current.revision}"
+                )
+            data = current.model_dump(mode="json", by_alias=True)
+            data["payload"] = copy.deepcopy(update.payload)
             data["revision"] = current.revision + 1
             data["status"] = ModuleStatus.DRAFT
             data["checksum"] = _module_checksum(data)

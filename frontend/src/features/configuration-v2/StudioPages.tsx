@@ -21,6 +21,9 @@ import {
   Sparkles,
   Upload,
   Workflow,
+  X,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -36,6 +39,7 @@ import {
   useReleaseAction,
   useReleases,
   useSchemaDesignAction,
+  useUpdateModulePayload,
 } from "../../api/platformV2";
 import type { ConfigurationModule, SchemaDesignContext } from "../../contracts/platformV2";
 
@@ -96,6 +100,42 @@ function PayloadTree({ value, depth = 0 }: { value: unknown; depth?: number }) {
   return <span className="break-all font-mono text-xs">{display}</span>;
 }
 
+function flattenObject(obj: any, prefix = ""): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (obj === null || obj === undefined) return result;
+  for (const [key, value] of Object.entries(obj)) {
+    const newPrefix = prefix ? `${prefix}.${key}` : key;
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      Object.assign(result, flattenObject(value, newPrefix));
+    } else {
+      result[newPrefix] = Array.isArray(value) ? JSON.stringify(value) : String(value);
+    }
+  }
+  return result;
+}
+
+function unflattenObject(flat: Record<string, string>): any {
+  const result: any = {};
+  for (const [key, value] of Object.entries(flat)) {
+    const parts = key.split(".");
+    let current = result;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!current[parts[i]]) current[parts[i]] = {};
+      current = current[parts[i]];
+    }
+    const leaf = parts[parts.length - 1];
+    let parsedValue: any = value;
+    if (value === "true") parsedValue = true;
+    else if (value === "false") parsedValue = false;
+    else if (!isNaN(Number(value)) && value.trim() !== "") parsedValue = Number(value);
+    else if (value.startsWith("[") && value.endsWith("]")) {
+      try { parsedValue = JSON.parse(value); } catch {}
+    }
+    current[leaf] = parsedValue;
+  }
+  return result;
+}
+
 export function ModuleCatalogPage() {
   const query = useConfigurationModules();
   const [search, setSearch] = useState("");
@@ -104,12 +144,221 @@ export function ModuleCatalogPage() {
   const validate = useModuleAction("validate");
   const submit = useModuleAction("submit");
   const approve = useModuleAction("approve");
+  const updatePayload = useUpdateModulePayload();
+
+  // Editor states
+  const [editorMode, setEditorMode] = useState<"JSON" | "KV">("KV");
+  const [jsonText, setJsonText] = useState("");
+  const [kvData, setKvData] = useState<Record<string, string>>({});
+
   if (query.isLoading) return <Loading />;
   const modules = query.data ?? [];
-  const filtered = modules.filter(item => `${item.moduleId} ${item.moduleType} ${item.owner}`.toLowerCase().includes(search.toLowerCase()));
-  const selected = modules.find(item => `${item.moduleId}:${item.configurationVersion}` === selectedKey) ?? filtered.at(0);
-  const error = query.error ?? draft.error ?? validate.error ?? submit.error ?? approve.error;
-  return <><PageTitle title="Module Catalog" description="Each agent and platform capability owns an independent, versioned configuration module." /><ErrorNotice error={error} /><div className="grid min-h-[640px] gap-5 xl:grid-cols-[390px_minmax(0,1fr)]"><section className={`${card} overflow-hidden`}><div className="border-b border-[#bcc9c6] p-4"><label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6d7a77]" size={16} /><input aria-label="Search modules" className={`${input} pl-9`} value={search} onChange={event => { setSearch(event.target.value); }} placeholder="Search modules" /></label></div><div className="max-h-[570px] overflow-y-auto p-2">{filtered.map(module => { const key = `${module.moduleId}:${module.configurationVersion}`; return <button type="button" key={key} onClick={() => { setSelectedKey(key); }} className={`mb-1 w-full rounded-xl p-3 text-left ${selected === module ? "bg-[#e5f5f1]" : "hover:bg-[#f5faf8]"}`}><div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-semibold">{module.moduleId}</span><Status value={module.status} /></div><p className="mt-1 text-xs text-[#6d7a77]">{module.moduleType} · v{module.configurationVersion}</p></button>; })}</div></section><section className={`${card} min-w-0 overflow-hidden`}>{selected ? <><div className="border-b border-[#bcc9c6] p-5"><div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start"><div><p className="text-xs font-semibold uppercase tracking-wider text-[#00685f]">{selected.moduleType}</p><h2 className="mt-1 text-xl font-semibold">{selected.moduleId}</h2><p className="mt-1 text-sm text-[#6d7a77]">Owned by {selected.owner} · revision {selected.revision}</p></div><div className="flex flex-wrap gap-2">{selected.status !== "DRAFT" ? <button className={secondary} disabled={draft.isPending} onClick={() => { draft.mutate({ moduleId: selected.moduleId, fromVersion: selected.configurationVersion, configurationVersion: nextPatchVersion(selected.configurationVersion) }); }}>New draft</button> : <><button className={secondary} disabled={validate.isPending} onClick={() => { validate.mutate({ moduleId: selected.moduleId, version: selected.configurationVersion }); }}>Validate</button><button className={primary} disabled={submit.isPending} onClick={() => { submit.mutate({ moduleId: selected.moduleId, version: selected.configurationVersion }); }}>Submit</button></>}{selected.status === "VALIDATED" ? <button className={primary} disabled={approve.isPending} onClick={() => { approve.mutate({ moduleId: selected.moduleId, version: selected.configurationVersion }); }}>Approve</button> : null}</div></div></div><div className="grid gap-4 border-b border-[#dce3e0] bg-[#f5faf8] p-4 sm:grid-cols-3"><div><p className="text-xs text-[#6d7a77]">Version</p><p className="mt-1 text-sm font-semibold">{selected.configurationVersion}</p></div><div><p className="text-xs text-[#6d7a77]">Schema</p><p className="mt-1 text-sm font-semibold">{selected.schemaVersion}</p></div><div><p className="text-xs text-[#6d7a77]">Dependencies</p><p className="mt-1 text-sm font-semibold">{selected.dependencies.length}</p></div></div><div className="max-h-[450px] overflow-auto p-5"><h3 className="mb-4 text-sm font-semibold">Structured configuration</h3><PayloadTree value={selected.payload} /></div></> : <div className="p-12 text-center text-sm text-[#6d7a77]">No modules match this search.</div>}</section></div></>;
+  const filtered = modules.filter(item => {
+    const displayName = item.payload?.name || item.moduleId;
+    return `${displayName} ${item.moduleId} ${item.moduleType} ${item.owner}`.toLowerCase().includes(search.toLowerCase());
+  });
+  const selected = modules.find(item => `${item.moduleId}:${item.configurationVersion}` === selectedKey);
+  const error = query.error ?? draft.error ?? validate.error ?? submit.error ?? approve.error ?? updatePayload.error;
+
+  const handleCardClick = (module: ConfigurationModule) => {
+    setSelectedKey(`${module.moduleId}:${module.configurationVersion}`);
+    setJsonText(JSON.stringify(module.payload, null, 2));
+    setKvData(flattenObject(module.payload));
+  };
+
+  const closeDialog = () => {
+    setSelectedKey("");
+  };
+
+  const handleSave = () => {
+    if (!selected) return;
+    let newPayload;
+    if (editorMode === "JSON") {
+      try {
+        newPayload = JSON.parse(jsonText);
+      } catch (err) {
+        alert("Invalid JSON");
+        return;
+      }
+    } else {
+      newPayload = unflattenObject(kvData);
+    }
+    updatePayload.mutate({
+      moduleId: selected.moduleId,
+      version: selected.configurationVersion,
+      expectedRevision: selected.revision,
+      payload: newPayload,
+    }, {
+      onSuccess: () => {
+        // Just refresh the selected state? Actually invalidation triggers refetch.
+        // I can just close or leave it open. Let's leave it open.
+        // We'll rely on the refetch to give us the new version.
+        // Wait, a draft mutation keeps the version, but increments revision.
+        // Our selectedKey is based on version. So it's fine.
+      }
+    });
+  };
+
+  return (
+    <>
+      <PageTitle title="Module Catalog" description="Each agent and platform capability owns an independent, versioned configuration module." />
+      <ErrorNotice error={error} />
+
+      <div className="mb-6">
+        <label className="relative block max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6d7a77]" size={16} />
+          <input aria-label="Search modules" className={`${input} pl-9`} value={search} onChange={event => { setSearch(event.target.value); }} placeholder="Search modules" />
+        </label>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+        {filtered.map(module => {
+          const key = `${module.moduleId}:${module.configurationVersion}`;
+          const displayName = module.payload?.name || module.moduleId;
+          return (
+            <button
+              type="button"
+              key={key}
+              onClick={() => handleCardClick(module)}
+              className={`${card} flex min-h-[140px] flex-col justify-between p-5 text-left transition-shadow hover:shadow-md`}
+            >
+              <div>
+                <h3 className="font-semibold text-lg text-[#101828] truncate">{displayName}</h3>
+                <p className="mt-1 text-sm text-[#6d7a77] truncate">{module.moduleType} · v{module.configurationVersion}</p>
+              </div>
+              <div className="mt-4 flex items-center justify-between">
+                <span className="text-xs text-[#6d7a77]">Rev {module.revision}</span>
+                <Status value={module.status} />
+              </div>
+            </button>
+          );
+        })}
+        {filtered.length === 0 && (
+          <div className="col-span-full p-12 text-center text-sm text-[#6d7a77]">No modules match this search.</div>
+        )}
+      </div>
+
+      {selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className={`${card} flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden bg-white shadow-2xl`}>
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-[#bcc9c6] bg-[#f5faf8] p-5">
+              <div>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-semibold">{selected.payload?.name || selected.moduleId}</h2>
+                  <Status value={selected.status} />
+                </div>
+                <p className="mt-1 text-sm text-[#6d7a77]">
+                  {selected.moduleId} · v{selected.configurationVersion} · Rev {selected.revision}
+                </p>
+              </div>
+              <button onClick={closeDialog} className="rounded-lg p-2 text-[#6d7a77] hover:bg-[#e4e9e7]"><X size={20} /></button>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-wrap gap-2 border-b border-[#dce3e0] p-4">
+              {selected.status !== "DRAFT" && selected.status !== "QUARANTINED" ? (
+                <button className={secondary} disabled={draft.isPending} onClick={() => { draft.mutate({ moduleId: selected.moduleId, fromVersion: selected.configurationVersion, configurationVersion: nextPatchVersion(selected.configurationVersion) }); }}>New draft</button>
+              ) : (
+                <>
+                  <button className={secondary} disabled={validate.isPending} onClick={() => { validate.mutate({ moduleId: selected.moduleId, version: selected.configurationVersion }); }}>Validate</button>
+                  <button className={primary} disabled={submit.isPending} onClick={() => { submit.mutate({ moduleId: selected.moduleId, version: selected.configurationVersion }); }}>Submit</button>
+                </>
+              )}
+              {selected.status === "VALIDATED" ? (
+                <button className={primary} disabled={approve.isPending} onClick={() => { approve.mutate({ moduleId: selected.moduleId, version: selected.configurationVersion }); }}>Approve</button>
+              ) : null}
+            </div>
+
+            {/* Editor body */}
+            <div className="flex flex-1 flex-col overflow-hidden p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-sm font-semibold">Configuration Payload</h3>
+                <div className="flex overflow-hidden rounded-lg border border-[#bcc9c6]">
+                  <button onClick={() => setEditorMode("KV")} className={`px-3 py-1 text-xs font-medium ${editorMode === "KV" ? "bg-[#00685f] text-white" : "bg-white text-[#3d4947] hover:bg-[#f5faf8]"}`}>Key-Value</button>
+                  <button onClick={() => setEditorMode("JSON")} className={`px-3 py-1 text-xs font-medium ${editorMode === "JSON" ? "bg-[#00685f] text-white" : "bg-white text-[#3d4947] hover:bg-[#f5faf8]"}`}>JSON</button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-auto rounded-xl border border-[#bcc9c6] bg-[#fdfdfd]">
+                {editorMode === "JSON" ? (
+                  <textarea
+                    className="h-full w-full resize-none bg-transparent p-4 font-mono text-sm outline-none"
+                    value={jsonText}
+                    onChange={(e) => setJsonText(e.target.value)}
+                    readOnly={selected.status !== "DRAFT" && selected.status !== "QUARANTINED"}
+                  />
+                ) : (
+                  <div className="p-4 space-y-3">
+                    {Object.entries(kvData).map(([k, v]) => (
+                      <div key={k} className="flex gap-2 items-start">
+                        <input
+                          className={`${input} flex-1 font-mono text-sm`}
+                          value={k}
+                          onChange={(e) => {
+                            const newKv = { ...kvData };
+                            delete newKv[k];
+                            newKv[e.target.value] = v;
+                            setKvData(newKv);
+                          }}
+                          readOnly={selected.status !== "DRAFT" && selected.status !== "QUARANTINED"}
+                          placeholder="path.to.key"
+                        />
+                        <input
+                          className={`${input} flex-1 font-mono text-sm`}
+                          value={v}
+                          onChange={(e) => setKvData({ ...kvData, [k]: e.target.value })}
+                          readOnly={selected.status !== "DRAFT" && selected.status !== "QUARANTINED"}
+                          placeholder="value"
+                        />
+                        {(selected.status === "DRAFT" || selected.status === "QUARANTINED") && (
+                          <button
+                            type="button"
+                            className="shrink-0 p-2 text-red-500 hover:bg-red-50 rounded-lg"
+                            onClick={() => {
+                              const newKv = { ...kvData };
+                              delete newKv[k];
+                              setKvData(newKv);
+                            }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {(selected.status === "DRAFT" || selected.status === "QUARANTINED") && (
+                      <button
+                        type="button"
+                        className={`${secondary} mt-2 text-xs`}
+                        onClick={() => {
+                          setKvData({ ...kvData, [`new.key.${Date.now()}`]: "" });
+                        }}
+                      >
+                        <Plus size={14} /> Add Field
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            {(selected.status === "DRAFT" || selected.status === "QUARANTINED") && (
+              <div className="flex justify-end border-t border-[#bcc9c6] p-4 bg-[#f5faf8]">
+                <button
+                  className={primary}
+                  onClick={handleSave}
+                  disabled={updatePayload.isPending}
+                >
+                  {updatePayload.isPending ? "Saving..." : "Save Payload"}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
 
 export function GraphCatalogPage() {
