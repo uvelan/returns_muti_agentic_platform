@@ -2119,6 +2119,16 @@ class AssociateConversationService:
         actor_id: str,
     ) -> AssociateConversationView:
         lookups = await self._resolve_discovery_intents(payload.message)
+        if not lookups:
+            if self._is_greeting(payload.message):
+                lookups = [
+                    StartAssociateConversationRequest(
+                        anchorType=AnchorType.PRODUCT_DESCRIPTION,
+                        anchorValue=payload.message,
+                    )
+                ]
+            else:
+                raise ValueError("I couldn't identify an order number, tracking ID, or other searchable detail in your message.")
         conversation = await self.start(
             lookups[0],
             actor_id=actor_id,
@@ -2459,6 +2469,16 @@ class AssociateConversationService:
                 )
             return conversation
         lookups = await self._resolve_discovery_intents(payload.message)
+        if not lookups:
+            if self._is_greeting(payload.message):
+                lookups = [
+                    StartAssociateConversationRequest(
+                        anchorType=AnchorType.PRODUCT_DESCRIPTION,
+                        anchorValue=payload.message,
+                    )
+                ]
+            else:
+                raise ValueError("I couldn't identify an order number, tracking ID, or other searchable detail in your message.")
         lookup = lookups[0]
         conversation = await self.continue_discovery(
             conversation_id,
