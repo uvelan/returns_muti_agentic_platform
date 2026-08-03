@@ -22,6 +22,16 @@ import {
   Table2,
   Trash2,
   X,
+  Activity,
+  Bot,
+  CircleHelp,
+  Network,
+  PackageCheck,
+  Sparkles,
+  ArrowLeftRight,
+  LineChart,
+  FileText,
+  LayoutDashboard
 } from "lucide-react";
 import { Link, Redirect, Route, Router, Switch, useLocation, useParams } from "wouter";
 
@@ -129,53 +139,62 @@ function StatusPill({ status }: { readonly status: DataSourceStatus }) {
 function DataSourceShell({ children }: { readonly children: ReactNode }) {
   const [location] = useLocation();
   const navigation = [
-    ["/", "Overview"],
-    ["/modules", "Agent Modules"],
-    ["/data-sources", "Data Sources"],
-    ["/graph-schema", "Graph Schema"],
-    ["/schema-design", "Schema Design Agent"],
-    ["/sync", "Order Sync"],
-    ["/releases", "Releases"],
-    ["/import-export", "Import / Export"],
-    ["/governance", "Governance"],
-    ["/analytics", "Analytics"],
-    ["/policies", "Policies"],
-    ["/help", "Help"],
+    ["/", "Overview", LayoutDashboard],
+    ["/modules", "Agent Modules", Bot],
+    ["/data-sources", "Data Sources", Database],
+    ["/graph-schema", "Graph Schema", Network],
+    ["/schema-design", "Schema Design Agent", Sparkles],
+    ["/sync", "Order Sync", RefreshCw],
+    ["/releases", "Releases", PackageCheck],
+    ["/import-export", "Import / Export", ArrowLeftRight],
+    ["/governance", "Governance", ShieldCheck],
+    ["/analytics", "Analytics", LineChart],
+    ["/policies", "Policies", FileText],
+    ["/help", "Help", CircleHelp],
   ] as const;
   const currentLabel = navigation.find(([href]) => href === "/" ? location === "/" : location.startsWith(href))?.[1] ?? "Configuration";
+  const [collapsed, setCollapsed] = useState(false);
   return (
     <div className="min-h-screen bg-[#f5faf8] text-[#171d1c] lg:flex">
-      <aside className="border-b border-[#bcc9c6] bg-[#00201d] text-white lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:shrink-0 lg:border-b-0 lg:border-r">
-        <div className="flex h-16 items-center gap-3 border-b border-white/10 px-5">
-          <span className="flex size-9 items-center justify-center rounded-xl bg-[#008378]">
+      <aside className={`border-b border-[#bcc9c6] bg-[#00201d] text-white lg:sticky lg:top-0 lg:h-screen lg:shrink-0 lg:border-b-0 lg:border-r transition-all duration-300 ${collapsed ? "lg:w-[72px]" : "lg:w-64"}`}>
+        <div className={`flex h-16 items-center border-b border-white/10 ${collapsed ? "justify-center px-0" : "gap-3 px-5"}`}>
+          <span className="flex shrink-0 size-9 items-center justify-center rounded-xl bg-[#008378]">
             <Database size={19} />
           </span>
-          <div>
-            <div className="font-semibold tracking-tight">Returns Configuration</div>
-            <div className="text-xs text-[#89f5e7]/70">Connection workspace</div>
-          </div>
+          {!collapsed && (
+            <div className="min-w-0">
+              <div className="truncate font-semibold tracking-tight">Returns Configuration</div>
+              <div className="truncate text-xs text-[#89f5e7]/70">Connection workspace</div>
+            </div>
+          )}
         </div>
-        <nav className="flex gap-2 overflow-x-auto p-3 lg:block lg:max-h-[calc(100vh-8rem)] lg:space-y-1 lg:overflow-y-auto lg:p-4" aria-label="Configuration navigation">
-          {navigation.map(([href, label]) => {
+        <nav className={`flex gap-2 overflow-x-auto p-3 lg:block lg:max-h-[calc(100vh-8rem)] lg:space-y-1 lg:overflow-y-auto ${collapsed ? "lg:p-3" : "lg:p-4"} [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/20 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.1)_transparent]`} aria-label="Configuration navigation">
+          {navigation.map(([href, label, Icon]) => {
             const active = href === "/" ? location === "/" : location.startsWith(href);
             return (
               <Link
                 key={href}
                 href={href}
-                className={`flex shrink-0 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${active ? "bg-[#008378] text-white" : "text-[#d6e0dd] hover:bg-white/10"}`}
+                className={`flex shrink-0 items-center rounded-lg px-3 py-2.5 text-sm font-medium ${active ? "bg-[#008378] text-white" : "text-[#d6e0dd] hover:bg-white/10"} ${collapsed ? "justify-center" : "gap-3"}`}
+                title={collapsed ? label : undefined}
               >
-                <Server size={18} /> {label}
+                <Icon size={18} className="shrink-0" /> {!collapsed && <span className="truncate">{label}</span>}
               </Link>
             );
           })}
         </nav>
-        <div className="hidden border-t border-white/10 p-4 text-xs leading-5 text-[#d6e0dd]/75 lg:absolute lg:inset-x-0 lg:bottom-0 lg:block">
-          Credentials are stored in Vault and never displayed after validation.
-        </div>
+        {!collapsed && (
+          <div className="hidden border-t border-white/10 p-4 text-xs leading-5 text-[#d6e0dd]/75 lg:absolute lg:inset-x-0 lg:bottom-0 lg:block">
+            Credentials are stored in Vault and never displayed after validation.
+          </div>
+        )}
       </aside>
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-[#bcc9c6] bg-white/95 px-4 backdrop-blur sm:px-6 lg:px-8">
           <div className="flex items-center gap-2 text-sm text-[#6d7a77]">
+            <button onClick={() => setCollapsed(c => !c)} className="cursor-pointer text-[#171d1c] hover:text-[#00685f] p-1 -ml-1 rounded-md hover:bg-[#e4e9e7] hidden lg:block" title="Toggle sidebar">
+              <Menu size={18} />
+            </button>
             <Menu size={18} className="lg:hidden" />
             <span>Configuration</span><ChevronRight size={15} /><strong className="text-[#171d1c]">{currentLabel}</strong>
           </div>
