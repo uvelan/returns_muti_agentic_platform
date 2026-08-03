@@ -1988,7 +1988,7 @@ class AssociateConversationService:
                     status = "DISCOVERY_CLARIFICATION_REQUIRED"
                     inputs = [
                         DiscoveryCandidateInput(
-                            candidateId=candidate.id,
+                            candidateId=candidate.orderReference,
                             orderReference=candidate.orderReference,
                             customerReference=candidate.customerReference,
                             orderSource=candidate.orderSource,
@@ -2207,7 +2207,7 @@ class AssociateConversationService:
                     status = "DISCOVERY_CLARIFICATION_REQUIRED"
                     inputs = [
                         DiscoveryCandidateInput(
-                            candidateId=candidate.id,
+                            candidateId=candidate.orderReference,
                             orderReference=candidate.orderReference,
                             customerReference=candidate.customerReference,
                             orderSource=candidate.orderSource,
