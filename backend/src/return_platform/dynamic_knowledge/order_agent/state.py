@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from return_platform.dynamic_knowledge.fingerprint import sha256_digest
 
@@ -67,7 +66,11 @@ class CandidateSet(BaseModel):
         graph_generation_id: str,
         now: datetime,
     ) -> None:
-        if conversation_id != self.conversation_id or principal_id != self.principal_id or tenant_id != self.tenant_id:
+        if (
+            conversation_id != self.conversation_id
+            or principal_id != self.principal_id
+            or tenant_id != self.tenant_id
+        ):
             raise ValueError("candidate set ownership mismatch")
         if graph_generation_id != self.graph_generation_id:
             raise ValueError("candidate set belongs to a stale graph generation")

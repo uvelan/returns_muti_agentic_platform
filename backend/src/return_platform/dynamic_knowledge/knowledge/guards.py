@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-import re
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -89,49 +89,84 @@ class SchemaQueryGuard:
     def validate(self, context: GuardContext, plan: LogicalQueryPlan) -> None:
         schema = context.schema
         if plan.start_entity_id not in context.agent_policy.allowed_entity_ids:
-            raise GuardRejected("ORDER_AGENT_OUT_OF_SCOPE", "The requested entity is outside the agent policy.")
+            raise GuardRejected(
+                "ORDER_AGENT_OUT_OF_SCOPE", "The requested entity is outside the agent policy."
+            )
         involved_entities = {plan.start_entity_id}
         involved_entities.update(step.target_entity_id for step in plan.traversal)
         if not involved_entities.issubset(context.agent_policy.allowed_entity_ids):
-            raise GuardRejected("ORDER_AGENT_OUT_OF_SCOPE", "Traversal references an entity outside the agent policy.")
+            raise GuardRejected(
+                "ORDER_AGENT_OUT_OF_SCOPE",
+                "Traversal references an entity outside the agent policy.",
+            )
         for condition in plan.filters:
             entity = schema.entities.get(condition.entity_id)
             if entity is None or condition.field_id not in entity.fields:
-                raise GuardRejected("REJECT_INVALID_SCHEMA_REFERENCE", "Query references an unknown field.")
+                raise GuardRejected(
+                    "REJECT_INVALID_SCHEMA_REFERENCE", "Query references an unknown field."
+                )
             field = entity.fields[condition.field_id]
             if not field.capabilities.filterable and not field.capabilities.searchable:
-                raise GuardRejected("REJECT_INVALID_SCHEMA_REFERENCE", "Field is not query-enabled.")
+                raise GuardRejected(
+                    "REJECT_INVALID_SCHEMA_REFERENCE", "Field is not query-enabled."
+                )
             if condition.operator not in field.capabilities.operators:
-                raise GuardRejected("REJECT_UNSUPPORTED_OPERATOR", "Operator is not enabled for the field.")
+                raise GuardRejected(
+                    "REJECT_UNSUPPORTED_OPERATOR", "Operator is not enabled for the field."
+                )
             if not _roles_allowed(context.principal.roles, field.permissions.searchable_by):
-                raise GuardRejected("REJECT_UNAUTHORIZED_FIELD", "The field is not available to this role.")
-        target_entity_id = plan.traversal[-1].target_entity_id if plan.traversal else plan.start_entity_id
+                raise GuardRejected(
+                    "REJECT_UNAUTHORIZED_FIELD", "The field is not available to this role."
+                )
+        target_entity_id = (
+            plan.traversal[-1].target_entity_id if plan.traversal else plan.start_entity_id
+        )
         target_entity = schema.entities[target_entity_id]
         selected_fields = set(plan.fields)
         if plan.aggregation_field_id:
             selected_fields.add(plan.aggregation_field_id)
         selected_fields.update(plan.group_by_field_ids)
         for field_id in selected_fields:
-            field = target_entity.fields.get(field_id)
-            if field is None:
-                raise GuardRejected("REJECT_INVALID_SCHEMA_REFERENCE", "Query references an unknown result field.")
-            if plan.operation in {QueryOperation.DISTINCT_VALUES, QueryOperation.TOP_VALUES} and not field.capabilities.distinct:
-                raise GuardRejected("REJECT_INVALID_SCHEMA_REFERENCE", "Distinct values are not enabled for the field.")
-            if plan.operation in {
-                QueryOperation.COUNT_DISTINCT,
-                QueryOperation.MIN,
-                QueryOperation.MAX,
-                QueryOperation.SUM,
-                QueryOperation.AVERAGE,
-            } and not field.capabilities.aggregatable:
-                raise GuardRejected("REJECT_INVALID_SCHEMA_REFERENCE", "Aggregation is not enabled for the field.")
-            if not _roles_allowed(context.principal.roles, field.permissions.displayable_by):
-                raise GuardRejected("REJECT_UNAUTHORIZED_FIELD", "The field cannot be displayed to this role.")
+            selected_field = target_entity.fields.get(field_id)
+            if selected_field is None:
+                raise GuardRejected(
+                    "REJECT_INVALID_SCHEMA_REFERENCE", "Query references an unknown result field."
+                )
+            if (
+                plan.operation in {QueryOperation.DISTINCT_VALUES, QueryOperation.TOP_VALUES}
+                and not selected_field.capabilities.distinct
+            ):
+                raise GuardRejected(
+                    "REJECT_INVALID_SCHEMA_REFERENCE",
+                    "Distinct values are not enabled for the field.",
+                )
+            if (
+                plan.operation
+                in {
+                    QueryOperation.COUNT_DISTINCT,
+                    QueryOperation.MIN,
+                    QueryOperation.MAX,
+                    QueryOperation.SUM,
+                    QueryOperation.AVERAGE,
+                }
+                and not selected_field.capabilities.aggregatable
+            ):
+                raise GuardRejected(
+                    "REJECT_INVALID_SCHEMA_REFERENCE", "Aggregation is not enabled for the field."
+                )
+            if not _roles_allowed(
+                context.principal.roles, selected_field.permissions.displayable_by
+            ):
+                raise GuardRejected(
+                    "REJECT_UNAUTHORIZED_FIELD", "The field cannot be displayed to this role."
+                )
         current_entity = plan.start_entity_id
         for step in plan.traversal:
             relationship = schema.graph.relationships.get(step.relationship_id)
             if relationship is None:
-                raise GuardRejected("REJECT_INVALID_SCHEMA_REFERENCE", "Unknown graph relationship.")
+                raise GuardRejected(
+                    "REJECT_INVALID_SCHEMA_REFERENCE", "Unknown graph relationship."
+                )
             if step.direction == "OUTBOUND":
                 valid = (
                     relationship.source_entity_id == current_entity
@@ -143,7 +178,9 @@ class SchemaQueryGuard:
                     and relationship.source_entity_id == step.target_entity_id
                 )
             if not valid:
-                raise GuardRejected("REJECT_INVALID_SCHEMA_REFERENCE", "Relationship path is invalid.")
+                raise GuardRejected(
+                    "REJECT_INVALID_SCHEMA_REFERENCE", "Relationship path is invalid."
+                )
             current_entity = step.target_entity_id
 
 
@@ -153,20 +190,31 @@ class QuerySafetyGuard:
 
     def validate(self, plan: LogicalQueryPlan) -> None:
         if len(plan.traversal) > self._policy.max_traversal_depth:
-            raise GuardRejected("ORDER_AGENT_QUERY_BUDGET_EXCEEDED", "Traversal depth exceeds policy.")
+            raise GuardRejected(
+                "ORDER_AGENT_QUERY_BUDGET_EXCEEDED", "Traversal depth exceeds policy."
+            )
         if plan.limit > self._policy.max_rows:
-            raise GuardRejected("ORDER_AGENT_QUERY_BUDGET_EXCEEDED", "Requested row limit exceeds policy.")
+            raise GuardRejected(
+                "ORDER_AGENT_QUERY_BUDGET_EXCEEDED", "Requested row limit exceeds policy."
+            )
         if len(plan.filters) > self._policy.max_filters:
             raise GuardRejected("ORDER_AGENT_QUERY_BUDGET_EXCEEDED", "Filter count exceeds policy.")
-        if plan.operation is QueryOperation.DISTINCT_VALUES and plan.limit > self._policy.max_distinct_values:
-            raise GuardRejected("ORDER_AGENT_QUERY_BUDGET_EXCEEDED", "Distinct-value limit exceeds policy.")
+        if (
+            plan.operation is QueryOperation.DISTINCT_VALUES
+            and plan.limit > self._policy.max_distinct_values
+        ):
+            raise GuardRejected(
+                "ORDER_AGENT_QUERY_BUDGET_EXCEEDED", "Distinct-value limit exceeds policy."
+            )
 
 
 class StrongAnchorGuard:
     def validate(self, context: GuardContext, request: StrongAnchorRequest) -> dict[str, Any]:
         entity = context.schema.entities.get(request.entity_id)
         if entity is None or request.entity_id not in context.agent_policy.allowed_entity_ids:
-            raise GuardRejected("REJECT_INVALID_SCHEMA_REFERENCE", "Unknown or unavailable anchor entity.")
+            raise GuardRejected(
+                "REJECT_INVALID_SCHEMA_REFERENCE", "Unknown or unavailable anchor entity."
+            )
         definition = entity.strong_anchors.get(request.strong_anchor_id)
         if definition is None or not definition.on_demand_sync_allowed:
             raise GuardRejected("REJECT_WEAK_ANCHOR", "The requested strong anchor is not enabled.")
@@ -175,7 +223,9 @@ class StrongAnchorGuard:
             raise GuardRejected("REJECT_WEAK_ANCHOR", "Duplicate anchor fields are not allowed.")
         configured = {item.field_id: item for item in definition.fields}
         if not set(supplied).issubset(configured):
-            raise GuardRejected("REJECT_INVALID_SCHEMA_REFERENCE", "Anchor contains an unconfigured field.")
+            raise GuardRejected(
+                "REJECT_INVALID_SCHEMA_REFERENCE", "Anchor contains an unconfigured field."
+            )
         required = {item.field_id for item in definition.fields if item.required}
         if not required.issubset(supplied) or len(supplied) < definition.minimum_fields_present:
             raise GuardRejected(
@@ -187,12 +237,18 @@ class StrongAnchorGuard:
             field_definition = entity.fields[field_id]
             anchor_definition = configured[field_id]
             if not field_definition.capabilities.on_demand_sync_anchor:
-                raise GuardRejected("REJECT_WEAK_ANCHOR", "Field is not enabled for on-demand synchronization.")
+                raise GuardRejected(
+                    "REJECT_WEAK_ANCHOR", "Field is not enabled for on-demand synchronization."
+                )
             if anchor.operator not in anchor_definition.allowed_operators:
-                raise GuardRejected("REJECT_UNSUPPORTED_OPERATOR", "Anchor operator is not enabled.")
+                raise GuardRejected(
+                    "REJECT_UNSUPPORTED_OPERATOR", "Anchor operator is not enabled."
+                )
             permitted_roles = field_definition.permissions.on_demand_sync_by
             if not _roles_allowed(context.principal.roles, permitted_roles):
-                raise GuardRejected("REJECT_UNAUTHORIZED_FIELD", "Anchor field is not available to this role.")
+                raise GuardRejected(
+                    "REJECT_UNAUTHORIZED_FIELD", "Anchor field is not available to this role."
+                )
             if anchor.value_origin not in {"USER_MESSAGE", "GRAPH_EVIDENCE", "CONFIRMED_FACT"}:
                 raise GuardRejected("REJECT_WEAK_ANCHOR", "Anchor value has an untrusted origin.")
             normalized[field_id] = _normalize_anchor_value(anchor.operator, anchor.value)
@@ -212,12 +268,16 @@ class ResponseSafetyGuard:
         )
     )
 
-    def validate(self, response: StructuredAgentResponse, *, allowed_capabilities: frozenset[str]) -> None:
+    def validate(
+        self, response: StructuredAgentResponse, *, allowed_capabilities: frozenset[str]
+    ) -> None:
         if response.business_capability not in allowed_capabilities:
             raise GuardRejected("ORDER_AGENT_OUT_OF_SCOPE", "Response capability is not enabled.")
         for statement in response.statements:
             if len(statement.text) > 2_000:
-                raise GuardRejected("ORDER_AGENT_RESPONSE_VALIDATION_FAILED", "Response statement is too long.")
+                raise GuardRejected(
+                    "ORDER_AGENT_RESPONSE_VALIDATION_FAILED", "Response statement is too long."
+                )
             if any(pattern.search(statement.text) for pattern in self._forbidden_patterns):
                 raise GuardRejected(
                     "ORDER_AGENT_RESPONSE_VALIDATION_FAILED",

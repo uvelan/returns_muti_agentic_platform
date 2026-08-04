@@ -7,7 +7,11 @@ from typing import Any
 
 from return_platform.dynamic_knowledge.fingerprint import sha256_digest
 from return_platform.dynamic_knowledge.knowledge.query_plan import LogicalQueryPlan, QueryOperation
-from return_platform.dynamic_knowledge.schema import ActiveSchema, EntityDefinition, validate_graph_identifier
+from return_platform.dynamic_knowledge.schema import (
+    ActiveSchema,
+    EntityDefinition,
+    validate_graph_identifier,
+)
 
 
 class QueryCompilationError(ValueError):
@@ -96,7 +100,9 @@ class CypherCompiler:
                 )
             target_node = schema.entity_node(step.target_entity_id)
             target_alias = f"n{index}"
-            match_parts.append(f"MATCH ({current_alias}){arrow}({target_alias}:{_quoted(target_node.label)})")
+            match_parts.append(
+                f"MATCH ({current_alias}){arrow}({target_alias}:{_quoted(target_node.label)})"
+            )
             aliases[step.target_entity_id] = target_alias
             current_entity = step.target_entity_id
             current_alias = target_alias
@@ -199,9 +205,7 @@ class CypherCompiler:
                 return f"RETURN DISTINCT {alias}.{_quoted(prop)} AS value"
             return f"RETURN {alias}.{_quoted(prop)} AS value, count(*) AS count ORDER BY count DESC"
         selected = plan.fields or tuple(
-            field_id
-            for field_id, field in entity.fields.items()
-            if field.capabilities.displayable
+            field_id for field_id, field in entity.fields.items() if field.capabilities.displayable
         )
         if not selected:
             raise QueryCompilationError("query has no configured display fields")
@@ -230,7 +234,9 @@ class CypherCompiler:
             read_only=False,
         )
 
-    def compile_relationship_upsert(self, schema: ActiveSchema, relationship_id: str) -> CompiledQuery:
+    def compile_relationship_upsert(
+        self, schema: ActiveSchema, relationship_id: str
+    ) -> CompiledQuery:
         relationship = schema.graph.relationships[relationship_id]
         source_node = schema.entity_node(relationship.source_entity_id)
         target_node = schema.entity_node(relationship.target_entity_id)

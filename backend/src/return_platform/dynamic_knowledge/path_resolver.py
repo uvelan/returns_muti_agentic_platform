@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any
 
 
 class PathResolutionError(ValueError):
@@ -22,13 +21,17 @@ def resolve_path(record: object, path: Sequence[str]) -> object:
             continue
         if isinstance(current, Sequence) and not isinstance(current, (str, bytes, bytearray)):
             if not segment.isdecimal():
-                raise PathResolutionError(f"list path segment must be a non-negative integer: {segment!r}")
+                raise PathResolutionError(
+                    f"list path segment must be a non-negative integer: {segment!r}"
+                )
             index = int(segment)
             if index >= len(current):
                 raise PathResolutionError(f"list path index out of range: {index}")
             current = current[index]
             continue
-        raise PathResolutionError(f"cannot traverse segment {segment!r} through {type(current).__name__}")
+        raise PathResolutionError(
+            f"cannot traverse segment {segment!r} through {type(current).__name__}"
+        )
     return current
 
 

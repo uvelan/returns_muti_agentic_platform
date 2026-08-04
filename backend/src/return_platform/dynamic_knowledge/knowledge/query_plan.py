@@ -89,6 +89,9 @@ class LogicalQueryPlan(BaseModel):
             raise ValueError(f"{self.operation.value} requires aggregation_field_id")
         if self.operation is QueryOperation.TRAVERSE and not self.traversal:
             raise ValueError("TRAVERSE requires at least one relationship step")
-        if self.operation is QueryOperation.SEMANTIC_SEARCH and not (self.semantic_query or "").strip():
+        if (
+            self.operation is QueryOperation.SEMANTIC_SEARCH
+            and not (self.semantic_query or "").strip()
+        ):
             raise ValueError("SEMANTIC_SEARCH requires semantic_query")
         return self

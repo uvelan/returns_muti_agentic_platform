@@ -15,7 +15,9 @@ from return_platform.ai_gateway.routing import AIRoutePool
 from return_platform.configuration.settings import Settings
 from return_platform.dynamic_knowledge.api.order_agent import DynamicOrderAgentRuntime
 from return_platform.dynamic_knowledge.config_loader import load_active_schema
-from return_platform.dynamic_knowledge.integration.model_gateway import RoutePoolReasoningModelGateway
+from return_platform.dynamic_knowledge.integration.model_gateway import (
+    RoutePoolReasoningModelGateway,
+)
 from return_platform.dynamic_knowledge.integration.mongo_store import (
     MongoAtomicConversationStore,
     MongoGraphStateProvider,

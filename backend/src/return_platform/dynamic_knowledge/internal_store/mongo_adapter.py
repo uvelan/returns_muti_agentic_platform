@@ -38,7 +38,11 @@ class MongoInternalStoreAdapter(InternalStoreAdapter):
         if not await self._gateway.collection_exists(definition.name):
             return ObjectInspection(name=definition.name, status=CompatibilityStatus.MISSING)
         observed = await self._gateway.existing_fields(definition.name)
-        missing = tuple(field.name for field in definition.fields if field.required and field.name not in observed)
+        missing = tuple(
+            field.name
+            for field in definition.fields
+            if field.required and field.name not in observed
+        )
         return ObjectInspection(
             name=definition.name,
             status=CompatibilityStatus.INCOMPATIBLE if missing else CompatibilityStatus.COMPATIBLE,

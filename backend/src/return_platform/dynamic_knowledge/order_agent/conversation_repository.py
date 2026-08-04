@@ -5,7 +5,10 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from return_platform.dynamic_knowledge.fingerprint import sha256_digest
-from return_platform.dynamic_knowledge.order_agent.contracts import AgentTurnRequest, AgentTurnResult
+from return_platform.dynamic_knowledge.order_agent.contracts import (
+    AgentTurnRequest,
+    AgentTurnResult,
+)
 
 
 class AtomicConversationDocumentStore(Protocol):
@@ -45,8 +48,10 @@ class AtomicConversationRepository:
         if existing is not None:
             if existing["digest"] != digest:
                 raise ValueError("IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_MESSAGE")
-            return int(document["version"]), dict(document.get("state", {})), AgentTurnResult.model_validate(
-                existing["result"]
+            return (
+                int(document["version"]),
+                dict(document.get("state", {})),
+                AgentTurnResult.model_validate(existing["result"]),
             )
         if document.get("graphGenerationId") not in {None, graph_generation_id}:
             document["state"] = {}

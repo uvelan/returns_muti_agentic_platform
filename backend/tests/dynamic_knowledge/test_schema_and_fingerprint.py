@@ -22,7 +22,9 @@ def test_graph_fingerprint_changes_when_projection_changes(active_schema: Active
     assert graph_schema_fingerprint(changed) != baseline
 
 
-def test_graph_fingerprint_ignores_connection_secret_reference_change(active_schema: ActiveSchema) -> None:
+def test_graph_fingerprint_ignores_connection_secret_reference_change(
+    active_schema: ActiveSchema,
+) -> None:
     baseline = graph_schema_fingerprint(active_schema)
     raw = active_schema.model_dump(mode="json")
     raw["sources"]["source_a"]["connection_ref"] = "vault://rotated/secret"

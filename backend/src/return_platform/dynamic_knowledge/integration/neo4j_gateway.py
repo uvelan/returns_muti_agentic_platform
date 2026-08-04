@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from neo4j import AsyncDriver, READ_ACCESS
+from neo4j import READ_ACCESS, AsyncDriver
 
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
@@ -80,7 +80,9 @@ class Neo4jKnowledgeGateway:
         if not normalized.startswith("MATCH") or _PROHIBITED.search(normalized):
             raise ValueError("Only validated read-only Cypher is permitted")
         database = self._database or schema.graph.database
-        async with self._driver.session(database=database, default_access_mode=READ_ACCESS) as session:
+        async with self._driver.session(
+            database=database, default_access_mode=READ_ACCESS
+        ) as session:
             result = await session.run(normalized, parameters)
             rows = [dict(record) async for record in result]
         return {"rows": rows, "count": len(rows)}

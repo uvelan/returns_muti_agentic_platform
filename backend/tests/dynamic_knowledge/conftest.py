@@ -33,7 +33,11 @@ def active_schema() -> ActiveSchema:
                     "source_asset_id": "source_b",
                     "connector_type": "POSTGRESQL",
                     "connection_ref": "vault://source/b",
-                    "object_ref": {"database": "db", "namespace": "public", "name": "related_objects"},
+                    "object_ref": {
+                        "database": "db",
+                        "namespace": "public",
+                        "name": "related_objects",
+                    },
                 },
             },
             "entities": {
@@ -96,7 +100,14 @@ def active_schema() -> ActiveSchema:
                                 "displayable": True,
                                 "on_demand_sync_anchor": False,
                                 "operators": ["GT", "GTE", "LT", "LTE", "BETWEEN"],
-                                "aggregations": ["COUNT", "COUNT_DISTINCT", "MIN", "MAX", "SUM", "AVERAGE"],
+                                "aggregations": [
+                                    "COUNT",
+                                    "COUNT_DISTINCT",
+                                    "MIN",
+                                    "MAX",
+                                    "SUM",
+                                    "AVERAGE",
+                                ],
                             },
                             "permissions": {
                                 "searchable_by": ["associate"],
@@ -213,7 +224,10 @@ def active_schema() -> ActiveSchema:
                 "agent_a": {
                     "agent_id": "agent_a",
                     "task_queue": "agent-a-queue",
-                    "allowed_business_capabilities": ["order-discovery", "candidate-disambiguation"],
+                    "allowed_business_capabilities": [
+                        "order-discovery",
+                        "candidate-disambiguation",
+                    ],
                     "allowed_roles": ["associate"],
                     "allowed_entity_ids": ["entity_a", "entity_b"],
                     "standard_model_refs": ["model://standard/one"],

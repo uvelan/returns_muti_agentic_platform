@@ -7,7 +7,10 @@ from uuid import uuid4
 
 from return_platform.dynamic_knowledge.fingerprint import on_demand_request_digest, sha256_digest
 from return_platform.dynamic_knowledge.knowledge.cypher_compiler import CypherCompiler
-from return_platform.dynamic_knowledge.knowledge.evidence import QueryEvidence, StructuredAgentResponse
+from return_platform.dynamic_knowledge.knowledge.evidence import (
+    QueryEvidence,
+    StructuredAgentResponse,
+)
 from return_platform.dynamic_knowledge.knowledge.guards import (
     CapabilityGuard,
     GuardContext,
@@ -59,7 +62,9 @@ class ReasoningModelGateway(Protocol):
 
 class KnowledgeGateway(Protocol):
     async def compact_schema(self, schema: ActiveSchema, agent_id: str) -> dict[str, Any]: ...
-    async def schema_details(self, schema: ActiveSchema, entity_ids: tuple[str, ...]) -> dict[str, Any]: ...
+    async def schema_details(
+        self, schema: ActiveSchema, entity_ids: tuple[str, ...]
+    ) -> dict[str, Any]: ...
     async def execute(
         self,
         *,
@@ -126,10 +131,14 @@ class DynamicOrderAgentCoordinator:
         self._on_demand_sync = on_demand_sync
         self._compiler = cypher_compiler or CypherCompiler()
 
-    async def process_turn(self, request: AgentTurnRequest, guard_context: GuardContext) -> AgentTurnResult:
+    async def process_turn(
+        self, request: AgentTurnRequest, guard_context: GuardContext
+    ) -> AgentTurnResult:
         policy = self._schema.agent_policies.get(request.agent_id)
         if policy is None or policy.agent_id != guard_context.agent_policy.agent_id:
-            raise OrderAgentFailure("ORDER_AGENT_OUT_OF_SCOPE", "Agent policy is unavailable.", retryable=False)
+            raise OrderAgentFailure(
+                "ORDER_AGENT_OUT_OF_SCOPE", "Agent policy is unavailable.", retryable=False
+            )
         graph_generation_id = await self._graph_state.active_generation(self._schema)
         version, state, replay = await self._conversations.load_for_turn(
             request=request,
@@ -175,7 +184,9 @@ class DynamicOrderAgentCoordinator:
                 raise OrderAgentFailure(exc.code, exc.message, retryable=False) from exc
 
             if action.action_type is ActionType.GET_SCHEMA:
-                details = await self._knowledge.schema_details(self._schema, action.schema_entity_ids)
+                details = await self._knowledge.schema_details(
+                    self._schema, action.schema_entity_ids
+                )
                 context = context.model_copy(
                     update={"schema_details": {**context.schema_details, **details}}
                 )
@@ -199,7 +210,11 @@ class DynamicOrderAgentCoordinator:
                     compiled = self._compiler.compile_read(self._schema, plan)
                 except (GuardRejected, ValueError) as exc:
                     if correction_attempts >= policy.max_correction_attempts:
-                        code = exc.code if isinstance(exc, GuardRejected) else "ORDER_AGENT_MODEL_OUTPUT_INVALID"
+                        code = (
+                            exc.code
+                            if isinstance(exc, GuardRejected)
+                            else "ORDER_AGENT_MODEL_OUTPUT_INVALID"
+                        )
                         raise OrderAgentFailure(code, str(exc), retryable=True) from exc
                     correction_attempts += 1
                     invocation = await self._invoke_correction(
@@ -225,7 +240,9 @@ class DynamicOrderAgentCoordinator:
                     result=raw_result,
                 )
                 queries_used += 1
-                context = context.model_copy(update={"query_evidence": (*context.query_evidence, evidence)})
+                context = context.model_copy(
+                    update={"query_evidence": (*context.query_evidence, evidence)}
+                )
                 invocation = await self._invoke_decide(context)
                 last_provider, last_model = invocation.provider, invocation.model
                 continue
@@ -242,7 +259,9 @@ class DynamicOrderAgentCoordinator:
                 if anchor_request is None or original_query is None:
                     raise AssertionError("validated sync action lacks required payload")
                 try:
-                    normalized_values = self._strong_anchor_guard.validate(guard_context, anchor_request)
+                    normalized_values = self._strong_anchor_guard.validate(
+                        guard_context, anchor_request
+                    )
                     self._schema_guard.validate(guard_context, original_query)
                     self._query_safety_guard.validate(original_query)
                 except GuardRejected as exc:
@@ -299,7 +318,9 @@ class DynamicOrderAgentCoordinator:
                     result=raw_result,
                 )
                 queries_used += 1
-                context = context.model_copy(update={"query_evidence": (*context.query_evidence, evidence)})
+                context = context.model_copy(
+                    update={"query_evidence": (*context.query_evidence, evidence)}
+                )
                 invocation = await self._invoke_decide(context)
                 last_provider, last_model = invocation.provider, invocation.model
                 continue

@@ -19,7 +19,9 @@ class Store:
     async def read_state(self) -> GraphProjectionState:
         return self.state
 
-    async def write_state(self, state: GraphProjectionState, *, fencing_token: int | None = None) -> None:
+    async def write_state(
+        self, state: GraphProjectionState, *, fencing_token: int | None = None
+    ) -> None:
         if fencing_token is not None:
             assert fencing_token == 42
         self.state = state
@@ -63,9 +65,13 @@ class Validator:
 
 
 @pytest.mark.asyncio
-async def test_schema_change_drops_and_fully_rebuilds_business_graph(active_schema: ActiveSchema) -> None:
+async def test_schema_change_drops_and_fully_rebuilds_business_graph(
+    active_schema: ActiveSchema,
+) -> None:
     store, admin, sync = Store(), Admin(), Sync()
-    coordinator = GraphRebuildCoordinator(store=store, graph_admin=admin, full_sync=sync, validator=Validator())
+    coordinator = GraphRebuildCoordinator(
+        store=store, graph_admin=admin, full_sync=sync, validator=Validator()
+    )
     state = await coordinator.ensure_active(active_schema)
     assert state.status is GraphStatus.ACTIVE
     assert admin.dropped is True
@@ -82,7 +88,9 @@ async def test_schema_change_drops_and_fully_rebuilds_business_graph(active_sche
 @pytest.mark.asyncio
 async def test_same_fingerprint_does_not_rebuild(active_schema: ActiveSchema) -> None:
     store, admin, sync = Store(), Admin(), Sync()
-    coordinator = GraphRebuildCoordinator(store=store, graph_admin=admin, full_sync=sync, validator=Validator())
+    coordinator = GraphRebuildCoordinator(
+        store=store, graph_admin=admin, full_sync=sync, validator=Validator()
+    )
     first = await coordinator.ensure_active(active_schema)
     store.writes.clear()
     second = await coordinator.ensure_active(active_schema)

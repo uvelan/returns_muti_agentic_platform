@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pymongo import AsyncMongoClient, DESCENDING
+from pymongo import DESCENDING, AsyncMongoClient
 from pymongo.errors import DuplicateKeyError
 
 from return_platform.dynamic_knowledge.schema import ActiveSchema

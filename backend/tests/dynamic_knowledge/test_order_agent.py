@@ -72,8 +72,13 @@ class Knowledge:
     async def compact_schema(self, schema: ActiveSchema, agent_id: str) -> dict[str, Any]:
         return {"entityIds": list(schema.entities)}
 
-    async def schema_details(self, schema: ActiveSchema, entity_ids: tuple[str, ...]) -> dict[str, Any]:
-        return {entity_id: schema.entities[entity_id].model_dump(mode="json") for entity_id in entity_ids}
+    async def schema_details(
+        self, schema: ActiveSchema, entity_ids: tuple[str, ...]
+    ) -> dict[str, Any]:
+        return {
+            entity_id: schema.entities[entity_id].model_dump(mode="json")
+            for entity_id in entity_ids
+        }
 
     async def execute(
         self,
@@ -112,7 +117,9 @@ class QueryThenRespondModel:
                     start_entity_id="entity_a",
                     fields=("id", "name"),
                     filters=(
-                        QueryCondition(entity_id="entity_a", field_id="id", operator="EXACT", value="A-1"),
+                        QueryCondition(
+                            entity_id="entity_a", field_id="id", operator="EXACT", value="A-1"
+                        ),
                     ),
                 ),
             )
@@ -142,7 +149,13 @@ class QueryThenRespondModel:
                 decision_summary="The graph evidence supports a final response.",
                 response=response,
             )
-        return ModelInvocationResult(action=action, provider="provider-a", model="standard-model", prompt_tokens=10, completion_tokens=10)
+        return ModelInvocationResult(
+            action=action,
+            provider="provider-a",
+            model="standard-model",
+            prompt_tokens=10,
+            completion_tokens=10,
+        )
 
     async def correct_action(self, **kwargs: Any) -> ModelInvocationResult:
         raise AssertionError("correction not expected")
@@ -171,7 +184,9 @@ def guard_context(schema: ActiveSchema) -> GuardContext:
     return GuardContext(
         schema=schema,
         agent_policy=schema.agent_policies["agent_a"],
-        principal=PrincipalContext(principal_id="p1", tenant_id="t1", roles=frozenset({"associate"})),
+        principal=PrincipalContext(
+            principal_id="p1", tenant_id="t1", roles=frozenset({"associate"})
+        ),
     )
 
 
@@ -190,12 +205,16 @@ def turn() -> AgentTurnRequest:
 @pytest.mark.asyncio
 async def test_model_failure_is_explicit_and_has_no_fallback(active_schema: ActiveSchema) -> None:
     with pytest.raises(OrderAgentFailure) as error:
-        await build_coordinator(active_schema, FailingModel()).process_turn(turn(), guard_context(active_schema))
+        await build_coordinator(active_schema, FailingModel()).process_turn(
+            turn(), guard_context(active_schema)
+        )
     assert error.value.code == "ORDER_AGENT_LLM_FAILED"
 
 
 @pytest.mark.asyncio
-async def test_every_turn_uses_model_and_returns_evidence_bound_response(active_schema: ActiveSchema) -> None:
+async def test_every_turn_uses_model_and_returns_evidence_bound_response(
+    active_schema: ActiveSchema,
+) -> None:
     result = await build_coordinator(active_schema, QueryThenRespondModel()).process_turn(
         turn(), guard_context(active_schema)
     )

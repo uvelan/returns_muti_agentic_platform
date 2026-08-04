@@ -26,5 +26,7 @@ def load_active_schema(path: Path) -> ActiveSchema:
     payload.pop("configuration_checksum", None)
     expected_checksum = sha256_digest(payload)
     if supplied_checksum != expected_checksum:
-        raise ConfigurationIntegrityError("active configuration checksum does not match its content")
+        raise ConfigurationIntegrityError(
+            "active configuration checksum does not match its content"
+        )
     return ActiveSchema.model_validate(raw)

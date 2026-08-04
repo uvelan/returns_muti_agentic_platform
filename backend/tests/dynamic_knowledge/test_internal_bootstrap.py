@@ -27,7 +27,9 @@ class Adapter:
         return ObjectInspection(
             name=definition.name,
             status=self.status,
-            reasons=("required field mismatch",) if self.status is CompatibilityStatus.INCOMPATIBLE else (),
+            reasons=("required field mismatch",)
+            if self.status is CompatibilityStatus.INCOMPATIBLE
+            else (),
         )
 
     async def create_object(self, definition: InternalObjectDefinition) -> None:

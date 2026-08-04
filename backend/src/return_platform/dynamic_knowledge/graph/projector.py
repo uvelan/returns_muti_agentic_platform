@@ -35,7 +35,9 @@ class GenericGraphProjector:
             properties: dict[str, Any] = {}
             for field_id in node.key_fields:
                 if field_id not in record.values:
-                    raise GraphProjectionError(f"record is missing configured key field {field_id!r}")
+                    raise GraphProjectionError(
+                        f"record is missing configured key field {field_id!r}"
+                    )
                 keys[field_id] = record.values[field_id]
             for field_id in node.property_fields:
                 if field_id in record.values:
@@ -44,20 +46,28 @@ class GenericGraphProjector:
 
         relationships: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for relationship in schema.graph.relationships.values():
-            source_records = [item for item in records if item.entity_id == relationship.source_entity_id]
-            target_records = [item for item in records if item.entity_id == relationship.target_entity_id]
+            source_records = [
+                item for item in records if item.entity_id == relationship.source_entity_id
+            ]
+            target_records = [
+                item for item in records if item.entity_id == relationship.target_entity_id
+            ]
             target_index: dict[tuple[Any, ...], DynamicSourceRecord] = {}
             for target in target_records:
-                match_key = tuple(target.values.get(field_id) for field_id in relationship.target_match_fields)
+                match_key = tuple(
+                    target.values.get(field_id) for field_id in relationship.target_match_fields
+                )
                 if any(value is None for value in match_key):
                     continue
                 target_index[match_key] = target
             for source in source_records:
-                match_key = tuple(source.values.get(field_id) for field_id in relationship.source_match_fields)
+                match_key = tuple(
+                    source.values.get(field_id) for field_id in relationship.source_match_fields
+                )
                 if any(value is None for value in match_key):
                     continue
-                target = target_index.get(match_key)
-                if target is None:
+                matched_target = target_index.get(match_key)
+                if matched_target is None:
                     continue
                 relationships[relationship.relationship_id].append(
                     {
@@ -66,11 +76,13 @@ class GenericGraphProjector:
                             for field_id in schema.entity_node(source.entity_id).key_fields
                         },
                         "targetKeys": {
-                            field_id: target.values[field_id]
-                            for field_id in schema.entity_node(target.entity_id).key_fields
+                            field_id: matched_target.values[field_id]
+                            for field_id in schema.entity_node(matched_target.entity_id).key_fields
                         },
                         "properties": {
-                            schema.entities[source.entity_id].fields[field_id].graph_property: source.values[field_id]
+                            schema.entities[source.entity_id]
+                            .fields[field_id]
+                            .graph_property: source.values[field_id]
                             for field_id in relationship.property_fields
                             if field_id in source.values
                         },

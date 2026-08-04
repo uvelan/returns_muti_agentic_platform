@@ -8,8 +8,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from return_platform.dynamic_knowledge.knowledge.guards import GuardContext
-from return_platform.dynamic_knowledge.order_agent.contracts import AgentTurnRequest, AgentTurnResult
-from return_platform.dynamic_knowledge.order_agent.coordinator import DynamicOrderAgentCoordinator, OrderAgentFailure
+from return_platform.dynamic_knowledge.order_agent.contracts import (
+    AgentTurnRequest,
+    AgentTurnResult,
+)
+from return_platform.dynamic_knowledge.order_agent.coordinator import (
+    DynamicOrderAgentCoordinator,
+    OrderAgentFailure,
+)
 
 router = APIRouter(prefix="/api/v2/order-agent", tags=["Order Agent"])
 
@@ -65,7 +71,12 @@ async def process_turn(
             "ORDER_AGENT_OUT_OF_SCOPE": status.HTTP_422_UNPROCESSABLE_ENTITY,
             "CONVERSATION_VERSION_CONFLICT": status.HTTP_409_CONFLICT,
             "ORDER_AGENT_QUERY_BUDGET_EXCEEDED": status.HTTP_422_UNPROCESSABLE_ENTITY,
-        }.get(exc.code, status.HTTP_503_SERVICE_UNAVAILABLE if exc.retryable else status.HTTP_422_UNPROCESSABLE_ENTITY)
+        }.get(
+            exc.code,
+            status.HTTP_503_SERVICE_UNAVAILABLE
+            if exc.retryable
+            else status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
         raise HTTPException(
             status_code=http_status,
             detail={"code": exc.code, "message": exc.message, "retryable": exc.retryable},

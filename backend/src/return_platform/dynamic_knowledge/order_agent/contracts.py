@@ -7,7 +7,10 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from return_platform.dynamic_knowledge.knowledge.evidence import QueryEvidence, StructuredAgentResponse
+from return_platform.dynamic_knowledge.knowledge.evidence import (
+    QueryEvidence,
+    StructuredAgentResponse,
+)
 from return_platform.dynamic_knowledge.knowledge.guards import StrongAnchorRequest
 from return_platform.dynamic_knowledge.knowledge.query_plan import LogicalQueryPlan
 

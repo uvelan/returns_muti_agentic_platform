@@ -21,13 +21,6 @@ from return_platform.ai_gateway.routing import AIRoutePool, build_routes
 from return_platform.api.ai_gateway import router as ai_gateway_router
 from return_platform.api.associate_returns import router as associate_returns_router
 from return_platform.api.copilot_v2 import router as copilot_v2_router
-from return_platform.dynamic_knowledge.api.order_agent import (
-    router as dynamic_order_agent_router,
-)
-from return_platform.dynamic_knowledge.integration.runtime_factory import (
-    build_dynamic_order_agent_runtime,
-    dynamic_order_agent_enabled,
-)
 from return_platform.api.data_source_config_v2 import router as data_source_config_v2_router
 from return_platform.api.dependencies import router as dependencies_router
 from return_platform.api.dependency_simulator import router as dependency_simulator_router
@@ -105,6 +98,13 @@ from return_platform.dependency_simulation.configuration import (
     load_dependency_simulation_configuration,
 )
 from return_platform.dependency_simulation.repository import MongoSimulationRepository
+from return_platform.dynamic_knowledge.api.order_agent import (
+    router as dynamic_order_agent_router,
+)
+from return_platform.dynamic_knowledge.integration.runtime_factory import (
+    build_dynamic_order_agent_runtime,
+    dynamic_order_agent_enabled,
+)
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_support.service import ReturnSupportService
 from return_platform.resources import (
@@ -387,12 +387,8 @@ async def lifespan(
             graph_configuration_repository
         ).build_snapshot(
             baseline_return_configuration.configuration,
-            allow_baseline_fallback=(
-                bootstrap_settings.environment in _DEVELOPMENT_ENVIRONMENTS
-            ),
-            default_ai_gateway_configuration=(
-                baseline_ai_gateway_configuration.configuration
-            ),
+            allow_baseline_fallback=(bootstrap_settings.environment in _DEVELOPMENT_ENVIRONMENTS),
+            default_ai_gateway_configuration=(baseline_ai_gateway_configuration.configuration),
             default_dependency_simulation_configuration=(
                 baseline_dependency_simulation_configuration.configuration
             ),
@@ -413,11 +409,9 @@ async def lifespan(
             configuration_snapshot.ai_gateway_configuration,
             path=baseline_ai_gateway_configuration.path,
         )
-        dependency_simulation_configuration = (
-            build_loaded_dependency_simulation_configuration(
-                configuration_snapshot.dependency_simulation_configuration,
-                path=baseline_dependency_simulation_configuration.path,
-            )
+        dependency_simulation_configuration = build_loaded_dependency_simulation_configuration(
+            configuration_snapshot.dependency_simulation_configuration,
+            path=baseline_dependency_simulation_configuration.path,
         )
         graph_settings = apply_graph_runtime_configuration(
             bootstrap_settings,
@@ -446,8 +440,6 @@ async def lifespan(
         if resources.mongo is not None:
             await v2_platform_services.bind_state_store(
                 MongoV2StateStore(resources.mongo, settings.mongo_database)
-
-
             )
 
         if resources.source_mongo is not None:
@@ -497,9 +489,7 @@ async def lifespan(
             repository=graph_configuration_repository,
             baseline_path=baseline_return_configuration.path,
             ai_gateway_baseline_path=baseline_ai_gateway_configuration.path,
-            dependency_simulation_baseline_path=(
-                baseline_dependency_simulation_configuration.path
-            ),
+            dependency_simulation_baseline_path=(baseline_dependency_simulation_configuration.path),
             resources=resources,
         )
         if resources.mongo is not None:
@@ -538,14 +528,12 @@ async def lifespan(
             and resources.mongo is not None
             and resources.neo4j is not None
         ):
-            app.state.dynamic_order_agent_runtime = (
-                await build_dynamic_order_agent_runtime(
-                    settings=settings,
-                    platform_mongo=resources.mongo,
-                    neo4j_driver=resources.neo4j,
-                    ai_gateway_configuration=ai_gateway_configuration,
-                    route_pool=app.state.ai_gateway_route_pool,
-                )
+            app.state.dynamic_order_agent_runtime = await build_dynamic_order_agent_runtime(
+                settings=settings,
+                platform_mongo=resources.mongo,
+                neo4j_driver=resources.neo4j,
+                ai_gateway_configuration=ai_gateway_configuration,
+                route_pool=app.state.ai_gateway_route_pool,
             )
 
         logger.info(

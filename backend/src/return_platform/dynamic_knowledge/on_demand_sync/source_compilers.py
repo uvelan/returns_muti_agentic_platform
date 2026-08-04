@@ -6,7 +6,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import LogicalTargetedReadPlan
-from return_platform.dynamic_knowledge.schema import ActiveSchema, ConnectorType, validate_graph_identifier
+from return_platform.dynamic_knowledge.schema import (
+    ActiveSchema,
+    ConnectorType,
+    validate_graph_identifier,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,7 +24,9 @@ class CompiledSourceRead:
 def compile_source_read(schema: ActiveSchema, plan: LogicalTargetedReadPlan) -> CompiledSourceRead:
     source = schema.sources[plan.source_asset_id]
     entity = schema.entities[plan.entity_id]
-    projected_paths = tuple(entity.fields[field_id].physical_path for field_id in plan.required_field_ids)
+    projected_paths = tuple(
+        entity.fields[field_id].physical_path for field_id in plan.required_field_ids
+    )
     if source.connector_type is ConnectorType.MONGODB:
         predicates: list[dict[str, Any]] = []
         parameters: dict[str, Any] = {}
@@ -44,7 +50,9 @@ def compile_source_read(schema: ActiveSchema, plan: LogicalTargetedReadPlan) -> 
             elif condition.operator == "BETWEEN":
                 if not isinstance(condition.value, dict):
                     raise ValueError("BETWEEN requires an object value")
-                predicates.append({path: {"$gte": condition.value["from"], "$lte": condition.value["to"]}})
+                predicates.append(
+                    {path: {"$gte": condition.value["from"], "$lte": condition.value["to"]}}
+                )
             else:
                 raise ValueError(f"unsupported MongoDB anchor operator: {condition.operator}")
         query = predicates[0] if len(predicates) == 1 else {"$and": predicates}
@@ -61,30 +69,30 @@ def compile_source_read(schema: ActiveSchema, plan: LogicalTargetedReadPlan) -> 
             raise ValueError("SQL source object_ref requires name")
         validate_graph_identifier(table)
         columns: list[str] = []
-        for path in projected_paths:
-            if len(path) != 1:
+        for projected_path in projected_paths:
+            if len(projected_path) != 1:
                 raise ValueError("SQL physical paths must contain exactly one column segment")
-            validate_graph_identifier(path[0])
-            columns.append(f'"{path[0]}"')
-        where: list[str] = []
+            validate_graph_identifier(projected_path[0])
+            columns.append(f'"{projected_path[0]}"')
+        sql_where: list[str] = []
         parameters = {}
         for index, condition in enumerate(plan.conditions):
-            path = entity.fields[condition.field_id].physical_path
-            if len(path) != 1:
+            condition_path = entity.fields[condition.field_id].physical_path
+            if len(condition_path) != 1:
                 raise ValueError("SQL anchor path must contain exactly one column segment")
-            column = path[0]
+            column = condition_path[0]
             validate_graph_identifier(column)
             parameter = f"p{index}"
             if condition.operator in {"EXACT", "EQUALS"}:
-                where.append(f'"{column}" = :{parameter}')
+                sql_where.append(f'"{column}" = :{parameter}')
                 parameters[parameter] = condition.value
             elif condition.operator == "NORMALIZED_EQUALS":
-                where.append(f'LOWER(TRIM("{column}")) = :{parameter}')
+                sql_where.append(f'LOWER(TRIM("{column}")) = :{parameter}')
                 parameters[parameter] = condition.value
             elif condition.operator == "BETWEEN":
                 if not isinstance(condition.value, dict):
                     raise ValueError("BETWEEN requires an object value")
-                where.append(f'"{column}" BETWEEN :{parameter}_from AND :{parameter}_to')
+                sql_where.append(f'"{column}" BETWEEN :{parameter}_from AND :{parameter}_to')
                 parameters[f"{parameter}_from"] = condition.value["from"]
                 parameters[f"{parameter}_to"] = condition.value["to"]
             else:
@@ -92,7 +100,7 @@ def compile_source_read(schema: ActiveSchema, plan: LogicalTargetedReadPlan) -> 
         limit = "TOP (:limit) " if source.connector_type is ConnectorType.MSSQL else ""
         suffix = "" if source.connector_type is ConnectorType.MSSQL else " LIMIT :limit"
         parameters["limit"] = plan.maximum_rows
-        statement = f'SELECT {limit}{", ".join(columns)} FROM "{table}" WHERE {" AND ".join(where)}{suffix}'
+        statement = f'SELECT {limit}{", ".join(columns)} FROM "{table}" WHERE {" AND ".join(sql_where)}{suffix}'
         return CompiledSourceRead(
             connector_type=source.connector_type,
             statement=statement,
@@ -105,33 +113,37 @@ def compile_source_read(schema: ActiveSchema, plan: LogicalTargetedReadPlan) -> 
             raise ValueError("Neo4j source object_ref requires label")
         validate_graph_identifier(label)
         parameters = {"limit": plan.maximum_rows}
-        where: list[str] = []
+        neo4j_where: list[str] = []
         for index, condition in enumerate(plan.conditions):
             field = entity.fields[condition.field_id]
             validate_graph_identifier(field.graph_property)
             parameter = f"p{index}"
             if condition.operator in {"EXACT", "EQUALS"}:
-                where.append(f'n.`{field.graph_property}` = ${parameter}')
+                neo4j_where.append(f"n.`{field.graph_property}` = ${parameter}")
                 parameters[parameter] = condition.value
             elif condition.operator == "NORMALIZED_EQUALS":
-                where.append(f'toLower(trim(toString(n.`{field.graph_property}`))) = ${parameter}')
+                neo4j_where.append(
+                    f"toLower(trim(toString(n.`{field.graph_property}`))) = ${parameter}"
+                )
                 parameters[parameter] = condition.value
             elif condition.operator == "BETWEEN":
                 if not isinstance(condition.value, dict):
                     raise ValueError("BETWEEN requires an object value")
-                where.append(
-                    f'n.`{field.graph_property}` >= ${parameter}_from AND '
-                    f'n.`{field.graph_property}` <= ${parameter}_to'
+                neo4j_where.append(
+                    f"n.`{field.graph_property}` >= ${parameter}_from AND "
+                    f"n.`{field.graph_property}` <= ${parameter}_to"
                 )
                 parameters[f"{parameter}_from"] = condition.value["from"]
                 parameters[f"{parameter}_to"] = condition.value["to"]
             else:
                 raise ValueError(f"unsupported Neo4j anchor operator: {condition.operator}")
         returns = ", ".join(
-            f'n.`{entity.fields[field_id].graph_property}` AS `{field_id}`'
+            f"n.`{entity.fields[field_id].graph_property}` AS `{field_id}`"
             for field_id in plan.required_field_ids
         )
-        statement = f'MATCH (n:`{label}`) WHERE {" AND ".join(where)} RETURN {returns} LIMIT $limit'
+        statement = (
+            f"MATCH (n:`{label}`) WHERE {' AND '.join(neo4j_where)} RETURN {returns} LIMIT $limit"
+        )
         return CompiledSourceRead(
             connector_type=source.connector_type,
             statement=statement,

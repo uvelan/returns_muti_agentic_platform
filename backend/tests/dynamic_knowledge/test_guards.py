@@ -10,13 +10,13 @@ from return_platform.dynamic_knowledge.knowledge.evidence import (
     StructuredAgentResponse,
 )
 from return_platform.dynamic_knowledge.knowledge.guards import (
+    AnchorValue,
     GuardContext,
     GuardRejected,
     HallucinationGuard,
     PrincipalContext,
     StrongAnchorGuard,
     StrongAnchorRequest,
-    AnchorValue,
 )
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
@@ -25,7 +25,9 @@ def context(schema: ActiveSchema) -> GuardContext:
     return GuardContext(
         schema=schema,
         agent_policy=schema.agent_policies["agent_a"],
-        principal=PrincipalContext(principal_id="p1", tenant_id="t1", roles=frozenset({"associate"})),
+        principal=PrincipalContext(
+            principal_id="p1", tenant_id="t1", roles=frozenset({"associate"})
+        ),
     )
 
 
@@ -36,7 +38,9 @@ def test_strong_anchor_accepts_configured_allowed_field(active_schema: ActiveSch
             entity_id="entity_a",
             strong_anchor_id="exact_id",
             anchors=(
-                AnchorValue(field_id="id", operator="EXACT", value="A-100", value_origin="USER_MESSAGE"),
+                AnchorValue(
+                    field_id="id", operator="EXACT", value="A-100", value_origin="USER_MESSAGE"
+                ),
             ),
         ),
     )
@@ -51,7 +55,9 @@ def test_strong_anchor_rejects_unconfigured_field(active_schema: ActiveSchema) -
                 entity_id="entity_a",
                 strong_anchor_id="exact_id",
                 anchors=(
-                    AnchorValue(field_id="name", operator="EXACT", value="x", value_origin="USER_MESSAGE"),
+                    AnchorValue(
+                        field_id="name", operator="EXACT", value="x", value_origin="USER_MESSAGE"
+                    ),
                 ),
             ),
         )
@@ -76,12 +82,16 @@ def test_hallucination_guard_rejects_wrong_claim_value() -> None:
                 statement_type=StatementType.GRAPH_FACT,
                 text="Five records were found.",
                 evidence_refs=(
-                    EvidenceReference(query_execution_id="q1", result_path=("total",), expected_value=5),
+                    EvidenceReference(
+                        query_execution_id="q1", result_path=("total",), expected_value=5
+                    ),
                 ),
             ),
         ),
     )
-    result = HallucinationGuard().validate(response=response, evidence=(evidence,), graph_generation_id="g1")
+    result = HallucinationGuard().validate(
+        response=response, evidence=(evidence,), graph_generation_id="g1"
+    )
     assert result.valid is False
     assert result.failures[0].reason == "claimed value does not match graph evidence"
 
@@ -122,6 +132,8 @@ def test_response_safety_guard_rejects_raw_cypher(active_schema: ActiveSchema) -
     with pytest.raises(GuardRejected) as error:
         ResponseSafetyGuard().validate(
             response,
-            allowed_capabilities=active_schema.agent_policies["agent_a"].allowed_business_capabilities,
+            allowed_capabilities=active_schema.agent_policies[
+                "agent_a"
+            ].allowed_business_capabilities,
         )
     assert error.value.code == "ORDER_AGENT_RESPONSE_VALIDATION_FAILED"

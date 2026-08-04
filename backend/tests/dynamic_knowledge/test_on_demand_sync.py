@@ -18,7 +18,9 @@ from return_platform.dynamic_knowledge.schema import ActiveSchema
 class Connector:
     calls = 0
 
-    async def targeted_read(self, *, schema: ActiveSchema, plan: object) -> tuple[DynamicSourceRecord, ...]:
+    async def targeted_read(
+        self, *, schema: ActiveSchema, plan: object
+    ) -> tuple[DynamicSourceRecord, ...]:
         self.calls += 1
         return (
             DynamicSourceRecord(
@@ -40,8 +42,12 @@ class Registry:
 
 
 class Projector:
-    async def project(self, *, schema: ActiveSchema, records: tuple[DynamicSourceRecord, ...]) -> GraphWriteBatch:
-        return GraphWriteBatch(node_rows={"node_a": ({"keys": {"id": "A-1"}, "properties": {}},)}, relationship_rows={})
+    async def project(
+        self, *, schema: ActiveSchema, records: tuple[DynamicSourceRecord, ...]
+    ) -> GraphWriteBatch:
+        return GraphWriteBatch(
+            node_rows={"node_a": ({"keys": {"id": "A-1"}, "properties": {}},)}, relationship_rows={}
+        )
 
 
 class Writer:
@@ -69,7 +75,11 @@ class Store:
         graph_generation_id: str,
     ) -> SyncReservation:
         if self.receipt and self.receipt.status is SyncStatus.SUCCEEDED:
-            return SyncReservation(acquired=False, sync_request_id=self.receipt.sync_request_id, existing_receipt=self.receipt)
+            return SyncReservation(
+                acquired=False,
+                sync_request_id=self.receipt.sync_request_id,
+                existing_receipt=self.receipt,
+            )
         return SyncReservation(acquired=True, sync_request_id=proposed_request_id)
 
     async def complete(self, receipt: SyncReceipt) -> None:
@@ -77,7 +87,9 @@ class Store:
 
 
 @pytest.mark.asyncio
-async def test_identical_targeted_sync_reuses_successful_receipt(active_schema: ActiveSchema) -> None:
+async def test_identical_targeted_sync_reuses_successful_receipt(
+    active_schema: ActiveSchema,
+) -> None:
     connector, store = Connector(), Store()
     coordinator = OnDemandSyncCoordinator(
         connectors=Registry(connector), projector=Projector(), writer=Writer(), store=store

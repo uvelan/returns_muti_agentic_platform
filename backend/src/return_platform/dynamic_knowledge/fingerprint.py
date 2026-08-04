@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import Any
 
 from return_platform.dynamic_knowledge.schema import ActiveSchema
@@ -16,7 +16,9 @@ def _canonical(value: Any) -> Any:
     if isinstance(value, (list, tuple, set, frozenset)):
         items = [_canonical(item) for item in value]
         if isinstance(value, (set, frozenset)):
-            return sorted(items, key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":")))
+            return sorted(
+                items, key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":"))
+            )
         return items
     return value
 

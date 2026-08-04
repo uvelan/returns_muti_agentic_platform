@@ -151,16 +151,22 @@ class EntityDefinition(BaseModel):
     def validate_references(self) -> EntityDefinition:
         for key, field in self.fields.items():
             if key != field.field_id:
-                raise ValueError(f"field map key {key!r} does not match field_id {field.field_id!r}")
+                raise ValueError(
+                    f"field map key {key!r} does not match field_id {field.field_id!r}"
+                )
         missing_keys = set(self.natural_key).difference(self.fields)
         if missing_keys:
             raise ValueError(f"unknown natural-key fields: {sorted(missing_keys)}")
         for key, anchor in self.strong_anchors.items():
             if key != anchor.anchor_id:
-                raise ValueError(f"anchor map key {key!r} does not match anchor_id {anchor.anchor_id!r}")
+                raise ValueError(
+                    f"anchor map key {key!r} does not match anchor_id {anchor.anchor_id!r}"
+                )
             missing = {item.field_id for item in anchor.fields}.difference(self.fields)
             if missing:
-                raise ValueError(f"anchor {anchor.anchor_id!r} references unknown fields: {sorted(missing)}")
+                raise ValueError(
+                    f"anchor {anchor.anchor_id!r} references unknown fields: {sorted(missing)}"
+                )
         return self
 
 
@@ -177,7 +183,9 @@ class SourceAssetDefinition(BaseModel):
 
     @model_validator(mode="after")
     def validate_object_ref(self) -> SourceAssetDefinition:
-        if not self.object_ref or any(not key.strip() or not value.strip() for key, value in self.object_ref.items()):
+        if not self.object_ref or any(
+            not key.strip() or not value.strip() for key, value in self.object_ref.items()
+        ):
             raise ValueError("object_ref must contain non-empty keys and values")
         return self
 
@@ -237,7 +245,9 @@ class AgentPolicy(BaseModel):
 
     @model_validator(mode="after")
     def require_standard_models(self) -> AgentPolicy:
-        if not self.standard_model_refs or any(not item.strip() for item in self.standard_model_refs):
+        if not self.standard_model_refs or any(
+            not item.strip() for item in self.standard_model_refs
+        ):
             raise ValueError("at least one standard reasoning model is required")
         return self
 
@@ -273,22 +283,29 @@ class ActiveSchema(BaseModel):
             if entity.source_asset_id not in self.sources:
                 raise ValueError(f"entity {entity.entity_id!r} references unknown source asset")
             source = self.sources[entity.source_asset_id]
-            if source.incremental_cursor_field and source.incremental_cursor_field not in entity.fields:
+            if (
+                source.incremental_cursor_field
+                and source.incremental_cursor_field not in entity.fields
+            ):
                 raise ValueError(
                     f"source {source.source_asset_id!r} incremental cursor is not defined on entity {entity.entity_id!r}"
                 )
         for key, node in self.graph.nodes.items():
             if key != node.projection_id:
                 raise ValueError(f"node map key {key!r} does not match projection_id")
-            entity = self.entities.get(node.entity_id)
-            if entity is None:
+            node_entity = self.entities.get(node.entity_id)
+            if node_entity is None:
                 raise ValueError(f"node {node.projection_id!r} references unknown entity")
-            unknown = set(node.key_fields + node.property_fields).difference(entity.fields)
+            unknown = set(node.key_fields + node.property_fields).difference(node_entity.fields)
             if unknown:
-                raise ValueError(f"node {node.projection_id!r} references unknown fields: {sorted(unknown)}")
+                raise ValueError(
+                    f"node {node.projection_id!r} references unknown fields: {sorted(unknown)}"
+                )
         node_entities = {node.entity_id for node in self.graph.nodes.values()}
         if len(node_entities) != len(self.graph.nodes):
-            raise ValueError("only one node projection per entity is supported in this compiler version")
+            raise ValueError(
+                "only one node projection per entity is supported in this compiler version"
+            )
         for key, relationship in self.graph.relationships.items():
             if key != relationship.relationship_id:
                 raise ValueError(f"relationship map key {key!r} does not match relationship_id")
@@ -296,10 +313,12 @@ class ActiveSchema(BaseModel):
                 (relationship.source_entity_id, relationship.source_match_fields),
                 (relationship.target_entity_id, relationship.target_match_fields),
             ):
-                entity = self.entities.get(entity_id)
-                if entity is None or entity_id not in node_entities:
-                    raise ValueError(f"relationship {relationship.relationship_id!r} references unprojected entity")
-                unknown = set(field_ids).difference(entity.fields)
+                relationship_entity = self.entities.get(entity_id)
+                if relationship_entity is None or entity_id not in node_entities:
+                    raise ValueError(
+                        f"relationship {relationship.relationship_id!r} references unprojected entity"
+                    )
+                unknown = set(field_ids).difference(relationship_entity.fields)
                 if unknown:
                     raise ValueError(
                         f"relationship {relationship.relationship_id!r} references unknown fields: {sorted(unknown)}"
@@ -317,7 +336,9 @@ class ActiveSchema(BaseModel):
                 raise ValueError(f"agent policy map key {key!r} does not match agent_id")
             unknown = set(policy.allowed_entity_ids).difference(self.entities)
             if unknown:
-                raise ValueError(f"agent {policy.agent_id!r} references unknown entities: {sorted(unknown)}")
+                raise ValueError(
+                    f"agent {policy.agent_id!r} references unknown entities: {sorted(unknown)}"
+                )
         return self
 
     def entity_node(self, entity_id: str) -> NodeProjection:

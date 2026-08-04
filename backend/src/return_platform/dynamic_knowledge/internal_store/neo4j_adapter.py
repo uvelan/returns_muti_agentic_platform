@@ -31,7 +31,11 @@ class Neo4jInternalStoreAdapter(InternalStoreAdapter):
         if not await self._gateway.label_exists(definition.name):
             return ObjectInspection(name=definition.name, status=CompatibilityStatus.MISSING)
         observed = await self._gateway.observed_properties(definition.name)
-        missing = tuple(field.name for field in definition.fields if field.required and field.name not in observed)
+        missing = tuple(
+            field.name
+            for field in definition.fields
+            if field.required and field.name not in observed
+        )
         return ObjectInspection(
             name=definition.name,
             status=CompatibilityStatus.INCOMPATIBLE if missing else CompatibilityStatus.COMPATIBLE,
@@ -54,7 +58,9 @@ class Neo4jInternalStoreAdapter(InternalStoreAdapter):
             for field in fields:
                 validate_graph_identifier(field)
             if len(fields) != 1:
-                raise ValueError("Neo4j internal bootstrap currently requires one property per constraint")
+                raise ValueError(
+                    "Neo4j internal bootstrap currently requires one property per constraint"
+                )
             unique = bool(index.get("unique", False))
             property_name = fields[0]
             if unique:

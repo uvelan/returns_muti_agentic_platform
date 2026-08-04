@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from typing import AsyncIterator, Protocol
+from collections.abc import AsyncIterator
+from typing import Protocol
 
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import DynamicSourceRecord
 from return_platform.dynamic_knowledge.schema import ActiveSchema, RuntimeMode
 
 
 class SourceScanConnector(Protocol):
-    async def scan(
+    def scan(
         self,
         *,
         schema: ActiveSchema,

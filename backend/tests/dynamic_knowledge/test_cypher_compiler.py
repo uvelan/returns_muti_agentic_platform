@@ -18,7 +18,12 @@ def test_read_query_parameterizes_values(active_schema: ActiveSchema) -> None:
         start_entity_id="entity_a",
         fields=("id", "name"),
         filters=(
-            QueryCondition(entity_id="entity_a", field_id="name", operator="EXACT", value="Robert'); MATCH (n) DETACH DELETE n //"),
+            QueryCondition(
+                entity_id="entity_a",
+                field_id="name",
+                operator="EXACT",
+                value="Robert'); MATCH (n) DETACH DELETE n //",
+            ),
         ),
         limit=10,
     )
@@ -35,7 +40,9 @@ def test_traversal_uses_only_configured_relationship(active_schema: ActiveSchema
         start_entity_id="entity_a",
         fields=("id",),
         traversal=(
-            TraversalStep(relationship_id="a_to_b", direction="OUTBOUND", target_entity_id="entity_b"),
+            TraversalStep(
+                relationship_id="a_to_b", direction="OUTBOUND", target_entity_id="entity_b"
+            ),
         ),
     )
     compiled = CypherCompiler().compile_read(active_schema, plan)

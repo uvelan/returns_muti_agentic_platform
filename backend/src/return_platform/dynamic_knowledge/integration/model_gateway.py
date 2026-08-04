@@ -94,17 +94,23 @@ class RoutePoolReasoningModelGateway:
             sort_keys=True,
         )
         if len(context_json.encode("utf-8")) > self._settings.ai_max_payload_bytes:
-            raise StandardReasoningUnavailable("Order Agent context exceeds the configured payload limit")
+            raise StandardReasoningUnavailable(
+                "Order Agent context exceeds the configured payload limit"
+            )
         payload: dict[str, Any] = {
             "mode": mode,
             "contextJson": context_json,
             "invalidActionJson": (
-                json.dumps(invalid_action.model_dump(mode="json"), separators=(",", ":"), sort_keys=True)
+                json.dumps(
+                    invalid_action.model_dump(mode="json"), separators=(",", ":"), sort_keys=True
+                )
                 if invalid_action is not None
                 else ""
             ),
             "invalidResponseJson": (
-                json.dumps(invalid_response.model_dump(mode="json"), separators=(",", ":"), sort_keys=True)
+                json.dumps(
+                    invalid_response.model_dump(mode="json"), separators=(",", ":"), sort_keys=True
+                )
                 if invalid_response is not None
                 else ""
             ),
@@ -132,7 +138,9 @@ class RoutePoolReasoningModelGateway:
                 if remaining <= 0:
                     last_error = "TIMEOUT"
                     break
-                acquired = await self._route_pool.try_acquire(route, estimated_tokens=estimated_tokens)
+                acquired = await self._route_pool.try_acquire(
+                    route, estimated_tokens=estimated_tokens
+                )
                 if not acquired.acquired:
                     last_error = acquired.reason
                     continue
@@ -171,7 +179,9 @@ class RoutePoolReasoningModelGateway:
                     last_error = "RESPONSE_INVALID"
                     await self._route_pool.record_failure(route, last_error)
                     if mode.startswith("CORRECT_"):
-                        raise StandardReasoningUnavailable("Corrected model output remained invalid") from exc
+                        raise StandardReasoningUnavailable(
+                            "Corrected model output remained invalid"
+                        ) from exc
                 finally:
                     await self._route_pool.release(route)
         raise StandardReasoningUnavailable(
