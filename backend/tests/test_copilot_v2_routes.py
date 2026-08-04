@@ -1,18 +1,11 @@
 from __future__ import annotations
 
-from return_platform.api.copilot_v2 import router
+from return_platform.dynamic_knowledge.api.order_agent import router
 
 
-def test_v2_router_exposes_only_copilot_operations() -> None:
+def test_v2_router_exposes_only_dynamic_order_agent_operation() -> None:
     paths = {route.path for route in router.routes}
-
     assert paths == {
-        "/api/v2/copilot/chat",
-        "/api/v2/copilot/conversations",
-        "/api/v2/copilot/conversations/{conversation_id}",
-        "/api/v2/copilot/conversations/{conversation_id}/chat",
-        "/api/v2/copilot/conversations/{conversation_id}/confirm",
-        "/api/v2/copilot/conversations/{conversation_id}/details",
-        "/api/v2/copilot/conversations/{conversation_id}/messages",
+        "/api/v2/order-agent/conversations/{conversation_id}/turns",
     }
-    assert all(path.startswith("/api/v2/copilot") for path in paths)
+    assert all(path.startswith("/api/v2/order-agent") for path in paths)

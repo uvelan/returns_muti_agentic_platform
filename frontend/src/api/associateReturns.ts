@@ -6,7 +6,6 @@ import type {
 } from "../contracts/associateReturns";
 
 export const ASSOCIATE_RETURNS_V1_BASE = "/api/v1/associate-returns";
-export const COPILOT_V2_BASE = "/api/v2/copilot";
 
 function requireData<T>(value: T | null): T {
   if (value === null) throw new Error("The API returned no data.");

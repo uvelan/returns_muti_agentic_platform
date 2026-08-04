@@ -9,7 +9,8 @@ const backendRoot = path.join(repositoryRoot, "backend");
 const exportScript = path.join(backendRoot, "scripts", "export_openapi.py");
 const outputPath = path.join(frontendRoot, "openapi", "return-platform.openapi.json");
 
-const candidates = process.platform === "win32"
+const configuredPython = process.env.RETURN_PLATFORM_PYTHON?.trim();
+const platformCandidates = process.platform === "win32"
   ? [
       path.join(backendRoot, ".venv", "Scripts", "python.exe"),
       "python3.13",
@@ -20,6 +21,9 @@ const candidates = process.platform === "win32"
       "python3.13",
       "python3",
     ];
+const candidates = configuredPython
+  ? [configuredPython, ...platformCandidates]
+  : platformCandidates;
 
 for (const candidate of candidates) {
   if (path.isAbsolute(candidate) && !existsSync(candidate)) {
@@ -30,7 +34,6 @@ for (const candidate of candidates) {
     cwd: frontendRoot,
     stdio: "inherit",
   });
-
   if (result.error?.code === "ENOENT") {
     continue;
   }
