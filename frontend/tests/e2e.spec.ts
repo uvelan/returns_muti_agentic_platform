@@ -28,11 +28,11 @@ test.describe('E2E Navigation', () => {
     // Navigate from browser landing to asset browser
     await page.goto('/data-console/browser');
     await page.click('text=SalesOrders');
-    await expect(page.locator('h1').first()).toHaveText('dbo.SalesOrders');
+    await expect(page.locator('h1').first()).toHaveText('SalesOrders');
 
     // Navigate from asset browser to record detail
     await page.click('text=Details');
-    await expect(page.locator('h1').first()).toContainText('Record: row-0');
+    await expect(page.locator('h1').first()).toContainText('Record: SO-1001');
 
     // Navigate to Graph Explorer and execute a search
     await page.goto('/data-console/graph');

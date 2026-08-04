@@ -130,4 +130,34 @@ export const configurationHandlers = [
     rel.status = body.status as ReleaseNode["status"];
     return HttpResponse.json(envelope(rel, releaseId));
   }),
+
+  // GET runtime config
+  http.get("/api/v1/runtime-config", async () => {
+    await delay(100);
+    return HttpResponse.json(envelope({
+      releaseId: "version-controlled-baseline",
+      environment: "development",
+      apiBasePath: "/api/v1",
+      features: {
+        orderDiscoveryCopilot: true,
+        aiStudioOperationalGeneration: true
+      },
+      capabilities: {
+        availableSourceTypes: ["MONGODB", "SQLSERVER", "NEO4J"],
+        availableModelProviders: ["GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC"]
+      }
+    }, "runtime-config"));
+  }),
+
+  // GET overview
+  http.get("/data-console/v1/overview", async () => {
+    await delay(100);
+    return HttpResponse.json(envelope({
+      mongodb: { status: "HEALTHY", latency_ms: 1, checked_at: new Date().toISOString(), error_code: null, safe_message: null },
+      neo4j: { status: "HEALTHY", latency_ms: 1, checked_at: new Date().toISOString(), error_code: null, safe_message: null },
+      sqlserver: { status: "HEALTHY", latency_ms: 1, checked_at: new Date().toISOString(), error_code: null, safe_message: null },
+      temporal: { status: "HEALTHY", latency_ms: 1, checked_at: new Date().toISOString(), error_code: null, safe_message: null },
+      valkey: { status: "HEALTHY", latency_ms: 1, checked_at: new Date().toISOString(), error_code: null, safe_message: null }
+    }, "overview"));
+  }),
 ];

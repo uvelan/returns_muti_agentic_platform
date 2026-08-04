@@ -1,4 +1,4 @@
-import { Link, Redirect, Route, Router, Switch } from "wouter";
+import { Link, Redirect, Route, Router, Switch, useLocation } from "wouter";
 import { lazy, Suspense } from "react";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -61,7 +61,8 @@ function VersionOneApp() {
 }
 
 export function App() {
-  const pathname = normalizeBrowserPath(window.location.pathname);
+  const [location] = useLocation();
+  const pathname = normalizeBrowserPath(location);
   const legacyDestination = legacyRouteDestination(
     pathname,
     window.location.search,

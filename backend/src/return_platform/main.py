@@ -230,6 +230,8 @@ async def _initialize_mongodb(
             "mongodb",
             exc,
         )
+        resources.mongo = None
+        resources.source_mongo = None
         if settings.environment == "production":
             raise RuntimeError("Required MongoDB dependencies are unavailable") from exc
 
@@ -255,6 +257,7 @@ async def _initialize_neo4j(
             "neo4j",
             exc,
         )
+        resources.neo4j = None
         if settings.environment == "production":
             raise RuntimeError("Required Neo4j dependency is unavailable") from exc
 
@@ -287,6 +290,7 @@ async def _initialize_valkey(
             "valkey",
             exc,
         )
+        resources.valkey = None
         if settings.environment == "production":
             raise RuntimeError("Required Valkey dependency is unavailable") from exc
 
@@ -305,6 +309,7 @@ async def _initialize_temporal(
             "temporal",
             exc,
         )
+        resources.temporal = None
         if settings.environment == "production":
             raise RuntimeError("Required Temporal dependency is unavailable") from exc
 
