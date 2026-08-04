@@ -191,7 +191,7 @@ function DataSourceShell({ children }: { readonly children: ReactNode }) {
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-[#bcc9c6] bg-white/95 px-4 backdrop-blur sm:px-6 lg:px-8">
           <div className="flex items-center gap-2 text-sm text-[#6d7a77]">
-            <button onClick={() => setCollapsed(c => !c)} className="cursor-pointer text-[#171d1c] hover:text-[#00685f] p-1 -ml-1 rounded-md hover:bg-[#e4e9e7] hidden lg:block" title="Toggle sidebar">
+            <button onClick={() => { setCollapsed(c => !c); }} className="cursor-pointer text-[#171d1c] hover:text-[#00685f] p-1 -ml-1 rounded-md hover:bg-[#e4e9e7] hidden lg:block" title="Toggle sidebar">
               <Menu size={18} />
             </button>
             <Menu size={18} className="lg:hidden" />

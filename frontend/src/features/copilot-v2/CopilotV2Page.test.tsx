@@ -34,7 +34,11 @@ describe("CopilotV2Page", () => {
 
     expect(screen.getByRole("heading", { name: "Returns Assistant" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "How can I help you today?" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Return for order SO-00010001/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /Order SO-00010001 arrived completely scratched/,
+      }),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("Ask Copilot about returns")).toBeInTheDocument();
   });
 

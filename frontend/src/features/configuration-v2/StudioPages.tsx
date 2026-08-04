@@ -86,40 +86,103 @@ function nextPatchVersion(version: string): string {
   return `${major}.${minor}.${String(Number(patch) + 1)}`;
 }
 
-function flattenObject(obj: any, prefix = ""): Record<string, string> {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function serializeValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return String(value);
+  }
+  if (value === null || value === undefined) return "";
+  const serialized: unknown = JSON.stringify(value);
+  return typeof serialized === "string" ? serialized : "";
+}
+
+function flattenObject(
+  value: unknown,
+  prefix = "",
+): Record<string, string> {
   const result: Record<string, string> = {};
-  if (obj === null || obj === undefined) return result;
-  for (const [key, value] of Object.entries(obj)) {
+  if (!isRecord(value)) return result;
+
+  for (const [key, nestedValue] of Object.entries(value)) {
     const newPrefix = prefix ? `${prefix}.${key}` : key;
-    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-      Object.assign(result, flattenObject(value, newPrefix));
+    if (isRecord(nestedValue)) {
+      Object.assign(result, flattenObject(nestedValue, newPrefix));
     } else {
-      result[newPrefix] = Array.isArray(value) ? JSON.stringify(value) : String(value);
+      result[newPrefix] = serializeValue(nestedValue);
     }
   }
+
   return result;
 }
 
-function unflattenObject(flat: Record<string, string>): any {
-  const result: any = {};
+function parseFlatValue(value: string): unknown {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  if (value.trim() !== "" && Number.isFinite(Number(value))) {
+    return Number(value);
+  }
+
+  if (value.startsWith("[") && value.endsWith("]")) {
+    try {
+      return JSON.parse(value) as unknown;
+    } catch {
+      return value;
+    }
+  }
+
+  return value;
+}
+
+function unflattenObject(
+  flat: Record<string, string>,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+
   for (const [key, value] of Object.entries(flat)) {
     const parts = key.split(".");
+    const leaf = parts.at(-1);
+    if (!leaf) continue;
+
     let current = result;
-    for (let i = 0; i < parts.length - 1; i++) {
-      if (!current[parts[i]]) current[parts[i]] = {};
-      current = current[parts[i]];
+    for (const part of parts.slice(0, -1)) {
+      const nested = current[part];
+      if (isRecord(nested)) {
+        current = nested;
+      } else {
+        const created: Record<string, unknown> = {};
+        current[part] = created;
+        current = created;
+      }
     }
-    const leaf = parts[parts.length - 1];
-    let parsedValue: any = value;
-    if (value === "true") parsedValue = true;
-    else if (value === "false") parsedValue = false;
-    else if (!isNaN(Number(value)) && value.trim() !== "") parsedValue = Number(value);
-    else if (value.startsWith("[") && value.endsWith("]")) {
-      try { parsedValue = JSON.parse(value); } catch {}
-    }
-    current[leaf] = parsedValue;
+
+    current[leaf] = parseFlatValue(value);
   }
+
   return result;
+}
+
+function moduleDisplayName(module: ConfigurationModule): string {
+  const name = module.payload.name;
+  return typeof name === "string" && name.trim() !== ""
+    ? name
+    : module.moduleId;
+}
+
+function withoutKey(
+  source: Record<string, string>,
+  keyToRemove: string,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(source).filter(([key]) => key !== keyToRemove),
+  );
 }
 
 export function ModuleCatalogPage() {
@@ -140,8 +203,10 @@ export function ModuleCatalogPage() {
   if (query.isLoading) return <Loading />;
   const modules = query.data ?? [];
   const filtered = modules.filter(item => {
-    const displayName = item.payload?.name || item.moduleId;
-    return `${displayName} ${item.moduleId} ${item.moduleType} ${item.owner}`.toLowerCase().includes(search.toLowerCase());
+    const displayName = moduleDisplayName(item);
+    return `${displayName} ${item.moduleId} ${item.moduleType} ${item.owner}`
+      .toLowerCase()
+      .includes(search.toLowerCase());
   });
   const selected = modules.find(item => `${item.moduleId}:${item.configurationVersion}` === selectedKey);
   const error = query.error ?? draft.error ?? validate.error ?? submit.error ?? approve.error ?? updatePayload.error;
@@ -158,30 +223,29 @@ export function ModuleCatalogPage() {
 
   const handleSave = () => {
     if (!selected) return;
-    let newPayload;
+
+    let newPayload: Record<string, unknown>;
     if (editorMode === "JSON") {
       try {
-        newPayload = JSON.parse(jsonText);
-      } catch (err) {
+        const parsedPayload = JSON.parse(jsonText) as unknown;
+        if (!isRecord(parsedPayload)) {
+          alert("Configuration payload must be a JSON object");
+          return;
+        }
+        newPayload = parsedPayload;
+      } catch {
         alert("Invalid JSON");
         return;
       }
     } else {
       newPayload = unflattenObject(kvData);
     }
+
     updatePayload.mutate({
       moduleId: selected.moduleId,
       version: selected.configurationVersion,
       expectedRevision: selected.revision,
       payload: newPayload,
-    }, {
-      onSuccess: () => {
-        // Just refresh the selected state? Actually invalidation triggers refetch.
-        // I can just close or leave it open. Let's leave it open.
-        // We'll rely on the refetch to give us the new version.
-        // Wait, a draft mutation keeps the version, but increments revision.
-        // Our selectedKey is based on version. So it's fine.
-      }
     });
   };
 
@@ -200,13 +264,12 @@ export function ModuleCatalogPage() {
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
         {filtered.map(module => {
           const key = `${module.moduleId}:${module.configurationVersion}`;
-          const p = module.payload as Record<string, unknown> | null | undefined;
-          const displayName = typeof p?.name === "string" && p.name.trim() !== "" ? p.name : module.moduleId;
+          const displayName = moduleDisplayName(module);
           return (
             <button
               type="button"
               key={key}
-              onClick={() => handleCardClick(module)}
+              onClick={() => { handleCardClick(module); }}
               className={`${card} flex min-h-[140px] flex-col justify-between p-5 text-left transition-shadow hover:shadow-md`}
             >
               <div>
@@ -233,9 +296,7 @@ export function ModuleCatalogPage() {
               <div>
                 <div className="flex items-center gap-3">
                   <h2 className="text-xl font-semibold">
-                    {typeof (selected.payload as Record<string, unknown> | null)?.name === "string" && (selected.payload as Record<string, unknown> | null)?.name
-                      ? String((selected.payload as Record<string, unknown> | null)?.name)
-                      : selected.moduleId}
+                    {moduleDisplayName(selected)}
                   </h2>
                   <Status value={selected.status} />
                 </div>
@@ -266,8 +327,8 @@ export function ModuleCatalogPage() {
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-sm font-semibold">Configuration Payload</h3>
                 <div className="flex overflow-hidden rounded-lg border border-[#bcc9c6]">
-                  <button onClick={() => setEditorMode("KV")} className={`px-3 py-1 text-xs font-medium ${editorMode === "KV" ? "bg-[#00685f] text-white" : "bg-white text-[#3d4947] hover:bg-[#f5faf8]"}`}>Key-Value</button>
-                  <button onClick={() => setEditorMode("JSON")} className={`px-3 py-1 text-xs font-medium ${editorMode === "JSON" ? "bg-[#00685f] text-white" : "bg-white text-[#3d4947] hover:bg-[#f5faf8]"}`}>JSON</button>
+                  <button onClick={() => { setEditorMode("KV"); }} className={`px-3 py-1 text-xs font-medium ${editorMode === "KV" ? "bg-[#00685f] text-white" : "bg-white text-[#3d4947] hover:bg-[#f5faf8]"}`}>Key-Value</button>
+                  <button onClick={() => { setEditorMode("JSON"); }} className={`px-3 py-1 text-xs font-medium ${editorMode === "JSON" ? "bg-[#00685f] text-white" : "bg-white text-[#3d4947] hover:bg-[#f5faf8]"}`}>JSON</button>
                 </div>
               </div>
 
@@ -276,7 +337,7 @@ export function ModuleCatalogPage() {
                   <textarea
                     className="h-full w-full resize-none bg-transparent p-4 font-mono text-sm outline-none"
                     value={jsonText}
-                    onChange={(e) => setJsonText(e.target.value)}
+                    onChange={(e) => { setJsonText(e.target.value); }}
                     readOnly={selected.status !== "DRAFT" && selected.status !== "QUARANTINED"}
                   />
                 ) : (
@@ -287,10 +348,10 @@ export function ModuleCatalogPage() {
                           className={`${input} flex-1 font-mono text-sm`}
                           value={k}
                           onChange={(e) => {
-                            const newKv = { ...kvData };
-                            delete newKv[k];
-                            newKv[e.target.value] = v;
-                            setKvData(newKv);
+                            setKvData({
+                              ...withoutKey(kvData, k),
+                              [e.target.value]: v,
+                            });
                           }}
                           readOnly={selected.status !== "DRAFT" && selected.status !== "QUARANTINED"}
                           placeholder="path.to.key"
@@ -298,7 +359,7 @@ export function ModuleCatalogPage() {
                         <input
                           className={`${input} flex-1 font-mono text-sm`}
                           value={v}
-                          onChange={(e) => setKvData({ ...kvData, [k]: e.target.value })}
+                          onChange={(e) => { setKvData({ ...kvData, [k]: e.target.value }); }}
                           readOnly={selected.status !== "DRAFT" && selected.status !== "QUARANTINED"}
                           placeholder="value"
                         />
@@ -307,9 +368,7 @@ export function ModuleCatalogPage() {
                             type="button"
                             className="shrink-0 p-2 text-red-500 hover:bg-red-50 rounded-lg"
                             onClick={() => {
-                              const newKv = { ...kvData };
-                              delete newKv[k];
-                              setKvData(newKv);
+                              setKvData(withoutKey(kvData, k));
                             }}
                           >
                             <Trash2 size={16} />
@@ -322,7 +381,10 @@ export function ModuleCatalogPage() {
                         type="button"
                         className={`${secondary} mt-2 text-xs`}
                         onClick={() => {
-                          setKvData({ ...kvData, [`new.key.${Date.now()}`]: "" });
+                          setKvData({
+                            ...kvData,
+                            [`new.key.${String(Date.now())}`]: "",
+                          });
                         }}
                       >
                         <Plus size={14} /> Add Field
