@@ -1,0 +1,149 @@
+configuration_release_id: release-2026-08-04-001
+release_status: ACTIVE
+approved_by: platform-config-admin
+approved_at: '2026-08-04T00:00:00Z'
+schema_version: 2026.08.1
+policy_version: 2026.08.1
+prompt_version: 2026.08.1
+compiler_version: 1.0.0
+runtime_mode: CONNECTED_SYNC
+sources:
+  source_alpha:
+    source_asset_id: source_alpha
+    connector_type: MONGODB
+    connection_ref: vault://data-sources/source-alpha
+    object_ref:
+      database: configured_database
+      name: configured_object
+    incremental_cursor_field: changed_at
+entities:
+  entity_alpha:
+    entity_id: entity_alpha
+    description: Configured business entity
+    source_asset_id: source_alpha
+    fields:
+      record_id:
+        field_id: record_id
+        physical_path:
+        - configured_id
+        graph_property: record_id
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: true
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - associate
+          displayable_by:
+          - associate
+          on_demand_sync_by:
+          - associate
+          masking: null
+      display_value:
+        field_id: display_value
+        physical_path:
+        - configured_display
+        graph_property: display_value
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - PREFIX
+          - CONTAINS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - associate
+          displayable_by:
+          - associate
+          on_demand_sync_by: []
+          masking: null
+      changed_at:
+        field_id: changed_at
+        physical_path:
+        - configured_changed_at
+        graph_property: changed_at
+        data_type: DATETIME
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: false
+          on_demand_sync_anchor: false
+          operators:
+          - GT
+          - GTE
+          aggregations: []
+        permissions:
+          searchable_by:
+          - associate
+          displayable_by: []
+          on_demand_sync_by: []
+          masking: null
+    natural_key:
+    - record_id
+    strong_anchors:
+      exact_record:
+        anchor_id: exact_record
+        fields:
+        - field_id: record_id
+          allowed_operators:
+          - EXACT
+          - EQUALS
+          required: true
+        minimum_fields_present: 1
+        maximum_expected_matches: 1
+        on_demand_sync_allowed: true
+graph:
+  database: business_knowledge
+  nodes:
+    entity_alpha_node:
+      projection_id: entity_alpha_node
+      entity_id: entity_alpha
+      label: ConfiguredEntity
+      key_fields:
+      - record_id
+      property_fields:
+      - display_value
+      - changed_at
+  relationships: {}
+  constraints: []
+  indexes: []
+agent_policies:
+  order-discovery-agent:
+    agent_id: order-discovery-agent
+    task_queue: order-discovery
+    allowed_business_capabilities:
+    - entity-resolution
+    - order-discovery
+    - candidate-disambiguation
+    allowed_entity_ids:
+    - entity_alpha
+    standard_model_refs:
+    - model://standard/reasoning-primary
+    - model://standard/reasoning-secondary
+    max_reasoning_steps: 8
+    max_graph_queries_per_turn: 12
+    max_correction_attempts: 2
+    allowed_roles:
+    - associate
+    - support
+configuration_checksum: 7edb2eee3e308e71a00707359189fe7896de834e16894e82107b8ef969d14365

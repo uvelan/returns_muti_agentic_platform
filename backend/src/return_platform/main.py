@@ -21,6 +21,13 @@ from return_platform.ai_gateway.routing import AIRoutePool, build_routes
 from return_platform.api.ai_gateway import router as ai_gateway_router
 from return_platform.api.associate_returns import router as associate_returns_router
 from return_platform.api.copilot_v2 import router as copilot_v2_router
+from return_platform.dynamic_knowledge.api.order_agent import (
+    router as dynamic_order_agent_router,
+)
+from return_platform.dynamic_knowledge.integration.runtime_factory import (
+    build_dynamic_order_agent_runtime,
+    dynamic_order_agent_enabled,
+)
 from return_platform.api.data_source_config_v2 import router as data_source_config_v2_router
 from return_platform.api.dependencies import router as dependencies_router
 from return_platform.api.dependency_simulator import router as dependency_simulator_router
@@ -526,6 +533,20 @@ async def lifespan(
             build_routes(settings),
             ai_gateway_configuration.configuration,
         )
+        if (
+            dynamic_order_agent_enabled()
+            and resources.mongo is not None
+            and resources.neo4j is not None
+        ):
+            app.state.dynamic_order_agent_runtime = (
+                await build_dynamic_order_agent_runtime(
+                    settings=settings,
+                    platform_mongo=resources.mongo,
+                    neo4j_driver=resources.neo4j,
+                    ai_gateway_configuration=ai_gateway_configuration,
+                    route_pool=app.state.ai_gateway_route_pool,
+                )
+            )
 
         logger.info(
             "application_resources_initialized",
@@ -549,6 +570,8 @@ async def lifespan(
 
         yield
     finally:
+        if hasattr(app.state, "dynamic_order_agent_runtime"):
+            del app.state.dynamic_order_agent_runtime
         configure_graph_sync(None)
         configure_source_mongodb(None)
         if (
@@ -851,6 +874,7 @@ def create_app(
     fastapi_app.include_router(warehouse_placement_router)
     fastapi_app.include_router(integration_outbox_router)
     fastapi_app.include_router(associate_returns_router)
+    fastapi_app.include_router(dynamic_order_agent_router)
     fastapi_app.include_router(copilot_v2_router)
     fastapi_app.include_router(data_source_config_v2_router)
     fastapi_app.include_router(platform_v2_router)

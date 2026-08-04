@@ -1,0 +1,1210 @@
+configuration_release_id: order-discovery-release-414faac
+release_status: ACTIVE
+approved_by: platform-config-admin
+approved_at: '2026-08-04T00:00:00Z'
+schema_version: 2026.08.04
+policy_version: 2026.08.04
+prompt_version: 2026.08.04
+compiler_version: 1.0.0
+runtime_mode: KNOWLEDGE_ONLY
+sources:
+  source_sales:
+    source_asset_id: source_sales
+    connector_type: MONGODB
+    connection_ref: vault://data-sources/source-mongodb
+    object_ref:
+      database: return_source
+      name: salesInv
+    incremental_cursor_field: source_updated_at
+  source_customers:
+    source_asset_id: source_customers
+    connector_type: MONGODB
+    connection_ref: vault://data-sources/source-mongodb
+    object_ref:
+      database: return_source
+      name: customerOutboundCDM
+    incremental_cursor_field: source_updated_at
+  source_products:
+    source_asset_id: source_products
+    connector_type: MONGODB
+    connection_ref: vault://data-sources/source-mongodb
+    object_ref:
+      database: return_source
+      name: lkpSearchProduct
+    incremental_cursor_field: source_updated_at
+  source_shipments:
+    source_asset_id: source_shipments
+    connector_type: MONGODB
+    connection_ref: vault://data-sources/source-mongodb
+    object_ref:
+      database: return_source
+      name: shipmentInfo
+    incremental_cursor_field: source_updated_at
+entities:
+  customer:
+    entity_id: customer
+    description: Configured customer discovery entity
+    source_asset_id: source_customers
+    fields:
+      customer_key:
+        field_id: customer_key
+        description: customer key
+        physical_path:
+        - customerId
+        graph_property: customer_key
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: true
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      customer_id:
+        field_id: customer_id
+        description: customer id
+        physical_path:
+        - customerId
+        graph_property: customer_id
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: true
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      customer_name:
+        field_id: customer_name
+        description: customer name
+        physical_path:
+        - customerName
+        graph_property: customer_name
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          - PREFIX
+          - CONTAINS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      source_updated_at:
+        field_id: source_updated_at
+        description: source updated at
+        physical_path:
+        - updatedAt
+        graph_property: source_updated_at
+        data_type: DATETIME
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: false
+          on_demand_sync_anchor: false
+          operators:
+          - GT
+          - GTE
+          - LT
+          - LTE
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+    natural_key:
+    - customer_key
+    strong_anchors:
+      exact_customer_id:
+        anchor_id: exact_customer_id
+        fields:
+        - field_id: customer_id
+          allowed_operators:
+          - EXACT
+          - EQUALS
+          required: true
+        minimum_fields_present: 1
+        maximum_expected_matches: 1
+        on_demand_sync_allowed: true
+  sales_order:
+    entity_id: sales_order
+    description: Configured sales order entity
+    source_asset_id: source_sales
+    fields:
+      sales_order_number:
+        field_id: sales_order_number
+        description: sales order number
+        physical_path:
+        - salesHdrEventData
+        - orderId
+        graph_property: sales_order_number
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: true
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      customer_id:
+        field_id: customer_id
+        description: customer id
+        physical_path:
+        - salesHdr
+        - salesHdrData
+        - custId
+        graph_property: customer_id
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      order_status:
+        field_id: order_status
+        description: order status
+        physical_path:
+        - salesHdrEventData
+        - orderStatus
+        graph_property: order_status
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          - PREFIX
+          - CONTAINS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      sell_warehouse_id:
+        field_id: sell_warehouse_id
+        description: sell warehouse id
+        physical_path:
+        - salesHdrEventData
+        - sellWhseId
+        graph_property: sell_warehouse_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          - PREFIX
+          - CONTAINS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      ship_from_warehouse_id:
+        field_id: ship_from_warehouse_id
+        description: ship from warehouse id
+        physical_path:
+        - salesHdrEventData
+        - shipFromWhseId
+        graph_property: ship_from_warehouse_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          - PREFIX
+          - CONTAINS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      shipping_method:
+        field_id: shipping_method
+        description: shipping method
+        physical_path:
+        - salesHdr
+        - shipping
+        - shipViaDesc
+        graph_property: shipping_method
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          - PREFIX
+          - CONTAINS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      delivered_at:
+        field_id: delivered_at
+        description: delivered at
+        physical_path:
+        - deliveredAt
+        graph_property: delivered_at
+        data_type: DATETIME
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - GT
+          - GTE
+          - LT
+          - LTE
+          - BETWEEN
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      source_updated_at:
+        field_id: source_updated_at
+        description: source updated at
+        physical_path:
+        - updatedAt
+        graph_property: source_updated_at
+        data_type: DATETIME
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: false
+          on_demand_sync_anchor: false
+          operators:
+          - GT
+          - GTE
+          - LT
+          - LTE
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+    natural_key:
+    - sales_order_number
+    strong_anchors:
+      exact_order_number:
+        anchor_id: exact_order_number
+        fields:
+        - field_id: sales_order_number
+          allowed_operators:
+          - EXACT
+          - EQUALS
+          required: true
+        minimum_fields_present: 1
+        maximum_expected_matches: 1
+        on_demand_sync_allowed: true
+  order_line:
+    entity_id: order_line
+    description: Configured sales order line entity
+    source_asset_id: source_sales
+    fields:
+      order_line_key:
+        field_id: order_line_key
+        description: order line key
+        physical_path:
+        - salesLines
+        - '0'
+        - sourceLineId
+        graph_property: order_line_key
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      sales_order_number:
+        field_id: sales_order_number
+        description: sales order number
+        physical_path:
+        - salesHdrEventData
+        - orderId
+        graph_property: sales_order_number
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      product_id:
+        field_id: product_id
+        description: product id
+        physical_path:
+        - salesLines
+        - '0'
+        - productId
+        graph_property: product_id
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: true
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      master_product_id:
+        field_id: master_product_id
+        description: master product id
+        physical_path:
+        - salesLines
+        - '0'
+        - masterProductId
+        graph_property: master_product_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          - PREFIX
+          - CONTAINS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      product_description:
+        field_id: product_description
+        description: product description
+        physical_path:
+        - salesLines
+        - '0'
+        - productDescription
+        graph_property: product_description
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          - PREFIX
+          - CONTAINS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      ordered_quantity:
+        field_id: ordered_quantity
+        description: ordered quantity
+        physical_path:
+        - salesLines
+        - '0'
+        - orderedQuantity
+        graph_property: ordered_quantity
+        data_type: NUMBER
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: true
+          aggregatable: true
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          - GT
+          - GTE
+          - LT
+          - LTE
+          aggregations:
+          - COUNT
+          - COUNT_DISTINCT
+          - GROUP_BY
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      shipped_quantity:
+        field_id: shipped_quantity
+        description: shipped quantity
+        physical_path:
+        - salesLines
+        - '0'
+        - shippedQuantity
+        graph_property: shipped_quantity
+        data_type: NUMBER
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: true
+          aggregatable: true
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          - GT
+          - GTE
+          - LT
+          - LTE
+          aggregations:
+          - COUNT
+          - COUNT_DISTINCT
+          - GROUP_BY
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      product_type:
+        field_id: product_type
+        description: product type
+        physical_path:
+        - salesLines
+        - '0'
+        - productType
+        graph_property: product_type
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          - PREFIX
+          - CONTAINS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      source_updated_at:
+        field_id: source_updated_at
+        description: source updated at
+        physical_path:
+        - updatedAt
+        graph_property: source_updated_at
+        data_type: DATETIME
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: false
+          on_demand_sync_anchor: false
+          operators:
+          - GT
+          - GTE
+          - LT
+          - LTE
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+    natural_key:
+    - order_line_key
+    strong_anchors: {}
+  product:
+    entity_id: product
+    description: Configured product entity
+    source_asset_id: source_products
+    fields:
+      product_id:
+        field_id: product_id
+        description: product id
+        physical_path:
+        - productId
+        graph_property: product_id
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: true
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      sku:
+        field_id: sku
+        description: sku
+        physical_path:
+        - sku
+        graph_property: sku
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: true
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      master_product_id:
+        field_id: master_product_id
+        description: master product id
+        physical_path:
+        - masterProductId
+        graph_property: master_product_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          - PREFIX
+          - CONTAINS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      product_description:
+        field_id: product_description
+        description: product description
+        physical_path:
+        - productDescription
+        graph_property: product_description
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          - PREFIX
+          - CONTAINS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      product_type:
+        field_id: product_type
+        description: product type
+        physical_path:
+        - productType
+        graph_property: product_type
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          - PREFIX
+          - CONTAINS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      source_updated_at:
+        field_id: source_updated_at
+        description: source updated at
+        physical_path:
+        - updatedAt
+        graph_property: source_updated_at
+        data_type: DATETIME
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: false
+          on_demand_sync_anchor: false
+          operators:
+          - GT
+          - GTE
+          - LT
+          - LTE
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+    natural_key:
+    - product_id
+    strong_anchors:
+      exact_product:
+        anchor_id: exact_product
+        fields:
+        - field_id: product_id
+          allowed_operators:
+          - EXACT
+          - EQUALS
+          required: false
+        - field_id: sku
+          allowed_operators:
+          - EXACT
+          - EQUALS
+          required: false
+        minimum_fields_present: 1
+        maximum_expected_matches: 1
+        on_demand_sync_allowed: true
+  shipment:
+    entity_id: shipment
+    description: Configured original shipment entity
+    source_asset_id: source_shipments
+    fields:
+      tracking_number:
+        field_id: tracking_number
+        description: tracking number
+        physical_path:
+        - shipmentInfoEventData
+        - trkNum
+        graph_property: tracking_number
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: true
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      sales_order_number:
+        field_id: sales_order_number
+        description: sales order number
+        physical_path:
+        - shipmentInfoEventData
+        - trilOrdNum
+        graph_property: sales_order_number
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      carrier_code:
+        field_id: carrier_code
+        description: carrier code
+        physical_path:
+        - shipmentInfoEventData
+        - carrierCode
+        graph_property: carrier_code
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          - PREFIX
+          - CONTAINS
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      shipped_at:
+        field_id: shipped_at
+        description: shipped at
+        physical_path:
+        - shipmentInfoEventData
+        - shippedAt
+        graph_property: shipped_at
+        data_type: DATETIME
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - GT
+          - GTE
+          - LT
+          - LTE
+          - BETWEEN
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      source_updated_at:
+        field_id: source_updated_at
+        description: source updated at
+        physical_path:
+        - updatedAt
+        graph_property: source_updated_at
+        data_type: DATETIME
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: false
+          on_demand_sync_anchor: false
+          operators:
+          - GT
+          - GTE
+          - LT
+          - LTE
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+    natural_key:
+    - tracking_number
+    strong_anchors:
+      exact_tracking:
+        anchor_id: exact_tracking
+        fields:
+        - field_id: tracking_number
+          allowed_operators:
+          - EXACT
+          - EQUALS
+          required: true
+        minimum_fields_present: 1
+        maximum_expected_matches: 1
+        on_demand_sync_allowed: true
+graph:
+  database: neo4j
+  nodes:
+    customer_node:
+      projection_id: customer_node
+      entity_id: customer
+      label: Customer
+      key_fields:
+      - customer_key
+      property_fields:
+      - customer_id
+      - customer_name
+      - source_updated_at
+    sales_order_node:
+      projection_id: sales_order_node
+      entity_id: sales_order
+      label: SalesOrder
+      key_fields:
+      - sales_order_number
+      property_fields:
+      - customer_id
+      - order_status
+      - sell_warehouse_id
+      - ship_from_warehouse_id
+      - shipping_method
+      - delivered_at
+      - source_updated_at
+    order_line_node:
+      projection_id: order_line_node
+      entity_id: order_line
+      label: OrderLine
+      key_fields:
+      - order_line_key
+      property_fields:
+      - sales_order_number
+      - product_id
+      - master_product_id
+      - product_description
+      - ordered_quantity
+      - shipped_quantity
+      - product_type
+      - source_updated_at
+    product_node:
+      projection_id: product_node
+      entity_id: product
+      label: Product
+      key_fields:
+      - product_id
+      property_fields:
+      - sku
+      - master_product_id
+      - product_description
+      - product_type
+      - source_updated_at
+    shipment_node:
+      projection_id: shipment_node
+      entity_id: shipment
+      label: Shipment
+      key_fields:
+      - tracking_number
+      property_fields:
+      - sales_order_number
+      - carrier_code
+      - shipped_at
+      - source_updated_at
+  relationships:
+    customer_placed_order:
+      relationship_id: customer_placed_order
+      relationship_type: PLACED_ORDER
+      source_entity_id: customer
+      target_entity_id: sales_order
+      source_match_fields:
+      - customer_key
+      target_match_fields:
+      - sales_order_number
+      property_fields: []
+    order_has_line:
+      relationship_id: order_has_line
+      relationship_type: HAS_ORDER_LINE
+      source_entity_id: sales_order
+      target_entity_id: order_line
+      source_match_fields:
+      - sales_order_number
+      target_match_fields:
+      - order_line_key
+      property_fields: []
+    line_references_product:
+      relationship_id: line_references_product
+      relationship_type: REFERENCES_PRODUCT
+      source_entity_id: order_line
+      target_entity_id: product
+      source_match_fields:
+      - order_line_key
+      target_match_fields:
+      - product_id
+      property_fields: []
+    order_has_shipment:
+      relationship_id: order_has_shipment
+      relationship_type: HAS_ORIGINAL_SHIPMENT
+      source_entity_id: sales_order
+      target_entity_id: shipment
+      source_match_fields:
+      - sales_order_number
+      target_match_fields:
+      - tracking_number
+      property_fields: []
+  constraints: []
+  indexes: []
+agent_policies:
+  order-discovery-agent:
+    agent_id: order-discovery-agent
+    task_queue: order-discovery
+    allowed_business_capabilities:
+    - entity-resolution
+    - order-discovery
+    - product-discovery
+    - purchase-history
+    - candidate-disambiguation
+    - return-context-collection
+    allowed_roles:
+    - '*'
+    allowed_entity_ids:
+    - customer
+    - sales_order
+    - order_line
+    - product
+    - shipment
+    standard_model_refs:
+    - ai-task://ORDER_AGENT_REASONING_V1
+    max_reasoning_steps: 8
+    max_graph_queries_per_turn: 12
+    max_correction_attempts: 2
+configuration_checksum: 0851fbfa57050efd813fef723a4e31e0058b1a89ab004bd5336c2a8fa6d34215

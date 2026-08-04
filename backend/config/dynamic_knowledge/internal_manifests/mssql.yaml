@@ -1,0 +1,603 @@
+manifest_version: 1.0.0
+connector_type: MSSQL
+objects:
+- name: internal_schema_state
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: internal_schema_state_id_uq
+    fields:
+    - id
+    unique: true
+- name: configuration_releases
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: configuration_releases_id_uq
+    fields:
+    - id
+    unique: true
+- name: active_configuration
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: active_configuration_id_uq
+    fields:
+    - id
+    unique: true
+- name: schema_versions
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: schema_versions_id_uq
+    fields:
+    - id
+    unique: true
+- name: schema_activation
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: schema_activation_id_uq
+    fields:
+    - id
+    unique: true
+- name: graph_projection_state
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: graph_projection_state_id_uq
+    fields:
+    - id
+    unique: true
+- name: graph_sync_runs
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: graph_sync_runs_id_uq
+    fields:
+    - id
+    unique: true
+- name: graph_sync_checkpoints
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: graph_sync_checkpoints_id_uq
+    fields:
+    - id
+    unique: true
+- name: graph_rebuild_leases
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: graph_rebuild_leases_id_uq
+    fields:
+    - id
+    unique: true
+- name: graph_rebuild_receipts
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: graph_rebuild_receipts_id_uq
+    fields:
+    - id
+    unique: true
+- name: on_demand_sync_requests
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: on_demand_sync_requests_id_uq
+    fields:
+    - id
+    unique: true
+- name: on_demand_sync_receipts
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: on_demand_sync_receipts_id_uq
+    fields:
+    - id
+    unique: true
+- name: conversation_state
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: conversation_state_id_uq
+    fields:
+    - id
+    unique: true
+- name: conversation_messages
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: conversation_messages_id_uq
+    fields:
+    - id
+    unique: true
+- name: conversation_facts
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: conversation_facts_id_uq
+    fields:
+    - id
+    unique: true
+- name: candidate_sets
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: candidate_sets_id_uq
+    fields:
+    - id
+    unique: true
+- name: query_executions
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: query_executions_id_uq
+    fields:
+    - id
+    unique: true
+- name: query_evidence
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: query_evidence_id_uq
+    fields:
+    - id
+    unique: true
+- name: agent_turns
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: agent_turns_id_uq
+    fields:
+    - id
+    unique: true
+- name: idempotency_records
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: idempotency_records_id_uq
+    fields:
+    - id
+    unique: true
+- name: distributed_locks
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: distributed_locks_id_uq
+    fields:
+    - id
+    unique: true
+- name: outbox
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: outbox_id_uq
+    fields:
+    - id
+    unique: true
+- name: worker_heartbeats
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: worker_heartbeats_id_uq
+    fields:
+    - id
+    unique: true
+- name: provider_health
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: provider_health_id_uq
+    fields:
+    - id
+    unique: true
+- name: audit_events
+  kind: TABLE
+  fields:
+  - name: id
+    data_type: VARCHAR(128)
+    required: true
+    nullable: false
+  - name: payload
+    data_type: NVARCHAR(MAX)
+    required: true
+    nullable: false
+  - name: created_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  - name: updated_at
+    data_type: DATETIME2
+    required: true
+    nullable: false
+  indexes:
+  - name: audit_events_id_uq
+    fields:
+    - id
+    unique: true
