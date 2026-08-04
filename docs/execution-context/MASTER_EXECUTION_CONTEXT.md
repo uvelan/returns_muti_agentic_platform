@@ -19,8 +19,8 @@
 ## Current execution state
 
 - Active phase: 0
-- Active step: 3
-- Active task ID: P00-S03
+- Active step: 4
+- Active task ID: P00-S04
 - Task classification: NORMAL
 - Current owner: Gemini 3.1 Pro
 - Current status: IN_PROGRESS
@@ -32,13 +32,14 @@
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | P00-S01 | 0 | 1 | NORMAL | Gemini 3.6 Flash | None | Gemini 3.5 Flash | None | COMPLETED | 0845d3f272d360e908e77705da00e56b4724887e | 0845d3f272d360e908e77705da00e56b4724887e | docs/execution-context/phase-00/P00-S01/analysis-agent-context.md |
 | P00-S02 | 0 | 2 | NORMAL | Codex CLI | Sonnet 4.5 | Gemini 3.1 Pro | P00-S01 | COMPLETED | 0845d3f272d360e908e77705da00e56b4724887e | TBD | docs/execution-context/phase-00/P00-S02/STEP_COMPLETION_CONTEXT.md |
-| P00-S03 | 0 | 3 | NORMAL | Gemini 3.1 Pro | None | None | P00-S02 | IN_PROGRESS | 0845d3f272d360e908e77705da00e56b4724887e | | docs/execution-context/working-app/WORKING_APP_BASELINE.md |
+| P00-S03 | 0 | 3 | NORMAL | Gemini 3.1 Pro | None | None | P00-S02 | COMPLETED | 0845d3f272d360e908e77705da00e56b4724887e | TBD | docs/execution-context/working-app/WORKING_APP_BASELINE.md |
+| P00-S04 | 0 | 4 | NORMAL | Gemini 3.1 Pro | None | None | P00-S03 | IN_PROGRESS | 0845d3f272d360e908e77705da00e56b4724887e | | docs/execution-context/working-app/WORKING_APP_BASELINE.md |
 
 ## Active file ownership
 
 | Task ID | Agent | Writable paths | Read-only paths | Conflict |
 |---|---|---|---|---|
-| P00-S03 | Gemini 3.1 Pro | docs/execution-context/working-app/WORKING_APP_BASELINE.md, docs/execution-context/MASTER_EXECUTION_CONTEXT.md | Repository wide | None |
+| P00-S04 | Gemini 3.1 Pro | Repository wide | None | None |
 
 ## Active parallel work
 
@@ -54,6 +55,7 @@
 | P00-S01 Repository Baseline Context | docs/execution-context/phase-00/P00-S01/analysis-agent-context.md | 0845d3f272d360e908e77705da00e56b4724887e | YES | YES |
 | P00-S02 Implementation Context | docs/execution-context/phase-00/P00-S02/implementation-agent-context.md | 0845d3f272d360e908e77705da00e56b4724887e | YES | YES |
 | P00-S02 Validation Context | docs/execution-context/phase-00/P00-S02/validation-agent-context.md | 0845d3f272d360e908e77705da00e56b4724887e | YES | YES |
+| P00-S03 Working App Baseline | docs/execution-context/working-app/WORKING_APP_BASELINE.md | TBD | YES | YES |
 
 ## Outstanding review findings
 
@@ -98,19 +100,19 @@
 
 ## Next ready task
 
-- Task ID: P00-S03
-- Reason ready: P00-S02 complete, application baseline required.
+- Task ID: P00-S04
+- Reason ready: P00-S03 complete, startup restoration required.
 - Required role: Gemini 3.1 Pro
-- Required files: docs/execution-context/working-app/WORKING_APP_BASELINE.md
-- Completion gates: First real runtime failure identified with file and command evidence, pushed.
+- Required files: backend/src/return_platform/main.py, backend/src/return_platform/secrets/*
+- Completion gates: Backend starts, Frontend starts, Workers start or report degraded state, no unhandled startup exception remains.
 
 ## Completion metrics
 
-- Total defined tasks: 3
-- Complete: 2
+- Total defined tasks: 4
+- Complete: 3
 - In progress: 1
 - Blocked: 0
 - Not started: 0
-- Completion percentage: 66%
+- Completion percentage: 75%
 
 The percentage must be calculated from completed tasks, not estimated by an agent.
