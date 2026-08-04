@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-
 from typing import Any
 
 from return_platform.agents.contracts import (
@@ -11,8 +10,8 @@ from return_platform.agents.contracts import (
     OrderAnalysisAssessment,
     OrderAnalysisRequest,
 )
+from return_platform.ai_gateway.service import AIGatewayService
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
-from return_platform.operations.models import AIDecision
 
 
 class OrderAnalysisAgent:
@@ -21,7 +20,7 @@ class OrderAnalysisAgent:
         self._config = configuration.agents["order_analysis"]
 
     async def analyze(
-        self, request: OrderAnalysisRequest, ai_gateway: "AIGatewayService"
+        self, request: OrderAnalysisRequest, ai_gateway: AIGatewayService
     ) -> OrderAnalysisAssessment:
         if not self._config.ai_assisted:
             return OrderAnalysisAssessment(
@@ -58,12 +57,12 @@ class OrderAnalysisAgent:
             redacted_input=payload,
             task_id="ORDER_CANDIDATE_ANALYSIS_V1",
         )
-        
+
         trace = evaluation.trace
-        
+
         explanation = trace.explanation or ""
         smart_question = None
-        
+
         try:
             # We expect the explanation might have a smart question or just be text.
             # If the gateway is configured properly, it should return a JSON explanation.
@@ -73,7 +72,7 @@ class OrderAnalysisAgent:
                 smart_question = parsed.get("question") or parsed.get("smartQuestion")
         except Exception:
             pass
-            
+
         if not smart_question:
             # If the AI failed to return JSON, we can assume the whole text is the question,
             # or fallback. But the prompt said "Return exactly the configured structured gateway JSON envelope"
@@ -98,11 +97,11 @@ class OrderAnalysisAgent:
         )
 
     async def disambiguate(
-        self, 
-        candidates: list[Any], 
-        user_response: str, 
-        allowed_fields: list[dict[str, Any]], 
-        ai_gateway: "AIGatewayService",
+        self,
+        candidates: list[Any],
+        user_response: str,
+        allowed_fields: list[dict[str, Any]],
+        ai_gateway: AIGatewayService,
         session_id: str
     ) -> tuple[str | None, str | None]:
         """
@@ -111,17 +110,17 @@ class OrderAnalysisAgent:
         """
         if not self._config.ai_assisted:
             return None, None
-            
+
         max_distinct = self._root.clarification_policy.max_distinct_values_for_ai or 5
-        
+
         # Aggregate distinct values for all allowed fields
-        summary = {}
+        summary: dict[str, list[str] | dict[str, int]] = {}
         for field_config in allowed_fields:
             field_name = field_config["field"]
             candidate_field = field_config.get("candidate_field")
             if not candidate_field:
                 continue
-                
+
             distinct_values = set()
             for c in candidates:
                 val = None
@@ -140,41 +139,41 @@ class OrderAnalysisAgent:
                             if val:
                                 distinct_values.add(str(val))
                     continue
-                
+
                 if val:
                     distinct_values.add(str(val))
-                    
+
             if distinct_values:
                 if len(distinct_values) <= max_distinct:
                     summary[field_name] = list(distinct_values)
                 else:
                     summary[field_name] = {"count": len(distinct_values)}
-                    
+
         payload = {
             "aggregatedSummary": summary,
             "userMessage": user_response,
             "allowedFields": [f["field"] for f in allowed_fields]
         }
-        
+
         evaluation = await ai_gateway.evaluate(
             session_id=session_id,
             redacted_input=payload,
             task_id="ORDER_CANDIDATE_DISAMBIGUATION_V1",
         )
-        
+
         trace = evaluation.trace
         explanation = trace.explanation or ""
         smart_question = None
-        
+
         try:
             if explanation and explanation.startswith("{"):
                 parsed = json.loads(explanation)
                 smart_question = parsed.get("question") or parsed.get("smartQuestion")
         except Exception:
             pass
-            
+
         if trace.decision and trace.decision.value != "AMBIGUOUS" and trace.decision.value != "UNKNOWN":
             # AI identified a specific candidate
             return trace.decision.value, None
-            
+
         return None, smart_question or explanation

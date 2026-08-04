@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from neo4j import AsyncGraphDatabase
@@ -11,10 +12,10 @@ from return_platform.ai_gateway.configuration import (
     build_loaded_ai_gateway_configuration,
     load_ai_gateway_configuration,
 )
-import logging
 from return_platform.configuration.graph_repository import (
-    Neo4jConfigurationGraphRepository,
+    ConfigurationGraphRepository,
     InMemoryConfigurationGraphRepository,
+    Neo4jConfigurationGraphRepository,
 )
 from return_platform.configuration.return_configuration import (
     LoadedReturnConfiguration,
@@ -76,6 +77,7 @@ async def resolve_process_configuration(
         bootstrap.neo4j_uri,
         auth=(bootstrap.neo4j_user, bootstrap.neo4j_password.get_secret_value()),
     )
+    repository: ConfigurationGraphRepository
     try:
         await driver.verify_connectivity()
         repository = Neo4jConfigurationGraphRepository(driver)

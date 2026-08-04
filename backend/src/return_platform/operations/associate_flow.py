@@ -22,11 +22,11 @@ from return_platform.agents.contracts import (
     DiscoveryAssessmentRequest,
     DiscoveryCandidateInput,
     NormalizedReturnMethod,
+    OrderAnalysisRequest,
     OrderSource,
     ProductPresence,
     ReturnItemInput,
     ReturnWorkflowAssessmentRequest,
-    OrderAnalysisRequest,
 )
 from return_platform.agents.registry import ReturnAgentRegistry
 from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
@@ -979,7 +979,7 @@ class AssociateConversationService:
                 max(values.count(value) for value in distinct) if distinct else 0
             ),
         }
-        max_distinct = self._return_configuration.clarification_policy.smart_question.max_distinct_values_for_ai
+        max_distinct = self._return_configuration.clarification_policy.max_distinct_values_for_ai
         if 0 < len(distinct) <= max_distinct:
             stats["distinctValues"] = sorted(list(distinct))
         return stats
@@ -1897,23 +1897,23 @@ class AssociateConversationService:
     ) -> list[OrderCandidate]:
         if not anchors:
             return []
-            
+
         conditions = []
         params = {}
-        
+
         for i, anchor in enumerate(anchors):
             val_key = f"val_{i}"
             val = anchor.anchorValue
-            
+
             if anchor.anchorType in {AnchorType.PHONE, AnchorType.EMAIL}:
                 val = contact_lookup_digest(
                     val,
                     "PHONE" if anchor.anchorType is AnchorType.PHONE else "EMAIL",
                     self._settings.contact_lookup_hmac_key.get_secret_value(),
                 )
-            
+
             params[val_key] = val
-            
+
             if anchor.anchorType == AnchorType.ORDER_NUMBER:
                 conditions.append(f"toLower(o.sales_order_number) STARTS WITH toLower(${val_key})")
             elif anchor.anchorType == AnchorType.CUSTOMER_ID:
@@ -1943,7 +1943,7 @@ class AssociateConversationService:
             return []
 
         where_clause = " AND ".join(conditions)
-        
+
         query = f"""
         MATCH (c:Customer)-[:PLACED_ORDER]->(o:SalesOrder)
         OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine)
@@ -1955,14 +1955,16 @@ class AssociateConversationService:
         """
 
         records, _, _ = await self._graph.execute_query(
-            query, **params, database_=self._graph_database
+            query,
+            parameters_=params,
+            database_=self._graph_database,
         )
 
         candidates_by_key: dict[tuple[str, str], OrderCandidate] = {}
         for record in records:
             customer = dict(record["c"]) if record.get("c") else {}
             order = dict(record["o"]) if record.get("o") else {}
-            
+
             lines: list[OrderLineCandidate] = []
             for entry in record["lines"]:
                 if not entry:
@@ -2005,11 +2007,12 @@ class AssociateConversationService:
                     lines=tuple(lines),
                     evidenceSource="GRAPH_COMBINED_SEARCH",
                     retrievalScore=1.0,
+                    confidenceMillionths=1_000_000,
                 )
                 key = (candidate.customerReference, candidate.orderReference)
                 if key not in candidates_by_key:
                     candidates_by_key[key] = candidate
-                    
+
         return list(candidates_by_key.values())
 
     async def _discover_candidates_for_anchors(
@@ -2023,7 +2026,7 @@ class AssociateConversationService:
                 anchors[0].anchorType,
                 anchors[0].anchorValue,
             )
-            
+
         try:
             combined_candidates = await self._graph_candidates_combined(anchors)
             if combined_candidates:
@@ -2407,8 +2410,8 @@ class AssociateConversationService:
                 if len(candidates) > 1:
                     status = "DISCOVERY_CLARIFICATION_REQUIRED"
                     allowed_fields = [
-                        f.model_dump(mode="json") 
-                        for f in self._return_configuration.clarification_policy.fields 
+                        f.model_dump(mode="json")
+                        for f in self._return_configuration.clarification_policy.fields
                         if f.customer_answerable
                     ]
                     selected_candidate_id, smart_question = await self._order_analysis_agent.disambiguate(
@@ -2418,7 +2421,7 @@ class AssociateConversationService:
                         ai_gateway=self._ai,
                         session_id="temp-discovery",
                     )
-                    
+
                     if selected_candidate_id:
                         candidates = [c for c in candidates if c.orderReference == selected_candidate_id]
                         status = "DISCOVERY_READY"
@@ -2547,11 +2550,11 @@ class AssociateConversationService:
         slot = conversation.activeRequestedSlots[0]
 
         allowed_fields = [
-            f.model_dump(mode="json") 
-            for f in self._return_configuration.clarification_policy.fields 
+            f.model_dump(mode="json")
+            for f in self._return_configuration.clarification_policy.fields
             if f.customer_answerable
         ]
-        
+
         selected_candidate_id, smart_question = await self._order_analysis_agent.disambiguate(
             candidates=conversation.candidates,
             user_response=payload.message,

@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from return_platform.agents.bay_assignment import BayAssignmentAgent
 from return_platform.agents.feedback import FeedbackLearningAgent
 from return_platform.agents.fulfillment import ReturnFulfillmentAgent
-from return_platform.agents.order_discovery import OrderDiscoveryAgent
 from return_platform.agents.order_analysis import OrderAnalysisAgent
+from return_platform.agents.order_discovery import OrderDiscoveryAgent
 from return_platform.agents.return_workflow import ReturnWorkflowAgent
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 
