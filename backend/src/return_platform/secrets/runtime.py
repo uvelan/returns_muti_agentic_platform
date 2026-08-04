@@ -14,14 +14,22 @@ from return_platform.secrets.vault import (
 )
 
 
+class RuntimeConfigurationError(RuntimeError):
+    pass
+
+
+
 async def _resolve_required(
     resolver: VaultHTTPSecretResolver,
     reference_text: str,
 ) -> str:
     reference = parse_secret_reference(reference_text)
-    resolved = await resolver.get_secret(reference)
+    try:
+        resolved = await resolver.get_secret(reference)
+    except Exception as exc:
+        raise RuntimeConfigurationError(f"Required Vault secret is unavailable: {reference.to_uri()}") from exc
     if resolved is None:
-        raise RuntimeError(f"Required Vault secret is unavailable: {reference.to_uri()}")
+        raise RuntimeConfigurationError(f"Required Vault secret is unavailable: {reference.to_uri()}")
     return resolved.value
 
 

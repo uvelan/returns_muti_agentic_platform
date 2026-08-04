@@ -322,10 +322,17 @@ async def lifespan(
     """
 
     configured_settings = _get_settings(app)
-    bootstrap_settings, secret_resolver = await resolve_runtime_settings_from_vault(
-        configured_settings,
-        resolve_ai_credentials=False,
-    )
+    try:
+        bootstrap_settings, secret_resolver = await resolve_runtime_settings_from_vault(
+            configured_settings,
+            resolve_ai_credentials=False,
+        )
+    except Exception as exc:
+        _log_initialization_failure("vault", exc)
+        if configured_settings.environment == "production":
+            raise RuntimeError("Required Vault dependency is unavailable") from exc
+        bootstrap_settings = configured_settings
+        secret_resolver = None
     app.state.settings = bootstrap_settings
     app.state.secret_resolver = secret_resolver
 
@@ -404,9 +411,16 @@ async def lifespan(
             bootstrap_settings,
             return_configuration.configuration,
         )
-        settings, resolved_secret_resolver = await resolve_runtime_settings_from_vault(
-            graph_settings
-        )
+        try:
+            settings, resolved_secret_resolver = await resolve_runtime_settings_from_vault(
+                graph_settings
+            )
+        except Exception as exc:
+            _log_initialization_failure("vault", exc)
+            if graph_settings.environment == "production":
+                raise RuntimeError("Required Vault dependency is unavailable") from exc
+            settings = graph_settings
+            resolved_secret_resolver = None
         if resolved_secret_resolver is not None:
             secret_resolver = resolved_secret_resolver
             app.state.secret_resolver = secret_resolver

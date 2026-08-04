@@ -11,7 +11,11 @@ from return_platform.ai_gateway.configuration import (
     build_loaded_ai_gateway_configuration,
     load_ai_gateway_configuration,
 )
-from return_platform.configuration.graph_repository import Neo4jConfigurationGraphRepository
+import logging
+from return_platform.configuration.graph_repository import (
+    Neo4jConfigurationGraphRepository,
+    InMemoryConfigurationGraphRepository,
+)
 from return_platform.configuration.return_configuration import (
     LoadedReturnConfiguration,
     load_return_configuration,
@@ -31,6 +35,7 @@ from return_platform.secrets.runtime import resolve_runtime_settings_from_vault
 from return_platform.secrets.vault import VaultHTTPSecretResolver
 
 _DEVELOPMENT_ENVIRONMENTS = frozenset({"development", "test"})
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,10 +54,17 @@ async def resolve_process_configuration(
     """Resolve Vault bootstrap credentials, graph metadata, then runtime secrets."""
 
     configured = configured_settings or Settings()
-    bootstrap, resolver = await resolve_runtime_settings_from_vault(
-        configured,
-        resolve_ai_credentials=False,
-    )
+    try:
+        bootstrap, resolver = await resolve_runtime_settings_from_vault(
+            configured,
+            resolve_ai_credentials=False,
+        )
+    except Exception as exc:
+        logger.exception("Vault initialization failed")
+        if configured.environment == "production":
+            raise RuntimeError("Required Vault dependency is unavailable") from exc
+        bootstrap = configured
+        resolver = None
     baseline = load_return_configuration(bootstrap.return_configuration_path)
     baseline_ai_gateway = load_ai_gateway_configuration(
         bootstrap.ai_gateway_configuration_path
@@ -67,6 +79,13 @@ async def resolve_process_configuration(
     try:
         await driver.verify_connectivity()
         repository = Neo4jConfigurationGraphRepository(driver)
+    except Exception as exc:
+        logger.exception("Neo4j initialization failed")
+        if bootstrap.environment == "production":
+            raise RuntimeError("Required Neo4j dependency is unavailable") from exc
+        repository = InMemoryConfigurationGraphRepository()
+
+    try:
         snapshot = await ConfigurationSnapshotBuilder(repository).build_snapshot(
             baseline.configuration,
             allow_baseline_fallback=(
@@ -84,7 +103,14 @@ async def resolve_process_configuration(
         await driver.close()
 
     graph_settings = apply_graph_runtime_configuration(bootstrap, snapshot.configuration)
-    resolved, resolved_resolver = await resolve_runtime_settings_from_vault(graph_settings)
+    try:
+        resolved, resolved_resolver = await resolve_runtime_settings_from_vault(graph_settings)
+    except Exception as exc:
+        logger.exception("Vault initialization failed")
+        if graph_settings.environment == "production":
+            raise RuntimeError("Required Vault dependency is unavailable") from exc
+        resolved = graph_settings
+        resolved_resolver = None
     if snapshot.ai_gateway_configuration is None:
         raise RuntimeError("Runtime snapshot has no AI gateway configuration")
     if snapshot.dependency_simulation_configuration is None:
