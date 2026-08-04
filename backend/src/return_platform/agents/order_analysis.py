@@ -61,14 +61,14 @@ class OrderAnalysisAgent:
         
         trace = evaluation.trace
         
-        explanation = trace.explanation
+        explanation = trace.explanation or ""
         smart_question = None
         
         try:
             # We expect the explanation might have a smart question or just be text.
             # If the gateway is configured properly, it should return a JSON explanation.
             # Let's see if we can parse it.
-            if explanation.startswith("{"):
+            if explanation and explanation.startswith("{"):
                 parsed = json.loads(explanation)
                 smart_question = parsed.get("question") or parsed.get("smartQuestion")
         except Exception:
@@ -163,11 +163,11 @@ class OrderAnalysisAgent:
         )
         
         trace = evaluation.trace
-        explanation = trace.explanation
+        explanation = trace.explanation or ""
         smart_question = None
         
         try:
-            if explanation.startswith("{"):
+            if explanation and explanation.startswith("{"):
                 parsed = json.loads(explanation)
                 smart_question = parsed.get("question") or parsed.get("smartQuestion")
         except Exception:

@@ -97,6 +97,9 @@ tasks:
       - orderStatus
       - daysSinceDelivery
       - requestedDecision
+      - returnQuantity
+      - packageCount
+      - shippingPathExpectation
   RETURN_CLARIFICATION_FIELD_V2:
     tier: LIGHTWEIGHT
     promptVersion: return-clarification-field-v2
