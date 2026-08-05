@@ -375,66 +375,63 @@ class AIProviderRuntimeConfiguration(StrictConfigModel):
         if self.enabled and self.provider_key != "OLLAMA" and not self.credentials:
             raise ValueError("enabled hosted AI providers require at least one credential")
         if self.enabled and not self.models:
-            raise ValueError("enabled AI providers require at least one validated model")
+            raise ValueError("enabled AI providers require at least one configured model")
+
         model_ids = [item.model_id for item in self.models]
         if len(model_ids) != len(set(model_ids)):
             raise ValueError("AI provider model IDs must be unique")
+
         profile_keys = [item.profile_key for item in self.credentials]
         if len(profile_keys) != len(set(profile_keys)):
             raise ValueError("AI credential profile keys must be unique")
+
         route_keys = [
             (item.credential_profile_key, item.model_id, item.task_key)
             for item in self.validated_routes
         ]
         if len(route_keys) != len(set(route_keys)):
             raise ValueError("AI validated credential/model/task routes must be unique")
+
         if self.enabled and self.provider_key != "OLLAMA":
             known_credentials = {credential.profile_key for credential in self.credentials}
             known_model_tasks = {
-                (model.model_id, task_key)
-                for model in self.models
-                for task_key in model.task_keys
+                (model.model_id, task_key) for model in self.models for task_key in model.task_keys
             }
-            actual = set(route_keys)
             unexpected = sorted(
                 route
-                for route in actual
+                for route in route_keys
                 if route[0] not in known_credentials
                 or (route[1], route[2]) not in known_model_tasks
             )
-            credential_coverage = {route[0] for route in actual}
-            model_task_coverage = {(route[1], route[2]) for route in actual}
-            missing_credentials = sorted(known_credentials - credential_coverage)
-            missing_model_tasks = sorted(known_model_tasks - model_task_coverage)
-            if unexpected or missing_credentials or missing_model_tasks:
-                details: list[str] = []
-                if missing_credentials:
-                    details.append(f"missing_credentials={missing_credentials}")
-                if missing_model_tasks:
-                    details.append(f"missing_model_tasks={missing_model_tasks}")
-                if unexpected:
-                    details.append(f"unexpected={unexpected}")
+            if unexpected:
                 raise ValueError(
-                    "active AI credentials and model tasks require at least one validated "
-                    "route without requiring a credential/model cartesian product: "
-                    + "; ".join(details)
+                    "AI validated routes must reference configured credentials "
+                    f"and model tasks: {unexpected}"
                 )
+
             route_receipts_by_profile: dict[str, set[str]] = {}
             for route in self.validated_routes:
-                route_receipts_by_profile.setdefault(route.credential_profile_key, set()).add(
-                    route.validation_receipt_id
-                )
+                route_receipts_by_profile.setdefault(
+                    route.credential_profile_key,
+                    set(),
+                ).add(route.validation_receipt_id)
+
             invalid_credentials = sorted(
                 credential.profile_key
                 for credential in self.credentials
-                if credential.validation_receipt_id
-                not in route_receipts_by_profile.get(credential.profile_key, set())
+                if credential.validation_receipt_id is not None
+                and credential.validation_receipt_id
+                not in route_receipts_by_profile.get(
+                    credential.profile_key,
+                    set(),
+                )
             )
             if invalid_credentials:
                 raise ValueError(
-                    "AI credential validation receipt must belong to one of its validated routes: "
-                    + ", ".join(invalid_credentials)
+                    "AI credential validation receipt must belong to one of "
+                    "its validated routes: " + ", ".join(invalid_credentials)
                 )
+
         return self
 
 

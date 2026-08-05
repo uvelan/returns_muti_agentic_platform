@@ -30,11 +30,7 @@ from return_platform.dynamic_knowledge.integration.model_gateway import (
 )
 from return_platform.dynamic_knowledge.order_agent.contracts import AgentTurnContext
 
-CONFIG = (
-    Path(__file__).resolve().parents[1]
-    / "config"
-    / "ai_gateway.yaml"
-)
+CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway.yaml"
 CHECKSUM = "a" * 64
 
 
@@ -169,6 +165,34 @@ def test_provider_configuration_accepts_sparse_validated_routes() -> None:
     assert len(provider.validated_routes) == 2
 
 
+def test_provider_configuration_accepts_unvalidated_configured_routes() -> None:
+    provider = AIProviderRuntimeConfiguration(
+        provider_key="GOOGLE",
+        enabled=True,
+        base_url="https://generativelanguage.googleapis.com/v1beta",
+        credentials=(
+            CredentialBindingConfiguration(
+                profile_key="google-key-1",
+                vault_reference=("vault://secret/production/ai/google/key-1#api_key?version=1"),
+                bootstrap_managed=True,
+            ),
+        ),
+        models=(
+            AIModelBindingConfiguration(
+                model_id="google-a",
+                model_class="STANDARD",
+                task_keys=("ORDER_AGENT_REASONING_V1",),
+                priority=1,
+            ),
+        ),
+        validated_routes=(),
+        priority=1,
+    )
+
+    assert provider.enabled is True
+    assert provider.validated_routes == ()
+
+
 def test_graph_runtime_emits_pair_specific_route_bindings(
     test_settings: Settings,
 ) -> None:
@@ -240,11 +264,16 @@ def test_graph_runtime_emits_pair_specific_route_bindings(
     )
 
 
-def test_build_routes_uses_only_validated_pairs(test_settings: Settings) -> None:
+def test_build_routes_keeps_all_configured_pairs(
+    test_settings: Settings,
+) -> None:
     settings = test_settings.model_copy(
         update={
             "ai_provider_order": "GOOGLE",
-            "google_api_keys": (SecretStr("key-1"), SecretStr("key-2")),
+            "google_api_keys": (
+                SecretStr("key-1"),
+                SecretStr("key-2"),
+            ),
             "google_standard_models": ("google-a", "google-b"),
             "google_lightweight_models": (),
             "ai_validated_route_bindings": (
@@ -258,6 +287,8 @@ def test_build_routes_uses_only_validated_pairs(test_settings: Settings) -> None
 
     assert {(route.credential_id, route.model) for route in routes} == {
         ("google-key-1", "google-a"),
+        ("google-key-1", "google-b"),
+        ("google-key-2", "google-a"),
         ("google-key-2", "google-b"),
     }
 

@@ -212,7 +212,6 @@ def _provider_models(
     return ()
 
 
-
 def _validated_route_bindings(
     settings: Settings,
 ) -> dict[tuple[str, int, str], frozenset[str]]:
@@ -222,10 +221,10 @@ def _validated_route_bindings(
         bindings[(provider_name, int(credential_index_text), model)].add(task_key)
     return {key: frozenset(value) for key, value in bindings.items()}
 
+
 def build_routes(settings: Settings) -> tuple[AIRoute, ...]:
     provider_order = tuple(p.strip() for p in settings.ai_provider_order.split(","))
     validated_bindings = _validated_route_bindings(settings)
-    restrict_to_validated_pairs = bool(validated_bindings)
     routes: list[AIRoute] = []
     for provider_priority, provider_name in enumerate(provider_order):
         credentials = _provider_credentials(settings, provider_name)
@@ -234,8 +233,6 @@ def build_routes(settings: Settings) -> tuple[AIRoute, ...]:
             for model_priority, model in enumerate(models):
                 for credential_priority, credential in enumerate(credentials):
                     binding_key = (provider_name, credential_priority, model)
-                    if restrict_to_validated_pairs and binding_key not in validated_bindings:
-                        continue
                     credential_id = (
                         f"{provider_name.lower()}-local"
                         if credential is None
@@ -358,12 +355,8 @@ class AIRoutePool:
                         route.credential_priority,
                     )
                 )
-                cursor = self._state.provider_route_cursors[provider_name] % len(
-                    provider_routes
-                )
-                rotated_groups[provider_name] = (
-                    provider_routes[cursor:] + provider_routes[:cursor]
-                )
+                cursor = self._state.provider_route_cursors[provider_name] % len(provider_routes)
+                rotated_groups[provider_name] = provider_routes[cursor:] + provider_routes[:cursor]
                 self._state.provider_route_cursors[provider_name] = cursor + 1
             balanced: list[AIRoute] = []
             maximum_provider_routes = max(

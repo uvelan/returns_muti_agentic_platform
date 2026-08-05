@@ -121,6 +121,7 @@ class Settings(BaseSettings):
 
     ai_provider_order: str = "GOOGLE,NVIDIA,SIMULATOR"
     ai_validated_route_bindings: tuple[str, ...] = ()
+    ai_validation_interval_hours: int = Field(default=24, ge=1, le=168)
     ai_timeout_seconds: float = Field(default=12.0, ge=0.5, le=60.0)
     ai_global_timeout_seconds: float = Field(default=30.0, ge=1.0, le=120.0)
     ai_max_attempts_per_provider: int = Field(default=2, ge=1, le=4)
@@ -564,8 +565,7 @@ class Settings(BaseSettings):
             parts = raw_binding.split("|", maxsplit=3)
             if len(parts) != 4:
                 raise ValueError(
-                    "AI validated route bindings must use "
-                    "PROVIDER|CREDENTIAL_INDEX|MODEL|TASK."
+                    "AI validated route bindings must use PROVIDER|CREDENTIAL_INDEX|MODEL|TASK."
                 )
             provider, credential_index_text, model, task_key = parts
             provider = provider.strip().upper()
@@ -574,9 +574,7 @@ class Settings(BaseSettings):
             try:
                 credential_index = int(credential_index_text)
             except ValueError as exc:
-                raise ValueError(
-                    "AI validated route credential index must be an integer."
-                ) from exc
+                raise ValueError("AI validated route credential index must be an integer.") from exc
             if (
                 provider not in allowed_providers
                 or credential_index < 0
@@ -584,9 +582,7 @@ class Settings(BaseSettings):
                 or not task_key
             ):
                 raise ValueError("AI validated route binding is invalid.")
-            normalized.append(
-                f"{provider}|{credential_index}|{model}|{task_key}"
-            )
+            normalized.append(f"{provider}|{credential_index}|{model}|{task_key}")
         if len(normalized) != len(set(normalized)):
             raise ValueError("AI validated route bindings must not contain duplicates.")
         return tuple(normalized)
