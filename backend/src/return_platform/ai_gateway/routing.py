@@ -224,12 +224,14 @@ def _validated_route_bindings(
 
 def build_routes(settings: Settings) -> tuple[AIRoute, ...]:
     provider_order = tuple(p.strip() for p in settings.ai_provider_order.split(","))
+    print("DEBUG BUILD_ROUTES:", provider_order, settings.nvidia_lightweight_models, settings.nvidia_api_keys)
     validated_bindings = _validated_route_bindings(settings)
     routes: list[AIRoute] = []
     for provider_priority, provider_name in enumerate(provider_order):
         credentials = _provider_credentials(settings, provider_name)
         for tier in ModelTier:
             models = _provider_models(settings, provider_name, tier)
+            print("DEBUG BUILD_ROUTES LOOP:", provider_name, tier, models, credentials)
             for model_priority, model in enumerate(models):
                 for credential_priority, credential in enumerate(credentials):
                     binding_key = (provider_name, credential_priority, model)
@@ -255,6 +257,7 @@ def build_routes(settings: Settings) -> tuple[AIRoute, ...]:
                             allowed_task_keys=validated_bindings.get(binding_key, frozenset()),
                         )
                     )
+    print("DEBUG BUILD_ROUTES RETURNING:", routes)
     return tuple(routes)
 
 
@@ -320,19 +323,22 @@ class AIRoutePool:
         now = time.monotonic()
         forced = force_provider.upper() if force_provider else None
         async with self._lock:
-            available = [
-                route
-                for route in self.routes
-                if route.tier is task.tier
-                and route.provider_name in task.allowedProviders
-                and (forced is None or route.provider_name == forced)
-                and (
-                    not route.allowed_task_keys
-                    or task_id is None
-                    or task_id in route.allowed_task_keys
-                )
-                and self._is_available(route, now)
-            ]
+            available = []
+            for route in self.routes:
+                reason = "allowed"
+                if route.tier is not task.tier:
+                    reason = f"tier mismatch: {route.tier} != {task.tier}"
+                elif route.provider_name not in task.allowedProviders:
+                    reason = f"provider not allowed: {route.provider_name}"
+                elif forced is not None and route.provider_name != forced:
+                    reason = "forced mismatch"
+                elif route.allowed_task_keys and task_id is not None and task_id not in route.allowed_task_keys:
+                    reason = "task not in allowed_task_keys"
+                elif not self._is_available(route, now):
+                    reason = f"not available (configured={route.provider.configured})"
+                print("DEBUG ROUTE EVAL:", route.route_id, reason)
+                if reason == "allowed":
+                    available.append(route)
             grouped: dict[str, list[AIRoute]] = defaultdict(list)
             for route in available:
                 grouped[route.provider_name].append(route)

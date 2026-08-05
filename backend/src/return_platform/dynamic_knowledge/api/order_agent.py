@@ -35,7 +35,7 @@ class DynamicOrderAgentRuntime:
 
 def resolve_runtime(request: Request) -> DynamicOrderAgentRuntime:
     runtime = getattr(request.app.state, "dynamic_order_agent_runtime", None)
-    if isinstance(runtime, DynamicOrderAgentRuntime):
+    if runtime is not None and runtime.__class__.__name__ == "DynamicOrderAgentRuntime":
         return runtime
 
     status_payload: Any = getattr(

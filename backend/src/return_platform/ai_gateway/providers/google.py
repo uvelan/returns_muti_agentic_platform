@@ -29,8 +29,15 @@ class GeminiProvider(HTTPProvider):
     async def generate(self, request: ProviderRequest) -> ProviderResponse:
         if self._api_key is None:
             raise ProviderError("AUTH_FAILED")
+        url = f"{self._base_url}/models/{self.model}:generateContent"
+        if "/" in self.model: # handle if model already contains models/
+            url = f"{self._base_url}/{self.model}:generateContent"
+            
+        print(f"DEBUG GOOGLE REQUEST URL: {url}")
+        from return_platform.ai_gateway.providers.schema_cleaner import clean_gemini_schema
+        
         data = await self._post(
-            f"{self._base_url}/models/{self.model}:generateContent",
+            url,
             headers={"x-goog-api-key": self._api_key, "Content-Type": "application/json"},
             payload={
                 "systemInstruction": {"parts": [{"text": request.system_prompt}]},
@@ -40,6 +47,11 @@ class GeminiProvider(HTTPProvider):
                 "generationConfig": {
                     "temperature": request.temperature,
                     "responseMimeType": "application/json",
+                    **(
+                        {"responseSchema": clean_gemini_schema(request.response_schema)}
+                        if request.response_schema is not None
+                        else {}
+                    ),
                     **(
                         {"maxOutputTokens": request.max_output_tokens}
                         if request.max_output_tokens is not None

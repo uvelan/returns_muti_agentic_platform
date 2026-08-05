@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import asyncio
 import json
 import logging
@@ -192,17 +193,24 @@ class RoutePoolReasoningModelGateway:
                     },
                 )
                 try:
+                    print(f"DEBUG EXECUTING ROUTE: {route.provider_name} {route.model}")
+                    from return_platform.ai_gateway.providers.schema_cleaner import clean_gemini_schema
+                    schema_str = json.dumps(clean_gemini_schema(AgentAction.model_json_schema()))
+                    full_prompt = f"{self._task.systemPrompt}\n\nREQUIRED RESPONSE SCHEMA (Output exactly this JSON structure):\n```json\n{schema_str}\n```"
+                    
                     response = await asyncio.wait_for(
                         route.provider.generate(
                             ProviderRequest(
-                                self._task.systemPrompt,
-                                payload,
+                                system_prompt=full_prompt,
+                                user_payload=payload,
                                 max_output_tokens=self._task.maximumOutputTokens,
                                 temperature=0.0,
+                                response_schema=AgentAction.model_json_schema(),
                             )
                         ),
                         timeout=min(self._settings.ai_timeout_seconds, remaining),
                     )
+                    print(f"DEBUG ROUTE SUCCESS: {route.provider_name} {route.model}")
                     output_safety = inspect_output(response.text)
                     if not output_safety.allowed:
                         raise ProviderError("POLICY_BLOCKED")
@@ -232,15 +240,21 @@ class RoutePoolReasoningModelGateway:
                         completion_tokens=max(0, int(response.output_tokens or 0)),
                     )
                 except TimeoutError:
+                    print(f"DEBUG EXCEPTION FOR {route.provider_name}: TIMEOUT")
                     last_error = "TIMEOUT"
                     await self._route_pool.record_failure(route, last_error)
                 except ProviderError as exc:
+                    print(f"DEBUG EXCEPTION FOR {route.provider_name}: PROVIDER_ERROR {exc.code} {exc}")
                     last_error = exc.code
                     await self._route_pool.record_failure(route, last_error)
-                except (ValueError, TypeError):
+                except (ValueError, TypeError) as exc:
+                    print(f"DEBUG EXCEPTION FOR {route.provider_name}: PARSE_ERROR {type(exc)} {exc}")
                     last_error = "RESPONSE_INVALID"
                     await self._route_pool.record_failure(route, last_error)
-                except Exception:
+                except Exception as exc:
+                    import traceback
+                    traceback.print_exc()
+                    print(f"DEBUG EXCEPTION FOR {route.provider_name}: UNKNOWN {type(exc)} {exc}")
                     last_error = "PROVIDER_UNAVAILABLE"
                     await self._route_pool.record_failure(route, last_error)
                 finally:

@@ -20,6 +20,7 @@ class ProviderRequest:
     user_payload: dict[str, Any]
     max_output_tokens: int | None = None
     temperature: float = 0.0
+    response_schema: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -35,6 +35,7 @@ def raise_for_provider_status(response: httpx.Response) -> None:
     try:
         response.raise_for_status()
     except httpx.HTTPStatusError as error:
+        print("PROVIDER ERROR HTTPStatusError:", response.status_code, response.text)
         raise ProviderError("RESPONSE_INVALID") from error
 
 

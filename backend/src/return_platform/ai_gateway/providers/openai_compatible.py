@@ -38,24 +38,42 @@ class OpenAICompatibleProvider(HTTPProvider):
         headers = {"Content-Type": "application/json"}
         if self._api_key is not None:
             headers["Authorization"] = f"Bearer {self._api_key}"
+
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": request.system_prompt},
+                {"role": "user", "content": json.dumps(request.user_payload)},
+            ],
+            "temperature": request.temperature,
+            "stream": False,
+            **(
+                {"max_tokens": request.max_output_tokens}
+                if request.max_output_tokens is not None
+                else {}
+            ),
+        }
+        if request.response_schema is not None:
+            if "nemotron" in self.model.lower():
+                # Nemotron models via NVIDIA integrate API support json_object mode, but maybe not structured JSON schema for all.
+                # Just requesting JSON format helps.
+                payload["response_format"] = {"type": "json_object"}
+            else:
+                payload["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "agent_action",
+                        "schema": request.response_schema,
+                        "strict": True
+                    }
+                }
+
         data = await self._post(
             f"{self._base_url}/chat/completions",
             headers=headers,
-            payload={
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": request.system_prompt},
-                    {"role": "user", "content": json.dumps(request.user_payload)},
-                ],
-                "temperature": request.temperature,
-                "stream": False,
-                **(
-                    {"max_tokens": request.max_output_tokens}
-                    if request.max_output_tokens is not None
-                    else {}
-                ),
-            },
+            payload=payload,
         )
+        print(f"DEBUG OPENAI_COMPATIBLE RESPONSE [{self.name} {self.model}]:", data)
         try:
             text = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as error:

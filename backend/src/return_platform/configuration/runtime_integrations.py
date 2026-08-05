@@ -29,38 +29,45 @@ def apply_graph_runtime_configuration(
 ) -> Settings:
     """Return settings whose non-secret routing metadata comes from the graph release."""
 
-    updates: dict[str, object] = {
-        "ai_provider_order": "NONE",
-        "ai_validated_route_bindings": (),
-        "google_api_key_references": (),
-        "nvidia_api_key_references": (),
-        "openai_api_key_references": (),
-        "anthropic_api_key_references": (),
-        "google_api_keys": (),
-        "nvidia_api_keys": (),
-        "openai_api_keys": (),
-        "anthropic_api_keys": (),
-        "google_api_key": None,
-        "nvidia_api_key": None,
-        "openai_api_key": None,
-        "anthropic_api_key": None,
-        "google_lightweight_models": (),
-        "google_standard_models": (),
-        "nvidia_lightweight_models": (),
-        "nvidia_standard_models": (),
-        "openai_lightweight_models": (),
-        "openai_standard_models": (),
-        "anthropic_lightweight_models": (),
-        "anthropic_standard_models": (),
-        "ollama_lightweight_models": (),
-        "ollama_standard_models": (),
-        "google_model": None,
-        "nvidia_model": None,
-        "openai_model": None,
-        "anthropic_model": None,
-        "ollama_model": None,
-    }
     sources = _source_map(configuration)
+    enabled_providers = sorted(
+        (item for item in configuration.runtime_integrations.ai_providers if item.enabled),
+        key=lambda item: item.priority,
+    )
+    
+    updates: dict[str, object] = {}
+    if enabled_providers or settings.environment not in ("development", "test"):
+        updates.update({
+            "ai_provider_order": "NONE",
+            "ai_validated_route_bindings": (),
+            "google_api_key_references": (),
+            "nvidia_api_key_references": (),
+            "openai_api_key_references": (),
+            "anthropic_api_key_references": (),
+            "google_api_keys": (),
+            "nvidia_api_keys": (),
+            "openai_api_keys": (),
+            "anthropic_api_keys": (),
+            "google_api_key": None,
+            "nvidia_api_key": None,
+            "openai_api_key": None,
+            "anthropic_api_key": None,
+            "google_lightweight_models": (),
+            "google_standard_models": (),
+            "nvidia_lightweight_models": (),
+            "nvidia_standard_models": (),
+            "openai_lightweight_models": (),
+            "openai_standard_models": (),
+            "anthropic_lightweight_models": (),
+            "anthropic_standard_models": (),
+            "ollama_lightweight_models": (),
+            "ollama_standard_models": (),
+            "google_model": None,
+            "nvidia_model": None,
+            "openai_model": None,
+            "anthropic_model": None,
+            "ollama_model": None,
+        })
 
     platform_mongo = sources.get("platform-mongodb")
     if platform_mongo is not None:
@@ -122,10 +129,6 @@ def apply_graph_runtime_configuration(
     ):
         updates["temporal_target"] = f"{temporal.host}:{temporal.port}"
 
-    enabled_providers = sorted(
-        (item for item in configuration.runtime_integrations.ai_providers if item.enabled),
-        key=lambda item: item.priority,
-    )
     if enabled_providers:
         updates["ai_provider_order"] = ",".join(item.provider_key for item in enabled_providers)
     validated_route_bindings: list[str] = []

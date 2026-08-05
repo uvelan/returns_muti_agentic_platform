@@ -31,6 +31,10 @@ from return_platform.dynamic_knowledge.order_agent.contracts import (
     AgentTurnResult,
     ModelInvocationResult,
 )
+from return_platform.dynamic_knowledge.order_agent.search_strategy import (
+    build_progressive_plans,
+    rank_search_results,
+)
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
 
@@ -247,6 +251,54 @@ class DynamicOrderAgentCoordinator:
                 last_provider, last_model = invocation.provider, invocation.model
                 continue
 
+            if action.action_type is ActionType.ORDER_SEARCH:
+                if queries_used >= policy.max_graph_queries_per_turn:
+                    raise OrderAgentFailure(
+                        "ORDER_AGENT_QUERY_BUDGET_EXCEEDED",
+                        "The request exceeded the configured knowledge-query limits.",
+                        retryable=False,
+                    )
+                intent = action.search_intent
+                if intent is None:
+                    raise AssertionError("validated ORDER_SEARCH action lacks search_intent")
+                
+                plans = build_progressive_plans(intent)
+                raw_results = []
+                for plan in plans:
+                    if queries_used >= policy.max_graph_queries_per_turn:
+                        break
+                    try:
+                        self._query_safety_guard.validate(plan)
+                        compiled = self._compiler.compile_read(self._schema, plan)
+                        raw_result = await self._knowledge.execute(
+                            schema=self._schema,
+                            graph_generation_id=graph_generation_id,
+                            plan=plan,
+                            compiled_cypher=compiled.cypher,
+                            parameters=compiled.parameters,
+                        )
+                        raw_results.append(raw_result)
+                        queries_used += 1
+                    except Exception:
+                        pass # Ignore failing query plans during progressive search
+                        
+                ranked = rank_search_results(intent, raw_results)
+                
+                evidence = QueryEvidence.create(
+                    query_execution_id=str(uuid4()),
+                    schema_version=self._schema.schema_version,
+                    graph_generation_id=graph_generation_id,
+                    logical_plan_checksum=sha256_digest(intent.model_dump(mode="json")),
+                    compiled_query_checksum="ORDER_SEARCH_STRATEGY",
+                    result=ranked,
+                )
+                context = context.model_copy(
+                    update={"query_evidence": (*context.query_evidence, evidence)}
+                )
+                invocation = await self._invoke_decide(context)
+                last_provider, last_model = invocation.provider, invocation.model
+                continue
+
             if action.action_type is ActionType.REQUEST_ON_DEMAND_SYNC:
                 if self._on_demand_sync is None:
                     raise OrderAgentFailure(
@@ -374,6 +426,7 @@ class DynamicOrderAgentCoordinator:
         try:
             return await self._model.decide(context)
         except Exception as exc:
+            print("DEBUG EXCEPTION IN DECIDE:", repr(exc))
             raise OrderAgentFailure(
                 "ORDER_AGENT_LLM_FAILED",
                 "The configured reasoning models could not process the request.",

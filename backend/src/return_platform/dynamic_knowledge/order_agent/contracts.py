@@ -18,9 +18,32 @@ from return_platform.dynamic_knowledge.knowledge.query_plan import LogicalQueryP
 class ActionType(StrEnum):
     GET_SCHEMA = "GET_SCHEMA"
     GRAPH_QUERY = "GRAPH_QUERY"
+    ORDER_SEARCH = "ORDER_SEARCH"
     REQUEST_ON_DEMAND_SYNC = "REQUEST_ON_DEMAND_SYNC"
     RESPOND = "RESPOND"
     OUT_OF_SCOPE = "OUT_OF_SCOPE"
+
+
+class OrderSearchIntent(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    orderIds: tuple[str, ...] = ()
+    orderNumbers: tuple[str, ...] = ()
+    customerNames: tuple[str, ...] = ()
+    streetAddresses: tuple[str, ...] = ()
+    cities: tuple[str, ...] = ()
+    states: tuple[str, ...] = ()
+    postalCodes: tuple[str, ...] = ()
+    dateFrom: str | None = None
+    dateTo: str | None = None
+    approximateDate: str | None = None
+    skus: tuple[str, ...] = ()
+    productNames: tuple[str, ...] = ()
+    colors: tuple[str, ...] = ()
+    quantities: tuple[int, ...] = ()
+    freeTextTerms: tuple[str, ...] = ()
+    searchMode: str = "DISCOVER"
+    confidence: float = 0.0
 
 
 class AgentAction(BaseModel):
@@ -36,11 +59,13 @@ class AgentAction(BaseModel):
     strong_anchor_request: StrongAnchorRequest | None = None
     original_query_plan: LogicalQueryPlan | None = None
     response: StructuredAgentResponse | None = None
+    search_intent: OrderSearchIntent | None = None
 
     @model_validator(mode="after")
     def validate_action_payload(self) -> AgentAction:
         requirements = {
             ActionType.GRAPH_QUERY: self.query_plan is not None,
+            ActionType.ORDER_SEARCH: self.search_intent is not None,
             ActionType.REQUEST_ON_DEMAND_SYNC: (
                 self.strong_anchor_request is not None and self.original_query_plan is not None
             ),

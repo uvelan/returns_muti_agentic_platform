@@ -93,6 +93,7 @@ def test_settings(
     )
 
     return Settings(
+        _env_file=str(REPOSITORY_ROOT / ".env"),
         catalog_path=empty_catalog_path,
         environment="test",
         frontend_cors_origin=AnyHttpUrl("http://localhost:5173"),
@@ -106,7 +107,16 @@ def test_settings(
         neo4j_password=SecretStr(_required_environment_variable("GRAPH_PASSWORD")),
         valkey_host="localhost",
         valkey_password=SecretStr(_required_environment_variable("VALKEY_PASSWORD")),
+        ai_provider_order="NVIDIA,GOOGLE",
+        nvidia_lightweight_models=["meta/llama-3.1-8b-instruct"],
+        nvidia_standard_models=["nvidia/llama-3.3-nemotron-super-49b-v1"],
+        google_lightweight_models=["models/gemini-3.5-flash-lite"],
+        google_standard_models=["models/gemini-3.6-flash"],
+        nvidia_api_keys=[SecretStr("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")],
+        google_api_keys=[SecretStr("AIzaSyAnF5LTRuYG3wOoqBK4EN2lSB3qOHHYj_U")],
         temporal_target="localhost:7233",
+        ai_timeout_seconds=30.0,
+        ai_global_timeout_seconds=120.0,
         sqlserver_host="localhost",
         sqlserver_user="sa",
         sqlserver_password=SecretStr(_required_environment_variable("MSSQL_SA_PASSWORD")),
