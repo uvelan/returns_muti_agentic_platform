@@ -5,6 +5,21 @@ if [[ "$(uname -s)" == "Linux" ]]; then
 fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/linux/lib/common.sh"
+validate_ai=false
+while (($# > 0)); do
+  case "$1" in
+    --validate-ai) validate_ai=true ;;
+    -h|--help)
+      echo "Usage: ./scripts/run_all_host.sh [--validate-ai]"
+      exit 0
+      ;;
+    *)
+      printf 'Unknown option: %s\\n' "$1" >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
 supervisor_pid_file="$PID_DIR/run-all-host.pid"
 application_ports=(8000 5173)
 
@@ -54,7 +69,9 @@ trap cleanup INT TERM EXIT
 "$LINUX_SCRIPT_DIR/stop_application_ports.sh" \
   --check-only "${application_ports[@]}"
 
-"$ROOT/scripts/prepare_runtime_configuration.sh"
+prepare_args=()
+[[ "$validate_ai" == true ]] && prepare_args+=(--validate-ai)
+"$ROOT/scripts/prepare_runtime_configuration.sh" "${prepare_args[@]}"
 export PLATFORM_SKIP_RUNTIME_PREPARE=true
 
 "$LINUX_SCRIPT_DIR/08_start_backend.sh"

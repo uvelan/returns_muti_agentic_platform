@@ -522,18 +522,61 @@ async def lifespan(
             build_routes(settings),
             ai_gateway_configuration.configuration,
         )
-        if (
-            dynamic_order_agent_enabled()
-            and resources.mongo is not None
-            and resources.neo4j is not None
-        ):
-            app.state.dynamic_order_agent_runtime = await build_dynamic_order_agent_runtime(
-                settings=settings,
-                platform_mongo=resources.mongo,
-                neo4j_driver=resources.neo4j,
-                ai_gateway_configuration=ai_gateway_configuration,
-                route_pool=app.state.ai_gateway_route_pool,
+        dynamic_agent_enabled = dynamic_order_agent_enabled(settings)
+        app.state.dynamic_order_agent_status = {
+            "enabled": dynamic_agent_enabled,
+            "state": "DISABLED",
+        }
+        if dynamic_agent_enabled:
+            platform_mongo = resources.mongo
+            neo4j_driver = resources.neo4j
+            missing_dependencies = tuple(
+                dependency
+                for dependency, resource in (
+                    ("mongodb", platform_mongo),
+                    ("neo4j", neo4j_driver),
+                )
+                if resource is None
             )
+            if missing_dependencies:
+                app.state.dynamic_order_agent_status = {
+                    "enabled": True,
+                    "state": "DEPENDENCIES_UNAVAILABLE",
+                    "missing_dependencies": missing_dependencies,
+                }
+                logger.warning(
+                    "dynamic_order_agent_dependencies_unavailable",
+                    extra={"missing_dependencies": missing_dependencies},
+                )
+            else:
+                assert platform_mongo is not None
+                assert neo4j_driver is not None
+                try:
+                    app.state.dynamic_order_agent_runtime = (
+                        await build_dynamic_order_agent_runtime(
+                            settings=settings,
+                            platform_mongo=platform_mongo,
+                            neo4j_driver=neo4j_driver,
+                            ai_gateway_configuration=ai_gateway_configuration,
+                            route_pool=app.state.ai_gateway_route_pool,
+                        )
+                    )
+                except Exception as exc:
+                    _log_initialization_failure("dynamic_order_agent", exc)
+                    app.state.dynamic_order_agent_status = {
+                        "enabled": True,
+                        "state": "INITIALIZATION_FAILED",
+                        "error_type": type(exc).__name__,
+                    }
+                    if settings.environment == "production":
+                        raise RuntimeError(
+                            "The enabled Order Discovery Agent failed to initialize"
+                        ) from exc
+                else:
+                    app.state.dynamic_order_agent_status = {
+                        "enabled": True,
+                        "state": "READY",
+                    }
 
         logger.info(
             "application_resources_initialized",
@@ -552,6 +595,7 @@ async def lifespan(
                 "dependency_simulation_sha256": dependency_simulation_configuration.sha256,
                 "ai_gateway_configuration_sha256": ai_gateway_configuration.sha256,
                 "ai_gateway_route_count": len(app.state.ai_gateway_route_pool.routes),
+                "dynamic_order_agent_state": app.state.dynamic_order_agent_status["state"],
             },
         )
 

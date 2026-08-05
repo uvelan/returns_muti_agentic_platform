@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
@@ -35,16 +35,41 @@ class DynamicOrderAgentRuntime:
 
 def resolve_runtime(request: Request) -> DynamicOrderAgentRuntime:
     runtime = getattr(request.app.state, "dynamic_order_agent_runtime", None)
-    if not isinstance(runtime, DynamicOrderAgentRuntime):
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                "code": "ORDER_AGENT_UNAVAILABLE",
-                "message": "The Order Discovery Agent runtime is not initialized.",
-                "retryable": True,
-            },
-        )
-    return runtime
+    if isinstance(runtime, DynamicOrderAgentRuntime):
+        return runtime
+
+    status_payload: Any = getattr(
+        request.app.state,
+        "dynamic_order_agent_status",
+        {"state": "NOT_INITIALIZED"},
+    )
+    state = (
+        str(status_payload.get("state", "NOT_INITIALIZED"))
+        if isinstance(status_payload, dict)
+        else "NOT_INITIALIZED"
+    )
+    code = {
+        "DISABLED": "ORDER_AGENT_DISABLED",
+        "DEPENDENCIES_UNAVAILABLE": "ORDER_AGENT_DEPENDENCIES_UNAVAILABLE",
+        "INITIALIZATION_FAILED": "ORDER_AGENT_INITIALIZATION_FAILED",
+    }.get(state, "ORDER_AGENT_UNAVAILABLE")
+    message = {
+        "DISABLED": "The Order Discovery Agent is disabled by runtime configuration.",
+        "DEPENDENCIES_UNAVAILABLE": (
+            "The Order Discovery Agent is waiting for required platform dependencies."
+        ),
+        "INITIALIZATION_FAILED": (
+            "The Order Discovery Agent failed to initialize. Inspect backend startup logs."
+        ),
+    }.get(state, "The Order Discovery Agent runtime is not initialized.")
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={
+            "code": code,
+            "message": message,
+            "retryable": state != "DISABLED",
+        },
+    )
 
 
 @router.post("/conversations/{conversation_id}/turns", response_model=AgentTurnResult)

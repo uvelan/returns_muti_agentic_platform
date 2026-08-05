@@ -812,3 +812,37 @@ SOURCE_VALIDATED
 ```
 
 `PRODUCTION_VALIDATED` requires execution against the intended production environment and cannot be inferred from local checks.
+
+## Startup AI Validation
+
+Normal startup and redeployment do not contact live AI providers or validate
+provider credentials and models. Runtime preparation reuses the active graph
+configuration release.
+
+Start all host processes without live AI validation:
+
+```bash
+./scripts/run_all_host.sh
+```
+
+Run live provider and model validation explicitly:
+
+```bash
+./scripts/run_all_host.sh --validate-ai
+```
+
+Redeploy without live AI validation:
+
+```bash
+./scripts/linux/redeploy_app.sh
+```
+
+Redeploy and run live AI validation once before startup:
+
+```bash
+./scripts/linux/redeploy_app.sh --validate-ai
+```
+
+During runtime preparation, missing keys in `.env` are copied from
+`.env.example` using their version-controlled defaults. Existing `.env` values
+are preserved and secrets are not printed.

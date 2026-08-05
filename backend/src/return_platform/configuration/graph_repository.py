@@ -257,7 +257,7 @@ class Neo4jConfigurationGraphRepository:
         MATCH (:ConfigurationHead {scope_key: $scope_key})-[:ACTIVE]->(r:ConfigurationRelease)
         RETURN r.release_id AS release_id, r.status AS status,
                r.created_at AS created_at, r.created_by AS created_by,
-               r.checksum_sha256 AS checksum_sha256, r.metadata_json AS metadata_json
+               r.checksum_sha256 AS checksum_sha256, coalesce(properties(r)['metadata_json'], '{}') AS metadata_json
         LIMIT 1
         """
         async with self._driver.session() as session:
@@ -272,7 +272,7 @@ class Neo4jConfigurationGraphRepository:
         MATCH (r:ConfigurationRelease {release_id: $release_id})
         RETURN r.release_id AS release_id, r.status AS status,
                r.created_at AS created_at, r.created_by AS created_by,
-               r.checksum_sha256 AS checksum_sha256, r.metadata_json AS metadata_json
+               r.checksum_sha256 AS checksum_sha256, coalesce(properties(r)['metadata_json'], '{}') AS metadata_json
         """
         async with self._driver.session() as session:
             result = await session.run(query, release_id=release_id)
@@ -286,7 +286,7 @@ class Neo4jConfigurationGraphRepository:
         MATCH (r:ConfigurationRelease)
         RETURN r.release_id AS release_id, r.status AS status,
                r.created_at AS created_at, r.created_by AS created_by,
-               r.checksum_sha256 AS checksum_sha256, r.metadata_json AS metadata_json
+               r.checksum_sha256 AS checksum_sha256, coalesce(properties(r)['metadata_json'], '{}') AS metadata_json
         ORDER BY r.created_at DESC
         LIMIT $limit
         """
@@ -341,7 +341,8 @@ class Neo4jConfigurationGraphRepository:
         query = """
         MERGE (r:ConfigurationRelease {release_id: $release_id})
         ON CREATE SET r.status = 'DRAFT', r.created_at = datetime(),
-                      r.created_by = $actor_id, r.checksum_sha256 = ''
+                      r.created_by = $actor_id, r.checksum_sha256 = '',
+                      r.metadata_json = '{}'
         SET r.status = r.status
         WITH r
         WHERE r.status = 'DRAFT'
@@ -422,7 +423,7 @@ class Neo4jConfigurationGraphRepository:
             RETURN r.release_id AS release_id, r.status AS status,
                    r.created_at AS created_at, r.created_by AS created_by,
                    r.checksum_sha256 AS checksum_sha256,
-                   r.metadata_json AS metadata_json
+                   coalesce(properties(r)['metadata_json'], '{}') AS metadata_json
             """
             parameters = {
                 "release_id": release_id,
@@ -438,7 +439,7 @@ class Neo4jConfigurationGraphRepository:
             RETURN r.release_id AS release_id, r.status AS status,
                    r.created_at AS created_at, r.created_by AS created_by,
                    r.checksum_sha256 AS checksum_sha256,
-                   r.metadata_json AS metadata_json
+                   coalesce(properties(r)['metadata_json'], '{}') AS metadata_json
             """
             parameters = {
                 "release_id": release_id,

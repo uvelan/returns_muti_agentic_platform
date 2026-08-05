@@ -14,6 +14,9 @@ x-platform-environment: &platform-environment
   PLATFORM_RETURN_CONFIGURATION_PATH: /app/config/returns/production.yaml
   PLATFORM_DEPENDENCY_SIMULATION_CONFIGURATION_PATH: /app/config/dependency_simulation.yaml
   PLATFORM_AI_GATEWAY_CONFIGURATION_PATH: /app/config/ai_gateway.yaml
+  PLATFORM_VALIDATE_AI_ON_STARTUP: ${PLATFORM_VALIDATE_AI_ON_STARTUP:-false}
+  PLATFORM_DYNAMIC_ORDER_AGENT_ENABLED: ${PLATFORM_DYNAMIC_ORDER_AGENT_ENABLED:-true}
+  PLATFORM_DYNAMIC_KNOWLEDGE_SCHEMA_PATH: /app/config/dynamic_knowledge/active-schema.return-order.yaml
   PLATFORM_PROBE_TIMEOUT_SECONDS: ${PLATFORM_PROBE_TIMEOUT_SECONDS:-5}
   PLATFORM_DEPENDENCY_CONNECT_TIMEOUT_SECONDS: ${PLATFORM_DEPENDENCY_CONNECT_TIMEOUT_SECONDS:-10}
   PLATFORM_OPERATION_TIMEOUT_SECONDS: ${PLATFORM_OPERATION_TIMEOUT_SECONDS:-15}
@@ -366,7 +369,11 @@ services:
       - -ec
       - >-
         python /app/scripts/apply_neo4j_migrations.py &&
-        python /app/scripts/bootstrap_graph_configuration.py
+        if [ "$${PLATFORM_VALIDATE_AI_ON_STARTUP}" = "true" ]; then
+          python /app/scripts/bootstrap_graph_configuration.py --if-missing --validate-ai;
+        else
+          python /app/scripts/bootstrap_graph_configuration.py --if-missing;
+        fi
     depends_on:
       neo4j:
         condition: service_healthy

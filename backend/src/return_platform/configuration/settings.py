@@ -14,6 +14,9 @@ DEFAULT_DEPENDENCY_SIMULATION_CONFIGURATION_PATH = (
     BACKEND_ROOT / "config" / "dependency_simulation.yaml"
 )
 DEFAULT_AI_GATEWAY_CONFIGURATION_PATH = BACKEND_ROOT / "config" / "ai_gateway.yaml"
+DEFAULT_DYNAMIC_KNOWLEDGE_SCHEMA_PATH = (
+    BACKEND_ROOT / "config" / "dynamic_knowledge" / "active-schema.return-order.yaml"
+)
 
 
 class Settings(BaseSettings):
@@ -36,6 +39,8 @@ class Settings(BaseSettings):
         default=DEFAULT_DEPENDENCY_SIMULATION_CONFIGURATION_PATH
     )
     ai_gateway_configuration_path: Path = Field(default=DEFAULT_AI_GATEWAY_CONFIGURATION_PATH)
+    dynamic_order_agent_enabled: bool = True
+    dynamic_knowledge_schema_path: Path = DEFAULT_DYNAMIC_KNOWLEDGE_SCHEMA_PATH
     environment: Literal["development", "test", "staging", "production"] = "development"
 
     vault_enabled: bool = False
@@ -207,6 +212,16 @@ class Settings(BaseSettings):
     lsi_dependency_mode: Literal["REAL", "SIMULATED", "MANUAL", "BLOCKED"] = "SIMULATED"
     feedback_learning_enabled: bool = True
     audit_retention_days: int = Field(default=90, ge=7, le=3_650)
+
+    @field_validator("dynamic_knowledge_schema_path")
+    @classmethod
+    def resolve_dynamic_knowledge_schema_path(cls, value: Path) -> Path:
+        resolved_path = value.expanduser()
+        if not resolved_path.is_absolute():
+            resolved_path = REPOSITORY_ROOT / resolved_path
+        if resolved_path.suffix.lower() not in {".yaml", ".yml"}:
+            raise ValueError("Dynamic knowledge schema path must reference a YAML file.")
+        return resolved_path.resolve(strict=False)
 
     @field_validator(
         "catalog_path",

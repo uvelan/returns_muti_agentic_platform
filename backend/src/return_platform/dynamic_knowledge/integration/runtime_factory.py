@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from typing import Any, cast
 
 from fastapi import Request
@@ -41,27 +39,10 @@ from return_platform.dynamic_knowledge.order_agent.coordinator import DynamicOrd
 from return_platform.security.principal import Principal
 
 
-def dynamic_order_agent_enabled() -> bool:
-    """Return whether the branch cutover runtime is enabled."""
+def dynamic_order_agent_enabled(settings: Settings) -> bool:
+    """Return whether the dynamic Order Discovery Agent runtime is enabled."""
 
-    value = os.getenv("DYNAMIC_ORDER_AGENT_ENABLED", "false").strip().casefold()
-    return value in {"1", "true", "yes", "on"}
-
-
-def _schema_path() -> Path:
-    configured = os.getenv(
-        "DYNAMIC_KNOWLEDGE_SCHEMA_PATH",
-        "backend/config/dynamic_knowledge/active-schema.return-order.yaml",
-    )
-    candidate = Path(configured).expanduser()
-    if candidate.is_absolute() and candidate.exists():
-        return candidate
-    search_roots = (Path.cwd(), Path(__file__).resolve().parents[5])
-    for root in search_roots:
-        resolved = (root / candidate).resolve()
-        if resolved.exists():
-            return resolved
-    raise FileNotFoundError(f"Dynamic knowledge schema not found: {configured}")
+    return settings.dynamic_order_agent_enabled
 
 
 async def build_dynamic_order_agent_runtime(
@@ -72,7 +53,7 @@ async def build_dynamic_order_agent_runtime(
     ai_gateway_configuration: LoadedAIGatewayConfiguration,
     route_pool: AIRoutePool,
 ) -> DynamicOrderAgentRuntime:
-    schema = load_active_schema(_schema_path())
+    schema = load_active_schema(settings.dynamic_knowledge_schema_path)
     conversation_documents = MongoAtomicConversationStore(
         platform_mongo,
         settings.mongo_database,

@@ -62,3 +62,56 @@ async def test_if_missing_reuses_active_release_without_ai_validation(
 
     assert ai_bootstrap.await_count == 0
     assert "graph_configuration_status=EXISTING" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_ai_validation_is_skipped_without_explicit_flag(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    configuration = SimpleNamespace()
+    ai_bootstrap = AsyncMock(
+        side_effect=AssertionError("live AI validation must be opt-in"),
+    )
+    monkeypatch.setattr(
+        bootstrap_graph_configuration,
+        "build_bootstrap_runtime_configuration",
+        ai_bootstrap,
+    )
+
+    result = await bootstrap_graph_configuration._prepare_return_configuration(
+        validate_ai=False,
+        settings=SimpleNamespace(),
+        resolver=SimpleNamespace(),
+        loaded_ai_gateway=SimpleNamespace(),
+        configuration=configuration,
+    )
+
+    assert result is configuration
+    assert ai_bootstrap.await_count == 0
+    assert "ai_bootstrap_validation=SKIPPED" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_ai_validation_runs_when_explicitly_requested(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configuration = SimpleNamespace()
+    validated = SimpleNamespace()
+    ai_bootstrap = AsyncMock(return_value=validated)
+    monkeypatch.setattr(
+        bootstrap_graph_configuration,
+        "build_bootstrap_runtime_configuration",
+        ai_bootstrap,
+    )
+
+    result = await bootstrap_graph_configuration._prepare_return_configuration(
+        validate_ai=True,
+        settings=SimpleNamespace(),
+        resolver=SimpleNamespace(),
+        loaded_ai_gateway=SimpleNamespace(),
+        configuration=configuration,
+    )
+
+    assert result is validated
+    ai_bootstrap.assert_awaited_once()

@@ -4,6 +4,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 install_dependencies=false
 skip_frontend_build=false
+validate_ai=false
 application_ports=(8000 5173)
 
 usage() {
@@ -17,6 +18,7 @@ validation are not rerun.
 Options:
   --install-dependencies  Synchronize locked backend and frontend dependencies.
   --skip-frontend-build  Restart without running the frontend production build.
+  --validate-ai          Run live provider/model validation once before startup.
   -h, --help             Show this help.
 EOF
 }
@@ -28,6 +30,9 @@ while (($# > 0)); do
       ;;
     --skip-frontend-build)
       skip_frontend_build=true
+      ;;
+    --validate-ai)
+      validate_ai=true
       ;;
     -h|--help)
       usage
@@ -82,6 +87,12 @@ echo "Stopping application host processes..."
 echo "Verifying all application ports are closed before startup..."
 "$LINUX_SCRIPT_DIR/stop_application_ports.sh" \
   --check-only "${application_ports[@]}"
+
+echo "Preparing runtime configuration once..."
+prepare_args=()
+[[ "$validate_ai" == true ]] && prepare_args+=(--validate-ai)
+"$REPO_ROOT/scripts/prepare_runtime_configuration.sh" "${prepare_args[@]}"
+export PLATFORM_SKIP_RUNTIME_PREPARE=true
 
 echo "Starting backend and workers..."
 "$LINUX_SCRIPT_DIR/08_start_backend.sh"
