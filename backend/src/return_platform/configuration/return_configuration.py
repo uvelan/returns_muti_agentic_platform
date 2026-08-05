@@ -389,24 +389,35 @@ class AIProviderRuntimeConfiguration(StrictConfigModel):
         if len(route_keys) != len(set(route_keys)):
             raise ValueError("AI validated credential/model/task routes must be unique")
         if self.enabled and self.provider_key != "OLLAMA":
-            expected = {
-                (credential.profile_key, model.model_id, task_key)
-                for credential in self.credentials
+            known_credentials = {credential.profile_key for credential in self.credentials}
+            known_model_tasks = {
+                (model.model_id, task_key)
                 for model in self.models
                 for task_key in model.task_keys
             }
             actual = set(route_keys)
-            missing = sorted(expected - actual)
-            unexpected = sorted(actual - expected)
-            if missing or unexpected:
+            unexpected = sorted(
+                route
+                for route in actual
+                if route[0] not in known_credentials
+                or (route[1], route[2]) not in known_model_tasks
+            )
+            credential_coverage = {route[0] for route in actual}
+            model_task_coverage = {(route[1], route[2]) for route in actual}
+            missing_credentials = sorted(known_credentials - credential_coverage)
+            missing_model_tasks = sorted(known_model_tasks - model_task_coverage)
+            if unexpected or missing_credentials or missing_model_tasks:
                 details: list[str] = []
-                if missing:
-                    details.append(f"missing={missing}")
+                if missing_credentials:
+                    details.append(f"missing_credentials={missing_credentials}")
+                if missing_model_tasks:
+                    details.append(f"missing_model_tasks={missing_model_tasks}")
                 if unexpected:
                     details.append(f"unexpected={unexpected}")
                 raise ValueError(
-                    "every active AI credential/model/task combination requires an exact "
-                    "validation route: " + "; ".join(details)
+                    "active AI credentials and model tasks require at least one validated "
+                    "route without requiring a credential/model cartesian product: "
+                    + "; ".join(details)
                 )
             route_receipts_by_profile: dict[str, set[str]] = {}
             for route in self.validated_routes:

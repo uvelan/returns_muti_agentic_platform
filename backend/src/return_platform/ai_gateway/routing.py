@@ -45,6 +45,7 @@ class AIRoute:
     provider_priority: int
     model_priority: int
     credential_priority: int
+    allowed_task_keys: frozenset[str] = frozenset()
 
 
 @dataclass(slots=True)
@@ -94,6 +95,7 @@ class _RuntimeState:
     active_credentials: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     active_providers: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     active_tiers: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    provider_route_cursors: dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,8 +212,20 @@ def _provider_models(
     return ()
 
 
+
+def _validated_route_bindings(
+    settings: Settings,
+) -> dict[tuple[str, int, str], frozenset[str]]:
+    bindings: dict[tuple[str, int, str], set[str]] = defaultdict(set)
+    for raw in settings.ai_validated_route_bindings:
+        provider_name, credential_index_text, model, task_key = raw.split("|", maxsplit=3)
+        bindings[(provider_name, int(credential_index_text), model)].add(task_key)
+    return {key: frozenset(value) for key, value in bindings.items()}
+
 def build_routes(settings: Settings) -> tuple[AIRoute, ...]:
     provider_order = tuple(p.strip() for p in settings.ai_provider_order.split(","))
+    validated_bindings = _validated_route_bindings(settings)
+    restrict_to_validated_pairs = bool(validated_bindings)
     routes: list[AIRoute] = []
     for provider_priority, provider_name in enumerate(provider_order):
         credentials = _provider_credentials(settings, provider_name)
@@ -219,6 +233,9 @@ def build_routes(settings: Settings) -> tuple[AIRoute, ...]:
             models = _provider_models(settings, provider_name, tier)
             for model_priority, model in enumerate(models):
                 for credential_priority, credential in enumerate(credentials):
+                    binding_key = (provider_name, credential_priority, model)
+                    if restrict_to_validated_pairs and binding_key not in validated_bindings:
+                        continue
                     credential_id = (
                         f"{provider_name.lower()}-local"
                         if credential is None
@@ -238,6 +255,7 @@ def build_routes(settings: Settings) -> tuple[AIRoute, ...]:
                             provider_priority=provider_priority,
                             model_priority=model_priority,
                             credential_priority=credential_priority,
+                            allowed_task_keys=validated_bindings.get(binding_key, frozenset()),
                         )
                     )
     return tuple(routes)
@@ -255,6 +273,18 @@ class AIRoutePool:
         self.configuration = configuration
         self._state = _RuntimeState()
         self._lock = asyncio.Lock()
+
+    async def replace_routes(
+        self,
+        routes: Iterable[AIRoute],
+        configuration: AIGatewayConfiguration,
+    ) -> None:
+        """Atomically replace graph-validated routes for existing consumers."""
+
+        async with self._lock:
+            self.routes = tuple(routes)
+            self.configuration = configuration
+            self._state = _RuntimeState()
 
     @staticmethod
     def _model_key(route: AIRoute) -> str:
@@ -287,6 +317,7 @@ class AIRoutePool:
         self,
         task: TaskConfiguration,
         *,
+        task_id: str | None = None,
         force_provider: str | None = None,
     ) -> tuple[AIRoute, ...]:
         now = time.monotonic()
@@ -298,18 +329,53 @@ class AIRoutePool:
                 if route.tier is task.tier
                 and route.provider_name in task.allowedProviders
                 and (forced is None or route.provider_name == forced)
+                and (
+                    not route.allowed_task_keys
+                    or task_id is None
+                    or task_id in route.allowed_task_keys
+                )
                 and self._is_available(route, now)
             ]
-            available.sort(
-                key=lambda route: (
-                    route.provider_priority,
-                    route.model_priority,
-                    self._state.active_routes[route.route_id],
-                    route.credential_priority,
-                    self._circuit(self._state.route_circuits, route.route_id).consecutive_failures,
-                )
+            grouped: dict[str, list[AIRoute]] = defaultdict(list)
+            for route in available:
+                grouped[route.provider_name].append(route)
+            provider_names = sorted(
+                grouped,
+                key=lambda provider_name: min(
+                    route.provider_priority for route in grouped[provider_name]
+                ),
             )
-            return tuple(available)
+            rotated_groups: dict[str, list[AIRoute]] = {}
+            for provider_name in provider_names:
+                provider_routes = grouped[provider_name]
+                provider_routes.sort(
+                    key=lambda route: (
+                        self._state.active_routes[route.route_id],
+                        self._circuit(
+                            self._state.route_circuits, route.route_id
+                        ).consecutive_failures,
+                        route.model_priority,
+                        route.credential_priority,
+                    )
+                )
+                cursor = self._state.provider_route_cursors[provider_name] % len(
+                    provider_routes
+                )
+                rotated_groups[provider_name] = (
+                    provider_routes[cursor:] + provider_routes[:cursor]
+                )
+                self._state.provider_route_cursors[provider_name] = cursor + 1
+            balanced: list[AIRoute] = []
+            maximum_provider_routes = max(
+                (len(routes) for routes in rotated_groups.values()),
+                default=0,
+            )
+            for route_index in range(maximum_provider_routes):
+                for provider_name in provider_names:
+                    provider_routes = rotated_groups[provider_name]
+                    if route_index < len(provider_routes):
+                        balanced.append(provider_routes[route_index])
+            return tuple(balanced)
 
     async def try_acquire(
         self,

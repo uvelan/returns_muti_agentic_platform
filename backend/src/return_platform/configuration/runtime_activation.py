@@ -192,14 +192,25 @@ class RuntimeConfigurationActivator:
                         "restart: "
                         + ", ".join(changed_infrastructure)
                     )
-            route_pool = (
-                AIRoutePool(
-                    build_routes(activated_settings),
-                    loaded_ai_gateway.configuration,
+            route_pool = None
+            if activated_settings is not None and loaded_ai_gateway is not None:
+                next_routes = build_routes(activated_settings)
+                current_route_pool = getattr(
+                    self._app_state,
+                    "ai_gateway_route_pool",
+                    None,
                 )
-                if activated_settings is not None and loaded_ai_gateway is not None
-                else None
-            )
+                if isinstance(current_route_pool, AIRoutePool):
+                    await current_route_pool.replace_routes(
+                        next_routes,
+                        loaded_ai_gateway.configuration,
+                    )
+                    route_pool = current_route_pool
+                else:
+                    route_pool = AIRoutePool(
+                        next_routes,
+                        loaded_ai_gateway.configuration,
+                    )
 
             # Persist the complete validated document before making it visible to request handlers.
             if self._resources is not None and self._resources.mongo is not None:

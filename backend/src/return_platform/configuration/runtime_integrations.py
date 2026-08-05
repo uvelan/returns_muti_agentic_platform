@@ -31,6 +31,7 @@ def apply_graph_runtime_configuration(
 
     updates: dict[str, object] = {
         "ai_provider_order": "NONE",
+        "ai_validated_route_bindings": (),
         "google_api_key_references": (),
         "nvidia_api_key_references": (),
         "openai_api_key_references": (),
@@ -127,12 +128,28 @@ def apply_graph_runtime_configuration(
     )
     if enabled_providers:
         updates["ai_provider_order"] = ",".join(item.provider_key for item in enabled_providers)
+    validated_route_bindings: list[str] = []
     for provider in enabled_providers:
         key = provider.provider_key.lower()
         updates[f"{key}_base_url"] = provider.base_url
         if provider.provider_key != "OLLAMA":
             updates[f"{key}_api_key_references"] = tuple(
                 item.vault_reference for item in provider.credentials
+            )
+            credential_ordinals = {
+                item.profile_key: index
+                for index, item in enumerate(provider.credentials)
+            }
+            validated_route_bindings.extend(
+                "|".join(
+                    (
+                        provider.provider_key,
+                        str(credential_ordinals[route.credential_profile_key]),
+                        route.model_id,
+                        route.task_key,
+                    )
+                )
+                for route in provider.validated_routes
             )
         lightweight = tuple(
             item.model_id
@@ -146,6 +163,8 @@ def apply_graph_runtime_configuration(
         )
         updates[f"{key}_lightweight_models"] = lightweight
         updates[f"{key}_standard_models"] = standard
+
+    updates["ai_validated_route_bindings"] = tuple(validated_route_bindings)
 
     if not updates:
         return settings

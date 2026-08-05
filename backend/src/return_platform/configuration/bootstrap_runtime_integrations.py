@@ -37,6 +37,17 @@ class _ValidatedPair:
     tests: tuple[str, ...]
 
 
+def _project_validated_pairs(
+    validated_pairs: list[_ValidatedPair],
+) -> tuple[set[int], set[tuple[str, str]]]:
+    """Project only successful credential/model pairs without a cartesian-product requirement."""
+
+    return (
+        {pair.credential_index for pair in validated_pairs},
+        {(pair.model_id, pair.model_class) for pair in validated_pairs},
+    )
+
+
 def _provider_base_url(provider: str, settings: Settings) -> str:
     return str(getattr(settings, f"{provider.lower()}_base_url"))
 
@@ -255,34 +266,9 @@ async def build_bootstrap_runtime_configuration(
                         )
                     )
 
-            active_credential_indexes = {
-                index
-                for index, _resolved in resolved_credentials
-                if any(pair.credential_index == index for pair in validated_pairs)
-            }
-            active_models = {
-                (model_id, model_class)
-                for model_id, model_class in models
-                if active_credential_indexes
-                and all(
-                    any(
-                        pair.credential_index == index and pair.model_id == model_id
-                        for pair in validated_pairs
-                    )
-                    for index in active_credential_indexes
-                )
-            }
-            active_credential_indexes = {
-                index
-                for index in active_credential_indexes
-                if all(
-                    any(
-                        pair.credential_index == index and pair.model_id == model_id
-                        for pair in validated_pairs
-                    )
-                    for model_id, _model_class in active_models
-                )
-            }
+            active_credential_indexes, active_models = _project_validated_pairs(
+                validated_pairs
+            )
             if not active_credential_indexes or not active_models:
                 continue
 
@@ -371,7 +357,7 @@ async def build_bootstrap_runtime_configuration(
             print(
                 "ai_bootstrap_validation="
                 f"PASSED provider={provider} credentials={len(credentials)} "
-                f"models={len(model_bindings)}"
+                f"models={len(model_bindings)} routes={len(route_bindings)}"
             )
     finally:
         await mongo.close()

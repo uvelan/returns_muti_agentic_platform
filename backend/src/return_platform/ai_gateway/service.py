@@ -437,7 +437,11 @@ class AIGatewayService:
             )
 
         normalized_force = force_provider.strip().upper() if force_provider else None
-        candidates = await self._route_pool.candidates(task, force_provider=normalized_force)
+        candidates = await self._route_pool.candidates(
+            task,
+            task_id=task_id,
+            force_provider=normalized_force,
+        )
         attempts = 0
         last_error = AIRequestStatus.PROVIDER_UNAVAILABLE.value
         deadline = time.monotonic() + self._settings.ai_global_timeout_seconds
