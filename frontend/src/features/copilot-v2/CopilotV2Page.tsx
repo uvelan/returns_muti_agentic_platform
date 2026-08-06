@@ -10,6 +10,7 @@ import {
   CircleUserRound,
   FileSearch,
   Info,
+  Lock,
   Menu,
   PackageSearch,
   Plus,
@@ -26,9 +27,12 @@ import {
 } from "../../api/orderAgent";
 import { ErrorState } from "../../components/ErrorState";
 import type {
+  GraphQueryRowResult,
   OrderAgentQueryEvidence,
   OrderAgentTurnRequest,
   OrderAgentTurnResult,
+  OrderSearchCandidate,
+  OrderSearchResult,
   StructuredOrderAgentResponse,
 } from "../../contracts/orderAgent";
 
@@ -72,7 +76,181 @@ function responseText(response: StructuredOrderAgentResponse): string {
   if (response.requested_input && !parts.includes(response.requested_input)) {
     parts.push(response.requested_input);
   }
-  return parts.join("\n\n") || "No displayable response was returned.";
+  return parts.join("\n\n") || "I didn't have anything to share back on that one — could you try rephrasing?";
+}
+
+function isOrderSearchResult(value: unknown): value is OrderSearchResult {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return Array.isArray(record.candidates) && typeof record.total_found === "number";
+}
+
+function isGraphQueryRowResult(value: unknown): value is GraphQueryRowResult {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return Array.isArray(record.rows) && typeof record.count === "number";
+}
+
+// A direct GRAPH_QUERY (e.g. a traversal to order_line for product detail)
+// has no "intent" or ranking — normalize its rows into the same shape the
+// candidate cards already render, so a customer search followed by a
+// traversal shows the real order/product data, not the stale customer list.
+function normalizeGraphQueryResult(result: GraphQueryRowResult): OrderSearchResult {
+  return {
+    intent: {},
+    candidates: result.rows.map((row) => ({ data: row, score: 1, matches: [] })),
+    total_found: result.count,
+    unsupported_signals: [],
+  };
+}
+
+// Latest result that actually has something to show, scanning from the most
+// recent turn's evidence backward — a later empty page (e.g. "show next"
+// with nothing left) shouldn't blank out the last useful result.
+function latestOrderSearchResult(
+  evidence: readonly OrderAgentQueryEvidence[],
+): OrderSearchResult | null {
+  for (let index = evidence.length - 1; index >= 0; index -= 1) {
+    const { result } = evidence[index];
+    if (isOrderSearchResult(result) && result.candidates.length > 0) {
+      return result;
+    }
+    if (isGraphQueryRowResult(result) && result.rows.length > 0) {
+      return normalizeGraphQueryResult(result);
+    }
+  }
+  return null;
+}
+
+const FIELD_LABELS: Readonly<Record<string, string>> = {
+  sales_order_number: "Order",
+  customer_name: "Customer",
+  customer_id: "Customer ID",
+  product_description: "Product",
+  order_status: "Status",
+  delivered_at: "Delivered",
+  ordered_quantity: "Qty",
+  sku: "SKU",
+  shipping_method: "Shipping",
+};
+
+const TITLE_FIELD_PRIORITY = [
+  "sales_order_number",
+  "customer_name",
+  "product_description",
+  "sku",
+  "customer_id",
+] as const;
+
+function formatFieldValue(field: string, value: unknown): string {
+  if (field === "delivered_at" && typeof value === "string") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    }
+  }
+  return String(value);
+}
+
+function candidateTitle(candidate: OrderSearchCandidate): {
+  field: string | null;
+  text: string;
+} {
+  for (const field of TITLE_FIELD_PRIORITY) {
+    const value = candidate.data[field];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return { field, text: value };
+    }
+  }
+  return { field: null, text: "Result" };
+}
+
+function candidateDetailFields(
+  candidate: OrderSearchCandidate,
+  titleField: string | null,
+): readonly (readonly [string, unknown])[] {
+  return Object.entries(candidate.data).filter(
+    ([field, value]) =>
+      field !== titleField &&
+      field in FIELD_LABELS &&
+      value !== null &&
+      value !== undefined &&
+      value !== "",
+  );
+}
+
+function candidateSelectValue(candidate: OrderSearchCandidate): string {
+  const { text } = candidateTitle(candidate);
+  return text;
+}
+
+// The panel's section label should say what these records actually are, not
+// always "orders" — a customer-name search returns customers, not orders,
+// until a follow-up narrows it down to a specific order.
+function candidateGroupLabel(candidates: readonly OrderSearchCandidate[]): string {
+  const titleFields = new Set(
+    candidates.map((candidate) => candidateTitle(candidate).field),
+  );
+  if (titleFields.has("sales_order_number")) return "Matching orders";
+  if (titleFields.has("customer_name")) return "Matching customers";
+  if (titleFields.has("product_description") || titleFields.has("sku")) {
+    return "Matching products";
+  }
+  return "Matching results";
+}
+
+function CandidateCard({
+  candidate,
+  disabled,
+  onSelect,
+}: {
+  readonly candidate: OrderSearchCandidate;
+  readonly disabled: boolean;
+  readonly onSelect: (value: string) => void;
+}) {
+  const { field: titleField, text: title } = candidateTitle(candidate);
+  const details = candidateDetailFields(candidate, titleField);
+  const isFuzzy = candidate.matches.includes("customer_name_fuzzy");
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => {
+        onSelect(candidateSelectValue(candidate));
+      }}
+      className="w-full rounded-xl border border-[#dee4e1] bg-white p-3 text-left shadow-sm transition hover:border-[#00685f] hover:shadow disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#f0f5f2] text-[#00685f]">
+            <PackageSearch size={16} />
+          </span>
+          <span className="text-sm font-semibold text-[#171d1c]">{title}</span>
+        </div>
+        <Lock size={14} className="mt-1 shrink-0 text-[#6d7a77]" />
+      </div>
+      <dl className="mt-2 space-y-1 pl-10">
+        {details.map(([field, value]) => (
+          <div key={field} className="flex justify-between gap-3 text-xs">
+            <dt className="text-[#6d7a77]">{FIELD_LABELS[field]}</dt>
+            <dd className="text-right font-medium text-[#171d1c]">
+              {formatFieldValue(field, value)}
+            </dd>
+          </div>
+        ))}
+        {isFuzzy ? (
+          <div className="pt-1 text-[11px] font-medium text-[#924628]">
+            Approximate spelling match
+          </div>
+        ) : null}
+      </dl>
+    </button>
+  );
 }
 
 function Conversation({
@@ -234,6 +412,13 @@ export function CopilotV2Page() {
     send(message);
   }
 
+  function selectCandidate(value: string) {
+    send(value);
+    setContextOpen(false);
+  }
+
+  const candidateResult = latestOrderSearchResult(evidence);
+
   const contextPanel = (
     <div className="flex-1 overflow-y-auto p-4">
       <div className="rounded-xl border border-[#bcc9c6] bg-white p-4">
@@ -266,6 +451,33 @@ export function CopilotV2Page() {
           </p>
         ) : null}
       </div>
+
+      {candidateResult ? (
+        <div className="mt-4">
+          <div className="mb-2 flex items-baseline justify-between">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#00685f]">
+              {candidateGroupLabel(candidateResult.candidates)}
+            </p>
+            <p className="text-xs text-[#6d7a77]">
+              Showing {candidateResult.candidates.length} of{" "}
+              {candidateResult.total_found}
+            </p>
+          </div>
+          <div className="space-y-2">
+            {candidateResult.candidates.map((candidate, index) => (
+              <CandidateCard
+                key={`${candidateSelectValue(candidate)}-${index}`}
+                candidate={candidate}
+                disabled={chat.isPending}
+                onSelect={selectCandidate}
+              />
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-[#6d7a77]">
+            Select an order or customer to lock it in and continue.
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 
@@ -399,6 +611,12 @@ export function CopilotV2Page() {
                 value={message}
                 onChange={(event) => {
                   setMessage(event.target.value);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.ctrlKey) {
+                    event.preventDefault();
+                    event.currentTarget.form?.requestSubmit();
+                  }
                 }}
                 placeholder="Search by order, customer, SKU, or natural language…"
                 aria-label="Ask Copilot about returns"

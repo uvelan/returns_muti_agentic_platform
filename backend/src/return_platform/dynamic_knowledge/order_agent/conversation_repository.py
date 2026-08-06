@@ -66,6 +66,7 @@ class AtomicConversationRepository:
         request: AgentTurnRequest,
         expected_version: int,
         result: AgentTurnResult,
+        conversation_state: dict[str, Any],
     ) -> AgentTurnResult:
         document = await self._store.read(request.conversation_id)
         if document is None:
@@ -88,11 +89,17 @@ class AtomicConversationRepository:
             "clientTurnId": request.client_turn_id,
             "result": result.model_dump(mode="json"),
         }
+        state_to_persist = {
+            key: value
+            for key, value in conversation_state.items()
+            if not key.startswith("_")
+        }
         replacement = {
             **document,
             "version": expected_version + 1,
             "graphGenerationId": result.graph_generation_id,
             "turns": turns,
+            "state": state_to_persist,
             "lastResponse": result.response.model_dump(mode="json"),
         }
         committed = await self._store.compare_and_set(

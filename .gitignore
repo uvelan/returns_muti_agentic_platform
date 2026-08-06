@@ -19,6 +19,7 @@ __pycache__/
 .vault-local/
 
 # Generated validation and test output
+.manual_llm/
 .runtime/
 artifacts/
 frontend/test-results/
@@ -33,3 +34,6 @@ linux_kit_validation/
 .idea/
 .vscode/
 *.swp
+
+# Claude Code local state
+.claude/settings.local.json

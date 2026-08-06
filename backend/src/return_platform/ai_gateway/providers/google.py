@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from return_platform.ai_gateway.providers.contracts import (
     ProviderError,
@@ -10,7 +11,10 @@ from return_platform.ai_gateway.providers.contracts import (
     ProviderResponse,
 )
 from return_platform.ai_gateway.providers.http import HTTPProvider, secret_value
+from return_platform.ai_gateway.providers.schema_cleaner import clean_gemini_schema
 from return_platform.configuration.settings import Settings
+
+logger = logging.getLogger("return_platform.ai_gateway.providers.google")
 
 
 class GeminiProvider(HTTPProvider):
@@ -29,13 +33,12 @@ class GeminiProvider(HTTPProvider):
     async def generate(self, request: ProviderRequest) -> ProviderResponse:
         if self._api_key is None:
             raise ProviderError("AUTH_FAILED")
+        # Some deployments configure the model id already prefixed with "models/".
         url = f"{self._base_url}/models/{self.model}:generateContent"
-        if "/" in self.model: # handle if model already contains models/
+        if "/" in self.model:
             url = f"{self._base_url}/{self.model}:generateContent"
-            
-        print(f"DEBUG GOOGLE REQUEST URL: {url}")
-        from return_platform.ai_gateway.providers.schema_cleaner import clean_gemini_schema
-        
+        logger.debug("gemini_request", extra={"model": self.model, "url": url})
+
         data = await self._post(
             url,
             headers={"x-goog-api-key": self._api_key, "Content-Type": "application/json"},

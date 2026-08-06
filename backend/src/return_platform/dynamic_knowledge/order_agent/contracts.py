@@ -44,6 +44,7 @@ class OrderSearchIntent(BaseModel):
     freeTextTerms: tuple[str, ...] = ()
     searchMode: str = "DISCOVER"
     confidence: float = 0.0
+    wantsMoreResults: bool = False
 
 
 class AgentAction(BaseModel):

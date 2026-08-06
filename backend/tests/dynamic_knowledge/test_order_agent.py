@@ -48,6 +48,7 @@ class GraphState:
 class ConversationStore:
     def __init__(self) -> None:
         self.result: AgentTurnResult | None = None
+        self.conversation_state: dict[str, Any] = {}
 
     async def load_for_turn(
         self,
@@ -55,7 +56,8 @@ class ConversationStore:
         request: AgentTurnRequest,
         graph_generation_id: str,
     ) -> tuple[int, dict[str, Any], AgentTurnResult | None]:
-        return 0, {}, self.result
+        version = self.result.conversation_version if self.result is not None else 0
+        return version, dict(self.conversation_state), None
 
     async def commit_turn(
         self,
@@ -63,8 +65,10 @@ class ConversationStore:
         request: AgentTurnRequest,
         expected_version: int,
         result: AgentTurnResult,
+        conversation_state: dict[str, Any],
     ) -> AgentTurnResult:
         self.result = result
+        self.conversation_state = conversation_state
         return result
 
 
@@ -164,6 +168,66 @@ class QueryThenRespondModel:
         raise AssertionError("correction not expected")
 
 
+class MiscasedCapabilityThenValidModel:
+    """First action uses a wrongly-formatted (but conceptually correct)
+    business_capability, exactly like a real model returning 'ORDER_DISCOVERY'
+    instead of 'order-discovery' - this must be corrected, not hard-failed."""
+
+    def __init__(self) -> None:
+        self.correction_calls = 0
+
+    async def decide(self, context: AgentTurnContext) -> ModelInvocationResult:
+        action = AgentAction(
+            business_capability="ORDER_DISCOVERY",
+            action_type=ActionType.RESPOND,
+            decision_summary="Wrongly-cased capability, matching a real model's mistake.",
+            response=StructuredAgentResponse(
+                status="DISCOVERY_COMPLETE",
+                business_capability="ORDER_DISCOVERY",
+                statements=(
+                    ResponseStatement(
+                        statement_id="s0",
+                        statement_type=StatementType.CLARIFICATION_QUESTION,
+                        text="This should never reach the caller.",
+                        evidence_refs=(),
+                    ),
+                ),
+            ),
+        )
+        return ModelInvocationResult(
+            action=action, provider="provider-a", model="standard-model",
+            prompt_tokens=5, completion_tokens=5,
+        )
+
+    async def correct_action(self, **kwargs: Any) -> ModelInvocationResult:
+        self.correction_calls += 1
+        response = StructuredAgentResponse(
+            status="DISCOVERY_COMPLETE",
+            business_capability="order-discovery",
+            statements=(
+                ResponseStatement(
+                    statement_id="s1",
+                    statement_type=StatementType.CLARIFICATION_QUESTION,
+                    text="Corrected after capability formatting was fixed.",
+                    evidence_refs=(),
+                ),
+            ),
+        )
+        action = AgentAction(
+            business_capability="order-discovery",
+            action_type=ActionType.RESPOND,
+            decision_summary="Corrected capability formatting.",
+            response=response,
+        )
+        return ModelInvocationResult(
+            action=action, provider="provider-a", model="standard-model",
+            prompt_tokens=5, completion_tokens=5,
+        )
+
+    async def correct_response(self, **kwargs: Any) -> ModelInvocationResult:
+        raise AssertionError("response correction not expected in this test")
+
+
 def build_coordinator(schema: ActiveSchema, model: Any) -> DynamicOrderAgentCoordinator:
     return DynamicOrderAgentCoordinator(
         schema=schema,
@@ -221,3 +285,19 @@ async def test_every_turn_uses_model_and_returns_evidence_bound_response(
     assert result.model_name == "standard-model"
     assert result.response.status == "DISCOVERY_COMPLETE"
     assert len(result.query_evidence) == 1
+
+
+@pytest.mark.asyncio
+async def test_miscased_capability_is_corrected_not_hard_failed(
+    active_schema: ActiveSchema,
+) -> None:
+    """A real model returning 'ORDER_DISCOVERY' instead of 'order-discovery' is a
+    formatting mistake, not an out-of-scope request - it must get a correction
+    attempt like any other invalid action, not an immediate hard failure."""
+    model = MiscasedCapabilityThenValidModel()
+    result = await build_coordinator(active_schema, model).process_turn(
+        turn(), guard_context(active_schema)
+    )
+    assert model.correction_calls == 1
+    assert result.response.status == "DISCOVERY_COMPLETE"
+    assert result.response.business_capability == "order-discovery"

@@ -73,7 +73,7 @@ class TaskConfiguration(StrictModel):
     maximumInputTokens: int = Field(ge=256, le=200_000)
     allowTierEscalation: bool = False
     allowedProviders: tuple[
-        Literal["GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC", "OLLAMA", "SIMULATOR"], ...
+        Literal["GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC", "OLLAMA", "SIMULATOR", "MANUAL"], ...
     ] = Field(min_length=1)
     allowedInputKeys: tuple[str, ...] = Field(min_length=1)
 
@@ -101,7 +101,15 @@ class AIGatewayConfiguration(StrictModel):
         missing = required_tasks - set(self.tasks)
         if missing:
             raise ValueError(f"AI task registry is missing: {', '.join(sorted(missing))}")
-        allowed_providers = {"GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC", "OLLAMA", "SIMULATOR"}
+        allowed_providers = {
+            "GOOGLE",
+            "NVIDIA",
+            "OPENAI",
+            "ANTHROPIC",
+            "OLLAMA",
+            "SIMULATOR",
+            "MANUAL",
+        }
         unknown = set(self.providerLimits) - allowed_providers
         if unknown:
             raise ValueError(f"Unknown provider limit entries: {', '.join(sorted(unknown))}")

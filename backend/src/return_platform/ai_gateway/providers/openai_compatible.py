@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+from typing import Any
 
 from return_platform.ai_gateway.providers.contracts import (
     ProviderError,
@@ -10,6 +12,8 @@ from return_platform.ai_gateway.providers.contracts import (
     ProviderResponse,
 )
 from return_platform.ai_gateway.providers.http import HTTPProvider
+
+logger = logging.getLogger("return_platform.ai_gateway.providers.openai_compatible")
 
 
 class OpenAICompatibleProvider(HTTPProvider):
@@ -55,8 +59,8 @@ class OpenAICompatibleProvider(HTTPProvider):
         }
         if request.response_schema is not None:
             if "nemotron" in self.model.lower():
-                # Nemotron models via NVIDIA integrate API support json_object mode, but maybe not structured JSON schema for all.
-                # Just requesting JSON format helps.
+                # Nemotron models via the NVIDIA integrate API reliably support json_object
+                # mode but not strict JSON-schema constraints, so fall back to plain JSON.
                 payload["response_format"] = {"type": "json_object"}
             else:
                 payload["response_format"] = {
@@ -64,8 +68,8 @@ class OpenAICompatibleProvider(HTTPProvider):
                     "json_schema": {
                         "name": "agent_action",
                         "schema": request.response_schema,
-                        "strict": True
-                    }
+                        "strict": True,
+                    },
                 }
 
         data = await self._post(
@@ -73,7 +77,10 @@ class OpenAICompatibleProvider(HTTPProvider):
             headers=headers,
             payload=payload,
         )
-        print(f"DEBUG OPENAI_COMPATIBLE RESPONSE [{self.name} {self.model}]:", data)
+        logger.debug(
+            "openai_compatible_response",
+            extra={"provider": self.name, "model": self.model},
+        )
         try:
             text = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as error:

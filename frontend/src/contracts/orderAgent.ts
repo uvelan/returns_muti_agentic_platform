@@ -26,6 +26,27 @@ export type StructuredOrderAgentResponse = {
   readonly requested_input: string | null;
 };
 
+export type OrderSearchCandidate = {
+  readonly data: Readonly<Record<string, unknown>>;
+  readonly score: number;
+  readonly matches: readonly string[];
+};
+
+export type OrderSearchResult = {
+  readonly intent: Readonly<Record<string, unknown>>;
+  readonly candidates: readonly OrderSearchCandidate[];
+  readonly total_found: number;
+  readonly unsupported_signals: readonly string[];
+};
+
+// Shape of a direct GRAPH_QUERY result (e.g. a traversal to order_line for
+// product detail) — distinct from OrderSearchResult, which only ORDER_SEARCH
+// produces.
+export type GraphQueryRowResult = {
+  readonly rows: readonly Readonly<Record<string, unknown>>[];
+  readonly count: number;
+};
+
 export type OrderAgentQueryEvidence = {
   readonly query_execution_id: string;
   readonly schema_version: string;

@@ -34,7 +34,7 @@ def apply_graph_runtime_configuration(
         (item for item in configuration.runtime_integrations.ai_providers if item.enabled),
         key=lambda item: item.priority,
     )
-    
+
     updates: dict[str, object] = {}
     if enabled_providers or settings.environment not in ("development", "test"):
         updates.update({

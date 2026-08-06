@@ -122,8 +122,11 @@ class Settings(BaseSettings):
     ai_provider_order: str = "GOOGLE,NVIDIA,SIMULATOR"
     ai_validated_route_bindings: tuple[str, ...] = ()
     ai_validation_interval_hours: int = Field(default=24, ge=1, le=168)
-    ai_timeout_seconds: float = Field(default=12.0, ge=0.5, le=60.0)
-    ai_global_timeout_seconds: float = Field(default=30.0, ge=1.0, le=120.0)
+    # Upper bounds allow room for the dev-only MANUAL provider, where a human
+    # (not an API) supplies each response - real providers should still be
+    # configured well under these ceilings.
+    ai_timeout_seconds: float = Field(default=12.0, ge=0.5, le=300.0)
+    ai_global_timeout_seconds: float = Field(default=30.0, ge=1.0, le=900.0)
     ai_max_attempts_per_provider: int = Field(default=2, ge=1, le=4)
     ai_max_concurrency: int = Field(default=16, ge=1, le=256)
     ai_requests_per_minute: int = Field(default=120, ge=1, le=100_000)
@@ -597,6 +600,7 @@ class Settings(BaseSettings):
             "ANTHROPIC",
             "OLLAMA",
             "SIMULATOR",
+            "MANUAL",
         }
         providers = tuple(part.strip().upper() for part in value.split(",") if part.strip())
         if providers == ("NONE",):
@@ -657,6 +661,8 @@ class Settings(BaseSettings):
             raise ValueError("AI global timeout must be greater than or equal to provider timeout.")
         if self.environment == "production" and "SIMULATOR" in self.ai_provider_order.split(","):
             raise ValueError("SIMULATOR cannot be configured in production.")
+        if self.environment == "production" and "MANUAL" in self.ai_provider_order.split(","):
+            raise ValueError("MANUAL cannot be configured in production.")
         dependency_modes = {
             self.omc_dependency_mode,
             self.parcel_dependency_mode,

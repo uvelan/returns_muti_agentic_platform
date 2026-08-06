@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import asyncio
 import json
 import logging
@@ -12,7 +11,8 @@ from typing import Any
 
 from return_platform.ai_gateway.configuration import AIGatewayConfiguration, ModelTier
 from return_platform.ai_gateway.providers import ProviderError, ProviderRequest
-from return_platform.ai_gateway.routing import AIRoutePool
+from return_platform.ai_gateway.providers.schema_cleaner import clean_gemini_schema
+from return_platform.ai_gateway.routing import AIRoute, AIRoutePool
 from return_platform.ai_gateway.safety import inspect_input, inspect_output
 from return_platform.configuration.settings import Settings
 from return_platform.dynamic_knowledge.knowledge.evidence import StructuredAgentResponse
@@ -132,32 +132,108 @@ class RoutePoolReasoningModelGateway:
                 f"Order Agent input rejected: {safety.status.value}"
             )
         estimated_tokens = max(1, len(context_json) // 4)
-        candidates = await self._route_pool.candidates(
+        standard_candidates = await self._route_pool.candidates(
             self._task,
             task_id=self._task_id,
         )
-        if not candidates:
+        if not standard_candidates and not self._task.allowTierEscalation:
             raise StandardReasoningUnavailable(
                 "No healthy standard-reasoning route is available"
             )
-        attempts = 0
-        last_error = "PROVIDER_UNAVAILABLE"
-        failure_summary: Counter[str] = Counter()
+        schema_str = json.dumps(clean_gemini_schema(AgentAction.model_json_schema()))
+        full_prompt = (
+            f"{self._task.systemPrompt}\n\n"
+            "REQUIRED RESPONSE SCHEMA (Output exactly this JSON structure):\n"
+            f"```json\n{schema_str}\n```"
+        )
         deadline = (
             asyncio.get_running_loop().time()
             + self._settings.ai_global_timeout_seconds
         )
+        attempts = 0
+        last_error = "PROVIDER_UNAVAILABLE"
+        failure_summary: Counter[str] = Counter()
+
+        result, attempts, last_error = await self._attempt_routes(
+            standard_candidates,
+            mode=mode,
+            context=context,
+            payload=payload,
+            full_prompt=full_prompt,
+            estimated_tokens=estimated_tokens,
+            deadline=deadline,
+            attempts=attempts,
+            last_error=last_error,
+            failure_summary=failure_summary,
+        )
+        if result is not None:
+            return result
+
+        if self._task.allowTierEscalation:
+            lightweight_task = self._task.model_copy(update={"tier": ModelTier.LIGHTWEIGHT})
+            lightweight_candidates = await self._route_pool.candidates(
+                lightweight_task,
+                task_id=self._task_id,
+            )
+            if lightweight_candidates:
+                logger.warning(
+                    "order_agent_tier_escalation_started",
+                    extra={
+                        "conversation_id": context.conversation_id,
+                        "client_turn_id": context.client_turn_id,
+                        "task_id": self._task_id,
+                        "mode": mode,
+                        "standard_attempts": attempts,
+                        "standard_last_error": last_error,
+                    },
+                )
+                result, attempts, last_error = await self._attempt_routes(
+                    lightweight_candidates,
+                    mode=mode,
+                    context=context,
+                    payload=payload,
+                    full_prompt=full_prompt,
+                    estimated_tokens=estimated_tokens,
+                    deadline=deadline,
+                    attempts=attempts,
+                    last_error=last_error,
+                    failure_summary=failure_summary,
+                )
+                if result is not None:
+                    return result
+
+        summary = ",".join(
+            f"{error_code}:{count}"
+            for error_code, count in sorted(failure_summary.items())
+        )
+        raise StandardReasoningUnavailable(
+            "All standard-reasoning and lightweight-fallback routes failed; "
+            f"attempts={attempts}; last_error={last_error}; failures={summary or 'none'}"
+        )
+
+    async def _attempt_routes(
+        self,
+        candidates: tuple[AIRoute, ...],
+        *,
+        mode: str,
+        context: AgentTurnContext,
+        payload: dict[str, Any],
+        full_prompt: str,
+        estimated_tokens: int,
+        deadline: float,
+        attempts: int,
+        last_error: str,
+        failure_summary: Counter[str],
+    ) -> tuple[ModelInvocationResult | None, int, str]:
         for route in candidates:
-            if route.tier is not ModelTier.STANDARD:
-                continue
             for _ in range(self._configuration.retry.maximumAttemptsPerRoute):
                 if attempts >= self._configuration.retry.maximumTotalAttempts:
-                    break
+                    return None, attempts, last_error
                 remaining = deadline - asyncio.get_running_loop().time()
                 if remaining <= 0:
                     last_error = "TIMEOUT"
                     failure_summary[last_error] += 1
-                    break
+                    return None, attempts, last_error
                 acquired = await self._route_pool.try_acquire(
                     route,
                     estimated_tokens=estimated_tokens,
@@ -187,17 +263,13 @@ class RoutePoolReasoningModelGateway:
                         "task_id": self._task_id,
                         "mode": mode,
                         "attempt": attempts,
+                        "tier": route.tier.value,
                         "provider": route.provider_name,
                         "model": route.model,
                         "credential_id": route.credential_id,
                     },
                 )
                 try:
-                    print(f"DEBUG EXECUTING ROUTE: {route.provider_name} {route.model}")
-                    from return_platform.ai_gateway.providers.schema_cleaner import clean_gemini_schema
-                    schema_str = json.dumps(clean_gemini_schema(AgentAction.model_json_schema()))
-                    full_prompt = f"{self._task.systemPrompt}\n\nREQUIRED RESPONSE SCHEMA (Output exactly this JSON structure):\n```json\n{schema_str}\n```"
-                    
                     response = await asyncio.wait_for(
                         route.provider.generate(
                             ProviderRequest(
@@ -210,7 +282,6 @@ class RoutePoolReasoningModelGateway:
                         ),
                         timeout=min(self._settings.ai_timeout_seconds, remaining),
                     )
-                    print(f"DEBUG ROUTE SUCCESS: {route.provider_name} {route.model}")
                     output_safety = inspect_output(response.text)
                     if not output_safety.allowed:
                         raise ProviderError("POLICY_BLOCKED")
@@ -223,6 +294,7 @@ class RoutePoolReasoningModelGateway:
                             "client_turn_id": context.client_turn_id,
                             "task_id": self._task_id,
                             "attempt": attempts,
+                            "tier": route.tier.value,
                             "provider": route.provider_name,
                             "model": route.model,
                             "credential_id": route.credential_id,
@@ -232,30 +304,41 @@ class RoutePoolReasoningModelGateway:
                             ),
                         },
                     )
-                    return ModelInvocationResult(
-                        action=action,
-                        provider=route.provider_name,
-                        model=route.model,
-                        prompt_tokens=max(0, int(response.input_tokens or 0)),
-                        completion_tokens=max(0, int(response.output_tokens or 0)),
+                    return (
+                        ModelInvocationResult(
+                            action=action,
+                            provider=route.provider_name,
+                            model=route.model,
+                            prompt_tokens=max(0, int(response.input_tokens or 0)),
+                            completion_tokens=max(0, int(response.output_tokens or 0)),
+                        ),
+                        attempts,
+                        last_error,
                     )
                 except TimeoutError:
-                    print(f"DEBUG EXCEPTION FOR {route.provider_name}: TIMEOUT")
                     last_error = "TIMEOUT"
                     await self._route_pool.record_failure(route, last_error)
                 except ProviderError as exc:
-                    print(f"DEBUG EXCEPTION FOR {route.provider_name}: PROVIDER_ERROR {exc.code} {exc}")
                     last_error = exc.code
                     await self._route_pool.record_failure(route, last_error)
-                except (ValueError, TypeError) as exc:
-                    print(f"DEBUG EXCEPTION FOR {route.provider_name}: PARSE_ERROR {type(exc)} {exc}")
+                except (ValueError, TypeError):
                     last_error = "RESPONSE_INVALID"
                     await self._route_pool.record_failure(route, last_error)
-                except Exception as exc:
-                    import traceback
-                    traceback.print_exc()
-                    print(f"DEBUG EXCEPTION FOR {route.provider_name}: UNKNOWN {type(exc)} {exc}")
+                except Exception:
+                    # Unexpected provider/transport failure: keep the failover loop
+                    # moving to the next route, but log the full traceback so it's
+                    # not silently lost.
                     last_error = "PROVIDER_UNAVAILABLE"
+                    logger.exception(
+                        "order_agent_model_attempt_unexpected_error",
+                        extra={
+                            "conversation_id": context.conversation_id,
+                            "client_turn_id": context.client_turn_id,
+                            "task_id": self._task_id,
+                            "provider": route.provider_name,
+                            "model": route.model,
+                        },
+                    )
                     await self._route_pool.record_failure(route, last_error)
                 finally:
                     await self._route_pool.release(route)
@@ -268,6 +351,7 @@ class RoutePoolReasoningModelGateway:
                         "task_id": self._task_id,
                         "mode": mode,
                         "attempt": attempts,
+                        "tier": route.tier.value,
                         "provider": route.provider_name,
                         "model": route.model,
                         "credential_id": route.credential_id,
@@ -278,14 +362,7 @@ class RoutePoolReasoningModelGateway:
                         ),
                     },
                 )
-        summary = ",".join(
-            f"{error_code}:{count}"
-            for error_code, count in sorted(failure_summary.items())
-        )
-        raise StandardReasoningUnavailable(
-            "All standard-reasoning routes failed; "
-            f"attempts={attempts}; last_error={last_error}; failures={summary or 'none'}"
-        )
+        return None, attempts, last_error
 
 
 def _parse_agent_action(text: str) -> AgentAction:

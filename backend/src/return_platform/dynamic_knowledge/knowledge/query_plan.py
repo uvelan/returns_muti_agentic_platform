@@ -87,6 +87,8 @@ class LogicalQueryPlan(BaseModel):
         }
         if self.operation in aggregate_ops and self.aggregation_field_id is None:
             raise ValueError(f"{self.operation.value} requires aggregation_field_id")
+        if self.operation is QueryOperation.GROUP_BY and not self.group_by_field_ids:
+            raise ValueError("GROUP_BY requires at least one group_by_field_id")
         if self.operation is QueryOperation.TRAVERSE and not self.traversal:
             raise ValueError("TRAVERSE requires at least one relationship step")
         if (

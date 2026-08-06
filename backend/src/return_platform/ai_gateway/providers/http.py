@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import httpx
 
 from return_platform.ai_gateway.providers.contracts import ProviderError
+
+logger = logging.getLogger("return_platform.ai_gateway.providers.http")
 
 
 def secret_value(value: object) -> str | None:
@@ -35,7 +38,10 @@ def raise_for_provider_status(response: httpx.Response) -> None:
     try:
         response.raise_for_status()
     except httpx.HTTPStatusError as error:
-        print("PROVIDER ERROR HTTPStatusError:", response.status_code, response.text)
+        logger.warning(
+            "ai_provider_http_error",
+            extra={"status_code": response.status_code, "body": response.text[:2_000]},
+        )
         raise ProviderError("RESPONSE_INVALID") from error
 
 

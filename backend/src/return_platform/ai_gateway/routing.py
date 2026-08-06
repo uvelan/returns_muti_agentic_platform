@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import time
 from collections import defaultdict
 from collections.abc import Iterable
@@ -20,11 +21,14 @@ from return_platform.ai_gateway.configuration import (
 from return_platform.ai_gateway.providers.anthropic import AnthropicProvider
 from return_platform.ai_gateway.providers.contracts import AIProvider
 from return_platform.ai_gateway.providers.google import GeminiProvider
+from return_platform.ai_gateway.providers.manual import ManualFileProvider
 from return_platform.ai_gateway.providers.nvidia import NvidiaProvider
 from return_platform.ai_gateway.providers.ollama import OllamaProvider
 from return_platform.ai_gateway.providers.openai import OpenAIResponsesProvider
 from return_platform.ai_gateway.providers.simulator import SimulatorProvider
 from return_platform.configuration.settings import Settings
+
+logger = logging.getLogger("return_platform.ai_gateway.routing")
 
 
 class CircuitState(StrEnum):
@@ -155,6 +159,8 @@ def _provider(
         return OllamaProvider(settings.model_copy(update={"ollama_model": model}))
     if provider_name == "SIMULATOR":
         return SimulatorProvider(settings)
+    if provider_name == "MANUAL":
+        return ManualFileProvider(settings)
     raise ValueError(f"Unsupported AI provider: {provider_name}")
 
 
@@ -167,7 +173,7 @@ def _provider_credentials(settings: Settings, provider_name: str) -> tuple[Secre
         return tuple(settings.resolved_openai_api_keys)
     if provider_name == "ANTHROPIC":
         return tuple(settings.resolved_anthropic_api_keys)
-    if provider_name in {"OLLAMA", "SIMULATOR"}:
+    if provider_name in {"OLLAMA", "SIMULATOR", "MANUAL"}:
         return (None,)
     return ()
 
@@ -209,6 +215,8 @@ def _provider_models(
         )
     if provider_name == "SIMULATOR":
         return ("deterministic-eligibility-simulator-v1",) if tier is ModelTier.LIGHTWEIGHT else ()
+    if provider_name == "MANUAL":
+        return (ManualFileProvider.model,)
     return ()
 
 
@@ -224,14 +232,22 @@ def _validated_route_bindings(
 
 def build_routes(settings: Settings) -> tuple[AIRoute, ...]:
     provider_order = tuple(p.strip() for p in settings.ai_provider_order.split(","))
-    print("DEBUG BUILD_ROUTES:", provider_order, settings.nvidia_lightweight_models, settings.nvidia_api_keys)
+    logger.debug("ai_route_build_started", extra={"provider_order": provider_order})
     validated_bindings = _validated_route_bindings(settings)
     routes: list[AIRoute] = []
     for provider_priority, provider_name in enumerate(provider_order):
         credentials = _provider_credentials(settings, provider_name)
         for tier in ModelTier:
             models = _provider_models(settings, provider_name, tier)
-            print("DEBUG BUILD_ROUTES LOOP:", provider_name, tier, models, credentials)
+            logger.debug(
+                "ai_route_build_provider_tier",
+                extra={
+                    "provider": provider_name,
+                    "tier": tier.value,
+                    "model_count": len(models),
+                    "credential_count": len(credentials),
+                },
+            )
             for model_priority, model in enumerate(models):
                 for credential_priority, credential in enumerate(credentials):
                     binding_key = (provider_name, credential_priority, model)
@@ -257,7 +273,7 @@ def build_routes(settings: Settings) -> tuple[AIRoute, ...]:
                             allowed_task_keys=validated_bindings.get(binding_key, frozenset()),
                         )
                     )
-    print("DEBUG BUILD_ROUTES RETURNING:", routes)
+    logger.debug("ai_route_build_completed", extra={"route_count": len(routes)})
     return tuple(routes)
 
 
@@ -336,7 +352,10 @@ class AIRoutePool:
                     reason = "task not in allowed_task_keys"
                 elif not self._is_available(route, now):
                     reason = f"not available (configured={route.provider.configured})"
-                print("DEBUG ROUTE EVAL:", route.route_id, reason)
+                logger.debug(
+                    "ai_route_candidate_evaluated",
+                    extra={"route_id": route.route_id, "reason": reason},
+                )
                 if reason == "allowed":
                     available.append(route)
             grouped: dict[str, list[AIRoute]] = defaultdict(list)

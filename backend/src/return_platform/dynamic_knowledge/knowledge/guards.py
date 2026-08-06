@@ -80,8 +80,9 @@ class CapabilityGuard:
             )
         if capability not in context.agent_policy.allowed_business_capabilities:
             raise GuardRejected(
-                "ORDER_AGENT_OUT_OF_SCOPE",
-                "The requested capability is not enabled for this agent.",
+                "ORDER_AGENT_INVALID_CAPABILITY",
+                f"Capability {capability!r} is not one of the exact allowed values "
+                f"(allowed: {sorted(context.agent_policy.allowed_business_capabilities)}).",
             )
 
 
@@ -322,7 +323,10 @@ class HallucinationGuard:
                     failures.append(
                         EvidenceValidationFailure(
                             statement_id=statement.statement_id,
-                            reason="evidence path is invalid",
+                            reason=(
+                                f"evidence path {list(reference.result_path)!r} does not exist "
+                                f"in query {reference.query_execution_id}"
+                            ),
                         )
                     )
                     continue
@@ -330,7 +334,11 @@ class HallucinationGuard:
                     failures.append(
                         EvidenceValidationFailure(
                             statement_id=statement.statement_id,
-                            reason="claimed value does not match graph evidence",
+                            reason=(
+                                f"claimed value {reference.expected_value!r} for path "
+                                f"{list(reference.result_path)!r} does not match the actual "
+                                f"evidence value {actual!r}"
+                            ),
                         )
                     )
         return EvidenceValidationResult(valid=not failures, failures=tuple(failures))

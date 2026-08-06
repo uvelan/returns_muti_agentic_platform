@@ -221,7 +221,7 @@ entities:
           distinct: true
           aggregatable: false
           displayable: true
-          on_demand_sync_anchor: false
+          on_demand_sync_anchor: true
           operators:
           - EXACT
           - EQUALS
@@ -249,7 +249,7 @@ entities:
           distinct: true
           aggregatable: false
           displayable: true
-          on_demand_sync_anchor: false
+          on_demand_sync_anchor: true
           operators:
           - EXACT
           - EQUALS
@@ -428,6 +428,24 @@ entities:
         minimum_fields_present: 1
         maximum_expected_matches: 1
         on_demand_sync_allowed: true
+      probable_order_by_customer_and_status:
+        anchor_id: probable_order_by_customer_and_status
+        # Combination anchor for associates who cannot supply an order number:
+        # two weaker signals together (customer id and order status) are
+        # treated as identifying enough to trigger a targeted sync. Either
+        # field alone is not sufficient (minimum_fields_present: 2).
+        fields:
+        - field_id: customer_id
+          allowed_operators:
+          - EQUALS
+          required: false
+        - field_id: order_status
+          allowed_operators:
+          - EQUALS
+          required: false
+        minimum_fields_present: 2
+        maximum_expected_matches: 25
+        on_demand_sync_allowed: true
   order_line:
     entity_id: order_line
     description: Configured sales order line entity
@@ -449,7 +467,7 @@ entities:
           distinct: true
           aggregatable: false
           displayable: true
-          on_demand_sync_anchor: false
+          on_demand_sync_anchor: true
           operators:
           - EXACT
           - EQUALS
@@ -715,7 +733,18 @@ entities:
           masking: null
     natural_key:
     - order_line_key
-    strong_anchors: {}
+    strong_anchors:
+      exact_order_line:
+        anchor_id: exact_order_line
+        fields:
+        - field_id: order_line_key
+          allowed_operators:
+          - EXACT
+          - EQUALS
+          required: true
+        minimum_fields_present: 1
+        maximum_expected_matches: 1
+        on_demand_sync_allowed: true
   product:
     entity_id: product
     description: Configured product entity
@@ -1207,4 +1236,4 @@ agent_policies:
     max_reasoning_steps: 8
     max_graph_queries_per_turn: 12
     max_correction_attempts: 2
-configuration_checksum: 0851fbfa57050efd813fef723a4e31e0058b1a89ab004bd5336c2a8fa6d34215
+configuration_checksum: 5b4bc0f77fb4bc1d5ce01ebfbccb9a95925ba81313e6494b6f8ba8ee308f3faf

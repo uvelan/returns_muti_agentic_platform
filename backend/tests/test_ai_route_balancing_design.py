@@ -81,6 +81,7 @@ def _route(
     credential_id: str,
     provider_priority: int,
     model_priority: int,
+    tier: ModelTier = ModelTier.STANDARD,
     allowed_task_keys: frozenset[str] = frozenset({"ORDER_AGENT_REASONING_V1"}),
 ) -> AIRoute:
     return AIRoute(
@@ -89,7 +90,7 @@ def _route(
         model=model,
         credential_id=credential_id,
         credential_fingerprint="test",
-        tier=ModelTier.STANDARD,
+        tier=tier,
         provider=provider,
         provider_priority=provider_priority,
         model_priority=model_priority,
@@ -391,4 +392,70 @@ async def test_order_agent_fails_over_to_next_provider_and_logs_attempts(
     assert calls == ["GOOGLE", "NVIDIA"]
     assert result.provider == "NVIDIA"
     assert "order_agent_model_attempt_failed" in caplog.messages
+    assert "order_agent_model_attempt_succeeded" in caplog.messages
+
+
+@pytest.mark.asyncio
+async def test_order_agent_escalates_to_lightweight_tier_when_standard_exhausted(
+    test_settings: Settings,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    loaded = load_ai_gateway_configuration(CONFIG)
+    task = loaded.configuration.tasks["ORDER_AGENT_REASONING_V1"]
+    assert task.allowTierEscalation is True, "test assumes escalation is enabled in config"
+
+    calls: list[str] = []
+    routes = (
+        _route(
+            provider=FailingProvider("GOOGLE", "google-standard", calls),
+            provider_name="GOOGLE",
+            model="google-standard",
+            credential_id="google-key-1",
+            provider_priority=0,
+            model_priority=0,
+            tier=ModelTier.STANDARD,
+        ),
+        _route(
+            provider=SuccessfulProvider("GOOGLE", "google-lite", calls),
+            provider_name="GOOGLE",
+            model="google-lite",
+            credential_id="google-key-1",
+            provider_priority=0,
+            model_priority=0,
+            tier=ModelTier.LIGHTWEIGHT,
+        ),
+    )
+    gateway = RoutePoolReasoningModelGateway(
+        settings=test_settings.model_copy(
+            update={
+                "ai_timeout_seconds": 1.0,
+                "ai_global_timeout_seconds": 5.0,
+            }
+        ),
+        configuration=loaded.configuration,
+        route_pool=AIRoutePool(routes, loaded.configuration),
+    )
+    context = AgentTurnContext(
+        conversation_id="conversation-1",
+        client_turn_id="turn-1",
+        user_message="Find order ORD-10001",
+        schema_version="1",
+        graph_generation_id="generation-1",
+        configuration_release_id="release-1",
+        policy_version="policy-1",
+        prompt_version="prompt-1",
+        compact_schema={},
+        conversation_state={},
+    )
+
+    with caplog.at_level(
+        logging.INFO,
+        logger="return_platform.dynamic_knowledge.model_gateway",
+    ):
+        result = await gateway.decide(context)
+
+    assert calls == ["GOOGLE", "GOOGLE"]
+    assert result.provider == "GOOGLE"
+    assert result.model == "google-lite"
+    assert "order_agent_tier_escalation_started" in caplog.messages
     assert "order_agent_model_attempt_succeeded" in caplog.messages

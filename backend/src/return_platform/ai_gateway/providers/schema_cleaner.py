@@ -1,4 +1,7 @@
+"""Best-effort JSON-schema simplification for Gemini's structured-output support."""
+
 import copy
+
 
 def clean_gemini_schema(schema: dict) -> dict:
     if not isinstance(schema, dict):
@@ -19,7 +22,7 @@ def clean_gemini_schema(schema: dict) -> dict:
                     resolved = copy.deepcopy(defs[ref_name])
                     # Merge any other keys if needed, but normally $ref replaces the node
                     return resolve_refs(resolved)
-            
+
             if "anyOf" in node:
                 any_of_list = node.pop("anyOf")
                 for item in any_of_list:

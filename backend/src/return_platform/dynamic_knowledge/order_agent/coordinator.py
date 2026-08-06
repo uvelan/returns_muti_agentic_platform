@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Protocol
 from uuid import uuid4
 
 from return_platform.dynamic_knowledge.fingerprint import on_demand_request_digest, sha256_digest
-from return_platform.dynamic_knowledge.knowledge.cypher_compiler import CypherCompiler
+from return_platform.dynamic_knowledge.knowledge.cypher_compiler import (
+    CypherCompiler,
+    QueryCompilationError,
+)
 from return_platform.dynamic_knowledge.knowledge.evidence import (
     QueryEvidence,
     StructuredAgentResponse,
@@ -30,12 +34,19 @@ from return_platform.dynamic_knowledge.order_agent.contracts import (
     AgentTurnRequest,
     AgentTurnResult,
     ModelInvocationResult,
+    OrderSearchIntent,
 )
 from return_platform.dynamic_knowledge.order_agent.search_strategy import (
+    RESULT_PAGE_SIZE,
+    build_customer_fuzzy_probe_plan,
     build_progressive_plans,
+    fuzzy_match_customers,
     rank_search_results,
+    search_intent_signature,
 )
 from return_platform.dynamic_knowledge.schema import ActiveSchema
+
+logger = logging.getLogger("return_platform.dynamic_knowledge.order_agent.coordinator")
 
 
 class OrderAgentFailure(RuntimeError):
@@ -94,6 +105,7 @@ class ConversationStore(Protocol):
         request: AgentTurnRequest,
         expected_version: int,
         result: AgentTurnResult,
+        conversation_state: dict[str, Any],
     ) -> AgentTurnResult: ...
 
 
@@ -179,12 +191,30 @@ class DynamicOrderAgentCoordinator:
             if action.action_type is ActionType.OUT_OF_SCOPE:
                 raise OrderAgentFailure(
                     "ORDER_AGENT_OUT_OF_SCOPE",
-                    "I can assist only with configured order discovery and return-management business operations.",
+                    "That's outside what I can help with here — I'm set up for order "
+                    "discovery and return-management questions. Let me know if there's "
+                    "something in that space I can look into.",
                     retryable=False,
                 )
             try:
                 self._capability_guard.validate(guard_context, action.business_capability)
             except GuardRejected as exc:
+                if exc.code == "ORDER_AGENT_INVALID_CAPABILITY":
+                    # The model chose a real, in-scope capability but formatted the
+                    # string wrong (casing, separators) - that's a recoverable
+                    # correction, not a hard stop, unlike a genuinely disallowed role.
+                    if correction_attempts >= policy.max_correction_attempts:
+                        raise OrderAgentFailure(
+                            "ORDER_AGENT_OUT_OF_SCOPE", exc.message, retryable=False
+                        ) from exc
+                    correction_attempts += 1
+                    invocation = await self._invoke_correction(
+                        context=context,
+                        invalid_action=action,
+                        validation_error=exc.message,
+                    )
+                    last_provider, last_model = invocation.provider, invocation.model
+                    continue
                 raise OrderAgentFailure(exc.code, exc.message, retryable=False) from exc
 
             if action.action_type is ActionType.GET_SCHEMA:
@@ -252,24 +282,81 @@ class DynamicOrderAgentCoordinator:
                 continue
 
             if action.action_type is ActionType.ORDER_SEARCH:
+                intent = action.search_intent
+                if intent is None:
+                    raise AssertionError("validated ORDER_SEARCH action lacks search_intent")
+
+                cache = context.conversation_state.get("orderSearchCache")
+                if intent.wantsMoreResults and isinstance(cache, dict) and cache.get("candidates"):
+                    cached_candidates = cache["candidates"]
+                    shown = int(cache.get("shown", 0))
+                    page = cached_candidates[shown : shown + RESULT_PAGE_SIZE]
+                    ranked = {
+                        "intent": intent.model_dump(),
+                        "candidates": page,
+                        "total_found": cache.get("totalFound", len(cached_candidates)),
+                        "unsupported_signals": [],
+                    }
+                    evidence = QueryEvidence.create(
+                        query_execution_id=str(uuid4()),
+                        schema_version=self._schema.schema_version,
+                        graph_generation_id=graph_generation_id,
+                        logical_plan_checksum=sha256_digest(intent.model_dump(mode="json")),
+                        compiled_query_checksum=sha256_digest(
+                            {"cachedPage": True, "shown": shown + len(page)}
+                        ),
+                        result=ranked,
+                    )
+                    updated_cache = {**cache, "shown": shown + len(page)}
+                    context = context.model_copy(
+                        update={
+                            "query_evidence": (*context.query_evidence, evidence),
+                            "conversation_state": {
+                                **context.conversation_state,
+                                "orderSearchCache": updated_cache,
+                            },
+                        }
+                    )
+                    invocation = await self._invoke_decide(context)
+                    last_provider, last_model = invocation.provider, invocation.model
+                    continue
+
                 if queries_used >= policy.max_graph_queries_per_turn:
                     raise OrderAgentFailure(
                         "ORDER_AGENT_QUERY_BUDGET_EXCEEDED",
                         "The request exceeded the configured knowledge-query limits.",
                         retryable=False,
                     )
-                intent = action.search_intent
-                if intent is None:
-                    raise AssertionError("validated ORDER_SEARCH action lacks search_intent")
-                
+
                 plans = build_progressive_plans(intent)
-                raw_results = []
+                raw_results: list[Any] = []
+                compiled_checksums: list[str] = []
                 for plan in plans:
                     if queries_used >= policy.max_graph_queries_per_turn:
                         break
                     try:
+                        # Every candidate plan must clear the same schema and role
+                        # authorization checks as an explicit GRAPH_QUERY action —
+                        # progressive search is not exempt from field-level policy.
+                        self._schema_guard.validate(guard_context, plan)
                         self._query_safety_guard.validate(plan)
                         compiled = self._compiler.compile_read(self._schema, plan)
+                    except (GuardRejected, QueryCompilationError) as exc:
+                        # This specific candidate plan is invalid for the active
+                        # schema or policy (e.g. an unsupported field/operator
+                        # combination) — skip it and keep trying the rest.
+                        logger.debug(
+                            "order_search_plan_rejected",
+                            extra={
+                                "conversation_id": context.conversation_id,
+                                "client_turn_id": context.client_turn_id,
+                                "operation": plan.operation.value,
+                                "entity_id": plan.start_entity_id,
+                                "reason": str(exc),
+                            },
+                        )
+                        continue
+                    try:
                         raw_result = await self._knowledge.execute(
                             schema=self._schema,
                             graph_generation_id=graph_generation_id,
@@ -277,23 +364,63 @@ class DynamicOrderAgentCoordinator:
                             compiled_cypher=compiled.cypher,
                             parameters=compiled.parameters,
                         )
-                        raw_results.append(raw_result)
-                        queries_used += 1
-                    except Exception:
-                        pass # Ignore failing query plans during progressive search
-                        
+                    except Exception as exc:
+                        # A validated, well-formed plan still failed to execute —
+                        # that is an infrastructure problem (e.g. the graph store
+                        # is unreachable), not "no matching order". Surface it
+                        # instead of quietly reporting zero candidates.
+                        raise OrderAgentFailure(
+                            "ORDER_AGENT_SEARCH_EXECUTION_FAILED",
+                            "The order search could not be completed against the knowledge graph.",
+                            retryable=True,
+                        ) from exc
+                    raw_results.append(raw_result)
+                    compiled_checksums.append(compiled.checksum)
+                    queries_used += 1
+
                 ranked = rank_search_results(intent, raw_results)
-                
+
+                if (
+                    ranked["total_found"] == 0
+                    and intent.customerNames
+                    and queries_used < policy.max_graph_queries_per_turn
+                ):
+                    ranked = await self._fuzzy_customer_fallback(
+                        intent=intent,
+                        ranked=ranked,
+                        guard_context=guard_context,
+                        graph_generation_id=graph_generation_id,
+                        context=context,
+                    )
+                    queries_used += 1
+
+                page_candidates = ranked["candidates"][:RESULT_PAGE_SIZE]
+                new_cache = {
+                    "signature": search_intent_signature(intent),
+                    "intent": ranked["intent"],
+                    "candidates": ranked["candidates"],
+                    "shown": len(page_candidates),
+                    "totalFound": ranked["total_found"],
+                }
+
                 evidence = QueryEvidence.create(
                     query_execution_id=str(uuid4()),
                     schema_version=self._schema.schema_version,
                     graph_generation_id=graph_generation_id,
                     logical_plan_checksum=sha256_digest(intent.model_dump(mode="json")),
-                    compiled_query_checksum="ORDER_SEARCH_STRATEGY",
-                    result=ranked,
+                    compiled_query_checksum=sha256_digest(
+                        {"plans": sorted(compiled_checksums)}
+                    ),
+                    result={**ranked, "candidates": page_candidates},
                 )
                 context = context.model_copy(
-                    update={"query_evidence": (*context.query_evidence, evidence)}
+                    update={
+                        "query_evidence": (*context.query_evidence, evidence),
+                        "conversation_state": {
+                            **context.conversation_state,
+                            "orderSearchCache": new_cache,
+                        },
+                    }
                 )
                 invocation = await self._invoke_decide(context)
                 last_provider, last_model = invocation.provider, invocation.model
@@ -393,6 +520,21 @@ class DynamicOrderAgentCoordinator:
                     graph_generation_id=graph_generation_id,
                 )
                 if not validation.valid:
+                    logger.warning(
+                        "order_agent_response_validation_failed",
+                        extra={
+                            "conversation_id": context.conversation_id,
+                            "client_turn_id": context.client_turn_id,
+                            "correction_attempts": correction_attempts,
+                            "failures": [
+                                {
+                                    "statement_id": item.statement_id,
+                                    "reason": item.reason,
+                                }
+                                for item in validation.failures
+                            ],
+                        },
+                    )
                     if correction_attempts >= policy.max_correction_attempts:
                         raise OrderAgentFailure(
                             "ORDER_AGENT_RESPONSE_VALIDATION_FAILED",
@@ -426,7 +568,13 @@ class DynamicOrderAgentCoordinator:
         try:
             return await self._model.decide(context)
         except Exception as exc:
-            print("DEBUG EXCEPTION IN DECIDE:", repr(exc))
+            logger.exception(
+                "order_agent_decide_failed",
+                extra={
+                    "conversation_id": context.conversation_id,
+                    "client_turn_id": context.client_turn_id,
+                },
+            )
             raise OrderAgentFailure(
                 "ORDER_AGENT_LLM_FAILED",
                 "The configured reasoning models could not process the request.",
@@ -473,6 +621,67 @@ class DynamicOrderAgentCoordinator:
                 retryable=True,
             ) from exc
 
+    async def _fuzzy_customer_fallback(
+        self,
+        *,
+        intent: OrderSearchIntent,
+        ranked: dict[str, Any],
+        guard_context: GuardContext,
+        graph_generation_id: str,
+        context: AgentTurnContext,
+    ) -> dict[str, Any]:
+        """Best-effort misspelling recovery when an exact/partial name search finds nothing.
+
+        Fetches one bounded, unfiltered batch of customers and scores it client-side
+        with difflib — never blocks or fails the turn if this step itself errors,
+        since the associate is no worse off than the zero-result search that
+        triggered it.
+        """
+        plan = build_customer_fuzzy_probe_plan()
+        try:
+            self._schema_guard.validate(guard_context, plan)
+            self._query_safety_guard.validate(plan)
+            compiled = self._compiler.compile_read(self._schema, plan)
+            raw_result = await self._knowledge.execute(
+                schema=self._schema,
+                graph_generation_id=graph_generation_id,
+                plan=plan,
+                compiled_cypher=compiled.cypher,
+                parameters=compiled.parameters,
+            )
+        except Exception:
+            logger.debug(
+                "order_search_fuzzy_fallback_unavailable",
+                extra={
+                    "conversation_id": context.conversation_id,
+                    "client_turn_id": context.client_turn_id,
+                },
+            )
+            return ranked
+
+        rows = raw_result.get("rows", []) if isinstance(raw_result, dict) else []
+        matches = fuzzy_match_customers(intent.customerNames, rows)
+        if not matches:
+            return ranked
+
+        logger.info(
+            "order_search_fuzzy_fallback_matched",
+            extra={
+                "conversation_id": context.conversation_id,
+                "client_turn_id": context.client_turn_id,
+                "match_count": len(matches),
+            },
+        )
+        candidates = [
+            {"data": row, "score": 0.6, "matches": ["customer_name_fuzzy"]} for row in matches
+        ]
+        return {
+            "intent": ranked["intent"],
+            "candidates": candidates,
+            "total_found": len(candidates),
+            "unsupported_signals": ranked["unsupported_signals"],
+        }
+
     async def _commit_response(
         self,
         *,
@@ -497,4 +706,5 @@ class DynamicOrderAgentCoordinator:
             request=request,
             expected_version=expected_version,
             result=provisional,
+            conversation_state=context.conversation_state,
         )

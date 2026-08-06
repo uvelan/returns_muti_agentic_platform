@@ -93,7 +93,47 @@ def test_hallucination_guard_rejects_wrong_claim_value() -> None:
         response=response, evidence=(evidence,), graph_generation_id="g1"
     )
     assert result.valid is False
-    assert result.failures[0].reason == "claimed value does not match graph evidence"
+    reason = result.failures[0].reason
+    assert "claimed value 5" in reason
+    assert "actual evidence value 3" in reason
+
+
+def test_hallucination_guard_names_the_bad_path_so_correction_can_target_it() -> None:
+    """A generic 'evidence path is invalid' message gives a correction attempt
+    nothing to fix; it must name the actual path so a retry can address it."""
+    evidence = QueryEvidence.create(
+        query_execution_id="q1",
+        schema_version="v1",
+        graph_generation_id="g1",
+        logical_plan_checksum="a",
+        compiled_query_checksum="b",
+        result={"candidates": [{"customer_name": "Maya Foster"}]},
+    )
+    response = StructuredAgentResponse(
+        status="AWAITING_ASSOCIATE_INPUT",
+        business_capability="order-discovery",
+        statements=(
+            ResponseStatement(
+                statement_id="s1",
+                statement_type=StatementType.GRAPH_FACT,
+                text="A sixth candidate exists.",
+                evidence_refs=(
+                    EvidenceReference(
+                        query_execution_id="q1",
+                        result_path=("candidates", "5", "customer_name"),
+                        expected_value=None,
+                    ),
+                ),
+            ),
+        ),
+    )
+    result = HallucinationGuard().validate(
+        response=response, evidence=(evidence,), graph_generation_id="g1"
+    )
+    assert result.valid is False
+    reason = result.failures[0].reason
+    assert "['candidates', '5', 'customer_name']" in reason
+    assert "q1" in reason
 
 
 def test_field_permission_empty_set_denies_access(active_schema: ActiveSchema) -> None:

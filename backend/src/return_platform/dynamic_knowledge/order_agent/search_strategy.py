@@ -1,10 +1,34 @@
-"""Search strategy and ranking for order intent."""
+"""Search strategy and ranking for order intent.
+
+Progressive search decomposes the associate's free-text intent into a set of
+independent, narrowly-scoped graph reads — one per identifying signal — rather
+than a single query that requires every signal to match at once. This lets a
+customer be found from partial or combined information (an order number
+*or* a customer name *or* a delivery-date window *or* any combination of
+those), because each signal is tried on its own and the results are then
+merged and scored by :func:`rank_search_results`.
+
+Not every field on :class:`OrderSearchIntent` currently has a backing field in
+the active knowledge-graph schema. ``streetAddresses``, ``cities``, ``states``,
+``postalCodes``, and ``colors`` are intentionally *not* translated into query
+plans here, because ``backend/config/dynamic_knowledge/active-schema.return-order.yaml``
+does not define a graph property for shipping address or product colour today.
+Silently dropping that signal would look like "no results" to the associate
+with no indication why, so :func:`build_progressive_plans` reports which
+unsupported signals were present via ``unsupported_signals`` instead of
+inventing a query against a field that does not exist. Once the source schema
+is extended with real physical-path mappings for those attributes, add the
+matching passes here alongside the existing ones.
+"""
 
 from __future__ import annotations
 
+import difflib
+import logging
 import re
 from typing import Any
 
+from return_platform.dynamic_knowledge.fingerprint import sha256_digest
 from return_platform.dynamic_knowledge.knowledge.query_plan import (
     LogicalQueryPlan,
     QueryCondition,
@@ -12,19 +36,101 @@ from return_platform.dynamic_knowledge.knowledge.query_plan import (
 )
 from return_platform.dynamic_knowledge.order_agent.contracts import OrderSearchIntent
 
+logger = logging.getLogger("return_platform.dynamic_knowledge.order_agent.search_strategy")
+
+# Fields the model may extract into OrderSearchIntent that have no backing
+# graph field yet. Kept in one place so this list and the module docstring
+# above stay in sync as the schema evolves.
+_UNSUPPORTED_INTENT_FIELDS: tuple[str, ...] = (
+    "streetAddresses",
+    "cities",
+    "states",
+    "postalCodes",
+    "colors",
+)
+
+# order_line.delivered_at style fields only expose range operators (see the
+# active schema): an exact-date match is expressed as a same-day BETWEEN.
+_DATE_FIELD_ENTITY = "sales_order"
+_DATE_FIELD_ID = "delivered_at"
+
+# How many ranked candidates a single search keeps around for pagination
+# ("show next") versus how many are ever shown to the reasoning model or the
+# associate in one turn. Keeping these bounded and separate is what lets
+# follow-up "show more" turns page through a cached result set instead of
+# either re-querying the graph or dumping every match into the LLM context
+# at once.
+MAX_CACHED_CANDIDATES = 25
+RESULT_PAGE_SIZE = 5
+
+# Neo4j has no built-in edit-distance function (that's an APOC extension, not
+# installed here), so a misspelled name can't be resolved with a single
+# server-side query. Instead, when the exact/partial CONTAINS search for a
+# customer name finds nothing, one bounded, unfiltered batch of customer rows
+# is fetched and scored client-side with difflib — never the whole table, and
+# only as a fallback after the cheap indexed search has already come back empty.
+FUZZY_CUSTOMER_PROBE_LIMIT = 100
+FUZZY_CUSTOMER_MATCH_THRESHOLD = 0.72
+
+# Intent fields that identify *what* was searched for, as opposed to
+# metadata about the search itself (searchMode, confidence, wantsMoreResults).
+# Used to detect whether a "show next" follow-up still refers to the same
+# search or the associate has moved on to a different one.
+_SIGNATURE_FIELDS: tuple[str, ...] = (
+    "orderIds",
+    "orderNumbers",
+    "customerNames",
+    "streetAddresses",
+    "cities",
+    "states",
+    "postalCodes",
+    "dateFrom",
+    "dateTo",
+    "approximateDate",
+    "skus",
+    "productNames",
+    "colors",
+    "quantities",
+    "freeTextTerms",
+)
+
+
+def search_intent_signature(intent: OrderSearchIntent) -> str:
+    """Stable fingerprint of the identifying signals in a search intent.
+
+    Two intents with the same signature are considered "the same search" for
+    pagination purposes, regardless of metadata fields like confidence or
+    wantsMoreResults.
+    """
+    payload = {field: getattr(intent, field) for field in _SIGNATURE_FIELDS}
+    return sha256_digest(payload)
+
 
 def normalize_string(val: str) -> str:
-    """Normalize string for search matching."""
-    return re.sub(r'[\s\-]+', '', val.lower())
+    """Normalize a string for loose, punctuation/whitespace-insensitive matching."""
+    return re.sub(r"[\s\-]+", "", val.lower())
+
+
+def _unsupported_signals_present(intent: OrderSearchIntent) -> tuple[str, ...]:
+    return tuple(
+        field_name
+        for field_name in _UNSUPPORTED_INTENT_FIELDS
+        if getattr(intent, field_name)
+    )
 
 
 def build_progressive_plans(intent: OrderSearchIntent) -> list[LogicalQueryPlan]:
-    """Translate search intent into a sequence of query plans."""
-    plans = []
-    
-    # 1. Exact passes
-    order_nums = set(intent.orderNumbers + intent.orderIds)
-    for num in order_nums:
+    """Translate a (possibly partial) search intent into a sequence of query plans.
+
+    Every populated signal on ``intent`` gets its own narrowly-scoped plan;
+    ``rank_search_results`` is responsible for combining and scoring whatever
+    comes back. Callers that want visibility into intent fields that could not
+    be turned into a plan should check :func:`unsupported_signals`.
+    """
+    plans: list[LogicalQueryPlan] = []
+
+    # 1. Exact order identifiers.
+    for num in dict.fromkeys(intent.orderNumbers + intent.orderIds):
         plans.append(
             LogicalQueryPlan(
                 operation=QueryOperation.SEARCH,
@@ -40,9 +146,9 @@ def build_progressive_plans(intent: OrderSearchIntent) -> list[LogicalQueryPlan]
                 limit=1,
             )
         )
-        
-    # 2. Customer passes
-    for name in intent.customerNames:
+
+    # 2. Customer name.
+    for name in dict.fromkeys(intent.customerNames):
         plans.append(
             LogicalQueryPlan(
                 operation=QueryOperation.SEARCH,
@@ -58,9 +164,9 @@ def build_progressive_plans(intent: OrderSearchIntent) -> list[LogicalQueryPlan]
                 limit=5,
             )
         )
-        
-    # 3. Product passes
-    for sku in intent.skus:
+
+    # 3. SKU.
+    for sku in dict.fromkeys(intent.skus):
         plans.append(
             LogicalQueryPlan(
                 operation=QueryOperation.SEARCH,
@@ -77,16 +183,86 @@ def build_progressive_plans(intent: OrderSearchIntent) -> list[LogicalQueryPlan]
             )
         )
 
-    # 4. Fallback search (free text / ambiguous)
-    for term in intent.freeTextTerms:
+    # 4. Product description (partial product info, e.g. "blue faucet" once a
+    # colour field exists, or "faucet" / "Moen kitchen faucet" today). Reads
+    # from order_line so the order the line belongs to comes back for free.
+    for product_name in dict.fromkeys(intent.productNames):
         plans.append(
             LogicalQueryPlan(
                 operation=QueryOperation.SEARCH,
-                start_entity_id="sales_order",
+                start_entity_id="order_line",
+                fields=("sales_order_number", "product_description", "ordered_quantity"),
                 filters=(
                     QueryCondition(
-                        entity_id="sales_order",
-                        field_id="sales_order_number",
+                        entity_id="order_line",
+                        field_id="product_description",
+                        operator="CONTAINS",
+                        value=product_name,
+                    ),
+                ),
+                limit=5,
+            )
+        )
+
+    # 5. Ordered quantity, combined with product info when both are given.
+    for quantity in dict.fromkeys(intent.quantities):
+        filters = [
+            QueryCondition(
+                entity_id="order_line",
+                field_id="ordered_quantity",
+                operator="EXACT",
+                value=quantity,
+            )
+        ]
+        if intent.productNames:
+            filters.append(
+                QueryCondition(
+                    entity_id="order_line",
+                    field_id="product_description",
+                    operator="CONTAINS",
+                    value=intent.productNames[0],
+                )
+            )
+        plans.append(
+            LogicalQueryPlan(
+                operation=QueryOperation.SEARCH,
+                start_entity_id="order_line",
+                fields=("sales_order_number", "product_description", "ordered_quantity"),
+                filters=tuple(filters),
+                limit=5,
+            )
+        )
+
+    # 6. Delivery date window: dateFrom/dateTo, a single open bound, or a
+    # same-day match from approximateDate. delivered_at only supports range
+    # operators (GT/GTE/LT/LTE/BETWEEN) in the active schema, never EXACT.
+    date_condition = _date_condition(intent)
+    if date_condition is not None:
+        plans.append(
+            LogicalQueryPlan(
+                operation=QueryOperation.SEARCH,
+                start_entity_id=_DATE_FIELD_ENTITY,
+                fields=("sales_order_number", "customer_id", "delivered_at"),
+                filters=(date_condition,),
+                limit=10,
+            )
+        )
+
+    # 7. Fallback free-text search. sales_order_number only supports EXACT
+    # match in the schema (CONTAINS is not an enabled operator for it), so an
+    # unclassified free-text term is searched against product_description
+    # instead, which does support CONTAINS and is the more likely match for
+    # leftover descriptive text anyway.
+    for term in dict.fromkeys(intent.freeTextTerms):
+        plans.append(
+            LogicalQueryPlan(
+                operation=QueryOperation.SEARCH,
+                start_entity_id="order_line",
+                fields=("sales_order_number", "product_description", "ordered_quantity"),
+                filters=(
+                    QueryCondition(
+                        entity_id="order_line",
+                        field_id="product_description",
                         operator="CONTAINS",
                         value=term,
                     ),
@@ -95,54 +271,164 @@ def build_progressive_plans(intent: OrderSearchIntent) -> list[LogicalQueryPlan]
             )
         )
 
+    unsupported = _unsupported_signals_present(intent)
+    if unsupported:
+        logger.warning(
+            "order_search_unsupported_intent_signals",
+            extra={"fields": unsupported, "search_mode": intent.searchMode},
+        )
+
     return plans
 
 
+def build_customer_fuzzy_probe_plan() -> LogicalQueryPlan:
+    """Bounded, unfiltered read used only as a misspelling fallback.
+
+    Callers should only issue this after a CONTAINS search for the same
+    customer name(s) has already come back empty — see
+    :func:`fuzzy_match_customers`.
+    """
+    return LogicalQueryPlan(
+        operation=QueryOperation.SEARCH,
+        start_entity_id="customer",
+        fields=("customer_key", "customer_id", "customer_name"),
+        limit=FUZZY_CUSTOMER_PROBE_LIMIT,
+    )
+
+
+def fuzzy_match_customers(
+    names: tuple[str, ...],
+    rows: list[dict[str, Any]],
+    *,
+    threshold: float = FUZZY_CUSTOMER_MATCH_THRESHOLD,
+    limit: int = RESULT_PAGE_SIZE,
+) -> list[dict[str, Any]]:
+    """Score a bounded batch of customer rows against searched name(s) by similarity.
+
+    Returns the best-matching rows above ``threshold``, most similar first, capped
+    at ``limit``. Intended purely as a last resort for likely misspellings — an
+    exact or partial (CONTAINS) match should always be tried first.
+    """
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for row in rows:
+        candidate_name = row.get("customer_name")
+        if not isinstance(candidate_name, str) or not candidate_name:
+            continue
+        normalized_candidate = normalize_string(candidate_name)
+        best_ratio = max(
+            (
+                difflib.SequenceMatcher(None, normalize_string(name), normalized_candidate).ratio()
+                for name in names
+                if name
+            ),
+            default=0.0,
+        )
+        if best_ratio >= threshold:
+            scored.append((best_ratio, row))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [row for _, row in scored[:limit]]
+
+
+def _date_condition(intent: OrderSearchIntent) -> QueryCondition | None:
+    if intent.dateFrom and intent.dateTo:
+        value: Any = {"from": intent.dateFrom, "to": intent.dateTo}
+        operator = "BETWEEN"
+    elif intent.dateFrom:
+        value = intent.dateFrom
+        operator = "GTE"
+    elif intent.dateTo:
+        value = intent.dateTo
+        operator = "LTE"
+    elif intent.approximateDate:
+        # Treat an approximate date as a same-day window. This assumes
+        # delivered_at is stored at day granularity; if the source ever
+        # carries a time component this window will need widening.
+        value = {"from": intent.approximateDate, "to": intent.approximateDate}
+        operator = "BETWEEN"
+    else:
+        return None
+    return QueryCondition(
+        entity_id=_DATE_FIELD_ENTITY,
+        field_id=_DATE_FIELD_ID,
+        operator=operator,
+        value=value,
+    )
+
+
 def rank_search_results(
-    intent: OrderSearchIntent, 
-    raw_results: list[dict[str, Any]]
+    intent: OrderSearchIntent,
+    raw_results: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Score search results and return aggregated evidence."""
-    # This acts as the evidence-based ranking stage.
-    candidates = {}
-    
+    """Score and merge rows returned by the plans from ``build_progressive_plans``.
+
+    Each entry in ``raw_results`` is a ``Neo4jKnowledgeGateway.execute`` result,
+    shaped as ``{"rows": [...], "count": N}``.
+    """
+    candidates: dict[str, dict[str, Any]] = {}
+
     for res in raw_results:
-        # Assuming Neo4j response structure with 'nodes' or direct dictionaries
-        items = res.get("nodes", []) if isinstance(res, dict) else res
-        
-        for item in items:
-            props = item.get("properties", item) if isinstance(item, dict) else {}
-            
-            # Identify identity
-            key = props.get("sales_order_number") or props.get("customer_id") or props.get("sku") or str(id(props))
-            
-            if key not in candidates:
-                candidates[key] = {"data": props, "score": 0.0, "matches": []}
-                
-            # Evidence scoring
-            score = 0.5 # base score
-            
-            # Boosts based on exact match
-            norm_key = normalize_string(key)
+        rows = res.get("rows", []) if isinstance(res, dict) else []
+
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+
+            key = (
+                row.get("sales_order_number")
+                or row.get("customer_id")
+                or row.get("sku")
+                or str(id(row))
+            )
+
+            candidate = candidates.setdefault(
+                key, {"data": row, "score": 0.0, "matches": []}
+            )
+            # A row for the same key may arrive from more than one plan with a
+            # different (possibly narrower) field selection — merge rather
+            # than overwrite so evidence gathered by one plan isn't lost.
+            candidate["data"] = {**row, **candidate["data"]}
+
+            score = 0.5  # base score for appearing in any matching plan
+            norm_key = normalize_string(str(key))
+
             for intent_id in intent.orderNumbers + intent.orderIds:
                 if normalize_string(intent_id) == norm_key:
                     score += 0.5
-                    candidates[key]["matches"].append("order_number_exact")
-                    
-            if "customer_name" in props:
-                norm_name = normalize_string(props["customer_name"])
+                    candidate["matches"].append("order_number_exact")
+
+            if "customer_name" in row:
+                norm_name = normalize_string(row["customer_name"])
                 for intent_name in intent.customerNames:
                     if normalize_string(intent_name) in norm_name:
                         score += 0.3
-                        candidates[key]["matches"].append("customer_name_contains")
-                        
-            candidates[key]["score"] = min(1.0, candidates[key]["score"] + score)
+                        candidate["matches"].append("customer_name_contains")
 
-    # Sort by score descending
-    sorted_candidates = sorted(candidates.values(), key=lambda x: x["score"], reverse=True)
-    
+            if "product_description" in row:
+                norm_description = normalize_string(row["product_description"])
+                for product_name in intent.productNames:
+                    if normalize_string(product_name) in norm_description:
+                        score += 0.2
+                        candidate["matches"].append("product_description_contains")
+
+            if "ordered_quantity" in row:
+                for quantity in intent.quantities:
+                    if row["ordered_quantity"] == quantity:
+                        score += 0.1
+                        candidate["matches"].append("ordered_quantity_exact")
+
+            if "delivered_at" in row and (
+                intent.dateFrom or intent.dateTo or intent.approximateDate
+            ):
+                score += 0.2
+                candidate["matches"].append("delivered_at_in_range")
+
+            candidate["score"] = min(1.0, candidate["score"] + score)
+
+    sorted_candidates = sorted(candidates.values(), key=lambda item: item["score"], reverse=True)
+
     return {
         "intent": intent.model_dump(),
-        "candidates": sorted_candidates[:10], # Top 10
-        "total_found": len(sorted_candidates)
+        "candidates": sorted_candidates[:MAX_CACHED_CANDIDATES],
+        "total_found": len(sorted_candidates),
+        "unsupported_signals": list(_unsupported_signals_present(intent)),
     }

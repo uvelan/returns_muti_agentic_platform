@@ -9,6 +9,7 @@ from return_platform.ai_gateway.providers.contracts import (
 )
 from return_platform.ai_gateway.providers.factory import build_providers
 from return_platform.ai_gateway.providers.google import GeminiProvider
+from return_platform.ai_gateway.providers.manual import ManualFileProvider
 from return_platform.ai_gateway.providers.nvidia import NvidiaProvider
 from return_platform.ai_gateway.providers.ollama import OllamaProvider
 from return_platform.ai_gateway.providers.openai import OpenAIResponsesProvider
@@ -18,6 +19,7 @@ __all__ = [
     "AIProvider",
     "AnthropicProvider",
     "GeminiProvider",
+    "ManualFileProvider",
     "NvidiaProvider",
     "OllamaProvider",
     "OpenAIResponsesProvider",

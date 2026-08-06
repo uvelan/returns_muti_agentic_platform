@@ -52,8 +52,8 @@ def _condition_expression(
         "EXACT": f"{prop} = ${parameter_name}",
         "EQUALS": f"{prop} = ${parameter_name}",
         "NOT_EQUALS": f"{prop} <> ${parameter_name}",
-        "PREFIX": f"{prop} STARTS WITH ${parameter_name}",
-        "CONTAINS": f"{prop} CONTAINS ${parameter_name}",
+        "PREFIX": f"toLower({prop}) STARTS WITH toLower(${parameter_name})",
+        "CONTAINS": f"toLower({prop}) CONTAINS toLower(${parameter_name})",
         "IN": f"{prop} IN ${parameter_name}",
         "GT": f"{prop} > ${parameter_name}",
         "GTE": f"{prop} >= ${parameter_name}",
@@ -204,6 +204,32 @@ class CypherCompiler:
             if operation is QueryOperation.DISTINCT_VALUES:
                 return f"RETURN DISTINCT {alias}.{_quoted(prop)} AS value"
             return f"RETURN {alias}.{_quoted(prop)} AS value, count(*) AS count ORDER BY count DESC"
+        if operation is QueryOperation.EXISTS:
+            return f"RETURN count({alias}) > 0 AS value"
+        if operation is QueryOperation.GROUP_BY:
+            if not plan.group_by_field_ids:
+                raise QueryCompilationError("GROUP_BY requires group_by_field_ids")
+            group_items = [
+                f"{alias}.{_quoted(_field_property(schema, entity.entity_id, field_id))} "
+                f"AS {_quoted(field_id)}"
+                for field_id in plan.group_by_field_ids
+            ]
+            if plan.aggregation_field_id:
+                agg_prop = _field_property(schema, entity.entity_id, plan.aggregation_field_id)
+                group_items.append(f"count(DISTINCT {alias}.{_quoted(agg_prop)}) AS count")
+            else:
+                group_items.append("count(*) AS count")
+            # Cypher implicitly groups by every non-aggregated expression in RETURN,
+            # so listing the group-by columns alongside the count is sufficient.
+            return "RETURN " + ", ".join(group_items) + " ORDER BY count DESC"
+        if operation in {QueryOperation.DATE_RANGE, QueryOperation.SEMANTIC_SEARCH}:
+            # Not implemented: DATE_RANGE should be expressed as a BETWEEN filter
+            # condition instead of a top-level operation, and SEMANTIC_SEARCH needs
+            # dedicated vector-index support this compiler does not yet have. Fail
+            # loudly rather than silently falling back to an unrelated field read.
+            raise QueryCompilationError(
+                f"{operation.value} is not implemented by the Cypher compiler"
+            )
         selected = plan.fields or tuple(
             field_id for field_id, field in entity.fields.items() if field.capabilities.displayable
         )
