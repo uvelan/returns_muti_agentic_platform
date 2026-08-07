@@ -1,7 +1,7 @@
 from typing import Any, Dict
 from pymongo import AsyncMongoClient
 from return_platform.configuration.domain.handle import ConfigurationView, ConfigurationHandle
-from return_platform.configuration.domain.release import RuntimeSnapshot
+from return_platform.configuration.domain.release_model import RuntimeSnapshot
 from return_platform.platform.contracts.epoch import RuntimeEpoch
 from return_platform.platform.contracts.runtime_configuration import ReleaseNotRetained
 

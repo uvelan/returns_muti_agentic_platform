@@ -1,4 +1,4 @@
-from return_platform.configuration.domain.release import RuntimeSnapshot
+from return_platform.configuration.domain.release_model import RuntimeSnapshot
 from return_platform.configuration.domain.platform import PlatformConfig
 from return_platform.configuration.domain.system_store import SystemStoreConfig
 from return_platform.configuration.domain.modules import ModulesConfig

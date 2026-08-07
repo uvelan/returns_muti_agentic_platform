@@ -1,18 +1,8 @@
-from pydantic import BaseModel, ConfigDict
-from typing import Mapping, Any, Optional
-from datetime import datetime
-from enum import StrEnum
+from __future__ import annotations
 
-from return_platform.configuration.domain.platform import PlatformConfig
-from return_platform.configuration.domain.system_store import SystemStoreConfig
-from return_platform.configuration.domain.modules import ModulesConfig
-from return_platform.configuration.domain.agents import AgentsConfig
-from return_platform.configuration.domain.workflow import WorkflowConfig
-from return_platform.configuration.domain.sources import SourcesConfig
-from return_platform.configuration.domain.integrations import IntegrationsConfig
-from return_platform.configuration.domain.graph import GraphConfig
-from return_platform.configuration.domain.ai import AiConfig
-from return_platform.configuration.domain.features import FeaturesConfig
+from enum import StrEnum
+from typing import Mapping
+
 
 class ReleaseStatus(StrEnum):
     DRAFT = "DRAFT"
@@ -21,24 +11,10 @@ class ReleaseStatus(StrEnum):
     ACTIVE = "ACTIVE"
     SUPERSEDED = "SUPERSEDED"
 
-class RuntimeSnapshot(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-    platform: PlatformConfig
-    system_store: SystemStoreConfig
-    modules: ModulesConfig
-    agents: AgentsConfig
-    workflow: WorkflowConfig
-    sources: SourcesConfig
-    integrations: IntegrationsConfig
-    graph: GraphConfig
-    ai: AiConfig
-    features: FeaturesConfig
 
-class ConfigurationRelease(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-    release_id: str
-    status: ReleaseStatus
-    snapshot: RuntimeSnapshot
-    created_at: datetime
-    updated_at: datetime
-    checksum: str
+# Transitions owned exclusively by ReleaseService (pre-activation).
+# APPROVED -> ACTIVE and ACTIVE -> SUPERSEDED are owned exclusively by ActivationService.
+RELEASE_SERVICE_TRANSITIONS: Mapping[ReleaseStatus, frozenset[ReleaseStatus]] = {
+    ReleaseStatus.DRAFT: frozenset({ReleaseStatus.VALIDATED}),
+    ReleaseStatus.VALIDATED: frozenset({ReleaseStatus.APPROVED, ReleaseStatus.DRAFT}),
+}
