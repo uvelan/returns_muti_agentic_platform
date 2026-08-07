@@ -15,6 +15,11 @@ from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
 )
 from return_platform.dynamic_knowledge.on_demand_sync.extraction import SourceRecordExtractor
 from return_platform.dynamic_knowledge.schema import ActiveSchema, RuntimeMode
+from return_platform.dynamic_knowledge.sync.run_manifest import (
+    RunManifestRecorder,
+    SourceWatermarkRecord,
+    SyncRunManifest,
+)
 
 
 class SourceScanConnector(Protocol):
@@ -99,12 +104,14 @@ class GenericSyncCoordinator:
         writer: ProjectionWriter,
         checkpoints: CheckpointStore,
         reconciler: RelationshipReconciler | None = None,
+        run_recorder: RunManifestRecorder | None = None,
     ) -> None:
         self._connectors = connectors
         self._extractor = extractor
         self._writer = writer
         self._checkpoints = checkpoints
         self._reconciler = reconciler
+        self._run_recorder = run_recorder
 
     async def full_sync(
         self,
@@ -114,6 +121,7 @@ class GenericSyncCoordinator:
         fencing_token: int,
         source_asset_ids: frozenset[str] | None = None,
         expected_generation_status: GraphGenerationStatus = GraphGenerationStatus.BUILDING,
+        sync_run_id: str | None = None,
     ) -> tuple[int, int]:
         """source_asset_ids narrows which configured sources participate in this
         run (default: every source in the schema) -- e.g. a caller doing a
@@ -121,21 +129,60 @@ class GenericSyncCoordinator:
         BUILDING (a real blue/green rebuild's target generation is never ACTIVE
         until cutover); a caller resyncing directly into an already-ACTIVE
         generation (no blue/green rebuild in progress) passes ACTIVE instead --
-        both node writes and Stage B reconciliation use the same expectation."""
+        both node writes and Stage B reconciliation use the same expectation.
+        sync_run_id is required only when a run_recorder is configured.
+
+        Every participating source's high-watermark is captured before any
+        source's scan begins -- capturing per-source right before that
+        source's own scan would let a later source's bound sit after an
+        earlier source's scan already started, silently letting the later
+        source see writes the earlier source's scan missed. See the plan's
+        "correct high-watermark sequencing".
+        """
 
         if schema.runtime_mode is RuntimeMode.KNOWLEDGE_ONLY:
             raise RuntimeError("FULL_SYNC_DISABLED_IN_KNOWLEDGE_ONLY_MODE")
+        if self._run_recorder is not None and sync_run_id is None:
+            raise ValueError("sync_run_id is required when a run_recorder is configured")
+
         participating = source_asset_ids if source_asset_ids is not None else frozenset(schema.sources)
+        ordered_source_ids = sorted(participating)
+        connectors_by_source = {
+            source_asset_id: self._connectors.resolve(source_asset_id)
+            for source_asset_id in ordered_source_ids
+        }
+        watermarks: dict[str, SourceCursor] = {}
+        for source_asset_id, connector in connectors_by_source.items():
+            watermarks[source_asset_id] = await connector.capture_high_watermark(
+                source_asset_id=source_asset_id
+            )
+
+        if self._run_recorder is not None:
+            assert sync_run_id is not None
+            await self._run_recorder.record_watermarks(
+                SyncRunManifest(
+                    sync_run_id=sync_run_id,
+                    graph_generation_id=graph_generation_id,
+                    schema_fingerprint=schema.configuration_checksum,
+                    source_watermarks=tuple(
+                        SourceWatermarkRecord(
+                            source_asset_id=source_asset_id,
+                            captured_watermark=watermarks[source_asset_id],
+                            connector_version=type(connectors_by_source[source_asset_id]).__qualname__,
+                        )
+                        for source_asset_id in ordered_source_ids
+                    ),
+                )
+            )
+
         total_nodes = 0
         total_relationships = 0
-        for source_asset_id in sorted(participating):
-            connector = self._connectors.resolve(source_asset_id)
-            watermark = await connector.capture_high_watermark(source_asset_id=source_asset_id)
+        for source_asset_id, connector in connectors_by_source.items():
             async for page in connector.scan(
                 schema=schema,
                 source_asset_id=source_asset_id,
                 after=None,
-                through=watermark,
+                through=watermarks[source_asset_id],
             ):
                 nodes, relationships = await self._project_page(
                     schema=schema,
@@ -146,6 +193,11 @@ class GenericSyncCoordinator:
                 )
                 total_nodes += nodes
                 total_relationships += relationships
+
+        if self._run_recorder is not None:
+            assert sync_run_id is not None
+            await self._run_recorder.record_scan_completed(sync_run_id)
+
         if self._reconciler is not None:
             # Stage B, graph-side, after every participating source's Stage A has
             # completed.
@@ -156,6 +208,9 @@ class GenericSyncCoordinator:
                 expected_generation_status=expected_generation_status,
             )
             total_relationships += sum(counts.values())
+            if self._run_recorder is not None:
+                assert sync_run_id is not None
+                await self._run_recorder.record_reconciliation_completed(sync_run_id)
         return total_nodes, total_relationships
 
     async def incremental_sync(

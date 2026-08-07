@@ -18,6 +18,7 @@ from return_platform.dynamic_knowledge.on_demand_sync.extraction import (
 )
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 from return_platform.dynamic_knowledge.sync.coordinator import GenericSyncCoordinator
+from return_platform.dynamic_knowledge.sync.run_manifest import SyncRunManifest
 
 
 def _numeric_cursor(value: int) -> SourceCursor:
@@ -251,6 +252,130 @@ async def test_full_sync_narrows_to_the_given_source_asset_ids(active_schema: Ac
     )
     assert connector_a.scanned_after == [None]
     assert connector_b.scanned_after == []
+
+
+class EventLoggingConnector:
+    """Logs capture/scan events to a list shared across every connector
+    instance in a run, so ordering across *different* sources is observable
+    -- NumericOrderedConnector's own scanned_after list can't show that."""
+
+    def __init__(self, source_asset_id: str, events: list[tuple[str, str]], watermark: SourceCursor) -> None:
+        self._source_asset_id = source_asset_id
+        self._events = events
+        self._watermark = watermark
+
+    async def capture_high_watermark(self, *, source_asset_id: str) -> SourceCursor:
+        self._events.append(("watermark", source_asset_id))
+        return self._watermark
+
+    def compare_cursors(
+        self, *, source_asset_id: str, left: SourceCursor, right: SourceCursor
+    ) -> CursorComparison:
+        return CursorComparison.EQUAL
+
+    async def scan(
+        self,
+        *,
+        schema: ActiveSchema,
+        source_asset_id: str,
+        after: SourceCursor | None,
+        through: SourceCursor,
+    ) -> AsyncIterator[RawSourcePage]:
+        self._events.append(("scan", source_asset_id))
+        return
+        yield  # pragma: no cover - makes this an async generator
+
+
+@pytest.mark.asyncio
+async def test_full_sync_captures_every_watermark_before_any_source_scans(
+    active_schema: ActiveSchema,
+) -> None:
+    events: list[tuple[str, str]] = []
+    connector_a = EventLoggingConnector("source_a", events, _numeric_cursor(1))
+    connector_b = EventLoggingConnector("source_b", events, _numeric_cursor(1))
+
+    class TwoSourceRegistry:
+        def resolve(self, source_asset_id: str) -> object:
+            return connector_a if source_asset_id == "source_a" else connector_b
+
+    coordinator = GenericSyncCoordinator(
+        connectors=TwoSourceRegistry(),
+        extractor=GenericSourceRecordExtractor(),
+        writer=RecordingWriter(),
+        checkpoints=RecordingCheckpoints(),
+    )
+    await coordinator.full_sync(schema=active_schema, graph_generation_id="g1", fencing_token=1)
+    watermark_events = [event for event in events if event[0] == "watermark"]
+    scan_events = [event for event in events if event[0] == "scan"]
+    assert len(watermark_events) == 2
+    # Both watermark captures happened before either scan started.
+    last_watermark_index = max(events.index(event) for event in watermark_events)
+    first_scan_index = min(events.index(event) for event in scan_events)
+    assert last_watermark_index < first_scan_index
+
+
+class RecordingRunRecorder:
+    def __init__(self) -> None:
+        self.manifests: list[SyncRunManifest] = []
+        self.scan_completed_calls: list[str] = []
+        self.reconciliation_completed_calls: list[str] = []
+
+    async def record_watermarks(self, manifest: SyncRunManifest) -> None:
+        self.manifests.append(manifest)
+
+    async def record_scan_completed(self, sync_run_id: str) -> None:
+        self.scan_completed_calls.append(sync_run_id)
+
+    async def record_reconciliation_completed(self, sync_run_id: str) -> None:
+        self.reconciliation_completed_calls.append(sync_run_id)
+
+
+@pytest.mark.asyncio
+async def test_full_sync_records_a_manifest_before_scanning_and_completion_after(
+    active_schema: ActiveSchema,
+) -> None:
+    pages = [_page("A-1", 1)]
+    connector = NumericOrderedConnector(pages, watermark=_numeric_cursor(1))
+    recorder = RecordingRunRecorder()
+    reconciler = RecordingReconciler({"a_to_b": 1})
+    coordinator = GenericSyncCoordinator(
+        connectors=Registry(connector),
+        extractor=GenericSourceRecordExtractor(),
+        writer=RecordingWriter(),
+        checkpoints=RecordingCheckpoints(),
+        reconciler=reconciler,
+        run_recorder=recorder,
+    )
+    await coordinator.full_sync(
+        schema=active_schema,
+        graph_generation_id="g1",
+        fencing_token=1,
+        sync_run_id="run-1",
+    )
+    assert len(recorder.manifests) == 1
+    manifest = recorder.manifests[0]
+    assert manifest.sync_run_id == "run-1"
+    assert manifest.graph_generation_id == "g1"
+    assert manifest.schema_fingerprint == active_schema.configuration_checksum
+    assert {record.source_asset_id for record in manifest.source_watermarks} == set(active_schema.sources)
+    assert recorder.scan_completed_calls == ["run-1"]
+    assert recorder.reconciliation_completed_calls == ["run-1"]
+
+
+@pytest.mark.asyncio
+async def test_full_sync_requires_sync_run_id_when_a_run_recorder_is_configured(
+    active_schema: ActiveSchema,
+) -> None:
+    connector = NumericOrderedConnector([], watermark=_numeric_cursor(1))
+    coordinator = GenericSyncCoordinator(
+        connectors=Registry(connector),
+        extractor=GenericSourceRecordExtractor(),
+        writer=RecordingWriter(),
+        checkpoints=RecordingCheckpoints(),
+        run_recorder=RecordingRunRecorder(),
+    )
+    with pytest.raises(ValueError, match="sync_run_id is required"):
+        await coordinator.full_sync(schema=active_schema, graph_generation_id="g1", fencing_token=1)
 
 
 @pytest.mark.asyncio

@@ -395,6 +395,7 @@ class GraphSyncService:
             fencing_token=_LEGACY_FENCING_TOKEN,
             source_asset_ids=frozenset(participating),
             expected_generation_status=GraphGenerationStatus.ACTIVE,
+            sync_run_id=run_id,
         )
 
     @staticmethod
