@@ -326,6 +326,119 @@ def _compile_relationship_delete(
     )
 
 
+def compile_relationship_reconciliation(
+    schema: ActiveSchema, relationship_id: str, *, graph_generation_id: str
+) -> CompiledWrite:
+    """Stage B: a graph-side MATCH/MERGE join on one relationship's configured match
+    fields, producing the cross-source relationships Stage A alone cannot (its two
+    endpoints may come from mutations extracted from entirely different source
+    pages/sources, long since out of memory by the time the other side is written).
+
+    This only ever creates relationships implied by the current node state; it does
+    not remove relationships whose match no longer holds after a source update --
+    that is a replace-child-set / stale-relationship reconciliation concern layered
+    on top of this, not yet implemented here.
+    """
+
+    relationship = schema.graph.relationships.get(relationship_id)
+    if relationship is None:
+        raise WriteCompilationError(f"unknown relationship {relationship_id!r}")
+    source_entity = schema.entities[relationship.source_entity_id]
+    target_entity = schema.entities[relationship.target_entity_id]
+    source_label = schema.entity_node(relationship.source_entity_id).label
+    target_label = schema.entity_node(relationship.target_entity_id).label
+    for label in (source_label, target_label, relationship.relationship_type):
+        validate_graph_identifier(label)
+
+    source_properties = [
+        source_entity.fields[field_id].graph_property
+        for field_id in relationship.source_match_fields
+    ]
+    target_properties = [
+        target_entity.fields[field_id].graph_property
+        for field_id in relationship.target_match_fields
+    ]
+    for prop in (*source_properties, *target_properties):
+        validate_graph_identifier(prop)
+    if len(source_properties) != len(target_properties):
+        raise WriteCompilationError(
+            f"relationship {relationship_id!r} has mismatched source/target match field counts"
+        )
+
+    join_predicate = " AND ".join(
+        f"a.`{source_prop}` = b.`{target_prop}`"
+        for source_prop, target_prop in zip(source_properties, target_properties, strict=True)
+    )
+    not_null_predicate = " AND ".join(f"a.`{prop}` IS NOT NULL" for prop in source_properties)
+    cypher = (
+        f"MATCH (a:`{source_label}` {{graph_generation_id: $generationId}}) "
+        f"MATCH (b:`{target_label}` {{graph_generation_id: $generationId}}) "
+        f"WHERE {join_predicate} AND {not_null_predicate} "
+        f"MERGE (a)-[rel:`{relationship.relationship_type}`]->(b) "
+        "RETURN count(rel) AS relationshipsWritten"
+    )
+    return CompiledWrite(cypher=cypher, parameters={"generationId": graph_generation_id})
+
+
+def compile_relationship_cardinality_checks(
+    schema: ActiveSchema, relationship_id: str, *, graph_generation_id: str
+) -> tuple[CompiledWrite, ...]:
+    """One check per configured cardinality bound, each returning a violation count.
+
+    Run these after compile_relationship_reconciliation's MERGE in the same
+    transaction; the caller raises and lets the transaction roll back if any
+    check reports violations > 0, matching this codebase's fail-loudly stance
+    on cardinality (never silently truncate or explode edges).
+    """
+
+    relationship = schema.graph.relationships.get(relationship_id)
+    if relationship is None:
+        raise WriteCompilationError(f"unknown relationship {relationship_id!r}")
+    source_label = schema.entity_node(relationship.source_entity_id).label
+    target_label = schema.entity_node(relationship.target_entity_id).label
+    for label in (source_label, target_label, relationship.relationship_type):
+        validate_graph_identifier(label)
+
+    checks: list[CompiledWrite] = []
+    if relationship.maximum_targets_per_source is not None:
+        cypher = (
+            f"MATCH (a:`{source_label}` {{graph_generation_id: $generationId}})"
+            f"-[rel:`{relationship.relationship_type}`]->"
+            f"(b:`{target_label}` {{graph_generation_id: $generationId}}) "
+            "WITH a, count(rel) AS targetCount "
+            "WHERE targetCount > $maxTargets "
+            "RETURN count(a) AS violations"
+        )
+        checks.append(
+            CompiledWrite(
+                cypher=cypher,
+                parameters={
+                    "generationId": graph_generation_id,
+                    "maxTargets": relationship.maximum_targets_per_source,
+                },
+            )
+        )
+    if relationship.maximum_sources_per_target is not None:
+        cypher = (
+            f"MATCH (a:`{source_label}` {{graph_generation_id: $generationId}})"
+            f"-[rel:`{relationship.relationship_type}`]->"
+            f"(b:`{target_label}` {{graph_generation_id: $generationId}}) "
+            "WITH b, count(rel) AS sourceCount "
+            "WHERE sourceCount > $maxSources "
+            "RETURN count(b) AS violations"
+        )
+        checks.append(
+            CompiledWrite(
+                cypher=cypher,
+                parameters={
+                    "generationId": graph_generation_id,
+                    "maxSources": relationship.maximum_sources_per_target,
+                },
+            )
+        )
+    return tuple(checks)
+
+
 def _generation_scoped_pattern(row_field: str, key_names: frozenset[str]) -> str:
     key_inner = ", ".join(f"`{name}`: {row_field}.`{name}`" for name in sorted(key_names))
     return f"graph_generation_id: $generationId, {key_inner}" if key_inner else (

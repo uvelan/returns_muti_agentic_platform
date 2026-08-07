@@ -9,6 +9,7 @@ from return_platform.dynamic_knowledge.graph.neo4j_writer import (
     GenerationFencingError,
     Neo4jDynamicGraphWriter,
     ReceiptChecksumMismatchError,
+    RelationshipCardinalityViolation,
     compute_payload_checksum,
 )
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
@@ -33,11 +34,18 @@ class FakeResult:
 
 class FakeTransaction:
     def __init__(
-        self, *, fence_matched: int, existing_receipt_rows: list[dict[str, Any]] | None = None
+        self,
+        *,
+        fence_matched: int,
+        existing_receipt_rows: list[dict[str, Any]] | None = None,
+        relationships_written: int = 0,
+        cardinality_violations: int = 0,
     ) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self._fence_matched = fence_matched
         self._existing_receipt_rows = existing_receipt_rows or []
+        self._relationships_written = relationships_written
+        self._cardinality_violations = cardinality_violations
 
     async def run(self, query: str, parameters: dict[str, Any]) -> FakeResult:
         self.calls.append((query, parameters))
@@ -45,6 +53,10 @@ class FakeTransaction:
             return FakeResult([{"matched": self._fence_matched}])
         if query.startswith("MATCH (r:GraphWriteReceipt"):
             return FakeResult(self._existing_receipt_rows)
+        if "MERGE (a)-[rel:" in query:
+            return FakeResult([{"relationshipsWritten": self._relationships_written}])
+        if "AS violations" in query:
+            return FakeResult([{"violations": self._cardinality_violations}])
         return FakeResult([])
 
 
@@ -209,4 +221,82 @@ async def test_replay_with_different_checksum_is_rejected(active_schema: ActiveS
             sync_run_id="run-1",
             chunk_id="chunk-1",
             batch=_batch(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_fence_check_runs_before_any_join(active_schema: ActiveSchema) -> None:
+    tx = FakeTransaction(fence_matched=1, relationships_written=3)
+    writer = Neo4jDynamicGraphWriter(FakeDriver(tx))
+    await writer.reconcile_relationships(
+        schema=active_schema,
+        graph_generation_id="gen-1",
+        fencing_token=1,
+        expected_generation_status=GraphGenerationStatus.ACTIVE,
+    )
+    assert "MATCH (g:GraphGeneration" in tx.calls[0][0]
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_fencing_mismatch_raises_and_joins_nothing(
+    active_schema: ActiveSchema,
+) -> None:
+    tx = FakeTransaction(fence_matched=0)
+    writer = Neo4jDynamicGraphWriter(FakeDriver(tx))
+    with pytest.raises(GenerationFencingError):
+        await writer.reconcile_relationships(
+            schema=active_schema,
+            graph_generation_id="gen-1",
+            fencing_token=1,
+            expected_generation_status=GraphGenerationStatus.ACTIVE,
+        )
+    assert len(tx.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_runs_the_configured_join_and_reports_counts(
+    active_schema: ActiveSchema,
+) -> None:
+    tx = FakeTransaction(fence_matched=1, relationships_written=3)
+    writer = Neo4jDynamicGraphWriter(FakeDriver(tx))
+    counts = await writer.reconcile_relationships(
+        schema=active_schema,
+        graph_generation_id="gen-1",
+        fencing_token=1,
+        expected_generation_status=GraphGenerationStatus.ACTIVE,
+    )
+    assert counts == {"a_to_b": 3}
+    queries = [query for query, _ in tx.calls]
+    assert any("MERGE (a)-[rel:`CONFIGURED_LINK`]->(b)" in q for q in queries)
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_narrowed_to_a_subset_of_relationship_ids(
+    active_schema: ActiveSchema,
+) -> None:
+    tx = FakeTransaction(fence_matched=1, relationships_written=1)
+    writer = Neo4jDynamicGraphWriter(FakeDriver(tx))
+    counts = await writer.reconcile_relationships(
+        schema=active_schema,
+        graph_generation_id="gen-1",
+        fencing_token=1,
+        expected_generation_status=GraphGenerationStatus.ACTIVE,
+        relationship_ids=("a_to_b",),
+    )
+    assert set(counts) == {"a_to_b"}
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_raises_on_cardinality_violation(active_schema: ActiveSchema) -> None:
+    raw = active_schema.model_dump(mode="json")
+    raw["graph"]["relationships"]["a_to_b"]["maximum_targets_per_source"] = 1
+    schema = ActiveSchema.model_validate(raw)
+    tx = FakeTransaction(fence_matched=1, relationships_written=3, cardinality_violations=2)
+    writer = Neo4jDynamicGraphWriter(FakeDriver(tx))
+    with pytest.raises(RelationshipCardinalityViolation):
+        await writer.reconcile_relationships(
+            schema=schema,
+            graph_generation_id="gen-1",
+            fencing_token=1,
+            expected_generation_status=GraphGenerationStatus.ACTIVE,
         )

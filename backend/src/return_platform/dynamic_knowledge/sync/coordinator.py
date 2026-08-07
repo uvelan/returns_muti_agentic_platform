@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Protocol
 
+from return_platform.dynamic_knowledge.graph.generation import GraphGenerationStatus
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
     CursorComparison,
     DynamicSourceRecord,
@@ -48,6 +49,22 @@ class ProjectionWriter(Protocol):
     ) -> tuple[int, int]: ...
 
 
+class RelationshipReconciler(Protocol):
+    """Stage B: graph-side cross-source relationship joins, run once after every
+    participating source's Stage A node materialization has completed. Matches
+    Neo4jDynamicGraphWriter.reconcile_relationships's signature."""
+
+    async def reconcile_relationships(
+        self,
+        *,
+        schema: ActiveSchema,
+        graph_generation_id: str,
+        fencing_token: int,
+        expected_generation_status: GraphGenerationStatus,
+        relationship_ids: tuple[str, ...] | None = None,
+    ) -> dict[str, int]: ...
+
+
 class CheckpointStore(Protocol):
     async def read(
         self, *, source_asset_id: str, graph_generation_id: str
@@ -64,14 +81,14 @@ class CheckpointStore(Protocol):
 
 
 class GenericSyncCoordinator:
-    """Node materialization (Stage A) for one source asset at a time.
+    """Stage A node materialization for every source, then (when a reconciler is
+    configured) Stage B cross-source relationship joins for a full sync.
 
-    This intentionally does not perform cross-source relationship
-    reconciliation (Stage B), two-stage incremental checkpointing, generation
-    fencing beyond passing through a fencing_token, or blue/green
-    catch-up/watermark sequencing -- those belong to the full-sync and
-    incremental-sync rebuild machinery (a later stage of the source-to-graph
-    alignment plan) and must not be half-implemented here.
+    Two-stage *incremental* checkpointing (affected-relationship-scoped Stage B,
+    delayed checkpoint advancement) and blue/green catch-up/watermark sequencing
+    remain out of scope here -- those belong to the incremental-sync rebuild
+    machinery (a later stage of the source-to-graph alignment plan) and must not
+    be half-implemented in this coordinator's incremental_sync.
     """
 
     def __init__(
@@ -81,11 +98,13 @@ class GenericSyncCoordinator:
         extractor: SourceRecordExtractor,
         writer: ProjectionWriter,
         checkpoints: CheckpointStore,
+        reconciler: RelationshipReconciler | None = None,
     ) -> None:
         self._connectors = connectors
         self._extractor = extractor
         self._writer = writer
         self._checkpoints = checkpoints
+        self._reconciler = reconciler
 
     async def full_sync(
         self,
@@ -116,6 +135,17 @@ class GenericSyncCoordinator:
                 )
                 total_nodes += nodes
                 total_relationships += relationships
+        if self._reconciler is not None:
+            # Stage B, graph-side, after every participating source's Stage A has
+            # completed -- a full-sync's target generation is always BUILDING
+            # (never ACTIVE) until cutover; see the generation lifecycle plan.
+            counts = await self._reconciler.reconcile_relationships(
+                schema=schema,
+                graph_generation_id=graph_generation_id,
+                fencing_token=fencing_token,
+                expected_generation_status=GraphGenerationStatus.BUILDING,
+            )
+            total_relationships += sum(counts.values())
         return total_nodes, total_relationships
 
     async def incremental_sync(

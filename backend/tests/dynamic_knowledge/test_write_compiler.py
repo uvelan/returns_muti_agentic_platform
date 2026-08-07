@@ -8,6 +8,8 @@ from return_platform.dynamic_knowledge.graph.write_compiler import (
     compile_node_writes,
     compile_receipt_lookup,
     compile_receipt_store,
+    compile_relationship_cardinality_checks,
+    compile_relationship_reconciliation,
     compile_relationship_writes,
 )
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
@@ -223,6 +225,46 @@ def test_relationship_writes_reject_unknown_relationship(active_schema: ActiveSc
     )
     with pytest.raises(WriteCompilationError, match="unknown relationship"):
         compile_relationship_writes(active_schema, mutations, graph_generation_id=GEN)
+
+
+def test_relationship_reconciliation_joins_on_configured_match_fields(
+    active_schema: ActiveSchema,
+) -> None:
+    compiled = compile_relationship_reconciliation(active_schema, "a_to_b", graph_generation_id=GEN)
+    assert "MATCH (a:`ConfiguredAlpha` {graph_generation_id: $generationId})" in compiled.cypher
+    assert "MATCH (b:`ConfiguredBeta` {graph_generation_id: $generationId})" in compiled.cypher
+    assert "a.`configured_id` = b.`configured_parent_id`" in compiled.cypher
+    assert "a.`configured_id` IS NOT NULL" in compiled.cypher
+    assert "MERGE (a)-[rel:`CONFIGURED_LINK`]->(b)" in compiled.cypher
+    assert compiled.parameters == {"generationId": GEN}
+
+
+def test_relationship_reconciliation_rejects_unknown_relationship(
+    active_schema: ActiveSchema,
+) -> None:
+    with pytest.raises(WriteCompilationError, match="unknown relationship"):
+        compile_relationship_reconciliation(
+            active_schema, "does_not_exist", graph_generation_id=GEN
+        )
+
+
+def test_cardinality_checks_empty_when_no_bounds_configured(active_schema: ActiveSchema) -> None:
+    checks = compile_relationship_cardinality_checks(
+        active_schema, "a_to_b", graph_generation_id=GEN
+    )
+    assert checks == ()
+
+
+def test_cardinality_checks_compiled_when_bounds_configured(active_schema: ActiveSchema) -> None:
+    raw = active_schema.model_dump(mode="json")
+    raw["graph"]["relationships"]["a_to_b"]["maximum_targets_per_source"] = 3
+    raw["graph"]["relationships"]["a_to_b"]["maximum_sources_per_target"] = 1
+    schema = ActiveSchema.model_validate(raw)
+    checks = compile_relationship_cardinality_checks(schema, "a_to_b", graph_generation_id=GEN)
+    assert len(checks) == 2
+    assert any(check.parameters.get("maxTargets") == 3 for check in checks)
+    assert any(check.parameters.get("maxSources") == 1 for check in checks)
+    assert all("violations" in check.cypher for check in checks)
 
 
 def test_receipt_lookup_and_store_are_parameterized() -> None:

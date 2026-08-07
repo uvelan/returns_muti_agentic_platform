@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from return_platform.dynamic_knowledge.graph.generation import GraphGenerationStatus
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
     CursorComparison,
     DynamicSourceRecord,
@@ -153,6 +154,70 @@ async def test_full_sync_writes_records_from_every_page(active_schema: ActiveSch
     )
     assert nodes == 2
     assert writer.written == [("A-1",), ("A-2",)]
+
+
+class RecordingReconciler:
+    def __init__(self, counts: dict[str, int]) -> None:
+        self._counts = counts
+        self.calls: list[dict[str, object]] = []
+
+    async def reconcile_relationships(
+        self,
+        *,
+        schema: ActiveSchema,
+        graph_generation_id: str,
+        fencing_token: int,
+        expected_generation_status: GraphGenerationStatus,
+        relationship_ids: tuple[str, ...] | None = None,
+    ) -> dict[str, int]:
+        self.calls.append(
+            {
+                "graph_generation_id": graph_generation_id,
+                "fencing_token": fencing_token,
+                "expected_generation_status": expected_generation_status,
+                "relationship_ids": relationship_ids,
+            }
+        )
+        return self._counts
+
+
+@pytest.mark.asyncio
+async def test_full_sync_runs_stage_b_reconciliation_after_every_source_completes(
+    active_schema: ActiveSchema,
+) -> None:
+    pages = [_page("A-1", 1)]
+    connector = NumericOrderedConnector(pages, watermark=_numeric_cursor(1))
+    reconciler = RecordingReconciler({"a_to_b": 2})
+    coordinator = GenericSyncCoordinator(
+        connectors=Registry(connector),
+        extractor=GenericSourceRecordExtractor(),
+        writer=RecordingWriter(),
+        checkpoints=RecordingCheckpoints(),
+        reconciler=reconciler,
+    )
+    nodes, relationships = await coordinator.full_sync(
+        schema=active_schema, graph_generation_id="g1", fencing_token=1
+    )
+    assert relationships == 2
+    assert len(reconciler.calls) == 1
+    assert reconciler.calls[0]["graph_generation_id"] == "g1"
+    assert reconciler.calls[0]["expected_generation_status"] is GraphGenerationStatus.BUILDING
+
+
+@pytest.mark.asyncio
+async def test_full_sync_without_a_reconciler_skips_stage_b(active_schema: ActiveSchema) -> None:
+    pages = [_page("A-1", 1)]
+    connector = NumericOrderedConnector(pages, watermark=_numeric_cursor(1))
+    coordinator = GenericSyncCoordinator(
+        connectors=Registry(connector),
+        extractor=GenericSourceRecordExtractor(),
+        writer=RecordingWriter(),
+        checkpoints=RecordingCheckpoints(),
+    )
+    nodes, relationships = await coordinator.full_sync(
+        schema=active_schema, graph_generation_id="g1", fencing_token=1
+    )
+    assert relationships == 0
 
 
 @pytest.mark.asyncio
