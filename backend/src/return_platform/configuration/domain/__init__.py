@@ -1,0 +1,1 @@
+# Canonical configuration domain definitions
