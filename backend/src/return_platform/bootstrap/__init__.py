@@ -10,7 +10,9 @@ from return_platform.bootstrap.epoch import (
     FatalReconfigurationError,
     ReconfigurationCoordinator,
     ReplicaStatus,
+    ReplicaUnavailable,
     SimpleRuntimeEpoch,
+    StaleReconfiguration,
 )
 from return_platform.bootstrap.errors import (
     StartupFailure,
@@ -28,8 +30,10 @@ __all__ = [
     "FatalReconfigurationError",
     "ReconfigurationCoordinator",
     "ReplicaStatus",
+    "ReplicaUnavailable",
     "RuntimeContext",
     "SimpleRuntimeEpoch",
+    "StaleReconfiguration",
     "StartupFailure",
     "StartupFailureSeverity",
     "StaticCorrelationContext",

@@ -24,7 +24,13 @@ class Initializable(Protocol):
     """
 
     async def initialize(self) -> None: ...
-    async def shutdown(self) -> None: ...
+
+    async def shutdown(self) -> None:
+        """Must tolerate being called after initialize() raised partway through --
+        e.g. a module that opened a connection pool and then failed a later
+        validation step must still be able to close that pool here. initialize_all()
+        calls shutdown() on a module whose own initialize() failed, not just on
+        modules that succeeded before it."""
 
 
 def topological_order(descriptors: Sequence[ModuleDescriptor]) -> tuple[str, ...]:
@@ -70,10 +76,12 @@ def topological_order(descriptors: Sequence[ModuleDescriptor]) -> tuple[str, ...
 async def initialize_all(modules: Sequence[Initializable]) -> None:
     """Initialize every module in order.
 
-    Fails closed AND cleans up: if a module raises, every module already initialized
-    is shut down in reverse order before the original exception propagates, so the
-    caller never holds a partially-initialized module list. If cleanup itself also
-    raises, both the original failure and the cleanup failures are reported together.
+    Fails closed AND cleans up: if a module raises, that module itself is shut down
+    first (it may have partially-initialized resources -- see Initializable.shutdown),
+    then every module already initialized is shut down in reverse order, before the
+    original exception propagates. The caller never holds a partially-initialized
+    module list. If cleanup itself also raises, both the original failure and the
+    cleanup failures are reported together.
     """
     initialized: list[Initializable] = []
     for module in modules:
@@ -81,6 +89,10 @@ async def initialize_all(modules: Sequence[Initializable]) -> None:
             await module.initialize()
         except Exception as exc:
             cleanup_errors: list[Exception] = []
+            try:
+                await module.shutdown()
+            except Exception as cleanup_exc:
+                cleanup_errors.append(cleanup_exc)
             for already_initialized in reversed(initialized):
                 try:
                     await already_initialized.shutdown()

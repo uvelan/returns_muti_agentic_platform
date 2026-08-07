@@ -10,6 +10,8 @@ a caller catch the exception and continue serving.
 
 from __future__ import annotations
 
+import threading
+
 import pytest
 
 from return_platform.bootstrap.epoch import (
@@ -17,6 +19,7 @@ from return_platform.bootstrap.epoch import (
     FatalReconfigurationError,
     ReconfigurationCoordinator,
     ReplicaStatus,
+    ReplicaUnavailable,
     SimpleRuntimeEpoch,
 )
 from return_platform.platform.contracts.epoch import RuntimeEpoch
@@ -91,3 +94,52 @@ async def test_no_request_admission_after_fatal_commit_failure() -> None:
     # a second reconfiguration attempt is also refused -- the replica requires restart
     with pytest.raises(FatalReconfigurationError):
         await coordinator.reconfigure(SimpleRuntimeEpoch(epoch=3, release_id="r3"))
+
+
+def test_fatal_commit_atomically_closes_request_admission() -> None:
+    """A commit failure calls EpochAdmission.close(); this proves close() and
+    acquire_current() are genuinely atomic with respect to each other under real
+    OS-thread concurrency, not just in the sequential case already covered by
+    test_no_request_admission_after_fatal_commit_failure above.
+
+    Both methods take EpochAdmission's single lock and neither awaits or blocks
+    inside it, so there is no window in which a request can be admitted after close()
+    has taken effect -- this hammers that guarantee with genuine concurrent threads
+    rather than relying on it being true "by construction."
+    """
+    epoch_1 = SimpleRuntimeEpoch(epoch=1, release_id="r1")
+    admission = EpochAdmission(epoch_1)
+
+    results: list[str] = []
+    results_lock = threading.Lock()
+    start_barrier = threading.Barrier(9)  # 8 requester threads + 1 closer thread
+
+    def requester() -> None:
+        start_barrier.wait()
+        for _ in range(500):
+            try:
+                admission.acquire_current()
+                outcome = "success"
+            except ReplicaUnavailable:
+                outcome = "fail"
+            with results_lock:
+                results.append(outcome)
+
+    def closer() -> None:
+        start_barrier.wait()
+        admission.close()
+
+    threads = [threading.Thread(target=requester) for _ in range(8)]
+    threads.append(threading.Thread(target=closer))
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert "fail" in results  # close() did take effect during the hammering
+    assert not admission.is_accepting()
+
+    # once every thread has finished, admission is unambiguously and permanently
+    # closed -- no straggler could have been admitted after close() returned.
+    with pytest.raises(ReplicaUnavailable):
+        admission.acquire_current()

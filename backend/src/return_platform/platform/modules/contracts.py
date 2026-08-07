@@ -102,7 +102,13 @@ class ModuleRuntime(Protocol):
 
     async def health(self) -> ModuleHealth: ...
 
-    async def shutdown(self) -> None: ...
+    async def shutdown(self) -> None:
+        """Must tolerate being called after initialize() raised partway through --
+        e.g. a module that opened a connection pool and then failed a later
+        validation step must still be able to close that pool here.
+        platform.modules.lifecycle.initialize_all() calls shutdown() on a module
+        whose own initialize() failed, not just on modules that succeeded before it.
+        """
 
     @property
     def router(self) -> APIRouter | None: ...

@@ -5,11 +5,19 @@ prepares a candidate, and only if ALL of them are ready does ONE pointer swap ma
 new epoch current. A request captures its epoch once and keeps it for its whole life;
 old-epoch resources are released only after every holder has let go.
 
-Epoch pointer, drain state, and lease admission all live in ONE object
-(EpochAdmission) behind one lock. Keeping the pointer and the lease counts in two
-independent objects is a TOCTOU race: a reader could observe the current epoch, and
-before it registers as a holder, a concurrent reconfiguration could swap past it and
-release that epoch's resources out from under it.
+Epoch pointer, drain state, holder counts, and admission-open/closed state all live in
+ONE object (EpochAdmission) behind one lock. Splitting any of these across independent
+objects reopens a TOCTOU race: a reader could observe a value, and before it acts on
+that observation, a concurrent operation could invalidate it out from under the reader.
+Two such races were found and closed here:
+
+  - reading the current epoch and registering as a holder of it were two calls on two
+    objects (fixed by EpochAdmission itself, in an earlier pass);
+  - checking "is the replica UNAVAILABLE" and registering as a holder were still two
+    calls on two synchronization domains (ReconfigurationCoordinator._status vs
+    EpochAdmission's lock) -- fixed by moving admission-open/closed state into
+    EpochAdmission too, so acquire_current() checks it under the same lock it uses to
+    register the holder.
 
 RuntimeEpoch is "replica-local" by design (see its docstring in platform/contracts/) --
 the allocator and admission tracker here are in-process only, not distributed or
@@ -20,6 +28,7 @@ is a distinct concern from the in-process visibility mechanism built here.
 
 from __future__ import annotations
 
+import asyncio
 import itertools
 import threading
 from collections.abc import Mapping
@@ -52,11 +61,23 @@ class EpochAllocator:
 class EpochLifecycleState(StrEnum):
     CURRENT = "CURRENT"
     DRAINING = "DRAINING"
+    RELEASING = "RELEASING"
     RELEASED = "RELEASED"
 
 
 class EpochStateError(RuntimeError):
     """An operation was attempted against an epoch in an invalid state for it."""
+
+
+class StaleReconfiguration(RuntimeError):
+    """A reconfiguration attempted to swap based on an epoch that is no longer, or
+    was never, current. The current epoch is never regressed; the caller should
+    abandon this attempt rather than retry blindly."""
+
+
+class ReplicaUnavailable(RuntimeError):
+    """Admission is closed. The replica is not accepting new work and requires a
+    restart -- see EpochAdmission.close()."""
 
 
 @dataclass
@@ -67,23 +88,26 @@ class _EpochRecord:
 
 
 class EpochAdmission:
-    """The single source of truth for which epoch is current, which are draining, and
-    how many holders each has.
+    """The single source of truth for which epoch is current, which are draining or
+    releasing, how many holders each has, and whether the replica is still accepting
+    new work.
 
-    Pointer swap, drain-state transition, and lease admission share one lock, so a
-    request can never acquire a lease on an epoch whose resources have already been
-    released -- the race a separate pointer-object/lease-tracker-object split allows.
+    Pointer swap, drain-state transition, lease admission, and the accepting/closed
+    flag all share one lock, so no caller can observe or act on a value that a
+    concurrent operation has already superseded.
 
     A plain threading.Lock (not asyncio.Lock) guards every method: every critical
     section here is synchronous with no `await` inside it, so the lock is held for a
     bounded, tiny duration and protects against both concurrent asyncio tasks and real
     OS threads (e.g. sync route handlers run in a thread pool).
 
-    State machine per epoch: CURRENT -> DRAINING -> RELEASED. New leases are only ever
-    handed out for CURRENT (acquire_current() cannot even express "give me a specific
-    past epoch"); a lease acquired while CURRENT remains valid to release after the
-    epoch moves to DRAINING; CURRENT can never be released; RELEASED is terminal and
-    idempotent to request again.
+    State machine per epoch: CURRENT -> DRAINING -> RELEASING -> RELEASED. New leases
+    are only ever handed out for CURRENT (acquire_current() cannot even express "give
+    me a specific past epoch"); a lease acquired while CURRENT remains valid to
+    release after the epoch moves to DRAINING; CURRENT can never be released;
+    RELEASING exists so a module cleanup failure never finalizes RELEASED on
+    unverified success -- see release_if_drained() in ReconfigurationCoordinator, which
+    can retry from RELEASING; RELEASED is terminal and idempotent to request again.
     """
 
     def __init__(self, initial: RuntimeEpoch) -> None:
@@ -92,15 +116,34 @@ class EpochAdmission:
             initial.epoch: _EpochRecord(epoch=initial, state=EpochLifecycleState.CURRENT)
         }
         self._current_epoch_number = initial.epoch
+        self._accepting_requests = True
 
     @property
     def current(self) -> RuntimeEpoch:
         with self._lock:
             return self._records[self._current_epoch_number].epoch
 
-    def acquire_current(self) -> RuntimeEpoch:
-        """Atomically read the current epoch and register a holder on it."""
+    def is_accepting(self) -> bool:
         with self._lock:
+            return self._accepting_requests
+
+    def close(self) -> None:
+        """Permanently stop admitting new requests. Idempotent. There is no reopen --
+        a closed replica requires a restart."""
+        with self._lock:
+            self._accepting_requests = False
+
+    def acquire_current(self) -> RuntimeEpoch:
+        """Atomically check admission is open, read the current epoch, and register a
+        holder on it.
+
+        Raises ReplicaUnavailable if admission is closed -- checked under the same
+        lock as the holder registration, so there is no window between "the replica
+        just closed" and "a request was admitted anyway."
+        """
+        with self._lock:
+            if not self._accepting_requests:
+                raise ReplicaUnavailable("admission is closed; the replica is UNAVAILABLE")
             record = self._records[self._current_epoch_number]
             record.holders += 1
             return record.epoch
@@ -117,12 +160,33 @@ class EpochAdmission:
                 return
             record.holders -= 1
 
-    def begin_swap(self, new_epoch: RuntimeEpoch) -> RuntimeEpoch:
+    def begin_swap(
+        self, new_epoch: RuntimeEpoch, expected_current_epoch: RuntimeEpoch
+    ) -> RuntimeEpoch:
         """Make `new_epoch` CURRENT and move the previous CURRENT epoch to DRAINING.
+
+        Raises StaleReconfiguration if `expected_current_epoch` is not actually
+        CURRENT (a concurrent swap already moved past it) or if `new_epoch` is not
+        strictly newer than the current epoch number. Both checks happen inside the
+        same lock as the swap itself -- there is no window between validating and
+        acting in which another swap could interleave. This is defense in depth
+        behind ReconfigurationCoordinator's own serialization (see `reconfigure()`):
+        it protects the invariant even if a future caller reaches this method
+        directly, or two coordinator instances somehow shared one EpochAdmission.
 
         Returns the epoch that is now draining.
         """
         with self._lock:
+            if self._current_epoch_number != expected_current_epoch.epoch:
+                raise StaleReconfiguration(
+                    f"expected current epoch {expected_current_epoch.epoch} but current "
+                    f"is {self._current_epoch_number}; refusing to swap"
+                )
+            if new_epoch.epoch <= self._current_epoch_number:
+                raise StaleReconfiguration(
+                    f"new epoch {new_epoch.epoch} is not newer than current "
+                    f"{self._current_epoch_number}; the current epoch is never regressed"
+                )
             previous_record = self._records[self._current_epoch_number]
             previous_record.state = EpochLifecycleState.DRAINING
             self._records[new_epoch.epoch] = _EpochRecord(
@@ -131,13 +195,13 @@ class EpochAdmission:
             self._current_epoch_number = new_epoch.epoch
             return previous_record.epoch
 
-    def try_release(self, epoch: RuntimeEpoch) -> bool:
-        """Transition a fully-drained DRAINING epoch to RELEASED.
+    def begin_release(self, epoch: RuntimeEpoch) -> bool:
+        """Transition a fully-drained DRAINING epoch to RELEASING, or confirm it is
+        already RELEASING so a retried release attempt can proceed.
 
         Raises EpochStateError if `epoch` is CURRENT -- the actively serving epoch can
-        never be released. Returns False without raising if it is DRAINING but still
-        held, or already RELEASED (idempotent). Returns True only on the transition
-        that actually released it.
+        never be released. Returns False if it is DRAINING but still held, or already
+        RELEASED. Returns True if it is now, or already was, RELEASING.
         """
         with self._lock:
             record = self._records.get(epoch.epoch)
@@ -145,10 +209,21 @@ class EpochAdmission:
                 return False
             if record.state is EpochLifecycleState.CURRENT:
                 raise EpochStateError(f"epoch {epoch.epoch} is CURRENT and cannot be released")
+            if record.state is EpochLifecycleState.RELEASING:
+                return True
             if record.holders > 0:
                 return False
-            record.state = EpochLifecycleState.RELEASED
+            record.state = EpochLifecycleState.RELEASING
             return True
+
+    def finish_release(self, epoch: RuntimeEpoch) -> None:
+        """Transition a RELEASING epoch to RELEASED, once every module's
+        release_epoch has actually succeeded. Idempotent past RELEASED."""
+        with self._lock:
+            record = self._records.get(epoch.epoch)
+            if record is None or record.state is EpochLifecycleState.RELEASED:
+                return
+            record.state = EpochLifecycleState.RELEASED
 
 
 @runtime_checkable
@@ -195,6 +270,14 @@ class ReconfigurationCoordinator:
     failed, and because dict iteration order is insertion order, the caller controls
     prepare/commit/abort sequencing by construction order (typically the same
     dependency order used for initialization).
+
+    Every reconfigure() call is serialized by an internal asyncio.Lock: prepare/commit
+    span multiple `await` points, so without serialization two concurrent attempts for
+    different target epochs could interleave their commits and have the OLDER one's
+    swap land last, regressing the current epoch. EpochAdmission.begin_swap() also
+    independently refuses a stale swap as defense in depth (see its docstring), but
+    this lock is what prevents two attempts from ever running their prepare/commit
+    phases concurrently in the first place.
     """
 
     def __init__(
@@ -204,32 +287,44 @@ class ReconfigurationCoordinator:
     ) -> None:
         self._modules = modules
         self._admission = admission
-        self._status = ReplicaStatus.AVAILABLE
+        self._reconfigure_lock = asyncio.Lock()
 
     @property
     def status(self) -> ReplicaStatus:
-        return self._status
+        """Derived from EpochAdmission's own accepting-requests flag -- the single
+        source of truth. There is deliberately no separate coordinator-level status
+        field to keep in sync with it."""
+        return (
+            ReplicaStatus.UNAVAILABLE
+            if not self._admission.is_accepting()
+            else ReplicaStatus.AVAILABLE
+        )
 
     def acquire_current(self) -> RuntimeEpoch:
         """Admit a new request onto the current epoch.
 
         Raises FatalReconfigurationError if the replica is UNAVAILABLE -- once a
         commit has failed, this replica refuses new work rather than serve on
-        possibly-inconsistent module state.
+        possibly-inconsistent module state. The check and the admission happen
+        atomically inside EpochAdmission; there is no window between them.
         """
-        if self._status is ReplicaStatus.UNAVAILABLE:
+        try:
+            return self._admission.acquire_current()
+        except ReplicaUnavailable as exc:
             raise FatalReconfigurationError(
                 epoch=self._admission.current,
                 failed_module="<replica>",
                 message="replica is UNAVAILABLE; refusing new request admission",
-            )
-        return self._admission.acquire_current()
+            ) from exc
 
     def release(self, epoch: RuntimeEpoch) -> None:
         self._admission.release(epoch)
 
     async def reconfigure(self, epoch: RuntimeEpoch) -> RuntimeEpoch | None:
         """Attempt to adopt `epoch`.
+
+        Serialized: only one reconfigure() call runs at a time on this coordinator, so
+        two concurrent attempts can never interleave their prepare/commit phases.
 
         Returns the retired (now-draining) epoch on success, or None if every
         module's live state is untouched because at least one returned
@@ -240,37 +335,41 @@ class ReconfigurationCoordinator:
 
         Raises FatalReconfigurationError if the replica is already UNAVAILABLE, or if
         commit_reconfigure raises during this attempt (which also marks the replica
-        UNAVAILABLE for all future calls).
+        UNAVAILABLE for all future calls). Raises StaleReconfiguration if the current
+        epoch moved between this call starting and its commit completing.
         """
-        if self._status is ReplicaStatus.UNAVAILABLE:
-            raise FatalReconfigurationError(
-                epoch=epoch,
-                failed_module="<replica>",
-                message="replica is UNAVAILABLE from a prior fatal commit failure",
-            )
+        async with self._reconfigure_lock:
+            if not self._admission.is_accepting():
+                raise FatalReconfigurationError(
+                    epoch=epoch,
+                    failed_module="<replica>",
+                    message="replica is UNAVAILABLE from a prior fatal commit failure",
+                )
 
-        prepared: list[Reconfigurable] = []
-        refused = False
-        prepare_exception: Exception | None = None
-        for module in self._modules.values():
-            try:
-                outcome = await module.prepare_reconfigure(epoch)
-            except Exception as exc:
-                prepare_exception = exc
-                refused = True
-                break
-            if outcome is ReconfigureOutcome.RESTART_REQUIRED:
-                refused = True
-                break
-            prepared.append(module)
+            expected_current_epoch = self._admission.current
 
-        if refused:
-            await self._abort_all(epoch)
-            if prepare_exception is not None:
-                raise prepare_exception
-            return None
+            prepared: list[Reconfigurable] = []
+            refused = False
+            prepare_exception: Exception | None = None
+            for module in self._modules.values():
+                try:
+                    outcome = await module.prepare_reconfigure(epoch)
+                except Exception as exc:
+                    prepare_exception = exc
+                    refused = True
+                    break
+                if outcome is ReconfigureOutcome.RESTART_REQUIRED:
+                    refused = True
+                    break
+                prepared.append(module)
 
-        return await self._commit_and_swap(epoch)
+            if refused:
+                await self._abort_all(epoch)
+                if prepare_exception is not None:
+                    raise prepare_exception
+                return None
+
+            return await self._commit_and_swap(epoch, expected_current_epoch)
 
     async def _abort_all(self, epoch: RuntimeEpoch) -> None:
         """Abort the candidate epoch on every module, not just the ones that already
@@ -287,12 +386,14 @@ class ReconfigurationCoordinator:
         if errors:
             raise ExceptionGroup("abort_reconfigure failed on one or more modules", errors)
 
-    async def _commit_and_swap(self, epoch: RuntimeEpoch) -> RuntimeEpoch:
+    async def _commit_and_swap(
+        self, epoch: RuntimeEpoch, expected_current_epoch: RuntimeEpoch
+    ) -> RuntimeEpoch:
         for module_id, module in self._modules.items():
             try:
                 await module.commit_reconfigure(epoch)
             except Exception as exc:
-                self._status = ReplicaStatus.UNAVAILABLE
+                self._admission.close()
                 raise FatalReconfigurationError(
                     epoch=epoch,
                     failed_module=module_id,
@@ -301,18 +402,40 @@ class ReconfigurationCoordinator:
                         f"now UNAVAILABLE and requires restart: {exc}"
                     ),
                 ) from exc
-        return self._admission.begin_swap(epoch)
+        return self._admission.begin_swap(epoch, expected_current_epoch)
 
     async def release_if_drained(self, epoch: RuntimeEpoch) -> bool:
-        """Call release_epoch on every module for `epoch`, but only once it has fully
-        drained. Returns whether release happened this call.
+        """Call release_epoch on every module for `epoch`, once it has fully drained.
 
-        Raises EpochStateError if `epoch` is still CURRENT -- see
-        EpochAdmission.try_release.
+        Uses an intermediate RELEASING state (EpochAdmission.begin_release /
+        finish_release) so a module cleanup failure never finalizes RELEASED on
+        unverified success: the epoch stays retryable in RELEASING until every
+        module's release_epoch has actually completed without raising. Modules are
+        called again on retry even if they already succeeded once -- release_epoch is
+        documented as must-not-fail / idempotent for exactly this reason, the same way
+        abort_reconfigure must tolerate repeated or partial calls.
+
+        Returns whether this call fully completed the release. Raises EpochStateError
+        if `epoch` is still CURRENT (see EpochAdmission.begin_release). Raises
+        ExceptionGroup, leaving the epoch in RELEASING for a future retry, if any
+        module's release_epoch raises.
         """
-        released = self._admission.try_release(epoch)
-        if not released:
+        if not self._admission.begin_release(epoch):
             return False
+
+        errors: list[Exception] = []
         for module in self._modules.values():
-            await module.release_epoch(epoch)
+            try:
+                await module.release_epoch(epoch)
+            except Exception as exc:
+                errors.append(exc)
+
+        if errors:
+            raise ExceptionGroup(
+                "release_epoch failed on one or more modules; the epoch remains "
+                "RELEASING and this call may be retried",
+                errors,
+            )
+
+        self._admission.finish_release(epoch)
         return True

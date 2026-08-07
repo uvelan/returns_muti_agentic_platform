@@ -1180,7 +1180,11 @@ class ModuleRuntime(Protocol):
         """Drop resources for a fully drained epoch. MUST NOT FAIL."""
 
     async def health(self) -> ModuleHealth: ...
-    async def shutdown(self) -> None: ...
+    async def shutdown(self) -> None:
+        """Must tolerate being called after initialize() raised partway through -- a
+        module that opened a pool then failed a later validation step must still be
+        able to close that pool here. The module whose own initialize() failed gets a
+        shutdown() call too, not just the ones that succeeded before it."""
     @property
     def router(self) -> APIRouter | None: ...
 ```
@@ -2105,12 +2109,14 @@ counts behind one lock, with only one public entry point for admission (`acquire
 increments as one operation. There is no way to express "give me a specific, possibly-stale epoch" — admission
 always targets whatever is current at that instant.
 
-Each epoch carries an explicit lifecycle state: `CURRENT → DRAINING → RELEASED`. New leases are only ever
-issued against `CURRENT`; a lease acquired while `CURRENT` remains valid to release after the epoch moves to
-`DRAINING`; attempting to release a `CURRENT` epoch is rejected outright (the actively serving epoch can never
-be torn down); and `RELEASED` is terminal and idempotent to request again. The lock protects reads and writes
-of this state and the pointer together, so no operation can observe or act on a value that a concurrent swap
-has already superseded.
+Each epoch carries an explicit lifecycle state: `CURRENT → DRAINING → RELEASING → RELEASED`. New leases are
+only ever issued against `CURRENT`; a lease acquired while `CURRENT` remains valid to release after the epoch
+moves to `DRAINING`; attempting to release a `CURRENT` epoch is rejected outright (the actively serving epoch
+can never be torn down); `RELEASING` marks a drained epoch whose module cleanup is in progress but not yet
+confirmed complete, and is re-enterable — a failed cleanup attempt leaves the epoch in `RELEASING` rather than
+finalizing it, so a retry can pick up where the failure left off; and `RELEASED` is terminal and idempotent to
+request again. The lock protects reads and writes of this state and the pointer together, so no operation can
+observe or act on a value that a concurrent swap has already superseded.
 
 *(A request-admission read/write lock — writers block admission during the swap — is an acceptable simpler
 implementation, but it stalls admission and does nothing for long-running requests. The epoch model is the
@@ -2124,6 +2130,33 @@ default.)*
 **Pinning is structural, not conventional.** A pinned session resolves `handle.pinned(release_id)` once at its
 boundary and receives a `RuntimeConfigurationView` — the only object with `section()`. An agent holding a view
 physically cannot reach `current()`, so a session pinned to release 41 cannot read release 42's rules (§7.1).
+
+**Concurrent reconfiguration attempts must be serialized, not just fenced.** `begin_swap()` fencing (above)
+stops a stale swap from *succeeding*, but without serialization two attempts targeting different epochs can
+still run their multi-`await` prepare/commit phases concurrently and interleave: attempt A (epoch 2) and
+attempt B (epoch 3) both start, B's commit finishes and swaps first, then A's later commit finishes and calls
+`begin_swap` — the fencing check *does* catch this specific interleaving (A's expected-current no longer
+matches), but relying on fencing alone to catch every interleaving is fragile once more call sites exist. The
+whole reconfigure sequence — prepare through commit-and-swap — is therefore also serialized by one lock scoped
+to the coordinator, so two attempts never run prepare/commit concurrently in the first place; fencing remains
+as defense in depth for any caller that reaches the admission primitive directly.
+
+**Admission-closed and "replica is UNAVAILABLE" must be one synchronization domain, not two.** A commit
+failure setting a status flag on the *coordinator* while request admission is checked against the *admission
+object's* lock reopens exactly the TOCTOU shape this section already fixed once: a request can read
+"AVAILABLE" a moment before a concurrent fatal commit flips the flag, then be admitted anyway. The
+accepting/closed flag lives inside the same lock as the epoch pointer and holder counts, and the one admission
+method (`acquire_current()`) checks it under that lock — there is no externally observable state that can go
+stale between a status check and an admission.
+
+**Release finalization needs an intermediate state, not a single boolean transition.** Marking an epoch
+`RELEASED` in the same step that decides "holders have reached zero" — before the corresponding module cleanup
+calls have actually succeeded — can finalize an epoch whose resources were never fully torn down: if module A's
+cleanup succeeds and module B's raises, a `RELEASED` epoch can never be revisited to finish B's cleanup. An
+intermediate `RELEASING` state exists between `DRAINING` and `RELEASED` specifically so a cleanup failure
+leaves the epoch retryable rather than falsely finalized: the retry re-invokes every module's cleanup
+(including ones that already succeeded, which is why that cleanup call is documented as idempotent) and only
+transitions to `RELEASED` once none of them raise.
 
 **Enforced by** `tests/configuration/test_reconfiguration_protocol.py`,
 `tests/configuration/test_pinned_release_retention.py`,
@@ -2307,7 +2340,7 @@ generation-scoped, requires `READY_FOR_ACTIVATION`, and executes the orchestrato
 | Invariant | New structures | New modules |
 |---|---|---|
 | 13.1 | — | `platform/contracts/`, `platform/capabilities/`, `bootstrap/adapters/` |
-| 13.2 | `configuration_active_pointer`, `configuration_adoption` | `configuration/domain/handle.py`, `bootstrap/reconciler.py`, two-phase `ModuleRuntime` |
+| 13.2 | `configuration_active_pointer`, `configuration_adoption` | `configuration/domain/handle.py`, `bootstrap/reconciler.py`, two-phase `ModuleRuntime`, `bootstrap/epoch.py`'s `EpochAdmission` (fenced `begin_swap`, `CURRENT`/`DRAINING`/`RELEASING`/`RELEASED`, accepting-flag under the same lock), `ReconfigurationCoordinator`'s per-instance reconfigure lock |
 | 13.3 | `generation_session_leases` | `graph/lifecycle/binding.py`, extended `leases.py` |
 | 13.4 | — | `graph/lifecycle/handles.py` |
 | 13.5 | `resume_command` (embedded) | `ai/interception/resume_worker.py` |

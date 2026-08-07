@@ -1,6 +1,7 @@
-"""Focused check: if a module's initialize() raises, every module already
-initialized is shut down in reverse order before the failure propagates -- the caller
-never holds a partially-initialized module list (design doc section 2.1 step 12).
+"""Focused check: if a module's initialize() raises, that module itself is shut down
+(it may have partially-initialized resources), and every module already initialized
+is shut down in reverse order, before the failure propagates -- the caller never holds
+a partially-initialized module list (design doc section 2.1 step 12).
 """
 
 from __future__ import annotations
@@ -36,9 +37,21 @@ async def test_failed_initialization_shuts_down_prior_modules() -> None:
     with pytest.raises(RuntimeError, match="c failed to initialize"):
         await initialize_all([module_a, module_b, module_c, module_d])
 
-    # a and b were initialized before c failed; both get shut down, in reverse order.
-    # c never finished initializing and is not shut down; d was never reached.
-    assert log == ["init:a", "init:b", "shutdown:b", "shutdown:a"]
+    # a and b were initialized before c failed. c itself gets a shutdown attempt too
+    # -- it may have partially-initialized resources even though initialize() raised
+    # -- called first, then b and a in reverse order. d was never reached.
+    assert log == ["init:a", "init:b", "shutdown:c", "shutdown:b", "shutdown:a"]
+
+
+@pytest.mark.asyncio
+async def test_failing_initializer_is_also_shut_down() -> None:
+    log: list[str] = []
+    module_a = RecordingModule("a", fail_init=True, log=log)
+
+    with pytest.raises(RuntimeError, match="a failed to initialize"):
+        await initialize_all([module_a])
+
+    assert log == ["shutdown:a"]
 
 
 @pytest.mark.asyncio

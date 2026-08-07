@@ -34,10 +34,13 @@ Module identity, declaration, descriptor bookkeeping, and runtime lifecycle.
   module depending on itself is a cycle of length one, caught the same way as any
   other cycle; a dependency naming an unregistered module_id raises
   `MissingInitializationDependency`). `initialize_all()` runs in that order and fails
-  closed **with cleanup**: if a module raises, every module already initialized is
-  shut down in reverse order before the exception propagates, so the caller never
-  holds a partially-initialized module list; if cleanup itself also fails, both are
-  reported together in one `ExceptionGroup`. `shutdown_all()` is reverse-ordered,
+  closed **with cleanup**: if a module raises, that module itself is shut down first
+  -- it may have partially-initialized resources even though `initialize()` raised,
+  which is why `Initializable.shutdown()`'s contract requires tolerating this -- then
+  every module already initialized is shut down in reverse order, before the
+  exception propagates, so the caller never holds a partially-initialized module
+  list; if cleanup itself also fails, both are reported together in one
+  `ExceptionGroup`. `shutdown_all()` is reverse-ordered,
   best-effort — every module gets a shutdown attempt even if an earlier one failed.
   `rollup_health()` is worst-of aggregation over a caller-supplied list of
   `ModuleHealth`. `topological_order`/`initialize_all`/`shutdown_all` depend only on

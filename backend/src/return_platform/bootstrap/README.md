@@ -8,12 +8,17 @@ The module lifecycle mechanism, buildable and testable before any real module ex
 
 - `epoch.py` — the epoch-keyed two-phase reconfiguration mechanism (design doc
   section 13.2): `EpochAllocator` mints replica-local epoch numbers, `EpochAdmission`
-  owns the current-epoch pointer, the `CURRENT`/`DRAINING`/`RELEASED` state machine,
-  and the holder counts all behind one lock, and `ReconfigurationCoordinator` runs
-  prepare-all → commit-all-with-one-swap, or abort-all (every module, not just the
-  ones that already prepared) if any module refuses or raises. A `commit_reconfigure`
-  failure raises `FatalReconfigurationError` and marks the replica `UNAVAILABLE` --
-  every later `acquire_current()`/`reconfigure()` call is refused from then on.
+  owns the current-epoch pointer, the `CURRENT`/`DRAINING`/`RELEASING`/`RELEASED`
+  state machine, the holder counts, and the accepting-requests flag, all behind one
+  lock, and `ReconfigurationCoordinator` runs prepare-all → commit-all-with-one-swap,
+  or abort-all (every module, not just the ones that already prepared) if any module
+  refuses or raises. `reconfigure()` itself is serialized by an `asyncio.Lock` so two
+  attempts never interleave their prepare/commit phases; `begin_swap()` additionally
+  fences on the caller's expected-current epoch and rejects a non-newer target, as
+  defense in depth. A `commit_reconfigure` failure raises `FatalReconfigurationError`
+  and closes admission inside `EpochAdmission` itself -- checked under the same lock
+  as holder registration, so a request can never be admitted in the window between a
+  fatal failure and the replica actually going `UNAVAILABLE`.
 - `context.py` — assembles whatever the caller provides into something that
   structurally satisfies `ModuleRuntimeContext`. Only wires the fields backed by an
   existing contract (`configuration`, `capabilities`, `clock`, `correlation`); does
@@ -79,10 +84,25 @@ which includes a real multi-threaded stress test proving the lock prevents lost 
 counts under genuine OS-thread concurrency (e.g. sync route handlers in a thread
 pool), not just asyncio-task interleaving.
 
-Old-epoch resources are released only once every holder has released
-(`EpochAdmission.try_release()`), and only once the epoch has actually moved to
-`DRAINING` -- the currently-serving `CURRENT` epoch can never be released, by
-construction.
+Old-epoch resources are released only once every holder has released, and only once
+the epoch has actually moved to `DRAINING` -- the currently-serving `CURRENT` epoch
+can never be released, by construction. Release finalization is itself two steps, not
+one: `EpochAdmission.begin_release()` moves a drained epoch to `RELEASING` (or confirms
+it's already there, for a retry), `ReconfigurationCoordinator.release_if_drained()`
+then calls every module's `release_epoch`, and only once none of them raise does
+`EpochAdmission.finish_release()` move it to `RELEASED`. A cleanup failure leaves the
+epoch in `RELEASING` rather than falsely finalizing it -- the next call retries every
+module's cleanup, including ones that already succeeded, which is why `release_epoch`
+is documented as must-not-fail / idempotent, the same contract `abort_reconfigure`
+relies on.
+
+**Concurrency is proven, not assumed.** `tests/platform/test_epoch_admission.py`
+includes a real multi-threaded stress test proving the lock prevents lost holder
+counts under genuine OS-thread concurrency (not just asyncio-task interleaving);
+`test_concurrent_reconfigure.py` proves two concurrent `reconfigure()` calls never
+interleave; `test_commit_failure.py` includes a barrier-synchronized multi-threaded
+test proving admission-close and request admission are atomic with respect to each
+other, not just correct in the sequential case.
 
 ## What Phase 2+ adds
 
