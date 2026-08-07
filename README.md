@@ -54,6 +54,26 @@ Associate Copilot / Customer / Support / Data Console
 
 Secrets must never be stored in Neo4j, MongoDB documents, Valkey, Temporal payloads, frontend storage, logs, evidence files, or AI traces.
 
+### Platform kernel (in progress)
+
+The consolidation introduces a cross-cutting platform kernel at
+`backend/src/return_platform/platform/`, shared by every module and depending on none:
+
+- `platform/contracts/` — neutral protocols (`RuntimeConfigurationView`/`Handle`,
+  `ConsistencyHandle`, `RuntimeEpoch`) that domain modules structurally satisfy without
+  `platform/*` ever importing a domain package.
+- `platform/capabilities/` — a registry keyed by `(capability, contract)` so modules
+  resolve each other's behavior without importing each other. Binding a provider's
+  native contract to a consumer's port happens only in `bootstrap/adapters/`, the one
+  package allowed to import two modules at once.
+- `platform/modules/` — module identity (`ModuleDescriptor`) and registration
+  bookkeeping. The full activation lifecycle (`ModuleRuntime`, epoch-keyed
+  reconfiguration, four-pass startup) lands alongside it.
+
+See [`docs/UNIFIED_RETURN_PLATFORM_TARGET_DESIGN.md`](docs/UNIFIED_RETURN_PLATFORM_TARGET_DESIGN.md)
+sections 7 and 13 for the full contracts and the distributed-correctness invariants
+they exist to enforce.
+
 ## Production Order Discovery Copilot
 
 The associate Copilot is the real order-discovery entry point for the return flow.
