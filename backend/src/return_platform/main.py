@@ -35,6 +35,12 @@ from return_platform.api.runtime_config import router as runtime_config_router
 from return_platform.api.seed import router as seed_router
 from return_platform.api.support import router as support_router
 from return_platform.api.warehouse_placement import router as warehouse_placement_router
+from return_platform.bootstrap.context import (
+    RuntimeContext,
+    StaticCorrelationContext,
+    SystemClock,
+)
+from return_platform.bootstrap.lifespan import module_lifespan
 from return_platform.configuration.graph_repository import (
     ConfigurationGraphRepository,
     InMemoryConfigurationGraphRepository,
@@ -106,6 +112,9 @@ from return_platform.dynamic_knowledge.integration.runtime_factory import (
 )
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_support.service import ReturnSupportService
+from return_platform.platform.capabilities.registry import InMemoryCapabilityRegistry
+from return_platform.platform.contracts.runtime_configuration import RuntimeConfigurationView
+from return_platform.platform.modules.registry import ModuleRegistry
 from return_platform.resources import (
     AsyncValkeyClient,
     RuntimeResources,
@@ -147,6 +156,40 @@ _DEVELOPMENT_ENVIRONMENTS = frozenset(
         "test",
     }
 )
+
+
+class _NoModulesYetConfigurationHandle:
+    """Placeholder RuntimeConfigurationHandle for the zero-module kernel proof below.
+
+    No module is registered yet (see `_kernel_module_registry`), so nothing ever calls
+    this -- it exists only to satisfy RuntimeContext's required field. Deleted once
+    Phase 2's real ConfigurationHandle exists to wire in its place.
+    """
+
+    def current(self) -> RuntimeConfigurationView:  # pragma: no cover - never called
+        raise NotImplementedError("no modules are registered yet; nothing calls this")
+
+    def pinned(self, release_id: str) -> RuntimeConfigurationView:  # pragma: no cover
+        raise NotImplementedError("no modules are registered yet; nothing calls this")
+
+    @property
+    def adopted_release_id(self) -> str:
+        return "none"
+
+    @property
+    def pending_release_id(self) -> str | None:
+        return None
+
+    @property
+    def requires_restart(self) -> bool:
+        return False
+
+
+_kernel_module_registry = ModuleRegistry()
+"""Empty on purpose (plan Phase 1B / design doc section 2.1): proves the module
+kernel's construct -> publish -> resolve -> initialize -> shutdown sequence runs
+end to end alongside the existing boot process, with zero modules and therefore zero
+effect on it. The first real module is registered here starting in a later phase."""
 
 
 def _get_settings(
@@ -552,14 +595,12 @@ async def lifespan(
                 assert platform_mongo is not None
                 assert neo4j_driver is not None
                 try:
-                    app.state.dynamic_order_agent_runtime = (
-                        await build_dynamic_order_agent_runtime(
-                            settings=settings,
-                            platform_mongo=platform_mongo,
-                            neo4j_driver=neo4j_driver,
-                            ai_gateway_configuration=ai_gateway_configuration,
-                            route_pool=app.state.ai_gateway_route_pool,
-                        )
+                    app.state.dynamic_order_agent_runtime = await build_dynamic_order_agent_runtime(
+                        settings=settings,
+                        platform_mongo=platform_mongo,
+                        neo4j_driver=neo4j_driver,
+                        ai_gateway_configuration=ai_gateway_configuration,
+                        route_pool=app.state.ai_gateway_route_pool,
                     )
                 except Exception as exc:
                     _log_initialization_failure("dynamic_order_agent", exc)
@@ -599,7 +640,23 @@ async def lifespan(
             },
         )
 
-        yield
+        kernel_capabilities = InMemoryCapabilityRegistry()
+        kernel_context = RuntimeContext(
+            configuration=_NoModulesYetConfigurationHandle(),
+            capabilities=kernel_capabilities,
+            clock=SystemClock(),
+            correlation=StaticCorrelationContext(),
+        )
+        async with module_lifespan(
+            registry=_kernel_module_registry,
+            module_ids=(),
+            context=kernel_context,
+            configs={},
+            capabilities=kernel_capabilities,
+            adapter_publishers=(),
+        ) as kernel_modules:
+            app.state.kernel_modules = kernel_modules
+            yield
     finally:
         if hasattr(app.state, "dynamic_order_agent_runtime"):
             del app.state.dynamic_order_agent_runtime

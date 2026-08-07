@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModuleKind(StrEnum):
@@ -31,3 +31,12 @@ class ModuleDescriptor(BaseModel):
     capabilities: frozenset[str]
     configuration_schema: str
     required_platform_capabilities: frozenset[str]
+    initialization_dependencies: frozenset[str] = Field(
+        default=frozenset(),
+        description=(
+            "module_ids that must complete initialize() before this module's "
+            "initialize() runs -- e.g. a module whose initialize() uses a resolved "
+            "capability from another module. Stable module IDs, not Python imports. "
+            "See platform.modules.lifecycle.topological_order."
+        ),
+    )

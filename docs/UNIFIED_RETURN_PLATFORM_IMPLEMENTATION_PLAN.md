@@ -560,19 +560,75 @@ than serving a partial promotion.
 is the constraint that makes per-request epoch capture meaningful, and it must be established here so every
 later module is written that way from the start.
 
-**`main.py`.** Introduce the kernel alongside the existing boot process. Migrate nothing yet.
+**Post-review amendment.** External review of the first cut of this phase found four P0 correctness defects
+and two P1 completion gaps before Phase 2 could safely build on it. All six are fixed in this phase, not
+deferred:
+
+1. **Epoch capture and lease acquisition are one atomic operation, not two.** The first cut exposed
+   `EpochPointer.current` and `EpochLeaseTracker.acquire()` as independent calls on independent objects — a
+   request could read the current epoch, and before it registered as a holder, a concurrent reconfiguration
+   could swap past it and release that epoch's resources out from under it. Replaced both with a single
+   `EpochAdmission` component holding the pointer, an explicit `CURRENT → DRAINING → RELEASED` state machine,
+   and the holder counts, all behind one lock, with `acquire_current()` as the only admission entry point —
+   there is no way to even express "read current" separately from "become a holder of it." The lock is a real
+   `threading.Lock`, not `asyncio.Lock`, because the original also had unsynchronized dict read-modify-write
+   that could lose updates under genuine OS-thread concurrency (e.g. sync route handlers in a thread pool).
+2. **Abort on refusal or failure now covers every module, not just the ones that already prepared.** The
+   design always specified "abort_reconfigure(X) on every module" (§13.2) — the first cut's code only aborted
+   modules that appeared *before* the refusing/failing one, on the mistaken assumption that a module which
+   never returns `READY` has nothing to clean up. A module can allocate real candidate resources before
+   deciding to refuse, or before failing outright; `_abort_all` now calls every module unconditionally,
+   best-effort, collecting any abort failures into one `ExceptionGroup` rather than stopping at the first.
+3. **A `commit_reconfigure` failure now makes the replica fail closed.** The first cut let a raised commit
+   propagate as an ordinary exception a caller could catch and ignore. `ReconfigurationCoordinator` now tracks
+   `ReplicaStatus` (`AVAILABLE`/`DEGRADED`/`UNAVAILABLE`); a commit failure raises `FatalReconfigurationError`,
+   flips the status to `UNAVAILABLE`, and every subsequent `acquire_current()` or `reconfigure()` call is
+   refused from then on — matching "the replica marks itself UNAVAILABLE, stops serving, and requires restart"
+   exactly, with no path back to `AVAILABLE` short of a process restart.
+4. **Module initialization is dependency-ordered, not caller-order.** `ModuleDescriptor` gained
+   `initialization_dependencies: frozenset[str] = frozenset()` (stable module IDs, not Python imports), and
+   `platform/modules/lifecycle.py::topological_order()` does DFS-based ordering with cycle detection (a
+   self-dependency is a cycle of length one, caught the same way) and missing-dependency detection.
+   `bootstrap/activation.py::activate()` now computes this order before `construct_all`, so the resulting
+   module list — and therefore `initialize_all`'s order and `shutdown_all`'s reverse order — is correct by
+   construction. This was flagged as a design amendment, not just a code fix: `ModuleDescriptor` did not carry
+   dependency information before this.
+5. **A failed `initialize()` now unwinds what already started.** `initialize_all` previously propagated
+   immediately on a raise, leaking every module that had already initialized (never shut down). It now tracks
+   successfully-initialized modules and shuts them down in reverse order before re-raising; if cleanup itself
+   also fails, both the original failure and the cleanup failures are reported together via `ExceptionGroup`.
+6. **The kernel is now actually attached alongside `main.py`'s existing boot process**, not just built next to
+   it unreferenced. `main.py`'s existing `lifespan()` now constructs a `ModuleRegistry` with zero registered
+   modules, runs it through `module_lifespan()` (construct → publish → resolve → initialize → yield →
+   shutdown), and wraps the pre-existing `yield` with it — proving the full mechanism executes end-to-end with
+   zero effect on existing behavior. The first real module replaces the empty registry starting in a later
+   phase.
+
+A latent instance of the read-only-Protocol-property defect from Phase 1A (design §7.1) was also found and
+fixed here: `ModuleRuntimeContext` itself declared its fields as plain attributes, which a frozen dataclass
+implementation (`bootstrap/context.py::RuntimeContext`) cannot satisfy under mypy strict. Converted to
+`@property`, matching the fix already applied to the four Phase 1A contracts.
+
+**`main.py`.** The kernel is wired in as described in amendment 6 above — additive, zero business modules,
+proven to execute correctly, with the pre-existing boot logic completely untouched around it.
 
 **Docs.** `platform/modules/README.md` (lifecycle section), `bootstrap/README.md`, root README architecture
-section.
+section — all updated to describe `EpochAdmission`, dependency-ordered initialization, and the `main.py`
+wiring rather than the superseded `EpochPointer`/`EpochLeaseTracker` split.
 
-**Gate.** Implementation gate, backend only. Focused checks (mechanism specifications, per §5.1):
-`tests/platform/test_epoch_visibility.py` — concurrent readers during an epoch swap observe exactly one epoch;
-`tests/platform/test_epoch_drain_before_release.py` — `release_epoch` is not called while a request still
-holds that epoch;
-`tests/platform/test_prepare_abort_leaves_live_untouched.py` — a late `RESTART_REQUIRED` aborts every earlier
-module and promotes nothing.
+**Gate.** Implementation gate, backend only. Focused checks (mechanism specifications, per §5.1), all in
+`tests/platform/`: `test_epoch_admission.py` (atomicity of capture+lease, the CURRENT/DRAINING/RELEASED state
+machine, idempotent release, and a real multi-threaded stress test proving no lost holder-count updates);
+`test_epoch_drain_before_release.py`; `test_prepare_abort_leaves_live_untouched.py` (both the
+`RESTART_REQUIRED` and the prepare-exception path, both aborting every module); `test_commit_failure.py`
+(replica goes `UNAVAILABLE`, the pointer never swaps, and no further admission or reconfiguration succeeds);
+`test_initialization_ordering.py` (dependency order, cycle detection, self-dependency, missing dependency);
+`test_initialization_cleanup.py` (a failed `initialize()` unwinds prior modules, and cleanup failures are
+reported alongside the original).
 
-**Commit.** `refactor(platform): add epoch-aware module lifecycle`
+**Commit.** `refactor(platform): add epoch-aware module lifecycle` (original), plus
+`fix(platform): close epoch admission race, full-abort, fatal-commit, and dependency-ordering gaps` (this
+amendment).
 
 ---
 
@@ -2205,47 +2261,52 @@ architectural defect.
 01  chore: establish unified platform consolidation baseline
 02  refactor(platform): add neutral contracts and capability kernel        [1A]
 03  refactor(platform): add epoch-aware module lifecycle                   [1B]
-04  refactor(config): introduce canonical runtime configuration model
-05  feat(platform): add configuration-driven system store bootstrap
-06  refactor(bootstrap): decouple application startup from test tooling
-07  refactor(agents): standardize independent agent plugin contract
-08  feat(platform): add LangGraph durable reasoning foundation
-09  refactor(workflow): make return orchestration agent-independent and config-driven
-10  refactor(order-discovery): consolidate on graph-first agent with durable reasoning
-11  refactor(sources): unify read-only source connector framework
-12  feat(graph-schema): add independent persistent analyzer module
-13  feat(graph-schema): implement source-driven schema reasoning
-14  feat(graph-schema): add interactive mutation and validation lifecycle
-15  feat(graph): complete safe generation activation and draining
-16  refactor(ai): consolidate gateway into AI Control Center backend
-17  feat(ai): replace manual file provider with durable interception service
-18  refactor(config): consolidate configuration control plane
-19  refactor(returns): consolidate full return lifecycle backend
-20  feat(frontend): add unified four-domain application shell
-21  feat(frontend): build end-to-end Return Business Copilot
-22  feat(frontend): consolidate platform Configuration experience
-23  feat(frontend): rebuild independent Graph Schema Analyzer
-24  feat(frontend): build AI Control Center and intervention console
-25  refactor(runtime): cut over Data Console APIs to canonical modules
-26  refactor(runtime): retire V2 platform shell
-27  refactor(runtime): reduce main.py to module activation
-28  refactor(frontend): remove legacy V1 V2 and studio surfaces
-29  refactor(cleanup): remove superseded platform implementations
-30  refactor(bootstrap): finalize production compose topology
-31  refactor(config): remove obsolete legacy configuration
-32  chore(repo): remove obsolete scripts and historical runtime debris
-33  docs: align source and README documentation with unified platform
-34  fix: close unified platform static integrity gaps
-35  fix: close unified platform functional validation gaps
+04  fix(platform): close epoch admission race, full-abort, fatal-commit,
+    and dependency-ordering gaps                                          [1B, post-review]
+05  refactor(config): introduce canonical runtime configuration model
+06  feat(platform): add configuration-driven system store bootstrap
+07  refactor(bootstrap): decouple application startup from test tooling
+08  refactor(agents): standardize independent agent plugin contract
+09  feat(platform): add LangGraph durable reasoning foundation
+10  refactor(workflow): make return orchestration agent-independent and config-driven
+11  refactor(order-discovery): consolidate on graph-first agent with durable reasoning
+12  refactor(sources): unify read-only source connector framework
+13  feat(graph-schema): add independent persistent analyzer module
+14  feat(graph-schema): implement source-driven schema reasoning
+15  feat(graph-schema): add interactive mutation and validation lifecycle
+16  feat(graph): complete safe generation activation and draining
+17  refactor(ai): consolidate gateway into AI Control Center backend
+18  feat(ai): replace manual file provider with durable interception service
+19  refactor(config): consolidate configuration control plane
+20  refactor(returns): consolidate full return lifecycle backend
+21  feat(frontend): add unified four-domain application shell
+22  feat(frontend): build end-to-end Return Business Copilot
+23  feat(frontend): consolidate platform Configuration experience
+24  feat(frontend): rebuild independent Graph Schema Analyzer
+25  feat(frontend): build AI Control Center and intervention console
+26  refactor(runtime): cut over Data Console APIs to canonical modules
+27  refactor(runtime): retire V2 platform shell
+28  refactor(runtime): reduce main.py to module activation
+29  refactor(frontend): remove legacy V1 V2 and studio surfaces
+30  refactor(cleanup): remove superseded platform implementations
+31  refactor(bootstrap): finalize production compose topology
+32  refactor(config): remove obsolete legacy configuration
+33  chore(repo): remove obsolete scripts and historical runtime debris
+34  docs: align source and README documentation with unified platform
+35  fix: close unified platform static integrity gaps
+36  fix: close unified platform functional validation gaps
 ```
 
 **Policy.** After each phase: code complete → documentation complete → phase gate green → `git diff` reviewed →
 commit → push. Never accumulate the refactor into one final commit. No ZIP files, no evidence bundles.
 
-**Commits 02 and 03 are one architectural phase.** They exist as two commits only to shrink the review and
-rollback surface of the most foundational work in the plan. 1B must immediately follow 1A — do not begin
-Phase 2 between them, and do not treat 1A as a releasable state. The `ModuleRuntime` contract and epoch model
-delivered in 1B are what Phase 2's configuration adoption is built on.
+**Commits 02, 03, and 04 are one architectural phase.** They exist as separate commits only to shrink the
+review and rollback surface of the most foundational work in the plan — 04 is a post-review correctness pass
+on 03's mechanism (epoch admission atomicity, full-abort semantics, fatal-commit fail-closing, and
+dependency-ordered initialization), found before Phase 2 began. 1B (03 + 04) must immediately follow 1A — do
+not begin Phase 2 before 04 lands, and do not treat 1A or the first cut of 1B as a releasable state. The
+`ModuleRuntime` contract and epoch model this phase delivers are what Phase 2's configuration adoption is
+built on.
 
 ---
 
@@ -2276,6 +2337,12 @@ delivered in 1B are what Phase 2's configuration adoption is built on.
 | R30 | Run abandoned while external work still pending | Sweeper preconditions; forced abandonment via Mongo transaction + durable resume command; late completions rejected | 5A |
 | R31 | Pinned session silently reads a newer release | `RuntimeConfigurationView` is the only readable object; agents never hold a handle | 1, 2, 5 |
 | R32 | Request observes modules on two different releases mid-adoption | One replica epoch-pointer swap; per-request epoch capture; drain before release | 1, 2 |
+| R36 | Epoch capture and lease acquisition race, releasing resources a request still holds | `EpochAdmission` — one lock owns the pointer, the CURRENT/DRAINING/RELEASED state, and holder counts; `acquire_current()` is the only admission entry point | 1 |
+| R37 | Abort only reaches modules that prepared before the refusing/failing one | `_abort_all` calls every module unconditionally, best-effort | 1 |
+| R38 | A caller catches a commit failure and keeps serving on inconsistent module state | `ReplicaStatus.UNAVAILABLE` + `FatalReconfigurationError`, refused on every later call | 1 |
+| R39 | A module's `initialize()` runs before a module it depends on has finished | `initialization_dependencies` + `topological_order()` (DFS, cycle/self-dependency/missing-dependency detection) | 1 |
+| R40 | A failed `initialize()` leaks already-initialized modules | `initialize_all` shuts down prior modules in reverse order before re-raising | 1 |
+| R41 | Kernel built but never exercised alongside real startup | Zero-module `ModuleRegistry` wired into `main.py`'s existing `lifespan()`, proven to execute end to end | 1 |
 | R33 | Crash between abandonment commit and Temporal signal strands a workflow | `reasoning_resume_commands` outbox, at-least-once delivery, idempotent on `command_id` | 5A |
 | R34 | Stale lock holder cannot be fenced | `bootstrap_locks` persists `lease_id` + `fencing_token`; all writes CAS on the triple | 3 |
 | R35 | Adapter passes `isinstance` but has a wrong signature | Three-layer conformance: publication check + typed factory checked by mypy + contract test | 1 |

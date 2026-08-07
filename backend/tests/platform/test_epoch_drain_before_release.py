@@ -7,8 +7,7 @@ from __future__ import annotations
 import pytest
 
 from return_platform.bootstrap.epoch import (
-    EpochLeaseTracker,
-    EpochPointer,
+    EpochAdmission,
     ReconfigurationCoordinator,
     SimpleRuntimeEpoch,
 )
@@ -38,18 +37,17 @@ async def test_release_epoch_waits_for_the_lease_to_drain() -> None:
     old_epoch = SimpleRuntimeEpoch(epoch=1, release_id="r1")
     new_epoch = SimpleRuntimeEpoch(epoch=2, release_id="r2")
     module = FakeModule()
-    pointer = EpochPointer(old_epoch)
-    leases = EpochLeaseTracker()
-    coordinator = ReconfigurationCoordinator([module], pointer, leases)
+    admission = EpochAdmission(old_epoch)
+    coordinator = ReconfigurationCoordinator({"module": module}, admission)
 
-    leases.acquire(old_epoch)  # a request is mid-flight on the old epoch
+    held = admission.acquire_current()  # a request is mid-flight on the old epoch
     await coordinator.reconfigure(new_epoch)
 
     released_while_held = await coordinator.release_if_drained(old_epoch)
     assert released_while_held is False
     assert module.released == []
 
-    leases.release(old_epoch)
+    admission.release(held)
     released_after_drain = await coordinator.release_if_drained(old_epoch)
     assert released_after_drain is True
     assert module.released == [1]

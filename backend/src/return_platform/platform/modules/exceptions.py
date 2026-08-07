@@ -17,3 +17,11 @@ class CapabilityUnsatisfied(RuntimeError):
 
 class ModuleInitFailed(RuntimeError):
     """A module's initialize() raised. Startup fails closed in production."""
+
+
+class MissingInitializationDependency(RuntimeError):
+    """A module declares initialization_dependencies naming an unregistered module_id."""
+
+
+class InitializationCycle(RuntimeError):
+    """The initialization dependency graph has a cycle, including a self-dependency."""

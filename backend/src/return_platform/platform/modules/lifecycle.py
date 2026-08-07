@@ -1,29 +1,101 @@
-"""Ordered module lifecycle: initialize, shutdown, and health rollup.
-
-Modules activate and shut down in the order the caller supplies -- ModuleDescriptor
-does not yet declare dependency edges, so there is no ordering to sort by beyond
-that. Add a real dependency sort here if a descriptor grows a declared dependency
-list; do not invent one speculatively.
+"""Ordered module lifecycle: dependency-respecting initialization order, cleanup on
+partial-initialization failure, reverse-order shutdown, and health rollup.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Protocol, runtime_checkable
 
-from return_platform.platform.modules.contracts import HealthStatus, ModuleHealth, ModuleRuntime
+from return_platform.platform.modules.contracts import HealthStatus, ModuleHealth
+from return_platform.platform.modules.descriptor import ModuleDescriptor
+from return_platform.platform.modules.exceptions import (
+    InitializationCycle,
+    MissingInitializationDependency,
+)
 
 
-async def initialize_all(modules: Sequence[ModuleRuntime]) -> None:
+@runtime_checkable
+class Initializable(Protocol):
+    """The minimal shape initialize_all()/shutdown_all() need.
+
+    Every ModuleRuntime satisfies this structurally; test doubles only need these two
+    methods, not the full ModuleRuntime surface.
+    """
+
+    async def initialize(self) -> None: ...
+    async def shutdown(self) -> None: ...
+
+
+def topological_order(descriptors: Sequence[ModuleDescriptor]) -> tuple[str, ...]:
+    """Order module_ids so every module's initialization_dependencies precede it.
+
+    Raises MissingInitializationDependency if a declared dependency is not among
+    `descriptors`. Raises InitializationCycle if the dependency graph has a cycle --
+    a module depending on itself is a cycle of length one and is caught the same way,
+    with no separate check needed.
+    """
+    by_id = {descriptor.module_id: descriptor for descriptor in descriptors}
+    for descriptor in descriptors:
+        for dependency in descriptor.initialization_dependencies:
+            if dependency not in by_id:
+                raise MissingInitializationDependency(
+                    f"module {descriptor.module_id!r} depends on unregistered module {dependency!r}"
+                )
+
+    order: list[str] = []
+    visited: set[str] = set()
+    visiting: set[str] = set()
+
+    def visit(module_id: str) -> None:
+        if module_id in visited:
+            return
+        if module_id in visiting:
+            raise InitializationCycle(
+                f"initialization dependency cycle detected at module {module_id!r}"
+            )
+        visiting.add(module_id)
+        for dependency in by_id[module_id].initialization_dependencies:
+            visit(dependency)
+        visiting.discard(module_id)
+        visited.add(module_id)
+        order.append(module_id)
+
+    for descriptor in descriptors:
+        visit(descriptor.module_id)
+
+    return tuple(order)
+
+
+async def initialize_all(modules: Sequence[Initializable]) -> None:
     """Initialize every module in order.
 
-    Fails closed: a raise stops the sequence and propagates -- the caller does not get
-    a partially-initialized module list back.
+    Fails closed AND cleans up: if a module raises, every module already initialized
+    is shut down in reverse order before the original exception propagates, so the
+    caller never holds a partially-initialized module list. If cleanup itself also
+    raises, both the original failure and the cleanup failures are reported together.
     """
+    initialized: list[Initializable] = []
     for module in modules:
-        await module.initialize()
+        try:
+            await module.initialize()
+        except Exception as exc:
+            cleanup_errors: list[Exception] = []
+            for already_initialized in reversed(initialized):
+                try:
+                    await already_initialized.shutdown()
+                except Exception as cleanup_exc:
+                    cleanup_errors.append(cleanup_exc)
+            if cleanup_errors:
+                raise ExceptionGroup(
+                    "initialization failed and cleanup encountered further errors",
+                    [exc, *cleanup_errors],
+                ) from None
+            raise
+        initialized.append(module)
 
 
-async def shutdown_all(modules: Sequence[ModuleRuntime]) -> None:
+async def shutdown_all(modules: Sequence[Initializable]) -> None:
     """Shut down every module in reverse order, best-effort.
 
     Every module gets a shutdown attempt regardless of earlier failures; failures are

@@ -1112,15 +1112,27 @@ class ModuleRuntimeContext(Protocol):
     No `.ai`, no `.knowledge`, no `.graph`, and no domain-owned type anywhere in the
     signature. A module needing another module's service declares a Protocol in its own
     ports/ and resolves it from `capabilities` during resolve_capabilities(). See §13.1.
+
+    Every field is a read-only property, not a plain attribute: a plain `x: T` Protocol
+    member means "readable AND writable" to mypy, which the natural frozen
+    implementation (a frozen dataclass or pydantic frozen model) cannot satisfy.
     """
-    system_store: SystemStore
-    secrets: SecretResolver
-    redactor: Redactor
-    audit: AuditSink
-    configuration: RuntimeConfigurationHandle    # platform-neutral (§7.1)
-    capabilities: CapabilityRegistry
-    clock: Clock
-    correlation: CorrelationContext
+    @property
+    def system_store(self) -> SystemStore: ...
+    @property
+    def secrets(self) -> SecretResolver: ...
+    @property
+    def redactor(self) -> Redactor: ...
+    @property
+    def audit(self) -> AuditSink: ...
+    @property
+    def configuration(self) -> RuntimeConfigurationHandle: ...    # platform-neutral (§7.1)
+    @property
+    def capabilities(self) -> CapabilityRegistry: ...
+    @property
+    def clock(self) -> Clock: ...
+    @property
+    def correlation(self) -> CorrelationContext: ...
 
 
 class RuntimeEpoch(Protocol):
@@ -1346,6 +1358,10 @@ class ModuleDescriptor(BaseModel):
     capabilities: frozenset[str]
     configuration_schema: str            # reference, not inline schema
     required_platform_capabilities: frozenset[str]
+    initialization_dependencies: frozenset[str] = frozenset()
+    # module_ids (not Python imports) that must finish initialize() before this
+    # module's initialize() runs. Empty by default -- most modules have none. See
+    # platform.modules.lifecycle.topological_order (§7.2, dependency-ordered init).
 ```
 
 ### 7.7 System store — `platform/system_store/contracts.py`
@@ -2079,6 +2095,22 @@ commit_reconfigure(X) on every module   abort_reconfigure(X) on every module
 - **The epoch pointer swap is the only moment adoption becomes visible**, and it is one write.
 - Old-epoch resources are retained until in-flight requests drain, then released. This is the same
   drain-before-release discipline as graph generations (§13.3), for the same reason.
+
+**Capture and lease acquisition are one atomic operation, not two.** A design that exposes "read the current
+epoch" and "register as a holder of it" as separate calls on separate objects (a pointer object plus an
+independent lease-tracker object) admits a race: a reader observes epoch X, and before it registers as a
+holder, a concurrent reconfiguration swaps to X+1 and — seeing zero holders on X — releases X's resources out
+from under the reader. The fix is a single component owning the pointer, the drain state, and the holder
+counts behind one lock, with only one public entry point for admission (`acquire_current()`) that reads and
+increments as one operation. There is no way to express "give me a specific, possibly-stale epoch" — admission
+always targets whatever is current at that instant.
+
+Each epoch carries an explicit lifecycle state: `CURRENT → DRAINING → RELEASED`. New leases are only ever
+issued against `CURRENT`; a lease acquired while `CURRENT` remains valid to release after the epoch moves to
+`DRAINING`; attempting to release a `CURRENT` epoch is rejected outright (the actively serving epoch can never
+be torn down); and `RELEASED` is terminal and idempotent to request again. The lock protects reads and writes
+of this state and the pointer together, so no operation can observe or act on a value that a concurrent swap
+has already superseded.
 
 *(A request-admission read/write lock — writers block admission during the swap — is an acceptable simpler
 implementation, but it stalls admission and does nothing for long-running requests. The epoch model is the

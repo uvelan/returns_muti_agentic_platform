@@ -51,12 +51,20 @@ class ModuleRuntimeContext(Protocol):
     Phase 1B scope: only the fields backed by an existing contract. system_store,
     secrets, redactor, and audit are added once Phase 3 introduces those platform
     packages -- extending this Protocol, not redesigning it.
+
+    Declared as read-only properties, not plain attributes: a plain `x: T` Protocol
+    member means "readable AND writable" to mypy, which the natural frozen
+    implementation (see bootstrap/context.py's RuntimeContext) cannot satisfy.
     """
 
-    configuration: RuntimeConfigurationHandle
-    capabilities: CapabilityRegistry
-    clock: Clock
-    correlation: CorrelationContext
+    @property
+    def configuration(self) -> RuntimeConfigurationHandle: ...
+    @property
+    def capabilities(self) -> CapabilityRegistry: ...
+    @property
+    def clock(self) -> Clock: ...
+    @property
+    def correlation(self) -> CorrelationContext: ...
 
 
 class ReconfigureOutcome(StrEnum):

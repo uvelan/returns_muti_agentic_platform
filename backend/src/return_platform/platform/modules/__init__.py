@@ -16,6 +16,8 @@ from return_platform.platform.modules.descriptor import ModuleDescriptor, Module
 from return_platform.platform.modules.exceptions import (
     CapabilityUnsatisfied,
     DuplicateImplementation,
+    InitializationCycle,
+    MissingInitializationDependency,
     ModuleInitFailed,
     ModuleNotRegistered,
 )
@@ -23,6 +25,7 @@ from return_platform.platform.modules.lifecycle import (
     initialize_all,
     rollup_health,
     shutdown_all,
+    topological_order,
 )
 from return_platform.platform.modules.registry import ModuleRegistry
 
@@ -31,6 +34,8 @@ __all__ = [
     "CapabilityUnsatisfied",
     "DuplicateImplementation",
     "HealthStatus",
+    "InitializationCycle",
+    "MissingInitializationDependency",
     "ModuleDescriptor",
     "ModuleFactory",
     "ModuleHealth",
@@ -45,4 +50,5 @@ __all__ = [
     "initialize_all",
     "rollup_health",
     "shutdown_all",
+    "topological_order",
 ]

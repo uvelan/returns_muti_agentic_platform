@@ -3,10 +3,13 @@
 from return_platform.bootstrap.activation import activate, construct_all
 from return_platform.bootstrap.context import RuntimeContext, StaticCorrelationContext, SystemClock
 from return_platform.bootstrap.epoch import (
+    EpochAdmission,
     EpochAllocator,
-    EpochLeaseTracker,
-    EpochPointer,
+    EpochLifecycleState,
+    EpochStateError,
+    FatalReconfigurationError,
     ReconfigurationCoordinator,
+    ReplicaStatus,
     SimpleRuntimeEpoch,
 )
 from return_platform.bootstrap.errors import (
@@ -18,10 +21,13 @@ from return_platform.bootstrap.health import collect_module_health, overall_stat
 from return_platform.bootstrap.lifespan import module_lifespan
 
 __all__ = [
+    "EpochAdmission",
     "EpochAllocator",
-    "EpochLeaseTracker",
-    "EpochPointer",
+    "EpochLifecycleState",
+    "EpochStateError",
+    "FatalReconfigurationError",
     "ReconfigurationCoordinator",
+    "ReplicaStatus",
     "RuntimeContext",
     "SimpleRuntimeEpoch",
     "StartupFailure",
