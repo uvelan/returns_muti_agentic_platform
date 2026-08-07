@@ -60,17 +60,27 @@ class ActivationService:
                     if target_result.modified_count != 1:
                         raise ActivationConflictError(f"Target release {target_release_id} not found or not in APPROVED state")
 
+                    target_release_doc = await self._releases.find_one({"release_id": target_release_id}, session=session)
+                    checksum = target_release_doc.get("checksum", "") if target_release_doc else ""
+
+                    current_pointer = await self._pointer.find_one({"_id": "active"}, session=session)
+                    pointer_version = current_pointer.get("version", 0) if current_pointer else 0
+
                     pointer_result = await self._pointer.find_one_and_update(
-                        {"_id": "singleton"},
-                        {"$set": {"active_release_id": target_release_id, "updated_at": datetime.now(timezone.utc)}},
-                        upsert=True,
+                        {"_id": "active", "version": pointer_version},
+                        {"$set": {
+                            "release_id": target_release_id,
+                            "checksum": checksum,
+                            "version": pointer_version + 1,
+                            "updated_at": datetime.now(timezone.utc)
+                        }},
+                        upsert=(pointer_version == 0),
                         return_document=ReturnDocument.AFTER,
                         session=session
                     )
                     
-                    if not pointer_result or pointer_result["active_release_id"] != target_release_id:
-                        raise ActivationConflictError("Failed to update active pointer")
-                        
+                    if not pointer_result or pointer_result["release_id"] != target_release_id:
+                        raise ActivationConflictError("Failed to update active pointer (CAS mismatch)")
             except DuplicateKeyError:
                 raise ActivationConflictError("Concurrent activation detected via unique index")
             except OperationFailure as e:

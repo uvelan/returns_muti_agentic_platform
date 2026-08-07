@@ -30,14 +30,16 @@ class RuntimeConfigurationView(Protocol):
         """Raw configuration for one module, from this release only."""
 
 
+from return_platform.platform.contracts.epoch import RuntimeEpoch
+
 @runtime_checkable
 class RuntimeConfigurationHandle(Protocol):
     """Resolves views. Deliberately has no read method of its own."""
 
-    def current(self) -> RuntimeConfigurationView:
-        """The release this replica has adopted. Never for a pinned session."""
+    def current(self, epoch: RuntimeEpoch) -> RuntimeConfigurationView:
+        """The release this replica has adopted for this epoch. Never for a pinned session."""
 
-    def pinned(self, release_id: str) -> RuntimeConfigurationView:
+    async def pinned(self, release_id: str) -> RuntimeConfigurationView:
         """Raise ReleaseNotRetained if `release_id` has fallen out of retention."""
 
     @property
