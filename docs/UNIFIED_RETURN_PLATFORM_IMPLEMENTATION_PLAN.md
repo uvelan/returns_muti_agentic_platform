@@ -682,6 +682,47 @@ prior-modules test was corrected to expect the failing module's own `shutdown()`
 
 **Commit.** `fix(platform): close concurrent reconfiguration and epoch cleanup races` (this amendment).
 
+**Third post-review amendment.** A further review of the second amendment found one more P0 in the same
+mechanism, one confirmed-stale documentation claim, and one test-collection claim that did not reproduce
+against the actual tree:
+
+1. **`EpochAdmission.release()` tracked a bare integer count, not individual leases, so it was only
+   accidentally idempotent.** `release()` decremented `holders` on every call; releasing the *same* acquired
+   lease twice decremented twice, indistinguishable from two different holders each releasing once. A caller
+   bug or a retried release path could therefore make an epoch appear fully drained while a genuinely
+   different holder was still active — undermining the exact invariant this mechanism exists to guarantee.
+   `acquire_current()` now returns an `EpochLease` (a unique `lease_id` plus the acquired epoch's `epoch`/
+   `release_id`, so it structurally satisfies `RuntimeEpoch` and drops in anywhere a plain epoch value was
+   expected). `EpochAdmission` tracks a `set[str]` of active lease IDs per epoch instead of a count;
+   `release()` now takes the lease and discards its ID from that set — an operation that is unconditionally
+   idempotent, because removing an absent element from a set is a no-op by definition, unlike decrementing a
+   number past zero.
+2. **The root README still named the superseded `EpochPointer`/`EpochLeaseTracker` split and claimed the
+   kernel was "not wired into the application's actual startup yet."** Both were stale relative to the first
+   and second amendments above — the split was replaced by `EpochAdmission` two amendments ago, and `main.py`
+   has wired the zero-module kernel into its real `lifespan()` since this phase's original commit. Corrected.
+3. **A claimed stale test import did not reproduce.** A report described `tests/platform/test_epoch_drain_before_release.py`
+   as still importing the superseded `EpochPointer`/`EpochLeaseTracker` names and therefore failing at
+   collection. Checked against the actual tree: that file was already migrated to `EpochAdmission` in the
+   second amendment above, and a full-repository search found no source file referencing either superseded
+   name — the only hit was a stale `.pyc` bytecode cache for the test module deleted in the *first* amendment
+   (`test_epoch_visibility.py` → `test_epoch_admission.py`), which is gitignored and not a code defect.
+   Removed the stray cache file for hygiene; no source or test change was needed for this item.
+
+**Docs.** Design doc §13.2 gained a new amendment paragraph on lease-identity tracking and the extended
+"Enforced by" list; `bootstrap/README.md` updated throughout from "holder counts" to "active leases by unique
+identity"; root `README.md` corrected on both the class names and the startup-wiring claim.
+
+**Gate.** Implementation gate, backend only. `test_epoch_admission.py`'s
+`test_epoch_release_is_idempotent`/`test_concurrent_lease_counts_are_correct` were replaced with three tests
+that exercise genuine per-lease identity rather than a single shared epoch value:
+`test_duplicate_release_does_not_decrement_another_holder` (the exact two-holder scenario the defect allows),
+`test_epoch_cannot_release_while_any_unique_lease_remains`, and `test_concurrent_lease_release_is_idempotent`
+(many threads redundantly releasing the same lease set, proving the epoch drains exactly once, never early
+and never stuck).
+
+**Commit.** `fix(platform): track epoch holders by unique lease identity, not a bare count` (this amendment).
+
 ---
 
 ## Phase 2 — Canonical configuration contracts
@@ -2317,50 +2358,53 @@ architectural defect.
     and dependency-ordering gaps                                          [1B, post-review]
 05  fix(platform): close concurrent reconfiguration and epoch cleanup
     races                                                                 [1B, post-review]
-06  refactor(config): introduce canonical runtime configuration model
-07  feat(platform): add configuration-driven system store bootstrap
-08  refactor(bootstrap): decouple application startup from test tooling
-09  refactor(agents): standardize independent agent plugin contract
-10  feat(platform): add LangGraph durable reasoning foundation
-11  refactor(workflow): make return orchestration agent-independent and config-driven
-12  refactor(order-discovery): consolidate on graph-first agent with durable reasoning
-13  refactor(sources): unify read-only source connector framework
-14  feat(graph-schema): add independent persistent analyzer module
-15  feat(graph-schema): implement source-driven schema reasoning
-16  feat(graph-schema): add interactive mutation and validation lifecycle
-17  feat(graph): complete safe generation activation and draining
-18  refactor(ai): consolidate gateway into AI Control Center backend
-19  feat(ai): replace manual file provider with durable interception service
-20  refactor(config): consolidate configuration control plane
-21  refactor(returns): consolidate full return lifecycle backend
-22  feat(frontend): add unified four-domain application shell
-23  feat(frontend): build end-to-end Return Business Copilot
-24  feat(frontend): consolidate platform Configuration experience
-25  feat(frontend): rebuild independent Graph Schema Analyzer
-26  feat(frontend): build AI Control Center and intervention console
-27  refactor(runtime): cut over Data Console APIs to canonical modules
-28  refactor(runtime): retire V2 platform shell
-29  refactor(runtime): reduce main.py to module activation
-30  refactor(frontend): remove legacy V1 V2 and studio surfaces
-31  refactor(cleanup): remove superseded platform implementations
-32  refactor(bootstrap): finalize production compose topology
-33  refactor(config): remove obsolete legacy configuration
-34  chore(repo): remove obsolete scripts and historical runtime debris
-35  docs: align source and README documentation with unified platform
-36  fix: close unified platform static integrity gaps
-37  fix: close unified platform functional validation gaps
+06  fix(platform): track epoch holders by unique lease identity, not a
+    bare count                                                            [1B, post-review]
+07  refactor(config): introduce canonical runtime configuration model
+08  feat(platform): add configuration-driven system store bootstrap
+09  refactor(bootstrap): decouple application startup from test tooling
+10  refactor(agents): standardize independent agent plugin contract
+11  feat(platform): add LangGraph durable reasoning foundation
+12  refactor(workflow): make return orchestration agent-independent and config-driven
+13  refactor(order-discovery): consolidate on graph-first agent with durable reasoning
+14  refactor(sources): unify read-only source connector framework
+15  feat(graph-schema): add independent persistent analyzer module
+16  feat(graph-schema): implement source-driven schema reasoning
+17  feat(graph-schema): add interactive mutation and validation lifecycle
+18  feat(graph): complete safe generation activation and draining
+19  refactor(ai): consolidate gateway into AI Control Center backend
+20  feat(ai): replace manual file provider with durable interception service
+21  refactor(config): consolidate configuration control plane
+22  refactor(returns): consolidate full return lifecycle backend
+23  feat(frontend): add unified four-domain application shell
+24  feat(frontend): build end-to-end Return Business Copilot
+25  feat(frontend): consolidate platform Configuration experience
+26  feat(frontend): rebuild independent Graph Schema Analyzer
+27  feat(frontend): build AI Control Center and intervention console
+28  refactor(runtime): cut over Data Console APIs to canonical modules
+29  refactor(runtime): retire V2 platform shell
+30  refactor(runtime): reduce main.py to module activation
+31  refactor(frontend): remove legacy V1 V2 and studio surfaces
+32  refactor(cleanup): remove superseded platform implementations
+33  refactor(bootstrap): finalize production compose topology
+34  refactor(config): remove obsolete legacy configuration
+35  chore(repo): remove obsolete scripts and historical runtime debris
+36  docs: align source and README documentation with unified platform
+37  fix: close unified platform static integrity gaps
+38  fix: close unified platform functional validation gaps
 ```
 
 **Policy.** After each phase: code complete → documentation complete → phase gate green → `git diff` reviewed →
 commit → push. Never accumulate the refactor into one final commit. No ZIP files, no evidence bundles.
 
-**Commits 02 through 05 are one architectural phase.** They exist as separate commits only to shrink the
-review and rollback surface of the most foundational work in the plan — 04 and 05 are two successive
+**Commits 02 through 06 are one architectural phase.** They exist as separate commits only to shrink the
+review and rollback surface of the most foundational work in the plan — 04, 05, and 06 are three successive
 post-review correctness passes on 03's mechanism (04: epoch admission atomicity, full-abort semantics,
 fatal-commit fail-closing, dependency-ordered initialization; 05: reconfigure serialization plus stale-epoch
 fencing, atomic admission-closed state, retryable release finalization, and shutting down a failing
-initializer), both found before Phase 2 began. 1B (03 + 04 + 05) must immediately follow 1A — do not begin
-Phase 2 before 05 lands, and do not treat 1A or either intermediate cut of 1B as a releasable state. The
+initializer; 06: unique-identity lease tracking, replacing a bare holder count that was only accidentally
+idempotent), all found before Phase 2 began. 1B (03 + 04 + 05 + 06) must immediately follow 1A — do not begin
+Phase 2 before 06 lands, and do not treat 1A or any intermediate cut of 1B as a releasable state. The
 `ModuleRuntime` contract and epoch model this phase delivers are what Phase 2's configuration adoption is
 built on.
 

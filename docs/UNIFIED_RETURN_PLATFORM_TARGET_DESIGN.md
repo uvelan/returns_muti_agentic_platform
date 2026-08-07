@@ -2104,10 +2104,21 @@ commit_reconfigure(X) on every module   abort_reconfigure(X) on every module
 epoch" and "register as a holder of it" as separate calls on separate objects (a pointer object plus an
 independent lease-tracker object) admits a race: a reader observes epoch X, and before it registers as a
 holder, a concurrent reconfiguration swaps to X+1 and — seeing zero holders on X — releases X's resources out
-from under the reader. The fix is a single component owning the pointer, the drain state, and the holder
-counts behind one lock, with only one public entry point for admission (`acquire_current()`) that reads and
-increments as one operation. There is no way to express "give me a specific, possibly-stale epoch" — admission
+from under the reader. The fix is a single component owning the pointer, the drain state, and the active
+leases behind one lock, with only one public entry point for admission (`acquire_current()`) that reads and
+registers as one operation. There is no way to express "give me a specific, possibly-stale epoch" — admission
 always targets whatever is current at that instant.
+
+**Holders are tracked by unique lease identity, not a bare count.** A plain integer counter cannot distinguish
+"this exact acquisition was released twice" from "two different holders each released once" — decrementing on
+every `release()` call means a caller that accidentally releases the same acquisition twice silently frees a
+slot that some other, still-active holder actually owns, letting an epoch appear fully drained while a genuine
+holder is still using it. `acquire_current()` therefore returns an `EpochLease` (a unique `lease_id` plus the
+acquired epoch, structurally satisfying `RuntimeEpoch` so it drops in anywhere a plain epoch value was
+expected), and the admission tracks a `set` of active lease IDs per epoch rather than a count. Releasing a
+lease removes it from the set — an operation that is unconditionally idempotent no matter how many times, or
+from how many concurrent threads, it is invoked, because set removal of an absent element is a no-op by
+definition, unlike decrementing a number past zero.
 
 Each epoch carries an explicit lifecycle state: `CURRENT → DRAINING → RELEASING → RELEASED`. New leases are
 only ever issued against `CURRENT`; a lease acquired while `CURRENT` remains valid to release after the epoch
@@ -2167,7 +2178,10 @@ returns `RESTART_REQUIRED` after every earlier module already prepared, assertin
 requests while the release changes, asserting every request reports exactly one release ID across all
 participating modules — plus
 `tests/agents/test_agent_reads_pinned_configuration_after_new_release_activation.py` and
-`tests/agents/test_running_workflow_never_reads_current_release.py`.
+`tests/agents/test_running_workflow_never_reads_current_release.py`. Lease-identity tracking specifically:
+`tests/platform/test_epoch_admission.py`'s `test_duplicate_release_does_not_decrement_another_holder`,
+`test_epoch_cannot_release_while_any_unique_lease_remains`, and
+`test_concurrent_lease_release_is_idempotent`.
 
 ### 13.3 A generation cannot retire under a live session
 
@@ -2340,7 +2354,7 @@ generation-scoped, requires `READY_FOR_ACTIVATION`, and executes the orchestrato
 | Invariant | New structures | New modules |
 |---|---|---|
 | 13.1 | — | `platform/contracts/`, `platform/capabilities/`, `bootstrap/adapters/` |
-| 13.2 | `configuration_active_pointer`, `configuration_adoption` | `configuration/domain/handle.py`, `bootstrap/reconciler.py`, two-phase `ModuleRuntime`, `bootstrap/epoch.py`'s `EpochAdmission` (fenced `begin_swap`, `CURRENT`/`DRAINING`/`RELEASING`/`RELEASED`, accepting-flag under the same lock), `ReconfigurationCoordinator`'s per-instance reconfigure lock |
+| 13.2 | `configuration_active_pointer`, `configuration_adoption` | `configuration/domain/handle.py`, `bootstrap/reconciler.py`, two-phase `ModuleRuntime`, `bootstrap/epoch.py`'s `EpochAdmission` (fenced `begin_swap`, `CURRENT`/`DRAINING`/`RELEASING`/`RELEASED`, accepting-flag under the same lock, `EpochLease` unique-identity holder tracking), `ReconfigurationCoordinator`'s per-instance reconfigure lock |
 | 13.3 | `generation_session_leases` | `graph/lifecycle/binding.py`, extended `leases.py` |
 | 13.4 | — | `graph/lifecycle/handles.py` |
 | 13.5 | `resume_command` (embedded) | `ai/interception/resume_worker.py` |

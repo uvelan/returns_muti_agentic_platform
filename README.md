@@ -71,16 +71,21 @@ The consolidation introduces a cross-cutting platform kernel at
   initialize, publish/resolve capabilities, epoch-keyed reconfiguration, health,
   shutdown).
 - `bootstrap/` — the epoch-keyed two-phase reconfiguration mechanism
-  (`EpochPointer`, `EpochLeaseTracker`, `ReconfigurationCoordinator`) and the
-  four-pass activation sequence (construct → publish native capabilities → publish
-  adapter bindings → resolve). A single replica-scoped epoch swap is what makes a
-  configuration change visible atomically — no request ever observes two modules on
-  two different releases. `bootstrap/adapters/` is the only package allowed to import
-  two modules at once, to bind a provider's contract to a consumer's port.
+  (`EpochAdmission`, `ReconfigurationCoordinator`) and the four-pass activation
+  sequence (construct → publish native capabilities → publish adapter bindings →
+  resolve). A single replica-scoped epoch swap is what makes a configuration change
+  visible atomically — no request ever observes two modules on two different
+  releases. Every request holds a uniquely-identified `EpochLease`, not a bare count,
+  so releasing one request's lease can never be mistaken for releasing another's.
+  `bootstrap/adapters/` is the only package allowed to import two modules at once, to
+  bind a provider's contract to a consumer's port.
 
-None of this is wired into the application's actual startup yet — it is built and
-tested standalone, ahead of the phases (canonical configuration, system store, audit)
-that supply its real dependencies.
+`main.py`'s existing startup already runs this, with zero business modules registered
+yet: `create_app`'s lifespan constructs an empty `ModuleRegistry` and runs it through
+`module_lifespan()`, proving the full construct → publish → resolve → initialize →
+shutdown sequence executes end to end with no effect on existing behavior. The first
+real module replaces the empty registry starting in a later phase; `SystemStore` and
+`AuditSink` (Phase 3) extend the kernel's dependencies the same way.
 
 See [`docs/UNIFIED_RETURN_PLATFORM_TARGET_DESIGN.md`](docs/UNIFIED_RETURN_PLATFORM_TARGET_DESIGN.md)
 sections 7 and 13 for the full contracts and the distributed-correctness invariants

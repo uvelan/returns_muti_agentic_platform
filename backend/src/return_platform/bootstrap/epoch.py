@@ -32,7 +32,7 @@ import asyncio
 import itertools
 import threading
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
@@ -44,6 +44,27 @@ from return_platform.platform.modules.contracts import ReconfigureOutcome
 class SimpleRuntimeEpoch:
     """Structurally satisfies RuntimeEpoch."""
 
+    epoch: int
+    release_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class EpochLease:
+    """A held reference to one specific acquisition of an epoch, returned by
+    EpochAdmission.acquire_current().
+
+    Structurally satisfies RuntimeEpoch (`epoch`/`release_id`), so existing code that
+    threads "the current epoch" through business logic keeps working unmodified. Also
+    carries its own unique `lease_id` so `EpochAdmission.release()` can tell "this
+    exact acquisition was released" from "some other holder of the same epoch was
+    released" -- a bare per-epoch counter cannot make that distinction, which is what
+    made an earlier version of `release()` only accidentally idempotent: releasing the
+    same acquisition twice decremented the count twice, indistinguishable from two
+    different holders each releasing once, letting the epoch appear drained while a
+    genuine holder was still active.
+    """
+
+    lease_id: str
     epoch: int
     release_id: str
 
@@ -84,13 +105,13 @@ class ReplicaUnavailable(RuntimeError):
 class _EpochRecord:
     epoch: RuntimeEpoch
     state: EpochLifecycleState
-    holders: int = 0
+    active_leases: set[str] = field(default_factory=set)
 
 
 class EpochAdmission:
     """The single source of truth for which epoch is current, which are draining or
-    releasing, how many holders each has, and whether the replica is still accepting
-    new work.
+    releasing, which leases are active on each, and whether the replica is still
+    accepting new work.
 
     Pointer swap, drain-state transition, lease admission, and the accepting/closed
     flag all share one lock, so no caller can observe or act on a value that a
@@ -100,6 +121,14 @@ class EpochAdmission:
     section here is synchronous with no `await` inside it, so the lock is held for a
     bounded, tiny duration and protects against both concurrent asyncio tasks and real
     OS threads (e.g. sync route handlers run in a thread pool).
+
+    Holders are tracked by unique lease identity (a `set[str]` of lease_ids per
+    epoch), not a bare count. A count cannot distinguish "this exact acquisition was
+    released" from "some other holder of the same epoch was released" -- releasing
+    the same acquisition twice would decrement twice, letting the epoch appear
+    drained while a genuine holder is still active. A set keyed on lease_id makes a
+    duplicate release of the same lease a true no-op, correctly and permanently
+    idempotent, regardless of how many other leases remain outstanding.
 
     State machine per epoch: CURRENT -> DRAINING -> RELEASING -> RELEASED. New leases
     are only ever handed out for CURRENT (acquire_current() cannot even express "give
@@ -112,6 +141,7 @@ class EpochAdmission:
 
     def __init__(self, initial: RuntimeEpoch) -> None:
         self._lock = threading.Lock()
+        self._lease_counter = itertools.count(1)
         self._records: dict[int, _EpochRecord] = {
             initial.epoch: _EpochRecord(epoch=initial, state=EpochLifecycleState.CURRENT)
         }
@@ -133,32 +163,38 @@ class EpochAdmission:
         with self._lock:
             self._accepting_requests = False
 
-    def acquire_current(self) -> RuntimeEpoch:
+    def acquire_current(self) -> EpochLease:
         """Atomically check admission is open, read the current epoch, and register a
-        holder on it.
+        uniquely-identified lease on it.
 
         Raises ReplicaUnavailable if admission is closed -- checked under the same
-        lock as the holder registration, so there is no window between "the replica
+        lock as the lease registration, so there is no window between "the replica
         just closed" and "a request was admitted anyway."
         """
         with self._lock:
             if not self._accepting_requests:
                 raise ReplicaUnavailable("admission is closed; the replica is UNAVAILABLE")
             record = self._records[self._current_epoch_number]
-            record.holders += 1
-            return record.epoch
+            lease_id = f"lease-{next(self._lease_counter)}"
+            record.active_leases.add(lease_id)
+            return EpochLease(
+                lease_id=lease_id, epoch=record.epoch.epoch, release_id=record.epoch.release_id
+            )
 
-    def release(self, epoch: RuntimeEpoch) -> None:
+    def release(self, lease: EpochLease) -> None:
         """Release a previously acquired lease.
 
-        Idempotent: releasing an epoch with zero holders, or one no longer tracked at
-        all (already fully released), is a no-op rather than an error.
+        Genuinely idempotent per lease: releasing the same `lease` twice, or one for
+        an epoch no longer tracked at all (already fully released), is a no-op rather
+        than an error or a spurious decrement. Discarding `lease.lease_id` from the
+        set is the operation that makes this true -- a bare counter cannot express
+        "this specific lease" and would decrement again on a duplicate call.
         """
         with self._lock:
-            record = self._records.get(epoch.epoch)
-            if record is None or record.holders <= 0:
+            record = self._records.get(lease.epoch)
+            if record is None:
                 return
-            record.holders -= 1
+            record.active_leases.discard(lease.lease_id)
 
     def begin_swap(
         self, new_epoch: RuntimeEpoch, expected_current_epoch: RuntimeEpoch
@@ -211,7 +247,7 @@ class EpochAdmission:
                 raise EpochStateError(f"epoch {epoch.epoch} is CURRENT and cannot be released")
             if record.state is EpochLifecycleState.RELEASING:
                 return True
-            if record.holders > 0:
+            if record.active_leases:
                 return False
             record.state = EpochLifecycleState.RELEASING
             return True
@@ -300,8 +336,9 @@ class ReconfigurationCoordinator:
             else ReplicaStatus.AVAILABLE
         )
 
-    def acquire_current(self) -> RuntimeEpoch:
-        """Admit a new request onto the current epoch.
+    def acquire_current(self) -> EpochLease:
+        """Admit a new request onto the current epoch, returning a uniquely-identified
+        lease.
 
         Raises FatalReconfigurationError if the replica is UNAVAILABLE -- once a
         commit has failed, this replica refuses new work rather than serve on
@@ -317,8 +354,8 @@ class ReconfigurationCoordinator:
                 message="replica is UNAVAILABLE; refusing new request admission",
             ) from exc
 
-    def release(self, epoch: RuntimeEpoch) -> None:
-        self._admission.release(epoch)
+    def release(self, lease: EpochLease) -> None:
+        self._admission.release(lease)
 
     async def reconfigure(self, epoch: RuntimeEpoch) -> RuntimeEpoch | None:
         """Attempt to adopt `epoch`.

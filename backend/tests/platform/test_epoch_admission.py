@@ -1,4 +1,5 @@
-"""Focused check: epoch capture and lease acquisition are one atomic operation, the
+"""Focused check: epoch capture and lease acquisition are one atomic operation, leases
+are tracked by unique identity rather than a bare count, the
 CURRENT/DRAINING/RELEASING/RELEASED state machine is enforced, and a swap can never
 regress the current epoch (design doc section 13.2).
 
@@ -10,6 +11,11 @@ that race is structurally impossible: there is no way to even express "read curr
 separately from "become a holder of it." begin_swap() additionally fences on the
 caller's expected current epoch, so a stale or out-of-order swap is rejected rather
 than silently regressing the current epoch.
+
+Holders are tracked by unique lease_id (a set per epoch), not a bare integer count. A
+count cannot distinguish "this exact lease was released twice" from "two different
+holders each released once" -- releasing the same lease twice would decrement twice,
+letting the epoch appear drained while a genuinely different holder is still active.
 """
 
 from __future__ import annotations
@@ -67,27 +73,27 @@ def test_capture_and_lease_is_atomic_during_swap() -> None:
     epoch_2 = SimpleRuntimeEpoch(epoch=2, release_id="r2")
     admission = EpochAdmission(epoch_1)
 
-    old_holder = admission.acquire_current()
-    assert old_holder is epoch_1
+    old_lease = admission.acquire_current()
+    assert old_lease.epoch == epoch_1.epoch
 
     admission.begin_swap(epoch_2, epoch_1)
 
     # a new request admitted right after the swap must land on the NEW epoch, never
     # on the one that is now draining
-    new_holder = admission.acquire_current()
-    assert new_holder is epoch_2
+    new_lease = admission.acquire_current()
+    assert new_lease.epoch == epoch_2.epoch
 
-    # epoch_1 cannot drain while old_holder is still outstanding
+    # epoch_1 cannot drain while old_lease is still outstanding
     assert admission.begin_release(epoch_1) is False
 
-    admission.release(old_holder)
+    admission.release(old_lease)
 
-    # only once the sole holder has released does epoch_1 actually become releasable
+    # only once the sole lease has released does epoch_1 actually become releasable
     assert admission.begin_release(epoch_1) is True
     admission.finish_release(epoch_1)
 
-    # releasing epoch_1 never touched epoch_2's holder
-    admission.release(new_holder)
+    # releasing epoch_1's lease never touched epoch_2's lease
+    admission.release(new_lease)
 
 
 def test_new_lease_cannot_enter_draining_epoch() -> None:
@@ -98,7 +104,7 @@ def test_new_lease_cannot_enter_draining_epoch() -> None:
     admission.begin_swap(epoch_2, epoch_1)
     acquired = admission.acquire_current()
 
-    assert acquired is epoch_2
+    assert acquired.epoch == epoch_2.epoch
 
 
 def test_current_epoch_cannot_be_released() -> None:
@@ -109,48 +115,69 @@ def test_current_epoch_cannot_be_released() -> None:
         admission.begin_release(epoch_1)
 
 
-def test_epoch_release_is_idempotent() -> None:
+def test_duplicate_release_does_not_decrement_another_holder() -> None:
+    """The exact scenario a bare per-epoch counter gets wrong: two independent
+    requests hold the same epoch; releasing one twice must never be mistaken for
+    releasing the other."""
     epoch_1 = SimpleRuntimeEpoch(epoch=1, release_id="r1")
     epoch_2 = SimpleRuntimeEpoch(epoch=2, release_id="r2")
     admission = EpochAdmission(epoch_1)
 
+    lease_a = admission.acquire_current()
+    lease_b = admission.acquire_current()
     admission.begin_swap(epoch_2, epoch_1)
+
+    admission.release(lease_a)
+    admission.release(lease_a)  # accidental duplicate release of the SAME lease
+
+    # lease_b was never released -- epoch_1 must still be held
+    assert admission.begin_release(epoch_1) is False
+
+    admission.release(lease_b)
     assert admission.begin_release(epoch_1) is True
-    admission.finish_release(epoch_1)
-    assert admission.begin_release(epoch_1) is False  # already RELEASED; no-op, no raise
-
-    # releasing a lease past what was ever acquired never goes negative or raises
-    admission.release(epoch_1)
-    admission.release(epoch_1)
 
 
-def test_concurrent_lease_counts_are_correct() -> None:
+def test_epoch_cannot_release_while_any_unique_lease_remains() -> None:
     epoch_1 = SimpleRuntimeEpoch(epoch=1, release_id="r1")
     epoch_2 = SimpleRuntimeEpoch(epoch=2, release_id="r2")
     admission = EpochAdmission(epoch_1)
 
-    thread_count = 8
-    acquisitions_per_thread = 200
-    total_acquisitions = thread_count * acquisitions_per_thread
+    leases = [admission.acquire_current() for _ in range(5)]
+    admission.begin_swap(epoch_2, epoch_1)
+
+    for lease in leases[:-1]:
+        admission.release(lease)
+        assert admission.begin_release(epoch_1) is False  # at least one lease remains
+
+    admission.release(leases[-1])
+    assert admission.begin_release(epoch_1) is True  # every distinct lease is gone
+
+
+def test_concurrent_lease_release_is_idempotent() -> None:
+    """Many threads redundantly release the same set of leases, racing each other and
+    themselves. Despite the redundancy, the epoch drains exactly once all distinct
+    leases are genuinely released -- never early (a phantom double-release wrongly
+    counted as two releases) and never stuck (a genuine release lost to a race).
+    """
+    epoch_1 = SimpleRuntimeEpoch(epoch=1, release_id="r1")
+    epoch_2 = SimpleRuntimeEpoch(epoch=2, release_id="r2")
+    admission = EpochAdmission(epoch_1)
+
+    leases = [admission.acquire_current() for _ in range(50)]
+    admission.begin_swap(epoch_2, epoch_1)
 
     def worker() -> None:
-        for _ in range(acquisitions_per_thread):
-            admission.acquire_current()
+        for _ in range(5):
+            for lease in leases:
+                admission.release(lease)
 
-    threads = [threading.Thread(target=worker) for _ in range(thread_count)]
+    threads = [threading.Thread(target=worker) for _ in range(8)]
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join()
 
-    admission.begin_swap(epoch_2, epoch_1)
-
-    for _ in range(total_acquisitions - 1):
-        admission.release(epoch_1)
-    assert admission.begin_release(epoch_1) is False  # one holder still outstanding
-
-    admission.release(epoch_1)
-    assert admission.begin_release(epoch_1) is True  # every acquisition was correctly counted
+    assert admission.begin_release(epoch_1) is True
 
 
 def test_begin_swap_requires_expected_current_epoch() -> None:

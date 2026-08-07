@@ -5,6 +5,7 @@ from return_platform.bootstrap.context import RuntimeContext, StaticCorrelationC
 from return_platform.bootstrap.epoch import (
     EpochAdmission,
     EpochAllocator,
+    EpochLease,
     EpochLifecycleState,
     EpochStateError,
     FatalReconfigurationError,
@@ -25,6 +26,7 @@ from return_platform.bootstrap.lifespan import module_lifespan
 __all__ = [
     "EpochAdmission",
     "EpochAllocator",
+    "EpochLease",
     "EpochLifecycleState",
     "EpochStateError",
     "FatalReconfigurationError",
