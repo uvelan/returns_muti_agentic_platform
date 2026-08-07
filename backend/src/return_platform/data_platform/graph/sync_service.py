@@ -1,25 +1,48 @@
-"""Graph projection synchronization from governed MongoDB and SQL Server sources."""
+"""Graph projection synchronization from governed MongoDB and SQL Server sources.
+
+Orchestration adapter over the generic dynamic_knowledge pipeline (extractor
+-> projector -> Neo4jDynamicGraphWriter), driven by the interim ActiveSchema
+in interim_active_schema.py. This module owns run bookkeeping (the
+graph_sync_runs collection), connection wiring, and per-source document
+counting for the run view -- it does not itself extract fields, decide graph
+labels, or write Cypher; see the source-to-graph alignment plan's Step 8.
+"""
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
-import json
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-import pymssql
 from neo4j import AsyncDriver
 from pydantic import BaseModel, ConfigDict, Field
 from pymongo import AsyncMongoClient
 
 from return_platform.configuration.settings import Settings
-from return_platform.data_platform.graph.schema import GraphSchemaManager
+from return_platform.data_platform.graph.interim_active_schema import build_interim_active_schema
 from return_platform.data_platform.schema_registry import SchemaRegistry
-from return_platform.security.contact_evidence import contact_lookup_digest
+from return_platform.dynamic_knowledge.connectors.mongodb import MongoDBSourceScanConnector, SeedPin
+from return_platform.dynamic_knowledge.connectors.sqlserver import (
+    SqlServerConnectionSettings,
+    SqlServerSourceScanConnector,
+)
+from return_platform.dynamic_knowledge.graph.constraints import required_node_constraints
+from return_platform.dynamic_knowledge.graph.generation import GraphGenerationStatus
+from return_platform.dynamic_knowledge.graph.neo4j_writer import Neo4jDynamicGraphWriter
+from return_platform.dynamic_knowledge.graph.projector import GenericGraphProjector
+from return_platform.dynamic_knowledge.graph.write_compiler import compile_node_writes
+from return_platform.dynamic_knowledge.on_demand_sync.contracts import GraphNodeMutation, SourceCursor
+from return_platform.dynamic_knowledge.on_demand_sync.extraction import GenericSourceRecordExtractor
+from return_platform.dynamic_knowledge.schema import ActiveSchema, ConnectorType, validate_graph_identifier
+from return_platform.dynamic_knowledge.sync.adapters import ProjectorGraphWriter, SourceConnectorRegistry
+from return_platform.dynamic_knowledge.sync.coordinator import GenericSyncCoordinator
+
+_LEGACY_GENERATION_ID = "legacy-live"
+_LEGACY_FENCING_TOKEN = 1
+_CONTACT_KEY_REFERENCE = "vault://return-platform/contact-lookup#hmac_key"
 
 
 class GraphSyncScope(StrEnum):
@@ -58,15 +81,6 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _nested(document: dict[str, Any], path: str) -> Any:
-    current: Any = document
-    for part in path.split("."):
-        if not isinstance(current, dict):
-            return None
-        current = current.get(part)
-    return current
-
-
 def _text(value: Any) -> str | None:
     if value is None:
         return None
@@ -74,12 +88,51 @@ def _text(value: Any) -> str | None:
     return normalized or None
 
 
-def _iso(value: Any) -> str | None:
-    if isinstance(value, datetime):
-        return value.astimezone(UTC).isoformat()
-    if value is None:
-        return None
-    return str(value)
+class _UnusedCheckpointStore:
+    """full_sync never reads or writes checkpoints; only incremental_sync does."""
+
+    async def read(self, *, source_asset_id: str, graph_generation_id: str) -> SourceCursor | None:
+        raise NotImplementedError("GraphSyncService only ever runs full_sync")
+
+    async def write(
+        self,
+        *,
+        source_asset_id: str,
+        graph_generation_id: str,
+        checkpoint: SourceCursor,
+        fencing_token: int,
+    ) -> None:
+        raise NotImplementedError("GraphSyncService only ever runs full_sync")
+
+
+class _CountingConnector:
+    """Wraps a connector to record per-source document counts for the run view --
+    orchestration-level bookkeeping, not something the generic connectors need
+    to know about themselves."""
+
+    def __init__(self, inner: Any, counts: dict[str, int]) -> None:
+        self._inner = inner
+        self._counts = counts
+
+    async def capture_high_watermark(self, *, source_asset_id: str) -> SourceCursor:
+        return await self._inner.capture_high_watermark(source_asset_id=source_asset_id)
+
+    def compare_cursors(self, *, source_asset_id: str, left: SourceCursor, right: SourceCursor) -> Any:
+        return self._inner.compare_cursors(source_asset_id=source_asset_id, left=left, right=right)
+
+    async def scan(
+        self,
+        *,
+        schema: ActiveSchema,
+        source_asset_id: str,
+        after: SourceCursor | None,
+        through: SourceCursor,
+    ) -> AsyncIterator[Any]:
+        async for page in self._inner.scan(
+            schema=schema, source_asset_id=source_asset_id, after=after, through=through
+        ):
+            self._counts[source_asset_id] = self._counts.get(source_asset_id, 0) + len(page.documents)
+            yield page
 
 
 class GraphSyncService:
@@ -94,13 +147,22 @@ class GraphSyncService:
         settings: Settings,
         registry: SchemaRegistry,
     ) -> None:
+        del registry  # accepted for constructor compatibility with existing call sites;
+        # this service now derives its own interim ActiveSchema rather than the
+        # legacy SchemaRegistry.graph, so it has nothing left to read from it.
         self._settings = settings
-        self._registry = registry
         self._platform_db = platform_client[settings.mongo_database]
         self._source_db = source_client[settings.source_mongo_database]
         self._driver = driver
         self._runs = self._platform_db["graph_sync_runs"]
-        self._schema_manager = GraphSchemaManager(driver, settings.neo4j_database, registry.graph)
+        self._schema = build_interim_active_schema(
+            configuration_release_id="sync-service-interim-v1",
+            configuration_checksum=hashlib.sha256(b"sync-service-interim-v1").hexdigest(),
+            approved_by="system",
+            approved_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        self._writer = Neo4jDynamicGraphWriter(driver, database=settings.neo4j_database)
+        self._projector = GenericGraphProjector()
 
     async def ensure_indexes(self) -> None:
         await self._runs.create_index([("startedAt", -1)])
@@ -109,64 +171,46 @@ class GraphSyncService:
     async def remove_source_mongodb_records(
         self, records: Sequence[tuple[str, Mapping[str, object]]]
     ) -> None:
-        """Remove projections for authoritative source records that were rolled back."""
-        keys: dict[str, list[str]] = {
-            "customers": [],
-            "orders": [],
-            "products": [],
-            "shipments": [],
-        }
+        """Remove projections for authoritative source records that were rolled back.
+
+        Deletes only the node itself (generation-scoped HARD_DELETE) -- unlike
+        the prior hand-coded Cypher, this does not cascade-delete OrderLine or
+        CustomerAccount children of a removed SalesOrder/Customer. Cascading
+        child cleanup on deletion is the replace-child-set reconciliation
+        machinery (a later stage of the source-to-graph alignment plan), not
+        reimplemented ad hoc here.
+        """
+
+        mutations: list[GraphNodeMutation] = []
         for asset_id, payload in records:
             if asset_id == "source.mongodb.customer_outbound_cdm":
-                for field in ("partyId", "customerId"):
-                    if value := _text(payload.get(field)):
-                        keys["customers"].append(value)
+                key = _text(payload.get("partyId")) or _text(payload.get("customerId"))
+                if key:
+                    mutations.append(_delete("node_customer", {"customer_key": key}))
             elif asset_id == "source.mongodb.sales_inv":
-                if value := _text(payload.get("salesHdrEventData.orderId")):
-                    keys["orders"].append(value)
-                if value := _text(payload.get("salesHdr.salesHdrData.custId")):
-                    keys["customers"].append(value)
+                order_key = _text(payload.get("salesHdrEventData.orderId"))
+                if order_key:
+                    mutations.append(_delete("node_sales_order", {"order_id": order_key}))
+                customer_key = _text(payload.get("salesHdr.salesHdrData.custId"))
+                if customer_key:
+                    mutations.append(_delete("node_customer", {"customer_key": customer_key}))
             elif asset_id == "source.mongodb.product_search":
-                if value := _text(payload.get("productId")):
-                    keys["products"].append(value)
+                product_key = _text(payload.get("productId"))
+                if product_key:
+                    mutations.append(_delete("node_product", {"product_id": product_key}))
             elif asset_id == "source.mongodb.shipment_info":
-                if value := _text(payload.get("shipmentInfoEventData.trkNum")):
-                    keys["shipments"].append(value)
+                tracking_key = _text(payload.get("shipmentInfoEventData.trkNum"))
+                if tracking_key:
+                    mutations.append(_delete("node_shipment", {"tracking_number": tracking_key}))
 
-        await self._write(
-            """
-            UNWIND $rows AS row
-            MATCH (s:Shipment {tracking_number: row.key})
-            DETACH DELETE s
-            """,
-            [{"key": key} for key in keys["shipments"]],
-        )
-        await self._write(
-            """
-            UNWIND $rows AS row
-            MATCH (o:SalesOrder {sales_order_number: row.key})
-            OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(line:OrderLine)
-            DETACH DELETE line, o
-            """,
-            [{"key": key} for key in keys["orders"]],
-        )
-        await self._write(
-            """
-            UNWIND $rows AS row
-            MATCH (p:Product {product_id: row.key})
-            DETACH DELETE p
-            """,
-            [{"key": key} for key in keys["products"]],
-        )
-        await self._write(
-            """
-            UNWIND $rows AS row
-            MATCH (c:Customer {customer_key: row.key})
-            OPTIONAL MATCH (c)-[:HAS_ACCOUNT]->(account:CustomerAccount)
-            DETACH DELETE account, c
-            """,
-            [{"key": key} for key in keys["customers"]],
-        )
+        if not mutations:
+            return
+        async with self._driver.session(database=self._settings.neo4j_database) as session:
+            for statement in compile_node_writes(
+                self._schema, tuple(mutations), graph_generation_id=_LEGACY_GENERATION_ID
+            ):
+                result = await session.run(statement.cypher, statement.parameters)
+                await result.consume()
 
     @staticmethod
     def _view(document: dict[str, Any]) -> GraphSyncRunView:
@@ -189,11 +233,7 @@ class GraphSyncService:
         )
 
     def _configuration_digest(self) -> str:
-        encoded = json.dumps(
-            self._registry.graph.model_dump(mode="json"),
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode()
+        encoded = self._schema.configuration_checksum.encode()
         return hashlib.sha256(encoded).hexdigest()
 
     async def list_runs(self, limit: int = 100) -> list[GraphSyncRunView]:
@@ -221,7 +261,7 @@ class GraphSyncService:
             "_id": run_id,
             "mode": request.mode,
             "status": "RUNNING",
-            "schemaVersion": self._registry.schema_version,
+            "schemaVersion": self._schema.schema_version,
             "sourceCounts": {},
             "nodeWrites": 0,
             "relationshipWrites": 0,
@@ -234,25 +274,19 @@ class GraphSyncService:
         }
         await self._runs.insert_one(document)
         try:
-            constraints = await self._schema_manager.apply() if request.applySchema else []
+            constraints = await self._apply_constraints() if request.applySchema else []
+            await self._ensure_generation_marker()
+
             source_counts: dict[str, int] = {}
-            node_writes = 0
-            relationship_writes = 0
-            if request.mode in {"FULL", "SOURCE_MONGODB"}:
-                counts, nodes, relationships = await self._sync_mongodb(
-                    run_id,
-                    limit,
-                    seed_version=seed_version,
-                    seed_digest=seed_digest,
-                )
-                source_counts.update(counts)
-                node_writes += nodes
-                relationship_writes += relationships
-            if request.mode in {"FULL", "SQLSERVER"}:
-                counts, nodes, relationships = await self._sync_sqlserver(run_id, limit)
-                source_counts.update(counts)
-                node_writes += nodes
-                relationship_writes += relationships
+            node_writes, relationship_writes = await self._sync_participating_sources(
+                request=request,
+                run_id=run_id,
+                limit=limit,
+                seed_version=seed_version,
+                seed_digest=seed_digest,
+                source_counts=source_counts,
+            )
+
             completed = _now()
             document.update(
                 {
@@ -277,550 +311,147 @@ class GraphSyncService:
             await self._runs.update_one({"_id": run_id}, {"$set": document})
             raise
 
-    async def _write(self, query: str, rows: list[dict[str, Any]]) -> None:
-        if not rows:
-            return
-        batch_size = self._settings.graph_sync_batch_size
-        async with self._driver.session(database=self._settings.neo4j_database) as session:
-            for offset in range(0, len(rows), batch_size):
-                result = await session.run(query, rows=rows[offset : offset + batch_size])
-                await result.consume()
-
-    async def _source_seed_documents(
+    async def _sync_participating_sources(
         self,
-        collection_name: str,
         *,
+        request: GraphSyncRequest,
+        run_id: str,
         limit: int,
         seed_version: str | None,
         seed_digest: str | None,
-    ) -> list[dict[str, Any]]:
-        collection = self._source_db[collection_name]
+        source_counts: dict[str, int],
+    ) -> tuple[int, int]:
+        mongo_source_ids = frozenset(
+            source_id
+            for source_id, source in self._schema.sources.items()
+            if source.connector_type == ConnectorType.MONGODB
+        )
+        sql_source_ids = frozenset(
+            source_id
+            for source_id, source in self._schema.sources.items()
+            if source.connector_type == ConnectorType.MSSQL
+        )
+        participating: set[str] = set()
+        if request.mode in {GraphSyncScope.FULL, GraphSyncScope.SOURCE_MONGODB}:
+            participating |= mongo_source_ids
+        if request.mode in {GraphSyncScope.FULL, GraphSyncScope.SQLSERVER}:
+            participating |= sql_source_ids
+        if not participating:
+            return 0, 0
+
+        seed_pins = self._build_seed_pins(mongo_source_ids, seed_version, seed_digest)
+
+        mongo_connector = _CountingConnector(
+            MongoDBSourceScanConnector(
+                self._source_db,
+                page_size=self._settings.graph_sync_batch_size,
+                seed_pins=seed_pins,
+                max_records_per_source=limit,
+            ),
+            source_counts,
+        )
+        sql_connection = SqlServerConnectionSettings(
+            server=self._settings.sqlserver_host,
+            port=self._settings.sqlserver_port,
+            user=self._settings.sqlserver_user,
+            password=self._settings.sqlserver_password.get_secret_value(),
+            database=self._settings.sqlserver_database,
+            timeout_seconds=int(self._settings.operation_timeout_seconds),
+        )
+        sqlserver_connector = _CountingConnector(
+            SqlServerSourceScanConnector(
+                sql_connection,
+                schema=self._schema,
+                page_size=self._settings.graph_sync_batch_size,
+                max_records_per_source=limit,
+            ),
+            source_counts,
+        )
+        connectors = SourceConnectorRegistry(
+            schema=self._schema,
+            mongo_connector=mongo_connector,
+            sqlserver_connector=sqlserver_connector,
+        )
+        resolved_secrets = {
+            _CONTACT_KEY_REFERENCE: self._settings.contact_lookup_hmac_key.get_secret_value()
+        }
+        extractor = GenericSourceRecordExtractor(resolved_secrets=resolved_secrets)
+        projector_writer = ProjectorGraphWriter(
+            projector=self._projector,
+            writer=self._writer,
+            sync_run_id=run_id,
+            expected_generation_status=GraphGenerationStatus.ACTIVE,
+        )
+        coordinator = GenericSyncCoordinator(
+            connectors=connectors,
+            extractor=extractor,
+            writer=projector_writer,
+            checkpoints=_UnusedCheckpointStore(),
+            reconciler=self._writer,
+        )
+        return await coordinator.full_sync(
+            schema=self._schema,
+            graph_generation_id=_LEGACY_GENERATION_ID,
+            fencing_token=_LEGACY_FENCING_TOKEN,
+            source_asset_ids=frozenset(participating),
+            expected_generation_status=GraphGenerationStatus.ACTIVE,
+        )
+
+    @staticmethod
+    def _build_seed_pins(
+        mongo_source_ids: frozenset[str], seed_version: str | None, seed_digest: str | None
+    ) -> dict[str, SeedPin] | None:
+        """Every Mongo source gets the same pin -- one seed generation covers the
+        whole seed run, never a per-source mix. The actual fail-closed digest
+        check and exhaustive (unlimited) read happen inside
+        MongoDBSourceScanConnector.scan(); this only decides whether a pin
+        applies at all and to which sources."""
+
         if seed_version is None or seed_digest is None:
-            return await collection.find({}).limit(limit).to_list()
-        mismatch_count = await collection.count_documents(
-            {"seedVersion": seed_version, "seedDigest": {"$ne": seed_digest}},
-            limit=1,
-        )
-        if mismatch_count:
-            raise ValueError(f"Seed digest mismatch in {collection_name}.")
-        return await collection.find(
-            {"seedVersion": seed_version, "seedDigest": seed_digest}
-        ).to_list()
+            return None
+        pin = SeedPin(seed_version=seed_version, seed_digest=seed_digest)
+        return {source_id: pin for source_id in mongo_source_ids}
 
-    async def _sync_mongodb(
-        self,
-        run_id: str,
-        limit: int,
-        *,
-        seed_version: str | None = None,
-        seed_digest: str | None = None,
-    ) -> tuple[dict[str, int], int, int]:
-        now = _now().isoformat()
-        counts: dict[str, int] = {}
-        node_writes = 0
-        relationship_writes = 0
+    async def _ensure_generation_marker(self) -> None:
+        """This service does not run a real blue/green rebuild -- it resyncs
+        directly into one stable, always-ACTIVE generation marker. The real
+        generation lifecycle (PREPARING -> ... -> ACTIVE -> RETIRED) is a
+        separate, later cutover (see the source-to-graph alignment plan)."""
 
-        customer_documents = await self._source_seed_documents(
-            "customerOutboundCDM",
-            limit=limit,
-            seed_version=seed_version,
-            seed_digest=seed_digest,
-        )
-        counts["customerOutboundCDM"] = len(customer_documents)
-        customers: list[dict[str, Any]] = []
-        accounts: list[dict[str, Any]] = []
-        for document in customer_documents:
-            party_id = _text(document.get("partyId"))
-            customer_id = _text(document.get("customerId"))
-            if party_id is None and customer_id is None:
-                continue
-            customer_key = party_id or customer_id
-            assert customer_key is not None
-            customers.append(
-                {
-                    "customer_key": customer_key,
-                    "party_id": party_id,
-                    "customer_id": customer_id,
-                    "customer_name": _text(document.get("customerName")),
-                    "phone_hash": (
-                        contact_lookup_digest(
-                            str(document.get("phoneNumber", "")),
-                            "PHONE",
-                            self._settings.contact_lookup_hmac_key.get_secret_value(),
-                        )
-                        if _text(document.get("phoneNumber"))
-                        else None
-                    ),
-                    "email_hash": (
-                        contact_lookup_digest(
-                            str(document.get("email", "")),
-                            "EMAIL",
-                            self._settings.contact_lookup_hmac_key.get_secret_value(),
-                        )
-                        if _text(document.get("email"))
-                        else None
-                    ),
-                    "source_system": "CUSTOMER_CDM",
-                    "source_record_id": _text(document.get("_id")),
-                    "source_updated_at": _iso(document.get("updatedAt")),
-                    "seed_version": _text(document.get("seedVersion")),
-                    "seed_digest": _text(document.get("seedDigest")),
-                    "graph_synced_at": now,
-                    "sync_run_id": run_id,
-                }
+        async with self._driver.session(database=self._settings.neo4j_database) as session:
+            result = await session.run(
+                "MERGE (g:GraphGeneration {generation_id: $generationId}) "
+                "ON CREATE SET g.fencing_token = $fencingToken, g.status = $status",
+                generationId=_LEGACY_GENERATION_ID,
+                fencingToken=_LEGACY_FENCING_TOKEN,
+                status=GraphGenerationStatus.ACTIVE.value,
             )
-            raw_accounts = document.get("custAccts", document.get("accounts", []))
-            if isinstance(raw_accounts, list):
-                for account in raw_accounts:
-                    if not isinstance(account, dict):
-                        continue
-                    number = _text(account.get("accountNumber"))
-                    if number:
-                        accounts.append(
-                            {
-                                "account_key": f"CUSTOMER_CDM:{number}",
-                                "customer_key": customer_key,
-                                "account_number": number,
-                                "customer_id": customer_id or number,
-                                "seed_version": _text(document.get("seedVersion")),
-                                "seed_digest": _text(document.get("seedDigest")),
-                                "graph_synced_at": now,
-                                "sync_run_id": run_id,
-                            }
-                        )
-        await self._write(
-            """
-            UNWIND $rows AS row
-            MERGE (c:Customer {customer_key: row.customer_key})
-            SET c += row
-            """,
-            customers,
-        )
-        await self._write(
-            """
-            UNWIND $rows AS row
-            MATCH (c:Customer {customer_key: row.customer_key})
-            MERGE (a:CustomerAccount {account_key: row.account_key})
-            SET a += row
-            MERGE (c)-[:HAS_ACCOUNT]->(a)
-            """,
-            accounts,
-        )
-        node_writes += len(customers) + len(accounts)
-        relationship_writes += len(accounts)
+            await result.consume()
 
-        orders_docs = await self._source_seed_documents(
-            "salesInv",
-            limit=limit,
-            seed_version=seed_version,
-            seed_digest=seed_digest,
-        )
-        counts["salesInv"] = len(orders_docs)
-        order_rows: list[dict[str, Any]] = []
-        line_rows: list[dict[str, Any]] = []
-        for document in orders_docs:
-            order_id = _text(_nested(document, "salesHdrEventData.orderId"))
-            customer_id = _text(_nested(document, "salesHdr.salesHdrData.custId"))
-            if order_id is None or customer_id is None:
-                continue
-            sell_wh = _text(_nested(document, "salesHdrEventData.sellWhseId"))
-            ship_wh = _text(_nested(document, "salesHdrEventData.shipFromWhseId"))
-            order_rows.append(
-                {
-                    "sales_order_number": order_id,
-                    "customer_key": customer_id,
-                    "customer_id": customer_id,
-                    "customer_name": _text(_nested(document, "salesHdr.salesHdrData.custName")),
-                    "source_system": (
-                        _text(_nested(document, "salesHdrEventData.srcSysCode")) or "SALES_INV"
-                    ),
-                    "order_status": _text(_nested(document, "salesHdrEventData.orderStatus")),
-                    "sell_warehouse_id": sell_wh,
-                    "ship_from_warehouse_id": ship_wh,
-                    "shipping_method": _text(_nested(document, "salesHdr.shipping.shipViaCode")),
-                    "delivered_at": _iso(document.get("deliveredAt")),
-                    "source_updated_at": _iso(document.get("updatedAt")),
-                    "seed_version": _text(document.get("seedVersion")),
-                    "seed_digest": _text(document.get("seedDigest")),
-                    "graph_synced_at": now,
-                    "sync_run_id": run_id,
-                }
-            )
-            raw_lines = document.get("salesLines", [])
-            if isinstance(raw_lines, list):
-                for position, line_wrapper in enumerate(raw_lines):
-                    if not isinstance(line_wrapper, dict):
-                        continue
-                    line = line_wrapper.get("lineData", line_wrapper)
-                    if not isinstance(line, dict):
-                        continue
-                    product_id = _text(line.get("productId"))
-                    if product_id is None:
-                        continue
-                    line_key = _text(line.get("orderLineId")) or f"{order_id}:LINE:{position + 1}"
-                    line_rows.append(
-                        {
-                            "order_line_key": line_key,
-                            "sales_order_number": order_id,
-                            "product_id": product_id,
-                            "master_product_id": _text(line.get("masterProductId")),
-                            "sku": _text(line.get("sku")),
-                            "product_description": _text(line.get("productDesc")),
-                            "product_type": _text(line.get("productType")) or "STANDARD",
-                            "ordered_quantity": line.get("orderQty"),
-                            "shipped_quantity": line.get("shipQty"),
-                            "source_updated_at": _iso(document.get("updatedAt")),
-                            "seed_version": _text(document.get("seedVersion")),
-                            "seed_digest": _text(document.get("seedDigest")),
-                            "graph_synced_at": now,
-                            "sync_run_id": run_id,
-                        }
-                    )
-        await self._write(
-            """
-            UNWIND $rows AS row
-            MERGE (c:Customer {customer_key: row.customer_key})
-            ON CREATE SET c.customer_id=row.customer_id, c.customer_name=row.customer_name
-            MERGE (o:SalesOrder {sales_order_number: row.sales_order_number})
-            SET o += row
-            MERGE (c)-[:PLACED_ORDER]->(o)
-            FOREACH (_ IN CASE WHEN row.sell_warehouse_id IS NULL THEN [] ELSE [1] END |
-              MERGE (w:Warehouse {warehouse_id: row.sell_warehouse_id})
-              MERGE (o)-[:SOLD_BY_WAREHOUSE]->(w))
-            FOREACH (_ IN CASE WHEN row.ship_from_warehouse_id IS NULL THEN [] ELSE [1] END |
-              MERGE (w2:Warehouse {warehouse_id: row.ship_from_warehouse_id})
-              MERGE (o)-[:SHIPPED_FROM_WAREHOUSE]->(w2))
-            """,
-            order_rows,
-        )
-        await self._write(
-            """
-            UNWIND $rows AS row
-            MATCH (o:SalesOrder {sales_order_number: row.sales_order_number})
-            MERGE (l:OrderLine {order_line_key: row.order_line_key})
-            SET l += row
-            MERGE (p:Product {product_id: row.product_id})
-            SET p.sku=row.sku, p.master_product_id=row.master_product_id,
-                p.product_description=row.product_description, p.product_type=row.product_type,
-                p.seed_version=row.seed_version, p.seed_digest=row.seed_digest,
-                p.graph_synced_at=row.graph_synced_at, p.sync_run_id=row.sync_run_id
-            MERGE (o)-[:HAS_ORDER_LINE]->(l)
-            MERGE (l)-[:REFERENCES_PRODUCT]->(p)
-            """,
-            line_rows,
-        )
-        node_writes += len(order_rows) + (2 * len(line_rows))
-        relationship_writes += len(order_rows) + (2 * len(line_rows))
-
-        shipment_docs = await self._source_seed_documents(
-            "shipmentInfo",
-            limit=limit,
-            seed_version=seed_version,
-            seed_digest=seed_digest,
-        )
-        counts["shipmentInfo"] = len(shipment_docs)
-        shipments = []
-        for document in shipment_docs:
-            tracking = _text(_nested(document, "shipmentInfoEventData.trkNum"))
-            order_id = _text(_nested(document, "shipmentInfoEventData.trilOrdNum"))
-            if tracking and order_id:
-                shipments.append(
-                    {
-                        "tracking_number": tracking,
-                        "sales_order_number": order_id,
-                        "carrier_code": _text(
-                            _nested(document, "shipmentInfoEventData.carrierCode")
-                        ),
-                        "shipped_at": _iso(_nested(document, "shipmentInfoEventData.shippedAt")),
-                        "source_updated_at": _iso(document.get("updatedAt")),
-                        "seed_version": _text(document.get("seedVersion")),
-                        "seed_digest": _text(document.get("seedDigest")),
-                        "graph_synced_at": now,
-                        "sync_run_id": run_id,
-                    }
+    async def _apply_constraints(self) -> list[str]:
+        applied: list[str] = []
+        async with self._driver.session(database=self._settings.neo4j_database) as session:
+            for constraint in required_node_constraints(self._schema):
+                label = validate_graph_identifier(constraint.label)
+                properties = [validate_graph_identifier(prop) for prop in constraint.graph_properties]
+                name = validate_graph_identifier(f"uq_{label.lower()}_{'_'.join(properties)}".lower())
+                require = ", ".join(f"n.`{prop}`" for prop in properties)
+                query = (
+                    f"CREATE CONSTRAINT {name} IF NOT EXISTS "
+                    f"FOR (n:`{label}`) REQUIRE ({require}) IS UNIQUE"
                 )
-        await self._write(
-            """
-            UNWIND $rows AS row
-            MERGE (o:SalesOrder {sales_order_number: row.sales_order_number})
-            MERGE (s:Shipment {tracking_number: row.tracking_number})
-            SET s += row
-            MERGE (o)-[:HAS_ORIGINAL_SHIPMENT]->(s)
-            """,
-            shipments,
-        )
-        node_writes += len(shipments)
-        relationship_writes += len(shipments)
+                result = await session.run(query)
+                await result.consume()
+                applied.append(name)
+        return applied
 
-        product_docs = await self._source_seed_documents(
-            "lkpSearchProduct",
-            limit=limit,
-            seed_version=seed_version,
-            seed_digest=seed_digest,
-        )
-        counts["lkpSearchProduct"] = len(product_docs)
-        products = []
-        for document in product_docs:
-            product_id = _text(document.get("productId"))
-            if product_id:
-                products.append(
-                    {
-                        "product_id": product_id,
-                        "sku": _text(document.get("sku")),
-                        "master_product_id": _text(document.get("masterProductId")),
-                        "product_description": _text(document.get("productDescription")),
-                        "product_type": _text(document.get("productType")),
-                        "source_updated_at": _iso(document.get("updatedAt")),
-                        "seed_version": _text(document.get("seedVersion")),
-                        "seed_digest": _text(document.get("seedDigest")),
-                        "graph_synced_at": now,
-                        "sync_run_id": run_id,
-                    }
-                )
-        await self._write(
-            "UNWIND $rows AS row MERGE (p:Product {product_id: row.product_id}) SET p += row",
-            products,
-        )
-        node_writes += len(products)
-        return counts, node_writes, relationship_writes
 
-    async def _sql_rows(self, query: str) -> list[dict[str, Any]]:
-        def operation() -> list[dict[str, Any]]:
-            timeout = max(1, int(self._settings.operation_timeout_seconds))
-            with pymssql.connect(
-                server=self._settings.sqlserver_host,
-                port=str(self._settings.sqlserver_port),
-                user=self._settings.sqlserver_user,
-                password=self._settings.sqlserver_password.get_secret_value(),
-                database=self._settings.sqlserver_database,
-                login_timeout=timeout,
-                timeout=timeout,
-                autocommit=True,
-            ) as connection:
-                with connection.cursor(as_dict=True) as cursor:
-                    cursor.execute(query)
-                    return [dict(row) for row in cursor.fetchall()]
-
-        async with asyncio.timeout(self._settings.operation_timeout_seconds):
-            return await asyncio.to_thread(operation)
-
-    async def _sync_sqlserver(self, run_id: str, limit: int) -> tuple[dict[str, int], int, int]:
-        now = _now().isoformat()
-        counts: dict[str, int] = {}
-        node_writes = 0
-        relationship_writes = 0
-
-        returns = await self._sql_rows(
-            f"SELECT TOP ({limit}) * FROM [dbo].[return_requests] ORDER BY updated_at DESC"
-        )
-        counts["dbo.return_requests"] = len(returns)
-        return_rows = [
-            {
-                "return_reference": _text(row.get("return_reference")),
-                "session_id": _text(row.get("session_id")),
-                "sales_order_number": _text(row.get("order_reference")),
-                "customer_reference": _text(row.get("customer_reference")),
-                "return_status": _text(row.get("return_status")),
-                "eligibility_decision": _text(row.get("eligibility_decision")),
-                "source_updated_at": _iso(row.get("updated_at")),
-                "graph_synced_at": now,
-                "sync_run_id": run_id,
-            }
-            for row in returns
-            if _text(row.get("return_reference")) and _text(row.get("order_reference"))
-        ]
-        await self._write(
-            """
-            UNWIND $rows AS row
-            MERGE (o:SalesOrder {sales_order_number: row.sales_order_number})
-            MERGE (r:Return {return_reference: row.return_reference})
-            SET r += row
-            MERGE (o)-[:HAS_RETURN]->(r)
-            """,
-            return_rows,
-        )
-        node_writes += len(return_rows)
-        relationship_writes += len(return_rows)
-
-        items = await self._sql_rows(
-            f"SELECT TOP ({limit}) * FROM [dbo].[return_items] ORDER BY created_at DESC"
-        )
-        counts["dbo.return_items"] = len(items)
-        item_rows = [
-            {
-                "return_item_id": _text(row.get("return_item_id")),
-                "return_reference": _text(row.get("return_reference")),
-                "order_line_id": _text(row.get("order_line_id")),
-                "product_id": _text(row.get("product_id")),
-                "quantity": row.get("quantity"),
-                "reason_code": _text(row.get("reason_code")),
-                "item_status": _text(row.get("item_status")),
-                "source_updated_at": _iso(row.get("created_at")),
-                "graph_synced_at": now,
-                "sync_run_id": run_id,
-            }
-            for row in items
-            if _text(row.get("return_item_id")) and _text(row.get("return_reference"))
-        ]
-        await self._write(
-            """
-            UNWIND $rows AS row
-            MATCH (r:Return {return_reference: row.return_reference})
-            MERGE (i:ReturnItem {return_item_id: row.return_item_id})
-            SET i += row
-            MERGE (r)-[:HAS_RETURN_ITEM]->(i)
-            FOREACH (_ IN CASE WHEN row.order_line_id IS NULL THEN [] ELSE [1] END |
-              MERGE (l:OrderLine {order_line_key: row.order_line_id})
-              MERGE (i)-[:RETURN_ITEM_FOR_LINE]->(l))
-            """,
-            item_rows,
-        )
-        node_writes += len(item_rows)
-        relationship_writes += len(item_rows)
-
-        tracking = await self._sql_rows(
-            f"SELECT TOP ({limit}) * FROM [dbo].[return_tracking] ORDER BY event_at DESC"
-        )
-        counts["dbo.return_tracking"] = len(tracking)
-        tracking_rows = [
-            {
-                "tracking_id": _text(row.get("tracking_id")),
-                "return_reference": _text(row.get("return_reference")),
-                "tracking_type": _text(row.get("tracking_type")),
-                "tracking_reference": _text(row.get("tracking_reference")),
-                "carrier_code": _text(row.get("carrier_code")),
-                "tracking_status": _text(row.get("tracking_status")),
-                "event_at": _iso(row.get("event_at")),
-                "graph_synced_at": now,
-                "sync_run_id": run_id,
-            }
-            for row in tracking
-            if _text(row.get("tracking_id")) and _text(row.get("return_reference"))
-        ]
-        await self._write(
-            """
-            UNWIND $rows AS row
-            MATCH (r:Return {return_reference: row.return_reference})
-            MERGE (t:ReturnTracking {tracking_id: row.tracking_id})
-            SET t += row
-            MERGE (r)-[:HAS_TRACKING]->(t)
-            """,
-            tracking_rows,
-        )
-        node_writes += len(tracking_rows)
-        relationship_writes += len(tracking_rows)
-
-        bays = await self._sql_rows(
-            f"SELECT TOP ({limit}) * FROM [platform].[bay_configuration] ORDER BY priority, bay_id"
-        )
-        counts["platform.bay_configuration"] = len(bays)
-        bay_rows = [
-            {
-                "bay_id": _text(row.get("bay_id")),
-                "bay_name": _text(row.get("bay_name")),
-                "warehouse_id": _text(row.get("warehouse_id")),
-                "branch_id": _text(row.get("branch_id")),
-                "bay_type": _text(row.get("bay_type")),
-                "active": bool(row.get("active")),
-                "priority": row.get("priority"),
-                "max_package_count": row.get("max_package_count"),
-                "overflow_bay_id": _text(row.get("overflow_bay_id")),
-                "graph_synced_at": now,
-                "sync_run_id": run_id,
-            }
-            for row in bays
-            if _text(row.get("bay_id")) and _text(row.get("warehouse_id"))
-        ]
-        await self._write(
-            """
-            UNWIND $rows AS row
-            MERGE (w:Warehouse {warehouse_id: row.warehouse_id})
-            ON CREATE SET w.branch_id=row.branch_id
-            MERGE (b:Bay {bay_id: row.bay_id})
-            SET b += row
-            MERGE (b)-[:LOCATED_IN_WAREHOUSE]->(w)
-            """,
-            bay_rows,
-        )
-        node_writes += len(bay_rows)
-        relationship_writes += len(bay_rows)
-
-        assignments = await self._sql_rows(
-            f"""
-            SELECT TOP ({limit}) assignment.*, item.return_item_id
-            FROM [platform].[bay_assignment] AS assignment
-            LEFT JOIN [dbo].[return_items] AS item
-              ON item.return_reference=assignment.return_reference
-             AND item.order_line_id=assignment.order_line_id
-            ORDER BY assignment.created_at DESC
-            """
-        )
-        counts["platform.bay_assignment"] = len(assignments)
-        assignment_rows = [
-            {
-                "assignment_id": _text(row.get("assignment_id")),
-                "return_reference": _text(row.get("return_reference")),
-                "return_item_id": _text(row.get("return_item_id")),
-                "order_line_id": _text(row.get("order_line_id")),
-                "item_number": _text(row.get("item_number")),
-                "package_count": row.get("package_count"),
-                "warehouse_id": _text(row.get("warehouse_id")),
-                "bay_id": _text(row.get("bay_id")),
-                "status": _text(row.get("status")),
-                "confirmed_by_associate_id": _text(row.get("confirmed_by_associate_id")),
-                "graph_synced_at": now,
-                "sync_run_id": run_id,
-            }
-            for row in assignments
-            if _text(row.get("assignment_id")) and _text(row.get("bay_id"))
-        ]
-        await self._write(
-            """
-            UNWIND $rows AS row
-            MERGE (a:BayAssignment {assignment_id: row.assignment_id})
-            SET a += row
-            MATCH (b:Bay {bay_id: row.bay_id})
-            MERGE (a)-[:USES_BAY]->(b)
-            FOREACH (_ IN CASE WHEN row.return_item_id IS NULL THEN [] ELSE [1] END |
-              MERGE (i:ReturnItem {return_item_id: row.return_item_id})
-              MERGE (a)-[:BINDS_RETURN_ITEM]->(i)
-              MERGE (i)-[:ASSIGNED_TO_BAY]->(b))
-            """,
-            assignment_rows,
-        )
-        node_writes += len(assignment_rows)
-        relationship_writes += 2 * len(assignment_rows)
-
-        tickets = await self._sql_rows(
-            f"SELECT TOP ({limit}) * FROM [integration].[return_support_ticket] "
-            "ORDER BY updated_at DESC"
-        )
-        counts["integration.return_support_ticket"] = len(tickets)
-        ticket_rows = [
-            {
-                "ticket_id": _text(row.get("ticket_id")),
-                "session_id": _text(row.get("session_id")),
-                "status": _text(row.get("status")),
-                "external_reference": _text(row.get("external_reference")),
-                "return_reference": _text(row.get("return_reference")),
-                "updated_at": _iso(row.get("updated_at")),
-                "graph_synced_at": now,
-                "sync_run_id": run_id,
-            }
-            for row in tickets
-            if _text(row.get("ticket_id"))
-        ]
-        await self._write(
-            """
-            UNWIND $rows AS row
-            MERGE (t:SupportTicket {ticket_id: row.ticket_id})
-            SET t += row
-            FOREACH (_ IN CASE WHEN row.return_reference IS NULL THEN [] ELSE [1] END |
-              MERGE (r:Return {return_reference: row.return_reference})
-              MERGE (r)-[:TRACKED_BY_SUPPORT_TICKET]->(t))
-            """,
-            ticket_rows,
-        )
-        node_writes += len(ticket_rows)
-        relationship_writes += sum(1 for row in ticket_rows if row["return_reference"])
-        return counts, node_writes, relationship_writes
+def _delete(projection_id: str, key_values: dict[str, Any]) -> GraphNodeMutation:
+    entity_id = projection_id.removeprefix("node_")
+    return GraphNodeMutation(
+        operation="HARD_DELETE",
+        projection_id=projection_id,
+        entity_id=entity_id,
+        key_values=key_values,
+        properties={},
+    )
