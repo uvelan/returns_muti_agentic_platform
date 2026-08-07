@@ -16,6 +16,8 @@ from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
 )
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
+GEN = "gen-1"
+
 
 def test_generation_fence_is_parameterized() -> None:
     compiled = compile_generation_fence(
@@ -30,7 +32,9 @@ def test_generation_fence_is_parameterized() -> None:
     }
 
 
-def test_node_upsert_merges_on_key_and_sets_properties(active_schema: ActiveSchema) -> None:
+def test_node_upsert_merges_on_generation_scoped_key_and_sets_properties(
+    active_schema: ActiveSchema,
+) -> None:
     mutations = (
         GraphNodeMutation(
             operation="UPSERT",
@@ -40,10 +44,11 @@ def test_node_upsert_merges_on_key_and_sets_properties(active_schema: ActiveSche
             properties={"configured_name": "n", "configured_count": 1},
         ),
     )
-    statements = compile_node_writes(active_schema, mutations)
+    statements = compile_node_writes(active_schema, mutations, graph_generation_id=GEN)
     assert len(statements) == 1
     statement = statements[0]
     assert "MERGE (n:`ConfiguredAlpha`" in statement.cypher
+    assert "graph_generation_id: $generationId" in statement.cypher
     assert "`configured_id`: row.keys.`configured_id`" in statement.cypher
     assert "SET n += row.properties" in statement.cypher
     assert statement.parameters == {
@@ -52,7 +57,8 @@ def test_node_upsert_merges_on_key_and_sets_properties(active_schema: ActiveSche
                 "keys": {"configured_id": "PARENT-1"},
                 "properties": {"configured_name": "n", "configured_count": 1},
             }
-        ]
+        ],
+        "generationId": GEN,
     }
 
 
@@ -75,7 +81,7 @@ def test_node_upsert_groups_multiple_mutations_into_one_statement(
             properties={},
         ),
     )
-    statements = compile_node_writes(active_schema, mutations)
+    statements = compile_node_writes(active_schema, mutations, graph_generation_id=GEN)
     assert len(statements) == 1
     assert len(statements[0].parameters["rows"]) == 2
 
@@ -111,9 +117,10 @@ def test_node_operations_produce_distinct_statements(active_schema: ActiveSchema
             properties={},
         ),
     )
-    statements = compile_node_writes(active_schema, mutations)
+    statements = compile_node_writes(active_schema, mutations, graph_generation_id=GEN)
     assert len(statements) == 4
     cyphers = [statement.cypher for statement in statements]
+    assert all("graph_generation_id: $generationId" in c for c in cyphers)
     assert any("DETACH DELETE n" in c and "SET" not in c for c in cyphers)
     assert any("n.tombstoned = true" in c for c in cyphers)
     assert any("OPTIONAL MATCH (n)-[r]-() DELETE r" in c for c in cyphers)
@@ -139,7 +146,7 @@ def test_node_writes_reject_inconsistent_key_shape_within_a_group(
         ),
     )
     with pytest.raises(WriteCompilationError, match="identical key fields"):
-        compile_node_writes(active_schema, mutations)
+        compile_node_writes(active_schema, mutations, graph_generation_id=GEN)
 
 
 def test_node_writes_reject_unknown_projection(active_schema: ActiveSchema) -> None:
@@ -153,10 +160,10 @@ def test_node_writes_reject_unknown_projection(active_schema: ActiveSchema) -> N
         ),
     )
     with pytest.raises(WriteCompilationError, match="unknown projection"):
-        compile_node_writes(active_schema, mutations)
+        compile_node_writes(active_schema, mutations, graph_generation_id=GEN)
 
 
-def test_relationship_upsert_matches_both_endpoints_and_merges(
+def test_relationship_upsert_matches_both_endpoints_generation_scoped_and_merges(
     active_schema: ActiveSchema,
 ) -> None:
     mutations = (
@@ -168,11 +175,12 @@ def test_relationship_upsert_matches_both_endpoints_and_merges(
             properties={},
         ),
     )
-    statements = compile_relationship_writes(active_schema, mutations)
+    statements = compile_relationship_writes(active_schema, mutations, graph_generation_id=GEN)
     assert len(statements) == 1
     statement = statements[0]
     assert "MATCH (a:`ConfiguredAlpha`" in statement.cypher
     assert "MATCH (b:`ConfiguredBeta`" in statement.cypher
+    assert statement.cypher.count("graph_generation_id: $generationId") == 2
     assert "MERGE (a)-[rel:`CONFIGURED_LINK`]->(b)" in statement.cypher
     assert statement.parameters == {
         "rows": [
@@ -181,7 +189,8 @@ def test_relationship_upsert_matches_both_endpoints_and_merges(
                 "targetKeys": {"related_id": "CHILD-1"},
                 "properties": {},
             }
-        ]
+        ],
+        "generationId": GEN,
     }
 
 
@@ -195,10 +204,11 @@ def test_relationship_delete_matches_and_deletes(active_schema: ActiveSchema) ->
             properties={},
         ),
     )
-    statements = compile_relationship_writes(active_schema, mutations)
+    statements = compile_relationship_writes(active_schema, mutations, graph_generation_id=GEN)
     assert len(statements) == 1
     assert "DELETE rel" in statements[0].cypher
     assert "MERGE" not in statements[0].cypher
+    assert statements[0].cypher.count("graph_generation_id: $generationId") == 2
 
 
 def test_relationship_writes_reject_unknown_relationship(active_schema: ActiveSchema) -> None:
@@ -212,7 +222,7 @@ def test_relationship_writes_reject_unknown_relationship(active_schema: ActiveSc
         ),
     )
     with pytest.raises(WriteCompilationError, match="unknown relationship"):
-        compile_relationship_writes(active_schema, mutations)
+        compile_relationship_writes(active_schema, mutations, graph_generation_id=GEN)
 
 
 def test_receipt_lookup_and_store_are_parameterized() -> None:

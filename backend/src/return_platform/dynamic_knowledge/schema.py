@@ -166,17 +166,51 @@ class DeriveOperation(StrEnum):
     """Allowlisted transformations available to a derived field. No others are supported."""
 
     SPLIT_PART = "SPLIT_PART"
+    CONTACT_LOOKUP_DIGEST = "CONTACT_LOOKUP_DIGEST"
+
+
+class ContactDigestKind(StrEnum):
+    """Which contact_evidence.py normalization/HMAC domain-separation rule applies."""
+
+    PHONE = "PHONE"
+    EMAIL = "EMAIL"
 
 
 class FieldDerivation(BaseModel):
-    """Compute a field's value from another already-extracted field, never from a raw source path."""
+    """Compute a field's value from another already-extracted field, never from a raw source path.
+
+    CONTACT_LOOKUP_DIGEST never carries the HMAC secret itself -- only a
+    vault:// key_reference, resolved once per sync run by the caller and
+    supplied to the extractor as an already-resolved value, the same
+    never-log-the-secret posture as KeyResolution's DETERMINISTIC_HMAC.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     operation: DeriveOperation
     source_field: Identifier
-    delimiter: str = Field(min_length=1)
-    index: int = Field(ge=0)
+    delimiter: str | None = Field(default=None, min_length=1)
+    index: int | None = Field(default=None, ge=0)
+    contact_kind: ContactDigestKind | None = None
+    key_reference: str | None = None
+    key_version: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_operation_fields(self) -> FieldDerivation:
+        if self.operation is DeriveOperation.SPLIT_PART:
+            if self.delimiter is None or self.index is None:
+                raise ValueError("SPLIT_PART derive requires delimiter and index")
+        else:
+            if self.contact_kind is None:
+                raise ValueError("CONTACT_LOOKUP_DIGEST derive requires contact_kind")
+            if not self.key_reference or not self.key_reference.startswith("vault://"):
+                raise ValueError(
+                    "CONTACT_LOOKUP_DIGEST derive requires a vault:// key_reference; "
+                    "the HMAC secret itself must never appear in configuration"
+                )
+            if self.key_version is None:
+                raise ValueError("CONTACT_LOOKUP_DIGEST derive requires key_version")
+        return self
 
 
 class FieldDefinition(BaseModel):

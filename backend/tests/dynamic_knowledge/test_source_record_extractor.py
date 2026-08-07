@@ -12,9 +12,11 @@ from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
     RawSourcePage,
 )
 from return_platform.dynamic_knowledge.on_demand_sync.extraction import (
+    ExtractionError,
     GenericSourceRecordExtractor,
 )
 from return_platform.dynamic_knowledge.schema import ActiveSchema
+from return_platform.security.contact_evidence import contact_lookup_digest
 
 FIXTURE_DIR = Path(__file__).parents[1] / "fixtures" / "ferguson_source_samples"
 
@@ -116,6 +118,27 @@ def _derived_logon_schema(active_schema: ActiveSchema) -> ActiveSchema:
     return ActiveSchema.model_validate(raw)
 
 
+def _contact_digest_schema(active_schema: ActiveSchema) -> ActiveSchema:
+    raw = active_schema.model_dump(mode="json")
+    raw["entities"]["entity_a"]["fields"]["phone_hash"] = {
+        "field_id": "phone_hash",
+        "physical_path": None,
+        "derive": {
+            "operation": "CONTACT_LOOKUP_DIGEST",
+            "source_field": "name",
+            "contact_kind": "PHONE",
+            "key_reference": "vault://return-platform/contact-lookup#hmac_key",
+            "key_version": 1,
+        },
+        "graph_property": "phone_hash",
+        "data_type": "STRING",
+        "capabilities": {"searchable": True, "filterable": True, "operators": ["EXACT"]},
+        "permissions": {"searchable_by": ["associate"]},
+    }
+    raw["graph"]["nodes"]["node_a"]["property_fields"].append("phone_hash")
+    return ActiveSchema.model_validate(raw)
+
+
 def _page(document: dict[str, object], source_identity: str = "doc-1") -> RawSourcePage:
     return RawSourcePage(
         documents=(
@@ -173,6 +196,59 @@ def test_derived_field_splits_composite_order_key(active_schema: ActiveSchema) -
     assert mutations[0].record is not None
     assert mutations[0].record.values["logon"] == "DALLAS"
     assert mutations[0].record.values["id"] == "DALLAS*WE130468"
+
+
+def test_contact_lookup_digest_derive_matches_security_module_output(
+    active_schema: ActiveSchema,
+) -> None:
+    schema = _contact_digest_schema(active_schema)
+    document = {"configured_id": "A-1", "configured_name": "555-0100", "configured_count": 1}
+    key_reference = "vault://return-platform/contact-lookup#hmac_key"
+    secret = "s" * 32
+    mutations = GenericSourceRecordExtractor(resolved_secrets={key_reference: secret}).extract(
+        schema=schema,
+        source_asset_id="source_a",
+        page=_page(document),
+        read_scope=ProjectionReadScope.COMPLETE_SOURCE_DOCUMENT,
+    )
+    assert len(mutations) == 1
+    assert mutations[0].record is not None
+    assert mutations[0].record.values["phone_hash"] == contact_lookup_digest(
+        "555-0100", "PHONE", secret
+    )
+
+
+def test_contact_lookup_digest_derive_is_omitted_for_blank_source_value(
+    active_schema: ActiveSchema,
+) -> None:
+    schema = _contact_digest_schema(active_schema)
+    document = {"configured_id": "A-1", "configured_name": "   ", "configured_count": 1}
+    key_reference = "vault://return-platform/contact-lookup#hmac_key"
+    mutations = GenericSourceRecordExtractor(
+        resolved_secrets={key_reference: "s" * 32}
+    ).extract(
+        schema=schema,
+        source_asset_id="source_a",
+        page=_page(document),
+        read_scope=ProjectionReadScope.COMPLETE_SOURCE_DOCUMENT,
+    )
+    assert len(mutations) == 1
+    assert mutations[0].record is not None
+    assert "phone_hash" not in mutations[0].record.values
+
+
+def test_contact_lookup_digest_derive_fails_loudly_when_secret_unresolved(
+    active_schema: ActiveSchema,
+) -> None:
+    schema = _contact_digest_schema(active_schema)
+    document = {"configured_id": "A-1", "configured_name": "555-0100", "configured_count": 1}
+    with pytest.raises(ExtractionError, match="unresolved secret"):
+        GenericSourceRecordExtractor().extract(
+            schema=schema,
+            source_asset_id="source_a",
+            page=_page(document),
+            read_scope=ProjectionReadScope.COMPLETE_SOURCE_DOCUMENT,
+        )
 
 
 def test_partial_targeted_read_scope_is_preserved_on_the_mutation(

@@ -25,6 +25,7 @@ from return_platform.dynamic_knowledge.schema import (
     FieldDerivation,
     PathOrigin,
 )
+from return_platform.security.contact_evidence import contact_lookup_digest
 
 
 class SourceRecordExtractor(Protocol):
@@ -48,7 +49,17 @@ _Chain = tuple[Mapping[str, Any], ...]
 
 
 class GenericSourceRecordExtractor:
-    """The one, schema-driven extractor every source asset shares."""
+    """The one, schema-driven extractor every source asset shares.
+
+    ``resolved_secrets`` maps a derive field's ``key_reference`` (e.g.
+    ``"vault://return-platform/contact-lookup#hmac_key"``) to its already-resolved
+    value. Secrets are resolved once per sync run by the caller (which owns the
+    async Vault I/O) and handed in here -- extraction itself stays a pure,
+    synchronous transform with no I/O and never logs a resolved secret.
+    """
+
+    def __init__(self, *, resolved_secrets: Mapping[str, str] | None = None) -> None:
+        self._resolved_secrets = dict(resolved_secrets or {})
 
     def extract(
         self,
@@ -76,7 +87,12 @@ class GenericSourceRecordExtractor:
                     continue
                 mutations.extend(
                     _upsert_mutations(
-                        entity, document, source_asset_id, projection_id, read_scope
+                        entity,
+                        document,
+                        source_asset_id,
+                        projection_id,
+                        read_scope,
+                        self._resolved_secrets,
                     )
                 )
         return tuple(mutations)
@@ -111,6 +127,7 @@ def _upsert_mutations(
     source_asset_id: str,
     projection_id: str,
     read_scope: ProjectionReadScope,
+    resolved_secrets: Mapping[str, str],
 ) -> list[DynamicRecordMutation]:
     root = document.document
     chains = _walk_record_path(root, entity.record_path) if entity.explode else [()]
@@ -119,7 +136,7 @@ def _upsert_mutations(
     for chain in chains:
         if not _passes_where(entity, chain, root):
             continue
-        values = _extract_fields(entity, chain, root)
+        values = _extract_fields(entity, chain, root, resolved_secrets)
         natural_key = {key: values[key] for key in entity.natural_key if key in values}
         if len(natural_key) != len(entity.natural_key):
             continue  # a required natural-key field could not be resolved; not confirmable
@@ -192,7 +209,10 @@ def _passes_where(entity: EntityDefinition, chain: _Chain, root: Mapping[str, An
 
 
 def _extract_fields(
-    entity: EntityDefinition, chain: _Chain, root: Mapping[str, Any]
+    entity: EntityDefinition,
+    chain: _Chain,
+    root: Mapping[str, Any],
+    resolved_secrets: Mapping[str, str],
 ) -> dict[str, Any]:
     current = _current_record(chain, root)
     parent = _parent_record(chain, root)
@@ -216,7 +236,7 @@ def _extract_fields(
         source_value = values.get(field.derive.source_field)
         if source_value is None:
             continue
-        derived = _apply_derive(field.derive, source_value)
+        derived = _apply_derive(field.derive, source_value, resolved_secrets)
         if derived is not None:
             values[field_id] = derived
     return values
@@ -231,10 +251,25 @@ def _resolve_path(record: Any, path: tuple[str, ...]) -> Any:
     return current
 
 
-def _apply_derive(derivation: FieldDerivation, source_value: Any) -> Any:
+def _apply_derive(
+    derivation: FieldDerivation, source_value: Any, resolved_secrets: Mapping[str, str]
+) -> Any:
     if derivation.operation is DeriveOperation.SPLIT_PART:
+        assert derivation.delimiter is not None and derivation.index is not None
         parts = str(source_value).split(derivation.delimiter)
         if derivation.index >= len(parts):
             return None
         return parts[derivation.index]
+    if derivation.operation is DeriveOperation.CONTACT_LOOKUP_DIGEST:
+        assert derivation.contact_kind is not None and derivation.key_reference is not None
+        text = str(source_value).strip()
+        if not text:
+            return None
+        secret = resolved_secrets.get(derivation.key_reference)
+        if secret is None:
+            raise ExtractionError(
+                f"derive operation {derivation.operation!r} references unresolved secret "
+                f"{derivation.key_reference!r}"
+            )
+        return contact_lookup_digest(text, derivation.contact_kind.value, secret)
     raise ExtractionError(f"unsupported derive operation: {derivation.operation!r}")

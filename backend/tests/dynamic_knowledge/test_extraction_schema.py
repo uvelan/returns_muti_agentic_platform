@@ -35,6 +35,47 @@ def test_field_with_both_physical_path_and_derive_is_rejected(
         ActiveSchema.model_validate(raw)
 
 
+def test_split_part_derive_requires_delimiter_and_index(active_schema: ActiveSchema) -> None:
+    raw = _with_entity_a_patch(active_schema)
+    raw["entities"]["entity_a"]["fields"]["name"]["physical_path"] = None
+    raw["entities"]["entity_a"]["fields"]["name"]["derive"] = {
+        "operation": "SPLIT_PART",
+        "source_field": "id",
+    }
+    with pytest.raises(ValidationError, match="SPLIT_PART derive requires"):
+        ActiveSchema.model_validate(raw)
+
+
+def test_contact_lookup_digest_derive_requires_vault_key_reference(
+    active_schema: ActiveSchema,
+) -> None:
+    raw = _with_entity_a_patch(active_schema)
+    raw["entities"]["entity_a"]["fields"]["name"]["physical_path"] = None
+    raw["entities"]["entity_a"]["fields"]["name"]["derive"] = {
+        "operation": "CONTACT_LOOKUP_DIGEST",
+        "source_field": "id",
+        "contact_kind": "PHONE",
+        "key_reference": "not-a-vault-uri",
+        "key_version": 1,
+    }
+    with pytest.raises(ValidationError, match="vault://"):
+        ActiveSchema.model_validate(raw)
+
+
+def test_contact_lookup_digest_derive_requires_contact_kind_and_key_version(
+    active_schema: ActiveSchema,
+) -> None:
+    raw = _with_entity_a_patch(active_schema)
+    raw["entities"]["entity_a"]["fields"]["name"]["physical_path"] = None
+    raw["entities"]["entity_a"]["fields"]["name"]["derive"] = {
+        "operation": "CONTACT_LOOKUP_DIGEST",
+        "source_field": "id",
+        "key_reference": "vault://return-platform/contact-lookup#hmac_key",
+    }
+    with pytest.raises(ValidationError, match="contact_kind"):
+        ActiveSchema.model_validate(raw)
+
+
 def test_derived_field_resolves_against_a_sibling_field(active_schema: ActiveSchema) -> None:
     raw = _with_entity_a_patch(active_schema)
     raw["entities"]["entity_a"]["fields"]["name"]["physical_path"] = None

@@ -95,8 +95,17 @@ def compile_receipt_store(
 
 
 def compile_node_writes(
-    schema: ActiveSchema, mutations: tuple[GraphNodeMutation, ...]
+    schema: ActiveSchema,
+    mutations: tuple[GraphNodeMutation, ...],
+    *,
+    graph_generation_id: str,
 ) -> tuple[CompiledWrite, ...]:
+    """Every MATCH/MERGE below is scoped by graph_generation_id in addition to the
+    entity's configured (logical) key fields -- the physical Neo4j uniqueness is
+    always (graph_generation_id, logical key), so two generations sharing the
+    same business key never collide. graph_generation_id is never part of the
+    configured logical key itself (see the plan's "logical vs. physical keys")."""
+
     grouped: dict[tuple[str, str], list[GraphNodeMutation]] = defaultdict(list)
     for mutation in mutations:
         node = schema.graph.nodes.get(mutation.projection_id)
@@ -111,21 +120,27 @@ def compile_node_writes(
         validate_graph_identifier(label)
         _validate_key_shape_consistent(group)
         if operation == "UPSERT":
-            statements.append(_compile_node_upsert(label, group))
+            statements.append(_compile_node_upsert(label, group, graph_generation_id))
         elif operation == "HARD_DELETE":
-            statements.append(_compile_node_hard_delete(label, group))
+            statements.append(_compile_node_hard_delete(label, group, graph_generation_id))
         elif operation == "TOMBSTONE":
-            statements.append(_compile_node_tombstone(label, group))
+            statements.append(_compile_node_tombstone(label, group, graph_generation_id))
         elif operation == "DETACH_ONLY":
-            statements.append(_compile_node_detach_only(label, group))
+            statements.append(_compile_node_detach_only(label, group, graph_generation_id))
         else:
             raise WriteCompilationError(f"unsupported node mutation operation: {operation!r}")
     return tuple(statements)
 
 
 def compile_relationship_writes(
-    schema: ActiveSchema, mutations: tuple[GraphRelationshipMutation, ...]
+    schema: ActiveSchema,
+    mutations: tuple[GraphRelationshipMutation, ...],
+    *,
+    graph_generation_id: str,
 ) -> tuple[CompiledWrite, ...]:
+    """Both endpoints are matched within the same graph_generation_id -- a relationship
+    can never link nodes from two different generations."""
+
     grouped: dict[tuple[str, str], list[GraphRelationshipMutation]] = defaultdict(list)
     for mutation in mutations:
         relationship = schema.graph.relationships.get(mutation.relationship_id)
@@ -146,13 +161,21 @@ def compile_relationship_writes(
         if operation == "UPSERT":
             statements.append(
                 _compile_relationship_upsert(
-                    relationship.relationship_type, source_label, target_label, group
+                    relationship.relationship_type,
+                    source_label,
+                    target_label,
+                    group,
+                    graph_generation_id,
                 )
             )
         elif operation == "DELETE":
             statements.append(
                 _compile_relationship_delete(
-                    relationship.relationship_type, source_label, target_label, group
+                    relationship.relationship_type,
+                    source_label,
+                    target_label,
+                    group,
+                    graph_generation_id,
                 )
             )
         else:
@@ -188,48 +211,64 @@ def _validate_relationship_key_shape_consistent(group: list[GraphRelationshipMut
             validate_graph_identifier(name)
 
 
-def _compile_node_upsert(label: str, group: list[GraphNodeMutation]) -> CompiledWrite:
+def _compile_node_upsert(
+    label: str, group: list[GraphNodeMutation], graph_generation_id: str
+) -> CompiledWrite:
     key_names = frozenset(group[0].key_values)
     rows = [{"keys": m.key_values, "properties": m.properties} for m in group]
-    key_inner = ", ".join(f"`{name}`: row.keys.`{name}`" for name in sorted(key_names))
+    key_inner = _generation_scoped_pattern("row.keys", key_names)
     cypher = (
         "UNWIND $rows AS row "
         f"MERGE (n:`{label}` {{{key_inner}}}) "
         "SET n += row.properties"
     )
-    return CompiledWrite(cypher=cypher, parameters={"rows": rows})
+    return CompiledWrite(
+        cypher=cypher, parameters={"rows": rows, "generationId": graph_generation_id}
+    )
 
 
-def _compile_node_hard_delete(label: str, group: list[GraphNodeMutation]) -> CompiledWrite:
+def _compile_node_hard_delete(
+    label: str, group: list[GraphNodeMutation], graph_generation_id: str
+) -> CompiledWrite:
     key_names = frozenset(group[0].key_values)
     rows = [{"keys": m.key_values} for m in group]
-    key_inner = ", ".join(f"`{name}`: row.keys.`{name}`" for name in sorted(key_names))
+    key_inner = _generation_scoped_pattern("row.keys", key_names)
     cypher = f"UNWIND $rows AS row MATCH (n:`{label}` {{{key_inner}}}) DETACH DELETE n"
-    return CompiledWrite(cypher=cypher, parameters={"rows": rows})
+    return CompiledWrite(
+        cypher=cypher, parameters={"rows": rows, "generationId": graph_generation_id}
+    )
 
 
-def _compile_node_tombstone(label: str, group: list[GraphNodeMutation]) -> CompiledWrite:
+def _compile_node_tombstone(
+    label: str, group: list[GraphNodeMutation], graph_generation_id: str
+) -> CompiledWrite:
     key_names = frozenset(group[0].key_values)
     rows = [{"keys": m.key_values} for m in group]
-    key_inner = ", ".join(f"`{name}`: row.keys.`{name}`" for name in sorted(key_names))
+    key_inner = _generation_scoped_pattern("row.keys", key_names)
     cypher = (
         "UNWIND $rows AS row "
         f"MATCH (n:`{label}` {{{key_inner}}}) "
         "SET n.tombstoned = true, n.tombstonedAt = datetime()"
     )
-    return CompiledWrite(cypher=cypher, parameters={"rows": rows})
+    return CompiledWrite(
+        cypher=cypher, parameters={"rows": rows, "generationId": graph_generation_id}
+    )
 
 
-def _compile_node_detach_only(label: str, group: list[GraphNodeMutation]) -> CompiledWrite:
+def _compile_node_detach_only(
+    label: str, group: list[GraphNodeMutation], graph_generation_id: str
+) -> CompiledWrite:
     key_names = frozenset(group[0].key_values)
     rows = [{"keys": m.key_values} for m in group]
-    key_inner = ", ".join(f"`{name}`: row.keys.`{name}`" for name in sorted(key_names))
+    key_inner = _generation_scoped_pattern("row.keys", key_names)
     cypher = (
         "UNWIND $rows AS row "
         f"MATCH (n:`{label}` {{{key_inner}}}) "
         "OPTIONAL MATCH (n)-[r]-() DELETE r"
     )
-    return CompiledWrite(cypher=cypher, parameters={"rows": rows})
+    return CompiledWrite(
+        cypher=cypher, parameters={"rows": rows, "generationId": graph_generation_id}
+    )
 
 
 def _compile_relationship_upsert(
@@ -237,6 +276,7 @@ def _compile_relationship_upsert(
     source_label: str,
     target_label: str,
     group: list[GraphRelationshipMutation],
+    graph_generation_id: str,
 ) -> CompiledWrite:
     source_keys = frozenset(group[0].source_key_values)
     target_keys = frozenset(group[0].target_key_values)
@@ -248,8 +288,8 @@ def _compile_relationship_upsert(
         }
         for m in group
     ]
-    source_inner = ", ".join(f"`{n}`: row.sourceKeys.`{n}`" for n in sorted(source_keys))
-    target_inner = ", ".join(f"`{n}`: row.targetKeys.`{n}`" for n in sorted(target_keys))
+    source_inner = _generation_scoped_pattern("row.sourceKeys", source_keys)
+    target_inner = _generation_scoped_pattern("row.targetKeys", target_keys)
     cypher = (
         "UNWIND $rows AS row "
         f"MATCH (a:`{source_label}` {{{source_inner}}}) "
@@ -257,7 +297,9 @@ def _compile_relationship_upsert(
         f"MERGE (a)-[rel:`{relationship_type}`]->(b) "
         "SET rel += row.properties"
     )
-    return CompiledWrite(cypher=cypher, parameters={"rows": rows})
+    return CompiledWrite(
+        cypher=cypher, parameters={"rows": rows, "generationId": graph_generation_id}
+    )
 
 
 def _compile_relationship_delete(
@@ -265,12 +307,13 @@ def _compile_relationship_delete(
     source_label: str,
     target_label: str,
     group: list[GraphRelationshipMutation],
+    graph_generation_id: str,
 ) -> CompiledWrite:
     source_keys = frozenset(group[0].source_key_values)
     target_keys = frozenset(group[0].target_key_values)
     rows = [{"sourceKeys": m.source_key_values, "targetKeys": m.target_key_values} for m in group]
-    source_inner = ", ".join(f"`{n}`: row.sourceKeys.`{n}`" for n in sorted(source_keys))
-    target_inner = ", ".join(f"`{n}`: row.targetKeys.`{n}`" for n in sorted(target_keys))
+    source_inner = _generation_scoped_pattern("row.sourceKeys", source_keys)
+    target_inner = _generation_scoped_pattern("row.targetKeys", target_keys)
     cypher = (
         "UNWIND $rows AS row "
         f"MATCH (a:`{source_label}` {{{source_inner}}})"
@@ -278,4 +321,13 @@ def _compile_relationship_delete(
         f"(b:`{target_label}` {{{target_inner}}}) "
         "DELETE rel"
     )
-    return CompiledWrite(cypher=cypher, parameters={"rows": rows})
+    return CompiledWrite(
+        cypher=cypher, parameters={"rows": rows, "generationId": graph_generation_id}
+    )
+
+
+def _generation_scoped_pattern(row_field: str, key_names: frozenset[str]) -> str:
+    key_inner = ", ".join(f"`{name}`: {row_field}.`{name}`" for name in sorted(key_names))
+    return f"graph_generation_id: $generationId, {key_inner}" if key_inner else (
+        "graph_generation_id: $generationId"
+    )

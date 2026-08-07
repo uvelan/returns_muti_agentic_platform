@@ -16,11 +16,16 @@ from return_platform.dynamic_knowledge.schema import ActiveSchema
 
 
 class RequiredNodeConstraint(BaseModel):
-    """A composite uniqueness constraint on one node label's full key.
+    """A composite uniqueness constraint on one node label's full physical key.
 
     Single-field indexes are not sufficient for composite-equality lookups,
-    so every node gets one constraint over the ordered tuple of graph
-    properties backing its key_fields -- never one constraint per field.
+    so every node gets one constraint over graph_generation_id plus the
+    ordered tuple of graph properties backing its key_fields -- never one
+    constraint per field. graph_generation_id leads the tuple because it is
+    the physical key's outermost scope: two generations may legitimately
+    share the same logical key (see the plan's "logical vs. physical keys"),
+    so the constraint must cover both or it would wrongly unique-constrain
+    across generations.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -30,7 +35,9 @@ class RequiredNodeConstraint(BaseModel):
 
 
 class RequiredRelationshipIndex(BaseModel):
-    """A composite index over one relationship's match fields, on one endpoint label."""
+    """A composite index over graph_generation_id plus one relationship's match
+    fields, on one endpoint label -- matching how Stage B reconciliation and
+    the writer both always query (generation-scoped first)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -43,7 +50,9 @@ def required_node_constraints(schema: ActiveSchema) -> tuple[RequiredNodeConstra
     constraints: list[RequiredNodeConstraint] = []
     for node in schema.graph.nodes.values():
         entity = schema.entities[node.entity_id]
-        graph_properties = tuple(entity.fields[field_id].graph_property for field_id in node.key_fields)
+        graph_properties = ("graph_generation_id",) + tuple(
+            entity.fields[field_id].graph_property for field_id in node.key_fields
+        )
         constraints.append(RequiredNodeConstraint(label=node.label, graph_properties=graph_properties))
     return tuple(constraints)
 
@@ -59,7 +68,8 @@ def required_relationship_indexes(schema: ActiveSchema) -> tuple[RequiredRelatio
             RequiredRelationshipIndex(
                 relationship_id=relationship.relationship_id,
                 label=source_node.label,
-                graph_properties=tuple(
+                graph_properties=("graph_generation_id",)
+                + tuple(
                     source_entity.fields[field_id].graph_property
                     for field_id in relationship.source_match_fields
                 ),
@@ -69,7 +79,8 @@ def required_relationship_indexes(schema: ActiveSchema) -> tuple[RequiredRelatio
             RequiredRelationshipIndex(
                 relationship_id=relationship.relationship_id,
                 label=target_node.label,
-                graph_properties=tuple(
+                graph_properties=("graph_generation_id",)
+                + tuple(
                     target_entity.fields[field_id].graph_property
                     for field_id in relationship.target_match_fields
                 ),

@@ -139,9 +139,13 @@ async def _write_chunk(
             )
         return existing
 
-    for statement in compile_node_writes(schema, batch.node_mutations):
+    for statement in compile_node_writes(
+        schema, batch.node_mutations, graph_generation_id=graph_generation_id
+    ):
         await tx.run(statement.cypher, statement.parameters)
-    for statement in compile_relationship_writes(schema, batch.relationship_mutations):
+    for statement in compile_relationship_writes(
+        schema, batch.relationship_mutations, graph_generation_id=graph_generation_id
+    ):
         await tx.run(statement.cypher, statement.parameters)
 
     committed_at = datetime.now(UTC)
