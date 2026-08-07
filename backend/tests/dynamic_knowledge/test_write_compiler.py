@@ -5,7 +5,10 @@ import pytest
 from return_platform.dynamic_knowledge.graph.write_compiler import (
     WriteCompilationError,
     canonical_key_hash,
+    compile_generation_create,
     compile_generation_fence,
+    compile_generation_lookup,
+    compile_generation_transition,
     compile_node_writes,
     compile_ownership_query_existing,
     compile_ownership_removal,
@@ -270,6 +273,35 @@ def test_cardinality_checks_compiled_when_bounds_configured(active_schema: Activ
     assert any(check.parameters.get("maxTargets") == 3 for check in checks)
     assert any(check.parameters.get("maxSources") == 1 for check in checks)
     assert all("violations" in check.cypher for check in checks)
+
+
+def test_generation_create_is_parameterized() -> None:
+    compiled = compile_generation_create(graph_generation_id=GEN, fencing_token=1, status="PREPARING")
+    assert "CREATE (g:GraphGeneration" in compiled.cypher
+    assert "MERGE" not in compiled.cypher
+    assert compiled.parameters == {"generationId": GEN, "fencingToken": 1, "status": "PREPARING"}
+
+
+def test_generation_transition_requires_matching_current_status() -> None:
+    compiled = compile_generation_transition(
+        graph_generation_id=GEN, fencing_token=1, expected_status="PREPARING", new_status="BUILDING"
+    )
+    assert "MATCH (g:GraphGeneration" in compiled.cypher
+    assert "status: $expectedStatus" in compiled.cypher
+    assert "SET g.status = $newStatus" in compiled.cypher
+    assert compiled.parameters == {
+        "generationId": GEN,
+        "fencingToken": 1,
+        "expectedStatus": "PREPARING",
+        "newStatus": "BUILDING",
+    }
+
+
+def test_generation_lookup_returns_status_and_fencing_token() -> None:
+    compiled = compile_generation_lookup(graph_generation_id=GEN)
+    assert "g.status AS status" in compiled.cypher
+    assert "g.fencing_token AS fencing_token" in compiled.cypher
+    assert compiled.parameters == {"generationId": GEN}
 
 
 def test_canonical_key_hash_is_stable_regardless_of_field_order() -> None:

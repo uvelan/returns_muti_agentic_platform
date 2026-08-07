@@ -97,6 +97,56 @@ def compile_receipt_store(
     )
 
 
+def compile_generation_create(
+    *, graph_generation_id: str, fencing_token: int, status: str
+) -> CompiledWrite:
+    """Creates the GraphGeneration marker. Callers must not MERGE this --
+    a duplicate generation_id is a real bug (a caller reusing an id), which a
+    plain CREATE surfaces as a constraint violation instead of silently
+    reusing/overwriting an existing generation's fencing_token."""
+
+    return CompiledWrite(
+        cypher=(
+            "CREATE (g:GraphGeneration {generation_id: $generationId, "
+            "fencing_token: $fencingToken, status: $status, created_at: datetime()})"
+        ),
+        parameters={"generationId": graph_generation_id, "fencingToken": fencing_token, "status": status},
+    )
+
+
+def compile_generation_transition(
+    *, graph_generation_id: str, fencing_token: int, expected_status: str, new_status: str
+) -> CompiledWrite:
+    """Only transitions if the generation's CURRENT status matches
+    expected_status -- an out-of-order transition attempt fails loudly
+    (matched=0), never silently skips or overwrites."""
+
+    return CompiledWrite(
+        cypher=(
+            "MATCH (g:GraphGeneration {generation_id: $generationId, "
+            "fencing_token: $fencingToken, status: $expectedStatus}) "
+            "SET g.status = $newStatus "
+            "RETURN count(g) AS matched"
+        ),
+        parameters={
+            "generationId": graph_generation_id,
+            "fencingToken": fencing_token,
+            "expectedStatus": expected_status,
+            "newStatus": new_status,
+        },
+    )
+
+
+def compile_generation_lookup(*, graph_generation_id: str) -> CompiledWrite:
+    return CompiledWrite(
+        cypher=(
+            "MATCH (g:GraphGeneration {generation_id: $generationId}) "
+            "RETURN g.status AS status, g.fencing_token AS fencing_token"
+        ),
+        parameters={"generationId": graph_generation_id},
+    )
+
+
 def compile_node_writes(
     schema: ActiveSchema,
     mutations: tuple[GraphNodeMutation, ...],

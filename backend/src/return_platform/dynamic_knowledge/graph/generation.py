@@ -74,6 +74,36 @@ class GenerationReadLease(BaseModel):
     expires_at: datetime
 
 
+class ConfigurationRelease(BaseModel):
+    """One approved, immutable configuration/schema release. A generation is
+    always built from exactly one release; a release may back at most one
+    live generation build at a time (see RebuildLease)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    configuration_release_id: str
+    schema_fingerprint: str
+    approved_by: str
+    approved_at: datetime
+    release_status: str = "ACTIVE"
+
+
+class RebuildLease(BaseModel):
+    """Prevents two concurrent rebuilds from racing to build/activate a
+    generation for the same snapshot_name. Short-TTL, renewed while the
+    build is in progress; a crashed rebuild process's lease simply expires
+    rather than blocking the next rebuild attempt forever."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lease_id: str
+    snapshot_name: str
+    graph_generation_id: str
+    owner_instance_id: str
+    acquired_at: datetime
+    expires_at: datetime
+
+
 class GenerationWriteReservation(BaseModel):
     """Same drain requirement as GenerationReadLease, for in-flight on-demand writes.
 
