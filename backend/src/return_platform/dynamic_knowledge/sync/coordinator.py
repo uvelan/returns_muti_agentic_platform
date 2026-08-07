@@ -209,7 +209,7 @@ class GenericSyncCoordinator:
                 after=None,
                 through=watermarks[source_asset_id],
             ):
-                nodes, relationships = await self._project_page(
+                nodes, relationships, _touched_entity_ids = await self._project_page(
                     schema=schema,
                     source_asset_id=source_asset_id,
                     graph_generation_id=graph_generation_id,
@@ -246,7 +246,16 @@ class GenericSyncCoordinator:
         schema: ActiveSchema,
         graph_generation_id: str,
         fencing_token: int,
+        expected_generation_status: GraphGenerationStatus = GraphGenerationStatus.ACTIVE,
     ) -> tuple[int, int]:
+        """Incremental Stage A (node upserts/deletes) then, per page, Incremental
+        Stage B: reconcile only the relationships touched by that page's changed
+        entities -- never the whole schema, unlike full_sync's single end-of-run
+        reconciliation. The checkpoint advances only after both stages succeed
+        for a page; advancing right after the node write risks permanently
+        skipping a relationship that later fails to reconcile.
+        """
+
         if schema.runtime_mode is not RuntimeMode.CONNECTED_SYNC:
             raise RuntimeError("INCREMENTAL_SYNC_REQUIRES_CONNECTED_SYNC_MODE")
         total_nodes = 0
@@ -266,7 +275,7 @@ class GenericSyncCoordinator:
                 after=after,
                 through=through,
             ):
-                nodes, relationships = await self._project_page(
+                nodes, relationships, touched_entity_ids = await self._project_page(
                     schema=schema,
                     source_asset_id=source_asset_id,
                     graph_generation_id=graph_generation_id,
@@ -275,6 +284,26 @@ class GenericSyncCoordinator:
                 )
                 total_nodes += nodes
                 total_relationships += relationships
+
+                if self._reconciler is not None and touched_entity_ids:
+                    affected_relationship_ids = tuple(
+                        sorted(
+                            relationship_id
+                            for relationship_id, relationship in schema.graph.relationships.items()
+                            if relationship.source_entity_id in touched_entity_ids
+                            or relationship.target_entity_id in touched_entity_ids
+                        )
+                    )
+                    if affected_relationship_ids:
+                        counts = await self._reconciler.reconcile_relationships(
+                            schema=schema,
+                            graph_generation_id=graph_generation_id,
+                            fencing_token=fencing_token,
+                            expected_generation_status=expected_generation_status,
+                            relationship_ids=affected_relationship_ids,
+                        )
+                        total_relationships += sum(counts.values())
+
                 new_checkpoint = _highest_cursor(connector, source_asset_id, after, page)
                 if new_checkpoint is not None:
                     await self._checkpoints.write(
@@ -283,6 +312,7 @@ class GenericSyncCoordinator:
                         checkpoint=new_checkpoint,
                         fencing_token=fencing_token,
                     )
+                    after = new_checkpoint
         return total_nodes, total_relationships
 
     async def _project_page(
@@ -295,7 +325,7 @@ class GenericSyncCoordinator:
         page: RawSourcePage,
         expected_generation_status: GraphGenerationStatus = GraphGenerationStatus.BUILDING,
         reconcile_ownership: bool = False,
-    ) -> tuple[int, int]:
+    ) -> tuple[int, int, frozenset[str]]:
         mutations = self._extractor.extract(
             schema=schema,
             source_asset_id=source_asset_id,
@@ -329,7 +359,8 @@ class GenericSyncCoordinator:
                 page=page,
                 mutations=mutations,
             )
-        return nodes, relationships
+        touched_entity_ids = frozenset(mutation.entity_id for mutation in mutations)
+        return nodes, relationships, touched_entity_ids
 
     async def _reconcile_ownership_for_page(
         self,

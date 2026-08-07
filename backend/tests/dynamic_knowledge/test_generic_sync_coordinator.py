@@ -572,3 +572,93 @@ async def test_incremental_sync_scans_from_the_stored_checkpoint(
     await coordinator.incremental_sync(schema=active_schema, graph_generation_id="g1", fencing_token=1)
     # RecordingCheckpoints.read always returns None (no prior checkpoint) in this test.
     assert connector.scanned_after == [None]
+
+
+@pytest.mark.asyncio
+async def test_incremental_sync_reconciles_only_relationships_touched_by_the_page(
+    active_schema: ActiveSchema,
+) -> None:
+    """_page() upserts only entity_a; a_to_b (entity_a -> entity_b) is the only
+    relationship touching it, so Stage B must be scoped to exactly that
+    relationship_id, never the whole schema (unlike full_sync)."""
+
+    connector = NumericOrderedConnector([_page("A-1", 1)], watermark=_numeric_cursor(1))
+    reconciler = RecordingReconciler({"a_to_b": 1})
+    coordinator = GenericSyncCoordinator(
+        connectors=Registry(connector),
+        extractor=GenericSourceRecordExtractor(),
+        writer=RecordingWriter(),
+        checkpoints=RecordingCheckpoints(),
+        reconciler=reconciler,
+    )
+    await coordinator.incremental_sync(schema=active_schema, graph_generation_id="g1", fencing_token=1)
+    assert len(reconciler.calls) == 1
+    assert reconciler.calls[0]["relationship_ids"] == ("a_to_b",)
+
+
+@pytest.mark.asyncio
+async def test_incremental_sync_skips_reconciliation_when_no_relationship_is_touched(
+    active_schema: ActiveSchema,
+) -> None:
+    raw = active_schema.model_dump(mode="json")
+    raw["graph"]["relationships"] = {}
+    schema = ActiveSchema.model_validate(raw)
+    connector = NumericOrderedConnector([_page("A-1", 1)], watermark=_numeric_cursor(1))
+    reconciler = RecordingReconciler({})
+    coordinator = GenericSyncCoordinator(
+        connectors=Registry(connector),
+        extractor=GenericSourceRecordExtractor(),
+        writer=RecordingWriter(),
+        checkpoints=RecordingCheckpoints(),
+        reconciler=reconciler,
+    )
+    await coordinator.incremental_sync(schema=schema, graph_generation_id="g1", fencing_token=1)
+    assert reconciler.calls == []
+
+
+class FailingReconciler:
+    async def reconcile_relationships(
+        self,
+        *,
+        schema: ActiveSchema,
+        graph_generation_id: str,
+        fencing_token: int,
+        expected_generation_status: GraphGenerationStatus,
+        relationship_ids: tuple[str, ...] | None = None,
+    ) -> dict[str, int]:
+        raise RuntimeError("reconciliation failed")
+
+
+@pytest.mark.asyncio
+async def test_incremental_sync_checkpoint_does_not_advance_when_reconciliation_fails(
+    active_schema: ActiveSchema,
+) -> None:
+    connector = NumericOrderedConnector([_page("A-1", 1)], watermark=_numeric_cursor(1))
+    checkpoints = RecordingCheckpoints()
+    coordinator = GenericSyncCoordinator(
+        connectors=Registry(connector),
+        extractor=GenericSourceRecordExtractor(),
+        writer=RecordingWriter(),
+        checkpoints=checkpoints,
+        reconciler=FailingReconciler(),
+    )
+    with pytest.raises(RuntimeError, match="reconciliation failed"):
+        await coordinator.incremental_sync(schema=active_schema, graph_generation_id="g1", fencing_token=1)
+    assert checkpoints.written == []
+
+
+@pytest.mark.asyncio
+async def test_incremental_sync_writes_progressive_checkpoints_across_multiple_pages(
+    active_schema: ActiveSchema,
+) -> None:
+    pages = [_page("A-2", 2), _page("A-10", 10)]
+    connector = NumericOrderedConnector(pages, watermark=_numeric_cursor(10))
+    checkpoints = RecordingCheckpoints()
+    coordinator = GenericSyncCoordinator(
+        connectors=Registry(connector),
+        extractor=GenericSourceRecordExtractor(),
+        writer=RecordingWriter(),
+        checkpoints=checkpoints,
+    )
+    await coordinator.incremental_sync(schema=active_schema, graph_generation_id="g1", fencing_token=1)
+    assert [cursor.encoded_value for cursor in checkpoints.written] == ["2", "10"]
