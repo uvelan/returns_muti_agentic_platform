@@ -54,6 +54,7 @@ class ProjectionWriter(Protocol):
         graph_generation_id: str,
         records: tuple[DynamicSourceRecord, ...],
         fencing_token: int,
+        expected_generation_status: GraphGenerationStatus,
     ) -> tuple[int, int]: ...
 
 
@@ -281,6 +282,7 @@ class GenericSyncCoordinator:
                     graph_generation_id=graph_generation_id,
                     fencing_token=fencing_token,
                     page=page,
+                    expected_generation_status=expected_generation_status,
                 )
                 total_nodes += nodes
                 total_relationships += relationships
@@ -344,6 +346,7 @@ class GenericSyncCoordinator:
                 graph_generation_id=graph_generation_id,
                 records=records,
                 fencing_token=fencing_token,
+                expected_generation_status=expected_generation_status,
             )
 
         # Ownership reconciliation is explicitly opt-in per call (never implied

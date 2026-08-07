@@ -381,7 +381,6 @@ class GraphSyncService:
             projector=self._projector,
             writer=self._writer,
             sync_run_id=run_id,
-            expected_generation_status=GraphGenerationStatus.ACTIVE,
         )
         coordinator = GenericSyncCoordinator(
             connectors=connectors,

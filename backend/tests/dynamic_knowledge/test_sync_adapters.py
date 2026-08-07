@@ -71,7 +71,6 @@ async def test_project_and_write_reconstructs_mutations_and_returns_receipt_coun
         projector=projector,
         writer=writer,
         sync_run_id="run-1",
-        expected_generation_status=GraphGenerationStatus.ACTIVE,
     )
     records = (
         DynamicSourceRecord(
@@ -82,7 +81,11 @@ async def test_project_and_write_reconstructs_mutations_and_returns_receipt_coun
         ),
     )
     nodes, relationships = await adapter.project_and_write(
-        schema=active_schema, graph_generation_id="gen-1", records=records, fencing_token=1
+        schema=active_schema,
+        graph_generation_id="gen-1",
+        records=records,
+        fencing_token=1,
+        expected_generation_status=GraphGenerationStatus.ACTIVE,
     )
     assert nodes == 3
     assert relationships == 1
@@ -102,7 +105,6 @@ async def test_project_and_write_advances_chunk_id_across_calls(active_schema: A
         projector=FakeProjector(),
         writer=(writer := FakeWriter()),
         sync_run_id="run-1",
-        expected_generation_status=GraphGenerationStatus.BUILDING,
     )
     records = (
         DynamicSourceRecord(
@@ -110,12 +112,57 @@ async def test_project_and_write_advances_chunk_id_across_calls(active_schema: A
         ),
     )
     await adapter.project_and_write(
-        schema=active_schema, graph_generation_id="gen-1", records=records, fencing_token=1
+        schema=active_schema,
+        graph_generation_id="gen-1",
+        records=records,
+        fencing_token=1,
+        expected_generation_status=GraphGenerationStatus.BUILDING,
     )
     await adapter.project_and_write(
-        schema=active_schema, graph_generation_id="gen-1", records=records, fencing_token=1
+        schema=active_schema,
+        graph_generation_id="gen-1",
+        records=records,
+        fencing_token=1,
+        expected_generation_status=GraphGenerationStatus.BUILDING,
     )
     assert [call["chunk_id"] for call in writer.calls] == ["chunk-1", "chunk-2"]
+
+
+@pytest.mark.asyncio
+async def test_project_and_write_honors_a_different_expected_status_per_call(
+    active_schema: ActiveSchema,
+) -> None:
+    """One adapter instance must be reusable across a rebuild's BUILDING and
+    CATCHING_UP phases, each expecting a different generation status -- this
+    would previously always use whatever status the adapter was constructed
+    with, regardless of what a later call actually asked for."""
+
+    adapter = ProjectorGraphWriter(
+        projector=FakeProjector(), writer=(writer := FakeWriter()), sync_run_id="run-1"
+    )
+    records = (
+        DynamicSourceRecord(
+            source_asset_id="source_a", entity_id="entity_a", natural_key={"id": "A-1"}, values={"id": "A-1"}
+        ),
+    )
+    await adapter.project_and_write(
+        schema=active_schema,
+        graph_generation_id="gen-1",
+        records=records,
+        fencing_token=1,
+        expected_generation_status=GraphGenerationStatus.BUILDING,
+    )
+    await adapter.project_and_write(
+        schema=active_schema,
+        graph_generation_id="gen-1",
+        records=records,
+        fencing_token=1,
+        expected_generation_status=GraphGenerationStatus.CATCHING_UP,
+    )
+    assert [call["expected_generation_status"] for call in writer.calls] == [
+        GraphGenerationStatus.BUILDING,
+        GraphGenerationStatus.CATCHING_UP,
+    ]
 
 
 def test_registry_dispatches_by_connector_type(active_schema: ActiveSchema) -> None:

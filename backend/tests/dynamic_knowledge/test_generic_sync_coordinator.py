@@ -72,6 +72,7 @@ class Registry:
 class RecordingWriter:
     def __init__(self) -> None:
         self.written: list[tuple[str, ...]] = []
+        self.expected_generation_statuses: list[GraphGenerationStatus] = []
 
     async def project_and_write(
         self,
@@ -80,8 +81,10 @@ class RecordingWriter:
         graph_generation_id: str,
         records: tuple[DynamicSourceRecord, ...],
         fencing_token: int,
+        expected_generation_status: GraphGenerationStatus,
     ) -> tuple[int, int]:
         self.written.append(tuple(record.natural_key["id"] for record in records))
+        self.expected_generation_statuses.append(expected_generation_status)
         return len(records), 0
 
 
@@ -212,10 +215,11 @@ async def test_full_sync_honors_expected_generation_status_override(
     pages = [_page("A-1", 1)]
     connector = NumericOrderedConnector(pages, watermark=_numeric_cursor(1))
     reconciler = RecordingReconciler({})
+    writer = RecordingWriter()
     coordinator = GenericSyncCoordinator(
         connectors=Registry(connector),
         extractor=GenericSourceRecordExtractor(),
-        writer=RecordingWriter(),
+        writer=writer,
         checkpoints=RecordingCheckpoints(),
         reconciler=reconciler,
     )
@@ -226,6 +230,9 @@ async def test_full_sync_honors_expected_generation_status_override(
         expected_generation_status=GraphGenerationStatus.ACTIVE,
     )
     assert reconciler.calls[0]["expected_generation_status"] is GraphGenerationStatus.ACTIVE
+    # Stage A's own node/relationship writes must see the same override too --
+    # not just Stage B's reconciler call.
+    assert writer.expected_generation_statuses == [GraphGenerationStatus.ACTIVE]
 
 
 @pytest.mark.asyncio
@@ -572,6 +579,32 @@ async def test_incremental_sync_scans_from_the_stored_checkpoint(
     await coordinator.incremental_sync(schema=active_schema, graph_generation_id="g1", fencing_token=1)
     # RecordingCheckpoints.read always returns None (no prior checkpoint) in this test.
     assert connector.scanned_after == [None]
+
+
+@pytest.mark.asyncio
+async def test_incremental_sync_passes_its_expected_generation_status_to_stage_a_writes(
+    active_schema: ActiveSchema,
+) -> None:
+    """incremental_sync's own expected_generation_status parameter must reach
+    Stage A's node writes, not just Stage B's reconciler call -- it was
+    previously silently dropped, always leaving _project_page's BUILDING
+    default in effect regardless of what incremental_sync was called with."""
+
+    connector = NumericOrderedConnector([_page("A-1", 1)], watermark=_numeric_cursor(1))
+    writer = RecordingWriter()
+    coordinator = GenericSyncCoordinator(
+        connectors=Registry(connector),
+        extractor=GenericSourceRecordExtractor(),
+        writer=writer,
+        checkpoints=RecordingCheckpoints(),
+    )
+    await coordinator.incremental_sync(
+        schema=active_schema,
+        graph_generation_id="g1",
+        fencing_token=1,
+        expected_generation_status=GraphGenerationStatus.ACTIVE,
+    )
+    assert writer.expected_generation_statuses == [GraphGenerationStatus.ACTIVE]
 
 
 @pytest.mark.asyncio

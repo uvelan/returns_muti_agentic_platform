@@ -43,10 +43,12 @@ class ProjectorGraphWriter:
     building it from each page's UPSERT mutations), so this reconstructs a
     minimal DynamicRecordMutation -- source_identity is synthesized from the
     natural key since the projector never reads it. One adapter instance is
-    scoped to one sync run: sync_run_id and expected_generation_status are
-    bound at construction so every chunk this run writes agrees with the
-    generation-fencing expectation the caller (GraphSyncService) is using for
-    Stage B in the same run.
+    scoped to one sync run (sync_run_id is bound at construction), but
+    expected_generation_status is a per-call parameter, not bound -- a single
+    orchestrator-driven rebuild reuses one coordinator/writer instance across
+    multiple full_sync calls expecting *different* statuses in sequence
+    (BUILDING, then CATCHING_UP), so binding it once at construction would
+    silently keep expecting the first call's status forever.
     """
 
     def __init__(
@@ -55,12 +57,10 @@ class ProjectorGraphWriter:
         projector: GraphProjector,
         writer: GraphWriter,
         sync_run_id: str,
-        expected_generation_status: GraphGenerationStatus,
     ) -> None:
         self._projector = projector
         self._writer = writer
         self._sync_run_id = sync_run_id
-        self._expected_generation_status = expected_generation_status
         self._chunk_sequence = 0
 
     async def project_and_write(
@@ -70,6 +70,7 @@ class ProjectorGraphWriter:
         graph_generation_id: str,
         records: tuple[DynamicSourceRecord, ...],
         fencing_token: int,
+        expected_generation_status: GraphGenerationStatus,
     ) -> tuple[int, int]:
         mutations = tuple(
             DynamicRecordMutation(
@@ -90,7 +91,7 @@ class ProjectorGraphWriter:
             schema=schema,
             graph_generation_id=graph_generation_id,
             fencing_token=fencing_token,
-            expected_generation_status=self._expected_generation_status,
+            expected_generation_status=expected_generation_status,
             sync_run_id=self._sync_run_id,
             chunk_id=f"chunk-{self._chunk_sequence}",
             batch=batch,
