@@ -47,7 +47,8 @@ class FakeMongoCollection:
     def __init__(self, documents: list[dict[str, Any]]) -> None:
         self.documents = documents
 
-    def find(self, query: dict[str, Any]) -> FakeMongoCursor:
+    def find(self, query: dict[str, Any], projection: dict[str, Any] | None = None) -> FakeMongoCursor:
+        del query, projection
         return FakeMongoCursor(list(self.documents))
 
     async def count_documents(self, query: dict[str, Any], **_kwargs: Any) -> int:

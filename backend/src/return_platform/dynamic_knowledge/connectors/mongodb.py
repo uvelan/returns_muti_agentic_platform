@@ -73,17 +73,29 @@ class SeedPin:
 
 
 class MongoDBSourceScanConnector:
-    """One connector instance serves every Mongo-backed source in a database."""
+    """One connector instance serves every Mongo-backed source in one schema.
+
+    SourceScanConnector.capture_high_watermark/compare_cursors take no schema
+    parameter (only scan() does), so a connector that needs schema to know
+    whether a source uses ObjectId or field-based cursoring -- as any
+    connector serving sources with real business-key _id values must -- has
+    to have it bound at construction time. The schema passed into scan() is
+    ignored in favor of this bound one, so all three methods always agree on
+    one configuration for the lifetime of this connector instance; construct
+    a fresh connector (via the registry) if the active schema changes.
+    """
 
     def __init__(
         self,
         database: AsyncDatabase[dict[str, Any]],
         *,
+        schema: ActiveSchema,
         page_size: int = 500,
         seed_pins: Mapping[str, SeedPin] | None = None,
         max_records_per_source: int | None = None,
     ) -> None:
         self._database = database
+        self._schema = schema
         self._page_size = page_size
         self._seed_pins = dict(seed_pins or {})
         # Never applied to a seed-pinned scan -- a pinned seed generation is read
@@ -96,11 +108,58 @@ class MongoDBSourceScanConnector:
         return CAPABILITIES
 
     async def capture_high_watermark(self, *, source_asset_id: str) -> SourceCursor:
-        del source_asset_id
-        # A freshly-minted ObjectId's timestamp+counter sorts after every
-        # ObjectId already assigned by any process -- no query needed to
-        # establish "as of right now".
-        return SourceCursor(cursor_type=_OBJECT_ID, encoded_value=str(ObjectId()))
+        source = self._schema.sources[source_asset_id]
+        if source.incremental_cursor_field is None:
+            # A freshly-minted ObjectId's timestamp+counter sorts after every
+            # ObjectId already assigned by any process -- no query needed to
+            # establish "as of right now". Only valid when the source's _id
+            # really is a Mongo-generated ObjectId; see the module docstring.
+            return SourceCursor(cursor_type=_OBJECT_ID, encoded_value=str(ObjectId()))
+
+        collection_name = source.object_ref.get("name")
+        if not collection_name:
+            raise MongoConnectorError(
+                f"source {source_asset_id!r} object_ref is missing a collection 'name'"
+            )
+        sort_field = self._resolve_physical_field(source_asset_id, source.incremental_cursor_field)
+        collection = self._database[collection_name]
+        latest = [
+            document
+            async for document in collection.find({}, {sort_field: 1}).sort(sort_field, -1).limit(1)
+        ]
+        if not latest:
+            # No documents yet -- "now" is a safe upper bound; an empty
+            # collection must not block the rest of the run.
+            return SourceCursor(cursor_type=_FIELD_DATETIME, encoded_value=datetime.now(UTC).isoformat())
+        return SourceCursor(
+            cursor_type=_FIELD_DATETIME, encoded_value=_encode_field_value(_dotted_get(latest[0], sort_field))
+        )
+
+    def _resolve_physical_field(self, source_asset_id: str, field_id: str) -> str:
+        """incremental_cursor_field is a logical field_id, never a physical
+        document path -- resolve it through every entity this source backs
+        (dot-joined for nested paths) and require they all agree, rather than
+        assuming field_id == physical field name."""
+
+        physical_fields: set[str] = set()
+        for entity in self._schema.entities.values():
+            if entity.source_asset_id != source_asset_id:
+                continue
+            field = entity.fields.get(field_id)
+            if field is None or not field.physical_path:
+                continue
+            physical_fields.add(".".join(field.physical_path))
+        if not physical_fields:
+            raise MongoConnectorError(
+                f"source {source_asset_id!r}'s incremental_cursor_field {field_id!r} has no "
+                "physical_path on any entity backed by this source"
+            )
+        if len(physical_fields) > 1:
+            raise MongoConnectorError(
+                f"source {source_asset_id!r}'s incremental_cursor_field {field_id!r} maps to "
+                f"different physical paths across entities: {sorted(physical_fields)}"
+            )
+        return next(iter(physical_fields))
 
     def compare_cursors(
         self, *, source_asset_id: str, left: SourceCursor, right: SourceCursor
@@ -134,14 +193,19 @@ class MongoDBSourceScanConnector:
         after: SourceCursor | None,
         through: SourceCursor,
     ) -> AsyncIterator[RawSourcePage]:
-        source = schema.sources[source_asset_id]
+        del schema  # this connector always uses the schema bound at construction; see class docstring
+        source = self._schema.sources[source_asset_id]
         collection_name = source.object_ref.get("name")
         if not collection_name:
             raise MongoConnectorError(
                 f"source {source_asset_id!r} object_ref is missing a collection 'name'"
             )
         collection = self._database[collection_name]
-        cursor_field = source.incremental_cursor_field
+        cursor_field = (
+            None
+            if source.incremental_cursor_field is None
+            else self._resolve_physical_field(source_asset_id, source.incremental_cursor_field)
+        )
 
         query: dict[str, Any] = {}
         seed_pin = self._seed_pins.get(source_asset_id)
@@ -175,7 +239,7 @@ class MongoDBSourceScanConnector:
         batch: list[RawSourceDocument] = []
         last_sort_value: Any = None
         async for document in mongo_cursor:
-            last_sort_value = document.get(sort_field)
+            last_sort_value = document.get(sort_field) if cursor_field is None else _dotted_get(document, sort_field)
             batch.append(
                 RawSourceDocument(
                     operation="UPSERT",
@@ -188,6 +252,27 @@ class MongoDBSourceScanConnector:
                 batch = []
         if batch:
             yield _page(batch, cursor_field, last_sort_value, through)
+
+
+def _dotted_get(document: Mapping[str, Any], dotted_path: str) -> Any:
+    """Reads a possibly-nested field from a raw document using the same dot
+    notation MongoDB itself uses for query/sort paths -- plain dict.get()
+    only handles single-segment paths."""
+
+    current: Any = document
+    for segment in dotted_path.split("."):
+        if not isinstance(current, Mapping) or segment not in current:
+            return None
+        current = current[segment]
+    return current
+
+
+def _encode_field_value(value: Any) -> str:
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+    return str(value)
 
 
 def _object_id_bounds(after: SourceCursor | None, through: SourceCursor) -> dict[str, Any]:
@@ -215,14 +300,9 @@ def _page(
         if cursor_field is None:
             next_cursor = SourceCursor(cursor_type=_OBJECT_ID, encoded_value=str(last_sort_value))
         else:
-            value = last_sort_value
-            if isinstance(value, datetime):
-                if value.tzinfo is None:
-                    value = value.replace(tzinfo=UTC)
-                encoded_value = value.isoformat()
-            else:
-                encoded_value = str(value)
-            next_cursor = SourceCursor(cursor_type=_FIELD_DATETIME, encoded_value=encoded_value)
+            next_cursor = SourceCursor(
+                cursor_type=_FIELD_DATETIME, encoded_value=_encode_field_value(last_sort_value)
+            )
     return RawSourcePage(
         documents=tuple(documents),
         next_cursor=next_cursor,

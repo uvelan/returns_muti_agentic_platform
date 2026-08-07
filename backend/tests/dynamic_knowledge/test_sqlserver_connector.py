@@ -74,6 +74,25 @@ def _patch_connect(monkeypatch: pytest.MonkeyPatch, rows: list[dict[str, Any]]) 
 
 
 @pytest.mark.asyncio
+async def test_resolve_rejects_entities_disagreeing_on_the_cursor_columns_physical_path(
+    active_schema: ActiveSchema,
+) -> None:
+    """entity_a.id's physical_path is "configured_id"; entity_b.id's is
+    "related_id" in the shared fixture -- pointing both at source_b with the
+    same incremental_cursor_field "id" must be rejected, not silently resolve
+    to whichever entity happened to be iterated first."""
+
+    raw = active_schema.model_dump(mode="json")
+    raw["entities"]["entity_a"]["source_asset_id"] = "source_b"
+    raw["sources"]["source_b"]["object_ref"] = {"database": "db", "namespace": "dbo", "name": "objects"}
+    raw["sources"]["source_b"]["incremental_cursor_field"] = "id"
+    schema = ActiveSchema.model_validate(raw)
+    connector = SqlServerSourceScanConnector(_connection_settings(), schema=schema)
+    with pytest.raises(SqlServerConnectorError, match="different physical columns"):
+        await connector.capture_high_watermark(source_asset_id="source_b")
+
+
+@pytest.mark.asyncio
 async def test_resolve_rejects_source_without_incremental_cursor_field(
     active_schema: ActiveSchema,
 ) -> None:
@@ -95,7 +114,9 @@ async def test_capture_high_watermark_queries_max_of_configured_column(
     assert watermark.cursor_type == "FIELD_DATETIME"
     assert watermark.encoded_value == max_value.isoformat()
     assert cursor.executed is not None
-    assert "MAX([parent_id])" in cursor.executed[0]
+    # entity_b's "parent_id" field's physical_path is "configured_parent_id" in the
+    # shared fixture -- the query must use the physical column, not the field_id.
+    assert "MAX([configured_parent_id])" in cursor.executed[0]
     assert "[dbo].[objects]" in cursor.executed[0]
 
 

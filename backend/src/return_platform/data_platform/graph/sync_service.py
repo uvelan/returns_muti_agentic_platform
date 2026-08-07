@@ -344,6 +344,7 @@ class GraphSyncService:
         mongo_connector = _CountingConnector(
             MongoDBSourceScanConnector(
                 self._source_db,
+                schema=self._schema,
                 page_size=self._settings.graph_sync_batch_size,
                 seed_pins=seed_pins,
                 max_records_per_source=limit,

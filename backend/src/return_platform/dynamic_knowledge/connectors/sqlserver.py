@@ -183,11 +183,42 @@ class SqlServerSourceScanConnector:
                 f"source {source_asset_id!r} has no incremental_cursor_field configured; "
                 "SQL Server sources have no fallback ordering column"
             )
+        column = self._resolve_physical_column(source_asset_id, source.incremental_cursor_field)
         return (
             _validate_identifier(namespace, what="schema"),
             _validate_identifier(table, what="table"),
-            _validate_identifier(source.incremental_cursor_field, what="column"),
+            _validate_identifier(column, what="column"),
         )
+
+    def _resolve_physical_column(self, source_asset_id: str, field_id: str) -> str:
+        """incremental_cursor_field is a logical field_id, never a physical
+        column name -- resolve it through every entity this source backs and
+        require they all agree, rather than assuming field_id == column name."""
+
+        physical_columns: set[str] = set()
+        for entity in self._schema.entities.values():
+            if entity.source_asset_id != source_asset_id:
+                continue
+            field = entity.fields.get(field_id)
+            if field is None or not field.physical_path:
+                continue
+            if len(field.physical_path) != 1:
+                raise SqlServerConnectorError(
+                    f"field {field_id!r} on entity {entity.entity_id!r} has a nested "
+                    f"physical_path {field.physical_path!r}; SQL Server columns must be flat"
+                )
+            physical_columns.add(field.physical_path[0])
+        if not physical_columns:
+            raise SqlServerConnectorError(
+                f"source {source_asset_id!r}'s incremental_cursor_field {field_id!r} has no "
+                "physical_path on any entity backed by this source"
+            )
+        if len(physical_columns) > 1:
+            raise SqlServerConnectorError(
+                f"source {source_asset_id!r}'s incremental_cursor_field {field_id!r} maps to "
+                f"different physical columns across entities: {sorted(physical_columns)}"
+            )
+        return next(iter(physical_columns))
 
     def _run_query(self, query: str, params: dict[str, Any]) -> list[dict[str, Any]]:
         timeout = max(1, int(self._connection.timeout_seconds))

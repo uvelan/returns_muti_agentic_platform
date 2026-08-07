@@ -212,46 +212,62 @@ def _contact_digest(source_field: str, contact_kind: str) -> dict[str, Any]:
 
 
 _SOURCES = {
+    # incremental_cursor_field is required on every Mongo source here (not left
+    # to the connector's ObjectId-based default) -- verified against the real
+    # seed data, whose _id values are business-key strings ("CUST-1001"), never
+    # ObjectIds, so an ObjectId-bounded scan would silently match nothing.
     "customer_outbound": _source(
-        "customer_outbound", "MONGODB", {"database": "returns_source", "name": "customerOutboundCDM"}
+        "customer_outbound",
+        "MONGODB",
+        {"database": "return_source", "name": "customerOutboundCDM"},
+        incremental_cursor_field="source_updated_at",
     ),
     "sales_inventory": _source(
-        "sales_inventory", "MONGODB", {"database": "returns_source", "name": "salesInv"}
+        "sales_inventory",
+        "MONGODB",
+        {"database": "return_source", "name": "salesInv"},
+        incremental_cursor_field="source_updated_at",
     ),
     "shipment_info": _source(
-        "shipment_info", "MONGODB", {"database": "returns_source", "name": "shipmentInfo"}
+        "shipment_info",
+        "MONGODB",
+        {"database": "return_source", "name": "shipmentInfo"},
+        incremental_cursor_field="source_updated_at",
     ),
     "product_lookup": _source(
-        "product_lookup", "MONGODB", {"database": "returns_source", "name": "lkpSearchProduct"}
+        "product_lookup",
+        "MONGODB",
+        {"database": "return_source", "name": "lkpSearchProduct"},
+        incremental_cursor_field="source_updated_at",
     ),
     "sql_returns": _source(
         "sql_returns",
         "MSSQL",
-        {"database": "returns_platform", "namespace": "dbo", "name": "return_requests"},
+        {"database": "return_platform", "namespace": "dbo", "name": "return_requests"},
         incremental_cursor_field="source_updated_at",
     ),
     "sql_return_items": _source(
         "sql_return_items",
         "MSSQL",
-        {"database": "returns_platform", "namespace": "dbo", "name": "return_items"},
+        {"database": "return_platform", "namespace": "dbo", "name": "return_items"},
         incremental_cursor_field="source_updated_at",
     ),
     "sql_return_tracking": _source(
         "sql_return_tracking",
         "MSSQL",
-        {"database": "returns_platform", "namespace": "dbo", "name": "return_tracking"},
+        {"database": "return_platform", "namespace": "dbo", "name": "return_tracking"},
         incremental_cursor_field="event_at",
     ),
     "sql_bay_assignment": _source(
         "sql_bay_assignment",
         "MSSQL",
-        {"database": "returns_platform", "namespace": "platform", "name": "bay_assignment"},
+        {"database": "return_platform", "namespace": "platform", "name": "bay_assignment"},
         incremental_cursor_field="source_updated_at",
     ),
     "sql_support_ticket": _source(
         "sql_support_ticket",
         "MSSQL",
-        {"database": "returns_platform", "namespace": "integration", "name": "return_support_ticket"},
+        {"database": "return_platform", "namespace": "integration", "name": "return_support_ticket"},
         incremental_cursor_field="updated_at",
     ),
 }
@@ -315,6 +331,14 @@ _ENTITIES = {
                 },
                 searchable=True,
                 filterable=True,
+            ),
+            # customer_outbound's incremental_cursor_field is source_updated_at;
+            # every entity sharing that source must define it, including this one.
+            "source_updated_at": _field(
+                "source_updated_at",
+                physical_path=["updatedAt"],
+                path_origin="ROOT_DOCUMENT",
+                data_type="DATETIME",
             ),
         },
         natural_key=["account_number"],
@@ -391,6 +415,14 @@ _ENTITIES = {
             ),
             "shipped_quantity": _field(
                 "shipped_quantity", physical_path=["lineData", "shipQty"], data_type="INTEGER"
+            ),
+            # sales_inventory's incremental_cursor_field is source_updated_at;
+            # every entity sharing that source must define it, including this one.
+            "source_updated_at": _field(
+                "source_updated_at",
+                physical_path=["updatedAt"],
+                path_origin="ROOT_DOCUMENT",
+                data_type="DATETIME",
             ),
         },
         natural_key=["order_line_id"],
