@@ -139,6 +139,21 @@ def _contact_digest_schema(active_schema: ActiveSchema) -> ActiveSchema:
     return ActiveSchema.model_validate(raw)
 
 
+def _coalesce_schema(active_schema: ActiveSchema) -> ActiveSchema:
+    raw = active_schema.model_dump(mode="json")
+    raw["entities"]["entity_a"]["fields"]["preferred_id"] = {
+        "field_id": "preferred_id",
+        "physical_path": None,
+        "derive": {"operation": "COALESCE", "fields": ["name", "id"]},
+        "graph_property": "preferred_id",
+        "data_type": "STRING",
+        "capabilities": {"searchable": True, "filterable": True, "operators": ["EXACT"]},
+        "permissions": {"searchable_by": ["associate"]},
+    }
+    raw["graph"]["nodes"]["node_a"]["property_fields"].append("preferred_id")
+    return ActiveSchema.model_validate(raw)
+
+
 def _page(document: dict[str, object], source_identity: str = "doc-1") -> RawSourcePage:
     return RawSourcePage(
         documents=(
@@ -249,6 +264,36 @@ def test_contact_lookup_digest_derive_fails_loudly_when_secret_unresolved(
             page=_page(document),
             read_scope=ProjectionReadScope.COMPLETE_SOURCE_DOCUMENT,
         )
+
+
+def test_coalesce_derive_picks_the_first_non_null_candidate(active_schema: ActiveSchema) -> None:
+    schema = _coalesce_schema(active_schema)
+    document = {"configured_id": "A-1", "configured_name": "n", "configured_count": 1}
+    mutations = GenericSourceRecordExtractor().extract(
+        schema=schema,
+        source_asset_id="source_a",
+        page=_page(document),
+        read_scope=ProjectionReadScope.COMPLETE_SOURCE_DOCUMENT,
+    )
+    assert len(mutations) == 1
+    assert mutations[0].record is not None
+    assert mutations[0].record.values["preferred_id"] == "n"
+
+
+def test_coalesce_derive_falls_through_to_a_later_candidate_when_earlier_ones_are_absent(
+    active_schema: ActiveSchema,
+) -> None:
+    schema = _coalesce_schema(active_schema)
+    document = {"configured_id": "A-1", "configured_count": 1}  # configured_name absent
+    mutations = GenericSourceRecordExtractor().extract(
+        schema=schema,
+        source_asset_id="source_a",
+        page=_page(document),
+        read_scope=ProjectionReadScope.COMPLETE_SOURCE_DOCUMENT,
+    )
+    assert len(mutations) == 1
+    assert mutations[0].record is not None
+    assert mutations[0].record.values["preferred_id"] == "A-1"
 
 
 def test_partial_targeted_read_scope_is_preserved_on_the_mutation(

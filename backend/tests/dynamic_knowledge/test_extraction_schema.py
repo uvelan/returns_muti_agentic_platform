@@ -76,6 +76,29 @@ def test_contact_lookup_digest_derive_requires_contact_kind_and_key_version(
         ActiveSchema.model_validate(raw)
 
 
+def test_coalesce_derive_requires_at_least_two_fields(active_schema: ActiveSchema) -> None:
+    raw = _with_entity_a_patch(active_schema)
+    raw["entities"]["entity_a"]["fields"]["name"]["physical_path"] = None
+    raw["entities"]["entity_a"]["fields"]["name"]["derive"] = {
+        "operation": "COALESCE",
+        "fields": ["id"],
+    }
+    with pytest.raises(ValidationError, match="at least two candidate fields"):
+        ActiveSchema.model_validate(raw)
+
+
+def test_coalesce_derive_rejects_source_field(active_schema: ActiveSchema) -> None:
+    raw = _with_entity_a_patch(active_schema)
+    raw["entities"]["entity_a"]["fields"]["name"]["physical_path"] = None
+    raw["entities"]["entity_a"]["fields"]["name"]["derive"] = {
+        "operation": "COALESCE",
+        "source_field": "id",
+        "fields": ["id", "count_value"],
+    }
+    with pytest.raises(ValidationError, match="uses fields, not source_field"):
+        ActiveSchema.model_validate(raw)
+
+
 def test_derived_field_resolves_against_a_sibling_field(active_schema: ActiveSchema) -> None:
     raw = _with_entity_a_patch(active_schema)
     raw["entities"]["entity_a"]["fields"]["name"]["physical_path"] = None

@@ -167,6 +167,7 @@ class DeriveOperation(StrEnum):
 
     SPLIT_PART = "SPLIT_PART"
     CONTACT_LOOKUP_DIGEST = "CONTACT_LOOKUP_DIGEST"
+    COALESCE = "COALESCE"
 
 
 class ContactDigestKind(StrEnum):
@@ -177,18 +178,23 @@ class ContactDigestKind(StrEnum):
 
 
 class FieldDerivation(BaseModel):
-    """Compute a field's value from another already-extracted field, never from a raw source path.
+    """Compute a field's value from other already-extracted fields, never from a raw source path.
 
     CONTACT_LOOKUP_DIGEST never carries the HMAC secret itself -- only a
     vault:// key_reference, resolved once per sync run by the caller and
     supplied to the extractor as an already-resolved value, the same
     never-log-the-secret posture as KeyResolution's DETERMINISTIC_HMAC.
+
+    SPLIT_PART and CONTACT_LOOKUP_DIGEST take one source_field; COALESCE takes
+    an ordered list of candidate fields and resolves to the first non-null one
+    -- the two shapes are mutually exclusive per operation, never combined.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     operation: DeriveOperation
-    source_field: Identifier
+    source_field: Identifier | None = None
+    fields: tuple[Identifier, ...] = ()
     delimiter: str | None = Field(default=None, min_length=1)
     index: int | None = Field(default=None, ge=0)
     contact_kind: ContactDigestKind | None = None
@@ -197,6 +203,16 @@ class FieldDerivation(BaseModel):
 
     @model_validator(mode="after")
     def validate_operation_fields(self) -> FieldDerivation:
+        if self.operation is DeriveOperation.COALESCE:
+            if self.source_field is not None:
+                raise ValueError("COALESCE derive uses fields, not source_field")
+            if len(self.fields) < 2:
+                raise ValueError("COALESCE derive requires at least two candidate fields")
+            return self
+        if self.fields:
+            raise ValueError(f"{self.operation!r} derive uses source_field, not fields")
+        if self.source_field is None:
+            raise ValueError(f"{self.operation!r} derive requires source_field")
         if self.operation is DeriveOperation.SPLIT_PART:
             if self.delimiter is None or self.index is None:
                 raise ValueError("SPLIT_PART derive requires delimiter and index")
@@ -211,6 +227,15 @@ class FieldDerivation(BaseModel):
             if self.key_version is None:
                 raise ValueError("CONTACT_LOOKUP_DIGEST derive requires key_version")
         return self
+
+    @property
+    def referenced_fields(self) -> tuple[str, ...]:
+        """Every sibling field this derivation reads, regardless of operation shape."""
+
+        if self.operation is DeriveOperation.COALESCE:
+            return self.fields
+        assert self.source_field is not None
+        return (self.source_field,)
 
 
 class FieldDefinition(BaseModel):
@@ -382,19 +407,19 @@ class EntityDefinition(BaseModel):
         for field_id, field in self.fields.items():
             if field.derive is None:
                 continue
-            source = field.derive.source_field
-            source_field = self.fields.get(source)
-            if source_field is None:
-                raise ValueError(
-                    f"field {field_id!r} derives from unknown field {source!r}"
-                )
-            if source == field_id:
-                raise ValueError(f"field {field_id!r} cannot derive from itself")
-            if source_field.derive is not None:
-                raise ValueError(
-                    f"field {field_id!r} derives from {source!r}, which is itself derived; "
-                    "chained derivations are not supported"
-                )
+            for source in field.derive.referenced_fields:
+                source_field = self.fields.get(source)
+                if source_field is None:
+                    raise ValueError(
+                        f"field {field_id!r} derives from unknown field {source!r}"
+                    )
+                if source == field_id:
+                    raise ValueError(f"field {field_id!r} cannot derive from itself")
+                if source_field.derive is not None:
+                    raise ValueError(
+                        f"field {field_id!r} derives from {source!r}, which is itself derived; "
+                        "chained derivations are not supported"
+                    )
         if self.key_resolution is not None:
             resolution = self.key_resolution
             if resolution.strategy is KeyResolutionStrategy.SOURCE_FIELD:

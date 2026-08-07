@@ -233,10 +233,7 @@ def _extract_fields(
     for field_id, field in entity.fields.items():
         if field.derive is None:
             continue
-        source_value = values.get(field.derive.source_field)
-        if source_value is None:
-            continue
-        derived = _apply_derive(field.derive, source_value, resolved_secrets)
+        derived = _apply_derive(field.derive, values, resolved_secrets)
         if derived is not None:
             values[field_id] = derived
     return values
@@ -252,8 +249,20 @@ def _resolve_path(record: Any, path: tuple[str, ...]) -> Any:
 
 
 def _apply_derive(
-    derivation: FieldDerivation, source_value: Any, resolved_secrets: Mapping[str, str]
+    derivation: FieldDerivation, values: Mapping[str, Any], resolved_secrets: Mapping[str, str]
 ) -> Any:
+    if derivation.operation is DeriveOperation.COALESCE:
+        for field_id in derivation.fields:
+            value = values.get(field_id)
+            if value is not None:
+                return value
+        return None
+
+    assert derivation.source_field is not None
+    source_value = values.get(derivation.source_field)
+    if source_value is None:
+        return None
+
     if derivation.operation is DeriveOperation.SPLIT_PART:
         assert derivation.delimiter is not None and derivation.index is not None
         parts = str(source_value).split(derivation.delimiter)
