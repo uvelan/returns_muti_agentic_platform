@@ -14,10 +14,17 @@ from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class RuntimeConfigurationView(Protocol):
-    """An immutable window onto exactly one configuration release."""
+    """An immutable window onto exactly one configuration release.
 
-    release_id: str
-    checksum: str
+    `release_id`/`checksum` are read-only properties, not plain attributes: a plain
+    `x: str` Protocol member means "readable AND writable" to mypy, which the natural
+    frozen implementation cannot satisfy.
+    """
+
+    @property
+    def release_id(self) -> str: ...
+    @property
+    def checksum(self) -> str: ...
 
     def section(self, key: str) -> Mapping[str, object]:
         """Raw configuration for one module, from this release only."""

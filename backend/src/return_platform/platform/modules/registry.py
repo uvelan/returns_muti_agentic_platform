@@ -1,14 +1,22 @@
-"""Module descriptor bookkeeping: uniqueness, resolution, and capability-declaration
-validation.
+"""Module descriptor bookkeeping: uniqueness, resolution, capability-declaration
+validation, and construction.
 
-Construction (calling a factory to produce a running ModuleRuntime) and health
-aggregation are added in Phase 1B, once ModuleRuntime exists -- this registry is
-deliberately usable without ever importing that contract.
+Phase 1A built everything except construct() -- it could not exist before ModuleRuntime
+and ModuleFactory existed. Health aggregation over a list of running modules lives in
+platform/modules/lifecycle.py instead, since this registry tracks descriptors and
+factories, not constructed runtime instances.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from return_platform.platform.capabilities.contracts import CapabilityName, CapabilityRegistry
+from return_platform.platform.modules.contracts import (
+    ModuleFactory,
+    ModuleRuntime,
+    ModuleRuntimeContext,
+)
 from return_platform.platform.modules.descriptor import ModuleDescriptor
 from return_platform.platform.modules.exceptions import (
     CapabilityUnsatisfied,
@@ -52,6 +60,22 @@ class ModuleRegistry:
 
     def all(self) -> tuple[ModuleDescriptor, ...]:
         return tuple(self._descriptors.values())
+
+    def construct(
+        self, module_id: str, context: ModuleRuntimeContext, config: Mapping[str, object]
+    ) -> ModuleRuntime:
+        """Resolve `module_id`'s factory and construct its runtime.
+
+        Raises TypeError if the registered factory does not satisfy ModuleFactory --
+        register() does not validate factory shape at registration time, so this is
+        the first point that can.
+        """
+        _, factory = self.resolve(module_id)
+        if not isinstance(factory, ModuleFactory):
+            raise TypeError(
+                f"module_id {module_id!r} was registered with a non-ModuleFactory object"
+            )
+        return factory.create(context, config)
 
     def validate_capabilities(self, module_id: str, capabilities: CapabilityRegistry) -> None:
         """Raise CapabilityUnsatisfied if a required platform capability has no publisher.

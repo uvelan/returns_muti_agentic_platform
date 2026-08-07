@@ -11,9 +11,15 @@ from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class ConsistencyHandle(Protocol):
-    """A read-consistency token acquired at an operation boundary and threaded through it."""
+    """A read-consistency token acquired at an operation boundary and threaded through it.
 
-    token: str
+    `token` is a read-only property, not a plain attribute: a plain `x: str` Protocol
+    member means "readable AND writable" to mypy, which the natural frozen
+    implementation cannot satisfy.
+    """
+
+    @property
+    def token(self) -> str: ...
 
     def assert_current(self) -> None:
         """Raise ConsistencyChanged if the underlying resource moved since acquisition."""

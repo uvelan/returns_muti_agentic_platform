@@ -1,8 +1,8 @@
 # platform/modules
 
-Module identity, declaration, and descriptor bookkeeping.
+Module identity, declaration, descriptor bookkeeping, and runtime lifecycle.
 
-## What's here now (Phase 1A)
+## Descriptor bookkeeping (Phase 1A)
 
 - `descriptor.py` — `ModuleDescriptor`: `module_id`, `module_kind`,
   `implementation_id`, `version`, `capabilities`, `configuration_schema`,
@@ -17,23 +17,30 @@ Module identity, declaration, and descriptor bookkeeping.
 - `exceptions.py` — `ModuleNotRegistered`, `DuplicateImplementation`,
   `CapabilityUnsatisfied`, `ModuleInitFailed`.
 
-`ModuleRegistry` deliberately does not construct anything yet, and does not know what
-a running module looks like — it has nothing to prove before `ModuleRuntime` exists.
+## Runtime lifecycle (Phase 1B)
 
-## What Phase 1B adds
+- `contracts.py` — `ModuleRuntime` (the lifecycle every module implements:
+  `initialize`, `publish_capabilities`, `resolve_capabilities`, the four-method
+  epoch-keyed reconfiguration protocol, `health`, `shutdown`, `router`),
+  `ModuleRuntimeContext` (platform services plus the capability registry, no
+  module-specific field — see its docstring for which fields exist yet), `ModuleHealth`
+  / `HealthStatus`, `ReconfigureOutcome`, and `ModuleFactory` (`descriptor` +
+  `create(context, config) -> ModuleRuntime`).
+- `registry.py` gained `construct(module_id, context, config) -> ModuleRuntime`,
+  extending the same class Phase 1A built rather than replacing it.
+- `lifecycle.py` — `initialize_all()` (ordered, fails closed), `shutdown_all()`
+  (reverse-ordered, best-effort — every module gets a shutdown attempt even if an
+  earlier one failed, errors collected into one `ExceptionGroup`), and
+  `rollup_health()` (worst-of aggregation over a caller-supplied list of
+  `ModuleHealth`). Modules do not currently declare dependency edges on each other, so
+  there is no dependency sort here — only the order the caller supplies. Add a real
+  sort if `ModuleDescriptor` ever grows a declared dependency list; don't invent one
+  speculatively.
 
-`contracts.py` — `ModuleRuntime` (the lifecycle every module implements:
-`initialize`, `publish_capabilities`, `resolve_capabilities`, the four-method
-epoch-keyed reconfiguration protocol, `health`, `shutdown`), `ModuleRuntimeContext`
-(platform services + the capability registry, no module-specific field), and
-`ModuleFactory` (`descriptor` + `create(context, config) -> ModuleRuntime`). Once those
-exist, `ModuleRegistry` grows a `construct()` step that calls a factory and a `health()`
-aggregation step — extending this package's registry, not replacing it.
-
-`lifecycle.py` and `bootstrap/` add the four-pass activation sequence: construct every
-module, publish native capabilities, let `bootstrap/adapters/` publish consumer-shaped
-bindings, then let every module resolve its ports. See the target design, section 2.1 and
-section 13.1, and the implementation plan's Phase 1B.
+The epoch-keyed reconfiguration mechanism itself (`EpochPointer`, `EpochLeaseTracker`,
+`ReconfigurationCoordinator`) lives in `bootstrap/epoch.py`, not here — it coordinates
+*multiple* modules plus a replica-scoped pointer, which is a bootstrap concern, not a
+module-registry one. See `bootstrap/README.md`.
 
 ## Security constraint
 

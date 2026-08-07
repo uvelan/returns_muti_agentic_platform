@@ -66,9 +66,21 @@ The consolidation introduces a cross-cutting platform kernel at
   resolve each other's behavior without importing each other. Binding a provider's
   native contract to a consumer's port happens only in `bootstrap/adapters/`, the one
   package allowed to import two modules at once.
-- `platform/modules/` — module identity (`ModuleDescriptor`) and registration
-  bookkeeping. The full activation lifecycle (`ModuleRuntime`, epoch-keyed
-  reconfiguration, four-pass startup) lands alongside it.
+- `platform/modules/` — module identity (`ModuleDescriptor`), registration
+  bookkeeping, and the runtime lifecycle every module implements (`ModuleRuntime`:
+  initialize, publish/resolve capabilities, epoch-keyed reconfiguration, health,
+  shutdown).
+- `bootstrap/` — the epoch-keyed two-phase reconfiguration mechanism
+  (`EpochPointer`, `EpochLeaseTracker`, `ReconfigurationCoordinator`) and the
+  four-pass activation sequence (construct → publish native capabilities → publish
+  adapter bindings → resolve). A single replica-scoped epoch swap is what makes a
+  configuration change visible atomically — no request ever observes two modules on
+  two different releases. `bootstrap/adapters/` is the only package allowed to import
+  two modules at once, to bind a provider's contract to a consumer's port.
+
+None of this is wired into the application's actual startup yet — it is built and
+tested standalone, ahead of the phases (canonical configuration, system store, audit)
+that supply its real dependencies.
 
 See [`docs/UNIFIED_RETURN_PLATFORM_TARGET_DESIGN.md`](docs/UNIFIED_RETURN_PLATFORM_TARGET_DESIGN.md)
 sections 7 and 13 for the full contracts and the distributed-correctness invariants

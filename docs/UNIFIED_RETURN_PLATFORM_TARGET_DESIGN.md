@@ -1023,9 +1023,15 @@ class RuntimeConfigurationView(Protocol):
     There is no unscoped read anywhere in this contract: you cannot obtain configuration
     values without first naming which release you are reading. That is what makes the
     pinning promise structural rather than a convention.
+
+    release_id/checksum are read-only properties, not plain attributes — a plain
+    `x: str` Protocol member means "readable AND writable" to mypy, which the natural
+    frozen implementation cannot satisfy.
     """
-    release_id: str
-    checksum: str
+    @property
+    def release_id(self) -> str: ...
+    @property
+    def checksum(self) -> str: ...
     def section(self, key: str) -> Mapping[str, object]:
         """Raw configuration for one module, from THIS release. The module validates it
         into its own typed model."""
@@ -1051,9 +1057,11 @@ class ConsistencyHandle(Protocol):
     """A read-consistency token acquired at an operation boundary and threaded through it.
 
     Deliberately says nothing about graph generations — `graph.lifecycle.GenerationHandle`
-    structurally satisfies this, and platform never names it.
+    structurally satisfies this, and platform never names it. `token` is a read-only
+    property, not a plain attribute, for the same reason as RuntimeConfigurationView above.
     """
-    token: str
+    @property
+    def token(self) -> str: ...
     def assert_current(self) -> None: ...
     async def release(self) -> None: ...
 
@@ -1116,9 +1124,15 @@ class ModuleRuntimeContext(Protocol):
 
 
 class RuntimeEpoch(Protocol):
-    """A replica-local generation of runtime state. Monotonic. Exactly one is current."""
-    epoch: int
-    release_id: str
+    """A replica-local generation of runtime state. Monotonic. Exactly one is current.
+
+    Read-only properties, not plain attributes, for the same reason as
+    RuntimeConfigurationView above.
+    """
+    @property
+    def epoch(self) -> int: ...
+    @property
+    def release_id(self) -> str: ...
 
 
 class ReconfigureOutcome(StrEnum):
