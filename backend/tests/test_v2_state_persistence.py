@@ -15,7 +15,7 @@ from return_platform.v2.models import (
 from return_platform.v2.services import V2PlatformServices
 from return_platform.v2.state_store import InMemoryV2StateStore, StateRevisionConflict
 
-CONFIG_ROOT = Path(__file__).resolve().parents[1] / "config" / "v2"
+CONFIG_ROOT = Path(__file__).resolve().parents[1] / "config"
 
 
 @pytest.mark.asyncio

@@ -52,7 +52,7 @@ def _module(version: str = "1.0.0") -> ModuleCreate:
 @pytest.mark.asyncio
 async def test_bootstrap_loads_each_agent_as_an_independent_module() -> None:
     service = ModularConfigurationService()
-    config_root = Path(__file__).resolve().parents[1] / "config" / "v2"  # noqa: ASYNC240
+    config_root = Path(__file__).resolve().parents[1] / "config"  # noqa: ASYNC240
 
     await service.bootstrap(config_root)
     modules = await service.list_modules(module_type="AGENT")
