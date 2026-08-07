@@ -341,9 +341,11 @@ async def test_concurrent_validate_cas_only_one_wins():
 
     success_count = 0
     failure_count = 0
+    barrier = asyncio.Barrier(2)
 
     async def try_validate():
         nonlocal success_count, failure_count
+        await barrier.wait()
         try:
             await release_svc.validate_release("r-cas-v-1")
             success_count += 1
@@ -351,8 +353,40 @@ async def test_concurrent_validate_cas_only_one_wins():
             failure_count += 1
 
     await asyncio.gather(try_validate(), try_validate())
-    # At least one must succeed; idempotent second is fine too in this mock
-    assert success_count >= 1
+    
+    assert success_count == 1
+    assert failure_count == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_approve_cas_only_one_wins():
+    """Two concurrent approve_release() calls on the same VALIDATED release.
+
+    The first to complete the CAS write wins; the second sees modified_count=0
+    and raises InvalidTransitionError.
+    """
+    client, release_svc, _ = _make_services()
+    snapshot = _make_snapshot()
+    await release_svc.create_release("r-cas-a-1", snapshot)
+    await release_svc.validate_release("r-cas-a-1")
+
+    success_count = 0
+    failure_count = 0
+    barrier = asyncio.Barrier(2)
+
+    async def try_approve():
+        nonlocal success_count, failure_count
+        await barrier.wait()
+        try:
+            await release_svc.approve_release("r-cas-a-1")
+            success_count += 1
+        except InvalidTransitionError:
+            failure_count += 1
+
+    await asyncio.gather(try_approve(), try_approve())
+    
+    assert success_count == 1
+    assert failure_count == 1
 
 
 # ---------------------------------------------------------------------------

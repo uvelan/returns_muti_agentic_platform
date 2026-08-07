@@ -51,6 +51,10 @@ class LoadedManifestModule(BaseModel):
 # Module type prefix mapping
 # ---------------------------------------------------------------------------
 
+# Supported manifest schema versions.  Reject anything not in this set so that
+# a future format change cannot silently load as if it were version 2.0.
+SUPPORTED_MANIFEST_SCHEMA_VERSIONS: frozenset[str] = frozenset({"2.0"})
+
 MODULE_TYPE_PREFIX: Dict[str, str] = {
     "agent": "AGENT",
     "policy": "POLICY",
@@ -122,6 +126,11 @@ class ConfigurationLoader:
         schema_ver = str(raw.get("schema_version", ""))
         if not schema_ver:
             raise ValueError("Manifest is missing schema_version")
+        if schema_ver not in SUPPORTED_MANIFEST_SCHEMA_VERSIONS:
+            raise ValueError(
+                f"Manifest schema_version {schema_ver!r} is not supported. "
+                f"Supported versions: {sorted(SUPPORTED_MANIFEST_SCHEMA_VERSIONS)}"
+            )
 
         release_id = str(raw.get("release_id", ""))
         if not release_id:

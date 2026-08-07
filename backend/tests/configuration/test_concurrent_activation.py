@@ -1,143 +1,76 @@
 import pytest
 import asyncio
-from pymongo.errors import DuplicateKeyError
+from pymongo import AsyncMongoClient
+
 from return_platform.configuration.application.activation import ActivationService, ActivationConflictError
 from return_platform.configuration.domain.release import ReleaseStatus
-
-class MockMongoCollection:
-    def __init__(self):
-        self.docs = []
-        
-    async def create_indexes(self, indexes):
-        pass
-        
-    async def insert_one(self, doc):
-        d = dict(doc)
-        if "_id" not in d:
-            d["_id"] = d.get("release_id", str(len(self.docs) + 1))
-        self.docs.append(d)
-        
-    async def find_one(self, filter_doc, session=None):
-        await asyncio.sleep(0.001)
-        for d in self.docs:
-            match = True
-            for k, v in filter_doc.items():
-                if d.get(k) != v:
-                    match = False
-                    break
-            if match:
-                return dict(d)
-        return None
-        
-    async def update_one(self, filter_doc, update_doc, session=None):
-        await asyncio.sleep(0.001)
-        if update_doc.get("$set", {}).get("status") == ReleaseStatus.ACTIVE:
-            if any(d.get("status") == ReleaseStatus.ACTIVE for d in self.docs):
-                raise DuplicateKeyError("Duplicate active release")
-
-        for d in self.docs:
-            if all(d.get(k) == v for k, v in filter_doc.items()):
-                if "$set" in update_doc:
-                    d.update(update_doc["$set"])
-                class Result:
-                    modified_count = 1
-                return Result()
-                
-        class Result:
-            modified_count = 0
-        return Result()
-
-    async def find_one_and_update(self, filter_doc, update_doc, upsert=False, return_document=None, session=None):
-        await asyncio.sleep(0.001)
-        target = None
-        for d in self.docs:
-            if all(d.get(k) == v for k, v in filter_doc.items()):
-                target = d
-                break
-                
-        if not target:
-            if upsert and filter_doc.get("version", 0) == 0:
-                new_doc = {"_id": filter_doc.get("_id")}
-                if "$set" in update_doc:
-                    new_doc.update(update_doc["$set"])
-                self.docs.append(new_doc)
-                return dict(new_doc)
-            return None
-            
-        if "$set" in update_doc:
-            target.update(update_doc["$set"])
-        return dict(target)
-
-    async def count_documents(self, filter_doc):
-        count = 0
-        for d in self.docs:
-            if all(d.get(k) == v for k, v in filter_doc.items()):
-                count += 1
-        return count
-        
-    async def delete_many(self, filter_doc):
-        self.docs.clear()
-
-class MockSession:
-    async def __aenter__(self):
-        return self
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
-    def start_transaction(self):
-        return self
-
-class MockMongoClient:
-    def __init__(self):
-        self.releases = MockMongoCollection()
-        self.pointer = MockMongoCollection()
-        
-    def get_database(self, name):
-        return self
-        
-    def get_collection(self, name):
-        if name == "configuration_releases":
-            return self.releases
-        return self.pointer
-        
-    def start_session(self):
-        return MockSession()
+from return_platform.configuration.settings import Settings
 
 @pytest.mark.asyncio
-async def test_concurrent_activation():
-    mongodb_client = MockMongoClient()
-    service = ActivationService(mongodb_client)
+async def test_concurrent_activation(test_settings: Settings) -> None:
+    """Proves that concurrent activation attempts are strictly serialized.
+    
+    Exactly one activation must succeed. The others must receive an
+    ActivationConflictError. The pointer version must advance exactly once.
+    The loser remains in APPROVED status.
+    """
+    client = AsyncMongoClient(test_settings.mongo_dsn.get_secret_value())
+    service = ActivationService(client)
+    
+    # Ensure indexes and clear collections for isolation
     await service.initialize_indexes()
+    db = client.get_database("return_platform")
+    releases = db.get_collection("configuration_releases")
+    pointer = db.get_collection("configuration_activation_pointer")
     
-    releases = mongodb_client.releases
-    pointer = mongodb_client.pointer
+    await releases.delete_many({})
+    await pointer.delete_many({})
     
-    await releases.insert_one({"release_id": "r1", "status": ReleaseStatus.APPROVED, "checksum": "c1"})
-    await releases.insert_one({"release_id": "r2", "status": ReleaseStatus.APPROVED, "checksum": "c2"})
+    # Create 3 approved releases
+    await releases.insert_many([
+        {"release_id": "r1", "status": ReleaseStatus.APPROVED, "checksum": "c1"},
+        {"release_id": "r2", "status": ReleaseStatus.APPROVED, "checksum": "c2"},
+        {"release_id": "r3", "status": ReleaseStatus.APPROVED, "checksum": "c3"},
+    ])
     
-    # Activate r1
+    # 1. Activate r1 sequentially to establish a baseline
     await service.activate_release("r1")
     
-    doc = await pointer.find_one({"_id": "active"})
-    assert doc["release_id"] == "r1"
-    assert doc["version"] == 1
+    base_pointer = await pointer.find_one({"_id": "active"})
+    assert base_pointer is not None
+    assert base_pointer["release_id"] == "r1"
+    assert base_pointer["version"] == 1
     
-    async def try_activate(rid: str):
+    # 2. Concurrently attempt to activate r2 and r3
+    async def try_activate(rid: str) -> bool:
         try:
             await service.activate_release(rid)
             return True
         except ActivationConflictError:
             return False
             
-    await releases.insert_one({"release_id": "r3", "status": ReleaseStatus.APPROVED, "checksum": "c3"})
-    
     results = await asyncio.gather(
         try_activate("r2"),
         try_activate("r3")
     )
     
-    # Exactly one should succeed
+    # 3. Exactly one should succeed
     success_count = sum(1 for r in results if r)
     assert success_count == 1
     
+    # 4. Exactly one new active release (r1 was active, but should now be SUPERSEDED)
     actives = await releases.count_documents({"status": ReleaseStatus.ACTIVE})
     assert actives == 1
+    
+    # 5. The pointer must have advanced by exactly 1 version
+    new_pointer = await pointer.find_one({"_id": "active"})
+    assert new_pointer is not None
+    assert new_pointer["version"] == 2
+    
+    # 6. Check statuses of r2 and r3
+    r2_doc = await releases.find_one({"release_id": "r2"})
+    r3_doc = await releases.find_one({"release_id": "r3"})
+    
+    statuses = {r2_doc["status"], r3_doc["status"]}
+    # One must be ACTIVE (the winner), one must be APPROVED (the loser)
+    assert statuses == {ReleaseStatus.ACTIVE, ReleaseStatus.APPROVED}

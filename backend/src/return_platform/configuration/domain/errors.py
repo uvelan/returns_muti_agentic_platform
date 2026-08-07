@@ -16,3 +16,7 @@ class ConfigurationReleaseNotFoundError(LookupError):
 
 class ConfigurationValidationError(ValueError):
     """Raised when a canonical snapshot fails semantic validation."""
+
+
+class ConfigurationIntegrityError(ValueError):
+    """Raised when a loaded snapshot's checksum does not match its recorded checksum."""

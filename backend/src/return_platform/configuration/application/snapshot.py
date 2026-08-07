@@ -8,7 +8,18 @@ from return_platform.configuration.domain.sources import SourcesConfig
 from return_platform.configuration.domain.integrations import IntegrationsConfig
 from return_platform.configuration.domain.graph import GraphConfig
 from return_platform.configuration.domain.ai import AiConfig
+import hashlib
+import json
 from return_platform.configuration.domain.features import FeaturesConfig
+
+def compute_checksum(snapshot: RuntimeSnapshot) -> str:
+    """Deterministic SHA-256 checksum of the canonical snapshot.
+
+    Uses the same serialisation for release creation, validation
+    verification, activation pointer, and runtime view comparison.
+    """
+    raw_json = json.dumps(snapshot.model_dump(), sort_keys=True)
+    return hashlib.sha256(raw_json.encode("utf-8")).hexdigest()
 
 class SnapshotBuilder:
     def create_snapshot(

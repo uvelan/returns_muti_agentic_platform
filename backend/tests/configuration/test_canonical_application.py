@@ -375,6 +375,86 @@ def test_validator_rejects_unknown_ai_provider_ref():
         ConfigurationValidator().validate_snapshot(snapshot)
 
 
+def test_ai_route_task_rejected_when_tasks_empty():
+    snapshot = _minimal_snapshot(
+        agents={
+            "order_discovery": AgentConfigNode(ai_route_ref="MY_ROUTE")
+        },
+        ai=AiConfig(
+            routes={"MY_ROUTE": {"task_id": "MISSING_TASK"}},
+            tasks={},
+        ),
+    )
+    with pytest.raises(ConfigurationValidationError, match="MISSING_TASK"):
+        ConfigurationValidator().validate_snapshot(snapshot)
+
+
+def test_ai_route_provider_rejected_when_providers_empty():
+    snapshot = _minimal_snapshot(
+        agents={
+            "order_discovery": AgentConfigNode(ai_route_ref="MY_ROUTE")
+        },
+        ai=AiConfig(
+            routes={"MY_ROUTE": {"provider": "MISSING_PROVIDER"}},
+            providers={},
+        ),
+    )
+    with pytest.raises(ConfigurationValidationError, match="MISSING_PROVIDER"):
+        ConfigurationValidator().validate_snapshot(snapshot)
+
+
+def test_unknown_module_dependency_rejected():
+    snapshot = _minimal_snapshot(
+        modules={
+            "agent.order_discovery": ModuleConfigNode(
+                module_id="agent.order_discovery",
+                module_type="AGENT",
+                dependencies=[{"module_id": "agent.unknown_module"}]
+            )
+        }
+    )
+    with pytest.raises(ConfigurationValidationError, match="unknown module"):
+        ConfigurationValidator().validate_snapshot(snapshot)
+
+
+def test_self_dependency_rejected():
+    snapshot = _minimal_snapshot(
+        modules={
+            "agent.order_discovery": ModuleConfigNode(
+                module_id="agent.order_discovery",
+                module_type="AGENT",
+                dependencies=[{"module_id": "agent.order_discovery"}]
+            )
+        }
+    )
+    with pytest.raises(ConfigurationValidationError, match="self-dependency"):
+        ConfigurationValidator().validate_snapshot(snapshot)
+
+
+def test_dependency_cycle_rejected():
+    snapshot = _minimal_snapshot(
+        modules={
+            "agent.a": ModuleConfigNode(
+                module_id="agent.a", module_type="AGENT", dependencies=[{"module_id": "agent.b"}]
+            ),
+            "agent.b": ModuleConfigNode(
+                module_id="agent.b", module_type="AGENT", dependencies=[{"module_id": "agent.c"}]
+            ),
+            "agent.c": ModuleConfigNode(
+                module_id="agent.c", module_type="AGENT", dependencies=[{"module_id": "agent.a"}]
+            ),
+        },
+        agents={
+            "a": AgentConfigNode(),
+            "b": AgentConfigNode(),
+            "c": AgentConfigNode(),
+        }
+    )
+    with pytest.raises(ConfigurationValidationError, match="dependency cycle detected"):
+        ConfigurationValidator().validate_snapshot(snapshot)
+
+
+
 def test_validator_does_not_treat_workflow_stage_name_as_agent_id():
     """Workflow stages like ORDER_DISCOVERY must NOT be validated as agent IDs."""
     snapshot = _minimal_snapshot(
@@ -550,6 +630,55 @@ def test_dynamic_knowledge_schema_maps_to_graph_not_system_store():
     # SystemStore must have no dynamic knowledge entries
     for key in snapshot.system_store.structures.keys():
         assert not key.endswith("_schema") and "dynamic_knowledge" not in key
+
+
+def test_compatibility_translation_fails_closed_on_invalid_agent_schema(tmp_path: Path):
+    manifest = {
+        "schema_version": "2.0",
+        "release_id": "fail-closed",
+        "status": "DRAFT",
+        "modules": {
+            "agent.bad": {"path": "agents/bad.yaml"}
+        }
+    }
+    modules = {
+        "agents/bad.yaml": {
+            "module_id": "agent.bad",
+            "module_type": "AGENT",
+            "payload": {
+                "invalid_field_that_is_forbidden": 123
+            }
+        }
+    }
+    _write_config(tmp_path, manifest, modules)
+    adapter = LegacyCompatibilityAdapter(tmp_path)
+    with pytest.raises(ConfigurationValidationError):
+        adapter.build_canonical_snapshot()
+
+
+def test_compatibility_translation_fails_closed_on_invalid_source_schema(tmp_path: Path):
+    manifest = {
+        "schema_version": "2.0",
+        "release_id": "fail-closed-source",
+        "status": "DRAFT",
+        "modules": {
+            "source.bad": {"path": "sources/bad.yaml"}
+        }
+    }
+    modules = {
+        "sources/bad.yaml": {
+            "module_id": "source.bad",
+            "module_type": "SOURCE",
+            "payload": {
+                # missing connector_type
+                "access_mode": "READ_ONLY"
+            }
+        }
+    }
+    _write_config(tmp_path, manifest, modules)
+    adapter = LegacyCompatibilityAdapter(tmp_path)
+    with pytest.raises(ConfigurationValidationError):
+        adapter.build_canonical_snapshot()
 
 
 # ===========================================================================

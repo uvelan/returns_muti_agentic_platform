@@ -4,6 +4,8 @@ from return_platform.configuration.domain.handle import ConfigurationView, Confi
 from return_platform.configuration.domain.release_model import RuntimeSnapshot
 from return_platform.platform.contracts.epoch import RuntimeEpoch
 from return_platform.platform.contracts.runtime_configuration import ReleaseNotRetained
+from return_platform.configuration.domain.errors import ConfigurationIntegrityError
+from return_platform.configuration.application.snapshot import compute_checksum
 
 class RuntimeConfigurationViewImpl(ConfigurationView):
     def __init__(self, release_id: str, snapshot: RuntimeSnapshot, checksum: str):
@@ -59,6 +61,13 @@ class RuntimeConfigurationHandleImpl(ConfigurationHandle):
             
         snapshot = self._load_snapshot_fn(snapshot_doc["snapshot"])
         checksum = snapshot_doc.get("checksum", "")
+        
+        recomputed = compute_checksum(snapshot)
+        if recomputed != checksum:
+            raise ConfigurationIntegrityError(
+                f"Historical release '{release_id}' failed checksum verification. "
+                f"Expected: {checksum}, Recomputed: {recomputed}"
+            )
         
         view = RuntimeConfigurationViewImpl(release_id, snapshot, checksum)
         self._views[release_id] = view

@@ -13,12 +13,17 @@ Translation rules (manifest module_type → canonical domain):
     INTEGRATION→ ModulesConfig + IntegrationsConfig
 
 Invariants:
+  - Translation is FAIL-CLOSED: malformed authoritative modules raise
+    ConfigurationValidationError; warnings never substitute for errors.
   - POLICY entries are NEVER mapped to IntegrationsConfig.
   - MAPPING entries are NEVER treated as GraphSchemaNodes.
   - SYNC entries are NEVER treated as GraphSchemaNodes.
   - IntegrationsConfig remains empty unless genuine INTEGRATION modules exist.
-  - Dynamic Knowledge schemas (GRAPH modules) → GraphConfig.graphs only.
+  - Dynamic Knowledge schemas are loaded ONLY when declared in the manifest
+    as GRAPH modules; directory globbing is forbidden.
   - SystemStoreConfig is populated exclusively from PLATFORM modules.
+  - Singleton compatibility files (ai_gateway.yaml, returns/production.yaml)
+    are loaded by explicit contract — NOT by directory discovery.
 """
 from __future__ import annotations
 
@@ -26,12 +31,14 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Mapping
 
+from pydantic import ValidationError
+
 from return_platform.configuration.application.loader import (
     ConfigurationLoader,
-    LoadedManifestModule,
 )
 from return_platform.configuration.domain.agents import AgentsConfig, AgentConfigNode
 from return_platform.configuration.domain.ai import AiConfig
+from return_platform.configuration.domain.errors import ConfigurationValidationError
 from return_platform.configuration.domain.features import FeaturesConfig
 from return_platform.configuration.domain.graph import (
     GraphConfig,
@@ -70,7 +77,8 @@ class LegacyCompatibilityAdapter:
     """Translates the existing config directory into a canonical RuntimeSnapshot.
 
     Uses the manifest as the authoritative source of which files are active.
-    Unreferenced YAML files under config/ are never loaded.
+    Unreferenced YAML files under config/ are NEVER loaded.
+    Translation is FAIL-CLOSED — invalid module payloads raise immediately.
     """
 
     def __init__(self, config_dir: Path) -> None:
@@ -103,7 +111,7 @@ class LegacyCompatibilityAdapter:
 
             deps = _parse_dependencies(doc.get("dependencies"))
 
-            # Always record in ModulesConfig to preserve every module
+            # Always record in ModulesConfig to preserve every module.
             modules_config_map[manifest_id] = ModuleConfigNode(
                 path=loaded.path,
                 enabled=True,
@@ -117,66 +125,97 @@ class LegacyCompatibilityAdapter:
                 config=payload if isinstance(payload, dict) else None,
             )
 
-            # Route into canonical domain
+            # Route into canonical domain — FAIL CLOSED on parse errors.
             if module_type == "AGENT":
                 agent_key = manifest_id.removeprefix("agent.")
-                if isinstance(payload, dict):
-                    try:
-                        agents_map[agent_key] = AgentConfigNode(**payload)
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("agent_%s_payload_invalid: %s", manifest_id, exc)
+                if not isinstance(payload, dict):
+                    raise ConfigurationValidationError(
+                        f"AGENT module '{manifest_id}' payload is not a mapping"
+                    )
+                try:
+                    agents_map[agent_key] = AgentConfigNode(**payload)
+                except (ValidationError, TypeError) as exc:
+                    raise ConfigurationValidationError(
+                        f"AGENT module '{manifest_id}' payload failed validation: {exc}"
+                    ) from exc
 
             elif module_type == "WORKFLOW":
                 wf_key = manifest_id.removeprefix("workflow.")
-                if isinstance(payload, dict):
-                    stages_raw = payload.get("stages", [])
-                    workflows_map[wf_key] = WorkflowDefinition(
-                        context_only_handoffs=payload.get("context_only_handoffs", True),
-                        direct_agent_calls_allowed=payload.get("direct_agent_calls_allowed", False),
-                        stages=stages_raw if isinstance(stages_raw, list) else [],
+                if not isinstance(payload, dict):
+                    raise ConfigurationValidationError(
+                        f"WORKFLOW module '{manifest_id}' payload is not a mapping"
                     )
+                stages_raw = payload.get("stages", [])
+                workflows_map[wf_key] = WorkflowDefinition(
+                    context_only_handoffs=payload.get("context_only_handoffs", True),
+                    direct_agent_calls_allowed=payload.get("direct_agent_calls_allowed", False),
+                    stages=stages_raw if isinstance(stages_raw, list) else [],
+                )
 
             elif module_type == "SOURCE":
                 src_key = manifest_id.removeprefix("source.")
-                if isinstance(payload, dict) and "connector_type" in payload:
-                    try:
-                        sources_map[src_key] = SourceConfigNode(**payload)
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("source_%s_payload_invalid: %s", manifest_id, exc)
+                if not isinstance(payload, dict):
+                    raise ConfigurationValidationError(
+                        f"SOURCE module '{manifest_id}' payload is not a mapping"
+                    )
+                if "connector_type" not in payload:
+                    raise ConfigurationValidationError(
+                        f"SOURCE module '{manifest_id}' payload is missing required "
+                        f"'connector_type' field"
+                    )
+                try:
+                    sources_map[src_key] = SourceConfigNode(**payload)
+                except (ValidationError, TypeError) as exc:
+                    raise ConfigurationValidationError(
+                        f"SOURCE module '{manifest_id}' payload failed validation: {exc}"
+                    ) from exc
 
             elif module_type == "GRAPH":
+                # GRAPH modules are loaded from the manifest only — no globbing.
+                # Dynamic Knowledge schemas must be declared as GRAPH modules in manifest.yaml.
                 graph_key = manifest_id.removeprefix("graph.")
-                if isinstance(payload, dict):
-                    try:
-                        graphs_map[graph_key] = GraphSchemaNode(**payload)
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("graph_%s_payload_invalid: %s", manifest_id, exc)
+                if not isinstance(payload, dict):
+                    raise ConfigurationValidationError(
+                        f"GRAPH module '{manifest_id}' payload is not a mapping"
+                    )
+                try:
+                    graphs_map[graph_key] = GraphSchemaNode(**payload)
+                except (ValidationError, TypeError) as exc:
+                    raise ConfigurationValidationError(
+                        f"GRAPH module '{manifest_id}' payload failed validation: {exc}"
+                    ) from exc
 
             elif module_type == "MAPPING":
                 # Mappings → GraphConfig.mappings — NOT IntegrationsConfig
                 mapping_key = manifest_id.removeprefix("mapping.")
-                if isinstance(payload, dict):
-                    mappings_map[mapping_key] = GraphMappingConfig(
-                        canonical_entity=payload.get("canonical_entity"),
-                        full_order_id=payload.get("full_order_id"),
-                        full_order_line_id=payload.get("full_order_line_id"),
-                        allowlisted_order_fields=payload.get("allowlisted_order_fields"),
-                        allowlisted_line_fields=payload.get("allowlisted_line_fields"),
-                        payload=payload,
+                if not isinstance(payload, dict):
+                    raise ConfigurationValidationError(
+                        f"MAPPING module '{manifest_id}' payload is not a mapping"
                     )
+                mappings_map[mapping_key] = GraphMappingConfig(
+                    canonical_entity=payload.get("canonical_entity"),
+                    full_order_id=payload.get("full_order_id"),
+                    full_order_line_id=payload.get("full_order_line_id"),
+                    allowlisted_order_fields=payload.get("allowlisted_order_fields"),
+                    allowlisted_line_fields=payload.get("allowlisted_line_fields"),
+                    payload=payload,
+                )
 
             elif module_type == "SYNC":
                 # Sync → GraphConfig.sync — NOT IntegrationsConfig
                 sync_key = manifest_id.removeprefix("sync.")
-                if isinstance(payload, dict):
-                    sync_map[sync_key] = GraphSyncConfig(
-                        mode=payload.get("mode"),
-                        projection_profile=payload.get("projection_profile"),
-                        max_candidates=payload.get("max_candidates"),
-                        strong_anchors=payload.get("strong_anchors"),
-                        graph_readback_required=payload.get("graph_readback_required", False),
-                        payload=payload,
+                if not isinstance(payload, dict):
+                    raise ConfigurationValidationError(
+                        f"SYNC module '{manifest_id}' payload is not a mapping"
                     )
+                sync_map[sync_key] = GraphSyncConfig(
+                    mode=payload.get("mode"),
+                    projection_profile=payload.get("projection_profile"),
+                    max_candidates=payload.get("max_candidates"),
+                    strong_anchors=payload.get("strong_anchors"),
+                    graph_readback_required=payload.get("graph_readback_required", False),
+                    payload=payload,
+                )
 
             elif module_type == "POLICY":
                 # Policies are preserved in ModulesConfig only.
@@ -188,6 +227,10 @@ class LegacyCompatibilityAdapter:
                 # Platform modules route into SystemStoreConfig or PlatformConfig
                 # based on the manifest ID
                 if "system_store" in manifest_id:
+                    if not isinstance(payload, dict):
+                        raise ConfigurationValidationError(
+                            f"PLATFORM module '{manifest_id}' payload is not a mapping"
+                        )
                     system_store_config = SystemStoreConfig(
                         provider=payload.get("provider", "MONGODB"),
                         allowed_providers=payload.get("allowed_providers"),
@@ -213,14 +256,16 @@ class LegacyCompatibilityAdapter:
                     payload=payload if isinstance(payload, dict) else None,
                 )
 
-        # 3. Singleton configs — loaded by name, not by manifest module
+        # 3. Singleton configs — loaded by EXPLICIT NAME, not by directory discovery.
+        #    Only these two files are allowlisted as singleton compatibility contracts.
         ai_raw = self._loader.load_file("ai_gateway.yaml")
         if isinstance(ai_raw, dict) and ai_raw:
             try:
                 ai_config = AiConfig(**ai_raw)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("ai_gateway_payload_invalid: %s", exc)
-                ai_config = AiConfig()
+            except (ValidationError, TypeError) as exc:
+                raise ConfigurationValidationError(
+                    f"Singleton 'ai_gateway.yaml' failed validation: {exc}"
+                ) from exc
         else:
             ai_config = AiConfig()
 
@@ -241,48 +286,17 @@ class LegacyCompatibilityAdapter:
         if isinstance(platform_dict, dict) and platform_dict:
             try:
                 platform_config = PlatformConfig(**platform_dict)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("returns_production_platform_invalid: %s", exc)
+            except (ValidationError, TypeError) as exc:
+                raise ConfigurationValidationError(
+                    f"Singleton 'returns/production.yaml' platform section failed validation: {exc}"
+                ) from exc
 
-        # 4. Also load dynamic knowledge schemas into GraphConfig.graphs
-        #    These are not in the manifest but represent the graph-knowledge layer.
-        dk_dir = self._config_dir / "dynamic_knowledge"
-        if dk_dir.exists():
-            for yaml_file in sorted(dk_dir.glob("*.yaml")):
-                try:
-                    dk_content = self._loader.load_file(
-                        f"dynamic_knowledge/{yaml_file.name}"
-                    )
-                    if isinstance(dk_content, dict):
-                        dk_id = yaml_file.stem
-                        graphs_map[dk_id] = GraphSchemaNode(
-                            schema_name=dk_id,
-                            configuration_release_id=dk_content.get(
-                                "configuration_release_id"
-                            ),
-                            release_status=dk_content.get("release_status"),
-                            approved_by=dk_content.get("approved_by"),
-                            approved_at=dk_content.get("approved_at"),
-                            schema_version=str(
-                                dk_content.get("schema_version", "")
-                            ) or None,
-                            policy_version=str(
-                                dk_content.get("policy_version", "")
-                            ) or None,
-                            prompt_version=str(
-                                dk_content.get("prompt_version", "")
-                            ) or None,
-                            compiler_version=str(
-                                dk_content.get("compiler_version", "")
-                            ) or None,
-                            runtime_mode=dk_content.get("runtime_mode"),
-                            sources=dk_content.get("sources"),
-                            entities=dk_content.get("entities"),
-                        )
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning(
-                        "dynamic_knowledge_%s_load_failed: %s", yaml_file.stem, exc
-                    )
+        # NOTE: Dynamic Knowledge schemas are NO LONGER globbed from dynamic_knowledge/*.
+        # They must be declared as GRAPH modules in manifest.yaml.
+        # If the project needs them, add explicit entries such as:
+        #   modules:
+        #     graph.active-schema.return-order:
+        #       path: dynamic_knowledge/active-schema.return-order.yaml
 
         return RuntimeSnapshot(
             platform=platform_config,

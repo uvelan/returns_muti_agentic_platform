@@ -21,6 +21,7 @@ from return_platform.configuration.domain.errors import (
     ConfigurationReleaseNotFoundError,
     InvalidTransitionError,
 )
+from return_platform.configuration.application.snapshot import compute_checksum
 from return_platform.configuration.domain.release import (
     RELEASE_SERVICE_TRANSITIONS,
     ReleaseStatus,
@@ -47,17 +48,8 @@ class ReleaseService:
         self._validator = ConfigurationValidator()
 
     # ------------------------------------------------------------------
-    # Checksum
+    # Lifecycle
     # ------------------------------------------------------------------
-
-    def compute_checksum(self, snapshot: RuntimeSnapshot) -> str:
-        """Deterministic SHA-256 checksum of the canonical snapshot.
-
-        Uses the same serialisation for release creation, validation
-        verification, activation pointer, and runtime view comparison.
-        """
-        raw_json = json.dumps(snapshot.model_dump(), sort_keys=True)
-        return hashlib.sha256(raw_json.encode("utf-8")).hexdigest()
 
     # ------------------------------------------------------------------
     # Create — always starts DRAFT
@@ -73,7 +65,7 @@ class ReleaseService:
         The snapshot checksum is computed once and persisted with the release.
         Raises ValueError if release_id already exists.
         """
-        checksum = self.compute_checksum(snapshot)
+        checksum = compute_checksum(snapshot)
         now = _now()
 
         release = ConfigurationRelease(
@@ -142,7 +134,7 @@ class ReleaseService:
 
         # Verify snapshot integrity
         snapshot = RuntimeSnapshot.model_validate(doc["snapshot"])
-        recomputed = self.compute_checksum(snapshot)
+        recomputed = compute_checksum(snapshot)
         if recomputed != doc.get("checksum", ""):
             raise InvalidTransitionError(
                 f"Release '{release_id}' checksum mismatch — snapshot may have been tampered"
