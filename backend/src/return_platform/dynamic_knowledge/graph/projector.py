@@ -60,7 +60,11 @@ class GenericGraphProjector:
                         operation=_DELETE_OPERATION_BY_POLICY[entity.deletion_policy],
                         projection_id=node.projection_id,
                         entity_id=mutation.entity_id,
-                        key_values=dict(mutation.resolved_key),
+                        key_values={
+                            entity.fields[field_id].graph_property: value
+                            for field_id, value in mutation.resolved_key.items()
+                            if field_id in entity.fields
+                        },
                     )
                 )
                 continue
@@ -74,7 +78,9 @@ class GenericGraphProjector:
                     raise GraphProjectionError(
                         f"record is missing configured key field {field_id!r}"
                     )
-                keys[field_id] = record.values[field_id]
+                # Keyed by graph_property (the actual Neo4j property name), matching
+                # properties below -- never by the logical field_id.
+                keys[entity.fields[field_id].graph_property] = record.values[field_id]
             properties: dict[str, Any] = {
                 entity.fields[field_id].graph_property: record.values[field_id]
                 for field_id in node.property_fields
@@ -199,4 +205,8 @@ def _check_cardinality(
 
 def _key_values(schema: ActiveSchema, record: Any) -> dict[str, Any]:
     node = schema.entity_node(record.entity_id)
-    return {field_id: record.values[field_id] for field_id in node.key_fields}
+    entity = schema.entities[record.entity_id]
+    return {
+        entity.fields[field_id].graph_property: record.values[field_id]
+        for field_id in node.key_fields
+    }

@@ -81,9 +81,14 @@ async def test_one_parent_with_three_children_produces_exactly_three_relationshi
     )
     batch = await GenericGraphProjector().project(schema=schema, mutations=mutations)
     assert len(batch.relationship_mutations) == 3
-    target_ids = {mutation.target_key_values["id"] for mutation in batch.relationship_mutations}
+    # entity_b.id's graph_property is "related_id"; entity_a.id's is "configured_id" --
+    # relationship key_values are always keyed by graph_property, never the logical field_id.
+    target_ids = {mutation.target_key_values["related_id"] for mutation in batch.relationship_mutations}
     assert target_ids == {"CHILD-1", "CHILD-2", "CHILD-3"}
-    assert all(mutation.source_key_values["id"] == "PARENT-1" for mutation in batch.relationship_mutations)
+    assert all(
+        mutation.source_key_values["configured_id"] == "PARENT-1"
+        for mutation in batch.relationship_mutations
+    )
 
 
 @pytest.mark.asyncio
@@ -122,7 +127,7 @@ async def test_delete_mutation_maps_to_entitys_deletion_policy(active_schema: Ac
     batch = await GenericGraphProjector().project(schema=schema, mutations=mutations)
     assert len(batch.node_mutations) == 1
     assert batch.node_mutations[0].operation == "TOMBSTONE"
-    assert batch.node_mutations[0].key_values == {"id": "PARENT-1"}
+    assert batch.node_mutations[0].key_values == {"configured_id": "PARENT-1"}
 
 
 @pytest.mark.asyncio
