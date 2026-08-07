@@ -96,10 +96,12 @@ class SqlServerSourceScanConnector:
         *,
         schema: ActiveSchema,
         page_size: int = 500,
+        max_records_per_source: int | None = None,
     ) -> None:
         self._connection = connection
         self._schema = schema
         self._page_size = page_size
+        self._max_records_per_source = max_records_per_source
 
     def capabilities(self) -> SourceConnectorCapabilities:
         return CAPABILITIES
@@ -147,8 +149,9 @@ class SqlServerSourceScanConnector:
         if after is not None:
             params["after"] = datetime.fromisoformat(after.encoded_value)
             predicate = f"[{cursor_field}] > %(after)s AND {predicate}"
+        top = f"TOP ({int(self._max_records_per_source)}) " if self._max_records_per_source is not None else ""
         query = (
-            f"SELECT * FROM [{namespace}].[{table}] "
+            f"SELECT {top}* FROM [{namespace}].[{table}] "
             f"WHERE {predicate} ORDER BY [{cursor_field}] ASC"
         )
         rows = await asyncio.to_thread(self._run_query, query, params)

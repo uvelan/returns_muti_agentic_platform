@@ -25,6 +25,10 @@ class FakeMongoCursor:
         )
         return self
 
+    def limit(self, count: int) -> "FakeMongoCursor":
+        self._documents = self._documents[:count]
+        return self
+
     def __aiter__(self) -> Any:
         return self._iterate()
 
@@ -215,6 +219,51 @@ async def test_scan_with_seed_pin_filters_to_matching_seed_and_ignores_cursor_bo
     assert len(pages) == 1
     identities = {doc.document["configured_id"] for doc in pages[0].documents}
     assert identities == {"A-1"}
+
+
+@pytest.mark.asyncio
+async def test_scan_truncates_to_max_records_per_source(active_schema: ActiveSchema) -> None:
+    schema = _mongo_source_schema(active_schema, cursor_field=None)
+    ids = [ObjectId(bytes([i]) * 12) for i in range(1, 6)]
+    documents = [{"_id": oid, "configured_id": f"A-{index}"} for index, oid in enumerate(ids, start=1)]
+    collection = FakeMongoCollection(documents)
+    connector = MongoDBSourceScanConnector(
+        FakeDatabase({"objects": collection}), page_size=10, max_records_per_source=2
+    )
+    through = SourceCursor(cursor_type="OBJECT_ID", encoded_value=str(ids[-1]))
+    pages = [
+        page
+        async for page in connector.scan(
+            schema=schema, source_asset_id="source_a", after=None, through=through
+        )
+    ]
+    total = sum(len(page.documents) for page in pages)
+    assert total == 2
+
+
+@pytest.mark.asyncio
+async def test_scan_with_seed_pin_ignores_max_records_per_source(active_schema: ActiveSchema) -> None:
+    schema = _mongo_source_schema(active_schema, cursor_field=None)
+    documents = [
+        {"_id": ObjectId(), "configured_id": f"A-{i}", "seedVersion": "v2", "seedDigest": "digest-v2"}
+        for i in range(5)
+    ]
+    collection = FakeMongoCollection(documents)
+    connector = MongoDBSourceScanConnector(
+        FakeDatabase({"objects": collection}),
+        page_size=10,
+        max_records_per_source=2,
+        seed_pins={"source_a": SeedPin(seed_version="v2", seed_digest="digest-v2")},
+    )
+    through = SourceCursor(cursor_type="OBJECT_ID", encoded_value=str(ObjectId(b"\xff" * 12)))
+    pages = [
+        page
+        async for page in connector.scan(
+            schema=schema, source_asset_id="source_a", after=None, through=through
+        )
+    ]
+    total = sum(len(page.documents) for page in pages)
+    assert total == 5
 
 
 @pytest.mark.asyncio

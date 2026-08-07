@@ -193,6 +193,26 @@ async def test_scan_pages_at_the_configured_page_size(
     assert [len(page.documents) for page in pages] == [2, 2, 1]
 
 
+@pytest.mark.asyncio
+async def test_scan_applies_top_when_max_records_per_source_is_set(
+    active_schema: ActiveSchema, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    schema = _sql_source_schema(active_schema, cursor_field="parent_id")
+    cursor = _patch_connect(monkeypatch, [])
+    connector = SqlServerSourceScanConnector(
+        _connection_settings(), schema=schema, max_records_per_source=50
+    )
+    through = SourceCursor(
+        cursor_type="FIELD_DATETIME", encoded_value=datetime(2026, 1, 3, tzinfo=UTC).isoformat()
+    )
+    async for _ in connector.scan(
+        schema=schema, source_asset_id="source_b", after=None, through=through
+    ):
+        pass
+    assert cursor.executed is not None
+    assert "TOP (50)" in cursor.executed[0]
+
+
 def test_unsafe_namespace_is_rejected(active_schema: ActiveSchema) -> None:
     raw = active_schema.model_dump(mode="json")
     raw["sources"]["source_b"]["object_ref"] = {

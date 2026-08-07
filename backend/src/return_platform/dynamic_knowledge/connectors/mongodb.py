@@ -81,10 +81,16 @@ class MongoDBSourceScanConnector:
         *,
         page_size: int = 500,
         seed_pins: Mapping[str, SeedPin] | None = None,
+        max_records_per_source: int | None = None,
     ) -> None:
         self._database = database
         self._page_size = page_size
         self._seed_pins = dict(seed_pins or {})
+        # Never applied to a seed-pinned scan -- a pinned seed generation is read
+        # exhaustively by design, matching this platform's long-standing
+        # fail-closed seed safety behavior (a partial seed read would be worse
+        # than no read at all).
+        self._max_records_per_source = max_records_per_source
 
     def capabilities(self) -> SourceConnectorCapabilities:
         return CAPABILITIES
@@ -164,6 +170,8 @@ class MongoDBSourceScanConnector:
         query[sort_field] = bound_query
 
         mongo_cursor = collection.find(query).sort(sort_field, 1)
+        if seed_pin is None and self._max_records_per_source is not None:
+            mongo_cursor = mongo_cursor.limit(self._max_records_per_source)
         batch: list[RawSourceDocument] = []
         last_sort_value: Any = None
         async for document in mongo_cursor:
