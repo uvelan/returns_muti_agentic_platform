@@ -4,6 +4,7 @@ from pymongo import AsyncMongoClient
 from datetime import datetime, timezone
 
 from return_platform.bootstrap.epoch import EpochAllocator, ReconfigurationCoordinator
+from return_platform.platform.contracts.epoch import RuntimeEpoch
 from return_platform.configuration.application.runtime_configuration import RuntimeConfigurationHandleImpl, RuntimeConfigurationViewImpl
 
 logger = logging.getLogger(__name__)
@@ -35,18 +36,35 @@ class ConfigurationReconciler:
         self._pending_release_id: str | None = None
         self._status = "ACTIVE"
         self._draining_epochs: list[int] = []
+        self._retired_epochs: list[RuntimeEpoch] = []
         
     async def run(self) -> None:
         while True:
             try:
                 await asyncio.sleep(5)
                 await self._check_pointer()
+                await self._drain_retired_epochs()
                 await self._heartbeat()
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Error in reconciler loop: {e}", exc_info=True)
                 
+    async def _drain_retired_epochs(self) -> None:
+        still_draining: list[RuntimeEpoch] = []
+        for epoch in self._retired_epochs:
+            try:
+                success = await self._coordinator.release_if_drained(epoch)
+                if success:
+                    if epoch.epoch in self._draining_epochs:
+                        self._draining_epochs.remove(epoch.epoch)
+                else:
+                    still_draining.append(epoch)
+            except Exception as e:
+                logger.error(f"Error releasing epoch {epoch.epoch}: {e}")
+                still_draining.append(epoch)
+        self._retired_epochs = still_draining
+
     async def _check_pointer(self) -> None:
         doc = await self._pointer.find_one({"_id": "active"})
         if not doc:
@@ -73,8 +91,9 @@ class ConfigurationReconciler:
             
             if retired_epoch is not None:
                 # Success
-                if self._active_epoch:
-                    self._draining_epochs.append(self._active_epoch)
+                if self._active_epoch and retired_epoch:
+                    self._draining_epochs.append(retired_epoch.epoch)
+                    self._retired_epochs.append(retired_epoch)
                 self._active_release_id = target_release_id
                 self._active_epoch = new_epoch.epoch
                 self._adopted_at = datetime.now(timezone.utc)
@@ -114,7 +133,7 @@ class ConfigurationReconciler:
                 "adopted_at": self._adopted_at or now,
                 "pending_release_id": self._pending_release_id,
                 "requires_restart": self._config_handle.requires_restart,
-                "draining_epochs": self._draining_epochs,
+                "draining_epochs": list(self._draining_epochs),
                 "heartbeat_at": now
             }},
             upsert=True

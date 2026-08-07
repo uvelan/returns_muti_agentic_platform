@@ -20,7 +20,10 @@ class RuntimeConfigurationViewImpl(ConfigurationView):
         return self._checksum
         
     def section(self, name: str) -> Any:
-        return getattr(self._snapshot, name, None)
+        attr = getattr(self._snapshot, name, None)
+        if attr is not None and hasattr(attr, "model_dump"):
+            return attr.model_dump()
+        return attr
 
 class RuntimeConfigurationHandleImpl(ConfigurationHandle):
     def __init__(self, client: AsyncMongoClient[dict[str, object]], load_snapshot_fn) -> None:

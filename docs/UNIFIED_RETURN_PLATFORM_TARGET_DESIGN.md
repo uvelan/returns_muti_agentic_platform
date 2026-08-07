@@ -300,7 +300,7 @@ configuration/
 │   ├── ai.py               AiConfig (providers, routes, tasks, safety, interception)
 │   ├── features.py         FeatureFlags
 │   ├── release.py          ConfigurationRelease, ReleaseStatus, RuntimeSnapshot, checksum
-│   ├── handle.py           ConfigurationHandle — current() / pinned(release_id)      [NEW, §13.2]
+│   ├── handle.py           ConfigurationHandle — current(epoch) / await pinned(release_id) [NEW, §13.2]
 │   ├── adoption.py         ConfigurationAdoption — per-instance adoption state
 │   └── errors.py
 ├── application/
@@ -1303,10 +1303,10 @@ silently downgrades conformance to attribute-existence only.
 
 ```python
 class ConfigurationHandle(Protocol):
-    def current(self) -> RuntimeSnapshot:
-        """The snapshot this instance has ADOPTED. Never the merely-ACTIVE release."""
+    def current(self, epoch: RuntimeEpoch) -> ConfigurationView:
+        """The snapshot view this instance has ADOPTED for this epoch. Never the merely-ACTIVE release."""
 
-    def pinned(self, release_id: str) -> RuntimeSnapshot:
+    async def pinned(self, release_id: str) -> ConfigurationView:
         """A specific historical release, for a workflow that started under it.
 
         Raises ReleaseNotRetained if retention has expired.

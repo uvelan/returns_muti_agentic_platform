@@ -449,7 +449,7 @@ structurally satisfy:
 
 **The view/handle split makes configuration pinning structural.** `RuntimeConfigurationView` is immutable,
 names one release, and is **the only object with `section()`**. `RuntimeConfigurationHandle` resolves views
-(`current()`, `pinned(release_id)`) and has no read method of its own. Without this split a session pinned to
+(`current(epoch)`, `await pinned(release_id)`) and has no read method of its own. Without this split a session pinned to
 release 41 could call `configuration.section("return_policy")` and silently execute release 42's rules while
 still reporting itself pinned to 41. Modules get a handle (they must observe adoption); agents and request
 boundaries get a view.

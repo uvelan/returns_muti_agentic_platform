@@ -1,51 +1,46 @@
 import pytest
 import asyncio
-from unittest.mock import AsyncMock
 from return_platform.bootstrap.epoch import (
     EpochAdmission,
     SimpleRuntimeEpoch,
     EpochAllocator,
     ReconfigurationCoordinator
 )
-from return_platform.configuration.application.runtime_configuration import (
-    RuntimeConfigurationHandleImpl
-)
 from return_platform.platform.modules.contracts import ReconfigureOutcome
 
 @pytest.mark.asyncio
 async def test_requests_never_observe_mixed_release_during_adoption():
-    client = AsyncMock()
-    handle = RuntimeConfigurationHandleImpl(client, lambda x: x)
-
     initial_epoch = SimpleRuntimeEpoch(epoch=1, release_id="r1")
     admission = EpochAdmission(initial_epoch)
 
-    class MockModule:
-        def __init__(self, name):
+    class MockModuleWithResources:
+        def __init__(self, name: str):
             self.name = name
+            self.resources_by_epoch = {1: f"{name}_resource_r1"}
 
         async def prepare_reconfigure(self, epoch):
             return ReconfigureOutcome.READY
 
         async def commit_reconfigure(self, epoch):
-            view = AsyncMock(release_id=epoch.release_id)
-            handle.set_current(epoch, view)
+            # Candidate resource for epoch becomes committed/addressable
+            self.resources_by_epoch[epoch.epoch] = f"{self.name}_resource_{epoch.release_id}"
 
         async def abort_reconfigure(self, epoch):
-            pass
+            self.resources_by_epoch.pop(epoch.epoch, None)
 
         async def release_epoch(self, epoch):
-            pass
+            self.resources_by_epoch.pop(epoch.epoch, None)
 
-    mod_a = MockModule("ModuleA")
-    mod_b = MockModule("ModuleB")
+        def release_for(self, lease) -> str:
+            res = self.resources_by_epoch.get(lease.epoch, "UNKNOWN")
+            return res.split("_")[-1]
+
+    mod_a = MockModuleWithResources("ModuleA")
+    mod_b = MockModuleWithResources("ModuleB")
 
     coordinator = ReconfigurationCoordinator(
         {"mod_a": mod_a, "mod_b": mod_b}, admission
     )
-
-    view1 = AsyncMock(release_id="r1")
-    handle.set_current(initial_epoch, view1)
 
     stop_event = asyncio.Event()
     violations = []
@@ -56,12 +51,12 @@ async def test_requests_never_observe_mixed_release_during_adoption():
         while not stop_event.is_set():
             lease = admission.acquire_current()
             try:
-                view_a = handle.current(lease)
+                rel_a = mod_a.release_for(lease)
                 await asyncio.sleep(0.001)
-                view_b = handle.current(lease)
+                rel_b = mod_b.release_for(lease)
 
-                if view_a.release_id != view_b.release_id:
-                    violations.append((view_a.release_id, view_b.release_id))
+                if rel_a != rel_b:
+                    violations.append((rel_a, rel_b))
                 reads_count += 1
             finally:
                 admission.release(lease)
