@@ -112,12 +112,23 @@ class GenericSyncCoordinator:
         schema: ActiveSchema,
         graph_generation_id: str,
         fencing_token: int,
+        source_asset_ids: frozenset[str] | None = None,
+        expected_generation_status: GraphGenerationStatus = GraphGenerationStatus.BUILDING,
     ) -> tuple[int, int]:
+        """source_asset_ids narrows which configured sources participate in this
+        run (default: every source in the schema) -- e.g. a caller doing a
+        Mongo-only or SQL-only resync. expected_generation_status defaults to
+        BUILDING (a real blue/green rebuild's target generation is never ACTIVE
+        until cutover); a caller resyncing directly into an already-ACTIVE
+        generation (no blue/green rebuild in progress) passes ACTIVE instead --
+        both node writes and Stage B reconciliation use the same expectation."""
+
         if schema.runtime_mode is RuntimeMode.KNOWLEDGE_ONLY:
             raise RuntimeError("FULL_SYNC_DISABLED_IN_KNOWLEDGE_ONLY_MODE")
+        participating = source_asset_ids if source_asset_ids is not None else frozenset(schema.sources)
         total_nodes = 0
         total_relationships = 0
-        for source_asset_id in sorted(schema.sources):
+        for source_asset_id in sorted(participating):
             connector = self._connectors.resolve(source_asset_id)
             watermark = await connector.capture_high_watermark(source_asset_id=source_asset_id)
             async for page in connector.scan(
@@ -137,13 +148,12 @@ class GenericSyncCoordinator:
                 total_relationships += relationships
         if self._reconciler is not None:
             # Stage B, graph-side, after every participating source's Stage A has
-            # completed -- a full-sync's target generation is always BUILDING
-            # (never ACTIVE) until cutover; see the generation lifecycle plan.
+            # completed.
             counts = await self._reconciler.reconcile_relationships(
                 schema=schema,
                 graph_generation_id=graph_generation_id,
                 fencing_token=fencing_token,
-                expected_generation_status=GraphGenerationStatus.BUILDING,
+                expected_generation_status=expected_generation_status,
             )
             total_relationships += sum(counts.values())
         return total_nodes, total_relationships

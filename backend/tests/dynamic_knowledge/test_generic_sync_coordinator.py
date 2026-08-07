@@ -205,6 +205,55 @@ async def test_full_sync_runs_stage_b_reconciliation_after_every_source_complete
 
 
 @pytest.mark.asyncio
+async def test_full_sync_honors_expected_generation_status_override(
+    active_schema: ActiveSchema,
+) -> None:
+    pages = [_page("A-1", 1)]
+    connector = NumericOrderedConnector(pages, watermark=_numeric_cursor(1))
+    reconciler = RecordingReconciler({})
+    coordinator = GenericSyncCoordinator(
+        connectors=Registry(connector),
+        extractor=GenericSourceRecordExtractor(),
+        writer=RecordingWriter(),
+        checkpoints=RecordingCheckpoints(),
+        reconciler=reconciler,
+    )
+    await coordinator.full_sync(
+        schema=active_schema,
+        graph_generation_id="g1",
+        fencing_token=1,
+        expected_generation_status=GraphGenerationStatus.ACTIVE,
+    )
+    assert reconciler.calls[0]["expected_generation_status"] is GraphGenerationStatus.ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_full_sync_narrows_to_the_given_source_asset_ids(active_schema: ActiveSchema) -> None:
+    pages = [_page("A-1", 1)]
+    connector_a = NumericOrderedConnector(pages, watermark=_numeric_cursor(1))
+    connector_b = NumericOrderedConnector(pages, watermark=_numeric_cursor(1))
+
+    class TwoSourceRegistry:
+        def resolve(self, source_asset_id: str) -> object:
+            return connector_a if source_asset_id == "source_a" else connector_b
+
+    coordinator = GenericSyncCoordinator(
+        connectors=TwoSourceRegistry(),
+        extractor=GenericSourceRecordExtractor(),
+        writer=RecordingWriter(),
+        checkpoints=RecordingCheckpoints(),
+    )
+    await coordinator.full_sync(
+        schema=active_schema,
+        graph_generation_id="g1",
+        fencing_token=1,
+        source_asset_ids=frozenset({"source_a"}),
+    )
+    assert connector_a.scanned_after == [None]
+    assert connector_b.scanned_after == []
+
+
+@pytest.mark.asyncio
 async def test_full_sync_without_a_reconciler_skips_stage_b(active_schema: ActiveSchema) -> None:
     pages = [_page("A-1", 1)]
     connector = NumericOrderedConnector(pages, watermark=_numeric_cursor(1))
