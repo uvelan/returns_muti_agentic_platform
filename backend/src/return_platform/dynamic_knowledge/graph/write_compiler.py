@@ -10,7 +10,10 @@ validate_graph_identifier before being embedded in generated Cypher text.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -443,4 +446,152 @@ def _generation_scoped_pattern(row_field: str, key_names: frozenset[str]) -> str
     key_inner = ", ".join(f"`{name}`: {row_field}.`{name}`" for name in sorted(key_names))
     return f"graph_generation_id: $generationId, {key_inner}" if key_inner else (
         "graph_generation_id: $generationId"
+    )
+
+
+def canonical_key_hash(key_values: Mapping[str, Any]) -> str:
+    """A normalized, comparable identity for one node's key_values -- not a
+    security hash, just canonicalization so ProjectionOwnership records work
+    uniformly regardless of a key's field shape (single field or composite)."""
+
+    canonical = json.dumps(dict(sorted(key_values.items())), sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def compile_ownership_upsert(
+    *,
+    graph_generation_id: str,
+    projection_id: str,
+    source_asset_id: str,
+    source_identity: str,
+    label: str,
+    owned_children: tuple[tuple[str, Mapping[str, Any]], ...],
+    source_version: str | None = None,
+) -> CompiledWrite:
+    """One ProjectionOwnership node per (entity_key_hash, owning parent document),
+    MERGEd, plus an :OWNS relationship to the already-upserted business node.
+    owned_children is (entity_key_hash, key_values) for every child currently
+    present in the parent document being reconciled -- the caller (extraction
+    layer) computes entity_key_hash via canonical_key_hash on each child's
+    resolved key_values so both sides always agree on the same hash.
+    """
+
+    validate_graph_identifier(label)
+    key_names = frozenset(owned_children[0][1]) if owned_children else frozenset()
+    for _, key_values in owned_children:
+        for name in key_values:
+            validate_graph_identifier(name)
+    rows = [{"entityKeyHash": key_hash, "keys": dict(key_values)} for key_hash, key_values in owned_children]
+    key_inner = _generation_scoped_pattern("row.keys", key_names)
+    cypher = (
+        "UNWIND $rows AS row "
+        "MERGE (o:ProjectionOwnership {"
+        "graph_generation_id: $generationId, projection_id: $projectionId, "
+        "source_asset_id: $sourceAssetId, source_identity: $sourceIdentity, "
+        "entity_key_hash: row.entityKeyHash"
+        "}) "
+        "SET o.source_version = $sourceVersion "
+        f"WITH o, row MATCH (n:`{label}` {{{key_inner}}}) "
+        "MERGE (o)-[:OWNS]->(n)"
+    )
+    return CompiledWrite(
+        cypher=cypher,
+        parameters={
+            "rows": rows,
+            "generationId": graph_generation_id,
+            "projectionId": projection_id,
+            "sourceAssetId": source_asset_id,
+            "sourceIdentity": source_identity,
+            "sourceVersion": source_version,
+        },
+    )
+
+
+def compile_ownership_query_existing(
+    schema: ActiveSchema,
+    projection_id: str,
+    *,
+    graph_generation_id: str,
+    source_asset_id: str,
+    source_identity: str,
+) -> CompiledWrite:
+    """Every entity_key_hash this parent document currently owns, before this
+    reconciliation pass, plus the owned node's own key properties (aliased
+    `key__<property>`) -- diffed by the caller against the freshly-extracted
+    current child set to find which ownership records are now stale, and
+    needed to re-check the owned node's remaining ownership count afterward.
+    """
+
+    node = schema.graph.nodes[projection_id]
+    entity = schema.entities[node.entity_id]
+    label = validate_graph_identifier(node.label)
+    key_properties = [validate_graph_identifier(entity.fields[field_id].graph_property) for field_id in node.key_fields]
+    key_returns = ", ".join(f"n.`{prop}` AS `key__{prop}`" for prop in key_properties)
+    returns = "o.entity_key_hash AS entity_key_hash" + (f", {key_returns}" if key_returns else "")
+    cypher = (
+        "MATCH (o:ProjectionOwnership {"
+        "graph_generation_id: $generationId, projection_id: $projectionId, "
+        "source_asset_id: $sourceAssetId, source_identity: $sourceIdentity"
+        f"}})-[:OWNS]->(n:`{label}`) "
+        f"RETURN {returns}"
+    )
+    return CompiledWrite(
+        cypher=cypher,
+        parameters={
+            "generationId": graph_generation_id,
+            "projectionId": projection_id,
+            "sourceAssetId": source_asset_id,
+            "sourceIdentity": source_identity,
+        },
+    )
+
+
+def compile_ownership_removal(
+    *,
+    graph_generation_id: str,
+    projection_id: str,
+    source_asset_id: str,
+    source_identity: str,
+    entity_key_hashes: tuple[str, ...],
+) -> CompiledWrite:
+    """Removes only the ownership records themselves (not the business node) --
+    the caller checks compile_remaining_ownership_count per affected node
+    afterward and applies the entity's EntityDeletionPolicy only when zero
+    ownership records remain from any source document."""
+
+    cypher = (
+        "UNWIND $hashes AS hash "
+        "MATCH (o:ProjectionOwnership {"
+        "graph_generation_id: $generationId, projection_id: $projectionId, "
+        "source_asset_id: $sourceAssetId, source_identity: $sourceIdentity, "
+        "entity_key_hash: hash"
+        "}) "
+        "DETACH DELETE o"
+    )
+    return CompiledWrite(
+        cypher=cypher,
+        parameters={
+            "hashes": list(entity_key_hashes),
+            "generationId": graph_generation_id,
+            "projectionId": projection_id,
+            "sourceAssetId": source_asset_id,
+            "sourceIdentity": source_identity,
+        },
+    )
+
+
+def compile_remaining_ownership_count(
+    *, graph_generation_id: str, label: str, key_values: Mapping[str, Any]
+) -> CompiledWrite:
+    validate_graph_identifier(label)
+    for name in key_values:
+        validate_graph_identifier(name)
+    key_inner = _generation_scoped_pattern("$keys", frozenset(key_values))
+    cypher = (
+        f"MATCH (n:`{label}` {{{key_inner}}}) "
+        "OPTIONAL MATCH (o:ProjectionOwnership)-[:OWNS]->(n) "
+        "RETURN count(o) AS remaining"
+    )
+    return CompiledWrite(
+        cypher=cypher, parameters={"generationId": graph_generation_id, "keys": dict(key_values)}
     )

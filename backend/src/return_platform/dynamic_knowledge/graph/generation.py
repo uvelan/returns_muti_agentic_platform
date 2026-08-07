@@ -107,3 +107,31 @@ class GraphWriteReceipt(BaseModel):
     committed_at: datetime
     nodes_written: int = 0
     relationships_written: int = 0
+
+
+class ProjectionOwnership(BaseModel):
+    """Neo4j-resident record: one parent source document's claim on one
+    projected business node, for entities configured with an OwnershipPolicy
+    (see schema.py). Conceptually (ProjectionOwnership)-[:OWNS]->(business node).
+
+    entity_key_hash is a canonical hash of the owned node's key_values --
+    not a security hash, just a normalized single comparable value so
+    ownership records work uniformly regardless of a key's field shape
+    (single field or composite).
+
+    A business node with zero remaining ProjectionOwnership records (from
+    any source document) is the trigger for applying its EntityDeletionPolicy
+    -- see Neo4jDynamicGraphWriter.reconcile_child_ownership.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    graph_generation_id: str
+    projection_id: str
+    source_asset_id: str
+    source_identity: str
+    entity_id: str
+    entity_key_hash: str
+    source_version: str | None = None
+    identity_strategy: str | None = None
+    identity_key_version: int | None = None

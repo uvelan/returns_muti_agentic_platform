@@ -35,6 +35,25 @@ def test_field_with_both_physical_path_and_derive_is_rejected(
         ActiveSchema.model_validate(raw)
 
 
+def test_ownership_policy_requires_explode(active_schema: ActiveSchema) -> None:
+    raw = _with_entity_a_patch(
+        active_schema, ownership_policy={"mode": "REPLACE_CHILD_SET", "owner_identity": "SOURCE_DOCUMENT"}
+    )
+    with pytest.raises(ValidationError, match="not exploded from a parent document"):
+        ActiveSchema.model_validate(raw)
+
+
+def test_ownership_policy_is_accepted_on_an_exploded_entity(active_schema: ActiveSchema) -> None:
+    raw = _with_entity_a_patch(
+        active_schema,
+        record_path=["items"],
+        explode=True,
+        ownership_policy={"mode": "REPLACE_CHILD_SET", "owner_identity": "SOURCE_DOCUMENT"},
+    )
+    schema = ActiveSchema.model_validate(raw)
+    assert schema.entities["entity_a"].ownership_policy is not None
+
+
 def test_split_part_derive_requires_delimiter_and_index(active_schema: ActiveSchema) -> None:
     raw = _with_entity_a_patch(active_schema)
     raw["entities"]["entity_a"]["fields"]["name"]["physical_path"] = None

@@ -318,6 +318,39 @@ class KeyResolution(BaseModel):
         return self
 
 
+class OwnershipMode(StrEnum):
+    """How an entity's identity lifecycle is reconciled against its owning
+    source document(s). REPLACE_CHILD_SET is the only mode today: an entity
+    exploded from a parent document's array, whose current membership is
+    exactly the array's current contents on every COMPLETE_SOURCE_DOCUMENT
+    read -- see ProjectionOwnership."""
+
+    REPLACE_CHILD_SET = "REPLACE_CHILD_SET"
+
+
+class OwnershipOwnerIdentity(StrEnum):
+    """What identifies one "owner" of a business node for ownership counting.
+    SOURCE_DOCUMENT: one owner per distinct (source_asset_id, source_identity)
+    parent document -- the only strategy implemented today."""
+
+    SOURCE_DOCUMENT = "SOURCE_DOCUMENT"
+
+
+class OwnershipPolicy(BaseModel):
+    """Configuration-owned replace-child-set reconciliation policy.
+
+    Never applied from a PARTIAL_TARGETED_READ -- only a COMPLETE_SOURCE_DOCUMENT
+    read may conclude a previously-seen child is now absent (see
+    ProjectionReadScope). Enforcement of that boundary lives in the writer
+    orchestration that calls reconcile_child_ownership, not here.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    mode: OwnershipMode = OwnershipMode.REPLACE_CHILD_SET
+    owner_identity: OwnershipOwnerIdentity = OwnershipOwnerIdentity.SOURCE_DOCUMENT
+
+
 class AnchorFieldDefinition(BaseModel):
     """One field/operator requirement in a strong-anchor definition."""
 
@@ -371,6 +404,7 @@ class EntityDefinition(BaseModel):
     where: tuple[WhereSelector, ...] = ()
     distinct: bool = False
     key_resolution: KeyResolution | None = None
+    ownership_policy: OwnershipPolicy | None = None
 
     @model_validator(mode="after")
     def validate_references(self) -> EntityDefinition:
@@ -404,6 +438,11 @@ class EntityDefinition(BaseModel):
             raise ValueError(f"entity {self.entity_id!r} sets explode=True but no record_path")
         if self.record_path and any(not segment.strip() for segment in self.record_path):
             raise ValueError(f"entity {self.entity_id!r} has an empty record_path segment")
+        if self.ownership_policy is not None and not self.explode:
+            raise ValueError(
+                f"entity {self.entity_id!r} declares an ownership_policy but is not exploded "
+                "from a parent document -- REPLACE_CHILD_SET only applies to exploded children"
+            )
         for field_id, field in self.fields.items():
             if field.derive is None:
                 continue

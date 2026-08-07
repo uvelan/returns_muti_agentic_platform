@@ -12,6 +12,7 @@ from return_platform.dynamic_knowledge.graph.neo4j_writer import (
     RelationshipCardinalityViolation,
     compute_payload_checksum,
 )
+from return_platform.dynamic_knowledge.graph.write_compiler import canonical_key_hash
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
     GraphMutationBatch,
     GraphNodeMutation,
@@ -40,12 +41,16 @@ class FakeTransaction:
         existing_receipt_rows: list[dict[str, Any]] | None = None,
         relationships_written: int = 0,
         cardinality_violations: int = 0,
+        existing_ownership_rows: list[dict[str, Any]] | None = None,
+        remaining_ownership_count: int = 0,
     ) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self._fence_matched = fence_matched
         self._existing_receipt_rows = existing_receipt_rows or []
         self._relationships_written = relationships_written
         self._cardinality_violations = cardinality_violations
+        self._existing_ownership_rows = existing_ownership_rows or []
+        self._remaining_ownership_count = remaining_ownership_count
 
     async def run(self, query: str, parameters: dict[str, Any]) -> FakeResult:
         self.calls.append((query, parameters))
@@ -57,6 +62,10 @@ class FakeTransaction:
             return FakeResult([{"relationshipsWritten": self._relationships_written}])
         if "AS violations" in query:
             return FakeResult([{"violations": self._cardinality_violations}])
+        if "-[:OWNS]->(n:" in query and query.startswith("MATCH (o:ProjectionOwnership"):
+            return FakeResult(self._existing_ownership_rows)
+        if "AS remaining" in query:
+            return FakeResult([{"remaining": self._remaining_ownership_count}])
         return FakeResult([])
 
 
@@ -300,3 +309,141 @@ async def test_reconciliation_raises_on_cardinality_violation(active_schema: Act
             fencing_token=1,
             expected_generation_status=GraphGenerationStatus.ACTIVE,
         )
+
+
+@pytest.mark.asyncio
+async def test_ownership_reconciliation_fence_check_runs_first(active_schema: ActiveSchema) -> None:
+    tx = FakeTransaction(fence_matched=1)
+    writer = Neo4jDynamicGraphWriter(FakeDriver(tx))
+    child_hash = canonical_key_hash({"related_id": "CHILD-1"})
+    await writer.reconcile_child_ownership(
+        schema=active_schema,
+        graph_generation_id="gen-1",
+        fencing_token=1,
+        expected_generation_status=GraphGenerationStatus.ACTIVE,
+        projection_id="node_b",
+        source_asset_id="source_b",
+        source_identity="parent-doc-1",
+        current_children=((child_hash, {"related_id": "CHILD-1"}),),
+    )
+    assert "MATCH (g:GraphGeneration" in tx.calls[0][0]
+
+
+@pytest.mark.asyncio
+async def test_ownership_reconciliation_fencing_mismatch_raises_and_writes_nothing(
+    active_schema: ActiveSchema,
+) -> None:
+    tx = FakeTransaction(fence_matched=0)
+    writer = Neo4jDynamicGraphWriter(FakeDriver(tx))
+    with pytest.raises(GenerationFencingError):
+        await writer.reconcile_child_ownership(
+            schema=active_schema,
+            graph_generation_id="gen-1",
+            fencing_token=1,
+            expected_generation_status=GraphGenerationStatus.ACTIVE,
+            projection_id="node_b",
+            source_asset_id="source_b",
+            source_identity="parent-doc-1",
+            current_children=(),
+        )
+    assert len(tx.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_ownership_reconciliation_upserts_current_children(active_schema: ActiveSchema) -> None:
+    tx = FakeTransaction(fence_matched=1)
+    writer = Neo4jDynamicGraphWriter(FakeDriver(tx))
+    child_hash = canonical_key_hash({"related_id": "CHILD-1"})
+    await writer.reconcile_child_ownership(
+        schema=active_schema,
+        graph_generation_id="gen-1",
+        fencing_token=1,
+        expected_generation_status=GraphGenerationStatus.ACTIVE,
+        projection_id="node_b",
+        source_asset_id="source_b",
+        source_identity="parent-doc-1",
+        current_children=((child_hash, {"related_id": "CHILD-1"}),),
+    )
+    queries = [query for query, _ in tx.calls]
+    assert any("MERGE (o:ProjectionOwnership" in q for q in queries)
+
+
+@pytest.mark.asyncio
+async def test_ownership_reconciliation_removes_stale_child_and_deletes_orphaned_node(
+    active_schema: ActiveSchema,
+) -> None:
+    stale_hash = canonical_key_hash({"related_id": "CHILD-OLD"})
+    tx = FakeTransaction(
+        fence_matched=1,
+        existing_ownership_rows=[{"entity_key_hash": stale_hash, "key__related_id": "CHILD-OLD"}],
+        remaining_ownership_count=0,
+    )
+    writer = Neo4jDynamicGraphWriter(FakeDriver(tx))
+    result = await writer.reconcile_child_ownership(
+        schema=active_schema,
+        graph_generation_id="gen-1",
+        fencing_token=1,
+        expected_generation_status=GraphGenerationStatus.ACTIVE,
+        projection_id="node_b",
+        source_asset_id="source_b",
+        source_identity="parent-doc-1",
+        current_children=(),  # CHILD-OLD is no longer in the parent document
+    )
+    assert result.removed_ownership_count == 1
+    assert result.deleted_node_keys == ({"related_id": "CHILD-OLD"},)
+    queries = [query for query, _ in tx.calls]
+    assert any("DETACH DELETE o" in q for q in queries)
+    assert any("DETACH DELETE n" in q for q in queries)
+
+
+@pytest.mark.asyncio
+async def test_ownership_reconciliation_keeps_node_still_owned_by_another_parent(
+    active_schema: ActiveSchema,
+) -> None:
+    stale_hash = canonical_key_hash({"related_id": "CHILD-SHARED"})
+    tx = FakeTransaction(
+        fence_matched=1,
+        existing_ownership_rows=[{"entity_key_hash": stale_hash, "key__related_id": "CHILD-SHARED"}],
+        remaining_ownership_count=1,  # a different parent document still owns it
+    )
+    writer = Neo4jDynamicGraphWriter(FakeDriver(tx))
+    result = await writer.reconcile_child_ownership(
+        schema=active_schema,
+        graph_generation_id="gen-1",
+        fencing_token=1,
+        expected_generation_status=GraphGenerationStatus.ACTIVE,
+        projection_id="node_b",
+        source_asset_id="source_b",
+        source_identity="parent-doc-1",
+        current_children=(),
+    )
+    assert result.removed_ownership_count == 1
+    assert result.deleted_node_keys == ()
+    queries = [query for query, _ in tx.calls]
+    assert not any("DETACH DELETE n" in q for q in queries)
+
+
+@pytest.mark.asyncio
+async def test_ownership_reconciliation_leaves_still_current_children_alone(
+    active_schema: ActiveSchema,
+) -> None:
+    kept_hash = canonical_key_hash({"related_id": "CHILD-KEPT"})
+    tx = FakeTransaction(
+        fence_matched=1,
+        existing_ownership_rows=[{"entity_key_hash": kept_hash, "key__related_id": "CHILD-KEPT"}],
+    )
+    writer = Neo4jDynamicGraphWriter(FakeDriver(tx))
+    result = await writer.reconcile_child_ownership(
+        schema=active_schema,
+        graph_generation_id="gen-1",
+        fencing_token=1,
+        expected_generation_status=GraphGenerationStatus.ACTIVE,
+        projection_id="node_b",
+        source_asset_id="source_b",
+        source_identity="parent-doc-1",
+        current_children=((kept_hash, {"related_id": "CHILD-KEPT"}),),
+    )
+    assert result.removed_ownership_count == 0
+    assert result.deleted_node_keys == ()
+    queries = [query for query, _ in tx.calls]
+    assert not any("ProjectionOwnership {" in q and "DETACH DELETE o" in q for q in queries)

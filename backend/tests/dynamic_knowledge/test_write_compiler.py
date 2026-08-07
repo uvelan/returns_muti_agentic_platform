@@ -4,13 +4,18 @@ import pytest
 
 from return_platform.dynamic_knowledge.graph.write_compiler import (
     WriteCompilationError,
+    canonical_key_hash,
     compile_generation_fence,
     compile_node_writes,
+    compile_ownership_query_existing,
+    compile_ownership_removal,
+    compile_ownership_upsert,
     compile_receipt_lookup,
     compile_receipt_store,
     compile_relationship_cardinality_checks,
     compile_relationship_reconciliation,
     compile_relationship_writes,
+    compile_remaining_ownership_count,
 )
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
     GraphNodeMutation,
@@ -265,6 +270,70 @@ def test_cardinality_checks_compiled_when_bounds_configured(active_schema: Activ
     assert any(check.parameters.get("maxTargets") == 3 for check in checks)
     assert any(check.parameters.get("maxSources") == 1 for check in checks)
     assert all("violations" in check.cypher for check in checks)
+
+
+def test_canonical_key_hash_is_stable_regardless_of_field_order() -> None:
+    assert canonical_key_hash({"a": "1", "b": "2"}) == canonical_key_hash({"b": "2", "a": "1"})
+
+
+def test_canonical_key_hash_differs_for_different_values() -> None:
+    assert canonical_key_hash({"a": "1"}) != canonical_key_hash({"a": "2"})
+
+
+def test_ownership_upsert_merges_ownership_and_owns_relationship(
+    active_schema: ActiveSchema,
+) -> None:
+    key_hash = canonical_key_hash({"related_id": "CHILD-1"})
+    compiled = compile_ownership_upsert(
+        graph_generation_id=GEN,
+        projection_id="node_b",
+        source_asset_id="source_b",
+        source_identity="parent-doc-1",
+        label="ConfiguredBeta",
+        owned_children=((key_hash, {"related_id": "CHILD-1"}),),
+    )
+    assert "MERGE (o:ProjectionOwnership" in compiled.cypher
+    assert "MATCH (n:`ConfiguredBeta`" in compiled.cypher
+    assert "MERGE (o)-[:OWNS]->(n)" in compiled.cypher
+    assert compiled.parameters["rows"] == [{"entityKeyHash": key_hash, "keys": {"related_id": "CHILD-1"}}]
+    assert compiled.parameters["sourceIdentity"] == "parent-doc-1"
+
+
+def test_ownership_query_existing_projects_key_properties(active_schema: ActiveSchema) -> None:
+    compiled = compile_ownership_query_existing(
+        active_schema,
+        "node_b",
+        graph_generation_id=GEN,
+        source_asset_id="source_b",
+        source_identity="parent-doc-1",
+    )
+    assert "-[:OWNS]->(n:`ConfiguredBeta`)" in compiled.cypher
+    assert "o.entity_key_hash AS entity_key_hash" in compiled.cypher
+    assert "n.`related_id` AS `key__related_id`" in compiled.cypher
+
+
+def test_ownership_removal_deletes_only_the_given_hashes() -> None:
+    compiled = compile_ownership_removal(
+        graph_generation_id=GEN,
+        projection_id="node_b",
+        source_asset_id="source_b",
+        source_identity="parent-doc-1",
+        entity_key_hashes=("hash-1", "hash-2"),
+    )
+    assert "DETACH DELETE o" in compiled.cypher
+    assert compiled.parameters["hashes"] == ["hash-1", "hash-2"]
+
+
+def test_remaining_ownership_count_matches_on_node_key_and_counts_owns(
+    active_schema: ActiveSchema,
+) -> None:
+    compiled = compile_remaining_ownership_count(
+        graph_generation_id=GEN, label="ConfiguredBeta", key_values={"related_id": "CHILD-1"}
+    )
+    assert "MATCH (n:`ConfiguredBeta`" in compiled.cypher
+    assert "OPTIONAL MATCH (o:ProjectionOwnership)-[:OWNS]->(n)" in compiled.cypher
+    assert "RETURN count(o) AS remaining" in compiled.cypher
+    assert compiled.parameters["keys"] == {"related_id": "CHILD-1"}
 
 
 def test_receipt_lookup_and_store_are_parameterized() -> None:
