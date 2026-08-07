@@ -2,6 +2,19 @@
 
 Production-oriented return orchestration with an associate-facing Order Discovery Copilot, graph-configured runtime behavior, Vault-managed credentials, durable workflow execution, and operational evidence tooling.
 
+> **Consolidation in progress.** This repository is being restructured onto a single four-domain architecture
+> (`/returns`, `/config`, `/graph-schema`, `/ai`), removing the V1/V2/Data Console split. Full detail:
+> [`docs/UNIFIED_RETURN_PLATFORM_IMPLEMENTATION_PLAN.md`](docs/UNIFIED_RETURN_PLATFORM_IMPLEMENTATION_PLAN.md)
+> and [`docs/UNIFIED_RETURN_PLATFORM_TARGET_DESIGN.md`](docs/UNIFIED_RETURN_PLATFORM_TARGET_DESIGN.md).
+>
+> - **Consolidation source branch:** `feat/v2-order-discovery-integration`
+> - **Source commit:** `c3cdd354fdef93583c2b67da219701e76489a221`
+> - **Consolidation branch:** `refactor/unified-return-platform`
+> - **Target application architecture:** `backend/src/return_platform/{bootstrap,platform,configuration,agents,business,graph,graph_schema_analyzer,ai}` — see the target design doc §2 for the full tree.
+>
+> This section is removed in Phase 28 once the root README describes only the finished architecture. Baseline
+> inventory: [`docs/consolidation/baseline-inventory.md`](docs/consolidation/baseline-inventory.md).
+
 ## Current architecture
 
 The application runs Python and React as host processes by default. Infrastructure runs in Docker Compose.
