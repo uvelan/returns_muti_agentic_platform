@@ -5,18 +5,32 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Protocol
 
-from return_platform.dynamic_knowledge.on_demand_sync.contracts import DynamicSourceRecord
+from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
+    CursorComparison,
+    DynamicSourceRecord,
+    ProjectionReadScope,
+    RawSourcePage,
+    SourceCursor,
+)
+from return_platform.dynamic_knowledge.on_demand_sync.extraction import SourceRecordExtractor
 from return_platform.dynamic_knowledge.schema import ActiveSchema, RuntimeMode
 
 
 class SourceScanConnector(Protocol):
+    async def capture_high_watermark(self, *, source_asset_id: str) -> SourceCursor: ...
+
+    def compare_cursors(
+        self, *, source_asset_id: str, left: SourceCursor, right: SourceCursor
+    ) -> CursorComparison: ...
+
     def scan(
         self,
         *,
         schema: ActiveSchema,
         source_asset_id: str,
-        checkpoint: str | None,
-    ) -> AsyncIterator[tuple[DynamicSourceRecord, ...]]: ...
+        after: SourceCursor | None,
+        through: SourceCursor,
+    ) -> AsyncIterator[RawSourcePage]: ...
 
 
 class SourceScanRegistry(Protocol):
@@ -35,26 +49,41 @@ class ProjectionWriter(Protocol):
 
 
 class CheckpointStore(Protocol):
-    async def read(self, *, source_asset_id: str, graph_generation_id: str) -> str | None: ...
+    async def read(
+        self, *, source_asset_id: str, graph_generation_id: str
+    ) -> SourceCursor | None: ...
+
     async def write(
         self,
         *,
         source_asset_id: str,
         graph_generation_id: str,
-        checkpoint: str,
+        checkpoint: SourceCursor,
         fencing_token: int,
     ) -> None: ...
 
 
 class GenericSyncCoordinator:
+    """Node materialization (Stage A) for one source asset at a time.
+
+    This intentionally does not perform cross-source relationship
+    reconciliation (Stage B), two-stage incremental checkpointing, generation
+    fencing beyond passing through a fencing_token, or blue/green
+    catch-up/watermark sequencing -- those belong to the full-sync and
+    incremental-sync rebuild machinery (a later stage of the source-to-graph
+    alignment plan) and must not be half-implemented here.
+    """
+
     def __init__(
         self,
         *,
         connectors: SourceScanRegistry,
+        extractor: SourceRecordExtractor,
         writer: ProjectionWriter,
         checkpoints: CheckpointStore,
     ) -> None:
         self._connectors = connectors
+        self._extractor = extractor
         self._writer = writer
         self._checkpoints = checkpoints
 
@@ -71,16 +100,19 @@ class GenericSyncCoordinator:
         total_relationships = 0
         for source_asset_id in sorted(schema.sources):
             connector = self._connectors.resolve(source_asset_id)
-            async for batch in connector.scan(
+            watermark = await connector.capture_high_watermark(source_asset_id=source_asset_id)
+            async for page in connector.scan(
                 schema=schema,
                 source_asset_id=source_asset_id,
-                checkpoint=None,
+                after=None,
+                through=watermark,
             ):
-                nodes, relationships = await self._writer.project_and_write(
+                nodes, relationships = await self._project_page(
                     schema=schema,
+                    source_asset_id=source_asset_id,
                     graph_generation_id=graph_generation_id,
-                    records=batch,
                     fencing_token=fencing_token,
+                    page=page,
                 )
                 total_nodes += nodes
                 total_relationships += relationships
@@ -100,25 +132,28 @@ class GenericSyncCoordinator:
         for source_asset_id, source in sorted(schema.sources.items()):
             if source.incremental_cursor_field is None:
                 continue
-            checkpoint = await self._checkpoints.read(
+            connector = self._connectors.resolve(source_asset_id)
+            after = await self._checkpoints.read(
                 source_asset_id=source_asset_id,
                 graph_generation_id=graph_generation_id,
             )
-            connector = self._connectors.resolve(source_asset_id)
-            async for batch in connector.scan(
+            through = await connector.capture_high_watermark(source_asset_id=source_asset_id)
+            async for page in connector.scan(
                 schema=schema,
                 source_asset_id=source_asset_id,
-                checkpoint=checkpoint,
+                after=after,
+                through=through,
             ):
-                nodes, relationships = await self._writer.project_and_write(
+                nodes, relationships = await self._project_page(
                     schema=schema,
+                    source_asset_id=source_asset_id,
                     graph_generation_id=graph_generation_id,
-                    records=batch,
                     fencing_token=fencing_token,
+                    page=page,
                 )
                 total_nodes += nodes
                 total_relationships += relationships
-                new_checkpoint = _highest_checkpoint(schema, source_asset_id, batch)
+                new_checkpoint = _highest_cursor(connector, source_asset_id, after, page)
                 if new_checkpoint is not None:
                     await self._checkpoints.write(
                         source_asset_id=source_asset_id,
@@ -128,14 +163,55 @@ class GenericSyncCoordinator:
                     )
         return total_nodes, total_relationships
 
+    async def _project_page(
+        self,
+        *,
+        schema: ActiveSchema,
+        source_asset_id: str,
+        graph_generation_id: str,
+        fencing_token: int,
+        page: RawSourcePage,
+    ) -> tuple[int, int]:
+        mutations = self._extractor.extract(
+            schema=schema,
+            source_asset_id=source_asset_id,
+            page=page,
+            read_scope=ProjectionReadScope.COMPLETE_SOURCE_DOCUMENT,
+        )
+        records = tuple(
+            mutation.record
+            for mutation in mutations
+            if mutation.operation == "UPSERT" and mutation.record is not None
+        )
+        if not records:
+            return 0, 0
+        return await self._writer.project_and_write(
+            schema=schema,
+            graph_generation_id=graph_generation_id,
+            records=records,
+            fencing_token=fencing_token,
+        )
 
-def _highest_checkpoint(
-    schema: ActiveSchema,
+
+def _highest_cursor(
+    connector: SourceScanConnector,
     source_asset_id: str,
-    batch: tuple[DynamicSourceRecord, ...],
-) -> str | None:
-    cursor = schema.sources[source_asset_id].incremental_cursor_field
-    if cursor is None:
-        return None
-    values = [str(record.values[cursor]) for record in batch if cursor in record.values]
-    return max(values) if values else None
+    current: SourceCursor | None,
+    page: RawSourcePage,
+) -> SourceCursor | None:
+    """Delegate all cursor ordering to the connector -- never decode/order encoded_value here.
+
+    This replaces a prior implementation that cast checkpoint values to str
+    and took max(), which silently mis-orders anything but zero-padded
+    lexically-sortable cursors (e.g. "10" sorts before "2").
+    """
+
+    candidate = page.next_cursor or page.high_watermark
+    if candidate is None:
+        return current
+    if current is None:
+        return candidate
+    comparison = connector.compare_cursors(
+        source_asset_id=source_asset_id, left=candidate, right=current
+    )
+    return candidate if comparison is CursorComparison.AFTER else current

@@ -17,7 +17,7 @@ from return_platform.dynamic_knowledge.knowledge.evidence import (
     StructuredAgentResponse,
 )
 from return_platform.dynamic_knowledge.knowledge.query_plan import LogicalQueryPlan, QueryOperation
-from return_platform.dynamic_knowledge.schema import ActiveSchema, AgentPolicy
+from return_platform.dynamic_knowledge.schema import ActiveSchema, AgentPolicy, EntitySourceAccess
 
 
 class GuardRejected(ValueError):
@@ -215,6 +215,12 @@ class StrongAnchorGuard:
         if entity is None or request.entity_id not in context.agent_policy.allowed_entity_ids:
             raise GuardRejected(
                 "REJECT_INVALID_SCHEMA_REFERENCE", "Unknown or unavailable anchor entity."
+            )
+        if entity.source_access is not EntitySourceAccess.CONNECTED_SYNC:
+            raise GuardRejected(
+                "ON_DEMAND_SYNC_ENTITY_NOT_CONNECTED",
+                f"Entity {request.entity_id!r} has source_access "
+                f"{entity.source_access!r} and cannot be synchronized on demand.",
             )
         definition = entity.strong_anchors.get(request.strong_anchor_id)
         if definition is None or not definition.on_demand_sync_allowed:

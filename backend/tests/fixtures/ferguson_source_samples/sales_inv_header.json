@@ -1,0 +1,242 @@
+{
+  "_id": "DALLAS*WE130468*H",
+  "salesInvEventMeta": {
+    "srcSyncId": { "$numberLong": "1714404423075" },
+    "srcSyncTs": { "$date": "2024-04-29T15:27:03.075Z" },
+    "rcvdTs": { "$date": "2024-04-29T15:27:03.131Z" },
+    "insertTs": { "$date": "2024-04-29T15:27:05.307Z" },
+    "lastUpdateTs": { "$date": "2024-04-29T15:27:05.307Z" },
+    "srcDeleteTs": null,
+    "deleteEligibleTs": null,
+    "transId": "00000000-0000-0000-0000-000000000000",
+    "updatedBy": "salesinv-order-writer-v1",
+    "srcSystemKey": null
+  },
+  "salesInvEventData": {
+    "accountId": "DALLAS",
+    "orderId": "WE130468",
+    "oesOrderId": null,
+    "docType": "header",
+    "salesType": "order",
+    "srcErp": "Trilogie"
+  },
+  "salesInv": {
+    "salesInvMeta": {
+      "hashValue": null,
+      "insertTs": { "$date": "2024-04-29T15:27:05.307Z" },
+      "updateTs": { "$date": "2024-04-29T15:27:05.307Z" },
+      "srcDeleteTs": null,
+      "lastUpdatedBy": "salesinv-order-writer-v1"
+    },
+    "salesInvData": {
+      "transactionCurrencyCode": "USD",
+      "transactionCurrencyName": "US Dollars",
+      "transactionType": "OpenOrder",
+      "orderCust": "112837",
+      "custId": "112837",
+      "custName": "SCRUBBED TEST CUSTOMER",
+      "custPONumber": "41241732",
+      "jobName": "SCRUBBED JOB NAME",
+      "commentLastLine": "2",
+      "webUserId": "scrubbed.user@example.invalid",
+      "ccGameCode": "H",
+      "prodNextSeq": "3",
+      "priceSubtltAmt": 51.75,
+      "costSubtltAmt": 0,
+      "freightAmt": 10,
+      "handlingAmt": 10,
+      "orderTotalAmt": 51.75,
+      "frtCostAmt": 0,
+      "refundAmt": 0,
+      "miscSubtltAmt": 0,
+      "miscCostAmt": 0,
+      "restkDiscAmt": 0,
+      "restockCostAmt": 0,
+      "directFrtInvAmt": 0,
+      "directFrtCostAmt": 0,
+      "webShipCostAmt": 10,
+      "vRndMinAmt": 0,
+      "boFlag": false,
+      "acceptBoFlag": true,
+      "shwrmFlag": true,
+      "specialCostFlag": false,
+      "priceDlvFlag": true,
+      "sortFlag": true,
+      "autoReplnFlag": true,
+      "useFrtTableFlag": false,
+      "entryDate": { "$date": "2019-05-24T04:00:00.000Z" },
+      "orderDate": { "$date": "2024-04-29T04:00:00.000Z" },
+      "shipping": {
+        "shipTo": {
+          "shipToSuffix": "CPU",
+          "address": {
+            "shipToName": "COUNTER PICK-UP",
+            "address1": "SCRUBBED ADDRESS LINE 1",
+            "address2": "SCRUBBED ADDRESS LINE 2",
+            "address3": "SCRUBBED CITY, TX 00000-0000",
+            "county": "SCRUBBED COUNTY",
+            "countryCode": "000000000",
+            "attn": "Scrubbed",
+            "shipToPhone": "000-0000000",
+            "email": "scrubbed.recipient@example.invalid"
+          },
+          "reqrdShipDate": { "$date": "2019-05-24T04:00:00.000Z" },
+          "shipViaCode": "WCL",
+          "shipViaDesc": "WILL CALL",
+          "shipCompleteFlag": "Y",
+          "shipToGeocode": "000000000",
+          "frtReqrdFlag": "Y",
+          "hndlReqrdFlag": "Y",
+          "dlvTktPrtDate": { "$date": "2024-04-29T04:00:00.000Z" },
+          "commitDate": { "$date": "2024-04-29T04:00:00.000Z" },
+          "shipInstr1": "SCRUBBED SHIP INSTRUCTION"
+        }
+      },
+      "terms": {
+        "termsCode": "COD",
+        "termsDesc": "CASH ON DEMAND"
+      },
+      "tax": {
+        "frtTaxAmt": 0,
+        "hndlTaxAmt": 10,
+        "smallOrderTaxAmt": 0,
+        "stateTaxAmt": 0,
+        "countyTaxAmt": 0,
+        "cityTaxAmt": 0,
+        "districtTaxAmt": 0,
+        "exemptAmt": 0,
+        "combinedTaxRate": 0,
+        "taxJurCode": "SCRUB60",
+        "taxPct": 0,
+        "taxAmt": 10,
+        "taxableAmt": 0
+      },
+      "salesPerson": {
+        "empName": "Scrubbed Person",
+        "slsmId": "WDA",
+        "slsmSplitPct": 0,
+        "shwrmSlsm": "MRC",
+        "omlAssocEmpId": "00000",
+        "writerInitials": "WI"
+      },
+      "srcCode": { "srcOrderStatus": "1" },
+      "lineAssocs": {
+        "srcSpl": {
+          "dualSrcSplit": [[null]],
+          "destOrder": [[null]],
+          "origBo": [[null]],
+          "origOrder": [[null]]
+        },
+        "fast": { "fastInfo": [null] },
+        "cms": { "cmId": [null], "cmDisbInfo": [null] },
+        "edi": {
+          "ediDocId": [[null]],
+          "ediAddId": [null],
+          "ediShipInfo": [[null]]
+        },
+        "apInvs": { "apInvoiceId": [[null]] },
+        "wms": { "wmsAsn": [null], "wmsTrailer": [null] },
+        "icAutos": {
+          "icAutoStatus": [null],
+          "icAutoStatusTd": [null],
+          "icAutoInfo": [null]
+        },
+        "prtChgs": { "prtStatusChgTd": [null] },
+        "bumpFlags": {
+          "frtRateBumpFlag": [null],
+          "hndlBumpFlag": [null],
+          "frtCostBumpFlag": [null]
+        },
+        "pmtRefs": {
+          "pmtRefType": [null],
+          "pmtRefCmt": [null],
+          "pmtRefNum": [null],
+          "pmtRefInvalid": [null],
+          "pmtRefAssoc": [null],
+          "pmtRefDate": [null]
+        },
+        "deposits": {
+          "csOrderNum": [null],
+          "paymentType": [null],
+          "chkNum": [null],
+          "ccAuth": [null],
+          "ccLevel3": [null],
+          "payAmt": [0],
+          "payType": [null],
+          "chkName": [null],
+          "chkAddr1": [null],
+          "chkAddr2": [null],
+          "scndIdInfo": [null],
+          "ccExprYm": [[null]],
+          "chkTransit": [null],
+          "chkAcctNum": [null],
+          "chkDrvlicSt": [null],
+          "chkVoiceAuth": [null],
+          "depCof": [[null]],
+          "depTokenKey": [[null]],
+          "ccName": [[null]],
+          "ccAddr1": [null],
+          "ccCity": [null],
+          "ccState": [null],
+          "ccZip": [null],
+          "ccCustCode": [null],
+          "ccVoiceAuth": [null],
+          "ccReqstrName": [null],
+          "terminalId": [null],
+          "sigCaptureInd": [null],
+          "sigCaptureTime": [null]
+        },
+        "pmts": {
+          "paymentType": "PMT",
+          "paidByMethod": ["VI"],
+          "ccLevel3": [null],
+          "ccAuth": [null],
+          "pmtTokenKey": [["SCRUBBED-TOKEN-VALUE"]],
+          "chkName": [null],
+          "chkAddr1": [null],
+          "chkAddr2": [null],
+          "scndIdInfo": [null],
+          "drvLicNum": [null],
+          "ccExprYm": [["00", "0000"]],
+          "chkTransit": [null],
+          "chkAcctNum": [null],
+          "chkDrvlicSt": [null],
+          "chkVoiceAuth": [null],
+          "ccName": [["Scrubbed Cardholder"]],
+          "ccAddr1": ["SCRUBBED CARD ADDRESS"],
+          "ccCity": ["SCRUBBED CITY"],
+          "ccState": ["ZZ"],
+          "ccZip": ["00000"],
+          "ccCustCode": [null],
+          "ccVoiceAuth": [null],
+          "ccPayReqstrName": [null],
+          "ccCof": [[null]],
+          "poaId": ["SCRUBBED-POA-ID"],
+          "poaStatus": ["PEND"],
+          "paidWithNum": ["XXXXXXXXXXXX0000"],
+          "terminalId": [null],
+          "sigCaptureInd": [null],
+          "sigCaptureTime": [null]
+        }
+      },
+      "linesInfo": [
+        { "rLineNum": "C*" },
+        { "rLineNum": "3815787*61" }
+      ]
+    },
+    "customer": {
+      "customerType": "TEMP",
+      "address": {
+        "address1": "null",
+        "address2": "null",
+        "address3": "null",
+        "address4": "null",
+        "city": "null",
+        "state": "null",
+        "postalCode": "null",
+        "county": "null",
+        "country": "null"
+      }
+    }
+  }
+}

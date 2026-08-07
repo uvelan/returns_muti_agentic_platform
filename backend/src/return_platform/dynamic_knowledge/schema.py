@@ -54,6 +54,80 @@ class FieldType(StrEnum):
     ARRAY = "ARRAY"
 
 
+class SourceContractStatus(StrEnum):
+    """Whether an entity's source field paths have been confirmed against a real document."""
+
+    VERIFIED = "VERIFIED"
+    UNVERIFIED = "UNVERIFIED"
+
+
+class EntitySourceAccess(StrEnum):
+    """What an entity is allowed to do against its live source, independent of contract status.
+
+    Capability matrix:
+
+    | Access           | Seed projection      | Connected point read | Full/incremental sync | On-demand sync |
+    |------------------|-----------------------|-----------------------|------------------------|----------------|
+    | DISABLED         | No                    | No                    | No                     | No             |
+    | SEED_ONLY        | Yes                   | No                    | No                     | No             |
+    | CONNECTED_READ   | Optional test seed    | Yes                   | No                     | No             |
+    | CONNECTED_SYNC   | Optional test seed    | Yes                   | Yes                    | Yes            |
+    """
+
+    DISABLED = "DISABLED"
+    SEED_ONLY = "SEED_ONLY"
+    CONNECTED_READ = "CONNECTED_READ"
+    CONNECTED_SYNC = "CONNECTED_SYNC"
+
+
+class RelationshipSourceAccess(StrEnum):
+    """Access level for one relationship projection; independently capped by its endpoints."""
+
+    DISABLED = "DISABLED"
+    SEED_ONLY = "SEED_ONLY"
+    CONNECTED_SYNC = "CONNECTED_SYNC"
+
+
+#: For a pair of endpoint EntitySourceAccess values, the maximum RelationshipSourceAccess
+#: a relationship between them may declare. Order-independent (checked both ways).
+_ENTITY_ACCESS_RANK: dict[EntitySourceAccess, int] = {
+    EntitySourceAccess.DISABLED: 0,
+    EntitySourceAccess.SEED_ONLY: 1,
+    EntitySourceAccess.CONNECTED_READ: 2,
+    EntitySourceAccess.CONNECTED_SYNC: 3,
+}
+
+
+_RELATIONSHIP_ACCESS_RANK: dict[RelationshipSourceAccess, int] = {
+    RelationshipSourceAccess.DISABLED: 0,
+    RelationshipSourceAccess.SEED_ONLY: 1,
+    RelationshipSourceAccess.CONNECTED_SYNC: 2,
+}
+
+
+def maximum_relationship_access(
+    source_access: EntitySourceAccess, target_access: EntitySourceAccess
+) -> RelationshipSourceAccess:
+    """The ceiling a relationship's access may not exceed, given its two endpoints."""
+
+    weakest = min(source_access, target_access, key=lambda value: _ENTITY_ACCESS_RANK[value])
+    if weakest is EntitySourceAccess.DISABLED:
+        return RelationshipSourceAccess.DISABLED
+    if weakest is EntitySourceAccess.SEED_ONLY:
+        return RelationshipSourceAccess.SEED_ONLY
+    if weakest is EntitySourceAccess.CONNECTED_READ:
+        return RelationshipSourceAccess.SEED_ONLY
+    return RelationshipSourceAccess.CONNECTED_SYNC
+
+
+class EntityDeletionPolicy(StrEnum):
+    """How a source-side removal is reflected in the graph for one entity."""
+
+    HARD_DELETE = "HARD_DELETE"
+    TOMBSTONE = "TOMBSTONE"
+    DETACH_ONLY = "DETACH_ONLY"
+
+
 class FieldCapabilities(BaseModel):
     """Operations explicitly enabled for a logical field."""
 
@@ -80,14 +154,41 @@ class FieldPermissions(BaseModel):
     masking: str | None = None
 
 
+class PathOrigin(StrEnum):
+    """Where a field's value is read from during a nested explosion (see EntityDefinition.explode)."""
+
+    ROOT_DOCUMENT = "ROOT_DOCUMENT"
+    CURRENT_RECORD = "CURRENT_RECORD"
+    PARENT_RECORD = "PARENT_RECORD"
+
+
+class DeriveOperation(StrEnum):
+    """Allowlisted transformations available to a derived field. No others are supported."""
+
+    SPLIT_PART = "SPLIT_PART"
+
+
+class FieldDerivation(BaseModel):
+    """Compute a field's value from another already-extracted field, never from a raw source path."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    operation: DeriveOperation
+    source_field: Identifier
+    delimiter: str = Field(min_length=1)
+    index: int = Field(ge=0)
+
+
 class FieldDefinition(BaseModel):
-    """Logical field mapped to a configured physical path and graph property."""
+    """Logical field mapped to a configured physical path (or derivation) and graph property."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     field_id: Identifier
     description: str = ""
-    physical_path: tuple[str, ...]
+    physical_path: tuple[str, ...] | None = None
+    path_origin: PathOrigin = PathOrigin.CURRENT_RECORD
+    derive: FieldDerivation | None = None
     graph_property: GraphIdentifier
     data_type: FieldType
     nullable: bool = True
@@ -96,8 +197,65 @@ class FieldDefinition(BaseModel):
 
     @model_validator(mode="after")
     def validate_path(self) -> FieldDefinition:
+        if (self.physical_path is None) == (self.derive is None):
+            raise ValueError(
+                f"field {self.field_id!r} must set exactly one of physical_path or derive"
+            )
+        if self.physical_path is not None and (
+            not self.physical_path or any(not segment.strip() for segment in self.physical_path)
+        ):
+            raise ValueError("physical_path must contain non-empty segments")
+        return self
+
+
+class WhereSelector(BaseModel):
+    """Restrict an exploded entity's records to those where a raw source path equals a literal."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    physical_path: tuple[str, ...]
+    equals: str
+
+    @model_validator(mode="after")
+    def validate_path(self) -> WhereSelector:
         if not self.physical_path or any(not segment.strip() for segment in self.physical_path):
             raise ValueError("physical_path must contain non-empty segments")
+        return self
+
+
+class KeyResolutionStrategy(StrEnum):
+    """How an entity's key is derived when the source has no obviously-stable identifier field."""
+
+    SOURCE_FIELD = "SOURCE_FIELD"
+    DETERMINISTIC_HMAC = "DETERMINISTIC_HMAC"
+
+
+class KeyResolution(BaseModel):
+    """Configuration-owned identity derivation; never a plain unkeyed hash of raw source values."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    strategy: KeyResolutionStrategy
+    source_field: Identifier | None = None
+    fields: tuple[Identifier, ...] = ()
+    key_reference: str | None = None
+    key_version: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_strategy_fields(self) -> KeyResolution:
+        if self.strategy is KeyResolutionStrategy.SOURCE_FIELD:
+            if self.source_field is None:
+                raise ValueError("SOURCE_FIELD key_resolution requires source_field")
+        else:
+            if not self.fields:
+                raise ValueError("DETERMINISTIC_HMAC key_resolution requires at least one field")
+            if not self.key_reference or not self.key_reference.startswith("vault://"):
+                raise ValueError(
+                    "DETERMINISTIC_HMAC key_resolution requires a vault:// key_reference; "
+                    "the HMAC secret itself must never appear in configuration"
+                )
+            if self.key_version is None:
+                raise ValueError("DETERMINISTIC_HMAC key_resolution requires key_version")
         return self
 
 
@@ -146,6 +304,14 @@ class EntityDefinition(BaseModel):
     fields: dict[str, FieldDefinition]
     natural_key: tuple[Identifier, ...]
     strong_anchors: dict[str, StrongAnchorDefinition] = Field(default_factory=dict)
+    source_contract_status: SourceContractStatus = SourceContractStatus.VERIFIED
+    source_access: EntitySourceAccess = EntitySourceAccess.CONNECTED_SYNC
+    deletion_policy: EntityDeletionPolicy = EntityDeletionPolicy.HARD_DELETE
+    record_path: tuple[str, ...] = ()
+    explode: bool = False
+    where: tuple[WhereSelector, ...] = ()
+    distinct: bool = False
+    key_resolution: KeyResolution | None = None
 
     @model_validator(mode="after")
     def validate_references(self) -> EntityDefinition:
@@ -167,6 +333,49 @@ class EntityDefinition(BaseModel):
                 raise ValueError(
                     f"anchor {anchor.anchor_id!r} references unknown fields: {sorted(missing)}"
                 )
+        if self.source_contract_status is SourceContractStatus.UNVERIFIED and self.source_access in {
+            EntitySourceAccess.CONNECTED_READ,
+            EntitySourceAccess.CONNECTED_SYNC,
+        }:
+            raise ValueError(
+                f"entity {self.entity_id!r} has an UNVERIFIED source contract and cannot "
+                f"declare source_access {self.source_access!r}; use SEED_ONLY or DISABLED"
+            )
+        if self.explode and not self.record_path:
+            raise ValueError(f"entity {self.entity_id!r} sets explode=True but no record_path")
+        if self.record_path and any(not segment.strip() for segment in self.record_path):
+            raise ValueError(f"entity {self.entity_id!r} has an empty record_path segment")
+        for field_id, field in self.fields.items():
+            if field.derive is None:
+                continue
+            source = field.derive.source_field
+            source_field = self.fields.get(source)
+            if source_field is None:
+                raise ValueError(
+                    f"field {field_id!r} derives from unknown field {source!r}"
+                )
+            if source == field_id:
+                raise ValueError(f"field {field_id!r} cannot derive from itself")
+            if source_field.derive is not None:
+                raise ValueError(
+                    f"field {field_id!r} derives from {source!r}, which is itself derived; "
+                    "chained derivations are not supported"
+                )
+        if self.key_resolution is not None:
+            resolution = self.key_resolution
+            if resolution.strategy is KeyResolutionStrategy.SOURCE_FIELD:
+                if resolution.source_field not in self.fields:
+                    raise ValueError(
+                        f"entity {self.entity_id!r} key_resolution references unknown field "
+                        f"{resolution.source_field!r}"
+                    )
+            else:
+                missing = set(resolution.fields).difference(self.fields)
+                if missing:
+                    raise ValueError(
+                        f"entity {self.entity_id!r} key_resolution references unknown fields: "
+                        f"{sorted(missing)}"
+                    )
         return self
 
 
@@ -202,6 +411,20 @@ class NodeProjection(BaseModel):
     property_fields: tuple[Identifier, ...]
 
 
+class RelationshipCardinality(StrEnum):
+    """Declared shape of one relationship projection, enforced at projection time.
+
+    A violation (e.g. more matched targets per source than declared) fails
+    the projection loudly rather than silently truncating or exploding into
+    an unbounded number of edges.
+    """
+
+    ONE_TO_ONE = "ONE_TO_ONE"
+    ONE_TO_MANY = "ONE_TO_MANY"
+    MANY_TO_ONE = "MANY_TO_ONE"
+    MANY_TO_MANY = "MANY_TO_MANY"
+
+
 class RelationshipProjection(BaseModel):
     """Schema-owned relationship projection."""
 
@@ -214,6 +437,30 @@ class RelationshipProjection(BaseModel):
     source_match_fields: tuple[Identifier, ...]
     target_match_fields: tuple[Identifier, ...]
     property_fields: tuple[Identifier, ...] = ()
+    access: RelationshipSourceAccess = RelationshipSourceAccess.CONNECTED_SYNC
+    cardinality: RelationshipCardinality = RelationshipCardinality.MANY_TO_MANY
+    maximum_targets_per_source: int | None = Field(default=None, ge=1)
+    maximum_sources_per_target: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_cardinality(self) -> RelationshipProjection:
+        if (
+            self.cardinality in {RelationshipCardinality.ONE_TO_ONE, RelationshipCardinality.MANY_TO_ONE}
+            and self.maximum_targets_per_source not in (None, 1)
+        ):
+            raise ValueError(
+                f"relationship {self.relationship_id!r} declares {self.cardinality!r} but "
+                f"maximum_targets_per_source={self.maximum_targets_per_source!r} allows more than one"
+            )
+        if (
+            self.cardinality in {RelationshipCardinality.ONE_TO_ONE, RelationshipCardinality.ONE_TO_MANY}
+            and self.maximum_sources_per_target not in (None, 1)
+        ):
+            raise ValueError(
+                f"relationship {self.relationship_id!r} declares {self.cardinality!r} but "
+                f"maximum_sources_per_target={self.maximum_sources_per_target!r} allows more than one"
+            )
+        return self
 
 
 class GraphDefinition(BaseModel):
@@ -323,6 +570,16 @@ class ActiveSchema(BaseModel):
                     raise ValueError(
                         f"relationship {relationship.relationship_id!r} references unknown fields: {sorted(unknown)}"
                     )
+            source_entity_access = self.entities[relationship.source_entity_id].source_access
+            target_entity_access = self.entities[relationship.target_entity_id].source_access
+            ceiling = maximum_relationship_access(source_entity_access, target_entity_access)
+            if _RELATIONSHIP_ACCESS_RANK[relationship.access] > _RELATIONSHIP_ACCESS_RANK[ceiling]:
+                raise ValueError(
+                    f"relationship {relationship.relationship_id!r} declares access "
+                    f"{relationship.access!r}, which exceeds the maximum {ceiling!r} allowed by "
+                    f"its endpoints ({relationship.source_entity_id!r}={source_entity_access!r}, "
+                    f"{relationship.target_entity_id!r}={target_entity_access!r})"
+                )
             property_unknown = set(relationship.property_fields).difference(
                 self.entities[relationship.source_entity_id].fields
             )

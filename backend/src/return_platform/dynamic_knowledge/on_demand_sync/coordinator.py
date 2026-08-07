@@ -6,13 +6,16 @@ from typing import Protocol
 from uuid import uuid4
 
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
-    DynamicSourceRecord,
-    GraphWriteBatch,
+    DynamicRecordMutation,
+    GraphMutationBatch,
     LogicalTargetedReadPlan,
+    ProjectionReadScope,
+    RawSourcePage,
     SyncReceipt,
     SyncReservation,
     SyncStatus,
 )
+from return_platform.dynamic_knowledge.on_demand_sync.extraction import SourceRecordExtractor
 from return_platform.dynamic_knowledge.schema import ActiveSchema, RuntimeMode
 
 
@@ -22,7 +25,7 @@ class TargetedSourceConnector(Protocol):
         *,
         schema: ActiveSchema,
         plan: LogicalTargetedReadPlan,
-    ) -> tuple[DynamicSourceRecord, ...]: ...
+    ) -> RawSourcePage: ...
 
 
 class ConnectorRegistry(Protocol):
@@ -34,8 +37,8 @@ class DynamicGraphProjector(Protocol):
         self,
         *,
         schema: ActiveSchema,
-        records: tuple[DynamicSourceRecord, ...],
-    ) -> GraphWriteBatch: ...
+        mutations: tuple[DynamicRecordMutation, ...],
+    ) -> GraphMutationBatch: ...
 
 
 class DynamicGraphWriter(Protocol):
@@ -44,7 +47,7 @@ class DynamicGraphWriter(Protocol):
         *,
         schema: ActiveSchema,
         graph_generation_id: str,
-        batch: GraphWriteBatch,
+        batch: GraphMutationBatch,
     ) -> tuple[int, int]: ...
 
 
@@ -68,11 +71,13 @@ class OnDemandSyncCoordinator:
         self,
         *,
         connectors: ConnectorRegistry,
+        extractor: SourceRecordExtractor,
         projector: DynamicGraphProjector,
         writer: DynamicGraphWriter,
         store: OnDemandSyncStore,
     ) -> None:
         self._connectors = connectors
+        self._extractor = extractor
         self._projector = projector
         self._writer = writer
         self._store = store
@@ -108,10 +113,21 @@ class OnDemandSyncCoordinator:
         await self._store.complete(running)
         try:
             connector = self._connectors.resolve(plan.source_asset_id)
-            records = await connector.targeted_read(schema=schema, plan=plan)
-            if len(records) > plan.maximum_rows + plan.maximum_dependency_records:
+            page = await connector.targeted_read(schema=schema, plan=plan)
+            # An on-demand anchor read only ever touches some of an entity's exploded
+            # children (e.g. one customer's accounts, not every account in the source),
+            # so REPLACE_CHILD_SET reconciliation must never run against it -- only a
+            # COMPLETE_SOURCE_DOCUMENT full/incremental scan is allowed to conclude an
+            # unseen child was deleted.
+            mutations = self._extractor.extract(
+                schema=schema,
+                source_asset_id=plan.source_asset_id,
+                page=page,
+                read_scope=ProjectionReadScope.PARTIAL_TARGETED_READ,
+            )
+            if len(mutations) > plan.maximum_rows + plan.maximum_dependency_records:
                 raise RuntimeError("ON_DEMAND_SYNC_RESULT_LIMIT_EXCEEDED")
-            batch = await self._projector.project(schema=schema, records=records)
+            batch = await self._projector.project(schema=schema, mutations=mutations)
             nodes_written, relationships_written = await self._writer.write(
                 schema=schema,
                 graph_generation_id=graph_generation_id,
@@ -123,7 +139,7 @@ class OnDemandSyncCoordinator:
                 status=SyncStatus.SUCCEEDED,
                 schema_version=schema.schema_version,
                 graph_generation_id=graph_generation_id,
-                source_rows_read=len(records),
+                source_rows_read=len(mutations),
                 nodes_written=nodes_written,
                 relationships_written=relationships_written,
             )

@@ -1,0 +1,153 @@
+{
+  "_id": "2175168",
+  "eventMeta": {
+    "insertMongoTs": { "$date": "2025-03-12T14:45:54.279Z" },
+    "collectionVersion": "1",
+    "type": "ADD",
+    "machineName": "STEP",
+    "syncid": { "$numberLong": "1690309049000" },
+    "updateMongoTs": { "$date": "2025-09-19T06:01:32.113Z" },
+    "file": "",
+    "insertTS": { "$date": "2025-03-12T14:45:54.279Z" },
+    "deleteMongoTs": null,
+    "lastUpdateTS": { "$date": "2025-09-19T06:01:32.113Z" },
+    "stepVersion": "v0.160",
+    "expireDate": null,
+    "id": 2175168,
+    "account": "MASTER",
+    "mongoWriteDate": { "$date": "2025-03-12T14:45:54.279Z" }
+  },
+  "mpData": {
+    "integLocProductId": 2175168,
+    "productFamily": "ProdFamily-74190",
+    "stepId": "Prod-1101616",
+    "ecatAnsiUom": "EA",
+    "stepUpdateDate": "07/25/2023",
+    "webDisplayName": "12 x 12 in. Residential 1-way Return Grille in White Steel",
+    "ebayWebDisplayName": "SCRUBBED PSRGW1212 12 x 12 in. Roll Groove Return Air Grille 1/2 in. Fin, White",
+    "ecatQtyMultiple": 1,
+    "unspsc": "40101504",
+    "stepCreateDate": "03/19/2015"
+  },
+  "masterProduct": {
+    "intlTradeProductFlag": "true",
+    "caChemCancerCause": ["Lead and lead compounds"],
+    "impProdTariffCd": { "$numberLong": "7326908688" },
+    "uomDesc": "EACH",
+    "impProdScndTariffCd": 99038803,
+    "sellMultiplier": 1,
+    "caChemCas": ["7439-92-1"],
+    "linebuyId": "7104",
+    "uom": "EA",
+    "vendorProdCode": "PSRGW1212",
+    "discGroupId": "4353",
+    "deptCodeDesc": "HVAC - AIR DIST",
+    "freightCode": "CL60",
+    "caChemMfgWarnTxt": "WARNING: Cancer and Reproductive Harm - www.P65Warnings.ca.gov",
+    "upcCode": "781889081532",
+    "productDesc2": "*CAT",
+    "productDesc": "12X12 RG RTN AIR GRL 1/2 FIN WHIT",
+    "brandType": "Own Brand",
+    "altCodes": { "alt1Code1": "PSRGW1212" },
+    "prodLongDesc": "12 X 12 Roll Groove Return Air Grill 1/2 Fin White",
+    "caChemProp65WarnElig": "Y",
+    "caChemReproCause": ["Lead and lead compounds"],
+    "perQty": 1,
+    "deptCode": "50",
+    "parcelRestrictFlag": "A",
+    "primVendorId": 19635,
+    "vendorName": "SCRUBBED VENDOR NAME"
+  },
+  "pricingData": {
+    "lastChgDate": [{ "$date": "2022-01-18T00:00:00.000Z" }],
+    "discPct": 0,
+    "localPriceFlag": "N",
+    "productWhseId": 2175168,
+    "previousPrice": 9.65,
+    "listPrice": 9.99
+  },
+  "mpNotes": null,
+  "eco": {
+    "material": ["Steel"],
+    "application": ["Residential"],
+    "grdDeflectionType": ["1-way"],
+    "waterSenseLabeled": "No",
+    "length": "12",
+    "width": "12",
+    "maApproved": "No",
+    "colorFinish": ["White"],
+    "type": ["PSRGW1212"],
+    "ulListed": "No"
+  },
+  "ecomm": null,
+  "fld": {
+    "branchProductFiles": ["OHIO HVAC", "LA HVAC", "Lyon"],
+    "brandNames": "SCRUBBED BRAND",
+    "promotionalKeywords": ["SystemAccessoriesFFF", "253178", "1151212"],
+    "shippingClassification": "Standard",
+    "productChannel": ["Old Online Flag 083014", "Old Online Flag 081715", "B2B"],
+    "printCatalogDetails": ["Print Catalogs - Facilities Supply 2016 Final"],
+    "shippingMethod": "Both",
+    "merchandisingProfiles": ["HVAC Top Skus 091911", "GHI Top Skus 121411"],
+    "ecatalogCustomerName": ["SS_Sample Customer Main", "eCat Master"],
+    "onlineDisposition": [],
+    "baseModelNumber": "PSRGW1212",
+    "strategicProductGroups": []
+  },
+  "integ": { "commodityCodeId": "SCRUBBED-COMMODITY-ID", "locProduct": "2175168" },
+  "uom": {
+    "uomCode": "EA",
+    "uomDesc": "EACH",
+    "stepVersion": "v0.160",
+    "uomMongoId": "SCRUBBED-UOM-MONGO-ID"
+  },
+  "fopt": {
+    "stepId": "Prod-1101616",
+    "foptStepVersion": "v0.160",
+    "mstrProdId": "2175168",
+    "mstrProdVendor": "19635",
+    "mfgPartNum": "PSRGW1212",
+    "infoDeletedFlag": "false",
+    "upc": "781889081532",
+    "upcQual": "UN",
+    "fOpt0": {
+      "heightSrc0": "V",
+      "height0": 1.5,
+      "lengthSrc0": "V",
+      "length0": 12.0,
+      "ppqSrc0": "V",
+      "ppq0": 1,
+      "uom0": "IN",
+      "weightSrc0": "V",
+      "weight0": 1.2,
+      "widthSrc0": "V",
+      "width0": 12.0
+    },
+    "vendorName": "SCRUBBED VENDOR NAME"
+  },
+  "whseProducts": [
+    {
+      "accountId": "LAKEWOOD",
+      "whseId": "114",
+      "prodStatus": "T",
+      "invenBeginDate": { "$date": "2016-04-30T00:00:00.000Z" },
+      "serialReqrdFlag": "false"
+    },
+    {
+      "accountId": "LAKEWOOD",
+      "whseId": "1173",
+      "prodStatus": "T",
+      "invenBeginDate": { "$date": "2012-01-31T00:00:00.000Z" },
+      "binLocation": "XE1A03",
+      "serialReqrdFlag": "false"
+    },
+    {
+      "accountId": "LAKEWOOD",
+      "whseId": "510",
+      "invenBeginDate": { "$date": "2006-10-31T00:00:00.000Z" },
+      "binLocation": "W29E",
+      "rankCode": "C",
+      "serialReqrdFlag": "false"
+    }
+  ]
+}

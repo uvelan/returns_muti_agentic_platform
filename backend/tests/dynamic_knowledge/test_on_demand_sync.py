@@ -1,15 +1,23 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
-    DynamicSourceRecord,
-    GraphWriteBatch,
+    DynamicRecordMutation,
+    GraphMutationBatch,
+    GraphNodeMutation,
+    RawSourceDocument,
+    RawSourcePage,
     SyncReceipt,
     SyncReservation,
     SyncStatus,
 )
 from return_platform.dynamic_knowledge.on_demand_sync.coordinator import OnDemandSyncCoordinator
+from return_platform.dynamic_knowledge.on_demand_sync.extraction import (
+    GenericSourceRecordExtractor,
+)
 from return_platform.dynamic_knowledge.on_demand_sync.planner import build_targeted_read_plan
 from return_platform.dynamic_knowledge.on_demand_sync.source_compilers import compile_source_read
 from return_platform.dynamic_knowledge.schema import ActiveSchema
@@ -18,17 +26,21 @@ from return_platform.dynamic_knowledge.schema import ActiveSchema
 class Connector:
     calls = 0
 
-    async def targeted_read(
-        self, *, schema: ActiveSchema, plan: object
-    ) -> tuple[DynamicSourceRecord, ...]:
+    async def targeted_read(self, *, schema: ActiveSchema, plan: object) -> RawSourcePage:
         self.calls += 1
-        return (
-            DynamicSourceRecord(
-                source_asset_id="source_a",
-                entity_id="entity_a",
-                natural_key={"id": "A-1"},
-                values={"id": "A-1", "name": "Configured", "changed_at": "2026-08-04T00:00:00Z"},
+        return RawSourcePage(
+            documents=(
+                RawSourceDocument(
+                    operation="UPSERT",
+                    document={
+                        "configured_id": "A-1",
+                        "configured_name": "Configured",
+                        "configured_changed_at": "2026-08-04T00:00:00Z",
+                    },
+                    source_identity="A-1",
+                ),
             ),
+            observed_at=datetime(2026, 8, 4, tzinfo=UTC),
         )
 
 
@@ -43,10 +55,18 @@ class Registry:
 
 class Projector:
     async def project(
-        self, *, schema: ActiveSchema, records: tuple[DynamicSourceRecord, ...]
-    ) -> GraphWriteBatch:
-        return GraphWriteBatch(
-            node_rows={"node_a": ({"keys": {"id": "A-1"}, "properties": {}},)}, relationship_rows={}
+        self, *, schema: ActiveSchema, mutations: tuple[DynamicRecordMutation, ...]
+    ) -> GraphMutationBatch:
+        return GraphMutationBatch(
+            node_mutations=(
+                GraphNodeMutation(
+                    operation="UPSERT",
+                    projection_id="node_a",
+                    entity_id="entity_a",
+                    key_values={"id": "A-1"},
+                ),
+            ),
+            relationship_mutations=(),
         )
 
 
@@ -56,7 +76,7 @@ class Writer:
         *,
         schema: ActiveSchema,
         graph_generation_id: str,
-        batch: GraphWriteBatch,
+        batch: GraphMutationBatch,
     ) -> tuple[int, int]:
         assert graph_generation_id == "g1"
         return 1, 0
@@ -92,7 +112,11 @@ async def test_identical_targeted_sync_reuses_successful_receipt(
 ) -> None:
     connector, store = Connector(), Store()
     coordinator = OnDemandSyncCoordinator(
-        connectors=Registry(connector), projector=Projector(), writer=Writer(), store=store
+        connectors=Registry(connector),
+        extractor=GenericSourceRecordExtractor(),
+        projector=Projector(),
+        writer=Writer(),
+        store=store,
     )
     plan = build_targeted_read_plan(
         schema=active_schema,
