@@ -163,6 +163,7 @@ def _entity(
     where: list[dict[str, Any]] | None = None,
     source_contract_status: str = "VERIFIED",
     source_access: str = "CONNECTED_SYNC",
+    ownership_policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "entity_id": entity_id,
@@ -175,6 +176,7 @@ def _entity(
         "record_path": record_path or [],
         "explode": explode,
         "where": where or [],
+        "ownership_policy": ownership_policy,
     }
 
 
@@ -316,6 +318,7 @@ _ENTITIES = {
         natural_key=["account_number"],
         record_path=["custAccts"],
         explode=True,
+        ownership_policy={"mode": "REPLACE_CHILD_SET", "owner_identity": "SOURCE_DOCUMENT"},
     ),
     "sales_order": _entity(
         "sales_order",

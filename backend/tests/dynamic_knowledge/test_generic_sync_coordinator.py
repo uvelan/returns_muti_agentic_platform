@@ -394,6 +394,170 @@ async def test_full_sync_without_a_reconciler_skips_stage_b(active_schema: Activ
     assert relationships == 0
 
 
+def _ownership_schema(active_schema: ActiveSchema) -> ActiveSchema:
+    raw = active_schema.model_dump(mode="json")
+    raw["entities"]["entity_b"] = {
+        "entity_id": "entity_b",
+        "source_asset_id": "source_b",
+        "record_path": ["items"],
+        "explode": True,
+        "ownership_policy": {"mode": "REPLACE_CHILD_SET", "owner_identity": "SOURCE_DOCUMENT"},
+        "fields": {
+            "id": {
+                "field_id": "id",
+                "physical_path": ["itemId"],
+                "graph_property": "related_id",
+                "data_type": "STRING",
+                "nullable": False,
+                "capabilities": {"searchable": True, "filterable": True, "operators": ["EXACT"]},
+                "permissions": {"searchable_by": ["associate"], "displayable_by": ["associate"]},
+            },
+        },
+        "natural_key": ["id"],
+        "strong_anchors": {},
+    }
+    raw["graph"]["nodes"]["node_b"]["property_fields"] = []
+    raw["graph"]["relationships"] = {}
+    return ActiveSchema.model_validate(raw)
+
+
+def _document_page(source_identity: str, document: dict[str, object]) -> RawSourcePage:
+    return RawSourcePage(
+        documents=(
+            RawSourceDocument(operation="UPSERT", document=document, source_identity=source_identity),
+        ),
+        next_cursor=_numeric_cursor(1),
+        observed_at=datetime(2026, 8, 6, tzinfo=UTC),
+    )
+
+
+class RecordingOwnershipReconciler:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    async def reconcile_child_ownership(
+        self,
+        *,
+        schema: ActiveSchema,
+        graph_generation_id: str,
+        fencing_token: int,
+        expected_generation_status: GraphGenerationStatus,
+        projection_id: str,
+        source_asset_id: str,
+        source_identity: str,
+        current_children: tuple[tuple[str, dict[str, object]], ...],
+        source_version: str | None = None,
+    ) -> None:
+        self.calls.append(
+            {
+                "projection_id": projection_id,
+                "source_asset_id": source_asset_id,
+                "source_identity": source_identity,
+                "current_children": current_children,
+                "expected_generation_status": expected_generation_status,
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_full_sync_reconciles_ownership_per_parent_document(active_schema: ActiveSchema) -> None:
+    schema = _ownership_schema(active_schema)
+    page = _document_page("parent-1", {"items": [{"itemId": "C-1"}, {"itemId": "C-2"}]})
+    connector = NumericOrderedConnector([page], watermark=_numeric_cursor(1))
+    reconciler = RecordingOwnershipReconciler()
+    coordinator = GenericSyncCoordinator(
+        connectors=Registry(connector),
+        extractor=GenericSourceRecordExtractor(),
+        writer=RecordingWriter(),
+        checkpoints=RecordingCheckpoints(),
+        ownership_reconciler=reconciler,
+    )
+    await coordinator.full_sync(
+        schema=schema,
+        graph_generation_id="g1",
+        fencing_token=1,
+        source_asset_ids=frozenset({"source_b"}),
+        expected_generation_status=GraphGenerationStatus.ACTIVE,
+    )
+    assert len(reconciler.calls) == 1
+    call = reconciler.calls[0]
+    assert call["source_identity"] == "parent-1"
+    assert call["projection_id"] == "node_b"
+    current_ids = {values["id"] for _, values in call["current_children"]}
+    assert current_ids == {"C-1", "C-2"}
+    assert call["expected_generation_status"] is GraphGenerationStatus.ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_full_sync_reconciles_ownership_with_zero_children_when_all_removed(
+    active_schema: ActiveSchema,
+) -> None:
+    """The orphan-cleanup case: a parent document whose array is now empty must
+    still trigger reconciliation (with an empty current_children set), or a
+    previously-owned child would never be detected as removed."""
+    schema = _ownership_schema(active_schema)
+    page = _document_page("parent-1", {"items": []})
+    connector = NumericOrderedConnector([page], watermark=_numeric_cursor(1))
+    reconciler = RecordingOwnershipReconciler()
+    coordinator = GenericSyncCoordinator(
+        connectors=Registry(connector),
+        extractor=GenericSourceRecordExtractor(),
+        writer=RecordingWriter(),
+        checkpoints=RecordingCheckpoints(),
+        ownership_reconciler=reconciler,
+    )
+    await coordinator.full_sync(
+        schema=schema,
+        graph_generation_id="g1",
+        fencing_token=1,
+        source_asset_ids=frozenset({"source_b"}),
+    )
+    assert len(reconciler.calls) == 1
+    assert reconciler.calls[0]["current_children"] == ()
+
+
+@pytest.mark.asyncio
+async def test_full_sync_without_an_ownership_reconciler_configured_skips_it(
+    active_schema: ActiveSchema,
+) -> None:
+    schema = _ownership_schema(active_schema)
+    page = _document_page("parent-1", {"items": [{"itemId": "C-1"}]})
+    connector = NumericOrderedConnector([page], watermark=_numeric_cursor(1))
+    coordinator = GenericSyncCoordinator(
+        connectors=Registry(connector),
+        extractor=GenericSourceRecordExtractor(),
+        writer=RecordingWriter(),
+        checkpoints=RecordingCheckpoints(),
+    )
+    # No exception, no-op: proves reconcile_ownership doesn't require a reconciler.
+    await coordinator.full_sync(
+        schema=schema, graph_generation_id="g1", fencing_token=1, source_asset_ids=frozenset({"source_b"})
+    )
+
+
+@pytest.mark.asyncio
+async def test_incremental_sync_never_calls_the_ownership_reconciler(active_schema: ActiveSchema) -> None:
+    schema = _ownership_schema(active_schema)
+    raw = schema.model_dump(mode="json")
+    # A real field on entity_b so this source actually participates in
+    # incremental_sync (which skips any source with no incremental_cursor_field
+    # at all) -- otherwise this test would trivially pass for the wrong reason.
+    raw["sources"]["source_b"]["incremental_cursor_field"] = "id"
+    schema = ActiveSchema.model_validate(raw)
+    page = _document_page("parent-1", {"items": [{"itemId": "C-1"}]})
+    connector = NumericOrderedConnector([page], watermark=_numeric_cursor(1))
+    reconciler = RecordingOwnershipReconciler()
+    coordinator = GenericSyncCoordinator(
+        connectors=Registry(connector),
+        extractor=GenericSourceRecordExtractor(),
+        writer=RecordingWriter(),
+        checkpoints=RecordingCheckpoints(),
+        ownership_reconciler=reconciler,
+    )
+    await coordinator.incremental_sync(schema=schema, graph_generation_id="g1", fencing_token=1)
+    assert reconciler.calls == []
+
+
 @pytest.mark.asyncio
 async def test_incremental_sync_scans_from_the_stored_checkpoint(
     active_schema: ActiveSchema,

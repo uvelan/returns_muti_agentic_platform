@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import AsyncIterator
-from typing import Protocol
+from typing import Any, Protocol
 
 from return_platform.dynamic_knowledge.graph.generation import GraphGenerationStatus
+from return_platform.dynamic_knowledge.graph.write_compiler import canonical_key_hash
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
     CursorComparison,
+    DynamicRecordMutation,
     DynamicSourceRecord,
     ProjectionReadScope,
     RawSourcePage,
@@ -70,6 +73,26 @@ class RelationshipReconciler(Protocol):
     ) -> dict[str, int]: ...
 
 
+class ChildOwnershipReconciler(Protocol):
+    """Replace-child-set reconciliation for one entity exploded from one parent
+    document, run per parent document alongside Stage A. Matches
+    Neo4jDynamicGraphWriter.reconcile_child_ownership's signature."""
+
+    async def reconcile_child_ownership(
+        self,
+        *,
+        schema: ActiveSchema,
+        graph_generation_id: str,
+        fencing_token: int,
+        expected_generation_status: GraphGenerationStatus,
+        projection_id: str,
+        source_asset_id: str,
+        source_identity: str,
+        current_children: tuple[tuple[str, dict[str, Any]], ...],
+        source_version: str | None = None,
+    ) -> Any: ...
+
+
 class CheckpointStore(Protocol):
     async def read(
         self, *, source_asset_id: str, graph_generation_id: str
@@ -105,6 +128,7 @@ class GenericSyncCoordinator:
         checkpoints: CheckpointStore,
         reconciler: RelationshipReconciler | None = None,
         run_recorder: RunManifestRecorder | None = None,
+        ownership_reconciler: ChildOwnershipReconciler | None = None,
     ) -> None:
         self._connectors = connectors
         self._extractor = extractor
@@ -112,6 +136,7 @@ class GenericSyncCoordinator:
         self._checkpoints = checkpoints
         self._reconciler = reconciler
         self._run_recorder = run_recorder
+        self._ownership_reconciler = ownership_reconciler
 
     async def full_sync(
         self,
@@ -190,6 +215,8 @@ class GenericSyncCoordinator:
                     graph_generation_id=graph_generation_id,
                     fencing_token=fencing_token,
                     page=page,
+                    expected_generation_status=expected_generation_status,
+                    reconcile_ownership=True,
                 )
                 total_nodes += nodes
                 total_relationships += relationships
@@ -266,6 +293,8 @@ class GenericSyncCoordinator:
         graph_generation_id: str,
         fencing_token: int,
         page: RawSourcePage,
+        expected_generation_status: GraphGenerationStatus = GraphGenerationStatus.BUILDING,
+        reconcile_ownership: bool = False,
     ) -> tuple[int, int]:
         mutations = self._extractor.extract(
             schema=schema,
@@ -278,14 +307,83 @@ class GenericSyncCoordinator:
             for mutation in mutations
             if mutation.operation == "UPSERT" and mutation.record is not None
         )
-        if not records:
-            return 0, 0
-        return await self._writer.project_and_write(
-            schema=schema,
-            graph_generation_id=graph_generation_id,
-            records=records,
-            fencing_token=fencing_token,
-        )
+        nodes, relationships = (0, 0)
+        if records:
+            nodes, relationships = await self._writer.project_and_write(
+                schema=schema,
+                graph_generation_id=graph_generation_id,
+                records=records,
+                fencing_token=fencing_token,
+            )
+
+        # Ownership reconciliation is explicitly opt-in per call (never implied
+        # just because a reconciler is configured) so incremental_sync -- which
+        # has no equivalent concept yet -- can never accidentally pick it up.
+        if reconcile_ownership and self._ownership_reconciler is not None:
+            await self._reconcile_ownership_for_page(
+                schema=schema,
+                source_asset_id=source_asset_id,
+                graph_generation_id=graph_generation_id,
+                fencing_token=fencing_token,
+                expected_generation_status=expected_generation_status,
+                page=page,
+                mutations=mutations,
+            )
+        return nodes, relationships
+
+    async def _reconcile_ownership_for_page(
+        self,
+        *,
+        schema: ActiveSchema,
+        source_asset_id: str,
+        graph_generation_id: str,
+        fencing_token: int,
+        expected_generation_status: GraphGenerationStatus,
+        page: RawSourcePage,
+        mutations: tuple[DynamicRecordMutation, ...],
+    ) -> None:
+        assert self._ownership_reconciler is not None
+        ownership_entities = [
+            entity
+            for entity in schema.entities.values()
+            if entity.source_asset_id == source_asset_id and entity.ownership_policy is not None
+        ]
+        if not ownership_entities:
+            return
+
+        # Grouped from the mutations actually produced, keyed by (entity, the
+        # parent document's own source_identity -- every exploded child's
+        # mutation carries its parent's source_identity, never its own).
+        children_by_parent: dict[tuple[str, str], list[DynamicRecordMutation]] = defaultdict(list)
+        for mutation in mutations:
+            if (
+                mutation.operation == "UPSERT"
+                and mutation.read_scope is ProjectionReadScope.COMPLETE_SOURCE_DOCUMENT
+            ):
+                children_by_parent[(mutation.entity_id, mutation.source_identity)].append(mutation)
+
+        for document in page.documents:
+            if document.operation != "UPSERT":
+                continue
+            for entity in ownership_entities:
+                group = children_by_parent.get((entity.entity_id, document.source_identity), [])
+                current_children = tuple(
+                    (canonical_key_hash(mutation.resolved_key), dict(mutation.resolved_key))
+                    for mutation in group
+                )
+                projection_id = schema.entity_node(entity.entity_id).projection_id
+                source_version = group[0].source_version if group else None
+                await self._ownership_reconciler.reconcile_child_ownership(
+                    schema=schema,
+                    graph_generation_id=graph_generation_id,
+                    fencing_token=fencing_token,
+                    expected_generation_status=expected_generation_status,
+                    projection_id=projection_id,
+                    source_asset_id=entity.source_asset_id,
+                    source_identity=document.source_identity,
+                    current_children=current_children,
+                    source_version=source_version,
+                )
 
 
 def _highest_cursor(

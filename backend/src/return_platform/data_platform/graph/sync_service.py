@@ -388,6 +388,7 @@ class GraphSyncService:
             writer=projector_writer,
             checkpoints=_UnusedCheckpointStore(),
             reconciler=self._writer,
+            ownership_reconciler=self._writer,
         )
         return await coordinator.full_sync(
             schema=self._schema,
