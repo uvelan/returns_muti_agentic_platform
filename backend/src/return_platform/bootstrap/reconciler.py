@@ -30,8 +30,11 @@ class ConfigurationReconciler:
         self._load_snapshot_fn = load_snapshot_fn
         
         self._active_release_id = None
+        self._active_epoch: int = 0
+        self._adopted_at: datetime | None = None
         self._pending_release_id: str | None = None
         self._status = "ACTIVE"
+        self._draining_epochs: list[int] = []
         
     async def run(self) -> None:
         while True:
@@ -70,7 +73,11 @@ class ConfigurationReconciler:
             
             if retired_epoch is not None:
                 # Success
+                if self._active_epoch:
+                    self._draining_epochs.append(self._active_epoch)
                 self._active_release_id = target_release_id
+                self._active_epoch = new_epoch.epoch
+                self._adopted_at = datetime.now(timezone.utc)
                 self._pending_release_id = None
                 self._status = "ACTIVE"
                 self._config_handle.adopted_release_id = target_release_id
@@ -98,13 +105,17 @@ class ConfigurationReconciler:
         if not self._active_release_id and not self._pending_release_id:
             return
             
+        now = datetime.now(timezone.utc)
         await self._adoption.update_one(
             {"instance_id": self._instance_id},
             {"$set": {
-                "active_release_id": self._active_release_id,
+                "adopted_release_id": self._active_release_id or "",
+                "adopted_epoch": self._active_epoch,
+                "adopted_at": self._adopted_at or now,
                 "pending_release_id": self._pending_release_id,
-                "status": self._status,
-                "last_heartbeat": datetime.now(timezone.utc)
+                "requires_restart": self._config_handle.requires_restart,
+                "draining_epochs": self._draining_epochs,
+                "heartbeat_at": now
             }},
             upsert=True
         )

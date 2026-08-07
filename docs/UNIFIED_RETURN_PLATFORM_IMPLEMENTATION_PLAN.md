@@ -755,8 +755,8 @@ content out of the `v2` namespace and (b) writing loaders that actually consume 
 6. **Runtime adoption (design §13.2).** A release being ACTIVE is not a running replica using it. Build:
    - `ConfigurationView` implementing `RuntimeConfigurationView` — immutable, names one release, and is the
      **only** object with `section()`. `ConfigurationHandle` implementing `RuntimeConfigurationHandle`
-     (`current()` / `pinned(release_id)`) resolves views and has no read method of its own. A pinned session
-     resolves `handle.pinned(session.configuration_release_id)` once at its boundary; because the view is the
+     (`current(epoch)` / `async pinned(release_id)`) resolves views and has no read method of its own. A pinned session
+     resolves `await handle.pinned(session.configuration_release_id)` once at its boundary; because the view is the
      only readable object, an agent physically cannot reach a newer release.
    - The **epoch-keyed two-phase** protocol declared in Phase 1B: `prepare_reconfigure(epoch)` on every
      module → all `READY`/`NO_CHANGE` → `commit_reconfigure(epoch)` on every module → **one** replica

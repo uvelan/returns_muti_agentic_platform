@@ -3,9 +3,7 @@ from pymongo import AsyncMongoClient
 from return_platform.configuration.domain.handle import ConfigurationView, ConfigurationHandle
 from return_platform.configuration.domain.release import RuntimeSnapshot
 from return_platform.platform.contracts.epoch import RuntimeEpoch
-
-class ReleaseNotRetained(RuntimeError):
-    pass
+from return_platform.platform.contracts.runtime_configuration import ReleaseNotRetained
 
 class RuntimeConfigurationViewImpl(ConfigurationView):
     def __init__(self, release_id: str, snapshot: RuntimeSnapshot, checksum: str):
@@ -36,14 +34,16 @@ class RuntimeConfigurationHandleImpl(ConfigurationHandle):
         self._pending_release_id: str | None = None
         self._requires_restart: bool = False
         
-    def set_current(self, epoch: RuntimeEpoch, view: ConfigurationView) -> None:
+    def set_current(self, epoch: Any, view: ConfigurationView) -> None:
+        epoch_num = getattr(epoch, "epoch", epoch)
         self._views[view.release_id] = view
-        self._epoch_releases[epoch.epoch] = view.release_id
+        self._epoch_releases[epoch_num] = view.release_id
         
-    def current(self, epoch: RuntimeEpoch) -> ConfigurationView:
-        release_id = self._epoch_releases.get(epoch.epoch)
+    def current(self, epoch: Any) -> ConfigurationView:
+        epoch_num = getattr(epoch, "epoch", epoch)
+        release_id = self._epoch_releases.get(epoch_num)
         if not release_id:
-            raise RuntimeError(f"Configuration handle has no view for epoch {epoch.epoch}")
+            raise RuntimeError(f"Configuration handle has no view for epoch {epoch_num}")
         return self._views[release_id]
         
     async def pinned(self, release_id: str) -> ConfigurationView:
@@ -63,9 +63,6 @@ class RuntimeConfigurationHandleImpl(ConfigurationHandle):
 
     @property
     def adopted_release_id(self) -> str:
-        # Not fully tracking this here, assume reconciler updates an external object or we can compute it.
-        # Wait, the simplest way is to expose these properties.
-        # Actually, let's just add the setters/getters.
         return self._adopted_release_id
 
     @adopted_release_id.setter

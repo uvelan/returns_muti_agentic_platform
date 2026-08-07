@@ -1039,10 +1039,10 @@ class RuntimeConfigurationView(Protocol):
 
 class RuntimeConfigurationHandle(Protocol):
     """Resolves views. Deliberately has NO section() of its own."""
-    def current(self) -> RuntimeConfigurationView:
-        """The release this replica has adopted. For startup and background work —
+    def current(self, epoch: RuntimeEpoch) -> RuntimeConfigurationView:
+        """The release this replica has adopted for this epoch. For startup and background work —
         never for a request or workflow that is pinned."""
-    def pinned(self, release_id: str) -> RuntimeConfigurationView:
+    async def pinned(self, release_id: str) -> RuntimeConfigurationView:
         """Raises ReleaseNotRetained if retention has expired."""
     @property
     def adopted_release_id(self) -> str: ...

@@ -1,18 +1,14 @@
 from pydantic import BaseModel, ConfigDict
-from typing import Mapping, Any
+from typing import Mapping, Any, List
 
 class AgentConfigNode(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-    implementation: str
-    task_queue: str
-    state_namespace: str
-    prompt_ref: str | None = None
-    ai_route_ref: str | None = None
-    enabled: bool
-    max_concurrency: int | None = None
-    retry_policy: Mapping[str, Any] | None = None
-    timeout: str | None = None
+    model_config = ConfigDict(frozen=True, extra="allow")
+    name: str | None = None
+    enabled: bool = True
+    implementation: str | None = None
+    task_queue: str | None = None
+    state_namespace: str | None = None
 
 class AgentsConfig(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-    agents: Mapping[str, AgentConfigNode]
+    model_config = ConfigDict(frozen=True, extra="allow")
+    agents: Mapping[str, AgentConfigNode] = {}

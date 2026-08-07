@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict
-from typing import Mapping
+from typing import Mapping, Any
 
-class FeatureFlags(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-    flags: Mapping[str, bool]
+class FeaturesConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="allow")
+    flags: Mapping[str, bool] = {}

@@ -2,7 +2,7 @@ from pydantic import BaseModel, ConfigDict
 from typing import Mapping, Any
 
 class AiConfig(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="allow")
     providers: Mapping[str, Any] | None = None
     routes: Mapping[str, Any] | None = None
     tasks: Mapping[str, Any] | None = None

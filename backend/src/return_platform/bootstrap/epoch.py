@@ -259,6 +259,10 @@ class EpochAdmission:
             record = self._records.get(epoch.epoch)
             if record is None or record.state is EpochLifecycleState.RELEASED:
                 return
+            if record.state is not EpochLifecycleState.RELEASING:
+                raise EpochStateError(
+                    f"Cannot finish release for epoch {epoch.epoch} in state {record.state}; expected RELEASING"
+                )
             record.state = EpochLifecycleState.RELEASED
 
 
@@ -384,6 +388,11 @@ class ReconfigurationCoordinator:
                 )
 
             expected_current_epoch = self._admission.current
+            if epoch.epoch <= expected_current_epoch.epoch:
+                raise StaleReconfiguration(
+                    f"new epoch {epoch.epoch} is not newer than current "
+                    f"{expected_current_epoch.epoch}; refusing to reconfigure"
+                )
 
             prepared: list[Reconfigurable] = []
             refused = False

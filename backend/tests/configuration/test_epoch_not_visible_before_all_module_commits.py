@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock
-from return_platform.bootstrap.epoch import ReconfigurationCoordinator, EpochAdmission, RuntimeEpoch
+from return_platform.bootstrap.epoch import ReconfigurationCoordinator, EpochAdmission, SimpleRuntimeEpoch
 from return_platform.platform.modules.contracts import ReconfigureOutcome
 
 @pytest.mark.asyncio
@@ -13,10 +13,10 @@ async def test_epoch_not_visible_before_all_module_commits():
     m1.prepare_reconfigure.return_value = ReconfigureOutcome.READY
     m2.prepare_reconfigure.return_value = ReconfigureOutcome.READY
     
-    admission = EpochAdmission(RuntimeEpoch(1, "r1"))
+    admission = EpochAdmission(SimpleRuntimeEpoch(1, "r1"))
     coordinator = ReconfigurationCoordinator({"m1": m1, "m2": m2}, admission)
     
-    new_epoch = RuntimeEpoch(2, "r2")
+    new_epoch = SimpleRuntimeEpoch(2, "r2")
     
     # We want to capture admission.current state *during* the commit phase
     async def mock_commit_m2(*args, **kwargs):
