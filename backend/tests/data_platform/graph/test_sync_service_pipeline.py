@@ -186,7 +186,7 @@ async def test_sync_mongodb_only_writes_customer_and_order_nodes_via_the_generic
         "phoneNumber": "555-0100",
         "email": None,
         "updatedAt": "2026-08-01T00:00:00Z",
-        "custAccts": [{"accountNumber": "232385"}],
+        "accounts": [{"accountNumber": "232385"}],
     }
     order_document = {
         "_id": ObjectId(),
@@ -231,7 +231,7 @@ async def test_sync_mongodb_only_writes_customer_and_order_nodes_via_the_generic
     assert any("MERGE (n:`CustomerAccount`" in q for q in queries)
     assert any(q.startswith("MATCH (g:GraphGeneration") for q in queries)
     # CustomerAccount is configured with an ownership_policy (exploded from
-    # custAccts[]) -- proves reconcile_child_ownership actually runs end to end.
+    # accounts[]) -- proves reconcile_child_ownership actually runs end to end.
     assert any("MERGE (o:ProjectionOwnership" in q for q in queries)
 
 

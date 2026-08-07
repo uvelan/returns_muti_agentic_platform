@@ -103,7 +103,7 @@ def test_customer_extraction_coalesces_identity_and_hashes_contact_fields(schema
         "phoneNumber": "555-0100",
         "email": None,
         "updatedAt": "2026-08-01T00:00:00Z",
-        "custAccts": [{"accountNumber": "232385"}, {"accountNumber": "28634"}],
+        "accounts": [{"accountNumber": "232385"}, {"accountNumber": "28634"}],
     }
     secret = "s" * 32
     extractor = GenericSourceRecordExtractor(

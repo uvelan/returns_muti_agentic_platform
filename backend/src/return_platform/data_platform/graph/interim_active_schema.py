@@ -24,12 +24,14 @@ latent correctness gap that this pipeline naturally avoids):
   reproducing it.
 - CustomerAccount's key is the bare account_number (no "CUSTOMER_CDM:"
   prefix); the old accounts/custAccts array-name fallback is dropped in
-  favor of custAccts alone.
-- OrderLine's key is orderLineId alone (no position-based fallback key);
-  the old lineData-vs-wrapper unwrap is dropped -- order_line's real source
-  shape was never verified in the first place (see the plan's fixture
-  notes), so this entity stays SEED_ONLY here exactly as the approved plan
-  requires.
+  favor of accounts alone -- verified against real seeded customerOutboundCDM
+  documents, which use "accounts", not "custAccts".
+- OrderLine's key is orderLineId alone (no position-based fallback key).
+  The old lineData-vs-wrapper unwrap is *not* dropped -- salesLines[] entries
+  are wrapped in a lineData object in the real seeded data, so every
+  order_line field's physical_path is ["lineData", <field>]. order_line
+  still stays SEED_ONLY per the approved plan, since its real (non-seed)
+  source shape was never independently verified.
 - Product is authoritatively upserted only from lkpSearchProduct's own
   Stage A, not also re-created from embedded salesLines product fields;
   REFERENCES_PRODUCT simply doesn't form for a product_id that
@@ -316,7 +318,10 @@ _ENTITIES = {
             ),
         },
         natural_key=["account_number"],
-        record_path=["custAccts"],
+        # The live seed data (and the old sync_service.py's own primary lookup)
+        # uses "accounts", not "custAccts" -- verified against real seeded
+        # customerOutboundCDM documents.
+        record_path=["accounts"],
         explode=True,
         ownership_policy={"mode": "REPLACE_CHILD_SET", "owner_identity": "SOURCE_DOCUMENT"},
     ),
@@ -356,8 +361,16 @@ _ENTITIES = {
         "order_line",
         "sales_inventory",
         {
+            # Every field below (except sales_order_id, which is ROOT_DOCUMENT-
+            # origin) reads through the "lineData" wrapper each salesLines[]
+            # entry carries in the real seeded data -- verified against real
+            # seeded salesInv documents.
             "order_line_id": _field(
-                "order_line_id", physical_path=["orderLineId"], nullable=False, searchable=True, filterable=True
+                "order_line_id",
+                physical_path=["lineData", "orderLineId"],
+                nullable=False,
+                searchable=True,
+                filterable=True,
             ),
             "sales_order_id": _field(
                 "sales_order_id",
@@ -366,13 +379,19 @@ _ENTITIES = {
                 searchable=True,
                 filterable=True,
             ),
-            "product_id": _field("product_id", physical_path=["productId"], searchable=True, filterable=True),
-            "master_product_id": _field("master_product_id", physical_path=["masterProductId"]),
-            "sku": _field("sku", physical_path=["sku"], searchable=True),
-            "product_description": _field("product_description", physical_path=["productDesc"]),
-            "product_type": _field("product_type", physical_path=["productType"]),
-            "ordered_quantity": _field("ordered_quantity", physical_path=["orderQty"], data_type="INTEGER"),
-            "shipped_quantity": _field("shipped_quantity", physical_path=["shipQty"], data_type="INTEGER"),
+            "product_id": _field(
+                "product_id", physical_path=["lineData", "productId"], searchable=True, filterable=True
+            ),
+            "master_product_id": _field("master_product_id", physical_path=["lineData", "masterProductId"]),
+            "sku": _field("sku", physical_path=["lineData", "sku"], searchable=True),
+            "product_description": _field("product_description", physical_path=["lineData", "productDesc"]),
+            "product_type": _field("product_type", physical_path=["lineData", "productType"]),
+            "ordered_quantity": _field(
+                "ordered_quantity", physical_path=["lineData", "orderQty"], data_type="INTEGER"
+            ),
+            "shipped_quantity": _field(
+                "shipped_quantity", physical_path=["lineData", "shipQty"], data_type="INTEGER"
+            ),
         },
         natural_key=["order_line_id"],
         record_path=["salesLines"],
