@@ -1,22 +1,64 @@
-import pytest
 import asyncio
+
+import pytest
 from pymongo import AsyncMongoClient
 
-from return_platform.configuration.application.activation import ActivationService, ActivationConflictError
+from return_platform.configuration.application.activation import (
+    ActivationConflictError,
+    ActivationService,
+)
+from return_platform.configuration.application.snapshot import compute_checksum
+from return_platform.configuration.domain.agents import AgentConfigNode, AgentsConfig
+from return_platform.configuration.domain.ai import AiConfig
+from return_platform.configuration.domain.features import FeaturesConfig
+from return_platform.configuration.domain.graph import GraphConfig
+from return_platform.configuration.domain.integrations import IntegrationsConfig
+from return_platform.configuration.domain.modules import ModuleConfigNode, ModulesConfig
+from return_platform.configuration.domain.platform import PlatformConfig
 from return_platform.configuration.domain.release import ReleaseStatus
+from return_platform.configuration.domain.release_model import RuntimeSnapshot
+from return_platform.configuration.domain.sources import SourcesConfig
+from return_platform.configuration.domain.system_store import SystemStoreConfig
+from return_platform.configuration.domain.workflow import WorkflowConfig
 from return_platform.configuration.settings import Settings
+
+
+def _snapshot(release_id: str) -> RuntimeSnapshot:
+    """A real, valid snapshot per release -- activate_release() now re-verifies the
+    checksum before activating (Slice 3R.7), so a synthetic release document without
+    a real snapshot/checksum pair would fail closed rather than exercise the CAS race
+    this test is actually about."""
+    return RuntimeSnapshot(
+        platform=PlatformConfig(),
+        system_store=SystemStoreConfig(),
+        modules=ModulesConfig(
+            modules={
+                "agent.order_discovery": ModuleConfigNode(
+                    module_id="agent.order_discovery", module_type="AGENT"
+                )
+            }
+        ),
+        agents=AgentsConfig(agents={"order_discovery": AgentConfigNode()}),
+        workflow=WorkflowConfig(workflow={}),
+        sources=SourcesConfig(sources={}),
+        integrations=IntegrationsConfig(integrations={}),
+        graph=GraphConfig(),
+        ai=AiConfig(),
+        features=FeaturesConfig(flags={release_id: True}),
+    )
+
 
 @pytest.mark.asyncio
 async def test_concurrent_activation(test_settings: Settings) -> None:
     """Proves that concurrent activation attempts are strictly serialized.
-    
+
     Exactly one activation must succeed. The others must receive an
     ActivationConflictError. The pointer version must advance exactly once.
     The loser remains in APPROVED status.
     """
     client = AsyncMongoClient(test_settings.mongo_dsn.get_secret_value())
     service = ActivationService(client)
-    
+
     # Ensure indexes and clear collections for isolation.
     # ActivationService always operates against the "platform" database
     # (see ActivationService.__init__) regardless of the business
@@ -26,25 +68,31 @@ async def test_concurrent_activation(test_settings: Settings) -> None:
     db = client.get_database("platform")
     releases = db.get_collection("configuration_releases")
     pointer = db.get_collection("configuration_active_pointer")
-    
+
     await releases.delete_many({})
     await pointer.delete_many({})
-    
-    # Create 3 approved releases
-    await releases.insert_many([
-        {"release_id": "r1", "status": ReleaseStatus.APPROVED, "checksum": "c1"},
-        {"release_id": "r2", "status": ReleaseStatus.APPROVED, "checksum": "c2"},
-        {"release_id": "r3", "status": ReleaseStatus.APPROVED, "checksum": "c3"},
-    ])
-    
+
+    # Create 3 approved releases, each with a real snapshot/checksum pair.
+    await releases.insert_many(
+        [
+            {
+                "release_id": rid,
+                "status": ReleaseStatus.APPROVED,
+                "snapshot": _snapshot(rid).model_dump(),
+                "checksum": compute_checksum(_snapshot(rid)),
+            }
+            for rid in ("r1", "r2", "r3")
+        ]
+    )
+
     # 1. Activate r1 sequentially to establish a baseline
     await service.activate_release("r1")
-    
+
     base_pointer = await pointer.find_one({"_id": "active"})
     assert base_pointer is not None
     assert base_pointer["release_id"] == "r1"
     assert base_pointer["version"] == 1
-    
+
     # 2. Concurrently attempt to activate r2 and r3, both released from a
     # shared barrier so the two transactions genuinely race rather than
     # happening to run sequentially inside the event loop.

@@ -21,6 +21,7 @@ __pycache__/
 # Generated validation and test output
 .manual_llm/
 .runtime/
+.gate-receipts/
 artifacts/
 frontend/test-results/
 frontend/playwright-report/

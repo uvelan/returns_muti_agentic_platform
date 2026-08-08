@@ -3,46 +3,39 @@ Test: Release lifecycle — DRAFT → VALIDATED → APPROVED → ACTIVE → SUPE
 
 All tests use in-memory mocks for MongoDB; no live database required.
 """
+
 from __future__ import annotations
 
 import asyncio
-import json
-import hashlib
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
-from pathlib import Path
 
-from return_platform.configuration.application.release_service import ReleaseService
+import pytest
+
 from return_platform.configuration.application.activation import (
-    ActivationService,
     ActivationConflictError,
+    ActivationService,
 )
-from return_platform.configuration.domain.errors import (
-    InvalidTransitionError,
-    ConfigurationReleaseNotFoundError,
-    ConfigurationValidationError,
-)
-from return_platform.configuration.domain.release import ReleaseStatus
-from return_platform.configuration.domain.release_model import RuntimeSnapshot
-from return_platform.configuration.application.compatibility import (
-    build_snapshot_from_legacy_configs,
-)
+from return_platform.configuration.application.release_service import ReleaseService
 from return_platform.configuration.domain.agents import AgentConfigNode, AgentsConfig
 from return_platform.configuration.domain.ai import AiConfig
+from return_platform.configuration.domain.errors import (
+    ConfigurationIntegrityError,
+    InvalidTransitionError,
+)
 from return_platform.configuration.domain.features import FeaturesConfig
 from return_platform.configuration.domain.graph import GraphConfig
 from return_platform.configuration.domain.integrations import IntegrationsConfig
 from return_platform.configuration.domain.modules import ModuleConfigNode, ModulesConfig
 from return_platform.configuration.domain.platform import PlatformConfig
+from return_platform.configuration.domain.release import ReleaseStatus
+from return_platform.configuration.domain.release_model import RuntimeSnapshot
 from return_platform.configuration.domain.sources import SourceConfigNode, SourcesConfig
 from return_platform.configuration.domain.system_store import SystemStoreConfig
 from return_platform.configuration.domain.workflow import WorkflowConfig
 
-
 # ---------------------------------------------------------------------------
 # Minimal in-memory MongoDB mock
 # ---------------------------------------------------------------------------
+
 
 class _InMemoryCollection:
     def __init__(self) -> None:
@@ -68,22 +61,23 @@ class _InMemoryCollection:
 
                 class _R:
                     modified_count = 1
+
                 return _R()
 
         class _R0:
             modified_count = 0
+
         return _R0()
 
     async def count_documents(self, flt: dict) -> int:
-        return sum(
-            1 for d in self.docs if all(d.get(k) == v for k, v in flt.items())
-        )
+        return sum(1 for d in self.docs if all(d.get(k) == v for k, v in flt.items()))
 
     async def create_indexes(self, _):
         pass
 
-    async def find_one_and_update(self, flt, update, upsert=False,
-                                  return_document=None, session=None):
+    async def find_one_and_update(
+        self, flt, update, upsert=False, return_document=None, session=None
+    ):
         for d in self.docs:
             if all(d.get(k) == v for k, v in flt.items()):
                 if "$set" in update:
@@ -135,6 +129,7 @@ class _InMemoryMongoClient:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_snapshot() -> RuntimeSnapshot:
     """Build a minimal self-consistent snapshot that passes the validator."""
     return RuntimeSnapshot(
@@ -148,9 +143,7 @@ def _make_snapshot() -> RuntimeSnapshot:
                 )
             }
         ),
-        agents=AgentsConfig(
-            agents={"order_discovery": AgentConfigNode()}
-        ),
+        agents=AgentsConfig(agents={"order_discovery": AgentConfigNode()}),
         workflow=WorkflowConfig(workflow={}),
         sources=SourcesConfig(
             sources={
@@ -178,6 +171,7 @@ def _make_services():
 # P0 Acceptance criterion 1: new releases start DRAFT
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_create_release_starts_as_draft():
     _, release_svc, _ = _make_services()
@@ -189,6 +183,7 @@ async def test_create_release_starts_as_draft():
 # ---------------------------------------------------------------------------
 # P0 Acceptance criterion 2: validation failure keeps DRAFT
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_validation_failure_keeps_release_draft():
@@ -204,7 +199,7 @@ async def test_validation_failure_keeps_release_draft():
         if d.get("release_id") == "r-fail-1":
             d["checksum"] = "badhash"
 
-    with pytest.raises(InvalidTransitionError, match="checksum"):
+    with pytest.raises(ConfigurationIntegrityError, match="integrity"):
         await release_svc.validate_release("r-fail-1")
 
     doc_after = await client._releases.find_one({"release_id": "r-fail-1"})
@@ -214,6 +209,7 @@ async def test_validation_failure_keeps_release_draft():
 # ---------------------------------------------------------------------------
 # P0 Acceptance criterion 3: validate_release runs validator
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_validate_release_runs_semantic_validator():
@@ -230,6 +226,7 @@ async def test_validate_release_runs_semantic_validator():
 # P0 Acceptance criterion: DRAFT → APPROVED is rejected (must go via VALIDATED)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_draft_to_approved_is_rejected():
     _, release_svc, _ = _make_services()
@@ -243,6 +240,7 @@ async def test_draft_to_approved_is_rejected():
 # ---------------------------------------------------------------------------
 # P0 Acceptance criterion: VALIDATED cannot activate without approval
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_validated_cannot_activate_without_approval():
@@ -260,6 +258,7 @@ async def test_validated_cannot_activate_without_approval():
 # P0 Acceptance criterion: only VALIDATED can be approved
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_only_validated_release_can_be_approved():
     _, release_svc, _ = _make_services()
@@ -273,6 +272,7 @@ async def test_only_validated_release_can_be_approved():
 # ---------------------------------------------------------------------------
 # P0 Acceptance criterion: full happy path
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_only_approved_release_can_activate():
@@ -296,6 +296,7 @@ async def test_only_approved_release_can_activate():
 # P0 Acceptance criterion: snapshot checksum verified before validation
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_release_snapshot_checksum_is_verified_before_validation():
     client, release_svc, _ = _make_services()
@@ -307,13 +308,14 @@ async def test_release_snapshot_checksum_is_verified_before_validation():
         if d.get("release_id") == "r-ck-1":
             d["checksum"] = "0" * 64
 
-    with pytest.raises(InvalidTransitionError, match="checksum"):
+    with pytest.raises(ConfigurationIntegrityError, match="integrity"):
         await release_svc.validate_release("r-ck-1")
 
 
 # ---------------------------------------------------------------------------
 # P0 Acceptance criterion: rejection path VALIDATED → DRAFT
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_validated_release_can_be_rejected_to_draft():
@@ -332,6 +334,7 @@ async def test_validated_release_can_be_rejected_to_draft():
 # ---------------------------------------------------------------------------
 # P0 Acceptance criterion: CAS guard on concurrent validate
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_concurrent_validate_cas_only_one_wins():
@@ -358,7 +361,7 @@ async def test_concurrent_validate_cas_only_one_wins():
             failure_count += 1
 
     await asyncio.gather(try_validate(), try_validate())
-    
+
     assert success_count == 1
     assert failure_count == 1
 
@@ -389,14 +392,61 @@ async def test_concurrent_approve_cas_only_one_wins():
             failure_count += 1
 
     await asyncio.gather(try_approve(), try_approve())
-    
+
     assert success_count == 1
     assert failure_count == 1
 
 
 # ---------------------------------------------------------------------------
+# Slice 3R.7: checksum tamper after validation blocks approval / after approval
+# blocks activation. Both are integrity violations, not ordinary CAS conflicts.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_checksum_tamper_after_validation_blocks_approval():
+    client, release_svc, _ = _make_services()
+    snapshot = _make_snapshot()
+    await release_svc.create_release("r-tamper-approve-1", snapshot)
+    await release_svc.validate_release("r-tamper-approve-1")
+
+    for d in client._releases.docs:
+        if d.get("release_id") == "r-tamper-approve-1":
+            d["checksum"] = "0" * 64
+
+    with pytest.raises(ConfigurationIntegrityError, match="integrity"):
+        await release_svc.approve_release("r-tamper-approve-1")
+
+    doc_after = await client._releases.find_one({"release_id": "r-tamper-approve-1"})
+    assert doc_after["status"] == ReleaseStatus.VALIDATED
+
+
+@pytest.mark.asyncio
+async def test_checksum_tamper_after_approval_blocks_activation():
+    client, release_svc, activation_svc = _make_services()
+    await activation_svc.initialize_indexes()
+    snapshot = _make_snapshot()
+    await release_svc.create_release("r-tamper-activate-1", snapshot)
+    await release_svc.validate_release("r-tamper-activate-1")
+    await release_svc.approve_release("r-tamper-activate-1")
+
+    for d in client._releases.docs:
+        if d.get("release_id") == "r-tamper-activate-1":
+            d["checksum"] = "0" * 64
+
+    with pytest.raises(ConfigurationIntegrityError, match="integrity"):
+        await activation_svc.activate_release("r-tamper-activate-1")
+
+    doc_after = await client._releases.find_one({"release_id": "r-tamper-activate-1"})
+    assert doc_after["status"] == ReleaseStatus.APPROVED
+    pointer = await client._pointer.find_one({"_id": "active"})
+    assert pointer is None
+
+
+# ---------------------------------------------------------------------------
 # Activation: pointer _id="active", release_id, checksum, version
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_activation_pointer_contains_release_id_checksum_version():
@@ -418,6 +468,7 @@ async def test_activation_pointer_contains_release_id_checksum_version():
 # ---------------------------------------------------------------------------
 # Activation: supersedes previous active release
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_activation_supersedes_previous_active_release():

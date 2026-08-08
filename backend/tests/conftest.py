@@ -92,6 +92,12 @@ def test_settings(
         safe="",
     )
 
+    # Defaults to "localhost" for host-side test runs against the compose port
+    # mapping. A test runner attached to the compose network directly (so that
+    # Mongo-dependent tests can exercise the real replica set without rewriting its
+    # advertised host) sets this to the compose service name, e.g. "mongodb".
+    mongo_host = os.getenv("PLATFORM_TEST_MONGO_HOST", "localhost")
+
     return Settings(
         _env_file=str(REPOSITORY_ROOT / ".env"),
         catalog_path=empty_catalog_path,
@@ -99,7 +105,7 @@ def test_settings(
         frontend_cors_origin=AnyHttpUrl("http://localhost:5173"),
         mongo_dsn=SecretStr(
             f"mongodb://{mongo_username}:{mongo_password}"
-            "@localhost:27017/return_platform"
+            f"@{mongo_host}:27017/return_platform"
             "?authSource=admin"
         ),
         neo4j_uri="bolt://localhost:7687",
@@ -112,7 +118,9 @@ def test_settings(
         nvidia_standard_models=["nvidia/llama-3.3-nemotron-super-49b-v1"],
         google_lightweight_models=["models/gemini-3.5-flash-lite"],
         google_standard_models=["models/gemini-3.6-flash"],
-        nvidia_api_keys=[SecretStr("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")],
+        nvidia_api_keys=[
+            SecretStr("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")
+        ],
         google_api_keys=[SecretStr("AIzaSyAnF5LTRuYG3wOoqBK4EN2lSB3qOHHYj_U")],
         temporal_target="localhost:7233",
         ai_timeout_seconds=30.0,

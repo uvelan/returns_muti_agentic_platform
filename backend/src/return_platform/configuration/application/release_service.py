@@ -7,23 +7,24 @@ Transition ownership:
 
 APPROVED → ACTIVE and ACTIVE → SUPERSEDED are owned exclusively by ActivationService.
 """
+
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pymongo import AsyncMongoClient
 
+from return_platform.configuration.application.snapshot import (
+    compute_checksum,
+    verify_snapshot_integrity,
+)
 from return_platform.configuration.application.validator import ConfigurationValidator
 from return_platform.configuration.domain.errors import (
     ConfigurationReleaseNotFoundError,
     InvalidTransitionError,
 )
-from return_platform.configuration.application.snapshot import compute_checksum
 from return_platform.configuration.domain.release import (
-    RELEASE_SERVICE_TRANSITIONS,
     ReleaseStatus,
 )
 from return_platform.configuration.domain.release_model import (
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class ReleaseService:
@@ -78,24 +79,24 @@ class ReleaseService:
         )
 
         try:
-            await self._releases.insert_one({
-                "release_id": release_id,
-                "status": ReleaseStatus.DRAFT.value,
-                "snapshot": snapshot.model_dump(),
-                "checksum": checksum,
-                "created_at": now,
-                "updated_at": now,
-                "validated_at": None,
-                "approved_at": None,
-                "approved_by": None,
-                "activated_at": None,
-                "superseded_by": None,
-            })
+            await self._releases.insert_one(
+                {
+                    "release_id": release_id,
+                    "status": ReleaseStatus.DRAFT.value,
+                    "snapshot": snapshot.model_dump(),
+                    "checksum": checksum,
+                    "created_at": now,
+                    "updated_at": now,
+                    "validated_at": None,
+                    "approved_at": None,
+                    "approved_by": None,
+                    "activated_at": None,
+                    "superseded_by": None,
+                }
+            )
         except Exception as exc:
             # Let duplicate-key errors propagate with context
-            raise ValueError(
-                f"Failed to create release '{release_id}': {exc}"
-            ) from exc
+            raise ValueError(f"Failed to create release '{release_id}': {exc}") from exc
 
         logger.info("release_created_as_draft release_id=%s", release_id)
         return release
@@ -121,9 +122,7 @@ class ReleaseService:
         """
         doc = await self._releases.find_one({"release_id": release_id})
         if not doc:
-            raise ConfigurationReleaseNotFoundError(
-                f"Release '{release_id}' not found"
-            )
+            raise ConfigurationReleaseNotFoundError(f"Release '{release_id}' not found")
 
         current_status = ReleaseStatus(doc["status"])
         if current_status != ReleaseStatus.DRAFT:
@@ -132,13 +131,12 @@ class ReleaseService:
                 f"validate_release() requires DRAFT"
             )
 
-        # Verify snapshot integrity
+        # Verify snapshot integrity. A mismatch is an integrity violation, not an
+        # ordinary transition conflict -- verify_snapshot_integrity always raises
+        # ConfigurationIntegrityError, never InvalidTransitionError, so tampering is
+        # never mistaken for (or hidden behind) a concurrent-write conflict.
         snapshot = RuntimeSnapshot.model_validate(doc["snapshot"])
-        recomputed = compute_checksum(snapshot)
-        if recomputed != doc.get("checksum", ""):
-            raise InvalidTransitionError(
-                f"Release '{release_id}' checksum mismatch — snapshot may have been tampered"
-            )
+        verify_snapshot_integrity(snapshot, str(doc.get("checksum", "")))
 
         # Run semantic validation — failure raises ConfigurationValidationError
         # and leaves the release in DRAFT (no DB write happens)
@@ -148,11 +146,13 @@ class ReleaseService:
         now = _now()
         result = await self._releases.update_one(
             {"release_id": release_id, "status": ReleaseStatus.DRAFT.value},
-            {"$set": {
-                "status": ReleaseStatus.VALIDATED.value,
-                "validated_at": now,
-                "updated_at": now,
-            }},
+            {
+                "$set": {
+                    "status": ReleaseStatus.VALIDATED.value,
+                    "validated_at": now,
+                    "updated_at": now,
+                }
+            },
         )
 
         if result.modified_count != 1:
@@ -182,9 +182,7 @@ class ReleaseService:
         """
         doc = await self._releases.find_one({"release_id": release_id})
         if not doc:
-            raise ConfigurationReleaseNotFoundError(
-                f"Release '{release_id}' not found"
-            )
+            raise ConfigurationReleaseNotFoundError(f"Release '{release_id}' not found")
 
         current_status = ReleaseStatus(doc["status"])
         if current_status != ReleaseStatus.VALIDATED:
@@ -193,15 +191,22 @@ class ReleaseService:
                 f"approve_release() requires VALIDATED"
             )
 
+        # Re-verify integrity before approval -- do not trust that VALIDATED implies
+        # the persisted snapshot is still the one that was validated.
+        snapshot = RuntimeSnapshot.model_validate(doc["snapshot"])
+        verify_snapshot_integrity(snapshot, str(doc.get("checksum", "")))
+
         now = _now()
         result = await self._releases.update_one(
             {"release_id": release_id, "status": ReleaseStatus.VALIDATED.value},
-            {"$set": {
-                "status": ReleaseStatus.APPROVED.value,
-                "approved_at": now,
-                "approved_by": approved_by,
-                "updated_at": now,
-            }},
+            {
+                "$set": {
+                    "status": ReleaseStatus.APPROVED.value,
+                    "approved_at": now,
+                    "approved_by": approved_by,
+                    "updated_at": now,
+                }
+            },
         )
 
         if result.modified_count != 1:
@@ -212,9 +217,7 @@ class ReleaseService:
                 f"current status is {actual!r}"
             )
 
-        logger.info(
-            "release_approved release_id=%s approved_by=%s", release_id, approved_by
-        )
+        logger.info("release_approved release_id=%s approved_by=%s", release_id, approved_by)
 
     # ------------------------------------------------------------------
     # Reject — VALIDATED → DRAFT (optional rejection path)
@@ -232,9 +235,7 @@ class ReleaseService:
         """
         doc = await self._releases.find_one({"release_id": release_id})
         if not doc:
-            raise ConfigurationReleaseNotFoundError(
-                f"Release '{release_id}' not found"
-            )
+            raise ConfigurationReleaseNotFoundError(f"Release '{release_id}' not found")
 
         current_status = ReleaseStatus(doc["status"])
         if current_status != ReleaseStatus.VALIDATED:
@@ -246,11 +247,13 @@ class ReleaseService:
         now = _now()
         result = await self._releases.update_one(
             {"release_id": release_id, "status": ReleaseStatus.VALIDATED.value},
-            {"$set": {
-                "status": ReleaseStatus.DRAFT.value,
-                "validated_at": None,
-                "updated_at": now,
-            }},
+            {
+                "$set": {
+                    "status": ReleaseStatus.DRAFT.value,
+                    "validated_at": None,
+                    "updated_at": now,
+                }
+            },
         )
 
         if result.modified_count != 1:

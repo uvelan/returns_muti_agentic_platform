@@ -9,15 +9,18 @@ lease expired, or another holder's fencing_token has superseded it — the manag
 `LeaseLost` at the *next* protected operation rather than silently continuing; it does
 not retry or attempt to finish whatever the caller was doing under the old lease.
 
-Every guarded write (`platform/system_store/mongo.py`'s `FencedMongoWriter`) is itself a
-conditional write on `(lock_name, lease_id, fencing_token)`, so even a paused-then-resumed
-stale holder is rejected at the store — `ensure_alive()` closes the common-case window
-early, but the store-level guard is what makes staleness impossible to miss.
+Every guarded write (`platform/system_store/mongo.py`'s `FencedMongoTransactionGuard`) is
+itself a conditional mutation on `(lock_name, lease_id, fencing_token)`, so even a
+paused-then-resumed stale holder is rejected at the store — `ensure_alive()` closes the
+common-case window early, but the store-level guard is what makes staleness impossible
+to miss.
 """
 
 from __future__ import annotations
 
 import asyncio
+import random
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
@@ -131,3 +134,30 @@ class FencedLeaseManager:
         except Exception as exc:  # noqa: BLE001 -- any failure aborts the lease, by design
             self._lost_reason = exc
             self._lost.set()
+
+
+async def bounded_retry_with_jitter[T](
+    fn: Callable[[], Awaitable[T]],
+    *,
+    max_attempts: int,
+    base_delay_seconds: float,
+    max_delay_seconds: float,
+    is_retryable: Callable[[BaseException], bool],
+) -> T:
+    """Retry `fn` with exponential backoff and full jitter, but only for exceptions
+    `is_retryable` accepts -- an infrastructure-contention class (a genuine Mongo
+    transient-transaction error, a lock briefly held by another instance), never an
+    unknown exception treated as if it were transient. Used for both 3R.1's
+    transaction-conflict retry and 3R.8's bootstrap-waiter backoff, so both share one
+    reviewed implementation of "no tight polling, no thundering herd, bounded attempts."
+    """
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            return await fn()
+        except Exception as exc:
+            if attempt >= max_attempts or not is_retryable(exc):
+                raise
+            delay = min(max_delay_seconds, base_delay_seconds * (2 ** (attempt - 1)))
+            await asyncio.sleep(random.uniform(0, delay))

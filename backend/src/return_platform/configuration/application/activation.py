@@ -8,21 +8,24 @@ The full activation is a single atomic MongoDB transaction:
 
 All three changes succeed or none succeed.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pymongo import ASCENDING, AsyncMongoClient, IndexModel, ReturnDocument
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
+from return_platform.configuration.application.snapshot import verify_snapshot_integrity
 from return_platform.configuration.domain.release import ReleaseStatus
+from return_platform.configuration.domain.release_model import RuntimeSnapshot
 
 logger = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class ActivationConflictError(Exception):
@@ -40,14 +43,16 @@ class ActivationService:
 
     async def initialize_indexes(self) -> None:
         """Create the partial unique index that prevents two concurrent ACTIVE releases."""
-        await self._releases.create_indexes([
-            IndexModel(
-                [("status", ASCENDING)],
-                unique=True,
-                partialFilterExpression={"status": ReleaseStatus.ACTIVE.value},
-                name="unique_active_release",
-            )
-        ])
+        await self._releases.create_indexes(
+            [
+                IndexModel(
+                    [("status", ASCENDING)],
+                    unique=True,
+                    partialFilterExpression={"status": ReleaseStatus.ACTIVE.value},
+                    name="unique_active_release",
+                )
+            ]
+        )
 
     async def activate_release(self, target_release_id: str) -> None:
         """Atomically activate an APPROVED release.
@@ -61,6 +66,10 @@ class ActivationService:
           - target is not in APPROVED status,
           - a concurrent activation wins the CAS race,
           - the unique partial index is violated.
+
+        Raises ConfigurationIntegrityError if the target release's persisted snapshot
+        no longer matches its stored checksum -- a distinct failure class from an
+        ordinary CAS conflict.
         """
         async with self._client.start_session() as session:
             try:
@@ -85,7 +94,14 @@ class ActivationService:
                             f"'{target_doc['status']}'; activation requires APPROVED"
                         )
 
-                    checksum = target_doc.get("checksum", "")
+                    checksum = str(target_doc.get("checksum", ""))
+
+                    # Re-verify integrity before activation -- never trust a stored
+                    # checksum alone. A mismatch is an integrity violation, not an
+                    # ordinary CAS conflict, so it propagates as
+                    # ConfigurationIntegrityError rather than ActivationConflictError.
+                    target_snapshot = RuntimeSnapshot.model_validate(target_doc["snapshot"])
+                    verify_snapshot_integrity(target_snapshot, checksum)
 
                     # Supersede the current ACTIVE release (if any)
                     current_active = await self._releases.find_one(
@@ -140,9 +156,7 @@ class ActivationService:
                         {"_id": "active"},
                         session=session,
                     )
-                    pointer_version = (
-                        current_pointer.get("version", 0) if current_pointer else 0
-                    )
+                    pointer_version = current_pointer.get("version", 0) if current_pointer else 0
 
                     pointer_result = await self._pointer.find_one_and_update(
                         {"_id": "active", "version": pointer_version},
@@ -159,10 +173,7 @@ class ActivationService:
                         session=session,
                     )
 
-                    if (
-                        not pointer_result
-                        or pointer_result.get("release_id") != target_release_id
-                    ):
+                    if not pointer_result or pointer_result.get("release_id") != target_release_id:
                         raise ActivationConflictError(
                             "Failed to CAS-update active pointer (version mismatch)"
                         )
@@ -180,7 +191,5 @@ class ActivationService:
             except OperationFailure as exc:
                 # WriteConflict (112) and transaction errors (251, 244, 258)
                 if exc.code in (112, 251, 244, 258):
-                    raise ActivationConflictError(
-                        f"Concurrent activation detected: {exc.details}"
-                    )
+                    raise ActivationConflictError(f"Concurrent activation detected: {exc.details}")
                 raise
