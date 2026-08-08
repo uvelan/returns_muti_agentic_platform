@@ -9,7 +9,6 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, cast
 
-import pymssql
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -19,10 +18,15 @@ from return_platform.data_console.api.auth import require_read_roles
 from return_platform.data_platform.schema_registry import DataAssetSchema, SchemaRegistry
 from return_platform.resources import RuntimeResources
 from return_platform.shared.contracts import APIResponse, PageMeta, ResponseMeta
+from return_platform.source_connectors.mongodb import fetch_one, sample_documents
+from return_platform.source_connectors.sqlserver import (
+    SqlServerConnectionSettings,
+    fetch_row,
+    sample_rows,
+)
 
 router = APIRouter(prefix="/data-console/v1/browser", tags=["Data Browser"])
 
-_SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _SENSITIVE_FIELD = re.compile(
     r"(^|_)(password|secret|token|api_?key|authorization|email|phone)(_|$)",
     re.IGNORECASE,
@@ -60,10 +64,15 @@ def _response_meta(request: Request) -> ResponseMeta:
     return ResponseMeta(request_id=_request_id(request))
 
 
-def _identifier(value: str | None) -> str:
-    if value is None or not _SAFE_IDENTIFIER.fullmatch(value):
-        raise ValueError("Unsafe database identifier in schema registry.")
-    return f"[{value}]"
+def _sqlserver_connection(resources: RuntimeResources) -> SqlServerConnectionSettings:
+    return SqlServerConnectionSettings(
+        server=resources.settings.sqlserver_host,
+        port=resources.settings.sqlserver_port,
+        user=resources.settings.sqlserver_user,
+        password=resources.settings.sqlserver_password.get_secret_value(),
+        database=resources.settings.sqlserver_database,
+        timeout_seconds=5,
+    )
 
 
 def _frontend_engine(asset: DataAssetSchema) -> str:
@@ -245,12 +254,12 @@ async def get_records(
     asset = _resolve_asset(resources, engine, asset_id)
     if asset.engine == "SQLSERVER":
         records = await asyncio.wait_for(
-            _get_sql_records(resources, asset, page_index, page_size + 1),
+            get_sql_records(resources, asset, page_index, page_size + 1),
             timeout=resources.settings.probe_timeout_seconds * 5,
         )
     else:
         records = await asyncio.wait_for(
-            _get_mongo_records(resources, asset, page_index, page_size + 1),
+            get_mongo_records(resources, asset, page_index, page_size + 1),
             timeout=resources.settings.probe_timeout_seconds * 5,
         )
     has_more = len(records) > page_size
@@ -266,7 +275,7 @@ async def get_records(
     )
 
 
-async def _get_sql_records(
+async def get_sql_records(
     resources: RuntimeResources,
     asset: DataAssetSchema,
     page_index: int,
@@ -274,31 +283,17 @@ async def _get_sql_records(
 ) -> list[dict[str, Any]]:
     if asset.database != resources.settings.sqlserver_database:
         raise RuntimeError("Cross-database browsing is not allowed.")
-    namespace = _identifier(asset.namespace)
-    table = _identifier(asset.name)
-    key_field = _identifier(next(field.name for field in asset.fields if field.key))
+    key_field = next(field.name for field in asset.fields if field.key)
     offset = page_index * max(1, limit - 1)
-    query = (
-        f"SELECT * FROM {namespace}.{table} ORDER BY {key_field} "
-        "OFFSET %s ROWS FETCH NEXT %s ROWS ONLY"
+    rows = await sample_rows(
+        _sqlserver_connection(resources),
+        namespace=cast(str, asset.namespace),
+        table=asset.name,
+        order_by_column=key_field,
+        offset=offset,
+        limit=limit,
     )
-
-    def fetch() -> list[dict[str, Any]]:
-        with pymssql.connect(
-            server=resources.settings.sqlserver_host,
-            port=str(resources.settings.sqlserver_port),
-            user=resources.settings.sqlserver_user,
-            password=resources.settings.sqlserver_password.get_secret_value(),
-            database=resources.settings.sqlserver_database,
-            as_dict=True,
-            timeout=5,
-            login_timeout=5,
-        ) as connection:
-            with connection.cursor(as_dict=True) as cursor:
-                cursor.execute(query, (offset, limit))
-                return [_sql_record(asset, cast(dict[str, Any], row)) for row in cursor.fetchall()]
-
-    return await asyncio.to_thread(fetch)
+    return [_sql_record(asset, row) for row in rows]
 
 
 def _mongo_database(resources: RuntimeResources, asset: DataAssetSchema) -> Any:
@@ -313,20 +308,20 @@ def _mongo_database(resources: RuntimeResources, asset: DataAssetSchema) -> Any:
     raise RuntimeError("Unknown MongoDB database in schema registry.")
 
 
-async def _get_mongo_records(
+async def get_mongo_records(
     resources: RuntimeResources,
     asset: DataAssetSchema,
     page_index: int,
     limit: int,
 ) -> list[dict[str, Any]]:
-    collection = _mongo_database(resources, asset)[asset.name]
-    documents = (
-        await collection.find({})
-        .skip(page_index * max(1, limit - 1))
-        .limit(limit)
-        .to_list(length=limit)
+    database = _mongo_database(resources, asset)
+    documents = await sample_documents(
+        database,
+        collection_name=asset.name,
+        offset=page_index * max(1, limit - 1),
+        limit=limit,
     )
-    return [_mongo_record(asset, cast(dict[str, Any], document)) for document in documents]
+    return [_mongo_record(asset, document) for document in documents]
 
 
 async def _get_sql_record(
@@ -336,29 +331,15 @@ async def _get_sql_record(
 ) -> dict[str, Any] | None:
     if asset.database != resources.settings.sqlserver_database:
         raise RuntimeError("Cross-database browsing is not allowed.")
-    namespace = _identifier(asset.namespace)
-    table = _identifier(asset.name)
-    key_name = next(field.name for field in asset.fields if field.key)
-    key_field = _identifier(key_name)
-    query = f"SELECT TOP 1 * FROM {namespace}.{table} WHERE {key_field}=%s"
-
-    def fetch() -> dict[str, Any] | None:
-        with pymssql.connect(
-            server=resources.settings.sqlserver_host,
-            port=str(resources.settings.sqlserver_port),
-            user=resources.settings.sqlserver_user,
-            password=resources.settings.sqlserver_password.get_secret_value(),
-            database=resources.settings.sqlserver_database,
-            as_dict=True,
-            timeout=5,
-            login_timeout=5,
-        ) as connection:
-            with connection.cursor(as_dict=True) as cursor:
-                cursor.execute(query, (record_id,))
-                row = cursor.fetchone()
-                return _sql_record(asset, cast(dict[str, Any], row)) if row else None
-
-    return await asyncio.to_thread(fetch)
+    key_field = next(field.name for field in asset.fields if field.key)
+    row = await fetch_row(
+        _sqlserver_connection(resources),
+        namespace=cast(str, asset.namespace),
+        table=asset.name,
+        key_column=key_field,
+        key_value=record_id,
+    )
+    return _sql_record(asset, row) if row else None
 
 
 async def _get_mongo_record(
@@ -366,7 +347,7 @@ async def _get_mongo_record(
     asset: DataAssetSchema,
     record_id: str,
 ) -> dict[str, Any] | None:
-    collection = _mongo_database(resources, asset)[asset.name]
+    database = _mongo_database(resources, asset)
     key_field = next(field.name for field in asset.fields if field.key)
     candidates: list[Any] = [record_id]
     if key_field == "_id":
@@ -374,10 +355,12 @@ async def _get_mongo_record(
             candidates.insert(0, ObjectId(record_id))
         except InvalidId:
             pass
-    document = await collection.find_one({key_field: {"$in": candidates}})
+    document = await fetch_one(
+        database, collection_name=asset.name, key={key_field: {"$in": candidates}}
+    )
     if document is None:
         return None
-    return _mongo_record(asset, cast(dict[str, Any], document))
+    return _mongo_record(asset, document)
 
 
 @router.get("/{engine}/{asset_id}/records/{record_id}")

@@ -9,6 +9,7 @@ from typing import Any, cast
 from neo4j import AsyncDriver, AsyncManagedTransaction
 from pymongo import AsyncMongoClient
 
+from return_platform.source_connectors.mongodb import find_many
 from return_platform.v2.models import (
     AnchorType,
     OrderAnchor,
@@ -17,6 +18,8 @@ from return_platform.v2.models import (
     SourceOrderRecord,
 )
 from return_platform.v2.services import OrderProjectionStore, OrderSourceGateway
+
+_UNBOUNDED_ORDER_DOCUMENT_LIMIT = 10_000
 
 
 def _nested(document: Mapping[str, Any], path: str) -> Any:
@@ -102,8 +105,10 @@ class MongoOrderSourceGateway(OrderSourceGateway):
 
     async def _sales_ids(self, query: Mapping[str, Any], limit: int) -> list[str]:
         identifiers: list[str] = []
-        cursor = self._database[self._sales_collection].find(dict(query)).limit(limit)
-        async for raw in cursor:
+        documents = await find_many(
+            self._database, collection_name=self._sales_collection, filter=query, limit=limit
+        )
+        for raw in documents:
             identifier = self._full_id_from_document(cast(Mapping[str, Any], raw))
             if identifier and identifier not in identifiers:
                 identifiers.append(identifier)
@@ -134,15 +139,18 @@ class MongoOrderSourceGateway(OrderSourceGateway):
             matches = await self._resolve_order_reference(value, limit)
         elif anchor.type is AnchorType.TRACKING_NUMBER:
             references: list[str] = []
-            cursor = self._database[self._shipment_collection].find(
-                {
+            shipment_documents = await find_many(
+                self._database,
+                collection_name=self._shipment_collection,
+                filter={
                     "$or": [
                         {"shipmentInfoEventData.trkNum": value},
                         {"trackingNumber": value},
                     ]
-                }
-            ).limit(limit)
-            async for raw in cursor:
+                },
+                limit=limit,
+            )
+            for raw in shipment_documents:
                 document = cast(Mapping[str, Any], raw)
                 reference = _first(
                     document,
@@ -162,10 +170,13 @@ class MongoOrderSourceGateway(OrderSourceGateway):
                         matches.append(identifier)
         elif anchor.type is AnchorType.INVOICE_NUMBER:
             matches = []
-            cursor = self._database[self._invoice_collection].find(
-                {"invoiceNumber": value}
-            ).limit(limit)
-            async for raw in cursor:
+            invoice_documents = await find_many(
+                self._database,
+                collection_name=self._invoice_collection,
+                filter={"invoiceNumber": value},
+                limit=limit,
+            )
+            for raw in invoice_documents:
                 document = cast(Mapping[str, Any], raw)
                 invoice_identifier = self._full_id_from_document(document)
                 if invoice_identifier is None:
@@ -218,16 +229,19 @@ class MongoOrderSourceGateway(OrderSourceGateway):
 
     async def fetch(self, full_order_id: str) -> SourceOrderRecord | None:
         escaped = re.escape(full_order_id)
-        cursor = self._database[self._sales_collection].find(
-            {
+        raw_documents = await find_many(
+            self._database,
+            collection_name=self._sales_collection,
+            filter={
                 "$or": [
                     {"_id": full_order_id},
                     {"_id": {"$regex": rf"^{escaped}\*[^*]+$", "$options": "i"}},
                     {"fullOrderId": full_order_id},
                 ]
-            }
+            },
+            limit=_UNBOUNDED_ORDER_DOCUMENT_LIMIT,
         )
-        documents = [cast(Mapping[str, Any], item) async for item in cursor]
+        documents = [cast(Mapping[str, Any], item) for item in raw_documents]
         if not documents:
             return None
         header = documents[0]

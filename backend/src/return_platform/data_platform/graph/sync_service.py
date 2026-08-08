@@ -24,21 +24,29 @@ from pymongo import AsyncMongoClient
 from return_platform.configuration.settings import Settings
 from return_platform.data_platform.graph.interim_active_schema import build_interim_active_schema
 from return_platform.data_platform.schema_registry import SchemaRegistry
-from return_platform.dynamic_knowledge.connectors.mongodb import MongoDBSourceScanConnector, SeedPin
-from return_platform.dynamic_knowledge.connectors.sqlserver import (
-    SqlServerConnectionSettings,
-    SqlServerSourceScanConnector,
-)
 from return_platform.dynamic_knowledge.graph.constraints import required_node_constraints
 from return_platform.dynamic_knowledge.graph.generation import GraphGenerationStatus
 from return_platform.dynamic_knowledge.graph.neo4j_writer import Neo4jDynamicGraphWriter
 from return_platform.dynamic_knowledge.graph.projector import GenericGraphProjector
 from return_platform.dynamic_knowledge.graph.write_compiler import compile_node_writes
-from return_platform.dynamic_knowledge.on_demand_sync.contracts import GraphNodeMutation, SourceCursor
+from return_platform.dynamic_knowledge.on_demand_sync.contracts import GraphNodeMutation
 from return_platform.dynamic_knowledge.on_demand_sync.extraction import GenericSourceRecordExtractor
-from return_platform.dynamic_knowledge.schema import ActiveSchema, ConnectorType, validate_graph_identifier
-from return_platform.dynamic_knowledge.sync.adapters import ProjectorGraphWriter, SourceConnectorRegistry
+from return_platform.dynamic_knowledge.schema import (
+    ActiveSchema,
+    ConnectorType,
+    validate_graph_identifier,
+)
+from return_platform.dynamic_knowledge.sync.adapters import (
+    ProjectorGraphWriter,
+    SourceConnectorRegistry,
+)
 from return_platform.dynamic_knowledge.sync.coordinator import GenericSyncCoordinator
+from return_platform.source_connectors.contracts import SourceCursor
+from return_platform.source_connectors.mongodb import MongoDBSourceScanConnector, SeedPin
+from return_platform.source_connectors.sqlserver import (
+    SqlServerConnectionSettings,
+    SqlServerSourceScanConnector,
+)
 
 _LEGACY_GENERATION_ID = "legacy-live"
 _LEGACY_FENCING_TOKEN = 1

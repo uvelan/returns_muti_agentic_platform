@@ -3,18 +3,14 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import AsyncIterator
 from typing import Any, Protocol
 
 from return_platform.dynamic_knowledge.graph.generation import GraphGenerationStatus
 from return_platform.dynamic_knowledge.graph.write_compiler import canonical_key_hash
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
-    CursorComparison,
     DynamicRecordMutation,
     DynamicSourceRecord,
     ProjectionReadScope,
-    RawSourcePage,
-    SourceCursor,
 )
 from return_platform.dynamic_knowledge.on_demand_sync.extraction import SourceRecordExtractor
 from return_platform.dynamic_knowledge.schema import ActiveSchema, RuntimeMode
@@ -23,27 +19,22 @@ from return_platform.dynamic_knowledge.sync.run_manifest import (
     SourceWatermarkRecord,
     SyncRunManifest,
 )
+from return_platform.source_connectors.contracts import (
+    CursorComparison,
+    RawSourcePage,
+    SourceCursor,
+)
+from return_platform.source_connectors.protocols import SourceScanConnector, SourceScanRegistry
 
-
-class SourceScanConnector(Protocol):
-    async def capture_high_watermark(self, *, source_asset_id: str) -> SourceCursor: ...
-
-    def compare_cursors(
-        self, *, source_asset_id: str, left: SourceCursor, right: SourceCursor
-    ) -> CursorComparison: ...
-
-    def scan(
-        self,
-        *,
-        schema: ActiveSchema,
-        source_asset_id: str,
-        after: SourceCursor | None,
-        through: SourceCursor,
-    ) -> AsyncIterator[RawSourcePage]: ...
-
-
-class SourceScanRegistry(Protocol):
-    def resolve(self, source_asset_id: str) -> SourceScanConnector: ...
+__all__ = [
+    "CheckpointStore",
+    "ChildOwnershipReconciler",
+    "GenericSyncCoordinator",
+    "ProjectionWriter",
+    "RelationshipReconciler",
+    "SourceScanConnector",
+    "SourceScanRegistry",
+]
 
 
 class ProjectionWriter(Protocol):

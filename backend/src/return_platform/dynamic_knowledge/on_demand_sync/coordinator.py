@@ -8,28 +8,24 @@ from uuid import uuid4
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
     DynamicRecordMutation,
     GraphMutationBatch,
-    LogicalTargetedReadPlan,
     ProjectionReadScope,
-    RawSourcePage,
     SyncReceipt,
     SyncReservation,
     SyncStatus,
 )
 from return_platform.dynamic_knowledge.on_demand_sync.extraction import SourceRecordExtractor
 from return_platform.dynamic_knowledge.schema import ActiveSchema, RuntimeMode
+from return_platform.source_connectors.contracts import LogicalTargetedReadPlan
+from return_platform.source_connectors.protocols import ConnectorRegistry, TargetedSourceConnector
 
-
-class TargetedSourceConnector(Protocol):
-    async def targeted_read(
-        self,
-        *,
-        schema: ActiveSchema,
-        plan: LogicalTargetedReadPlan,
-    ) -> RawSourcePage: ...
-
-
-class ConnectorRegistry(Protocol):
-    def resolve(self, source_asset_id: str) -> TargetedSourceConnector: ...
+__all__ = [
+    "ConnectorRegistry",
+    "DynamicGraphProjector",
+    "DynamicGraphWriter",
+    "OnDemandSyncCoordinator",
+    "OnDemandSyncStore",
+    "TargetedSourceConnector",
+]
 
 
 class DynamicGraphProjector(Protocol):

@@ -98,6 +98,7 @@ def test_settings(
     # advertised host) sets this to the compose service name, e.g. "mongodb".
     mongo_host = os.getenv("PLATFORM_TEST_MONGO_HOST", "localhost")
     temporal_target = os.getenv("PLATFORM_TEST_TEMPORAL_TARGET", "localhost:7233")
+    sqlserver_host = os.getenv("PLATFORM_TEST_SQLSERVER_HOST", "localhost")
 
     return Settings(
         _env_file=str(REPOSITORY_ROOT / ".env"),
@@ -124,7 +125,7 @@ def test_settings(
         temporal_target=temporal_target,
         ai_timeout_seconds=30.0,
         ai_global_timeout_seconds=120.0,
-        sqlserver_host="localhost",
+        sqlserver_host=sqlserver_host,
         sqlserver_user="sa",
         sqlserver_password=SecretStr(_required_environment_variable("MSSQL_SA_PASSWORD")),
         sqlserver_database="test_db",

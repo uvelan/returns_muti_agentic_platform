@@ -19,7 +19,7 @@ from return_platform.dynamic_knowledge.on_demand_sync.extraction import (
     GenericSourceRecordExtractor,
 )
 from return_platform.dynamic_knowledge.on_demand_sync.planner import build_targeted_read_plan
-from return_platform.dynamic_knowledge.on_demand_sync.source_compilers import compile_source_read
+from return_platform.source_connectors.compilation import compile_source_read
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
 

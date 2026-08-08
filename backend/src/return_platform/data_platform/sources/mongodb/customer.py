@@ -31,6 +31,7 @@ from return_platform.shared.governance import (
     ObjectKind,
     OwnershipClass,
 )
+from return_platform.source_connectors.mongodb import fetch_one
 
 if TYPE_CHECKING:
     from pymongo import AsyncMongoClient
@@ -329,10 +330,12 @@ class CustomerMongoSourceAdapter:
         source_id, catalog_asset_id, database, collection = _resolve_source_plan(source_plan)
 
         try:
-            mongo_collection = self._client[database][collection]
+            mongo_database = self._client[database]
             async with asyncio.timeout(self._operation_timeout_seconds):
-                document = await mongo_collection.find_one(
-                    {"_id": normalized_id},
+                document = await fetch_one(
+                    mongo_database,
+                    collection_name=collection,
+                    key={"_id": normalized_id},
                     max_time_ms=self._server_max_time_ms,
                     comment=CUSTOMER_FIND_COMMENT,
                 )

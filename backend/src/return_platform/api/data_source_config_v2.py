@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, m
 from pymongo.asynchronous.collection import AsyncCollection
 
 from return_platform.data_console.api.auth import require_admin_roles, require_read_roles
-from return_platform.data_console.api.browser import _get_mongo_records, _get_sql_records
+from return_platform.data_console.api.browser import get_mongo_records, get_sql_records
 from return_platform.data_console.api.runtime_validation import (
     DataSourceValidateAndStageRequest,
     validate_and_stage_data_source,
@@ -659,12 +659,12 @@ async def get_data_source_preview(
         raise HTTPException(status_code=404, detail="Dataset not found for this source.")
     if asset.engine == "SQLSERVER":
         records = await asyncio.wait_for(
-            _get_sql_records(resources, asset, 0, limit),
+            get_sql_records(resources, asset, 0, limit),
             timeout=resources.settings.probe_timeout_seconds * 5,
         )
     else:
         records = await asyncio.wait_for(
-            _get_mongo_records(resources, asset, 0, limit),
+            get_mongo_records(resources, asset, 0, limit),
             timeout=resources.settings.probe_timeout_seconds * 5,
         )
     rows = [cast(dict[str, Any], record.get("data", {})) for record in records]

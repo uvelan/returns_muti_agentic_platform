@@ -1,16 +1,29 @@
-"""Connector-specific compilation of logical targeted reads."""
+"""Connector-specific compilation of logical targeted reads.
+
+Moved from `dynamic_knowledge.on_demand_sync.source_compilers` (Phase 8 /
+Wave C1) -- it had zero production consumers and exactly one test importer
+(updated in the same commit), and is a source-*read* compilation concern
+(translating a `LogicalTargetedReadPlan` into one connector-specific
+statement), not a graph-mutation concern, so it belongs here rather than
+under `dynamic_knowledge.on_demand_sync`.
+
+`MongoDBSourceScanConnector.targeted_read()` is the first real caller of
+`compile_source_read`'s MongoDB branch (Phase 8 / Wave C1) -- previously this
+module was compiled-but-never-executed logic, since no connector implemented
+`TargetedSourceConnector.targeted_read()` anywhere.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
 
-from return_platform.dynamic_knowledge.on_demand_sync.contracts import LogicalTargetedReadPlan
 from return_platform.dynamic_knowledge.schema import (
     ActiveSchema,
     ConnectorType,
     validate_graph_identifier,
 )
+from return_platform.source_connectors.contracts import LogicalTargetedReadPlan
 
 
 @dataclass(frozen=True, slots=True)

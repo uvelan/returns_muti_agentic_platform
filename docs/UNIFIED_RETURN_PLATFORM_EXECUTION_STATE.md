@@ -1,10 +1,14 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Verified HEAD: pending this slice's commit (previous: `2b86e4c`)
-Last pushed green commit: `2b86e4c` (`feat(platform): add LangGraph durable reasoning foundation`)
-Slice: **Phase 6 / Wave B3 — Temporal return orchestration (stage/handler config engine)**
+Verified HEAD: pending this slice's commit (previous: `f5e5591`)
+Last pushed green commit: `f5e5591` (`refactor(workflow): make return orchestration agent-independent and config-driven`)
+Slice: **Phase 8 / Wave C1 — Canonical read-only source connector framework**
 Status: DONE
+
+## Phase 6 / Wave B3 — Temporal return orchestration
+
+Status: DONE (see git history for `f5e5591`; superseded as "current slice" by Phase 8 below).
 
 ## Phase 5A / Wave B2 — LangGraph durable reasoning foundation
 
@@ -646,12 +650,171 @@ shaped what "config-driven" honestly means here:
   diff --stat` for this slice lists only `configuration/`, `workflows/return_workflow.py`,
   `operations/orchestrator.py`, and test/config files under those same trees).
 
+## Phase 8 / Wave C1 — Canonical read-only source connector framework (this slice)
+
+**Scope.** User explicitly chose "attempt the full consolidation now" over a
+narrower "harden what exists" option, after discovery found the ask was bigger than
+the plan text implies: a mature canonical connector layer already existed
+(`dynamic_knowledge/connectors/{mongodb,sqlserver}.py`) with most of what the plan
+asks to "create" already built, but **five separate read/write implementations**
+existed against the same two physical systems, **four parallel source-configuration
+schemas**, and **zero real-Docker-based tests** anywhere for any connector (existing
+tests used hand-written fakes). A Plan-agent design pass then found the real picture
+was bigger still: `targeted_read()` had **zero implementations anywhere** (not just
+duplicated), `data_platform/graph/sync_service.py` runs its own separate, deliberately
+interim `ActiveSchema` bridge (`interim_active_schema.py`, explicitly scoped to a
+later "Step 12" cutover — not touched here), and v2's real query shapes (OR-of-
+conditions, regex, cross-collection resolution) don't fit the AND-only
+`LogicalTargetedReadPlan` model at all.
+
+**What was built.**
+- **New neutral package `source_connectors/`** (`contracts.py`, `protocols.py`,
+  `identifiers.py`, `path_resolution.py`, `compilation.py`, `mongodb.py`,
+  `sqlserver.py`) — dynamic_knowledge-independent (only depends on
+  `dynamic_knowledge.schema.ActiveSchema` as a shared *type*, not its graph/sync
+  machinery), so `data_platform`/`data_console`/`v2` no longer need to reach into
+  `dynamic_knowledge` internals just to read Mongo/SQL Server.
+- Split `dynamic_knowledge/on_demand_sync/contracts.py` (previously a mixed-concern
+  file): source-*read* contracts (`SourceCursor`, `CursorComparison`,
+  `RawSourceDocument`, `RawSourcePage`, `SourceConnectorCapabilities`,
+  `LogicalAnchorCondition`, `LogicalTargetedReadPlan`) moved to
+  `source_connectors.contracts`, re-exported unchanged from the old location so no
+  existing importer needed to change. Graph-*mutation* contracts
+  (`DynamicSourceRecord`, `GraphNodeMutation`, etc.) stayed put. New types:
+  `DatasetRef`, `BoundedSamplePolicy`. `SourceConnectorCapabilities` gained
+  `supports_point_lookup`/`supports_bounded_sample` (additive, defaulted).
+- `SourceScanConnector`/`SourceScanRegistry` (from `sync/coordinator.py`) and
+  `TargetedSourceConnector`/`ConnectorRegistry` (from `on_demand_sync/coordinator.py`)
+  — previously defined inline — moved to `source_connectors.protocols`, imported
+  back where used. New additive `PointLookupConnector` protocol.
+- `source_connectors/compilation.py` — moved (byte-identical) from
+  `dynamic_knowledge/on_demand_sync/source_compilers.py`, which had **zero
+  production consumers** (confirmed via grep) and exactly one test importer
+  (updated in place, no shim needed). `MongoDBSourceScanConnector.targeted_read()`
+  is the **first real caller** of `compile_source_read`'s MongoDB branch anywhere —
+  closing the "zero implementations" gap, reusing the existing AND-only condition
+  compiler rather than re-deriving filter translation.
+- `dynamic_knowledge/connectors/{mongodb,sqlserver}.py` — kept as thin re-export
+  shims (real implementations moved to `source_connectors`); zero of their ~10
+  existing internal importers needed to change.
+- New shared primitives on `source_connectors.mongodb`/`.sqlserver`:
+  `fetch_one`/`find_many`/`sample_documents` (Mongo), `fetch_row`/`sample_rows`
+  (SQL Server) — bounded point-lookup, filtered-multi-read, and offset-paginated
+  sample reads, all server-side bounded.
+- `path_resolution.py` — extracted the ~90%-duplicate `_resolve_physical_field`/
+  `_resolve_physical_column` logic from both connectors into one shared
+  `resolve_physical_path()` (parameterized by error type + wording, preserving each
+  connector's exact existing error messages/types).
+- `identifiers.py` — extracted the SQL-Server-only `_SAFE_IDENTIFIER` validator;
+  `data_console/api/browser.py`'s previously-separate copy of the same pattern now
+  shares it (byte-identical regex, confirmed via test).
+- **Redirected 3 of the 5 read implementations onto the canonical connectors:**
+  - `data_console/api/browser.py` — `_get_sql_records`/`_get_mongo_records`/
+    `_get_sql_record`/`_get_mongo_record` now call `sample_rows`/`sample_documents`/
+    `fetch_row`/`fetch_one` instead of raw `pymssql`/`pymongo`. Fixed a live
+    cross-module private-function import (`api/data_source_config_v2.py` was
+    importing `_get_mongo_records`/`_get_sql_records` directly) by making both
+    functions public. Found and fixed a real bug while touching this file: removing
+    the unused-looking `_identifier`/`pymssql`/`asyncio`/`copy` imports during the
+    redirect initially dropped `import copy`, which `_redact_document` actually
+    needs (`copy.deepcopy`) — no test caught it (zero prior test coverage for this
+    file); caught by mypy, fixed.
+  - `data_platform/sources/mongodb/customer.py` — `CustomerMongoSourceAdapter`'s
+    one `find_one` call redirected onto `fetch_one` (with `max_time_ms`/`comment`
+    passed through exactly). No live caller exists for this adapter today; user
+    chose to do this redirect anyway for consistency. All existing hardening
+    (bounded timeout, depth/node freeze budget, BSON-hash evidence, error taxonomy)
+    left untouched around the one redirected line.
+  - `v2/runtime_adapters.py` — `MongoOrderSourceGateway` (**highest-risk change**:
+    live order-sync business logic). Its real query shapes (OR-of-conditions,
+    regex fallback, cross-collection tracking-number resolution) do not fit
+    `LogicalTargetedReadPlan`'s AND-only model — extending that model into a
+    proper condition-tree would be a separate, much larger redesign, so instead
+    added a new, honest, generic `find_many(database, *, collection_name, filter,
+    limit)` primitive: v2 keeps its own business query-shape knowledge (correctly,
+    per the plan's own "business identity synthesis... does not belong in the
+    generic connector"), but no longer holds a raw `pymongo` dependency. All 4
+    raw-driver call sites (`_sales_ids`, `resolve()`'s TRACKING_NUMBER/
+    INVOICE_NUMBER branches, `fetch()`) redirected; `fetch()`'s previously-fully-
+    unbounded query given an explicit `10_000`-document safety ceiling (a real,
+    minor, newly-added bound, not a preserved behavior).
+- **Not redirected (documented scope boundary):** the write-only seeding adapter
+  (`data_platform/operational_generation/adapters/source_mongodb.py`) — a synthetic
+  test-data-generation path, not a production read, correctly out of scope for a
+  "read-only source connector" phase.
+- **Real Docker-based tests added** (previously zero existed for any connector):
+  `tests/source_connectors/test_mongodb_connector_docker.py` (6 tests: scan,
+  targeted_read, fetch_one, find_many, sample_documents, a real ObjectId-cursor
+  round-trip), `tests/source_connectors/test_sqlserver_connector_docker.py` (3
+  tests: scan, sample_rows, fetch_row — run directly on host, SQL Server is a
+  standalone instance reachable via the compose port mapping), and
+  `tests/v2/test_mongo_order_source_gateway_docker.py` (8 tests covering `fetch()`
+  and all 5 `AnchorType` resolution paths plus account-scope filtering) — the
+  **first ever test coverage of any kind** for `MongoOrderSourceGateway`, given
+  its zero prior coverage was the biggest risk in this slice. All 17 Docker tests
+  pass. Existing fake-based unit tests (`tests/dynamic_knowledge/test_{mongodb,
+  sqlserver}_connector.py`) kept unchanged, still passing, as fast edge-case
+  coverage alongside the new real-infra proof. Added `PLATFORM_TEST_SQLSERVER_HOST`
+  to `tests/conftest.py`'s `test_settings()` fixture (previously hardcoded
+  `"localhost"`), matching the existing `PLATFORM_TEST_MONGO_HOST` pattern.
+
+**Deliberately not done this slice (documented scope boundaries, not gaps):**
+- Config-schema reconciliation across the 4 parallel surfaces
+  (`configuration/domain/sources.py`'s `SourceConfigNode`/`SourcesConfig` — confirmed
+  dead code, zero runtime consumer; `dynamic_knowledge.schema.SourceAssetDefinition`
+  — live, stays canonical; `data_platform.schema_registry.SchemaRegistry` — live,
+  scoped to write-policy/generation governance, deliberately not merged into
+  `ActiveSchema`; `data_platform.mapping`'s `source_assets` catalog — intentionally
+  non-executable per its own YAML comment) was not attempted. No PostgreSQL source
+  connector was added — zero real implementation or consumer exists anywhere
+  (`ConnectorType.POSTGRESQL` is an unused enum value; the running Postgres
+  container is Temporal's own storage, not a business source).
+- `data_platform/graph/sync_service.py`'s separate `interim_active_schema.py`
+  bridge was left exactly as-is — its own docstring already documents it as a
+  deliberate, temporary bridge pending a later, separately-scoped cutover.
+- `LogicalTargetedReadPlan`'s AND-only, single-entity condition model was not
+  redesigned into a proper AND/OR condition tree — v2's real query shapes need
+  that redesign to be served by the "canonical" plan model honestly, but doing so
+  would mean touching the Neo4j/SQL/Mongo branches of `compile_source_read`, the
+  planner, and the extraction pipeline for a capability only one caller needs
+  today; flagged for whoever next needs OR-shaped targeted reads.
+
+**Gate receipts.**
+- `.venv/Scripts/python.exe -m ruff check`/`ruff format --check` on every
+  new/changed file: clean (2 pre-existing-dirty files carrying forward unchanged
+  debt from the files they were moved from, confirmed via before/after diff).
+- `.venv/Scripts/python.exe -m mypy src`: 44 errors in 14 files — unchanged
+  baseline (confirmed via git-stash before/after comparison; the two connector
+  files' 3 pre-existing errors and `sync_service.py`'s 4 pre-existing errors moved/
+  stayed byte-identical, zero new errors anywhere touched).
+- `python -m compileall -q src` / `python -c "import return_platform.main"`: clean.
+- `pytest tests/ -q --ignore=tests/test_order_agent_rest.py --ignore=tests/platform
+  --ignore=tests/reasoning --ignore=tests/configuration` (host, real API-key
+  placeholders, excluding the 2 new Mongo-only Docker test files which cannot reach
+  `mongodb:27017` from host): 1457 passed, 3 skipped, zero failures.
+- Real-infra verification via a throwaway `python:3.13-slim`+`uv` container
+  attached to `return-multi-agent-platform_platform` (Mongo replica set
+  unreachable from host by design; SQL Server verified directly on host instead,
+  since it's a standalone instance reachable via the compose port mapping, not a
+  replica set): all 14 new Mongo Docker tests + all 3 new SQL Server Docker tests
+  pass. Also ran the full suite inside the container (1630 passed; the only
+  failures were pre-existing tests that depend on `repo_root/scripts/` files this
+  container's `backend/`-only copy doesn't include — an artifact of the container
+  setup, not a regression).
+- `tests/dynamic_knowledge/` + `tests/data_platform/`: 307 passed, 2 skipped,
+  confirming the mechanical extraction (Slice 0) and the customer-adapter/
+  compilation-move redirects (Slices 2–3) are zero-behavior-change where intended.
+
 ## Next READY slice
 
-Per the FINAL_FAST_EXECUTION_PLAN, Wave B3's completion condition is now met. Still
-open, not part of this slice: the flagged Neo4j volume dedup task, the pre-existing
-`openapi-drift`/`associate_flow.py` formatting conditions, the missing
-`NVIDIA_API_KEY`/`GOOGLE_API_KEY` values in `.env`, a real KMS-backed
+Per the FINAL_FAST_EXECUTION_PLAN, Wave C1's stated goal ("do this before Analyzer
+work so source access is not implemented twice") is now met for the real production
+read paths. Still open, not part of this slice: the flagged Neo4j volume dedup task,
+the pre-existing `openapi-drift`/`associate_flow.py` formatting conditions, the
+missing `NVIDIA_API_KEY`/`GOOGLE_API_KEY` values in `.env`, a real KMS-backed
 `EnvelopeEncryptor` (Phase 9), the `ReturnPlatformConfiguration` ↔ `RuntimeSnapshot`
-configuration-system bridge, and mapping `orchestrator.py`'s real per-stage business
-logic onto agents where a clean request-shape mapping can be honestly designed.
+configuration-system bridge, mapping `orchestrator.py`'s real per-stage business
+logic onto agents where a clean request-shape mapping can be honestly designed, the
+4-way source-config schema reconciliation, and the `LogicalTargetedReadPlan`
+AND/OR condition-tree redesign v2's full query shape would need to be served by the
+canonical targeted-read model rather than the new `find_many` escape hatch.
