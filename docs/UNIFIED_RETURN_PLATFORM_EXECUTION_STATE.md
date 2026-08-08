@@ -1,10 +1,14 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Verified HEAD: pending this slice's commit (previous: `f5e5591`)
-Last pushed green commit: `f5e5591` (`refactor(workflow): make return orchestration agent-independent and config-driven`)
-Slice: **Phase 8 / Wave C1 — Canonical read-only source connector framework**
-Status: DONE
+Verified HEAD: pending this slice's commit (previous: `7fd10ad`)
+Last pushed green commit: `7fd10ad` (Phase 8 / Wave C1 — canonical source connectors)
+Slice: **Phase 7 / Wave C2 — Order Discovery LangGraph decomposition + Temporal host (Commit 1: Foundations)**
+Status: DONE (Commit 1 of 3; Commit 2 = LangGraph node decomposition, Commit 3 = Temporal workflow host, both not yet started)
+
+## Phase 8 / Wave C1 — Canonical read-only source connector framework
+
+Status: DONE (see git history for `7fd10ad`; superseded as "current slice" by Phase 7 below).
 
 ## Phase 6 / Wave B3 — Temporal return orchestration
 
@@ -805,16 +809,160 @@ conditions, regex, cross-collection resolution) don't fit the AND-only
   confirming the mechanical extraction (Slice 0) and the customer-adapter/
   compilation-move redirects (Slices 2–3) are zero-behavior-change where intended.
 
+## Phase 7 / Wave C2 — Order Discovery LangGraph decomposition + Temporal host (this slice, Commit 1: Foundations)
+
+**Scope.** User explicitly chose "build full on-demand sync wiring in this pass"
+(over deferring it) and "build a real Temporal workflow host" (over keeping the
+existing synchronous route) for the wider Wave C2 slice. A Plan-agent design pass
+(mirroring Phase 8's discovery-then-plan approach, given this is the largest single
+phase attempted this session) found two genuine, previously-undiscovered correctness
+bugs that had to close before any on-demand-sync production wiring could be trusted —
+closing them, plus building the remaining foundation pieces the LangGraph/Temporal
+work (Commits 2–3) will build on, is this commit's scope.
+
+**Two real bugs found and fixed (would have silently broken correctness):**
+- `MongoGraphStateProvider.active_generation()`'s legacy fallback derived
+  `f"legacy-{schema.configuration_checksum[:20]}"`, while
+  `data_platform/graph/sync_service.py` marks its Neo4j `GraphGeneration` node under
+  the fixed literal `"legacy-live"` — these never matched, so any on-demand-sync write
+  against a not-yet-generation-managed schema would fence-reject forever. Fixed by
+  introducing one shared constant, `LEGACY_GENERATION_ID` (`dynamic_knowledge/graph/
+  generation.py`), and pointing both sides at it (`mongo_store.py`'s fallback;
+  `sync_service.py`'s own literal already matched, now via the shared name). Proven
+  against real Mongo + real Neo4j in `tests/dynamic_knowledge/
+  test_mongo_graph_state_provider.py` and, end-to-end, in this commit's own new
+  `test_on_demand_sync_production_wiring.py` (see below).
+- `source_connectors.compilation.compile_source_read`'s SQL Server branch emitted
+  `:name`-style (colon) bind parameters, but `pymssql` only accepts `%(name)s`
+  pyformat style — every targeted SQL Server read would have raised a driver-level
+  syntax/parameter error at the first real call. Fixed by translating at the SQL
+  Server connector boundary (a `_COLON_PARAMETER` regex substitution in
+  `source_connectors/sqlserver.py`, not by changing `compile_source_read`'s shared
+  output shape, which Mongo's branch also depends on). Also implemented
+  `SqlServerSourceScanConnector.targeted_read()` itself, which had no implementation
+  at all before this commit (`CAPABILITIES.supports_point_lookup` was already `True`
+  with nothing behind it). Proven against real SQL Server:
+  `test_targeted_read_returns_only_the_matching_row`.
+
+**New platform primitives built for Commits 2–3 to consume:**
+- `AgentPolicy` (`dynamic_knowledge/schema.py`) gained `max_clarifications` (default
+  3), `max_replans` (default 2), `max_targeted_syncs_per_turn` (default 3) — bounds
+  the LangGraph decomposition's new CLARIFY/REPLAN/on-demand-sync loop turns will
+  need. `ActionType` (`order_agent/contracts.py`) gained `CLARIFY`/`REPLAN` members
+  with matching `validate_action_payload` requirements. `active-schema.example.yaml`/
+  `active-schema.return-order.yaml` updated with the three new fields;
+  `configuration_checksum` recomputed for both and verified to load cleanly through
+  `load_active_schema()`. Dead `order_agent/prompt_policy.py` (zero importers,
+  confirmed via grep) deleted.
+- `platform/reasoning/evidence_store.py` (new) — `QueryEvidenceStore`, the "evidence
+  by reference" half of "no raw source records in checkpoint state": full
+  `QueryEvidence` (including its raw `result`) is written once, encrypted, keyed by
+  `query_execution_id`; a LangGraph checkpoint will hold only that id. New
+  `order_discovery_query_evidence` SystemStore structure (`config/platform/
+  system_store.yaml`, `encrypted: true`, TTL index). `CheckpointRetentionPolicy.
+  mark_terminal` (`retention.py`) extended to stamp this structure's `expires_at`
+  alongside checkpoints/writes/receipts, in the same transaction, keyed by `run_id`.
+- `platform/reasoning/run_lifecycle.py` (new) — `ReasoningRunLifecycle`, the
+  previously-missing write path for `reasoning_runs` (`start_run` — idempotent
+  insert, raises `RunBoundToDifferentThread` on a genuine conflict;
+  `transition_non_terminal` — raises `ValueError` directing terminal transitions to
+  the existing `CheckpointRetentionPolicy.mark_terminal` instead).
+- **On-demand-sync production adapters** (previously `OnDemandSyncCoordinator` was
+  constructed nowhere in `src`, only in a test against local fakes):
+  `MongoOnDemandSyncStore` (`integration/mongo_store.py`, reserve/complete keyed by
+  `request_digest`, mirrors `MongoAtomicConversationStore`'s optimistic-insert
+  shape); `OnDemandConnectorRegistry`/`OnDemandNeo4jGraphWriter` (new
+  `integration/on_demand_sync_adapters.py` — the registry dispatches by
+  `ConnectorType` to dedicated long-lived Mongo/SqlServer `targeted_read`
+  connectors; the writer wraps `Neo4jDynamicGraphWriter` + `Neo4jGenerationWriter.
+  get_status()`, looking the current fencing token/status up fresh on every write
+  since an on-demand caller doesn't carry one through its own state machine the way
+  a full-sync run does). `GenericGraphProjector` already satisfied
+  `DynamicGraphProjector`'s protocol exactly — no adapter needed. `runtime_factory.
+  build_dynamic_order_agent_runtime()` now constructs the full stack and passes it
+  as `on_demand_sync=` (was hardcoded `None`); gained a required `source_mongo`
+  parameter, threaded from `main.py`'s existing `resources.source_mongo` (added to
+  the dynamic-agent dependency-availability check alongside `mongodb`/`neo4j`).
+- **Generation-handle design decision (confirmed, not built):** kept the existing
+  simple `active_generation()` string-returning mechanism rather than building the
+  formal, currently-unused `GenerationReadLease`/`GenerationWriteReservation` lease
+  system already declared in `graph/generation.py` — confirmed nothing in the repo
+  drains those leases, and `lifecycle/orchestrator.py`'s own docstring says real
+  lease-draining "must be added before this runs against live traffic," so building
+  an unused formal system now would be speculative.
+
+**Real-infra test added:** `tests/dynamic_knowledge/
+test_on_demand_sync_production_wiring.py` (4 tests, real Mongo + real Neo4j) proves
+the full production stack end-to-end — a real document read via
+`MongoDBSourceScanConnector.targeted_read()`, projected via `GenericGraphProjector`,
+written via `OnDemandNeo4jGraphWriter` and verified present in Neo4j — and that the
+write path fails closed (`NoGenerationMarker`) when no marker exists, and fails
+closed when the target `graph_generation_id` doesn't byte-for-byte match the marker
+it was created under (the exact failure mode the `LEGACY_GENERATION_ID` fix
+addresses). Deliberately does not touch the real shared `"legacy-live"` Neo4j marker
+(uses fresh per-test UUID-suffixed stand-in ids instead), since that literal is
+shared, live state other suites/dev workflows depend on. Deliberately bypasses the
+shared `test_settings` fixture (constructs its own Mongo DSN / Neo4j URI from the
+same underlying env vars) because that fixture also requires `NVIDIA_API_KEY`/
+`GOOGLE_API_KEY` for AI-gateway fields this test never exercises — those keys are
+unavailable in this environment (see below), and this test has no need of them.
+Stable across 3 consecutive runs.
+
+**Known pre-existing blocker (not introduced by this slice, already flagged in
+Phase 8's ledger entry above, re-confirmed here):** `NVIDIA_API_KEY`/`GOOGLE_API_KEY`
+were rotated out of `.env` by the separate `fbfcf05` security commit and never
+replaced with real values. Every test that uses `tests/conftest.py`'s shared
+`test_settings` fixture — not just this slice's new tests — now errors at fixture
+setup on this machine (confirmed: 46 errors across `tests/dynamic_knowledge`,
+`tests/reasoning`, `tests/source_connectors`, `tests/v2`, all identical
+`RuntimeError: Required test environment variable is not set: NVIDIA_API_KEY`, zero
+relation to any code this slice touched — 268 tests in the same run passed cleanly).
+Not fixable here; the user needs to add rotated key values. This will block Commit
+3's Temporal-workflow-host tests if they end up needing a live model gateway call
+end-to-end, unless resolved first.
+
+**Deliberately not done in this commit (scope boundary, not a gap — Commits 2–3):**
+- No LangGraph node decomposition of `DynamicOrderAgentCoordinator` yet (Task #78).
+- No Temporal workflow host for Order Discovery conversations yet (Task #79).
+- No `api/order_agent.py` route change, no `GENERATION_CHANGED` signal handling —
+  both depend on the Temporal host existing first.
+
+**Gate receipts.**
+- `ruff format --check` / `ruff check` on every new/changed file (backend + this
+  commit's new test file): clean.
+- `mypy src`: 46 errors in 15 files, i.e. +2 errors / +1 file versus the 44/14
+  baseline at HEAD (`7fd10ad`) — confirmed via a real git-stash before/after
+  comparison, not estimated. Both new errors are the identical, pre-existing
+  `GraphDriver`/`GenerationDriver` vs. `AsyncDriver` structural-typing false
+  positive already present for `sync_service.py`'s equivalent
+  `Neo4jDynamicGraphWriter(driver, ...)` construction (a real neo4j-driver
+  Protocol-matching limitation, not a real type error) — same class of finding,
+  not a new category. `mypy` on the new test file separately shows the same 2 (test
+  files are outside the `mypy src` baseline scope).
+- `python -m compileall -q src` / `python -c "import return_platform.main"`: clean.
+- `pytest tests/dynamic_knowledge/test_on_demand_sync_production_wiring.py -v` (real
+  Mongo + real Neo4j, via the `c2-test-runner` throwaway container attached to
+  `return-multi-agent-platform_platform`, `PLATFORM_TEST_MONGO_HOST=mongodb` +
+  `PLATFORM_TEST_NEO4J_HOST=neo4j`): 4 passed, stable across 3 consecutive runs.
+- `pytest tests/dynamic_knowledge tests/reasoning tests/source_connectors tests/v2 -q`
+  (same container): 268 passed, 46 errors — all 46 the pre-existing `NVIDIA_API_KEY`
+  fixture gap above, zero relation to this commit's diff.
+
 ## Next READY slice
 
-Per the FINAL_FAST_EXECUTION_PLAN, Wave C1's stated goal ("do this before Analyzer
-work so source access is not implemented twice") is now met for the real production
-read paths. Still open, not part of this slice: the flagged Neo4j volume dedup task,
-the pre-existing `openapi-drift`/`associate_flow.py` formatting conditions, the
-missing `NVIDIA_API_KEY`/`GOOGLE_API_KEY` values in `.env`, a real KMS-backed
-`EnvelopeEncryptor` (Phase 9), the `ReturnPlatformConfiguration` ↔ `RuntimeSnapshot`
-configuration-system bridge, mapping `orchestrator.py`'s real per-stage business
-logic onto agents where a clean request-shape mapping can be honestly designed, the
-4-way source-config schema reconciliation, and the `LogicalTargetedReadPlan`
-AND/OR condition-tree redesign v2's full query shape would need to be served by the
-canonical targeted-read model rather than the new `find_many` escape hatch.
+Commit 2 of Phase 7 / Wave C2: LangGraph node decomposition of
+`DynamicOrderAgentCoordinator` (Task #78) — nodes for decide/get_schema/graph_query/
+order_search/request_on_demand_sync/clarify/replan/respond, evidence-by-reference
+checkpoint design using this commit's new `QueryEvidenceStore`, `CandidateSet`
+wiring, `CheckpointRedactor` allowlist enforcement. Then Commit 3 (Task #79): a real
+Temporal workflow host for Order Discovery conversations (one workflow per
+conversation, one Activity per turn, `SystemStoreCheckpointSaver`-backed,
+`GENERATION_CHANGED` signal handling, `api/order_agent.py` route change). Also still
+open, not part of any Phase 7 commit: the flagged Neo4j volume dedup task, the
+pre-existing `openapi-drift`/`associate_flow.py` formatting conditions, the missing
+`NVIDIA_API_KEY`/`GOOGLE_API_KEY` values in `.env` (now blocking a wider swath of
+tests than at Phase 8's checkpoint), a real KMS-backed `EnvelopeEncryptor` (Phase 9),
+the `ReturnPlatformConfiguration` ↔ `RuntimeSnapshot` configuration-system bridge,
+mapping `orchestrator.py`'s real per-stage business logic onto agents, the 4-way
+source-config schema reconciliation, and the `LogicalTargetedReadPlan` AND/OR
+condition-tree redesign v2's full query shape would need.

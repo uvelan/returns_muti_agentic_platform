@@ -13,14 +13,22 @@ from return_platform.ai_gateway.routing import AIRoutePool
 from return_platform.configuration.settings import Settings
 from return_platform.dynamic_knowledge.api.order_agent import DynamicOrderAgentRuntime
 from return_platform.dynamic_knowledge.config_loader import load_active_schema
+from return_platform.dynamic_knowledge.graph.generation_writer import Neo4jGenerationWriter
+from return_platform.dynamic_knowledge.graph.neo4j_writer import Neo4jDynamicGraphWriter
+from return_platform.dynamic_knowledge.graph.projector import GenericGraphProjector
 from return_platform.dynamic_knowledge.integration.model_gateway import (
     RoutePoolReasoningModelGateway,
 )
 from return_platform.dynamic_knowledge.integration.mongo_store import (
     MongoAtomicConversationStore,
     MongoGraphStateProvider,
+    MongoOnDemandSyncStore,
 )
 from return_platform.dynamic_knowledge.integration.neo4j_gateway import Neo4jKnowledgeGateway
+from return_platform.dynamic_knowledge.integration.on_demand_sync_adapters import (
+    OnDemandConnectorRegistry,
+    OnDemandNeo4jGraphWriter,
+)
 from return_platform.dynamic_knowledge.knowledge.guards import (
     CapabilityGuard,
     GuardContext,
@@ -32,11 +40,18 @@ from return_platform.dynamic_knowledge.knowledge.guards import (
     SchemaQueryGuard,
     StrongAnchorGuard,
 )
+from return_platform.dynamic_knowledge.on_demand_sync.coordinator import OnDemandSyncCoordinator
+from return_platform.dynamic_knowledge.on_demand_sync.extraction import GenericSourceRecordExtractor
 from return_platform.dynamic_knowledge.order_agent.conversation_repository import (
     AtomicConversationRepository,
 )
 from return_platform.dynamic_knowledge.order_agent.coordinator import DynamicOrderAgentCoordinator
 from return_platform.security.principal import Principal
+from return_platform.source_connectors.mongodb import MongoDBSourceScanConnector
+from return_platform.source_connectors.sqlserver import (
+    SqlServerConnectionSettings,
+    SqlServerSourceScanConnector,
+)
 
 
 def dynamic_order_agent_enabled(settings: Settings) -> bool:
@@ -49,6 +64,7 @@ async def build_dynamic_order_agent_runtime(
     *,
     settings: Settings,
     platform_mongo: AsyncMongoClient[dict[str, object]],
+    source_mongo: AsyncMongoClient[dict[str, object]],
     neo4j_driver: AsyncDriver,
     ai_gateway_configuration: LoadedAIGatewayConfiguration,
     route_pool: AIRoutePool,
@@ -61,6 +77,36 @@ async def build_dynamic_order_agent_runtime(
     graph_state = MongoGraphStateProvider(platform_mongo, settings.mongo_database)
     await conversation_documents.ensure_indexes()
     await graph_state.ensure_indexes()
+
+    on_demand_sync_store = MongoOnDemandSyncStore(platform_mongo, settings.mongo_database)
+    await on_demand_sync_store.ensure_indexes()
+    on_demand_connectors = OnDemandConnectorRegistry(
+        schema=schema,
+        mongo=MongoDBSourceScanConnector(
+            source_mongo[settings.source_mongo_database], schema=schema
+        ),
+        sqlserver=SqlServerSourceScanConnector(
+            SqlServerConnectionSettings(
+                server=settings.sqlserver_host,
+                port=settings.sqlserver_port,
+                user=settings.sqlserver_user,
+                password=settings.sqlserver_password.get_secret_value(),
+                database=settings.sqlserver_database,
+                timeout_seconds=int(settings.operation_timeout_seconds),
+            ),
+            schema=schema,
+        ),
+    )
+    on_demand_sync = OnDemandSyncCoordinator(
+        connectors=on_demand_connectors,
+        extractor=GenericSourceRecordExtractor(),
+        projector=GenericGraphProjector(),
+        writer=OnDemandNeo4jGraphWriter(
+            Neo4jDynamicGraphWriter(neo4j_driver, database=settings.neo4j_database),
+            Neo4jGenerationWriter(neo4j_driver, database=settings.neo4j_database),
+        ),
+        store=on_demand_sync_store,
+    )
 
     coordinator = DynamicOrderAgentCoordinator(
         schema=schema,
@@ -81,7 +127,7 @@ async def build_dynamic_order_agent_runtime(
         strong_anchor_guard=StrongAnchorGuard(),
         hallucination_guard=HallucinationGuard(),
         response_safety_guard=ResponseSafetyGuard(),
-        on_demand_sync=None,
+        on_demand_sync=on_demand_sync,
     )
 
     async def guard_context_factory(request: Request, agent_id: str) -> GuardContext:

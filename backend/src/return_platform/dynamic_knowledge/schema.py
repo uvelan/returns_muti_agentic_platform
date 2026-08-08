@@ -587,6 +587,9 @@ class AgentPolicy(BaseModel):
     max_reasoning_steps: int = Field(default=8, ge=1, le=32)
     max_graph_queries_per_turn: int = Field(default=12, ge=1, le=64)
     max_correction_attempts: int = Field(default=2, ge=0, le=5)
+    max_clarifications: int = Field(default=3, ge=0, le=10)
+    max_replans: int = Field(default=2, ge=0, le=10)
+    max_targeted_syncs_per_turn: int = Field(default=3, ge=0, le=10)
 
     @model_validator(mode="after")
     def require_standard_models(self) -> AgentPolicy:

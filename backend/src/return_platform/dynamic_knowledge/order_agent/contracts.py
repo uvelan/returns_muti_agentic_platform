@@ -20,6 +20,8 @@ class ActionType(StrEnum):
     GRAPH_QUERY = "GRAPH_QUERY"
     ORDER_SEARCH = "ORDER_SEARCH"
     REQUEST_ON_DEMAND_SYNC = "REQUEST_ON_DEMAND_SYNC"
+    CLARIFY = "CLARIFY"
+    REPLAN = "REPLAN"
     RESPOND = "RESPOND"
     OUT_OF_SCOPE = "OUT_OF_SCOPE"
 
@@ -71,6 +73,10 @@ class AgentAction(BaseModel):
                 self.strong_anchor_request is not None and self.original_query_plan is not None
             ),
             ActionType.RESPOND: self.response is not None,
+            ActionType.CLARIFY: (
+                self.response is not None and bool(self.response.requested_input)
+            ),
+            ActionType.REPLAN: True,
             ActionType.OUT_OF_SCOPE: True,
             ActionType.GET_SCHEMA: bool(self.schema_entity_ids),
         }

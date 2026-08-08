@@ -10,12 +10,13 @@ the whole point of durable reasoning.
 
 A Mongo TTL index ignores documents with a null/absent `expires_at`, so this needs no
 special-casing at the storage layer -- see the `expire_after_seconds: 0` indexes on
-`reasoning_runs`/`reasoning_action_receipts` in `config/platform/system_store.yaml`.
+`reasoning_runs`/`reasoning_action_receipts`/`order_discovery_query_evidence` in
+`config/platform/system_store.yaml`.
 
-On the terminal transition, `mark_terminal` stamps `expires_at` across all three
-structures together -- checkpoints, writes, and receipts, keyed by `thread_id` for the
-first two and `run_id` for the third -- inside one Mongo transaction, since a receipt
-must never outlive-or-predecease the execution it protects.
+On the terminal transition, `mark_terminal` stamps `expires_at` across all four
+structures together -- checkpoints, writes, receipts, and query evidence, keyed by
+`thread_id` for the first two and `run_id` for the other two -- inside one Mongo
+transaction, since none of them may outlive-or-predecease the execution they protect.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ _RUNS_STRUCTURE = "reasoning_runs"
 _CHECKPOINTS_STRUCTURE = "reasoning_checkpoints"
 _CHECKPOINT_WRITES_STRUCTURE = "reasoning_checkpoint_writes"
 _RECEIPTS_STRUCTURE = "reasoning_action_receipts"
+_QUERY_EVIDENCE_STRUCTURE = "order_discovery_query_evidence"
 
 
 class RunLifecycleState(StrEnum):
@@ -88,9 +90,9 @@ class CheckpointRetentionPolicy:
         terminal_at: datetime,
     ) -> datetime:
         """Transition `reasoning_runs[run_id]` to a terminal state and stamp the same
-        `expires_at` across it, its checkpoints, its checkpoint writes, and its action
-        receipts -- in one Mongo transaction, so a crash mid-stamp never leaves the
-        three structures with mismatched expiries."""
+        `expires_at` across it, its checkpoints, its checkpoint writes, its action
+        receipts, and its query evidence -- in one Mongo transaction, so a crash
+        mid-stamp never leaves the structures with mismatched expiries."""
         if lifecycle_state not in TERMINAL_LIFECYCLE_STATES:
             raise ValueError(f"{lifecycle_state.value} is not a terminal lifecycle_state")
         expires_at = self.compute_expires_at(
@@ -127,6 +129,12 @@ class CheckpointRetentionPolicy:
                 )
                 await system_store.stamp_expiry(
                     _RECEIPTS_STRUCTURE,
+                    {"run_id": run_id},
+                    expires_at=expires_at,
+                    session=session,
+                )
+                await system_store.stamp_expiry(
+                    _QUERY_EVIDENCE_STRUCTURE,
                     {"run_id": run_id},
                     expires_at=expires_at,
                     session=session,

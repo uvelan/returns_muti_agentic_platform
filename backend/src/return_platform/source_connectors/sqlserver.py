@@ -19,6 +19,7 @@ identifier pattern before being embedded in bracketed SQL identifiers
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any
@@ -26,8 +27,10 @@ from typing import Any
 import pymssql
 
 from return_platform.dynamic_knowledge.schema import ActiveSchema
+from return_platform.source_connectors.compilation import compile_source_read
 from return_platform.source_connectors.contracts import (
     CursorComparison,
+    LogicalTargetedReadPlan,
     RawSourceDocument,
     RawSourcePage,
     SourceConnectorCapabilities,
@@ -37,6 +40,7 @@ from return_platform.source_connectors.identifiers import UnsafeIdentifierError,
 from return_platform.source_connectors.path_resolution import resolve_physical_path
 
 _FIELD_DATETIME = "FIELD_DATETIME"
+_COLON_PARAMETER = re.compile(r":(\w+)")
 
 CAPABILITIES = SourceConnectorCapabilities(
     supports_high_watermark=True,
@@ -47,6 +51,7 @@ CAPABILITIES = SourceConnectorCapabilities(
     supports_snapshot_read=False,
     supports_partitioned_cursors=False,
     supports_cursor_comparison=True,
+    supports_point_lookup=True,
 )
 
 
@@ -194,6 +199,37 @@ class SqlServerSourceScanConnector:
                 batch = []
         if batch:
             yield _page(batch, last_cursor_value, through)
+
+    async def targeted_read(
+        self, *, schema: ActiveSchema, plan: LogicalTargetedReadPlan
+    ) -> RawSourcePage:
+        """Bounded, anchor-conditioned read for one entity -- never a source-wide
+        scan. Reuses `compile_source_read`'s MSSQL branch (AND-only conditions)
+        rather than re-deriving filter translation here.
+
+        `compile_source_read` emits colon-style bind parameters (`:p0`,
+        `:p0_from`, `:p0_to`) shared across its Mongo/SQL/Neo4j branches;
+        pymssql only accepts its own `%(name)s` pyformat style (see scan()'s
+        `%(through)s` above), so the compiled statement is translated at this
+        connector boundary rather than changing compile_source_read's shared
+        output shape for every caller.
+        """
+
+        del schema  # this connector always uses the schema bound at construction; see class docstring
+        compiled = compile_source_read(self._schema, plan)
+        query = _COLON_PARAMETER.sub(r"%(\1)s", compiled.statement)
+        rows = await asyncio.to_thread(_run_query, self._connection, query, compiled.parameters)
+        documents = tuple(
+            RawSourceDocument(
+                operation="UPSERT",
+                document=row,
+                source_identity="|".join(str(value) for value in row.values()),
+            )
+            for row in rows
+        )
+        return RawSourcePage(
+            documents=documents, next_cursor=None, high_watermark=None, observed_at=datetime.now(UTC)
+        )
 
     def _resolve(self, source_asset_id: str) -> tuple[str, str, str]:
         source = self._schema.sources[source_asset_id]

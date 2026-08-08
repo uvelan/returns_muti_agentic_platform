@@ -82,3 +82,14 @@ payload:
         - name: command_id_unique
           fields: [command_id]
           unique: true
+    order_discovery_query_evidence:
+      physical_name: platform_order_discovery_query_evidence
+      schema_version: 1
+      encrypted: true
+      indexes:
+        - name: query_execution_id_unique
+          fields: [query_execution_id]
+          unique: true
+        - name: expires_at_ttl
+          fields: [expires_at]
+          expire_after_seconds: 0

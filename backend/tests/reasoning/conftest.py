@@ -21,6 +21,7 @@ REASONING_STRUCTURE_NAMES = (
     "reasoning_resume_commands",
     "reasoning_checkpoints",
     "reasoning_checkpoint_writes",
+    "order_discovery_query_evidence",
 )
 
 
@@ -48,7 +49,8 @@ def reasoning_store(test_settings: Settings) -> ReasoningTestFixture:
             logical_name=name,
             physical_name=f"{name}_{suffix}",
             schema_version=1,
-            encrypted=name.startswith("reasoning_checkpoint"),
+            encrypted=name.startswith("reasoning_checkpoint")
+            or name == "order_discovery_query_evidence",
         )
         for name in REASONING_STRUCTURE_NAMES
     }

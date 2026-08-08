@@ -17,6 +17,7 @@ import pymssql
 import pytest
 
 from return_platform.configuration.settings import Settings
+from return_platform.dynamic_knowledge.on_demand_sync.planner import build_targeted_read_plan
 from return_platform.source_connectors.sqlserver import (
     SqlServerConnectionSettings,
     SqlServerSourceScanConnector,
@@ -111,6 +112,20 @@ async def test_scan_reads_real_rows_ordered_by_cursor_field(
         _configured_id(document.document) for page in pages for document in page.documents
     ]
     assert identities == ["row-1", "row-2", "row-3"]
+
+
+@pytest.mark.asyncio
+async def test_targeted_read_returns_only_the_matching_row(
+    test_settings: Settings, sql_table: str
+) -> None:
+    schema = build_active_schema(mongo_collection="unused", sql_table=sql_table, sql_schema="dbo")
+    connector = SqlServerSourceScanConnector(_connection(test_settings), schema=schema)
+    plan = build_targeted_read_plan(
+        schema=schema, entity_id="entity_sql", normalized_anchors={"id": ("EXACT", "row-2")}
+    )
+    page = await connector.targeted_read(schema=schema, plan=plan)
+    assert len(page.documents) == 1
+    assert _configured_id(page.documents[0].document) == "row-2"
 
 
 @pytest.mark.asyncio

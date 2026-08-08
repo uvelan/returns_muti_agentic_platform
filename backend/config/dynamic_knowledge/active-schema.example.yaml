@@ -143,7 +143,10 @@ agent_policies:
     max_reasoning_steps: 8
     max_graph_queries_per_turn: 12
     max_correction_attempts: 2
+    max_clarifications: 3
+    max_replans: 2
+    max_targeted_syncs_per_turn: 3
     allowed_roles:
     - associate
     - support
-configuration_checksum: 7edb2eee3e308e71a00707359189fe7896de834e16894e82107b8ef969d14365
+configuration_checksum: f885ec4c647213c0c13c02d565fd639abede475bb9004092b7156f8dc707d5f7

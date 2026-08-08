@@ -12,8 +12,20 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
+
+LEGACY_GENERATION_ID: Final = "legacy-live"
+"""The one graph_generation_id used before any real blue/green rebuild has ever
+run for a schema (GenerationLifecycleOrchestrator.build_and_activate isn't wired
+to live traffic yet). Every reader and writer of a not-yet-generation-managed
+graph must agree on this exact literal -- data_platform.graph.sync_service
+MERGEs the real Neo4j GraphGeneration marker under this id; anything resolving
+"the current generation" (e.g. dynamic_knowledge.integration.mongo_store's
+MongoGraphStateProvider) must fall back to this same id, or on-demand writes
+fence-reject against a marker that doesn't exist under the id the reader
+actually pinned."""
 
 
 class GraphGenerationStatus(StrEnum):

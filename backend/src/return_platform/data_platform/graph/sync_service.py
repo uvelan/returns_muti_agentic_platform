@@ -25,7 +25,10 @@ from return_platform.configuration.settings import Settings
 from return_platform.data_platform.graph.interim_active_schema import build_interim_active_schema
 from return_platform.data_platform.schema_registry import SchemaRegistry
 from return_platform.dynamic_knowledge.graph.constraints import required_node_constraints
-from return_platform.dynamic_knowledge.graph.generation import GraphGenerationStatus
+from return_platform.dynamic_knowledge.graph.generation import (
+    LEGACY_GENERATION_ID,
+    GraphGenerationStatus,
+)
 from return_platform.dynamic_knowledge.graph.neo4j_writer import Neo4jDynamicGraphWriter
 from return_platform.dynamic_knowledge.graph.projector import GenericGraphProjector
 from return_platform.dynamic_knowledge.graph.write_compiler import compile_node_writes
@@ -48,7 +51,7 @@ from return_platform.source_connectors.sqlserver import (
     SqlServerSourceScanConnector,
 )
 
-_LEGACY_GENERATION_ID = "legacy-live"
+_LEGACY_GENERATION_ID = LEGACY_GENERATION_ID
 _LEGACY_FENCING_TOKEN = 1
 _CONTACT_KEY_REFERENCE = "vault://return-platform/contact-lookup#hmac_key"
 

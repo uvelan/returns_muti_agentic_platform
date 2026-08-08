@@ -573,11 +573,13 @@ async def lifespan(
         if dynamic_agent_enabled:
             platform_mongo = resources.mongo
             neo4j_driver = resources.neo4j
+            source_mongo = resources.source_mongo
             missing_dependencies = tuple(
                 dependency
                 for dependency, resource in (
                     ("mongodb", platform_mongo),
                     ("neo4j", neo4j_driver),
+                    ("source_mongodb", source_mongo),
                 )
                 if resource is None
             )
@@ -594,10 +596,12 @@ async def lifespan(
             else:
                 assert platform_mongo is not None
                 assert neo4j_driver is not None
+                assert source_mongo is not None
                 try:
                     app.state.dynamic_order_agent_runtime = await build_dynamic_order_agent_runtime(
                         settings=settings,
                         platform_mongo=platform_mongo,
+                        source_mongo=source_mongo,
                         neo4j_driver=neo4j_driver,
                         ai_gateway_configuration=ai_gateway_configuration,
                         route_pool=app.state.ai_gateway_route_pool,

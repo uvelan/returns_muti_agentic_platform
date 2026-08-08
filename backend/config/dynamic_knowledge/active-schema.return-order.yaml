@@ -1236,4 +1236,7 @@ agent_policies:
     max_reasoning_steps: 8
     max_graph_queries_per_turn: 12
     max_correction_attempts: 2
-configuration_checksum: 5b4bc0f77fb4bc1d5ce01ebfbccb9a95925ba81313e6494b6f8ba8ee308f3faf
+    max_clarifications: 3
+    max_replans: 2
+    max_targeted_syncs_per_turn: 3
+configuration_checksum: 0654fda0e27d9703d3b5eafbefa4797092fd366692da6e1e2fdfa966b9b97a29
