@@ -632,6 +632,45 @@ def test_dynamic_knowledge_schema_maps_to_graph_not_system_store():
         assert not key.endswith("_schema") and "dynamic_knowledge" not in key
 
 
+def test_platform_system_store_structures_are_populated_from_manifest():
+    """compatibility.py must parse payload.structures, not hardcode structures={}."""
+    snapshot = build_snapshot_from_legacy_configs(CONFIG_DIR)
+    structures = snapshot.system_store.structures
+    assert "conversations" in structures
+    assert structures["conversations"].physical_name == "platform_conversations"
+    assert structures["conversations"].schema_version == 1
+    assert any(
+        index.get("name") == "conversation_id_unique"
+        for index in (structures["conversations"].indexes or [])
+    )
+    assert "audit" in structures
+    assert structures["audit"].physical_name == "platform_audit"
+
+
+def test_platform_structure_with_invalid_payload_fails_closed(tmp_path: Path):
+    manifest = {
+        "schema_version": "2.0",
+        "release_id": "bad-structure",
+        "status": "DRAFT",
+        "modules": {"platform.system_store": {"path": "platform/system_store.yaml"}},
+    }
+    modules = {
+        "platform/system_store.yaml": {
+            "module_id": "platform.system_store",
+            "module_type": "PLATFORM",
+            "payload": {
+                "structures": {
+                    "bad": "not-a-mapping",
+                }
+            },
+        },
+    }
+    _write_config(tmp_path, manifest, modules)
+    adapter = LegacyCompatibilityAdapter(tmp_path)
+    with pytest.raises(ConfigurationValidationError):
+        adapter.build_canonical_snapshot()
+
+
 def test_compatibility_translation_fails_closed_on_invalid_agent_schema(tmp_path: Path):
     manifest = {
         "schema_version": "2.0",

@@ -843,6 +843,10 @@ by exactly one; the loser is left with no partial mutation (`status` still `APPR
 **Commit.** `fix(configuration): fix transaction await bug and target correct collection in activation test`
 (this amendment).
 
+**Follow-up docs commit.** `docs(config): add configuration and backend/config READMEs` — the Phase 2 "Docs"
+line above was never actually written. Documents everything in this amendment plus the canonical domains,
+manifest-driven loading, semantic validation rules, and release lifecycle/CAS semantics.
+
 ---
 
 ## Phase 3 — Configuration-driven system store
@@ -925,6 +929,35 @@ migration history, locking, idempotency, recovery, and how to add a structure.
 
 **Gate.** Implementation gate. Live-stack rule applies — verify against the real Mongo instance that a second startup
 reuses structures and creates nothing.
+
+**Implementation notes.**
+1. `configuration/application/compatibility.py`'s `PLATFORM` branch hardcoded `structures={}` when building
+   `SystemStoreConfig` — the manifest's `structures` block was parsed nowhere. Fixed to parse and validate each
+   entry into a `SystemStoreStructure`, fail-closed on a malformed one, matching every other domain's translation
+   in that file. `backend/config/platform/system_store.yaml` now carries the `structures` block from this phase's
+   plan, and `tests/configuration/test_canonical_application.py` gained a regression test for the fix plus a
+   fail-closed test for a malformed structure payload.
+2. No separate `manifest.py` was needed — `configuration.domain.system_store.SystemStoreStructure` and
+   `SystemStoreConfig` (already typed, frozen pydantic models) are the manifest-typed shape; `platform/system_store/`
+   consumes them directly rather than re-declaring an equivalent type.
+3. `MongoLeaseStore.acquire()` implements the CAS as a single atomic `find_one_and_update(upsert=True)` filtered
+   on `expires_at < now`, relying on the `_id` unique index to turn a race into a `DuplicateKeyError` on the
+   losing side (mapped to `LeaseUnavailable`) — no separate read-then-write window exists to close.
+4. Every guarded write (migration application, version-ledger write) goes through `FencedMongoWriter`, which
+   re-verifies `(lease_id, fencing_token)` **inside the same MongoDB transaction** that performs the write, rather
+   than a bare conditional `update_one` alongside a separate read. This reuses the transaction pattern already
+   proven (and already fixed for the `await`-the-coroutine pymongo gotcha) in `configuration/application/activation.py`
+   and `workflows/persistence.py`, and closes the check-then-write race completely rather than narrowing it.
+5. Drift handling (`fail_closed_on_drift`, no destructive auto-repair) applies to providers with field-level
+   structure, like the existing `dynamic_knowledge/internal_store/` SQL and Neo4j adapters. The canonical MongoDB
+   provider is schemaless at this layer — `MongoSystemStoreAdapter.inspect_structure()` only distinguishes
+   `MISSING`/`PRESENT` — so there is no field-level drift to detect yet; `SystemStoreAdapter` remains a port
+   specifically so a schema-validating provider can add that dimension later without touching the bootstrapper.
+6. `dynamic_knowledge/internal_store/` was left as-is rather than migrated: nothing outside its own test imports
+   it today, so it remains the proven reference pattern for typed SQL/Neo4j objects, and `platform/system_store/`
+   is a parallel implementation for the schemaless canonical provider, not a replacement.
+7. Nothing wires this into `main.py`'s actual startup yet — consistent with Phase 1B's zero-module proof, the
+   mechanism is built and gate-verified standalone, ready for the first real consumer.
 
 **Commit.** `feat(platform): add configuration-driven system store bootstrap`
 

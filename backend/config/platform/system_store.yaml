@@ -16,3 +16,26 @@ payload:
   migration_mode: FORWARD_ONLY
   fail_closed_on_drift: true
   migration_lock_required: true
+  structures:
+    conversations:
+      physical_name: platform_conversations
+      schema_version: 1
+      indexes:
+        - name: conversation_id_unique
+          fields: [conversation_id]
+          unique: true
+    ai_traces:
+      physical_name: platform_ai_traces
+      schema_version: 1
+    ai_interceptions:
+      physical_name: platform_ai_interceptions
+      schema_version: 1
+    graph_schema_drafts:
+      physical_name: platform_graph_schema_drafts
+      schema_version: 1
+    graph_generations:
+      physical_name: platform_graph_generations
+      schema_version: 1
+    audit:
+      physical_name: platform_audit
+      schema_version: 1

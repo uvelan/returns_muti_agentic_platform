@@ -51,7 +51,10 @@ from return_platform.configuration.domain.modules import ModuleConfigNode, Modul
 from return_platform.configuration.domain.platform import PlatformConfig
 from return_platform.configuration.domain.release_model import RuntimeSnapshot
 from return_platform.configuration.domain.sources import SourcesConfig, SourceConfigNode
-from return_platform.configuration.domain.system_store import SystemStoreConfig
+from return_platform.configuration.domain.system_store import (
+    SystemStoreConfig,
+    SystemStoreStructure,
+)
 from return_platform.configuration.domain.workflow import WorkflowConfig, WorkflowDefinition
 
 logger = logging.getLogger(__name__)
@@ -231,6 +234,25 @@ class LegacyCompatibilityAdapter:
                         raise ConfigurationValidationError(
                             f"PLATFORM module '{manifest_id}' payload is not a mapping"
                         )
+                    structures_raw = payload.get("structures", {}) or {}
+                    if not isinstance(structures_raw, dict):
+                        raise ConfigurationValidationError(
+                            f"PLATFORM module '{manifest_id}' 'structures' is not a mapping"
+                        )
+                    structures: dict[str, SystemStoreStructure] = {}
+                    for logical_name, struct_payload in structures_raw.items():
+                        if not isinstance(struct_payload, dict):
+                            raise ConfigurationValidationError(
+                                f"PLATFORM module '{manifest_id}' structure "
+                                f"'{logical_name}' payload is not a mapping"
+                            )
+                        try:
+                            structures[logical_name] = SystemStoreStructure(**struct_payload)
+                        except (ValidationError, TypeError) as exc:
+                            raise ConfigurationValidationError(
+                                f"PLATFORM module '{manifest_id}' structure "
+                                f"'{logical_name}' failed validation: {exc}"
+                            ) from exc
                     system_store_config = SystemStoreConfig(
                         provider=payload.get("provider", "MONGODB"),
                         allowed_providers=payload.get("allowed_providers"),
@@ -240,7 +262,7 @@ class LegacyCompatibilityAdapter:
                         migration_mode=payload.get("migration_mode"),
                         fail_closed_on_drift=payload.get("fail_closed_on_drift", True),
                         migration_lock_required=payload.get("migration_lock_required", True),
-                        structures={},
+                        structures=structures,
                     )
 
             elif module_type == "INTEGRATION":
