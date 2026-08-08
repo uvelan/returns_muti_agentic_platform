@@ -39,3 +39,46 @@ payload:
     audit:
       physical_name: platform_audit
       schema_version: 1
+    reasoning_checkpoints:
+      physical_name: platform_reasoning_checkpoints
+      schema_version: 1
+      encrypted: true
+      indexes:
+        - name: thread_checkpoint_unique
+          fields: [thread_id, checkpoint_ns, checkpoint_id]
+          unique: true
+    reasoning_checkpoint_writes:
+      physical_name: platform_reasoning_checkpoint_writes
+      schema_version: 1
+      encrypted: true
+      indexes:
+        - name: thread_checkpoint_task_unique
+          fields: [thread_id, checkpoint_ns, checkpoint_id, task_id, write_idx]
+          unique: true
+    reasoning_runs:
+      physical_name: platform_reasoning_runs
+      schema_version: 1
+      indexes:
+        - name: run_id_unique
+          fields: [run_id]
+          unique: true
+        - name: expires_at_ttl
+          fields: [expires_at]
+          expire_after_seconds: 0
+    reasoning_action_receipts:
+      physical_name: platform_reasoning_action_receipts
+      schema_version: 1
+      indexes:
+        - name: action_receipt_unique
+          fields: [run_id, node_name, logical_action_id]
+          unique: true
+        - name: expires_at_ttl
+          fields: [expires_at]
+          expire_after_seconds: 0
+    reasoning_resume_commands:
+      physical_name: platform_reasoning_resume_commands
+      schema_version: 1
+      indexes:
+        - name: command_id_unique
+          fields: [command_id]
+          unique: true

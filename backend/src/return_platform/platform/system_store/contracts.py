@@ -140,14 +140,14 @@ class SystemStoreAdapter(Protocol):
 
 
 class IndexDefinition:
-    """Canonical, comparable index shape (Slice 3R.5). Covers exactly the attributes the
-    canonical structure model (`StructureDefinition.indexes`) supports today: ordered
-    key/direction pairs, `unique`, and `partial_filter_expression`. TTL/sparse/collation
-    are not compared because the canonical model does not declare them yet -- adding
+    """Canonical, comparable index shape (Slice 3R.5, extended in Phase 5A for TTL).
+    Covers the attributes the canonical structure model (`StructureDefinition.indexes`)
+    supports: ordered key/direction pairs, `unique`, `partial_filter_expression`, and
+    `expire_after_seconds` (TTL). Sparse/collation are still not compared -- adding
     support for those requires extending the typed model and config schema first, not
     silently comparing backend-only defaults."""
 
-    __slots__ = ("keys", "name", "partial_filter_expression", "unique")
+    __slots__ = ("expire_after_seconds", "keys", "name", "partial_filter_expression", "unique")
 
     def __init__(
         self,
@@ -156,6 +156,7 @@ class IndexDefinition:
         keys: tuple[tuple[str, int], ...],
         unique: bool = False,
         partial_filter_expression: Mapping[str, Any] | None = None,
+        expire_after_seconds: int | None = None,
     ) -> None:
         self.name = name
         self.keys = keys
@@ -163,6 +164,7 @@ class IndexDefinition:
         self.partial_filter_expression = (
             dict(partial_filter_expression) if partial_filter_expression else None
         )
+        self.expire_after_seconds = expire_after_seconds
 
     @classmethod
     def from_declared(cls, spec: Mapping[str, Any]) -> IndexDefinition:
@@ -173,6 +175,7 @@ class IndexDefinition:
             keys=keys,
             unique=bool(spec.get("unique", False)),
             partial_filter_expression=spec.get("partial_filter_expression"),
+            expire_after_seconds=spec.get("expire_after_seconds"),
         )
 
     @classmethod
@@ -184,6 +187,7 @@ class IndexDefinition:
             keys=keys,
             unique=bool(raw.get("unique", False)),
             partial_filter_expression=raw.get("partialFilterExpression"),
+            expire_after_seconds=raw.get("expireAfterSeconds"),
         )
 
     def matches(self, other: IndexDefinition) -> bool:
@@ -192,6 +196,7 @@ class IndexDefinition:
             and self.unique == other.unique
             and (self.partial_filter_expression or None)
             == (other.partial_filter_expression or None)
+            and self.expire_after_seconds == other.expire_after_seconds
         )
 
 

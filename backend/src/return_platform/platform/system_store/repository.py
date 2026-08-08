@@ -150,3 +150,64 @@ class SystemStore:
         return await self._db.get_collection(definition.physical_name).insert_one(
             dict(document), **kwargs
         )
+
+    async def replace_one(
+        self,
+        logical_name: str,
+        filter: Mapping[str, Any],
+        document: Mapping[str, Any],
+        *,
+        upsert: bool = False,
+        allowed_metadata_fields: frozenset[str] = frozenset(),
+        **kwargs: Any,
+    ) -> Any:
+        """A guarded whole-document replace, checked by the same `EncryptionGuard` as
+        `insert_one()` -- safe for an encrypted structure because it validates the
+        *replacement* document's envelope shape exactly as insert does, never allowing
+        a plaintext document to land regardless of which write path was used."""
+        definition = self._definition(logical_name)
+        self._encryption_guard.check_document(
+            logical_name,
+            document,
+            encrypted=definition.encrypted,
+            allowed_metadata_fields=allowed_metadata_fields,
+        )
+        return await self._db.get_collection(definition.physical_name).replace_one(
+            dict(filter), dict(document), upsert=upsert, **kwargs
+        )
+
+    async def delete_many(self, logical_name: str, filter: Mapping[str, Any], **kwargs: Any) -> Any:
+        """Delete matching documents from any structure, encrypted or not.
+
+        No `EncryptionGuard` check: deleting cannot write a plaintext payload past the
+        guard the way `insert_one`/`replace_one` could -- there is no document shape to
+        validate when the operation removes documents rather than writing one.
+        """
+        definition = self._definition(logical_name)
+        return await self._db.get_collection(definition.physical_name).delete_many(
+            dict(filter), **kwargs
+        )
+
+    async def stamp_expiry(
+        self,
+        logical_name: str,
+        filter: Mapping[str, Any],
+        *,
+        expires_at: object,
+        **kwargs: Any,
+    ) -> None:
+        """Set only the `expires_at` field, on any structure including an encrypted one.
+
+        The one guarded mutation an encrypted structure permits besides `insert_one()`:
+        it can never touch `_envelope` or any other field, so it cannot be used to
+        smuggle a plaintext write past `EncryptionGuard` -- retention stamping (Phase
+        5A) needs exactly this and nothing more, on `reasoning_checkpoints`/
+        `reasoning_checkpoint_writes` as much as on any unencrypted structure.
+
+        `**kwargs` forwards to pymongo's `update_many` (in particular `session=...`),
+        so a caller can stamp several structures together inside one Mongo transaction.
+        """
+        definition = self._definition(logical_name)
+        await self._db.get_collection(definition.physical_name).update_many(
+            dict(filter), {"$set": {"expires_at": expires_at}}, **kwargs
+        )

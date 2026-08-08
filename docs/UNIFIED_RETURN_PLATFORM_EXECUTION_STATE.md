@@ -1,14 +1,18 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Verified HEAD: pending this slice's commit (previous: `b19570f`)
-Last pushed green commit: `b19570f` (`refactor(bootstrap): decouple application startup from test tooling`)
-Slice: **Phase 5 / Wave B1 — Independent agent plugin contract**
+Verified HEAD: pending this slice's commit (previous: `c3e7fc2`)
+Last pushed green commit: `c3e7fc2` (`refactor(agents): standardize independent agent plugin contract`)
+Slice: **Phase 5A / Wave B2 — LangGraph durable reasoning foundation**
 Status: DONE
+
+## Phase 5 / Wave B1 — Independent agent plugin contract
+
+Status: DONE (see git history for `c3e7fc2`; superseded as "current slice" by Phase 5A below).
 
 ## Phase 4 — Bootstrap correctness
 
-Status: DONE (see git history for `b19570f`; superseded as "current slice" by Phase 5 below).
+Status: DONE (see git history for `b19570f`; superseded as "current slice" by Phase 5 above).
 
 ## Slice 3R — SystemStore correctness hardening
 
@@ -363,10 +367,148 @@ place agents are constructed).
   pre-existing conditions.
 - `python -m compileall -q src` / `python -c "import return_platform.main"`: clean.
 
+## Phase 5A / Wave B2 — LangGraph durable reasoning foundation (this slice)
+
+**Scope.** Introduce LangGraph without coupling any business module to it — "nothing
+uses it yet"; later phases (Order Discovery's and the Graph Schema Analyzer's own
+reasoning graphs) are the first real callers. User explicitly chose to attempt the
+full spec (including the abandonment sweeper and Temporal-signal outbox worker) rather
+than defer the operationally exotic pieces, after being told upfront that the pattern
+referenced for those ("same outbox discipline as §13.5") doesn't exist anywhere in the
+codebase yet — confirmed via research before starting.
+
+**Dependencies added:** `langgraph==1.2.10`, `langgraph-checkpoint==4.2.0` (pulls in
+`langchain-core`/`langchain-protocol`/`langgraph-prebuilt`/`langgraph-sdk`/`langsmith`
+— all core LangGraph abstractions, never a provider integration package). Verified via
+`uv.lock`/`pyproject.toml` text scan (`tests/reasoning/test_no_langchain_provider_packages.py`):
+no `langchain-openai`/`langchain-anthropic`/`langchain-google*`/`langchain-community`/
+`langchain-aws`. A real third-party MongoDB checkpoint saver
+(`langgraph-checkpoint-mongodb`) was evaluated and rejected: it requires
+`pymongo<4.17`, which would downgrade the already-tested `pymongo==4.17.0` Slice 3R is
+built against — `SystemStoreCheckpointSaver` is built from scratch instead, modeled
+closely on the official `InMemorySaver` reference implementation's method shapes.
+Also added `cryptography==50.0.0`, for a real (if interim) envelope encryptor -- see
+below.
+
+**`platform/reasoning/` package, all real, all real-Mongo/real-Temporal tested (never
+mocked for a correctness claim):**
+- `checkpoint.py` — `SystemStoreCheckpointSaver(BaseCheckpointSaver[str])`, async-only
+  (`aget_tuple`/`alist`/`aput`/`aput_writes`/`adelete_thread`/`get_next_version`).
+  Checkpoints/writes are naturally insert-only (LangGraph allocates a fresh
+  monotonically-increasing checkpoint id per `put()`), so `SystemStore.insert_one()`
+  (the one write path permitted on an `encrypted: true` structure) is sufficient,
+  except the four special negative `WRITES_IDX_MAP` write indices (ERROR/SCHEDULED/
+  INTERRUPT/RESUME), which legitimately overwrite via the new `replace_one(...,
+  upsert=True)`. Verified end-to-end against a real `langgraph.graph.StateGraph`: real
+  execution, real AES-256-GCM encryption (wrong key genuinely fails decryption), real
+  restart-durability (a brand-new saver instance sees a prior instance's checkpoints),
+  real deletion.
+- `receipts.py` — `ReasoningActionReceipts`, the full idempotency state machine
+  (STARTED → COMPLETED | PENDING_EXTERNAL | FAILED_RETRYABLE | FAILED_FINAL;
+  PENDING_EXTERNAL → COMPLETED | FAILED_FINAL) against real Mongo, atomic via
+  `find_one_and_update`. Proven: a `begin()` mid-PENDING_EXTERNAL never re-runs the
+  action or loses `external_ref`; `FAILED_RETRYABLE` gets a genuinely fresh attempt
+  number on retry; a terminal receipt refuses any further transition (this is also
+  what makes late-completion-after-abandonment rejection work, for free).
+- `retention.py` — `CheckpointRetentionPolicy`. Active states (`RUNNING`/
+  `INTERRUPTED`/`WAITING`) compute no `expires_at`; terminal states compute
+  `terminal_at + terminal_retention_hours` and `mark_terminal()` stamps the identical
+  value across the run, its checkpoints, its writes, and its receipts in one Mongo
+  transaction. TTL indexes (`expire_after_seconds: 0`) added to
+  `reasoning_runs`/`reasoning_action_receipts` in `system_store.yaml`.
+- `abandonment.py` — sweeper (idle `INTERRUPTED`/`WAITING` past a threshold →
+  `ABANDONED`) gated on five real precondition checks (unresolved clarification
+  interrupt via the checkpoint's own `pending_writes`; open `STARTED`/
+  `PENDING_EXTERNAL` receipt; open `ai_interceptions` record; pending
+  `reasoning_resume_commands`; active Temporal workflow). `ForcedAbandonment.abandon()`
+  is one Mongo transaction: run → ABANDONED, open interceptions → CANCELLED, open
+  receipts → FAILED_FINAL, `expires_at` stamped everywhere, and a
+  `reasoning_resume_commands` PENDING row inserted, together. Verified against real
+  Mongo: a clean run abandons; a run with any of the five blockers is reported
+  `ABANDONMENT_BLOCKED` with the specific blocking reference and is never mutated; the
+  sweeper correctly separates idle-clean/idle-blocked/still-fresh runs.
+- `resume_worker.py` — `ReasoningResumeWorker`, lease/claim/backoff shape mirroring
+  `operations.integrations.outbox.IntegrationOutboxDispatcher`, delivering
+  `reasoning_resume_commands` as real Temporal signals via
+  `client.get_workflow_handle(...).signal(...)`. **Verified against a real Temporal
+  server and a real (throwaway, test-only) workflow** — not a mock: signal genuinely
+  received (confirmed via a real workflow query), workflow-side dedup on `command_id`
+  proven by redelivering the same signal and confirming it's processed exactly once, a
+  new worker instance recovering a command left by a "crashed" predecessor (row
+  inserted directly, no prior delivery attempt), and the no-recipient case
+  (`workflow_id is None` → immediately `DELIVERED`, correctly not a failure).
+- `redaction.py` — `CheckpointRedactor`, rejects (never silently strips) a checkpoint
+  state key outside a declared allowlist.
+- `thread_ids.py`, `observability.py`, `errors.py`, `configuration.py` (loads
+  `config/reasoning.yaml`) — straightforward, all real, no gaps.
+
+**Two real architectural gaps found and closed, not part of the original ask:**
+- TTL indexes were not supported by `IndexDefinition`/`StructureDefinition` at all
+  (its own Slice 3R docstring said so explicitly: "adding support... requires
+  extending the typed model and config schema first"). Extended `IndexDefinition`
+  (contracts.py) and `MongoStructureGateway.create_index`/`ensure_indexes` (mongo.py)
+  with `expire_after_seconds`, matching the existing `unique`/`partial_filter_expression`
+  pattern exactly. Verified: all 18 pre-existing `tests/platform/test_index_drift.py`/
+  `test_system_store_bootstrap.py`/`test_system_store_repository.py` tests still pass.
+- `SystemStore` had no guarded way to (a) update an existing document on an encrypted
+  structure (only `insert_one()` existed) or (b) delete from one at all. Added
+  `stamp_expiry()` (can only ever `$set` the `expires_at` field — cannot smuggle a
+  plaintext payload past `EncryptionGuard` because it never touches `_envelope` or any
+  other field), `replace_one()` (guarded by the same `EncryptionGuard.check_document`
+  as `insert_one`), and `delete_many()` (no guard needed — deleting cannot write a
+  plaintext payload the way inserting/replacing could).
+- No concrete `EnvelopeEncryptor` implementation existed anywhere (the module's own
+  docstring deferred real KMS-backed encryption to "Phase 9"). Rather than declare
+  `reasoning_checkpoints`/`reasoning_checkpoint_writes` `encrypted: true` without any
+  way to actually encrypt them, built `AesGcmEnvelopeEncryptor` — real AES-256-GCM,
+  unique nonce per message, authenticated — as an explicitly-interim implementation
+  (same spirit as `LoggingAuditSink`/`AllowlistRedactor` from Phase 5), pending a real
+  KMS-backed one.
+
+**Deliberately not built (scope boundaries, not gaps):**
+- No business reasoning graph (Order Discovery's, the Analyzer's) — later phases.
+- No real `AgentAiPort`/`KnowledgePort` binding behind the receipt state machine's
+  `external_ref` resolution — a future phase's node does the actual AI Gateway/sync
+  call; this package only keeps that call idempotent across resumes.
+- `ai_interceptions` (checked by the abandonment precondition checker) has no real
+  writer yet — correctly finds nothing today, will correctly start blocking once a
+  future AI Gateway interception phase wires real records into it.
+
+**Gate receipts.**
+- `poetry run mypy src` / `.venv/Scripts/python.exe -m mypy src`: 44 errors in 14
+  files — unchanged baseline (now checked across 410 source files, up from 388).
+- `ruff format --check` / `ruff check` on every new/changed file: clean.
+- `pytest tests/reasoning/ -q` (real Mongo + real Temporal, via a throwaway
+  `python:3.13-slim` + `uv` container attached to the compose network, matching Slice
+  3R's established pattern): all 22 tests across the 12 specified files pass —
+  4 architecture tests, 8 mechanism tests including the two genuinely real-Temporal
+  crash-recovery/idempotency tests.
+- `pytest tests/platform/test_index_drift.py tests/platform/test_system_store_bootstrap.py
+  tests/platform/test_system_store_repository.py`: all 18 pass unchanged — the TTL/
+  guarded-write extensions to `system_store` didn't regress Slice 3R's invariants.
+- `python scripts/dev/precommit_guard.py`: one initial false-positive flag (a
+  docstring's prose mentioning "NotImplementedError" while describing the *base
+  class's* inherited behavior, not a stub in this code) — reworded rather than
+  overridden; clean on re-run.
+- `python scripts/dev/run_changed_gate.py`: all gates pass except the same
+  pre-existing `backend-mypy` baseline noted above.
+- `pytest -q` full host suite (excluding `tests/platform`/`tests/configuration`/
+  `tests/reasoning`/`test_order_agent_rest.py`, with placeholder `NVIDIA_API_KEY`/
+  `GOOGLE_API_KEY` values unblocking the fixture): 1449 passed, 3 skipped, zero
+  failures.
+- `python -m compileall -q src` / `python -c "import return_platform.main"`: clean.
+
+**New verified fact:** `uv add`/`uv lock` in this repo create (and populate via
+`poetry install --sync`, which auto-detects an in-project `.venv`) a real, working
+`backend/.venv` — shorter-pathed and simpler to reference than the prior session's
+Poetry cache-directory venv, and fully equivalent (`ruff check` produced byte-identical
+output against both for the same diff). Used as the primary host venv for this slice.
+
 ## Next READY slice
 
-Wave B2 (LangGraph durable reasoning foundation, Phase 5A) or B3 (Temporal return
-orchestration, Phase 6) per the FINAL_FAST_EXECUTION_PLAN — both can start now that B1
-is green. Separately, still open and not part of this slice: the flagged Neo4j volume
-dedup task, the pre-existing `openapi-drift`/`associate_flow.py` formatting
-conditions, and the missing `NVIDIA_API_KEY`/`GOOGLE_API_KEY` values in `.env`.
+Wave B3 (Temporal return orchestration, Phase 6) per the FINAL_FAST_EXECUTION_PLAN —
+its stated completion condition needs both B1 and B2 green, which they now are.
+Separately, still open and not part of this slice: the flagged Neo4j volume dedup
+task, the pre-existing `openapi-drift`/`associate_flow.py` formatting conditions, the
+missing `NVIDIA_API_KEY`/`GOOGLE_API_KEY` values in `.env`, and a real KMS-backed
+`EnvelopeEncryptor` (Phase 9) to replace the interim `AesGcmEnvelopeEncryptor`.

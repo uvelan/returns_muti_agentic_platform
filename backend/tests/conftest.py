@@ -97,6 +97,7 @@ def test_settings(
     # Mongo-dependent tests can exercise the real replica set without rewriting its
     # advertised host) sets this to the compose service name, e.g. "mongodb".
     mongo_host = os.getenv("PLATFORM_TEST_MONGO_HOST", "localhost")
+    temporal_target = os.getenv("PLATFORM_TEST_TEMPORAL_TARGET", "localhost:7233")
 
     return Settings(
         _env_file=str(REPOSITORY_ROOT / ".env"),
@@ -120,7 +121,7 @@ def test_settings(
         google_standard_models=["models/gemini-3.6-flash"],
         nvidia_api_keys=[SecretStr(_required_environment_variable("NVIDIA_API_KEY"))],
         google_api_keys=[SecretStr(_required_environment_variable("GOOGLE_API_KEY"))],
-        temporal_target="localhost:7233",
+        temporal_target=temporal_target,
         ai_timeout_seconds=30.0,
         ai_global_timeout_seconds=120.0,
         sqlserver_host="localhost",

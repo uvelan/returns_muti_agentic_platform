@@ -177,6 +177,7 @@ class MongoStructureGateway(Protocol):
         fields: tuple[str, ...],
         unique: bool,
         partial_filter_expression: Mapping[str, Any] | None = None,
+        expire_after_seconds: int | None = None,
     ) -> None: ...
 
 
@@ -212,10 +213,13 @@ class PymongoStructureGateway:
         fields: tuple[str, ...],
         unique: bool,
         partial_filter_expression: Mapping[str, Any] | None = None,
+        expire_after_seconds: int | None = None,
     ) -> None:
         kwargs: dict[str, Any] = {"name": index_name, "unique": unique}
         if partial_filter_expression:
             kwargs["partialFilterExpression"] = dict(partial_filter_expression)
+        if expire_after_seconds is not None:
+            kwargs["expireAfterSeconds"] = expire_after_seconds
         await self._db.get_collection(collection).create_index(
             [(field, 1) for field in fields], **kwargs
         )
@@ -269,6 +273,7 @@ class MongoSystemStoreAdapter:
                     fields=tuple(field for field, _ in declared.keys),
                     unique=declared.unique,
                     partial_filter_expression=declared.partial_filter_expression,
+                    expire_after_seconds=declared.expire_after_seconds,
                 )
                 created.append(declared.name)
                 continue

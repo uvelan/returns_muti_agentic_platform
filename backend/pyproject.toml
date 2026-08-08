@@ -20,6 +20,9 @@ dependencies = [
     "temporalio==1.30.0",
     "httpx==0.28.1",
     "pyyaml==6.0.3",
+    "langgraph==1.2.10",
+    "langgraph-checkpoint==4.2.0",
+    "cryptography==50.0.0",
 ]
 
 [tool.poetry]
