@@ -70,12 +70,18 @@ BEGIN
         disposition VARCHAR(64) NULL,
         row_version_v2 BIGINT NOT NULL CONSTRAINT DF_return_items_row_version_v2 DEFAULT 0,
         updated_at_v2 DATETIME2(3) NOT NULL CONSTRAINT DF_return_items_updated_at_v2 DEFAULT SYSUTCDATETIME();
-
-    UPDATE dbo.return_items
-       SET requested_quantity = quantity,
-           approved_quantity = CASE WHEN item_status IN ('APPROVED','RETURN_CREATED','COMPLETED')
-                                    THEN quantity ELSE NULL END;
 END;
+GO
+
+-- Backfill runs in its own batch: SQL Server resolves DML column references against
+-- the schema snapshot at batch-compile time, so a column added by ALTER TABLE above
+-- cannot be read/written until the next batch. The WHERE clause makes this a no-op on
+-- any migration re-run.
+UPDATE dbo.return_items
+   SET requested_quantity = quantity,
+       approved_quantity = CASE WHEN item_status IN ('APPROVED','RETURN_CREATED','COMPLETED')
+                                THEN quantity ELSE NULL END
+ WHERE requested_quantity IS NULL;
 GO
 
 IF COL_LENGTH('platform.bay_configuration', 'hazardous_allowed') IS NULL
@@ -88,12 +94,14 @@ BEGIN
         capacity_unit VARCHAR(32) NOT NULL CONSTRAINT DF_bay_capacity_unit DEFAULT 'HANDLING_UNIT',
         row_version_v2 BIGINT NOT NULL CONSTRAINT DF_bay_configuration_row_version_v2 DEFAULT 0,
         updated_at DATETIME2(3) NOT NULL CONSTRAINT DF_bay_configuration_updated_at DEFAULT SYSUTCDATETIME();
-
-    UPDATE platform.bay_configuration
-       SET max_handling_unit_count = max_package_count,
-           max_pallet_count = max_package_count
-     WHERE max_handling_unit_count IS NULL OR max_pallet_count IS NULL;
 END;
+GO
+
+-- See the return_items backfill above for why this must be a separate batch.
+UPDATE platform.bay_configuration
+   SET max_handling_unit_count = max_package_count,
+       max_pallet_count = max_package_count
+ WHERE max_handling_unit_count IS NULL OR max_pallet_count IS NULL;
 GO
 
 IF OBJECT_ID(N'platform.bay_reservation', N'U') IS NULL
@@ -141,31 +149,48 @@ BEGIN
             CONSTRAINT DF_bay_assignment_row_version_v2 DEFAULT 0,
         updated_at DATETIME2(3) NOT NULL
             CONSTRAINT DF_bay_assignment_updated_at DEFAULT SYSUTCDATETIME();
+END;
+GO
 
-    UPDATE platform.bay_assignment
-       SET handling_unit_id = CONCAT(return_reference, ':', order_line_id)
-     WHERE handling_unit_id IS NULL;
+-- See the return_items backfill above for why this must be a separate batch.
+UPDATE platform.bay_assignment
+   SET handling_unit_id = CONCAT(return_reference, ':', order_line_id)
+ WHERE handling_unit_id IS NULL;
+GO
 
+IF COLUMNPROPERTY(OBJECT_ID(N'platform.bay_assignment'), 'handling_unit_id', 'AllowsNull') = 1
     ALTER TABLE platform.bay_assignment
         ALTER COLUMN handling_unit_id VARCHAR(128) NOT NULL;
+GO
 
-    IF EXISTS (
-        SELECT 1 FROM sys.key_constraints
-        WHERE parent_object_id = OBJECT_ID(N'platform.bay_assignment')
-          AND name = N'UQ_bay_assignment_return_line'
-    )
-        ALTER TABLE platform.bay_assignment
-            DROP CONSTRAINT UQ_bay_assignment_return_line;
+IF EXISTS (
+    SELECT 1 FROM sys.key_constraints
+    WHERE parent_object_id = OBJECT_ID(N'platform.bay_assignment')
+      AND name = N'UQ_bay_assignment_return_line'
+)
+    ALTER TABLE platform.bay_assignment
+        DROP CONSTRAINT UQ_bay_assignment_return_line;
+GO
 
+IF NOT EXISTS (
+    SELECT 1 FROM sys.key_constraints
+    WHERE parent_object_id = OBJECT_ID(N'platform.bay_assignment')
+      AND name = N'UQ_bay_assignment_return_handling_unit'
+)
     ALTER TABLE platform.bay_assignment
         ADD CONSTRAINT UQ_bay_assignment_return_handling_unit
             UNIQUE (return_reference, handling_unit_id);
+GO
 
+IF NOT EXISTS (
+    SELECT 1 FROM sys.foreign_keys
+    WHERE parent_object_id = OBJECT_ID(N'platform.bay_assignment')
+      AND name = N'FK_bay_assignment_reservation'
+)
     ALTER TABLE platform.bay_assignment
         ADD CONSTRAINT FK_bay_assignment_reservation
             FOREIGN KEY (reservation_id)
             REFERENCES platform.bay_reservation(reservation_id);
-END;
 GO
 
 IF OBJECT_ID(N'platform.return_policy_version', N'U') IS NULL

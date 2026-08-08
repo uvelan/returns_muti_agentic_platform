@@ -829,6 +829,15 @@ ls -l .vault-local/return-platform.token
 python3.13 scripts/apply_neo4j_migrations.py
 ```
 
+### SQL Server schema not current
+
+```bash
+python3.13 scripts/apply_sql_migrations.py
+```
+
+Applies any packaged `backend/src/return_platform/configuration/sql_migrations/NNN_*.sql` files
+not yet recorded in `platform.schema_migrations`; safe to rerun.
+
 ### Phone or email lookup stopped after HMAC rotation
 
 The lookup key is intentionally non-recoverable from graph evidence. Rebuild the

@@ -31,7 +31,8 @@ packages = [
 
 include = [
     { path = "src/return_platform/py.typed", format = ["sdist", "wheel"] },
-    { path = "src/return_platform/data_platform/graph/migrations/*.cypher", format = ["sdist", "wheel"] }
+    { path = "src/return_platform/data_platform/graph/migrations/*.cypher", format = ["sdist", "wheel"] },
+    { path = "src/return_platform/configuration/sql_migrations/*.sql", format = ["sdist", "wheel"] }
 ]
 
 [tool.poetry.group.dev.dependencies]
@@ -41,6 +42,21 @@ ruff = "0.15.21"
 mypy = "2.3.0"
 types-pyyaml = "^6.0.12.20260518"
 pytest-cov = ">=7.1,<8.0"
+
+# PEP 735 dependency group -- the uv-readable equivalent of
+# [tool.poetry.group.dev.dependencies] above. uv sync --all-groups reads this table
+# directly; Poetry does not read [dependency-groups], hence both exist during the
+# migration. Keep the two lists in sync; this group's versions are the source of truth
+# once `poetry.lock`/[tool.poetry] are removed.
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "ruff==0.15.21",
+    "mypy==2.3.0",
+    "types-pyyaml>=6.0.12.20260518",
+    "pytest-cov>=7.1,<8.0",
+]
 
 [build-system]
 requires = ["poetry-core"]

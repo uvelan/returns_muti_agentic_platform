@@ -1,3 +1,5 @@
+FROM ghcr.io/astral-sh/uv:0.11.28 AS uv
+
 FROM python:3.13-slim AS builder
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -7,10 +9,17 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential freetds-dev \
     && rm -rf /var/lib/apt/lists/*
 
+COPY --from=uv /uv /usr/local/bin/uv
+
 WORKDIR /build
-COPY pyproject.toml ./
+COPY pyproject.toml uv.lock ./
 COPY src ./src
-RUN python -m pip wheel --wheel-dir /wheels .
+
+# uv.lock, not this Dockerfile, is the single source of truth for exact (including
+# transitive) dependency versions -- exporting it to a requirements file keeps the
+# image build reproducible across machines instead of re-resolving on every build.
+RUN uv export --frozen --no-dev --no-emit-project --no-hashes -o requirements.txt \
+    && python -m pip wheel --wheel-dir /wheels -r requirements.txt .
 
 FROM python:3.13-slim AS runtime
 

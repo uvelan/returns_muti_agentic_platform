@@ -19,7 +19,13 @@ python3.13 "$ROOT/scripts/linux/ensure_runtime_env_keys.py" --env-file "$ROOT/.e
 python3.13 "$ROOT/scripts/linux/ensure_local_infrastructure_secrets.py"
 python3.13 "$ROOT/scripts/linux/ensure_local_replica_key.py"
 cd "$ROOT/backend"
-if command -v poetry >/dev/null; then
+if command -v uv >/dev/null; then
+  UV_CACHE="$ROOT/.tmp/uv-cache"
+  mkdir -p "$UV_CACHE"
+  # [dependency-groups].dev in backend/pyproject.toml covers pytest/ruff/mypy/etc.,
+  # so --all-groups alone resolves the full dev toolchain from uv.lock.
+  uv sync --project "$ROOT/backend" --all-groups --frozen --cache-dir "$UV_CACHE"
+elif command -v poetry >/dev/null; then
   poetry env use python3.13
   poetry install --sync
 else

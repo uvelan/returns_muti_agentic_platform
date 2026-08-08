@@ -33,10 +33,10 @@ try {
   if (Get-Command uv -ErrorAction SilentlyContinue) {
     $uvCache = Join-Path $Root ".tmp\uv-cache"
     New-Item -ItemType Directory -Path $uvCache -Force | Out-Null
+    # [dependency-groups].dev in backend/pyproject.toml covers pytest/ruff/mypy/etc.,
+    # so --all-groups alone resolves the full dev toolchain from uv.lock.
     uv sync --project (Join-Path $Root "backend") --all-groups --frozen --cache-dir $uvCache
     if ($LASTEXITCODE -ne 0) { throw "Backend dependency synchronization failed." }
-    uv pip install --python (Join-Path $Root "backend\.venv\Scripts\python.exe") --cache-dir $uvCache pytest==9.1.1 pytest-asyncio==1.4.0 pytest-cov==7.1.0 ruff==0.15.21 mypy==2.3.0 "types-pyyaml>=6.0.12.20260518"
-    if ($LASTEXITCODE -ne 0) { throw "Backend development dependency installation failed." }
   } elseif (Get-Command poetry -ErrorAction SilentlyContinue) {
     poetry env use $python.Source
     if ($LASTEXITCODE -ne 0) { throw "Poetry could not select Python 3.13." }

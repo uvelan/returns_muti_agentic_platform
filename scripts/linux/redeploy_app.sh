@@ -60,12 +60,16 @@ fi
 if [[ "$install_dependencies" == true ]]; then
   echo "Synchronizing locked backend dependencies..."
   cd "$REPO_ROOT/backend"
-  if command -v poetry >/dev/null 2>&1; then
+  if command -v uv >/dev/null 2>&1; then
+    # [dependency-groups].dev in backend/pyproject.toml covers pytest/ruff/mypy/etc.,
+    # so --all-groups alone resolves the full dev toolchain from uv.lock.
+    uv sync --project "$REPO_ROOT/backend" --all-groups --frozen
+  elif command -v poetry >/dev/null 2>&1; then
     poetry install --sync --no-interaction
   elif [[ -x "$RUNTIME_ROOT/tooling/bin/poetry" ]]; then
     "$RUNTIME_ROOT/tooling/bin/poetry" install --sync --no-interaction
   else
-    echo "Poetry is required to install backend dependencies." >&2
+    echo "uv or Poetry is required to install backend dependencies." >&2
     exit 2
   fi
 

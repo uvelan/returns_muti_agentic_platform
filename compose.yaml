@@ -183,8 +183,6 @@ services:
     depends_on:
       sqlserver:
         condition: service_healthy
-    volumes:
-      - ./infra/sqlserver/init:/init:ro
     command:
       - /bin/bash
       - -ec
@@ -201,8 +199,6 @@ services:
           fi
           sleep 5
         done
-        /opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -b -i /init/001_return_business_state.sql
-        /opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -b -i /init/002_domain_models.sql
     restart: "no"
     networks: [platform]
     logging: *default-logging
@@ -369,6 +365,7 @@ services:
       - -ec
       - >-
         python /app/scripts/apply_neo4j_migrations.py &&
+        python /app/scripts/apply_sql_migrations.py &&
         if [ "$${PLATFORM_VALIDATE_AI_ON_STARTUP}" = "true" ]; then
           python /app/scripts/bootstrap_graph_configuration.py --if-missing --validate-ai;
         else
@@ -379,6 +376,8 @@ services:
         condition: service_healthy
       vault:
         condition: service_healthy
+      sqlserver-init:
+        condition: service_completed_successfully
     restart: "no"
 
   seed-runner:
@@ -403,7 +402,9 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
-      seed-runner:
+      runtime-configuration-init:
+        condition: service_completed_successfully
+      mongodb-rs-init:
         condition: service_completed_successfully
       temporal:
         condition: service_healthy
@@ -421,7 +422,9 @@ services:
     <<: *backend-base
     command: ["python", "/app/scripts/run_return_workflow_worker.py"]
     depends_on:
-      seed-runner:
+      runtime-configuration-init:
+        condition: service_completed_successfully
+      mongodb-rs-init:
         condition: service_completed_successfully
       temporal:
         condition: service_healthy
@@ -431,7 +434,9 @@ services:
     <<: *backend-base
     command: ["python", "/app/scripts/run_return_orchestrator.py"]
     depends_on:
-      seed-runner:
+      runtime-configuration-init:
+        condition: service_completed_successfully
+      mongodb-rs-init:
         condition: service_completed_successfully
       temporal:
         condition: service_healthy

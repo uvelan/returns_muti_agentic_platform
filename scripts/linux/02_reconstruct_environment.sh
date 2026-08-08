@@ -2,7 +2,9 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 require_command python3.13
-require_command poetry
+if ! command -v uv >/dev/null; then
+  require_command poetry
+fi
 require_command node
 require_command npm
 [[ "$(python3.13 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')" == "3.13" ]] || {
@@ -18,13 +20,22 @@ require_command npm
   exit 2
 }
 cd "$REPO_ROOT/backend"
-poetry env use "$(command -v python3.13)"
-poetry install --sync --no-interaction
-poetry_python_version="$(
-  poetry run python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
-)"
-[[ "$poetry_python_version" == "3.13" ]] || {
-  echo "Poetry backend Python 3.13 is required; found $poetry_python_version." >&2
+if command -v uv >/dev/null; then
+  # [dependency-groups].dev in backend/pyproject.toml covers pytest/ruff/mypy/etc.,
+  # so --all-groups alone resolves the full dev toolchain from uv.lock.
+  uv sync --project "$REPO_ROOT/backend" --all-groups --frozen --python "$(command -v python3.13)"
+  backend_python_version="$(
+    uv run --project "$REPO_ROOT/backend" python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
+  )"
+else
+  poetry env use "$(command -v python3.13)"
+  poetry install --sync --no-interaction
+  backend_python_version="$(
+    poetry run python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'
+  )"
+fi
+[[ "$backend_python_version" == "3.13" ]] || {
+  echo "Backend Python 3.13 is required; found $backend_python_version." >&2
   exit 2
 }
 cd "$REPO_ROOT/frontend"
