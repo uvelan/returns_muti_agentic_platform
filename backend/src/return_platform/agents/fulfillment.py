@@ -4,16 +4,30 @@ from __future__ import annotations
 
 from return_platform.agents.contracts import (
     AgentDecisionView,
+    AgentExecutionContext,
     FulfillmentAssessment,
     FulfillmentAssessmentRequest,
 )
+from return_platform.agents.contracts.descriptor import AgentDescriptor
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 
 
 class ReturnFulfillmentAgent:
+    """This agent does not directly invoke another agent."""
+
     def __init__(self, configuration: ReturnPlatformConfiguration) -> None:
         self._root = configuration
         self._config = configuration.agents["return_fulfillment"]
+
+    @property
+    def descriptor(self) -> AgentDescriptor:
+        return AgentDescriptor.from_configuration("return_fulfillment", self._config)
+
+    async def execute(
+        self, request: FulfillmentAssessmentRequest, context: AgentExecutionContext
+    ) -> FulfillmentAssessment:
+        del context
+        return self.assess(request)
 
     def assess(self, request: FulfillmentAssessmentRequest) -> FulfillmentAssessment:
         raw = (request.rawReturnStatus or "UNKNOWN").strip().upper()

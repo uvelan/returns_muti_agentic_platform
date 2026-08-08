@@ -6,19 +6,33 @@ import re
 
 from return_platform.agents.contracts import (
     AgentDecisionView,
+    AgentExecutionContext,
     DiscoveryAssessment,
     DiscoveryAssessmentRequest,
     OrderSource,
     RankedDiscoveryCandidate,
 )
+from return_platform.agents.contracts.descriptor import AgentDescriptor
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 
 
 class OrderDiscoveryAgent:
+    """This agent does not directly invoke another agent."""
+
     def __init__(self, configuration: ReturnPlatformConfiguration) -> None:
         self._root = configuration
         self._config = configuration.agents["order_discovery"]
         self._web_order = re.compile(configuration.discovery.web_order_pattern)
+
+    @property
+    def descriptor(self) -> AgentDescriptor:
+        return AgentDescriptor.from_configuration("order_discovery", self._config)
+
+    async def execute(
+        self, request: DiscoveryAssessmentRequest, context: AgentExecutionContext
+    ) -> DiscoveryAssessment:
+        del context
+        return self.assess(request)
 
     def _source(self, evidence: dict[str, str]) -> OrderSource:
         order = evidence.get("order_number", "").strip().upper()

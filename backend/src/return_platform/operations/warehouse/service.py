@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from return_platform.agents.bay_assignment import BayAssignmentAgent
 from return_platform.agents.contracts import (
     BayAssessment,
     BayAssessmentRequest,
     BayCandidateInput,
     NormalizedReturnMethod,
 )
+from return_platform.agents.registry import AgentRegistry
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
@@ -41,7 +41,7 @@ class WarehousePlacementService:
     ) -> None:
         self._repository = repository
         self._sql = sql
-        self._agent = BayAssignmentAgent(configuration)
+        self._agent = AgentRegistry.build(configuration).bay_assignment
 
     async def recommend(
         self,

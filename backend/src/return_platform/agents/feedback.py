@@ -4,16 +4,30 @@ from __future__ import annotations
 
 from return_platform.agents.contracts import (
     AgentDecisionView,
+    AgentExecutionContext,
     FeedbackAssessment,
     FeedbackAssessmentRequest,
 )
+from return_platform.agents.contracts.descriptor import AgentDescriptor
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 
 
 class FeedbackLearningAgent:
+    """This agent does not directly invoke another agent."""
+
     def __init__(self, configuration: ReturnPlatformConfiguration) -> None:
         self._root = configuration
         self._config = configuration.agents["feedback_learning"]
+
+    @property
+    def descriptor(self) -> AgentDescriptor:
+        return AgentDescriptor.from_configuration("feedback_learning", self._config)
+
+    async def execute(
+        self, request: FeedbackAssessmentRequest, context: AgentExecutionContext
+    ) -> FeedbackAssessment:
+        del context
+        return self.assess(request)
 
     def assess(self, request: FeedbackAssessmentRequest) -> FeedbackAssessment:
         recommendations: list[str] = []

@@ -94,24 +94,77 @@ def gates_for(files: set[str]) -> list[GateCommand]:
     backend = REPO_ROOT / "backend"
     gates: list[GateCommand] = []
 
-    backend_py = sorted(f for f in files if _matches(f, "backend/src/", "backend/tests/") and f.endswith(".py"))
+    backend_py = sorted(
+        f
+        for f in files
+        if _matches(f, "backend/src/", "backend/tests/")
+        and f.endswith(".py")
+        and (REPO_ROOT / f).is_file()  # a deleted file is still a "changed" file, but
+        # ruff can't format/check something that no longer exists on disk.
+    )
     if backend_py:
         rel = [f[len("backend/") :] for f in backend_py]
-        gates.append(GateCommand("backend-ruff-format", ["poetry", "run", "ruff", "format", "--check", *rel], backend, rel))
-        gates.append(GateCommand("backend-ruff-check", ["poetry", "run", "ruff", "check", *rel], backend, rel))
-        gates.append(GateCommand("backend-mypy", ["poetry", "run", "mypy", "src"], backend, rel))
-        gates.append(GateCommand("backend-compileall", ["poetry", "run", "python", "-m", "compileall", "-q", "src"], backend, rel))
-        gates.append(GateCommand("backend-import-check", ["poetry", "run", "python", "-c", "import return_platform.main"], backend, rel))
+        gates.append(
+            GateCommand(
+                "backend-ruff-format",
+                ["poetry", "run", "ruff", "format", "--check", *rel],
+                backend,
+                rel,
+            )
+        )
+        gates.append(
+            GateCommand(
+                "backend-ruff-check",
+                ["poetry", "run", "ruff", "check", *rel],
+                backend,
+                rel,
+            )
+        )
+        gates.append(
+            GateCommand("backend-mypy", ["poetry", "run", "mypy", "src"], backend, rel)
+        )
+        gates.append(
+            GateCommand(
+                "backend-compileall",
+                ["poetry", "run", "python", "-m", "compileall", "-q", "src"],
+                backend,
+                rel,
+            )
+        )
+        gates.append(
+            GateCommand(
+                "backend-import-check",
+                ["poetry", "run", "python", "-c", "import return_platform.main"],
+                backend,
+                rel,
+            )
+        )
 
     frontend_files = sorted(f for f in files if f.startswith("frontend/src/"))
     if frontend_files:
         frontend = REPO_ROOT / "frontend"
-        gates.append(GateCommand("frontend-lint", ["npm", "run", "lint"], frontend, frontend_files))
-        gates.append(GateCommand("frontend-typecheck", ["npm", "run", "typecheck"], frontend, frontend_files))
-        gates.append(GateCommand("frontend-build", ["npm", "run", "build"], frontend, frontend_files))
+        gates.append(
+            GateCommand(
+                "frontend-lint", ["npm", "run", "lint"], frontend, frontend_files
+            )
+        )
+        gates.append(
+            GateCommand(
+                "frontend-typecheck",
+                ["npm", "run", "typecheck"],
+                frontend,
+                frontend_files,
+            )
+        )
+        gates.append(
+            GateCommand(
+                "frontend-build", ["npm", "run", "build"], frontend, frontend_files
+            )
+        )
 
     contract_relevant = [
-        f for f in files
+        f
+        for f in files
         if _matches(f, "backend/src/return_platform/api/", "backend/openapi/")
         or f.endswith("openapi.json")
     ]
@@ -119,7 +172,19 @@ def gates_for(files: set[str]) -> list[GateCommand]:
         gates.append(
             GateCommand(
                 "openapi-drift",
-                ["node", "scripts/check-bundle.js"] if (REPO_ROOT / "frontend" / "scripts" / "check-bundle.js").exists() else ["python", "scripts/check_openapi_drift.py"],
+                # check_openapi_drift.py imports return_platform.main, so it needs an
+                # interpreter with the backend's dependencies installed -- `poetry -C
+                # backend run` gives it that. `-C backend` also changes the *subprocess's*
+                # cwd to backend/, so the script path must be absolute (it lives at the
+                # repo root, not under backend/).
+                [
+                    "poetry",
+                    "-C",
+                    "backend",
+                    "run",
+                    "python",
+                    str(REPO_ROOT / "scripts" / "check_openapi_drift.py"),
+                ],
                 REPO_ROOT,
                 contract_relevant,
             )
@@ -130,28 +195,59 @@ def gates_for(files: set[str]) -> list[GateCommand]:
         gates.append(
             GateCommand(
                 "canonical-config-validation",
-                ["poetry", "run", "pytest", "tests/configuration/test_canonical_application.py", "-q"],
+                [
+                    "poetry",
+                    "run",
+                    "pytest",
+                    "tests/configuration/test_canonical_application.py",
+                    "-q",
+                ],
                 backend,
                 config_relevant,
             )
         )
 
     infra_relevant = [
-        f for f in files
+        f
+        for f in files
         if f == "compose.yaml" or _matches(f, "scripts/linux/", "scripts/windows/")
     ]
     if infra_relevant:
-        gates.append(GateCommand("compose-config", ["docker", "compose", "config", "-q"], REPO_ROOT, infra_relevant))
+        gates.append(
+            GateCommand(
+                "compose-config",
+                ["docker", "compose", "config", "-q"],
+                REPO_ROOT,
+                infra_relevant,
+            )
+        )
 
     architecture_relevant = [
-        f for f in files
-        if _matches(f, "backend/src/return_platform/platform/") or "test_no_module_cross_imports" in f
+        f
+        for f in files
+        if _matches(
+            f,
+            "backend/src/return_platform/platform/",
+            "backend/src/return_platform/agents/",
+        )
+        or "test_no_module_cross_imports" in f
+        or "test_no_cross_agent_imports" in f
+        or "test_context_has_no_module_fields" in f
     ]
     if architecture_relevant:
         gates.append(
             GateCommand(
                 "architecture-invariants",
-                ["poetry", "run", "pytest", "tests/platform/test_no_module_cross_imports.py", "tests/platform/test_layering.py", "-q"],
+                [
+                    "poetry",
+                    "run",
+                    "pytest",
+                    "tests/platform/test_no_module_cross_imports.py",
+                    "tests/platform/test_layering.py",
+                    "tests/agents/test_no_cross_agent_imports.py",
+                    "tests/agents/test_context_has_no_module_fields.py",
+                    "-q",
+                ],
                 backend,
                 architecture_relevant,
             )
@@ -163,7 +259,11 @@ def gates_for(files: set[str]) -> list[GateCommand]:
 def _file_digest(paths: list[str]) -> str:
     hasher = hashlib.sha256()
     for rel_path in sorted(paths):
-        full = REPO_ROOT / rel_path if not rel_path.startswith("backend/") else REPO_ROOT / rel_path
+        full = (
+            REPO_ROOT / rel_path
+            if not rel_path.startswith("backend/")
+            else REPO_ROOT / rel_path
+        )
         try:
             hasher.update(full.read_bytes())
         except OSError:
@@ -174,7 +274,11 @@ def _file_digest(paths: list[str]) -> str:
 
 def _lockfile_digest() -> str:
     hasher = hashlib.sha256()
-    for name in ("backend/poetry.lock", "backend/uv.lock", "frontend/package-lock.json"):
+    for name in (
+        "backend/poetry.lock",
+        "backend/uv.lock",
+        "frontend/package-lock.json",
+    ):
         path = REPO_ROOT / name
         if path.exists():
             hasher.update(path.read_bytes())
@@ -213,7 +317,9 @@ def run_gate(gate: GateCommand, head: str, force: bool) -> bool:
     RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
     if passed:
         receipt_file.write_text(
-            json.dumps({"gate": gate.name, "status": "PASS", "command": gate.command}, indent=2),
+            json.dumps(
+                {"gate": gate.name, "status": "PASS", "command": gate.command}, indent=2
+            ),
             encoding="utf-8",
         )
         print(f"[pass] {gate.name}")
@@ -227,7 +333,9 @@ def run_gate(gate: GateCommand, head: str, force: bool) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", default="origin/refactor/unified-return-platform")
-    parser.add_argument("--force", action="store_true", help="Ignore cached PASS receipts")
+    parser.add_argument(
+        "--force", action="store_true", help="Ignore cached PASS receipts"
+    )
     args = parser.parse_args()
 
     try:

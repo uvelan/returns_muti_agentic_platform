@@ -13,7 +13,6 @@ from return_platform.operations.seed_manifest import (
 )
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-REPOSITORY_ROOT = BACKEND_ROOT.parent
 
 
 def _frozenset_assignment(name: str) -> frozenset[str]:
@@ -175,9 +174,9 @@ def test_schema_registry_models_every_required_physical_store_and_graph_type() -
 
 
 def test_sql_registry_tables_are_created_by_versioned_migrations() -> None:
+    migrations_dir = BACKEND_ROOT / "src" / "return_platform" / "configuration" / "sql_migrations"
     migration_text = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in sorted((REPOSITORY_ROOT / "infra" / "sqlserver" / "init").glob("*.sql"))
+        path.read_text(encoding="utf-8") for path in sorted(migrations_dir.glob("*.sql"))
     ).lower()
     registry = load_schema_registry(BACKEND_ROOT / "config" / "schema_registry.yaml")
     for asset in registry.assets:

@@ -4,18 +4,32 @@ from __future__ import annotations
 
 from return_platform.agents.contracts import (
     AgentDecisionView,
+    AgentExecutionContext,
     NormalizedReturnMethod,
     ProductPresence,
     ReturnWorkflowAssessment,
     ReturnWorkflowAssessmentRequest,
 )
+from return_platform.agents.contracts.descriptor import AgentDescriptor
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 
 
 class ReturnWorkflowAgent:
+    """This agent does not directly invoke another agent."""
+
     def __init__(self, configuration: ReturnPlatformConfiguration) -> None:
         self._root = configuration
         self._config = configuration.agents["return_workflow"]
+
+    @property
+    def descriptor(self) -> AgentDescriptor:
+        return AgentDescriptor.from_configuration("return_workflow", self._config)
+
+    async def execute(
+        self, request: ReturnWorkflowAssessmentRequest, context: AgentExecutionContext
+    ) -> ReturnWorkflowAssessment:
+        del context
+        return self.assess(request)
 
     @staticmethod
     def _recommended_method(request: ReturnWorkflowAssessmentRequest) -> NormalizedReturnMethod:

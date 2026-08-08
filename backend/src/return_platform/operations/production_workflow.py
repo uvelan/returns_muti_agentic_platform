@@ -15,8 +15,7 @@ from return_platform.agents.contracts import (
     FulfillmentAssessmentRequest,
     FulfillmentFact,
 )
-from return_platform.agents.feedback import FeedbackLearningAgent
-from return_platform.agents.fulfillment import ReturnFulfillmentAgent
+from return_platform.agents.registry import AgentRegistry
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 from return_platform.operations.models import ReturnSessionView
 from return_platform.operations.repository import OperationalRepository
@@ -48,8 +47,9 @@ class ProductionWorkflowCoordinator:
         self._repository = repository
         self._configuration = configuration
         self._task_queue = task_queue
-        self._fulfillment_agent = ReturnFulfillmentAgent(configuration)
-        self._feedback_agent = FeedbackLearningAgent(configuration)
+        registry = AgentRegistry.build(configuration)
+        self._fulfillment_agent = registry.return_fulfillment
+        self._feedback_agent = registry.feedback_learning
 
     async def ensure_started(
         self,

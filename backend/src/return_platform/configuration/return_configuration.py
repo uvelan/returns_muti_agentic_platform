@@ -23,6 +23,17 @@ class AgentConfiguration(StrictConfigModel):
     ai_assisted: bool
     human_confirmation_required: bool
     capabilities: tuple[NonBlank, ...] = Field(min_length=1)
+    implementation_id: NonBlank
+    task_queue: NonBlank
+    state_namespace: NonBlank
+    prompt_ref: NonBlank | None = None
+    policy_ref: NonBlank | None = None
+    ai_route_ref: NonBlank | None = None
+    timeout_seconds: float = Field(default=30.0, gt=0.0)
+    retry_max_attempts: int = Field(default=3, ge=1)
+    max_concurrency: int = Field(default=10, ge=1)
+    requests_per_minute: int = Field(default=60, ge=1)
+    circuit_breaker_failure_threshold: int = Field(default=5, ge=1)
 
 
 class AnchorExtractorConfiguration(StrictConfigModel):

@@ -7,17 +7,44 @@ from typing import Any
 
 from return_platform.agents.contracts import (
     AgentDecisionView,
+    AgentExecutionContext,
     OrderAnalysisAssessment,
     OrderAnalysisRequest,
 )
+from return_platform.agents.contracts.descriptor import AgentDescriptor
 from return_platform.ai_gateway.service import AIGatewayService
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 
 
 class OrderAnalysisAgent:
+    """This agent does not directly invoke another agent."""
+
     def __init__(self, configuration: ReturnPlatformConfiguration) -> None:
         self._root = configuration
         self._config = configuration.agents["order_analysis"]
+
+    @property
+    def descriptor(self) -> AgentDescriptor:
+        return AgentDescriptor.from_configuration("order_analysis", self._config)
+
+    async def execute(
+        self, request: OrderAnalysisRequest, context: AgentExecutionContext
+    ) -> OrderAnalysisAssessment:
+        """Not yet wired for generic dispatch.
+
+        `analyze()` needs a concrete AIGatewayService, and AgentExecutionContext
+        deliberately carries no `.ai` field (design R2a) -- the intended path is
+        resolving an AgentAiPort from `context.capabilities`, but no adapter under
+        bootstrap/adapters/ publishes CapabilityName.AI_INVOCATION for agents yet.
+        Call `analyze()`/`disambiguate()` directly (as every current caller does)
+        until that publication exists.
+        """
+        del request, context
+        raise NotImplementedError(
+            "OrderAnalysisAgent.execute() requires an AgentAiPort published under "
+            "CapabilityName.AI_INVOCATION, which no adapter provides yet. "
+            "Call analyze()/disambiguate() directly instead."
+        )
 
     async def analyze(
         self, request: OrderAnalysisRequest, ai_gateway: AIGatewayService
@@ -39,16 +66,11 @@ class OrderAnalysisAgent:
             )
 
         payload = {
-            "candidates": [
-                candidate.model_dump(mode="json") for candidate in request.candidates
-            ],
+            "candidates": [candidate.model_dump(mode="json") for candidate in request.candidates],
             "evidence": request.suppliedEvidence,
-            "conflicts": [
-                anchor for c in request.candidates for anchor in c.conflictingAnchors
-            ],
+            "conflicts": [anchor for c in request.candidates for anchor in c.conflictingAnchors],
             "knownFacts": [
-                f"Candidate {c.candidateId} source is {c.orderSource}"
-                for c in request.candidates
+                f"Candidate {c.candidateId} source is {c.orderSource}" for c in request.candidates
             ],
         }
 
@@ -102,7 +124,7 @@ class OrderAnalysisAgent:
         user_response: str,
         allowed_fields: list[dict[str, Any]],
         ai_gateway: AIGatewayService,
-        session_id: str
+        session_id: str,
     ) -> tuple[str | None, str | None]:
         """
         Aggregate data and ask AI to select candidate or pick best question.
@@ -134,7 +156,10 @@ class OrderAnalysisAgent:
                     val = c.orderProperties[candidate_field]
                 elif hasattr(c, "lines") and c.lines:
                     for line in c.lines:
-                        if hasattr(line, "productProperties") and candidate_field in line.productProperties:
+                        if (
+                            hasattr(line, "productProperties")
+                            and candidate_field in line.productProperties
+                        ):
                             val = line.productProperties[candidate_field]
                             if val:
                                 distinct_values.add(str(val))
@@ -152,7 +177,7 @@ class OrderAnalysisAgent:
         payload = {
             "aggregatedSummary": summary,
             "userMessage": user_response,
-            "allowedFields": [f["field"] for f in allowed_fields]
+            "allowedFields": [f["field"] for f in allowed_fields],
         }
 
         evaluation = await ai_gateway.evaluate(
@@ -172,7 +197,11 @@ class OrderAnalysisAgent:
         except Exception:
             pass
 
-        if trace.decision and trace.decision.value != "AMBIGUOUS" and trace.decision.value != "UNKNOWN":
+        if (
+            trace.decision
+            and trace.decision.value != "AMBIGUOUS"
+            and trace.decision.value != "UNKNOWN"
+        ):
             # AI identified a specific candidate
             return trace.decision.value, None
 

@@ -20,7 +20,7 @@ from return_platform.agents.contracts import (
     ReturnWorkflowAssessment,
     ReturnWorkflowAssessmentRequest,
 )
-from return_platform.agents.registry import ReturnAgentRegistry
+from return_platform.agents.registry import AgentRegistry
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
 from return_platform.data_console.api.auth import require_read_roles, require_write_roles
 from return_platform.resources import RuntimeResources
@@ -40,8 +40,8 @@ def _loaded(request: Request) -> LoadedReturnConfiguration:
     return value
 
 
-def _registry(request: Request) -> ReturnAgentRegistry:
-    return ReturnAgentRegistry.build(_loaded(request).configuration)
+def _registry(request: Request) -> AgentRegistry:
+    return AgentRegistry.build(_loaded(request).configuration)
 
 
 async def _persist_decision(request: Request, decision: Any, *, actor_id: str) -> None:

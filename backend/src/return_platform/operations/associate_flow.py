@@ -28,7 +28,7 @@ from return_platform.agents.contracts import (
     ReturnItemInput,
     ReturnWorkflowAssessmentRequest,
 )
-from return_platform.agents.registry import ReturnAgentRegistry
+from return_platform.agents.registry import AgentRegistry
 from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
 from return_platform.ai_gateway.routing import AIRoutePool
 from return_platform.ai_gateway.service import AIGatewayRepository, AIGatewayService
@@ -415,7 +415,7 @@ class AssociateConversationService:
                 generic_disambiguation=progressive.dialogue_states.generic_disambiguation,
             ),
         )
-        self._registry = ReturnAgentRegistry.build(self._return_configuration)
+        self._registry = AgentRegistry.build(self._return_configuration)
         self._order_discovery_agent = self._registry.order_discovery
         self._return_workflow_agent = self._registry.return_workflow
         self._order_analysis_agent = self._registry.order_analysis
