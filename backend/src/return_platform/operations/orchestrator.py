@@ -15,6 +15,7 @@ from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguratio
 from return_platform.ai_gateway.routing import AIRoutePool
 from return_platform.ai_gateway.service import AIGatewayService
 from return_platform.canonical.operations import ContextSnapshot, WorkflowStage
+from return_platform.configuration.domain.workflow import WorkflowDefinition
 from return_platform.configuration.return_configuration import (
     ReturnPlatformConfiguration,
     load_return_configuration,
@@ -42,6 +43,7 @@ from return_platform.workflows.feedback_learning import build_feedback_learning_
 from return_platform.workflows.fulfillment_tracking import build_fulfillment_tracking_result
 from return_platform.workflows.return_request import build_return_request_result
 from return_platform.workflows.return_workflow import (
+    DEFAULT_STAGE_SEQUENCE,
     ReturnWorkflow,
     ReturnWorkflowAdvanceCommand,
     ReturnWorkflowConfigurationVersion,
@@ -69,6 +71,27 @@ _STAGE_PROGRESS: Final = {
     WorkflowStage.FEEDBACK_LEARNING: 96,
     WorkflowStage.COMPLETED: 100,
 }
+
+
+def _stage_sequence_from_definition(
+    definition: WorkflowDefinition,
+) -> tuple[WorkflowStage, ...]:
+    """Resolve a pinned WorkflowDefinition's stage_ids() into WorkflowStage order.
+
+    Callers that hold a pinned RuntimeConfigurationView (the manifest/release
+    system `config/workflows/return_session.yaml` belongs to) can pass its
+    resolved `workflow.workflow["return_session"]` here. Nothing in this
+    codebase resolves that bridge today -- ReturnOrchestrator's other
+    dependencies (self._return_configuration, AgentRegistry construction) still
+    come from the legacy single-file ReturnPlatformConfiguration -- so this
+    stays an explicit opt-in rather than a default.
+    """
+    try:
+        return tuple(WorkflowStage(stage_id) for stage_id in definition.stage_ids())
+    except ValueError as exc:
+        raise ValueError(
+            f"workflow definition contains a stage ID that is not a WorkflowStage: {exc}"
+        ) from exc
 
 
 def _command_id(session_id: str, stage: WorkflowStage) -> str:
@@ -104,11 +127,17 @@ class ReturnOrchestrator:
         return_configuration: ReturnPlatformConfiguration | None = None,
         ai_gateway_configuration: LoadedAIGatewayConfiguration | None = None,
         ai_gateway_route_pool: AIRoutePool | None = None,
+        workflow_definition: WorkflowDefinition | None = None,
     ) -> None:
         self._repository = repository
         self._temporal = temporal
         self._settings = settings
         self._worker_id = worker_id
+        self._stage_sequence = (
+            _stage_sequence_from_definition(workflow_definition)
+            if workflow_definition is not None
+            else DEFAULT_STAGE_SEQUENCE
+        )
         from return_platform.ai_gateway.service import AIGatewayRepository
 
         self._ai = AIGatewayService(
@@ -214,6 +243,7 @@ class ReturnOrchestrator:
                         version=_CONFIGURATION_VERSION,
                     ),
                 ),
+                stage_sequence=self._stage_sequence,
             )
             try:
                 handle = await self._temporal.start_workflow(

@@ -268,6 +268,60 @@ def _command(index: int, stage: WorkflowStage) -> ReturnWorkflowAdvanceCommand:
     )
 
 
+def test_configured_stage_sequence_overrides_the_default() -> None:
+    """Stage sequencing is a first-class input, not a hardcoded module constant --
+    a shorter, differently-configured sequence produces genuinely different
+    real behavior (fewer required stages, an earlier COMPLETED transition)."""
+    custom_sequence = (
+        WorkflowStage.INTAKE,
+        WorkflowStage.ORDER_DISCOVERY,
+        WorkflowStage.COMPLETED,
+    )
+    workflow_input = ReturnWorkflowInput(
+        session_id=_SESSION_ID,
+        correlation_id=_CORRELATION_ID,
+        workflow_version="1.0",
+        configuration_versions=(ReturnWorkflowConfigurationVersion("workflow", "return-v1"),),
+        stage_sequence=custom_sequence,
+    )
+    state = start_return_workflow_execution(workflow_input)
+    assert state.current_stage is WorkflowStage.INTAKE
+
+    state = advance_return_workflow(state, _command(0, WorkflowStage.INTAKE))
+    assert state.current_stage is WorkflowStage.ORDER_DISCOVERY
+    assert state.status is ReturnWorkflowStatus.RUNNING
+
+    state = advance_return_workflow(state, _command(1, WorkflowStage.ORDER_DISCOVERY))
+    assert state.current_stage is WorkflowStage.COMPLETED
+    assert state.status is ReturnWorkflowStatus.COMPLETED
+
+
+def test_empty_stage_sequence_is_rejected() -> None:
+    workflow_input = ReturnWorkflowInput(
+        session_id=_SESSION_ID,
+        correlation_id=_CORRELATION_ID,
+        workflow_version="1.0",
+        configuration_versions=(ReturnWorkflowConfigurationVersion("workflow", "return-v1"),),
+        stage_sequence=(),
+    )
+    with pytest.raises(ReturnWorkflowTransitionError) as excinfo:
+        start_return_workflow_execution(workflow_input)
+    assert excinfo.value.code is ReturnWorkflowErrorCode.INVALID_CONFIGURATION
+
+
+def test_duplicate_stage_in_sequence_is_rejected() -> None:
+    workflow_input = ReturnWorkflowInput(
+        session_id=_SESSION_ID,
+        correlation_id=_CORRELATION_ID,
+        workflow_version="1.0",
+        configuration_versions=(ReturnWorkflowConfigurationVersion("workflow", "return-v1"),),
+        stage_sequence=(WorkflowStage.INTAKE, WorkflowStage.INTAKE),
+    )
+    with pytest.raises(ReturnWorkflowTransitionError) as excinfo:
+        start_return_workflow_execution(workflow_input)
+    assert excinfo.value.code is ReturnWorkflowErrorCode.INVALID_CONFIGURATION
+
+
 def test_starts_with_execution_only_intake_state() -> None:
     state = start_return_workflow_execution(_input())
 
@@ -279,6 +333,7 @@ def test_starts_with_execution_only_intake_state() -> None:
         "correlation_id",
         "workflow_version",
         "configuration_versions",
+        "stage_sequence",
         "current_stage",
         "status",
         "completed_stages",

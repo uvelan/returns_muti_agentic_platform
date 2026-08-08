@@ -149,11 +149,16 @@ class LegacyCompatibilityAdapter:
                         f"WORKFLOW module '{manifest_id}' payload is not a mapping"
                     )
                 stages_raw = payload.get("stages", [])
-                workflows_map[wf_key] = WorkflowDefinition(
-                    context_only_handoffs=payload.get("context_only_handoffs", True),
-                    direct_agent_calls_allowed=payload.get("direct_agent_calls_allowed", False),
-                    stages=stages_raw if isinstance(stages_raw, list) else [],
-                )
+                try:
+                    workflows_map[wf_key] = WorkflowDefinition(
+                        context_only_handoffs=payload.get("context_only_handoffs", True),
+                        direct_agent_calls_allowed=payload.get("direct_agent_calls_allowed", False),
+                        stages=stages_raw if isinstance(stages_raw, list) else [],
+                    )
+                except (ValidationError, TypeError) as exc:
+                    raise ConfigurationValidationError(
+                        f"WORKFLOW module '{manifest_id}' payload failed validation: {exc}"
+                    ) from exc
 
             elif module_type == "SOURCE":
                 src_key = manifest_id.removeprefix("source.")

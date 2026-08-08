@@ -28,6 +28,8 @@ modules:
     path: policies/return_eligibility.yaml
   workflow.return_session:
     path: workflows/return_session.yaml
+  workflow.example_agent_dispatch:
+    path: workflows/example_agent_dispatch.yaml
   sync.order_partial:
     path: sync/order_partial.yaml
   sync.order_full:

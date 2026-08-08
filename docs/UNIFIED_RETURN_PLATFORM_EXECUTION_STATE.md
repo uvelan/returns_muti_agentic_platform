@@ -1,14 +1,18 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Verified HEAD: pending this slice's commit (previous: `c3e7fc2`)
-Last pushed green commit: `c3e7fc2` (`refactor(agents): standardize independent agent plugin contract`)
-Slice: **Phase 5A / Wave B2 — LangGraph durable reasoning foundation**
+Verified HEAD: pending this slice's commit (previous: `2b86e4c`)
+Last pushed green commit: `2b86e4c` (`feat(platform): add LangGraph durable reasoning foundation`)
+Slice: **Phase 6 / Wave B3 — Temporal return orchestration (stage/handler config engine)**
 Status: DONE
+
+## Phase 5A / Wave B2 — LangGraph durable reasoning foundation
+
+Status: DONE (see git history for `2b86e4c`; superseded as "current slice" by Phase 6 below).
 
 ## Phase 5 / Wave B1 — Independent agent plugin contract
 
-Status: DONE (see git history for `c3e7fc2`; superseded as "current slice" by Phase 5A below).
+Status: DONE (see git history for `c3e7fc2`; superseded as "current slice" by Phase 5A above).
 
 ## Phase 4 — Bootstrap correctness
 
@@ -504,11 +508,150 @@ mocked for a correctness claim):**
 Poetry cache-directory venv, and fully equivalent (`ruff check` produced byte-identical
 output against both for the same diff). Used as the primary host venv for this slice.
 
+## Phase 6 / Wave B3 — Temporal return orchestration (this slice)
+
+**Scope.** User explicitly chose "build the full stage/handler config engine" over a
+narrower completion-bar-only option. Discovery (an Explore agent plus direct reading of
+`operations/orchestrator.py` (701 lines) and `workflows/return_workflow.py` (412 lines)
+in full) surfaced a materially different picture than the plan text assumes, which
+shaped what "config-driven" honestly means here:
+
+- `ReturnWorkflow` (the Temporal workflow) is a clean, generic, business-logic-free
+  stage-sequence tracker. `ReturnOrchestrator` (an external polling coordinator, not the
+  Temporal workflow itself) is what runs the actual per-stage business logic
+  (`AIGatewayService`, `ReturnSupportService`, `SQLBusinessStateRepository`,
+  `FeedbackLearningService`) and drives `ReturnWorkflow` forward via
+  `handle.execute_update(ReturnWorkflow.complete_stage, ...)`.
+- **None of the six Phase-5 agents are invoked anywhere in `orchestrator.py`'s real
+  business logic.** The closest candidate for a clean AGENT substitution
+  (`ReturnWorkflowAgent.assess()`, used at the internal-support work-item branch) needs
+  per-line-item detail — `shippedQuantity`, `attachmentIds` — that `ReturnSessionView`
+  doesn't carry (only flat `itemReferences: list[str]`). Forcing that mapping would be an
+  independent, unreviewed business-logic redesign, not "make sequencing config-driven" —
+  so `orchestrator.py`'s stage business logic was deliberately left unchanged.
+- **Two entirely separate configuration systems coexist** and are not bridged:
+  `ReturnPlatformConfiguration` (`configuration/return_configuration.py`, loaded from one
+  file, `config/returns/production.yaml` — what `orchestrator.py`/`AgentRegistry.build()`
+  actually consume today) vs. `RuntimeSnapshot`/`RuntimeConfigurationView`
+  (`configuration/domain/release_model.py` + the manifest/release system —
+  where `config/workflows/return_session.yaml` lives). `AgentExecutionContext.configuration`
+  is typed `RuntimeConfigurationView`, but agent *construction*
+  (`OrderDiscoveryAgent(configuration: ReturnPlatformConfiguration)`) takes the other one
+  — this duality predates this slice and was not resolved here; bridging the two is a
+  separate, larger migration.
+- Two stage-name lists already existed in config and neither matched the 8-value
+  `WorkflowStage` enum `ReturnWorkflow`/`ReturnOrchestrator` actually use:
+  `config/returns/production.yaml`'s `workflow.stages` (15 values, exactly
+  `ProductionReturnStage`'s order — a different, signal-driven orchestration track via
+  `ProductionReturnWorkflow`/`ProductionWorkflowCoordinator`) and
+  `config/workflows/return_session.yaml`'s stale 7-value list (`ORDER_SELECTION`,
+  `FULL_ORDER_SYNC`, `LINE_CONFIRMATION`, `ORDER_ANALYSIS`, ... — read by no code
+  anywhere, confirmed via grep).
+
+**What was built.**
+- `configuration/domain/workflow.py` — `WorkflowStageHandlerType` (AGENT/ACTIVITY),
+  `WorkflowStageHandler` (`type`, optional `agent`), `WorkflowStageEntry` (`stage`,
+  optional `handler`); `WorkflowDefinition.stages` widened from `list[str]` to
+  `list[str | WorkflowStageEntry]` with new `stage_ids()`/`handler_for(stage_id)`
+  helpers. **Fixed a real, live gap found in passing:**
+  `validator.py::_validate_workflows` (§3.6) already checked
+  `stage.handler.type == "AGENT"` against a raw dict — but `WorkflowDefinition.stages:
+  List[str]` could never actually hold a dict, so `compatibility.py`'s
+  `WorkflowDefinition(stages=stages_raw, ...)` would have raised an unhandled
+  `pydantic.ValidationError` (not the clean `ConfigurationValidationError` AGENT modules
+  get) the moment any WORKFLOW module's YAML used a structured handler — that validator
+  code was unreachable dead code. Fixed by widening the schema, wrapping
+  `WorkflowDefinition(...)` construction in the same try/except AGENT gets, and updating
+  `_validate_workflows` to check the now-real `WorkflowStageEntry`/`WorkflowStageHandler`
+  types instead of a dict shape that could never exist.
+- `workflows/return_workflow.py` — `_STAGE_SEQUENCE`/`_NEXT_STAGE` (hardcoded module
+  constants) replaced with `DEFAULT_STAGE_SEQUENCE` (same 8 values, now just a default)
+  and a new `ReturnWorkflowInput.stage_sequence` field. `ReturnWorkflowExecutionState`
+  carries `stage_sequence`; `start_return_workflow_execution` validates it (non-empty,
+  ≤32 stages, no duplicates, all real `WorkflowStage` values) and sets
+  `current_stage = stage_sequence[0]` (previously hardcoded to `INTAKE`);
+  `advance_return_workflow` computes `next_stage` from `dict(pairwise(state.stage_sequence))`
+  and treats `stage_sequence[-1]` as the terminal/COMPLETED marker, both now genuinely
+  configurable instead of fixed. `ReturnWorkflow.run()`'s persistence-mismatch check
+  compares against `self._state.current_stage` instead of a hardcoded `WorkflowStage.INTAKE`.
+  Removed two leftover `DEBUG` log lines found adjacent to the code being edited.
+- `operations/orchestrator.py` — new optional `workflow_definition: WorkflowDefinition
+  | None` constructor parameter; `_stage_sequence_from_definition()` resolves a pinned
+  `WorkflowDefinition`'s `stage_ids()` into `WorkflowStage` order. Defaults to
+  `DEFAULT_STAGE_SEQUENCE` when not supplied (today's exact prior behavior, zero
+  behavior change for existing callers) — `orchestrator.py` doesn't yet hold a
+  `RuntimeConfigurationView` reference, so this is an honest opt-in, not a fabricated
+  bridge between the two configuration systems.
+- `config/workflows/return_session.yaml` — rewritten to the real 8-value `WorkflowStage`
+  sequence, each stage declared `handler: {type: ACTIVITY}` (honestly matching that
+  `orchestrator.py`'s business logic isn't agent-routed). Full reconciliation mapping
+  and the "why not AGENT yet" reasoning is documented in the file's header comment.
+- `config/workflows/example_agent_dispatch.yaml` (new, registered in `manifest.yaml`) +
+  `tests/configuration/test_workflow_agent_handler_resolution.py` — a real, isolated,
+  honestly-scoped fixture proving the AGENT-handler mechanism end-to-end: builds the
+  actual `RuntimeSnapshot` via `LegacyCompatibilityAdapter` against the real
+  `backend/config` manifest, resolves a `WorkflowStageHandler(type=AGENT,
+  agent="order_discovery")`, then resolves and executes the real `OrderDiscoveryAgent`
+  through `AgentRegistry.resolve()` with a real `AgentExecutionContext` (real
+  `SystemClock`, `InMemoryCapabilityRegistry`, a minimal real in-test `AuditSink`/
+  `Redactor`). Satisfies the plan's literal Wave B completion condition ("one configured
+  workflow can resolve an agent implementation through the canonical registry and
+  execute it under a pinned configuration release") without overstating that the live
+  return-session workflow already dispatches through it.
+- `tests/api/test_no_generic_advance_endpoint.py` (new `tests/api/` directory) —
+  enumerates every real router under `return_platform.api` (via `pkgutil`) and asserts
+  no route path contains "advance", except the one confirmed, explicitly-excluded
+  exception (`dependency_simulator.py`'s `/operations/{operation_id}/advance`, a
+  synthetic dev/test harness unrelated to real `ReturnSession`s). A second test guards
+  the exclusion itself from going stale.
+- `tests/test_return_workflow.py` — updated the one test that enumerates
+  `ReturnWorkflowExecutionState`'s fields exhaustively (now includes `stage_sequence`);
+  added three new tests: a differently-configured (shorter) stage sequence produces
+  genuinely different real behavior (fewer required stages, earlier `COMPLETED`), and
+  two rejection tests (empty sequence, duplicate stage in sequence).
+
+**Deliberately not done this slice (documented scope boundaries, not gaps):**
+- `orchestrator.py`'s per-stage business logic (AI evaluation, support ticket creation,
+  bay assignment, feedback recording) was not rewritten to route through
+  `AgentRegistry` — no clean, honest 1:1 request-shape mapping exists today for 6 of the
+  7 real stages (see discovery notes above). Making *sequencing* config-driven and
+  proving the *mechanism* for AGENT dispatch real were treated as this slice's true
+  scope; deeper business-logic-to-agent mapping is a separate, larger call.
+- The `ReturnPlatformConfiguration` ↔ `RuntimeSnapshot`/`RuntimeConfigurationView`
+  bridge was not built — `orchestrator.py` still constructs its agents/business services
+  from the legacy single-file config. `_stage_sequence_from_definition()` exists and is
+  tested in isolation, ready for whoever builds that bridge.
+- `ProductionReturnWorkflow`/`ProductionWorkflowCoordinator` (the separate 15-stage,
+  signal-driven track) was not touched — it already used `AgentRegistry.build().<attr>`
+  from Phase 5, and its stage list is a distinct lifecycle model with no natural mapping
+  to `WorkflowStage`.
+
+**Gate receipts.**
+- `.venv/Scripts/python.exe -m ruff format --check` / `ruff check` on every new/changed
+  file: clean. Two pre-existing-dirty files touched (`compatibility.py`, `validator.py`)
+  confirmed via before/after diff to carry the exact same 22 pre-existing lint errors and
+  format debt both before and after this slice's edits — zero new debt introduced; the
+  lines this slice actually added/edited are format- and lint-clean.
+- `.venv/Scripts/python.exe -m mypy` on all 5 changed source files: `Success: no issues
+  found`.
+- `python -m compileall -q src` / `python -c "import return_platform.main"`: clean.
+- `pytest tests/test_return_workflow.py tests/test_return_session_persistence.py
+  tests/configuration/ tests/api/ -q`: all pass, including the 6 new tests (3 in
+  `test_return_workflow.py`, 2 in `tests/api/`, 1 in `tests/configuration/`).
+- `pytest -q --ignore=tests/test_order_agent_rest.py` (full host suite, no API-key
+  placeholders): 1561 passed, 3 skipped, 67 errors — all 67 are the same pre-existing
+  `NVIDIA_API_KEY not set` fixture gap noted in the Phase 5A ledger entry, not
+  regressions (confirmed: this slice touches none of `platform/system_store`,
+  `platform/reasoning`, or anything `tests/platform`/`tests/reasoning` import — `git
+  diff --stat` for this slice lists only `configuration/`, `workflows/return_workflow.py`,
+  `operations/orchestrator.py`, and test/config files under those same trees).
+
 ## Next READY slice
 
-Wave B3 (Temporal return orchestration, Phase 6) per the FINAL_FAST_EXECUTION_PLAN —
-its stated completion condition needs both B1 and B2 green, which they now are.
-Separately, still open and not part of this slice: the flagged Neo4j volume dedup
-task, the pre-existing `openapi-drift`/`associate_flow.py` formatting conditions, the
-missing `NVIDIA_API_KEY`/`GOOGLE_API_KEY` values in `.env`, and a real KMS-backed
-`EnvelopeEncryptor` (Phase 9) to replace the interim `AesGcmEnvelopeEncryptor`.
+Per the FINAL_FAST_EXECUTION_PLAN, Wave B3's completion condition is now met. Still
+open, not part of this slice: the flagged Neo4j volume dedup task, the pre-existing
+`openapi-drift`/`associate_flow.py` formatting conditions, the missing
+`NVIDIA_API_KEY`/`GOOGLE_API_KEY` values in `.env`, a real KMS-backed
+`EnvelopeEncryptor` (Phase 9), the `ReturnPlatformConfiguration` ↔ `RuntimeSnapshot`
+configuration-system bridge, and mapping `orchestrator.py`'s real per-stage business
+logic onto agents where a clean request-shape mapping can be honestly designed.

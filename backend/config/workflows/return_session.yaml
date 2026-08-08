@@ -1,3 +1,43 @@
+# Stage-name reconciliation (produced per the Wave B3 phase commit):
+#
+# This module previously listed a stale, aspirational stage list
+# (ORDER_DISCOVERY, ORDER_SELECTION, FULL_ORDER_SYNC, LINE_CONFIRMATION,
+# ORDER_ANALYSIS, RETURN_REQUEST, FULFILLMENT) that never matched any code --
+# not the canonical WorkflowStage enum, not ProductionReturnStage, and no
+# loader ever read this file at runtime. It has been repointed at the real,
+# code-owned `return_platform.canonical.operations.WorkflowStage` enum, which
+# is what `workflows.return_workflow.ReturnWorkflow` and
+# `operations.orchestrator.ReturnOrchestrator` actually drive.
+#
+# This is a SEPARATE stage list from `config/returns/production.yaml`'s
+# `workflow.stages` (which enumerates the unrelated 15-stage
+# `ProductionReturnStage` lifecycle owned by `ProductionReturnWorkflow` /
+# `ProductionWorkflowCoordinator` -- a parallel, signal-driven orchestration
+# track this module does not describe).
+#
+# Every stage here is declared `handler: {type: ACTIVITY}`, honestly
+# reflecting current reality: `ReturnOrchestrator.process()` still implements
+# each stage's business logic with native calls (AIGatewayService,
+# ReturnSupportService, SQLBusinessStateRepository, FeedbackLearningService),
+# not through AgentRegistry. None of the six Phase-5 agents has a clean 1:1
+# request-shape mapping to any of these stages today (verified: the closest
+# candidate, ReturnWorkflowAgent, needs per-line item detail -- quantities,
+# attachments -- that ReturnSessionView doesn't carry). See
+# `config/workflows/example_agent_dispatch.yaml` for a real, tested
+# AGENT-handler resolution instead, which does not overstate this workflow's
+# current wiring.
+#
+# `ReturnOrchestrator` does not yet resolve this module through a pinned
+# RuntimeConfigurationView -- it still constructs its other dependencies
+# (agents, business services) from the legacy single-file
+# ReturnPlatformConfiguration (config/returns/production.yaml). Bridging the
+# two configuration systems is a separate, larger migration. What changed
+# here: `ReturnWorkflow`'s stage sequence is no longer a hardcoded Python
+# module constant (`workflows/return_workflow.py`'s old `_STAGE_SEQUENCE`) --
+# it is now a first-class `ReturnWorkflowInput.stage_sequence` field that
+# `ReturnOrchestrator` can resolve from a `WorkflowDefinition` like this one
+# via `operations.orchestrator._stage_sequence_from_definition()`, once a
+# caller wires a pinned release into its construction.
 module_id: workflow.return_session
 module_type: WORKFLOW
 schema_version: "1.0"
@@ -9,10 +49,19 @@ payload:
   context_only_handoffs: true
   direct_agent_calls_allowed: false
   stages:
-    - ORDER_DISCOVERY
-    - ORDER_SELECTION
-    - FULL_ORDER_SYNC
-    - LINE_CONFIRMATION
-    - ORDER_ANALYSIS
-    - RETURN_REQUEST
-    - FULFILLMENT
+    - stage: INTAKE
+      handler: { type: ACTIVITY }
+    - stage: ORDER_DISCOVERY
+      handler: { type: ACTIVITY }
+    - stage: ELIGIBILITY_EVALUATION
+      handler: { type: ACTIVITY }
+    - stage: RETURN_REQUEST
+      handler: { type: ACTIVITY }
+    - stage: FULFILLMENT_TRACKING
+      handler: { type: ACTIVITY }
+    - stage: BAY_ASSIGNMENT
+      handler: { type: ACTIVITY }
+    - stage: FEEDBACK_LEARNING
+      handler: { type: ACTIVITY }
+    - stage: COMPLETED
+      handler: { type: ACTIVITY }

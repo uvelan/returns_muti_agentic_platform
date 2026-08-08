@@ -19,6 +19,7 @@ from return_platform.workflows.stage_results import (
 )
 
 __all__ = [
+    "DEFAULT_STAGE_SEQUENCE",
     "AppliedStageCommand",
     "ReturnSessionActivityResult",
     "ReturnSessionInitializeActivityInput",
@@ -38,8 +39,14 @@ __all__ = [
 _WORKFLOW_VERSION: Final = "1.0"
 _ACTIVITY_TIMEOUT: Final = timedelta(seconds=10)
 _MAX_CONFIGURATION_VERSIONS: Final = 128
+_MAX_STAGE_SEQUENCE_LENGTH: Final = 32
 _REFERENCE_PATTERN: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:+/-]{0,127}$")
-_STAGE_SEQUENCE: Final = (
+
+# Default sequencing when a workflow input doesn't pin one explicitly (e.g. tests,
+# or a caller that hasn't wired the config-driven path yet). The authoritative
+# sequence for real return sessions is `config/workflows/return_session.yaml`,
+# pinned per configuration release -- see operations/orchestrator.py::_handle().
+DEFAULT_STAGE_SEQUENCE: Final[tuple[WorkflowStage, ...]] = (
     WorkflowStage.INTAKE,
     WorkflowStage.ORDER_DISCOVERY,
     WorkflowStage.ELIGIBILITY_EVALUATION,
@@ -49,7 +56,6 @@ _STAGE_SEQUENCE: Final = (
     WorkflowStage.FEEDBACK_LEARNING,
     WorkflowStage.COMPLETED,
 )
-_NEXT_STAGE: Final = dict(pairwise(_STAGE_SEQUENCE))
 
 
 class ReturnWorkflowStatus(StrEnum):
@@ -123,6 +129,7 @@ class ReturnWorkflowInput:
     correlation_id: str
     workflow_version: str
     configuration_versions: tuple[ReturnWorkflowConfigurationVersion, ...]
+    stage_sequence: tuple[WorkflowStage, ...] = DEFAULT_STAGE_SEQUENCE
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +158,7 @@ class ReturnWorkflowExecutionState:
     correlation_id: str
     workflow_version: str
     configuration_versions: tuple[ReturnWorkflowConfigurationVersion, ...]
+    stage_sequence: tuple[WorkflowStage, ...]
     current_stage: WorkflowStage
     status: ReturnWorkflowStatus
     completed_stages: tuple[WorkflowStage, ...]
@@ -236,6 +244,17 @@ def _validate_configuration_versions(
     return values
 
 
+def _validate_stage_sequence(value: object) -> tuple[WorkflowStage, ...]:
+    if (
+        not isinstance(value, tuple)
+        or not 1 <= len(value) <= _MAX_STAGE_SEQUENCE_LENGTH
+        or any(not isinstance(stage, WorkflowStage) for stage in value)
+        or len(set(value)) != len(value)
+    ):
+        _raise_error(ReturnWorkflowErrorCode.INVALID_CONFIGURATION)
+    return value
+
+
 def start_return_workflow_execution(
     workflow_input: ReturnWorkflowInput,
 ) -> ReturnWorkflowExecutionState:
@@ -247,12 +266,14 @@ def start_return_workflow_execution(
     if workflow_input.workflow_version != _WORKFLOW_VERSION:
         _raise_error(ReturnWorkflowErrorCode.INVALID_CONFIGURATION)
     configuration_versions = _validate_configuration_versions(workflow_input.configuration_versions)
+    stage_sequence = _validate_stage_sequence(workflow_input.stage_sequence)
     return ReturnWorkflowExecutionState(
         session_id=session_id,
         correlation_id=correlation_id,
         workflow_version=workflow_input.workflow_version,
         configuration_versions=configuration_versions,
-        current_stage=WorkflowStage.INTAKE,
+        stage_sequence=stage_sequence,
+        current_stage=stage_sequence[0],
         status=ReturnWorkflowStatus.RUNNING,
         completed_stages=(),
         applied_commands=(),
@@ -283,12 +304,13 @@ def advance_return_workflow(
     if command.completed_stage is not state.current_stage:
         _raise_error(ReturnWorkflowErrorCode.STAGE_OUT_OF_ORDER)
     binding = _stage_context_binding(command)
-    next_stage = _NEXT_STAGE.get(state.current_stage)
+    next_stage_map = dict(pairwise(state.stage_sequence))
+    next_stage = next_stage_map.get(state.current_stage)
     if next_stage is None:
         _raise_error(ReturnWorkflowErrorCode.ALREADY_COMPLETED)
     status = (
         ReturnWorkflowStatus.COMPLETED
-        if next_stage is WorkflowStage.COMPLETED
+        if next_stage is state.stage_sequence[-1]
         else ReturnWorkflowStatus.RUNNING
     )
     return ReturnWorkflowExecutionState(
@@ -296,6 +318,7 @@ def advance_return_workflow(
         correlation_id=state.correlation_id,
         workflow_version=state.workflow_version,
         configuration_versions=state.configuration_versions,
+        stage_sequence=state.stage_sequence,
         current_stage=next_stage,
         status=status,
         completed_stages=(*state.completed_stages, command.completed_stage),
@@ -346,15 +369,13 @@ class ReturnWorkflow:
         if (
             not isinstance(initialized, ReturnSessionActivityResult)
             or initialized.revision != 0
-            or initialized.current_stage is not WorkflowStage.INTAKE
+            or initialized.current_stage is not self._state.current_stage
         ):
             _raise_error(ReturnWorkflowErrorCode.PERSISTENCE_MISMATCH)
         self._persistence_ready = True
-        workflow.logger.info(f"DEBUG run wait_condition 1: {self._state.status}")
         await workflow.wait_condition(
             lambda: self._state is not None and self._state.status is ReturnWorkflowStatus.COMPLETED
         )
-        workflow.logger.info(f"DEBUG run wait_condition 2: {self._state.status}")
         await workflow.wait_condition(lambda: workflow.all_handlers_finished())
         return self._require_state()
 

@@ -35,6 +35,7 @@ from typing import Any, Dict, Mapping, Optional, Set
 
 from return_platform.configuration.domain.errors import ConfigurationValidationError
 from return_platform.configuration.domain.release_model import RuntimeSnapshot
+from return_platform.configuration.domain.workflow import WorkflowStageHandlerType
 
 # Read-only access modes per the platform contract
 _READ_ONLY_ACCESS_MODES = {"READ_ONLY", "read_only", "readonly"}
@@ -301,33 +302,33 @@ class ConfigurationValidator:
 
             # Stage IDs must be non-empty and unique within the workflow
             stage_ids: set[str] = set()
-            for stage in (workflow.stages or []):
-                if not isinstance(stage, str) or not stage.strip():
-                    errors.append(
-                        f"workflow: workflow '{wf_id}' contains an empty stage ID"
-                    )
+            for stage in workflow.stages or []:
+                stage_id = stage if isinstance(stage, str) else stage.stage
+                if not stage_id or not stage_id.strip():
+                    errors.append(f"workflow: workflow '{wf_id}' contains an empty stage ID")
                     continue
 
                 # §3.6 — Do NOT treat stage name as agent ID.
                 # Only structured handlers trigger agent resolution.
-                if stage in stage_ids:
+                if stage_id in stage_ids:
                     errors.append(
-                        f"workflow: workflow '{wf_id}' has duplicate stage ID '{stage}'"
+                        f"workflow: workflow '{wf_id}' has duplicate stage ID '{stage_id}'"
                     )
-                stage_ids.add(stage)
+                stage_ids.add(stage_id)
 
             # §3.6 — Structured handler validation
-            # If a stage is a dict with handler.type == AGENT, validate agent ref.
-            for stage in (workflow.stages or []):
-                if isinstance(stage, dict):
-                    handler = stage.get("handler", {})
-                    if isinstance(handler, dict) and handler.get("type") == "AGENT":
-                        handler_agent = handler.get("agent")
-                        if handler_agent and handler_agent not in agent_ids:
-                            errors.append(
-                                f"workflow: workflow '{wf_id}' stage handler "
-                                f"references unknown agent '{handler_agent}'"
-                            )
+            # If a stage carries handler.type == AGENT, validate the agent ref.
+            for stage in workflow.stages or []:
+                if isinstance(stage, str):
+                    continue
+                handler = stage.handler
+                if handler is not None and handler.type == WorkflowStageHandlerType.AGENT:
+                    handler_agent = handler.agent
+                    if handler_agent and handler_agent not in agent_ids:
+                        errors.append(
+                            f"workflow: workflow '{wf_id}' stage handler "
+                            f"references unknown agent '{handler_agent}'"
+                        )
 
     # ------------------------------------------------------------------
     # §3.7 — Graph → source references
