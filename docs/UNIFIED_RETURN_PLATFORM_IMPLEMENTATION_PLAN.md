@@ -793,6 +793,56 @@ suite run** (§5). Focused checks built here: `tests/configuration/test_concurre
 
 **Commit.** `refactor(config): introduce canonical runtime configuration model`
 
+**Post-review amendment.** An external review against the actual Phase 2 code raised eight findings (six P0,
+two P1): fail-open compatibility translation, missing module dependency validation, an AI empty-map
+validation bug, `dynamic_knowledge` directory globbing bypassing the manifest, unverified pinned-release
+checksums, weak validate/approve CAS tests, missing manifest schema-version enforcement, and an
+insufficiently rigorous concurrent-activation test. Verifying each against the current tree found that seven
+of the eight were already fixed by the preceding commit
+(`fix(configuration): complete Phase 2 release lifecycle, semantic validation, and compatibility
+translation`): `compatibility.py` now raises `ConfigurationValidationError` on any malformed AGENT / SOURCE /
+GRAPH / MAPPING / SYNC / PLATFORM payload and never globs `dynamic_knowledge/*`; `validator.py` validates
+dependency existence, self-dependency, and cycles (`_validate_module_dependencies`) and reverse completeness
+per domain (`_validate_reverse_completeness`); the AI route check now gates on `task_id not in ai_tasks`
+directly rather than `ai_tasks and task_id not in ai_tasks`, closing the empty-map bypass; `release_service.py`
+recomputes and compares the snapshot checksum before every `DRAFT → VALIDATED` transition, and
+`release_service.py::RuntimeConfigurationHandleImpl.pinned()` recomputes the checksum of every historical
+snapshot before constructing its view, failing closed with `ConfigurationIntegrityError` on mismatch;
+`loader.py` rejects any `schema_version` outside `SUPPORTED_MANIFEST_SCHEMA_VERSIONS = {"2.0"}`; and
+`test_concurrent_validate_cas_only_one_wins` / `test_concurrent_approve_cas_only_one_wins` already use a
+shared `asyncio.Barrier` and assert `success_count == 1, failure_count == 1` exactly.
+
+The one finding that still had a real gap — the concurrent-activation test's fake session having no
+transactional rollback semantics — led to two defects the review itself did not name, found while closing it:
+
+1. **`activation.py` never actually ran.** `async with session.start_transaction():` is missing an `await`.
+   `pymongo`'s async driver makes `start_transaction()` a coroutine that must be awaited to obtain the
+   context manager; without it, every real call to `activate_release()` raised `TypeError` before touching
+   the database. This type-checked fine against `test_release_lifecycle.py`'s hand-rolled session mock
+   (whose `start_transaction()` returned a plain object, not a coroutine) and was invisible without a live
+   MongoDB replica set to run against — which is exactly why the review's push for a real-transaction test
+   mattered. `workflows/persistence.py` already had the correct `async with await session.start_transaction()`
+   form; `activation.py` now matches it, and the mock's `start_transaction()` was made `async def` so it can
+   no longer hide a missing `await` at the real call site.
+2. **`test_concurrent_activation.py` targeted the wrong database and collection.** It read from
+   `client.get_database("return_platform")` / collection `"configuration_activation_pointer"`, but
+   `ActivationService` always operates against `get_database("platform")` / `"configuration_active_pointer"`
+   (fixed names, independent of the business `mongo_database` setting). The test's assertions on the pointer
+   document were therefore checking an always-empty collection — it could never have caught a real regression,
+   in either direction. Corrected to the names `ActivationService` actually uses, verified by starting the
+   project's own `mongodb` + `mongodb-rs-init` compose services and running the test against them directly
+   (it fails with a clear `TypeError`/`ServerSelectionTimeoutError` before either fix, and passes after both,
+   stable across 5 consecutive runs).
+
+`test_concurrent_activation.py` was also rewritten to release both racing activations from a shared
+`asyncio.Barrier` and to assert every invariant the review asked for: exactly one winner; the pointer's
+`release_id` and `checksum` match that specific winner, not just "some" release; the pointer version advances
+by exactly one; the loser is left with no partial mutation (`status` still `APPROVED`, no `activated_at`, no
+`superseded_by`); and the previously-active release is superseded by the winner and never by the loser.
+
+**Commit.** `fix(configuration): fix transaction await bug and target correct collection in activation test`
+(this amendment).
+
 ---
 
 ## Phase 3 — Configuration-driven system store
@@ -2361,37 +2411,41 @@ architectural defect.
 06  fix(platform): track epoch holders by unique lease identity, not a
     bare count                                                            [1B, post-review]
 07  refactor(config): introduce canonical runtime configuration model
-08  feat(platform): add configuration-driven system store bootstrap
-09  refactor(bootstrap): decouple application startup from test tooling
-10  refactor(agents): standardize independent agent plugin contract
-11  feat(platform): add LangGraph durable reasoning foundation
-12  refactor(workflow): make return orchestration agent-independent and config-driven
-13  refactor(order-discovery): consolidate on graph-first agent with durable reasoning
-14  refactor(sources): unify read-only source connector framework
-15  feat(graph-schema): add independent persistent analyzer module
-16  feat(graph-schema): implement source-driven schema reasoning
-17  feat(graph-schema): add interactive mutation and validation lifecycle
-18  feat(graph): complete safe generation activation and draining
-19  refactor(ai): consolidate gateway into AI Control Center backend
-20  feat(ai): replace manual file provider with durable interception service
-21  refactor(config): consolidate configuration control plane
-22  refactor(returns): consolidate full return lifecycle backend
-23  feat(frontend): add unified four-domain application shell
-24  feat(frontend): build end-to-end Return Business Copilot
-25  feat(frontend): consolidate platform Configuration experience
-26  feat(frontend): rebuild independent Graph Schema Analyzer
-27  feat(frontend): build AI Control Center and intervention console
-28  refactor(runtime): cut over Data Console APIs to canonical modules
-29  refactor(runtime): retire V2 platform shell
-30  refactor(runtime): reduce main.py to module activation
-31  refactor(frontend): remove legacy V1 V2 and studio surfaces
-32  refactor(cleanup): remove superseded platform implementations
-33  refactor(bootstrap): finalize production compose topology
-34  refactor(config): remove obsolete legacy configuration
-35  chore(repo): remove obsolete scripts and historical runtime debris
-36  docs: align source and README documentation with unified platform
-37  fix: close unified platform static integrity gaps
-38  fix: close unified platform functional validation gaps
+08  fix(configuration): complete Phase 2 release lifecycle, semantic
+    validation, and compatibility translation                             [Phase 2, post-review]
+09  fix(configuration): fix transaction await bug and target correct
+    collection in activation test                                         [Phase 2, post-review]
+10  feat(platform): add configuration-driven system store bootstrap
+11  refactor(bootstrap): decouple application startup from test tooling
+12  refactor(agents): standardize independent agent plugin contract
+13  feat(platform): add LangGraph durable reasoning foundation
+14  refactor(workflow): make return orchestration agent-independent and config-driven
+15  refactor(order-discovery): consolidate on graph-first agent with durable reasoning
+16  refactor(sources): unify read-only source connector framework
+17  feat(graph-schema): add independent persistent analyzer module
+18  feat(graph-schema): implement source-driven schema reasoning
+19  feat(graph-schema): add interactive mutation and validation lifecycle
+20  feat(graph): complete safe generation activation and draining
+21  refactor(ai): consolidate gateway into AI Control Center backend
+22  feat(ai): replace manual file provider with durable interception service
+23  refactor(config): consolidate configuration control plane
+24  refactor(returns): consolidate full return lifecycle backend
+25  feat(frontend): add unified four-domain application shell
+26  feat(frontend): build end-to-end Return Business Copilot
+27  feat(frontend): consolidate platform Configuration experience
+28  feat(frontend): rebuild independent Graph Schema Analyzer
+29  feat(frontend): build AI Control Center and intervention console
+30  refactor(runtime): cut over Data Console APIs to canonical modules
+31  refactor(runtime): retire V2 platform shell
+32  refactor(runtime): reduce main.py to module activation
+33  refactor(frontend): remove legacy V1 V2 and studio surfaces
+34  refactor(cleanup): remove superseded platform implementations
+35  refactor(bootstrap): finalize production compose topology
+36  refactor(config): remove obsolete legacy configuration
+37  chore(repo): remove obsolete scripts and historical runtime debris
+38  docs: align source and README documentation with unified platform
+39  fix: close unified platform static integrity gaps
+40  fix: close unified platform functional validation gaps
 ```
 
 **Policy.** After each phase: code complete → documentation complete → phase gate green → `git diff` reviewed →

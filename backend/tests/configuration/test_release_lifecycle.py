@@ -105,7 +105,12 @@ class _InMemorySession:
     async def __aexit__(self, *a):
         pass
 
-    def start_transaction(self):
+    async def start_transaction(self):
+        # Real pymongo (AsyncClientSession.start_transaction) is itself a
+        # coroutine that resolves to an async context manager -- callers must
+        # write `async with await session.start_transaction():`. The mock
+        # must match that shape or it silently hides a missing `await` at
+        # the real call site.
         return self
 
 

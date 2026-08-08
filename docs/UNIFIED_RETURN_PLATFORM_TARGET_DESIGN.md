@@ -2338,8 +2338,18 @@ The graph generation equivalent (`active_runtime_snapshot`) already uses single-
 sufficient there because it is one document; the same partial-unique defence applies to
 `graph_generations.status = ACTIVE` scoped per snapshot name.
 
-**Enforced by** `tests/configuration/test_concurrent_activation.py` (two concurrent activations, exactly one
-wins), `tests/configuration/test_active_uniqueness_constraint.py`.
+`pymongo`'s async driver makes `session.start_transaction()` itself a coroutine — it must be
+`await`ed to obtain the context manager (`async with await session.start_transaction():`), not entered
+directly. A missing `await` type-checks under a permissive mock but raises `TypeError` against the real
+driver, so the transaction never actually runs. `configuration/application/activation.py` and
+`workflows/persistence.py` both follow the `await`ed form; any new transactional adapter must too.
+
+**Enforced by** `tests/configuration/test_concurrent_activation.py` — real `AsyncMongoClient` against the
+replica set (not a hand-rolled session mock, which cannot exercise real transaction rollback/isolation),
+asserting: exactly one of two racing activations wins; the pointer's `release_id` and `checksum` match the
+actual winner, not just "a" release; the pointer version advances by exactly one; the loser is left
+untouched — still `APPROVED`, no `activated_at`, no `superseded_by`; and the previously-active release is
+superseded by the winner specifically, never by the loser.
 
 ### 13.9 No API bypasses an orchestrated transition
 

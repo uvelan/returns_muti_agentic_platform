@@ -64,7 +64,7 @@ class ActivationService:
         """
         async with self._client.start_session() as session:
             try:
-                async with session.start_transaction():
+                async with await session.start_transaction():
                     now = _now()
 
                     # Load the target release; require APPROVED
