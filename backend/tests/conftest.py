@@ -118,10 +118,8 @@ def test_settings(
         nvidia_standard_models=["nvidia/llama-3.3-nemotron-super-49b-v1"],
         google_lightweight_models=["models/gemini-3.5-flash-lite"],
         google_standard_models=["models/gemini-3.6-flash"],
-        nvidia_api_keys=[
-            SecretStr("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")
-        ],
-        google_api_keys=[SecretStr("AIzaSyAnF5LTRuYG3wOoqBK4EN2lSB3qOHHYj_U")],
+        nvidia_api_keys=[SecretStr(_required_environment_variable("NVIDIA_API_KEY"))],
+        google_api_keys=[SecretStr(_required_environment_variable("GOOGLE_API_KEY"))],
         temporal_target="localhost:7233",
         ai_timeout_seconds=30.0,
         ai_global_timeout_seconds=120.0,
