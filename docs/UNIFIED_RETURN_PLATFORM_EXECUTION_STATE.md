@@ -1,13 +1,12 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `cda480b` (Wave C4 / Phase 12, slice 5 — deep validation)
-Slice: **Wave C4 / Phase 12 — graph generation lifecycle** (slice 6: rebuild trigger +
-authoritative generation pointer)
+Last pushed green commit: `742dab6` (Wave C4 / Phase 12, slice 6 — Wave C complete)
+Slice: **Wave D1 / Phase 13 — AI Gateway consolidation**
 Status: slices 1-6 DONE. **Wave C is complete** apart from one owed end-to-end composition
 run — see the Wave C real-infra gate table below — see the C4 sections below for what remains.
 
-Suite: **1872 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
+Suite: **1880 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
 mypy baseline: **47 errors / 16 files**, unchanged across every commit in this branch.
 
 Caveat on "green": the *full* static gate does not pass. `scripts/linux/03_run_backend_quality.sh`
@@ -1848,6 +1847,63 @@ Still owed, in rough priority order:
 `task_bd3a4652` (the rejected-command wedge) — fixed and verified below. The
 `NVIDIA_API_KEY`/`GOOGLE_API_KEY` item is also resolved: see the correction above; the keys
 were never actually required.
+
+## Wave D1 / Phase 13 — AI Gateway consolidation
+
+Status: DONE for the migration and the single invocation path. D1 is **not** fully closed —
+see the end of this section.
+
+**Wave D had been started twice and abandoned twice, both times uncommitted.** Two agent
+worktrees held the work with zero commits between them; it was one `git clean` from being
+lost. Both are now preserved on their own branches (`6ff5162`, `2116665`) before anything
+was merged.
+
+They were complementary and **neither worked alone**:
+
+- `worktree-agent-a8418bbe4d014f473` had the whole `ai_gateway/` → canonical `ai/`
+  migration (`ai/providers/`, `ai/routing/{tasks,routes,selection}`,
+  `ai/safety/{injection_guard,scope_guard,inspection}`, `ai/gateway/`), a deprecated
+  re-export shim, and `ai/README.md`. It was **missing
+  `gateway/structured_invocation.py`, which its own README documented.**
+- `claude/vigorous-haslett-6cb188` had exactly that file (as `ai_gateway/structured.py`),
+  the analyzer AI adapter and its 6 tests, the `GRAPH_SCHEMA_PROPOSAL_V1` task config, and
+  the `model_gateway.py` collapse (−279/+45) — all written against the import paths the
+  other worktree was deleting.
+
+Merged the migration, then ported the four missing pieces onto canonical paths.
+
+**The shim layer is kept deliberately.** `ai_gateway/` is now 15–33-line pure re-exports,
+documented as such: ~20 modules outside the AI lane still import it, including `main.py`
+and `runtime_factory.py`. The import sweep that deletes it is Wave F.
+
+**One invocation path, for real.** `model_gateway.py` no longer reimplements retry,
+failover, tier escalation and safety — it delegates to `StructuredOutputInvoker`, the same
+path the analyzer adapter uses. That is the "reusable common components" requirement rather
+than a description of one.
+
+**Corrections made while landing it.** The README named the class `StructuredRouteInvoker`;
+it is `StructuredOutputInvoker` — the doc was wrong, so the doc was fixed rather than
+working code renamed.
+
+**An architecture test that I had to narrow, and why.** The first draft of
+`tests/platform/test_ai_lane_boundary.py` banned provider strings anywhere outside `ai/` and
+found 37 hits — every one a validator's allowed-value set, a capability map built from
+settings, or an API view model reporting which provider *did* serve. Recording the provider
+that answered is the opposite of selecting one: it is the observability routing exists to
+produce, and banning it would delete audit data to satisfy a rule about dispatch. The test
+now covers the packages that *invoke* reasoning (`agents`, `dynamic_knowledge`, `workflows`,
+`graph_schema_analyzer`), which are clean. A second test forbids `ai/` importing its own
+deprecated shim, so the shim stays deletable.
+
+**Verification.** Full real-infra suite **1880 passed, 2 skipped, 0 failed**. mypy 47/16
+across 481 files, unchanged.
+
+**Still open in D1, and the rest of Wave D:** `AIGatewayService.evaluate` and
+`StructuredOutputInvoker.invoke` are argued in the README to share one path (route pool,
+config, guards, breakers, limiters) and differ only in response contract — that claim is
+prose, not a test. D2 (durable interception; the filesystem-polling `ManualFileProvider` is
+still what MANUAL uses), D3 (`/api/config`) and D4 (`/api/returns`) are untouched. The
+frontend's E2–E5 remain blocked on D3/D4 plus a principal endpoint.
 
 ## Wave C4 / Phase 12, slice 6 — the rebuild trigger, and one authoritative pointer
 

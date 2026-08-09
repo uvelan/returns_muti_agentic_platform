@@ -1,26 +1,27 @@
-"""OpenAI Responses API adapter."""
+"""Anthropic Messages API adapter."""
 
 from __future__ import annotations
 
 import json
 
-from return_platform.ai_gateway.providers.contracts import (
+from return_platform.ai.providers.contracts import (
     ProviderError,
     ProviderRequest,
     ProviderResponse,
 )
-from return_platform.ai_gateway.providers.http import HTTPProvider, secret_value
+from return_platform.ai.providers.http import HTTPProvider, secret_value
 from return_platform.configuration.settings import Settings
 
 
-class OpenAIResponsesProvider(HTTPProvider):
-    name = "OPENAI"
+class AnthropicProvider(HTTPProvider):
+    name = "ANTHROPIC"
 
     def __init__(self, settings: Settings) -> None:
         super().__init__(timeout_seconds=settings.ai_timeout_seconds)
-        self._api_key = secret_value(settings.openai_api_key)
-        self._base_url = settings.openai_base_url
-        self.model = settings.openai_model or ""
+        self._api_key = secret_value(settings.anthropic_api_key)
+        self._base_url = settings.anthropic_base_url
+        self._version = settings.anthropic_version
+        self.model = settings.anthropic_model or ""
 
     @property
     def configured(self) -> bool:
@@ -30,24 +31,24 @@ class OpenAIResponsesProvider(HTTPProvider):
         if not self.configured or self._api_key is None:
             raise ProviderError("AUTH_FAILED")
         data = await self._post(
-            f"{self._base_url}/responses",
+            f"{self._base_url}/messages",
             headers={
-                "Authorization": f"Bearer {self._api_key}",
+                "x-api-key": self._api_key,
+                "anthropic-version": self._version,
                 "Content-Type": "application/json",
             },
             payload={
                 "model": self.model,
-                "instructions": request.system_prompt,
-                "input": json.dumps(request.user_payload),
-                "store": False,
+                "max_tokens": 512,
+                "temperature": 0,
+                "system": request.system_prompt,
+                "messages": [{"role": "user", "content": json.dumps(request.user_payload)}],
             },
         )
-        text = data.get("output_text")
-        if not isinstance(text, str) or not text.strip():
-            try:
-                text = data["output"][0]["content"][0]["text"]
-            except (KeyError, IndexError, TypeError) as error:
-                raise ProviderError("RESPONSE_INVALID") from error
+        try:
+            text = data["content"][0]["text"]
+        except (KeyError, IndexError, TypeError) as error:
+            raise ProviderError("RESPONSE_INVALID") from error
         if not isinstance(text, str) or not text.strip():
             raise ProviderError("RESPONSE_INVALID")
         usage = data.get("usage", {})

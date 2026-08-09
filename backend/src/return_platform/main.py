@@ -35,6 +35,9 @@ from return_platform.api.runtime_config import router as runtime_config_router
 from return_platform.api.seed import router as seed_router
 from return_platform.api.support import router as support_router
 from return_platform.api.warehouse_placement import router as warehouse_placement_router
+from return_platform.bootstrap.adapters.analyzer_ai_adapter import (
+    build_analyzer_ai_adapter,
+)
 from return_platform.bootstrap.adapters.analyzer_graph_target_adapter import (
     build_neo4j_graph_target_adapter,
 )
@@ -648,10 +651,37 @@ async def lifespan(
                     app.state.graph_schema_analyzer_graph_target = build_neo4j_graph_target_adapter(
                         resources.neo4j
                     )
+                # Reasoning needs no dependency of its own beyond the shared
+                # route pool, but an empty pool means no provider credential is
+                # configured, and binding the port then would advertise a
+                # capability every call would fail. A misconfigured task raises
+                # from the invoker's constructor; degrade like the rest of this
+                # block rather than failing startup over an operator tool.
+                analyzer_reasoning_bound = False
+                if app.state.ai_gateway_route_pool.routes:
+                    try:
+                        app.state.graph_schema_analyzer_reasoning = build_analyzer_ai_adapter(
+                            settings=settings,
+                            configuration=ai_gateway_configuration.configuration,
+                            route_pool=app.state.ai_gateway_route_pool,
+                        )
+                    except Exception as exc:  # noqa: BLE001 - degrade, never block startup
+                        logger.warning(
+                            "graph_schema_analyzer_reasoning_unavailable",
+                            exc_info=exc,
+                        )
+                    else:
+                        analyzer_reasoning_bound = True
+                else:
+                    logger.warning(
+                        "graph_schema_analyzer_reasoning_unavailable",
+                        extra={"missing_dependencies": ("ai_gateway_routes",)},
+                    )
                 app.state.graph_schema_analyzer_status = {
                     "state": "READY",
                     "source_discovery": resources.source_mongo is not None,
                     "graph_target": resources.neo4j is not None,
+                    "reasoning": analyzer_reasoning_bound,
                 }
 
         logger.info(
@@ -698,6 +728,7 @@ async def lifespan(
         for analyzer_attribute in (
             "graph_schema_analyzer_source_discovery",
             "graph_schema_analyzer_graph_target",
+            "graph_schema_analyzer_reasoning",
         ):
             if hasattr(app.state, analyzer_attribute):
                 delattr(app.state, analyzer_attribute)

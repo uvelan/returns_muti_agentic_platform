@@ -5,16 +5,16 @@ from __future__ import annotations
 import json
 import logging
 
-from return_platform.ai_gateway.providers.contracts import (
+from return_platform.ai.providers.contracts import (
     ProviderError,
     ProviderRequest,
     ProviderResponse,
 )
-from return_platform.ai_gateway.providers.http import HTTPProvider, secret_value
-from return_platform.ai_gateway.providers.schema_cleaner import clean_gemini_schema
+from return_platform.ai.providers.http import HTTPProvider, secret_value
+from return_platform.ai.providers.schema_cleaner import clean_gemini_schema
 from return_platform.configuration.settings import Settings
 
-logger = logging.getLogger("return_platform.ai_gateway.providers.google")
+logger = logging.getLogger("return_platform.ai.providers.google")
 
 
 class GeminiProvider(HTTPProvider):

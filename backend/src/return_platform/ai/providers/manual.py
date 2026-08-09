@@ -17,7 +17,7 @@ import time
 import uuid
 from pathlib import Path
 
-from return_platform.ai_gateway.providers.contracts import (
+from return_platform.ai.providers.contracts import (
     ProviderError,
     ProviderRequest,
     ProviderResponse,

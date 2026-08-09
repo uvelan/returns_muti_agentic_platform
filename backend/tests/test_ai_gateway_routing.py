@@ -8,11 +8,12 @@ from typing import Any
 
 from pydantic import SecretStr
 
-from return_platform.ai_gateway.configuration import ModelTier, load_ai_gateway_configuration
-from return_platform.ai_gateway.providers import ProviderError, ProviderResponse
-from return_platform.ai_gateway.routing import AIRoute, AIRoutePool, build_routes
-from return_platform.ai_gateway.safety import SafetyStatus, inspect_input
-from return_platform.ai_gateway.service import AIGatewayService
+from return_platform.ai.gateway.service import AIGatewayService
+from return_platform.ai.providers import ProviderError, ProviderResponse
+from return_platform.ai.routing.routes import AIRoute, build_routes
+from return_platform.ai.routing.selection import AIRoutePool
+from return_platform.ai.routing.tasks import ModelTier, load_ai_gateway_configuration
+from return_platform.ai.safety import SafetyStatus, inspect_input
 from return_platform.configuration.settings import Settings
 from return_platform.operations.models import (
     AIGatewaySettingsView,

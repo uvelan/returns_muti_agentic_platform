@@ -28,9 +28,10 @@ from typing import Any
 
 import pytest
 
-from return_platform.ai_gateway.configuration import load_ai_gateway_configuration
-from return_platform.ai_gateway.providers import manual as manual_provider
-from return_platform.ai_gateway.routing import AIRoutePool, build_routes
+from return_platform.ai.providers import manual as manual_provider
+from return_platform.ai.routing.routes import build_routes
+from return_platform.ai.routing.selection import AIRoutePool
+from return_platform.ai.routing.tasks import load_ai_gateway_configuration
 from return_platform.configuration.settings import Settings
 from return_platform.dynamic_knowledge.integration.model_gateway import (
     RoutePoolReasoningModelGateway,
@@ -237,8 +238,8 @@ async def test_a_malformed_model_reply_is_rejected_not_coerced(manual_dir: Path)
 @pytest.mark.asyncio
 async def test_manual_is_unavailable_outside_development_and_test(tmp_path: Path) -> None:
     """The gate that makes this whole mechanism safe to ship."""
-    from return_platform.ai_gateway.providers.contracts import ProviderError, ProviderRequest
-    from return_platform.ai_gateway.providers.manual import ManualFileProvider
+    from return_platform.ai.providers.contracts import ProviderError, ProviderRequest
+    from return_platform.ai.providers.manual import ManualFileProvider
 
     provider = ManualFileProvider(
         Settings.model_construct(environment="production"), base_dir=tmp_path

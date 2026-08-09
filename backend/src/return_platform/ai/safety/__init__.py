@@ -1,6 +1,6 @@
-"""Deprecated: re-exports `return_platform.ai.safety`."""
+"""Deterministic safety policy for every AI request and response."""
 
-from return_platform.ai.safety import (
+from return_platform.ai.safety.inspection import (
     SafetyInspection,
     SafetyStatus,
     inspect_input,

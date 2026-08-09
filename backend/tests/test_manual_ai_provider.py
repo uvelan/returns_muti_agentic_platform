@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from return_platform.ai_gateway.providers.contracts import ProviderError, ProviderRequest
-from return_platform.ai_gateway.providers.manual import ManualFileProvider
+from return_platform.ai.providers.contracts import ProviderError, ProviderRequest
+from return_platform.ai.providers.manual import ManualFileProvider
 from return_platform.configuration.settings import Settings
 
 
