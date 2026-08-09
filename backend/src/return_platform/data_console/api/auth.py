@@ -1,56 +1,60 @@
-from collections.abc import Callable, Collection
-from typing import Final
+"""Deprecated re-export shim over `return_platform.security`.
 
-from fastapi import HTTPException, Request
+Phase 17 moved the role model to `security/roles.py` and the enforcement
+dependencies to `security/authorization.py`. Data Console is retired in Wave F,
+so the model could not keep living here.
 
-CONSOLE_READ_ROLES: Final = frozenset(
-    {"console_admin", "console_viewer", "workspace_editor", "workspace_viewer"}
-)
-BUSINESS_READ_ROLES: Final = frozenset(
-    {
-        "return_associate",
-        "return_support",
-        "logistics_coordinator",
-        "warehouse_associate",
-        "return_auditor",
-        "return_platform_service",
-    }
-)
-READ_ROLES: Final = CONSOLE_READ_ROLES | BUSINESS_READ_ROLES
-WRITE_ROLES: Final = frozenset(
-    {
-        "console_admin",
-        "workspace_editor",
-        "return_associate",
-        "return_support",
-        "logistics_coordinator",
-        "warehouse_associate",
-        "return_platform_service",
-    }
-)
-ADMIN_ROLES: Final = frozenset({"console_admin"})
-ASSOCIATE_ROLES: Final = frozenset({"console_admin", "return_associate", "return_platform_service"})
-SUPPORT_ROLES: Final = frozenset({"console_admin", "return_support", "return_platform_service"})
-LOGISTICS_ROLES: Final = frozenset(
-    {"console_admin", "logistics_coordinator", "return_platform_service"}
-)
-WAREHOUSE_ROLES: Final = frozenset(
-    {"console_admin", "warehouse_associate", "return_platform_service"}
-)
-AUDIT_ROLES: Final = frozenset({"console_admin", "return_auditor", "return_platform_service"})
-RETURN_COLLABORATION_ROLES: Final = ASSOCIATE_ROLES | SUPPORT_ROLES
+34 modules import this path. This shim keeps every one of them working
+unchanged; the import sweep that deletes it is Wave F, the same treatment D1
+gave `ai_gateway/`. Nothing new should import from here.
 
+The `request: Request` annotations below are load-bearing, not decoration:
+FastAPI resolves `Depends(require_read_roles)` by inspecting the annotation, so
+widening it breaks injection at runtime in every one of those 34 modules.
+"""
 
-def require_roles(allowed_roles: Collection[str]) -> Callable[[Request], str]:
-    def dependency(request: Request) -> str:
-        principal = getattr(request.state, "principal", None)
-        if not principal or not principal.is_authenticated:
-            raise HTTPException(status_code=401, detail="Authentication required")
-        if not any(role in allowed_roles for role in principal.roles):
-            raise HTTPException(status_code=403, detail="Insufficient permissions")
-        return str(principal.subject)
+from __future__ import annotations
 
-    return dependency
+from fastapi import Request
+
+from return_platform.security.authorization import require_roles
+from return_platform.security.roles import (
+    ADMIN_ROLES,
+    ASSOCIATE_ROLES,
+    AUDIT_ROLES,
+    BUSINESS_READ_ROLES,
+    CONSOLE_READ_ROLES,
+    LOGISTICS_ROLES,
+    READ_ROLES,
+    RETURN_COLLABORATION_ROLES,
+    SUPPORT_ROLES,
+    WAREHOUSE_ROLES,
+    WRITE_ROLES,
+)
+
+__all__ = [
+    "ADMIN_ROLES",
+    "ASSOCIATE_ROLES",
+    "AUDIT_ROLES",
+    "BUSINESS_READ_ROLES",
+    "CONSOLE_READ_ROLES",
+    "LOGISTICS_ROLES",
+    "READ_ROLES",
+    "RETURN_COLLABORATION_ROLES",
+    "SUPPORT_ROLES",
+    "WAREHOUSE_ROLES",
+    "WRITE_ROLES",
+    "require_admin_roles",
+    "require_associate_roles",
+    "require_audit_roles",
+    "require_logistics_roles",
+    "require_read_roles",
+    "require_return_collaboration_roles",
+    "require_roles",
+    "require_support_roles",
+    "require_warehouse_roles",
+    "require_write_roles",
+]
 
 
 def require_read_roles(request: Request) -> str:

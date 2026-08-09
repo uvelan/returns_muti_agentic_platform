@@ -1,8 +1,8 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `c3e4592` (canonical /api/ai — Wave D four-domain condition met)
-Slice: **Wave D2 / Phase 14, slice 3 — the resume bridge**
+Last pushed green commit: `2c8071f` (Wave D2 / Phase 14, slice 3 — the resume bridge)
+Slice: **Wave C end-to-end composition run — the last owed Wave C item**
 Status: slices 1-6 DONE. **Wave C is complete** apart from one owed end-to-end composition
 run — see the Wave C real-infra gate table below — see the C4 sections below for what remains.
 
@@ -2249,11 +2249,28 @@ rule, the fallback, and a snapshot-read failure degrading rather than failing th
 | validation failure keeps N active | `test_generation_validation.py` (asserts the live generation is still ACTIVE *and* the snapshot did not move) |
 | targeted sync then query retry | `test_on_demand_sync_production_wiring.py` |
 
-**Honest limitation:** every item above is covered, but **not by a single end-to-end run**
-that drives `RebuildTrigger.ensure_current` from real sources through a real Neo4j build to
-activation and drain. The pieces are each verified against real infrastructure; their
-composition is not. That end-to-end run is the one Wave C item still owed, and it is the
-natural first task once Wave D gives the platform a reason to rebuild.
+~~**Honest limitation:** ...not by a single end-to-end run...~~ **RESOLVED.**
+`tests/dynamic_knowledge/test_generation_lifecycle_e2e.py` now drives
+`RebuildTrigger.ensure_current` from a real Mongo source document, through the real
+`GenericSyncCoordinator` into a real Neo4j, past real deep validation, to a real
+compare-and-swap, with the previous generation really draining to RETIRED. Assembly mirrors
+`GraphSyncService`'s production recipe deliberately -- a test that wired the pipeline
+differently could pass while production's wiring was broken.
+
+Four cases: first build; the trigger's idempotence against a current snapshot; **build N+1**
+(different generation, `activation_version` 1→2, predecessor RETIRED); and **validation
+failure keeps N active** (empty source → candidate FAILED, snapshot unmoved at version 1,
+generation N still ACTIVE).
+
+**Two things the composition exposed that no unit test had.** The shared `active_schema`
+fixture declares a POSTGRESQL source for which no connector exists, and deep validation
+requires *every* declared label populated -- so narrowing the sync is not enough, the schema
+itself must describe only what the environment can build. More importantly: seeding the
+cursor field as an ISO **string** makes `scan` return zero rows while
+`capture_high_watermark` still reports a plausible watermark, because MongoDB does not
+compare a BSON date to a string. That is a **silent empty build**, and the only reason it
+surfaced is that deep validation now rejects an unpopulated generation -- before Phase 12
+slice 5 it would have activated.
 
 ## Wave C4 / Phase 12, slice 5 — deep validation
 
