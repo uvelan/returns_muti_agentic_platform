@@ -136,6 +136,47 @@ class GenerationHandleProvider:
                     )
 
     @asynccontextmanager
+    async def acquire_read_pinned(
+        self, graph_generation_id: str
+    ) -> AsyncIterator[GenerationHandle]:
+        """Lease a generation the caller has already chosen, skipping resolution.
+
+        For `STRICT_PINNING`: a conversation resuming onto the generation it
+        started on must lease *that* one, not whatever is current, or the lease
+        protects the wrong generation entirely -- the pinned one would still be
+        free to retire while the request read it.
+
+        This is the one sanctioned exception to "resolution and leasing are the
+        same step", and it is not a loophole: the id comes from a prior
+        `acquire_read`, persisted in the conversation's own checkpoint. It never
+        re-derives "current" from anywhere.
+
+        A refusal degrades to unleased, as with `acquire_read` -- the generation
+        is draining, and a strict pin cannot survive a retirement no matter what
+        this returns. `leased` reports it.
+        """
+        lease_id = await self._try_acquire(graph_generation_id)
+        try:
+            yield GenerationHandle(
+                graph_generation_id=graph_generation_id,
+                leased=lease_id is not None,
+                lease_id=lease_id,
+            )
+        finally:
+            if lease_id is not None and self._lease_store is not None:
+                try:
+                    await self._lease_store.release(
+                        graph_generation_id=graph_generation_id, lease_id=lease_id
+                    )
+                except Exception:
+                    _LOGGER.exception(
+                        "Could not release read lease %s on generation %s; "
+                        "it will expire on its TTL",
+                        lease_id,
+                        graph_generation_id,
+                    )
+
+    @asynccontextmanager
     async def reserve_write(self, graph_generation_id: str) -> AsyncIterator[GenerationHandle]:
         """Claim a write reservation on an *already resolved* generation.
 

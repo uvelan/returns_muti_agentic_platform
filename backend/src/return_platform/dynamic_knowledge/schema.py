@@ -426,10 +426,14 @@ class EntityDefinition(BaseModel):
                 raise ValueError(
                     f"anchor {anchor.anchor_id!r} references unknown fields: {sorted(missing)}"
                 )
-        if self.source_contract_status is SourceContractStatus.UNVERIFIED and self.source_access in {
-            EntitySourceAccess.CONNECTED_READ,
-            EntitySourceAccess.CONNECTED_SYNC,
-        }:
+        if (
+            self.source_contract_status is SourceContractStatus.UNVERIFIED
+            and self.source_access
+            in {
+                EntitySourceAccess.CONNECTED_READ,
+                EntitySourceAccess.CONNECTED_SYNC,
+            }
+        ):
             raise ValueError(
                 f"entity {self.entity_id!r} has an UNVERIFIED source contract and cannot "
                 f"declare source_access {self.source_access!r}; use SEED_ONLY or DISABLED"
@@ -449,9 +453,7 @@ class EntityDefinition(BaseModel):
             for source in field.derive.referenced_fields:
                 source_field = self.fields.get(source)
                 if source_field is None:
-                    raise ValueError(
-                        f"field {field_id!r} derives from unknown field {source!r}"
-                    )
+                    raise ValueError(f"field {field_id!r} derives from unknown field {source!r}")
                 if source == field_id:
                     raise ValueError(f"field {field_id!r} cannot derive from itself")
                 if source_field.derive is not None:
@@ -542,18 +544,18 @@ class RelationshipProjection(BaseModel):
 
     @model_validator(mode="after")
     def validate_cardinality(self) -> RelationshipProjection:
-        if (
-            self.cardinality in {RelationshipCardinality.ONE_TO_ONE, RelationshipCardinality.MANY_TO_ONE}
-            and self.maximum_targets_per_source not in (None, 1)
-        ):
+        if self.cardinality in {
+            RelationshipCardinality.ONE_TO_ONE,
+            RelationshipCardinality.MANY_TO_ONE,
+        } and self.maximum_targets_per_source not in (None, 1):
             raise ValueError(
                 f"relationship {self.relationship_id!r} declares {self.cardinality!r} but "
                 f"maximum_targets_per_source={self.maximum_targets_per_source!r} allows more than one"
             )
-        if (
-            self.cardinality in {RelationshipCardinality.ONE_TO_ONE, RelationshipCardinality.ONE_TO_MANY}
-            and self.maximum_sources_per_target not in (None, 1)
-        ):
+        if self.cardinality in {
+            RelationshipCardinality.ONE_TO_ONE,
+            RelationshipCardinality.ONE_TO_MANY,
+        } and self.maximum_sources_per_target not in (None, 1):
             raise ValueError(
                 f"relationship {self.relationship_id!r} declares {self.cardinality!r} but "
                 f"maximum_sources_per_target={self.maximum_sources_per_target!r} allows more than one"
@@ -573,6 +575,23 @@ class GraphDefinition(BaseModel):
     indexes: tuple[dict[str, Any], ...] = ()
 
 
+class GenerationBinding(StrEnum):
+    """What a paused conversation does when it resumes after a graph rebuild.
+
+    `REBIND_ON_RESUME` is the platform default per Phase 12: an associate who
+    answers a clarifying question an hour later should see today's data, and a
+    conversation must never hold a generation against retirement indefinitely.
+
+    `STRICT_PINNING` keeps the conversation on the generation it started on, for
+    agents whose turn-to-turn consistency matters more than freshness. It is a
+    weaker guarantee than it sounds: retirement's drain is bounded, so a pin
+    cannot outlive the generation it names -- see `handle.py`.
+    """
+
+    REBIND_ON_RESUME = "REBIND_ON_RESUME"
+    STRICT_PINNING = "STRICT_PINNING"
+
+
 class AgentPolicy(BaseModel):
     """Independent agent capability and safety policy."""
 
@@ -580,6 +599,7 @@ class AgentPolicy(BaseModel):
 
     agent_id: Identifier
     task_queue: Identifier
+    generation_binding: GenerationBinding = GenerationBinding.REBIND_ON_RESUME
     allowed_business_capabilities: frozenset[str]
     allowed_roles: frozenset[str]
     allowed_entity_ids: frozenset[str]

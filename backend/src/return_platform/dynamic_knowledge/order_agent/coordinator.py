@@ -10,6 +10,7 @@ and one reasoning attempt (the compiled graph, checkpointed independently).
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any, Protocol, cast
 
@@ -47,7 +48,7 @@ from return_platform.dynamic_knowledge.order_agent.graph_nodes import (
     TurnRuntimeContext,
 )
 from return_platform.dynamic_knowledge.order_agent.state import OrderAgentGraphState
-from return_platform.dynamic_knowledge.schema import ActiveSchema
+from return_platform.dynamic_knowledge.schema import ActiveSchema, GenerationBinding
 from return_platform.platform.reasoning.checkpoint import SystemStoreCheckpointSaver
 from return_platform.platform.reasoning.retention import (
     CheckpointRetentionPolicy,
@@ -67,6 +68,9 @@ __all__ = ["DynamicOrderAgentCoordinator", "OrderAgentFailure"]
 # rather than risking LangGraph's own GraphRecursionError masking a real
 # OrderAgentFailure("MAX_REASONING_STEPS_REACHED", ...) that would otherwise fire first.
 _RECURSION_LIMIT = 256
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class ConversationStore(Protocol):
@@ -89,6 +93,33 @@ class ConversationStore(Protocol):
 
 class GraphStateProvider(Protocol):
     async def active_generation(self, schema: ActiveSchema) -> str: ...
+
+
+def _cache_for_generation(
+    cache: dict[str, Any] | None, graph_generation_id: str
+) -> dict[str, Any] | None:
+    """Drop a cached order search that belongs to a different generation.
+
+    `orderSearchCache` survives between turns on the conversation record, and it
+    holds an `evidenceRef` plus a `CandidateSet` built against one specific
+    generation. Paging through it after a rebuild would serve candidates from a
+    generation that may already be retired, and selecting one raises "candidate
+    set belongs to a stale graph generation" from `validate_selection`. Reading
+    the generation off the embedded CandidateSet avoids stamping a second copy
+    of it onto the cache.
+
+    A cache with no CandidateSet is left alone -- it predates this check and has
+    no selection to invalidate.
+    """
+    if cache is None:
+        return None
+    candidate_set = cache.get("candidateSet")
+    if not isinstance(candidate_set, dict):
+        return cache
+    cached_generation = candidate_set.get("graph_generation_id")
+    if isinstance(cached_generation, str) and cached_generation != graph_generation_id:
+        return None
+    return cache
 
 
 class DynamicOrderAgentCoordinator:
@@ -189,14 +220,57 @@ class DynamicOrderAgentCoordinator:
         # clarification pause, which can last days and would pin a generation
         # against retirement for the whole time. A resumed turn takes its own
         # lease here.
+        pinned = await self._pinned_generation(resume_thread_id)
+        if pinned is not None and policy.generation_binding is GenerationBinding.STRICT_PINNING:
+            # Lease the generation the conversation started on, not whatever is
+            # current: leasing "current" would leave the pinned generation
+            # unprotected and free to retire while this turn reads it.
+            async with self._generation_handles.acquire_read_pinned(pinned) as handle:
+                return await self._run_turn(
+                    request,
+                    guard_context,
+                    graph_generation_id=handle.graph_generation_id,
+                    workflow_id=workflow_id,
+                    resume_thread_id=resume_thread_id,
+                    rebound_from=None,
+                )
+
         async with self._generation_handles.acquire_read(self._schema) as handle:
+            rebound_from = (
+                pinned if pinned is not None and pinned != handle.graph_generation_id else None
+            )
             return await self._run_turn(
                 request,
                 guard_context,
                 graph_generation_id=handle.graph_generation_id,
                 workflow_id=workflow_id,
                 resume_thread_id=resume_thread_id,
+                rebound_from=rebound_from,
             )
+
+    async def _pinned_generation(self, resume_thread_id: str | None) -> str | None:
+        """The generation the paused turn was reading, from its own checkpoint.
+
+        Only meaningful on resume. Returns None rather than raising if the
+        checkpoint is gone (swept by abandonment, expired retention): a resumed
+        turn with no checkpoint has nothing to rebind *from*, and the graph
+        invocation will fail on its own terms rather than here.
+        """
+        if resume_thread_id is None:
+            return None
+        try:
+            snapshot = await self._graph.aget_state(
+                {"configurable": {"thread_id": resume_thread_id}}
+            )
+        except Exception:
+            _LOGGER.exception(
+                "Could not read the paused checkpoint for thread %s; treating the turn as unpinned",
+                resume_thread_id,
+            )
+            return None
+        values = getattr(snapshot, "values", None) or {}
+        pinned = values.get("graph_generation_id")
+        return pinned if isinstance(pinned, str) and pinned else None
 
     async def _run_turn(
         self,
@@ -206,11 +280,15 @@ class DynamicOrderAgentCoordinator:
         graph_generation_id: str,
         workflow_id: str | None,
         resume_thread_id: str | None,
+        rebound_from: str | None = None,
     ) -> AgentTurnResult:
         """The turn itself, with its generation already resolved and pinned.
 
         Split out so the lease's scope is a single visible `async with` rather
-        than a hundred-line indented block whose exit path is easy to lose."""
+        than a hundred-line indented block whose exit path is easy to lose.
+
+        `rebound_from` is set when a resumed turn landed on a different
+        generation than the one it paused on -- see the resume handling below."""
         version, conversation_state, replay = await self._conversations.load_for_turn(
             request=request,
             graph_generation_id=graph_generation_id,
@@ -251,8 +329,9 @@ class DynamicOrderAgentCoordinator:
             "run_id": run_id,
             "requested_schema_entity_ids": (),
             "evidence_refs": (),
-            "order_search_cache": cast(
-                "dict[str, Any] | None", conversation_state.get("orderSearchCache")
+            "order_search_cache": _cache_for_generation(
+                cast("dict[str, Any] | None", conversation_state.get("orderSearchCache")),
+                graph_generation_id,
             ),
             "action": None,
             "reasoning_steps_used": 0,
@@ -268,9 +347,37 @@ class DynamicOrderAgentCoordinator:
         # Resuming feeds the answer into the suspended `interrupt()` and discards
         # `initial_state` entirely -- the paused checkpoint already holds the real
         # accumulated state, and re-sending a fresh initial state would clobber it.
-        graph_input: OrderAgentGraphState | Command[Any] = (
-            Command(resume=request.message) if resume_thread_id else initial_state
-        )
+        graph_input: OrderAgentGraphState | Command[Any]
+        if resume_thread_id and rebound_from is not None:
+            # REBIND_ON_RESUME: the graph rebuilt while this conversation was
+            # waiting on a human. The checkpoint still names the old generation,
+            # and every node reads it from state, so the resumed turn would keep
+            # querying a generation that may already be retired. Carry the new
+            # one in on the resume.
+            #
+            # Dropping `order_search_cache` is not tidiness -- it is required.
+            # The cache holds a CandidateSet stamped with the generation it was
+            # built from, and `CandidateSet.validate_selection` raises "candidate
+            # set belongs to a stale graph generation" on mismatch. Keeping it
+            # would turn the associate's answer into a hard error instead of a
+            # fresh search.
+            _LOGGER.info(
+                "Rebinding resumed conversation %s from generation %s to %s",
+                request.conversation_id,
+                rebound_from,
+                graph_generation_id,
+            )
+            graph_input = Command(
+                resume=request.message,
+                update={
+                    "graph_generation_id": graph_generation_id,
+                    "order_search_cache": None,
+                },
+            )
+        elif resume_thread_id:
+            graph_input = Command(resume=request.message)
+        else:
+            graph_input = initial_state
         try:
             final_state = await self._graph.ainvoke(
                 graph_input,

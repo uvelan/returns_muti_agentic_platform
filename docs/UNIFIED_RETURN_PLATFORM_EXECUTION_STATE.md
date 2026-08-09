@@ -1,13 +1,11 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `e9dca2a` (Wave C4 / Phase 12, slice 2 — read lease on the
-request path)
-Slice: **Wave C4 / Phase 12 — graph generation lifecycle** (slice 3 of N: write reservation
-on on-demand sync)
-Status: slices 1-3 DONE, phase INCOMPLETE — see the C4 sections below for what remains.
+Last pushed green commit: `8e2edb6` (Wave C4 / Phase 12, slice 3 — write reservation)
+Slice: **Wave C4 / Phase 12 — graph generation lifecycle** (slice 4 of N: REBIND_ON_RESUME)
+Status: slices 1-4 DONE, phase INCOMPLETE — see the C4 sections below for what remains.
 
-Suite: **1835 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
+Suite: **1845 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
 mypy baseline: **47 errors / 16 files**, unchanged across every commit in this branch.
 
 Caveat on "green": the *full* static gate does not pass. `scripts/linux/03_run_backend_quality.sh`
@@ -1848,6 +1846,48 @@ Still owed, in rough priority order:
 `task_bd3a4652` (the rejected-command wedge) — fixed and verified below. The
 `NVIDIA_API_KEY`/`GOOGLE_API_KEY` item is also resolved: see the correction above; the keys
 were never actually required.
+
+## Wave C4 / Phase 12, slice 4 — REBIND_ON_RESUME (and the stale cache it exposes)
+
+Status: DONE. Slice 4 of Phase 12; the phase is still **not** complete.
+
+A clarification pause can last days. The paused checkpoint records the generation the turn
+was reading and every graph node reads `graph_generation_id` out of that state, so a
+resumed turn kept querying whatever generation it started on however many rebuilds had
+happened since. That is **strict pinning arrived at by accident**, and it is the opposite
+of the plan's default.
+
+`GenerationBinding` is now a field on `AgentPolicy`, defaulting to `REBIND_ON_RESUME`, with
+`STRICT_PINNING` selectable from schema config. Under strict pinning the turn leases the
+*pinned* generation via the new `acquire_read_pinned` -- leasing "current" would leave the
+pinned generation unprotected and free to retire while the request read it.
+
+**The half that is easy to miss.** Rebinding the id alone is not enough and would have
+passed a weaker test. `orderSearchCache` survives between turns and holds a `CandidateSet`
+stamped with the generation it was built from; `CandidateSet.validate_selection` raises
+"candidate set belongs to a stale graph generation" on mismatch. A rebind that kept the
+cache would turn the associate's answer -- "the second one" -- into a hard error instead of
+a fresh search. The rebind therefore clears the cache on resume, and `_cache_for_generation`
+drops a stale cache on ordinary turns too, reading the generation off the embedded
+CandidateSet rather than stamping a second copy of it.
+
+**Verification.** 10 tests in `test_generation_rebind.py`. One is worth calling out: the
+whole rebind rests on LangGraph applying `Command(resume=..., update=...)` *before* the
+interrupted node re-runs. If `update` were ignored on resume, or applied and then
+overwritten, the coordinator would silently keep the stale generation and every other test
+here would still pass. That is now asserted against a real compiled graph, including that
+the resumed node observes the rebound value. (Aside worth remembering: a `TypedDict` for a
+LangGraph state must be declared at module level -- `from __future__ import annotations`
+turns its hints into strings and LangGraph resolves them with `get_type_hints` against
+module globals, so a function-local one dies on a bare `NameError`.)
+
+Full real-infra suite: **1845 passed, 2 skipped, 0 failed**. mypy 47/16.
+
+**Still open in Phase 12:** deep validation is still a bare state transition; the rebuild
+trigger is unimplemented; `active_generation` reads `dynamic_graph_generations`, a notion of
+"current" parallel to `ActiveRuntimeSnapshot`, and reconciling the two needs a decision on
+which is authoritative; and the Wave C real-infra gate (discovery -> build N+1 -> live sync
+-> activation -> drain -> validation-failure-keeps-N) has never been run end to end.
 
 ## Wave C4 / Phase 12, slice 3 — the write side reserves, and refuses a drain
 
