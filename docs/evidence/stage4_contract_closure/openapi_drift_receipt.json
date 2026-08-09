@@ -1,19 +1,19 @@
 {
   "stage": "4E",
   "gate": "openapi_drift",
-  "commit": "c8976dab36eee87c238da5a174bfd4800bc212cc",
+  "mode": "check",
+  "commit": "1eb1164bd1dd3c7879e4640008d0f04ddbf97a28",
   "environment": "local-contract-validation",
-  "command": [
-    "node",
-    "K:\\Projects\\FEG\\Ret\\full\\returns_platform\\frontend\\node_modules\\openapi-typescript\\bin\\cli.js",
-    "K:\\Projects\\FEG\\Ret\\full\\returns_platform\\tmp0zy1gif7\\return-platform.openapi.json",
-    "--output",
-    "K:\\Projects\\FEG\\Ret\\full\\returns_platform\\tmp0zy1gif7\\return-platform.d.ts"
+  "started_at": "2026-08-09T16:39:08.723977+00:00",
+  "finished_at": "2026-08-09T16:39:13.834956+00:00",
+  "openapi_sha256": "0f1ac5cb9855acb5657e72965a989db4016e70bd25f66314f5efcd5f3f7df500",
+  "snapshots": [
+    "openapi/return-platform.openapi.json",
+    "backend/openapi/return-platform.openapi.json",
+    "frontend/openapi/return-platform.openapi.json",
+    "openapi.json"
   ],
-  "started_at": "2026-07-26T08:08:54.077708+00:00",
-  "finished_at": "2026-07-26T08:08:57.375152+00:00",
-  "openapi_sha256": "26d1f84a2f589bb51415bcd765b72408cd1906af64f49ca2ac453e7bfa6dad69",
-  "exit_code": 0,
   "diffs": [],
-  "status": "PASS"
+  "status": "PASS",
+  "exit_code": 0
 }

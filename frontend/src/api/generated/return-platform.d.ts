@@ -4,6 +4,359 @@
  */
 
 export interface paths {
+    "/api/config/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Releases */
+        get: operations["list_releases_api_config_releases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config/releases/{release_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Release */
+        get: operations["get_release_api_config_releases__release_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config/runtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Runtime Configuration
+         * @description The active validated snapshot -- what is serving right now.
+         *
+         *     Read from `app.state` rather than rebuilt: the snapshot the process is
+         *     actually using is the honest answer, and rebuilding one here could report a
+         *     configuration nothing is running.
+         */
+        get: operations["get_runtime_configuration_api_config_runtime_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-schema/analyses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Analyses */
+        get: operations["list_analyses_api_graph_schema_analyses_get"];
+        put?: never;
+        /** Create Analysis */
+        post: operations["create_analysis_api_graph_schema_analyses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-schema/analyses/{analysis_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Analysis */
+        get: operations["get_analysis_api_graph_schema_analyses__analysis_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-schema/analyses/{analysis_id}/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abandon Analysis
+         * @description Abandonment is the one transition available before discovery exists, and it
+         *     is what keeps a DRAFT from living forever if the analyst walks away.
+         */
+        post: operations["abandon_analysis_api_graph_schema_analyses__analysis_id__abandon_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-schema/analyses/{analysis_id}/clarifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Clarifications */
+        get: operations["list_clarifications_api_graph_schema_analyses__analysis_id__clarifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-schema/analyses/{analysis_id}/clarifications/{clarification_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Answer Clarification */
+        post: operations["answer_clarification_api_graph_schema_analyses__analysis_id__clarifications__clarification_id__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-schema/analyses/{analysis_id}/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Draft */
+        post: operations["create_draft_api_graph_schema_analyses__analysis_id__drafts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-schema/analyses/{analysis_id}/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Snapshot */
+        get: operations["get_snapshot_api_graph_schema_analyses__analysis_id__snapshot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-schema/drafts/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Draft */
+        get: operations["get_draft_api_graph_schema_drafts__draft_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-schema/drafts/{draft_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Draft */
+        post: operations["approve_draft_api_graph_schema_drafts__draft_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-schema/drafts/{draft_id}/mutations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Draft Mutations
+         * @description Typed commands only -- the request model is the enforcement point.
+         */
+        post: operations["apply_draft_mutations_api_graph_schema_drafts__draft_id__mutations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-schema/drafts/{draft_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Revisions */
+        get: operations["list_revisions_api_graph_schema_drafts__draft_id__revisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-schema/drafts/{draft_id}/revisions/{sequence}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Revision Diff
+         * @description Diff a revision against its predecessor.
+         *
+         *     Reconstructed by replaying the recorded commands rather than by storing a
+         *     shape snapshot per revision: the commands *are* the history, and a stored
+         *     shape could drift from them.
+         */
+        get: operations["get_revision_diff_api_graph_schema_drafts__draft_id__revisions__sequence__diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-schema/drafts/{draft_id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate Draft */
+        post: operations["validate_draft_api_graph_schema_drafts__draft_id__validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/returns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Returns */
+        get: operations["list_returns_api_returns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/returns/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Return */
+        get: operations["get_return_api_returns__session_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/returns/{session_id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Timeline
+         * @description Named `timeline`, not `events`.
+         *
+         *     The legacy path is `/events`, but the aggregate this belongs to calls it a
+         *     timeline and so does the plan's domain list. The canonical name should match
+         *     the domain rather than inherit an implementation word; the legacy path keeps
+         *     working until Wave F.
+         */
+        get: operations["get_timeline_api_returns__session_id__timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ai-gateway/metrics": {
         parameters: {
             query?: never;
@@ -4259,6 +4612,114 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** AddEntity */
+        AddEntity: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "AddEntity";
+            /** Label */
+            label: string;
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+            /** Source Dataset */
+            source_dataset: string;
+        };
+        /**
+         * AddGraphConstraint
+         * @description Graph-target constraint. Uniqueness/existence only -- a general predicate
+         *     would be an expression, and an expression is executable.
+         */
+        AddGraphConstraint: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "AddGraphConstraint";
+            /** Label */
+            label: string;
+            /** Property Name */
+            property_name: string;
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /**
+             * Unique
+             * @default true
+             */
+            unique: boolean;
+        };
+        /**
+         * AddGraphIndex
+         * @description Targets the **graph**, never a source system (design doc C3.3).
+         */
+        AddGraphIndex: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "AddGraphIndex";
+            /** Label */
+            label: string;
+            /** Properties */
+            properties: string[];
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+        };
+        /** AddProperty */
+        AddProperty: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "AddProperty";
+            /** Label */
+            label: string;
+            /** Property Name */
+            property_name: string;
+            property_type: components["schemas"]["PropertyType"];
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+            /** Source Field */
+            source_field: string;
+        };
+        /** AddRelationship */
+        AddRelationship: {
+            cardinality: components["schemas"]["Cardinality"];
+            /** From Label */
+            from_label: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "AddRelationship";
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+            /** Relationship Type */
+            relationship_type: string;
+            /** To Label */
+            to_label: string;
+        };
         /** AgentDecisionView */
         AgentDecisionView: {
             /** Agent */
@@ -4325,15 +4786,55 @@ export interface components {
             model_name: string;
             /** Model Provider */
             model_provider: string;
+            /** Pending Clarification Thread Id */
+            pending_clarification_thread_id?: string | null;
             /** Query Evidence */
             query_evidence: components["schemas"]["QueryEvidence"][];
             response: components["schemas"]["StructuredAgentResponse"];
+        };
+        /** AnalysisSessionView */
+        AnalysisSessionView: {
+            /** Analysis Id */
+            analysis_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Draft Id */
+            draft_id: string | null;
+            /** Failure Reason */
+            failure_reason: string | null;
+            /** Snapshot Id */
+            snapshot_id: string | null;
+            /** Source Refs */
+            source_refs: string[];
+            status: components["schemas"]["SessionStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
         };
         /**
          * AnchorType
          * @enum {string}
          */
         "AnchorType-Output": "ORDER_NUMBER" | "CUSTOMER_ID" | "PHONE" | "EMAIL" | "TRACKING_NUMBER" | "SKU" | "CUSTOMER_NAME" | "PRODUCT_DESCRIPTION" | "SHIPPING_ADDRESS" | "ZIP_CODE" | "DATE_RANGE" | "PRODUCT_COLOUR";
+        /** AnswerClarificationRequest */
+        AnswerClarificationRequest: {
+            /** Answer */
+            answer: string;
+        };
+        /** ApplyMutationsRequest */
+        ApplyMutationsRequest: {
+            /** Mutations */
+            mutations: (components["schemas"]["AddEntity"] | components["schemas"]["RemoveEntity"] | components["schemas"]["RenameEntity"] | components["schemas"]["AddProperty"] | components["schemas"]["RemoveProperty"] | components["schemas"]["ChangeIdentifier"] | components["schemas"]["AddRelationship"] | components["schemas"]["RemoveRelationship"] | components["schemas"]["ChangeCardinality"] | components["schemas"]["ChangeSourceMapping"] | components["schemas"]["ChangeTransformation"] | components["schemas"]["AddGraphIndex"] | components["schemas"]["RemoveGraphIndex"] | components["schemas"]["AddGraphConstraint"] | components["schemas"]["RemoveGraphConstraint"] | components["schemas"]["ChangeOwnershipPolicy"] | components["schemas"]["ChangeSyncRule"])[];
+        };
         /** ApprovalRecord */
         ApprovalRecord: {
             /**
@@ -4366,6 +4867,11 @@ export interface components {
             schema_release_id: string;
             /** Target Environment */
             target_environment: string;
+        };
+        /** ApproveRequest */
+        ApproveRequest: {
+            /** Note */
+            note?: string | null;
         };
         /** AssociateChatTurnRequest */
         AssociateChatTurnRequest: {
@@ -4627,6 +5133,122 @@ export interface components {
             sourceId: string;
         };
         /**
+         * Cardinality
+         * @enum {string}
+         */
+        Cardinality: "ONE_TO_ONE" | "ONE_TO_MANY" | "MANY_TO_ONE" | "MANY_TO_MANY";
+        /** ChangeCardinality */
+        ChangeCardinality: {
+            cardinality: components["schemas"]["Cardinality"];
+            /** From Label */
+            from_label: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "ChangeCardinality";
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+            /** Relationship Type */
+            relationship_type: string;
+            /** To Label */
+            to_label: string;
+        };
+        /** ChangeIdentifier */
+        ChangeIdentifier: {
+            /** Identifier Properties */
+            identifier_properties: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "ChangeIdentifier";
+            /** Label */
+            label: string;
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+        };
+        /** ChangeOwnershipPolicy */
+        ChangeOwnershipPolicy: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "ChangeOwnershipPolicy";
+            /** Label */
+            label: string;
+            ownership: components["schemas"]["OwnershipPolicy"];
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+        };
+        /** ChangeSourceMapping */
+        ChangeSourceMapping: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "ChangeSourceMapping";
+            /** Label */
+            label: string;
+            /** Property Name */
+            property_name: string;
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+            /** Source Field */
+            source_field: string;
+        };
+        /** ChangeSyncRule */
+        ChangeSyncRule: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "ChangeSyncRule";
+            /** Label */
+            label: string;
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+            sync_mode: components["schemas"]["SyncMode"];
+        };
+        /** ChangeTransformation */
+        ChangeTransformation: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "ChangeTransformation";
+            /** Label */
+            label: string;
+            /** Property Name */
+            property_name: string;
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+            transformation: components["schemas"]["TransformationKind"];
+        };
+        /**
+         * ChangeType
+         * @enum {string}
+         */
+        ChangeType: "ADDED" | "REMOVED" | "MODIFIED";
+        /**
          * CircuitState
          * @enum {string}
          */
@@ -4648,6 +5270,32 @@ export interface components {
             question: string;
             /** Slot */
             slot: string;
+        };
+        /**
+         * ClarificationStatus
+         * @enum {string}
+         */
+        ClarificationStatus: "OPEN" | "ANSWERED" | "WITHDRAWN";
+        /** ClarificationView */
+        ClarificationView: {
+            /** Analysis Id */
+            analysis_id: string;
+            /** Answer */
+            answer: string | null;
+            /** Answered At */
+            answered_at: string | null;
+            /** Answered By */
+            answered_by: string | null;
+            /**
+             * Asked At
+             * Format: date-time
+             */
+            asked_at: string;
+            /** Clarification Id */
+            clarification_id: string;
+            /** Question */
+            question: string;
+            status: components["schemas"]["ClarificationStatus"];
         };
         /** ConfigurationModule */
         ConfigurationModule: {
@@ -4736,6 +5384,11 @@ export interface components {
             id: string;
             /** Role */
             role: string;
+        };
+        /** CreateAnalysisRequest */
+        CreateAnalysisRequest: {
+            /** Source Refs */
+            source_refs: string[];
         };
         /** CreateExportPayload */
         CreateExportPayload: {
@@ -5313,6 +5966,29 @@ export interface components {
             configurationVersion: string;
             /** Fromversion */
             fromVersion?: string | null;
+        };
+        /**
+         * DraftStatus
+         * @enum {string}
+         */
+        DraftStatus: "DRAFT" | "VALIDATED" | "APPROVED";
+        /** DraftView */
+        DraftView: {
+            /** Analysis Id */
+            analysis_id: string;
+            /** Current Revision */
+            current_revision: number;
+            /** Draft Id */
+            draft_id: string;
+            /** Entity Count */
+            entity_count: number;
+            /** Relationship Count */
+            relationship_count: number;
+            status: components["schemas"]["DraftStatus"];
+            /** Validation Result Id */
+            validation_result_id: string | null;
+            /** Version */
+            version: number;
         };
         /** EvidenceReference */
         EvidenceReference: {
@@ -6306,6 +6982,11 @@ export interface components {
              */
             updatedAt: string;
         };
+        /**
+         * OwnershipPolicy
+         * @enum {string}
+         */
+        OwnershipPolicy: "SOURCE_OWNED" | "GRAPH_OWNED" | "SHARED";
         /** PageMeta */
         PageMeta: {
             /**
@@ -6422,6 +7103,11 @@ export interface components {
              */
             status: "VALIDATED" | "RELEASED" | "ARCHIVED";
         };
+        /**
+         * PropertyType
+         * @enum {string}
+         */
+        PropertyType: "STRING" | "INTEGER" | "FLOAT" | "BOOLEAN" | "DATE" | "DATETIME";
         /** ProposalCommand */
         ProposalCommand: {
             /** Changeclassification */
@@ -6534,6 +7220,108 @@ export interface components {
              * @enum {string}
              */
             target: "APPROVED" | "MIGRATION_READY";
+        };
+        /** RemoveEntity */
+        RemoveEntity: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "RemoveEntity";
+            /** Label */
+            label: string;
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+        };
+        /** RemoveGraphConstraint */
+        RemoveGraphConstraint: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "RemoveGraphConstraint";
+            /** Label */
+            label: string;
+            /** Property Name */
+            property_name: string;
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+        };
+        /** RemoveGraphIndex */
+        RemoveGraphIndex: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "RemoveGraphIndex";
+            /** Label */
+            label: string;
+            /** Properties */
+            properties: string[];
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+        };
+        /** RemoveProperty */
+        RemoveProperty: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "RemoveProperty";
+            /** Label */
+            label: string;
+            /** Property Name */
+            property_name: string;
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+        };
+        /** RemoveRelationship */
+        RemoveRelationship: {
+            /** From Label */
+            from_label: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "RemoveRelationship";
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+            /** Relationship Type */
+            relationship_type: string;
+            /** To Label */
+            to_label: string;
+        };
+        /** RenameEntity */
+        RenameEntity: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "RenameEntity";
+            /** Label */
+            label: string;
+            /** New Label */
+            new_label: string;
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
         };
         /** ResponseMeta */
         ResponseMeta: {
@@ -6864,6 +7652,24 @@ export interface components {
             /** Sessionid */
             sessionId: string;
         };
+        /** RevisionView */
+        RevisionView: {
+            /** Author */
+            author: string;
+            /** Authored By Model */
+            authored_by_model: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Mutation Count */
+            mutation_count: number;
+            /** Revision Id */
+            revision_id: string;
+            /** Sequence */
+            sequence: number;
+        };
         /**
          * RollbackFeasibility
          * @enum {string}
@@ -6997,6 +7803,19 @@ export interface components {
             /** Transaction Groups */
             transaction_groups: components["schemas"]["TransactionGroup"][];
         };
+        /**
+         * SampleClassification
+         * @description How this snapshot's source samples were dispositioned before durable write.
+         *
+         *     NONE      metadata-only; samples were used transiently in the AI call and
+         *               never written. No samples_ref.
+         *     REDACTED  samples persisted only after the platform redactor. The default
+         *               whenever sampling is enabled.
+         *     ENCRYPTED raw samples persisted encrypted in `source_samples`, with a
+         *               mandatory expiry. Requires the source definition to opt in.
+         * @enum {string}
+         */
+        SampleClassification: "NONE" | "REDACTED" | "ENCRYPTED";
         /** SandboxIssue */
         SandboxIssue: {
             /** Field */
@@ -7167,6 +7986,23 @@ export interface components {
             /** Sourcestructures */
             sourceStructures: components["schemas"]["SourceStructure"][];
         };
+        /** SchemaDiff */
+        SchemaDiff: {
+            /** Entries */
+            entries: components["schemas"]["SchemaDiffEntry"][];
+            /** From Sequence */
+            from_sequence: number;
+            /** To Sequence */
+            to_sequence: number;
+        };
+        /** SchemaDiffEntry */
+        SchemaDiffEntry: {
+            change_type: components["schemas"]["ChangeType"];
+            /** Detail */
+            detail: string;
+            /** Element */
+            element: string;
+        };
         /** SchemaExplorerView */
         SchemaExplorerView: {
             /** Datasets */
@@ -7333,6 +8169,16 @@ export interface components {
             /** Version */
             version: string;
         };
+        /**
+         * SessionStatus
+         * @enum {string}
+         */
+        SessionStatus: "DRAFT" | "DISCOVERING" | "ANALYZING" | "NEEDS_CLARIFICATION" | "NEEDS_HUMAN_REVIEW" | "READY_FOR_APPROVAL" | "APPROVED" | "ABANDONED" | "FAILED";
+        /**
+         * Severity
+         * @enum {string}
+         */
+        Severity: "ERROR" | "WARNING";
         /** SimulationAISummary */
         SimulationAISummary: {
             /** Bydependency */
@@ -7612,6 +8458,32 @@ export interface components {
          * @enum {string}
          */
         SimulationScenario: "SUCCESS" | "RETRYABLE_FAILURE" | "TERMINAL_FAILURE" | "TIMEOUT" | "INVALID_RESPONSE";
+        /**
+         * SnapshotView
+         * @description Metadata and classification only.
+         *
+         *     `samples_ref` is intentionally not exposed: the API surfaces *how* samples
+         *     were handled (`sample_classification`) so an operator can audit it, without
+         *     handing out a pointer into the encrypted `source_samples` structure.
+         */
+        SnapshotView: {
+            /** Analysis Id */
+            analysis_id: string;
+            /**
+             * Captured At
+             * Format: date-time
+             */
+            captured_at: string;
+            /** Content Hash */
+            content_hash: string;
+            /** Dataset Count */
+            dataset_count: number;
+            sample_classification: components["schemas"]["SampleClassification"];
+            /** Sample Expires At */
+            sample_expires_at: string | null;
+            /** Snapshot Id */
+            snapshot_id: string;
+        };
         /** SourceAssetSummary */
         SourceAssetSummary: {
             /** Assetid */
@@ -7993,6 +8865,11 @@ export interface components {
          * @enum {string}
          */
         SyncJobStatus: "QUEUED" | "RUNNING" | "RETRY_SCHEDULED" | "COMPLETED" | "FAILED";
+        /**
+         * SyncMode
+         * @enum {string}
+         */
+        SyncMode: "FULL" | "INCREMENTAL" | "ON_DEMAND";
         /** SyncResult */
         SyncResult: {
             /**
@@ -8076,6 +8953,17 @@ export interface components {
             target_channel: string;
         };
         /**
+         * TransformationKind
+         * @description A closed set of supported transformations.
+         *
+         *     Enumerated rather than expressed as a function body precisely because a
+         *     transformation is the most tempting place to accept arbitrary code. A
+         *     transformation the platform does not already implement is a platform change,
+         *     not something a model can introduce at analysis time.
+         * @enum {string}
+         */
+        TransformationKind: "NONE" | "TRIM" | "UPPERCASE" | "LOWERCASE" | "PARSE_DATE" | "PARSE_NUMBER";
+        /**
          * UnifiedInventory
          * @description Partial-capable inventory across configured database engines.
          */
@@ -8089,18 +8977,6 @@ export interface components {
             /** Credential */
             credential?: string | null;
         };
-        /** ValidationCheck */
-        ValidationCheck: {
-            /** Message */
-            message: string;
-            /** Name */
-            name: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "PASSED" | "FAILED";
-        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -8113,6 +8989,15 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** ValidationFindingView */
+        ValidationFindingView: {
+            check: components["schemas"]["return_platform__graph_schema_analyzer__domain__validation_result__ValidationCheck"];
+            /** Element */
+            element: string;
+            /** Message */
+            message: string;
+            severity: components["schemas"]["Severity"];
         };
         /** ValidationIssue */
         ValidationIssue: {
@@ -8187,6 +9072,23 @@ export interface components {
              */
             verified_by: string;
         };
+        /** ValidationResultView */
+        ValidationResultView: {
+            /** Checks Run */
+            checks_run: components["schemas"]["return_platform__graph_schema_analyzer__domain__validation_result__ValidationCheck"][];
+            /** Draft Id */
+            draft_id: string;
+            /** Findings */
+            findings: components["schemas"]["ValidationFindingView"][];
+            /** Missing Checks */
+            missing_checks: components["schemas"]["return_platform__graph_schema_analyzer__domain__validation_result__ValidationCheck"][];
+            /** Passed */
+            passed: boolean;
+            /** Result Id */
+            result_id: string;
+            /** Revision Id */
+            revision_id: string;
+        };
         /** WarningMeta */
         WarningMeta: {
             /** Code */
@@ -8225,6 +9127,18 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** ValidationCheck */
+        return_platform__api__data_source_config_v2__ValidationCheck: {
+            /** Message */
+            message: string;
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "PASSED" | "FAILED";
+        };
         /** ValidationResult */
         return_platform__api__data_source_config_v2__ValidationResult: {
             /**
@@ -8233,7 +9147,7 @@ export interface components {
              */
             checkedAt: string;
             /** Checks */
-            checks: components["schemas"]["ValidationCheck"][];
+            checks: components["schemas"]["return_platform__api__data_source_config_v2__ValidationCheck"][];
             /** Latencyms */
             latencyMs: number | null;
             /** Sourceid */
@@ -8244,6 +9158,11 @@ export interface components {
              */
             status: "VALID" | "INVALID";
         };
+        /**
+         * ValidationCheck
+         * @enum {string}
+         */
+        return_platform__graph_schema_analyzer__domain__validation_result__ValidationCheck: "SOURCE_EXISTS" | "DATASET_EXISTS" | "FIELD_EXISTS" | "TYPE_COMPATIBILITY" | "IDENTIFIERS_AVAILABLE" | "RELATIONSHIPS_RESOLVABLE" | "CARDINALITY_PLAUSIBLE" | "TRANSFORMATION_SUPPORTED" | "SEARCH_ANCHORS_VIABLE" | "CYPHER_COMPILES" | "QUERY_SAFETY_PASSES" | "GRAPH_INDEX_DEFINITION_VALID" | "GRAPH_CONSTRAINT_VALID" | "SYNC_PROJECTION_EXECUTABLE";
         /**
          * AnchorType
          * @enum {string}
@@ -8287,6 +9206,636 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_releases_api_config_releases_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_dict_str__Any___"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_release_api_config_releases__release_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_runtime_configuration_api_config_runtime_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+        };
+    };
+    list_analyses_api_graph_schema_analyses_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["SessionStatus"] | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisSessionView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_analysis_api_graph_schema_analyses_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAnalysisRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisSessionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_analysis_api_graph_schema_analyses__analysis_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisSessionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    abandon_analysis_api_graph_schema_analyses__analysis_id__abandon_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisSessionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_clarifications_api_graph_schema_analyses__analysis_id__clarifications_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClarificationView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_clarification_api_graph_schema_analyses__analysis_id__clarifications__clarification_id__answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                analysis_id: string;
+                clarification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnswerClarificationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClarificationView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_draft_api_graph_schema_analyses__analysis_id__drafts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_snapshot_api_graph_schema_analyses__analysis_id__snapshot_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                analysis_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_draft_api_graph_schema_drafts__draft_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_draft_api_graph_schema_drafts__draft_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_draft_mutations_api_graph_schema_drafts__draft_id__mutations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyMutationsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_revisions_api_graph_schema_drafts__draft_id__revisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_revision_diff_api_graph_schema_drafts__draft_id__revisions__sequence__diff_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+                sequence: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchemaDiff"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_draft_api_graph_schema_drafts__draft_id__validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationResultView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_returns_api_returns_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_ReturnSessionView__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_return_api_returns__session_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ReturnSessionView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_timeline_api_returns__session_id__timeline_get: {
+        parameters: {
+            query?: {
+                after?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_TimelineEvent__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_usage_metrics_api_v1_ai_gateway_metrics_get: {
         parameters: {
             query?: {

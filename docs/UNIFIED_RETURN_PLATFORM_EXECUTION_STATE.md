@@ -1,8 +1,8 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `e90c0ac` (Wave D3 / Phase 15, slice 1 — /api/config read surface)
-Slice: **Wave D4 / Phase 16 — canonical returns API** (slice 1: read surface + duplicate inventory)
+Last pushed green commit: `1eb1164` (Wave D4 / Phase 16, slice 1 — /api/returns read surface)
+Slice: **OpenAPI contract regeneration + drift-check repair**
 Status: slices 1-6 DONE. **Wave C is complete** apart from one owed end-to-end composition
 run — see the Wave C real-infra gate table below — see the C4 sections below for what remains.
 
@@ -350,7 +350,7 @@ place agents are constructed).
 
 ## Known pre-existing conditions (confirmed unrelated to this slice)
 
-- `openapi-drift` fails: the committed `openapi/return-platform.openapi.json` snapshot
+- ~~`openapi-drift` fails~~ **RESOLVED** (see the regeneration section above): the committed `openapi/return-platform.openapi.json` snapshot
   has drifted from the live-generated schema. Confirmed via a direct before/after
   check — identical failure (same `openapi_sha256`, same `"DRIFT: root"`) at clean
   HEAD (`b19570f`, before any of this slice's changes) as with this slice applied.
@@ -1847,6 +1847,51 @@ Still owed, in rough priority order:
 `task_bd3a4652` (the rejected-command wedge) — fixed and verified below. The
 `NVIDIA_API_KEY`/`GOOGLE_API_KEY` item is also resolved: see the correction above; the keys
 were never actually required.
+
+## OpenAPI contract regeneration, and the drift check made trustworthy
+
+Status: DONE. `openapi-drift` **passes** for the first time in this branch's recorded
+history; the ledger previously listed it as an accepted failing condition.
+
+### Why it had been failing, which was not what the ledger said
+
+The ledger recorded "the committed snapshot is stale". The real cause was structural:
+**two generators existed and produced different documents from the same commit.**
+`backend/scripts/export_openapi.py` called `create_app()` with ambient settings;
+`scripts/check_openapi_drift.py` called it with explicit test settings. Feature flags and
+optional integrations change which routers mount, so the two disagreed —
+`frontend/openapi/...` sat at 631 KB and `openapi/...` at 512 KB, both "current". **A
+contract whose content depends on the exporter's environment is not a contract.**
+
+There is now one generator with pinned `contract_settings()`, and the drift check imports it
+rather than reimplementing it.
+
+### Three defects in the check itself
+
+1. **It was a checker that mutated.** On drift it reported failure *and* wrote the new
+   content, so the second run always passed. A gate that repairs what it detects can never
+   fail twice for the same reason — and locally it silently rewrote files the developer had
+   not chosen to change. Now `--write` regenerates and the default checks, writing nothing.
+2. **It deleted `frontend/openapi/return-platform.openapi.json` unconditionally and never
+   regenerated it** — a file `frontend/package.json`'s `contracts:generate` and
+   `contracts:check` both consume. The delete is gone.
+3. **It covered two of five committed artifacts.** `backend/openapi/...`,
+   `frontend/openapi/...` and the root `openapi.json` were unmanaged and had already
+   diverged into three distinct contents. All four JSON snapshots plus the generated `.d.ts`
+   are now covered and byte-identical (`0f1ac5cb9855…`).
+
+The four-way duplication is itself the defect; removing it is Wave G. Until then they must
+agree, because each is somebody's source of truth.
+
+### Contract state
+
+202 paths. Canonical domains now published: `/api/graph-schema` (13), `/api/config` (3),
+`/api/returns` (3). **`/api/ai` is still absent** — Wave D's completion condition names four
+canonical domains and only three exist.
+
+**Verification.** Backend full suite **1916 passed, 2 skipped**; frontend **64 passed**,
+`tsc -b` clean against the regenerated types; drift check exits 0 on a second consecutive
+run, which is the property the old script could not have.
 
 ## Wave D4 / Phase 16, slice 1 — canonical `/api/returns` read surface
 

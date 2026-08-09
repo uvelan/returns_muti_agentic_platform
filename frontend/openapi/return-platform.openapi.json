@@ -4508,6 +4508,207 @@
         "title": "APIResponse[tuple[CustomerGraphEvidenceSummary, ...]]",
         "type": "object"
       },
+      "AddEntity": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "AddEntity",
+            "default": "AddEntity",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Label",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "source_dataset": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_.\\-]{0,127}$",
+            "title": "Source Dataset",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "source_dataset"
+        ],
+        "title": "AddEntity",
+        "type": "object"
+      },
+      "AddGraphConstraint": {
+        "additionalProperties": false,
+        "description": "Graph-target constraint. Uniqueness/existence only -- a general predicate\nwould be an expression, and an expression is executable.",
+        "properties": {
+          "kind": {
+            "const": "AddGraphConstraint",
+            "default": "AddGraphConstraint",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Label",
+            "type": "string"
+          },
+          "property_name": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Property Name",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "required": {
+            "default": false,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "unique": {
+            "default": true,
+            "title": "Unique",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "label",
+          "property_name"
+        ],
+        "title": "AddGraphConstraint",
+        "type": "object"
+      },
+      "AddGraphIndex": {
+        "additionalProperties": false,
+        "description": "Targets the **graph**, never a source system (design doc C3.3).",
+        "properties": {
+          "kind": {
+            "const": "AddGraphIndex",
+            "default": "AddGraphIndex",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Label",
+            "type": "string"
+          },
+          "properties": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Properties",
+            "type": "array"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "properties"
+        ],
+        "title": "AddGraphIndex",
+        "type": "object"
+      },
+      "AddProperty": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "AddProperty",
+            "default": "AddProperty",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Label",
+            "type": "string"
+          },
+          "property_name": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Property Name",
+            "type": "string"
+          },
+          "property_type": {
+            "$ref": "#/components/schemas/PropertyType"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "source_field": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_.\\-]{0,127}$",
+            "title": "Source Field",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "property_name",
+          "property_type",
+          "source_field"
+        ],
+        "title": "AddProperty",
+        "type": "object"
+      },
+      "AddRelationship": {
+        "additionalProperties": false,
+        "properties": {
+          "cardinality": {
+            "$ref": "#/components/schemas/Cardinality"
+          },
+          "from_label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "From Label",
+            "type": "string"
+          },
+          "kind": {
+            "const": "AddRelationship",
+            "default": "AddRelationship",
+            "title": "Kind",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "relationship_type": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Relationship Type",
+            "type": "string"
+          },
+          "to_label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "To Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "relationship_type",
+          "from_label",
+          "to_label",
+          "cardinality"
+        ],
+        "title": "AddRelationship",
+        "type": "object"
+      },
       "AgentDecisionView": {
         "additionalProperties": false,
         "properties": {
@@ -4662,6 +4863,17 @@
             "title": "Model Provider",
             "type": "string"
           },
+          "pending_clarification_thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Clarification Thread Id"
+          },
           "query_evidence": {
             "items": {
               "$ref": "#/components/schemas/QueryEvidence"
@@ -4686,6 +4898,90 @@
         "title": "AgentTurnResult",
         "type": "object"
       },
+      "AnalysisSessionView": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_id": {
+            "title": "Analysis Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "title": "Created By",
+            "type": "string"
+          },
+          "draft_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draft Id"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
+          },
+          "source_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SessionStatus"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "analysis_id",
+          "status",
+          "source_refs",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "version",
+          "snapshot_id",
+          "draft_id",
+          "failure_reason"
+        ],
+        "title": "AnalysisSessionView",
+        "type": "object"
+      },
       "AnchorType-Output": {
         "enum": [
           "ORDER_NUMBER",
@@ -4703,6 +4999,113 @@
         ],
         "title": "AnchorType",
         "type": "string"
+      },
+      "AnswerClarificationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "answer": {
+            "minLength": 1,
+            "title": "Answer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "answer"
+        ],
+        "title": "AnswerClarificationRequest",
+        "type": "object"
+      },
+      "ApplyMutationsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "mutations": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "AddEntity": "#/components/schemas/AddEntity",
+                  "AddGraphConstraint": "#/components/schemas/AddGraphConstraint",
+                  "AddGraphIndex": "#/components/schemas/AddGraphIndex",
+                  "AddProperty": "#/components/schemas/AddProperty",
+                  "AddRelationship": "#/components/schemas/AddRelationship",
+                  "ChangeCardinality": "#/components/schemas/ChangeCardinality",
+                  "ChangeIdentifier": "#/components/schemas/ChangeIdentifier",
+                  "ChangeOwnershipPolicy": "#/components/schemas/ChangeOwnershipPolicy",
+                  "ChangeSourceMapping": "#/components/schemas/ChangeSourceMapping",
+                  "ChangeSyncRule": "#/components/schemas/ChangeSyncRule",
+                  "ChangeTransformation": "#/components/schemas/ChangeTransformation",
+                  "RemoveEntity": "#/components/schemas/RemoveEntity",
+                  "RemoveGraphConstraint": "#/components/schemas/RemoveGraphConstraint",
+                  "RemoveGraphIndex": "#/components/schemas/RemoveGraphIndex",
+                  "RemoveProperty": "#/components/schemas/RemoveProperty",
+                  "RemoveRelationship": "#/components/schemas/RemoveRelationship",
+                  "RenameEntity": "#/components/schemas/RenameEntity"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/AddEntity"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveEntity"
+                },
+                {
+                  "$ref": "#/components/schemas/RenameEntity"
+                },
+                {
+                  "$ref": "#/components/schemas/AddProperty"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveProperty"
+                },
+                {
+                  "$ref": "#/components/schemas/ChangeIdentifier"
+                },
+                {
+                  "$ref": "#/components/schemas/AddRelationship"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveRelationship"
+                },
+                {
+                  "$ref": "#/components/schemas/ChangeCardinality"
+                },
+                {
+                  "$ref": "#/components/schemas/ChangeSourceMapping"
+                },
+                {
+                  "$ref": "#/components/schemas/ChangeTransformation"
+                },
+                {
+                  "$ref": "#/components/schemas/AddGraphIndex"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveGraphIndex"
+                },
+                {
+                  "$ref": "#/components/schemas/AddGraphConstraint"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveGraphConstraint"
+                },
+                {
+                  "$ref": "#/components/schemas/ChangeOwnershipPolicy"
+                },
+                {
+                  "$ref": "#/components/schemas/ChangeSyncRule"
+                }
+              ]
+            },
+            "minItems": 1,
+            "title": "Mutations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mutations"
+        ],
+        "title": "ApplyMutationsRequest",
+        "type": "object"
       },
       "ApprovalRecord": {
         "additionalProperties": false,
@@ -4760,6 +5163,25 @@
           "expires_at"
         ],
         "title": "ApprovalRecord",
+        "type": "object"
+      },
+      "ApproveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "ApproveRequest",
         "type": "object"
       },
       "AssociateChatTurnRequest": {
@@ -5411,6 +5833,243 @@
         "title": "BrowserAsset",
         "type": "object"
       },
+      "Cardinality": {
+        "enum": [
+          "ONE_TO_ONE",
+          "ONE_TO_MANY",
+          "MANY_TO_ONE",
+          "MANY_TO_MANY"
+        ],
+        "title": "Cardinality",
+        "type": "string"
+      },
+      "ChangeCardinality": {
+        "additionalProperties": false,
+        "properties": {
+          "cardinality": {
+            "$ref": "#/components/schemas/Cardinality"
+          },
+          "from_label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "From Label",
+            "type": "string"
+          },
+          "kind": {
+            "const": "ChangeCardinality",
+            "default": "ChangeCardinality",
+            "title": "Kind",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "relationship_type": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Relationship Type",
+            "type": "string"
+          },
+          "to_label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "To Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "relationship_type",
+          "from_label",
+          "to_label",
+          "cardinality"
+        ],
+        "title": "ChangeCardinality",
+        "type": "object"
+      },
+      "ChangeIdentifier": {
+        "additionalProperties": false,
+        "properties": {
+          "identifier_properties": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Identifier Properties",
+            "type": "array"
+          },
+          "kind": {
+            "const": "ChangeIdentifier",
+            "default": "ChangeIdentifier",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Label",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "identifier_properties"
+        ],
+        "title": "ChangeIdentifier",
+        "type": "object"
+      },
+      "ChangeOwnershipPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "ChangeOwnershipPolicy",
+            "default": "ChangeOwnershipPolicy",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Label",
+            "type": "string"
+          },
+          "ownership": {
+            "$ref": "#/components/schemas/OwnershipPolicy"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "ownership"
+        ],
+        "title": "ChangeOwnershipPolicy",
+        "type": "object"
+      },
+      "ChangeSourceMapping": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "ChangeSourceMapping",
+            "default": "ChangeSourceMapping",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Label",
+            "type": "string"
+          },
+          "property_name": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Property Name",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "source_field": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_.\\-]{0,127}$",
+            "title": "Source Field",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "property_name",
+          "source_field"
+        ],
+        "title": "ChangeSourceMapping",
+        "type": "object"
+      },
+      "ChangeSyncRule": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "ChangeSyncRule",
+            "default": "ChangeSyncRule",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Label",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "sync_mode": {
+            "$ref": "#/components/schemas/SyncMode"
+          }
+        },
+        "required": [
+          "label",
+          "sync_mode"
+        ],
+        "title": "ChangeSyncRule",
+        "type": "object"
+      },
+      "ChangeTransformation": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "ChangeTransformation",
+            "default": "ChangeTransformation",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Label",
+            "type": "string"
+          },
+          "property_name": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Property Name",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "transformation": {
+            "$ref": "#/components/schemas/TransformationKind"
+          }
+        },
+        "required": [
+          "label",
+          "property_name",
+          "transformation"
+        ],
+        "title": "ChangeTransformation",
+        "type": "object"
+      },
+      "ChangeType": {
+        "enum": [
+          "ADDED",
+          "REMOVED",
+          "MODIFIED"
+        ],
+        "title": "ChangeType",
+        "type": "string"
+      },
       "CircuitState": {
         "enum": [
           "CLOSED",
@@ -5472,6 +6131,86 @@
           "options"
         ],
         "title": "ClarificationPrompt",
+        "type": "object"
+      },
+      "ClarificationStatus": {
+        "enum": [
+          "OPEN",
+          "ANSWERED",
+          "WITHDRAWN"
+        ],
+        "title": "ClarificationStatus",
+        "type": "string"
+      },
+      "ClarificationView": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_id": {
+            "title": "Analysis Id",
+            "type": "string"
+          },
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "answered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered At"
+          },
+          "answered_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered By"
+          },
+          "asked_at": {
+            "format": "date-time",
+            "title": "Asked At",
+            "type": "string"
+          },
+          "clarification_id": {
+            "title": "Clarification Id",
+            "type": "string"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ClarificationStatus"
+          }
+        },
+        "required": [
+          "clarification_id",
+          "analysis_id",
+          "question",
+          "status",
+          "answer",
+          "asked_at",
+          "answered_at",
+          "answered_by"
+        ],
+        "title": "ClarificationView",
         "type": "object"
       },
       "ConfigurationModule": {
@@ -5701,6 +6440,24 @@
           "createdAt"
         ],
         "title": "ConversationMessage",
+        "type": "object"
+      },
+      "CreateAnalysisRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "source_refs": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Source Refs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "source_refs"
+        ],
+        "title": "CreateAnalysisRequest",
         "type": "object"
       },
       "CreateExportPayload": {
@@ -7266,6 +8023,70 @@
           "configurationVersion"
         ],
         "title": "DraftCreate",
+        "type": "object"
+      },
+      "DraftStatus": {
+        "enum": [
+          "DRAFT",
+          "VALIDATED",
+          "APPROVED"
+        ],
+        "title": "DraftStatus",
+        "type": "string"
+      },
+      "DraftView": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_id": {
+            "title": "Analysis Id",
+            "type": "string"
+          },
+          "current_revision": {
+            "title": "Current Revision",
+            "type": "integer"
+          },
+          "draft_id": {
+            "title": "Draft Id",
+            "type": "string"
+          },
+          "entity_count": {
+            "title": "Entity Count",
+            "type": "integer"
+          },
+          "relationship_count": {
+            "title": "Relationship Count",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DraftStatus"
+          },
+          "validation_result_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validation Result Id"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "draft_id",
+          "analysis_id",
+          "status",
+          "current_revision",
+          "version",
+          "validation_result_id",
+          "entity_count",
+          "relationship_count"
+        ],
+        "title": "DraftView",
         "type": "object"
       },
       "EvidenceReference": {
@@ -9859,6 +10680,15 @@
         "title": "OutboxView",
         "type": "object"
       },
+      "OwnershipPolicy": {
+        "enum": [
+          "SOURCE_OWNED",
+          "GRAPH_OWNED",
+          "SHARED"
+        ],
+        "title": "OwnershipPolicy",
+        "type": "string"
+      },
       "PageMeta": {
         "additionalProperties": false,
         "properties": {
@@ -10240,6 +11070,18 @@
         "title": "PromoteReleasePayload",
         "type": "object"
       },
+      "PropertyType": {
+        "enum": [
+          "STRING",
+          "INTEGER",
+          "FLOAT",
+          "BOOLEAN",
+          "DATE",
+          "DATETIME"
+        ],
+        "title": "PropertyType",
+        "type": "string"
+      },
       "ProposalCommand": {
         "additionalProperties": false,
         "properties": {
@@ -10547,6 +11389,208 @@
           "target"
         ],
         "title": "ReleaseTransition",
+        "type": "object"
+      },
+      "RemoveEntity": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "RemoveEntity",
+            "default": "RemoveEntity",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Label",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "RemoveEntity",
+        "type": "object"
+      },
+      "RemoveGraphConstraint": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "RemoveGraphConstraint",
+            "default": "RemoveGraphConstraint",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Label",
+            "type": "string"
+          },
+          "property_name": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Property Name",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "property_name"
+        ],
+        "title": "RemoveGraphConstraint",
+        "type": "object"
+      },
+      "RemoveGraphIndex": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "RemoveGraphIndex",
+            "default": "RemoveGraphIndex",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Label",
+            "type": "string"
+          },
+          "properties": {
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Properties",
+            "type": "array"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "properties"
+        ],
+        "title": "RemoveGraphIndex",
+        "type": "object"
+      },
+      "RemoveProperty": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "RemoveProperty",
+            "default": "RemoveProperty",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Label",
+            "type": "string"
+          },
+          "property_name": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Property Name",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "property_name"
+        ],
+        "title": "RemoveProperty",
+        "type": "object"
+      },
+      "RemoveRelationship": {
+        "additionalProperties": false,
+        "properties": {
+          "from_label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "From Label",
+            "type": "string"
+          },
+          "kind": {
+            "const": "RemoveRelationship",
+            "default": "RemoveRelationship",
+            "title": "Kind",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "relationship_type": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Relationship Type",
+            "type": "string"
+          },
+          "to_label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "To Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "relationship_type",
+          "from_label",
+          "to_label"
+        ],
+        "title": "RemoveRelationship",
+        "type": "object"
+      },
+      "RenameEntity": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "RenameEntity",
+            "default": "RenameEntity",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "Label",
+            "type": "string"
+          },
+          "new_label": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+            "title": "New Label",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "new_label"
+        ],
+        "title": "RenameEntity",
         "type": "object"
       },
       "ResponseMeta": {
@@ -11585,6 +12629,46 @@
         "title": "ReturnWorkflowAssessmentRequest",
         "type": "object"
       },
+      "RevisionView": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "authored_by_model": {
+            "title": "Authored By Model",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "mutation_count": {
+            "title": "Mutation Count",
+            "type": "integer"
+          },
+          "revision_id": {
+            "title": "Revision Id",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision_id",
+          "sequence",
+          "author",
+          "authored_by_model",
+          "mutation_count",
+          "created_at"
+        ],
+        "title": "RevisionView",
+        "type": "object"
+      },
       "RollbackFeasibility": {
         "enum": [
           "SAFE",
@@ -11884,6 +12968,16 @@
         ],
         "title": "SagaStep",
         "type": "object"
+      },
+      "SampleClassification": {
+        "description": "How this snapshot's source samples were dispositioned before durable write.\n\nNONE      metadata-only; samples were used transiently in the AI call and\n          never written. No samples_ref.\nREDACTED  samples persisted only after the platform redactor. The default\n          whenever sampling is enabled.\nENCRYPTED raw samples persisted encrypted in `source_samples`, with a\n          mandatory expiry. Requires the source definition to opt in.",
+        "enum": [
+          "NONE",
+          "REDACTED",
+          "ENCRYPTED"
+        ],
+        "title": "SampleClassification",
+        "type": "string"
       },
       "SandboxIssue": {
         "additionalProperties": false,
@@ -12336,6 +13430,56 @@
           "sourceStructures"
         ],
         "title": "SchemaDesignCreate",
+        "type": "object"
+      },
+      "SchemaDiff": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/SchemaDiffEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "from_sequence": {
+            "title": "From Sequence",
+            "type": "integer"
+          },
+          "to_sequence": {
+            "title": "To Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from_sequence",
+          "to_sequence",
+          "entries"
+        ],
+        "title": "SchemaDiff",
+        "type": "object"
+      },
+      "SchemaDiffEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "change_type": {
+            "$ref": "#/components/schemas/ChangeType"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "element": {
+            "title": "Element",
+            "type": "string"
+          }
+        },
+        "required": [
+          "change_type",
+          "element",
+          "detail"
+        ],
+        "title": "SchemaDiffEntry",
         "type": "object"
       },
       "SchemaExplorerView": {
@@ -12836,6 +13980,29 @@
         ],
         "title": "SeedStatusView",
         "type": "object"
+      },
+      "SessionStatus": {
+        "enum": [
+          "DRAFT",
+          "DISCOVERING",
+          "ANALYZING",
+          "NEEDS_CLARIFICATION",
+          "NEEDS_HUMAN_REVIEW",
+          "READY_FOR_APPROVAL",
+          "APPROVED",
+          "ABANDONED",
+          "FAILED"
+        ],
+        "title": "SessionStatus",
+        "type": "string"
+      },
+      "Severity": {
+        "enum": [
+          "ERROR",
+          "WARNING"
+        ],
+        "title": "Severity",
+        "type": "string"
       },
       "SimulationAISummary": {
         "additionalProperties": false,
@@ -13473,6 +14640,59 @@
         ],
         "title": "SimulationScenario",
         "type": "string"
+      },
+      "SnapshotView": {
+        "additionalProperties": false,
+        "description": "Metadata and classification only.\n\n`samples_ref` is intentionally not exposed: the API surfaces *how* samples\nwere handled (`sample_classification`) so an operator can audit it, without\nhanding out a pointer into the encrypted `source_samples` structure.",
+        "properties": {
+          "analysis_id": {
+            "title": "Analysis Id",
+            "type": "string"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "dataset_count": {
+            "title": "Dataset Count",
+            "type": "integer"
+          },
+          "sample_classification": {
+            "$ref": "#/components/schemas/SampleClassification"
+          },
+          "sample_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Expires At"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "analysis_id",
+          "content_hash",
+          "sample_classification",
+          "sample_expires_at",
+          "captured_at",
+          "dataset_count"
+        ],
+        "title": "SnapshotView",
+        "type": "object"
       },
       "SourceAssetSummary": {
         "additionalProperties": false,
@@ -14592,6 +15812,15 @@
         "title": "SyncJobStatus",
         "type": "string"
       },
+      "SyncMode": {
+        "enum": [
+          "FULL",
+          "INCREMENTAL",
+          "ON_DEMAND"
+        ],
+        "title": "SyncMode",
+        "type": "string"
+      },
       "SyncResult": {
         "additionalProperties": false,
         "properties": {
@@ -14770,6 +15999,19 @@
         "title": "TransactionGroup",
         "type": "object"
       },
+      "TransformationKind": {
+        "description": "A closed set of supported transformations.\n\nEnumerated rather than expressed as a function body precisely because a\ntransformation is the most tempting place to accept arbitrary code. A\ntransformation the platform does not already implement is a platform change,\nnot something a model can introduce at analysis time.",
+        "enum": [
+          "NONE",
+          "TRIM",
+          "UPPERCASE",
+          "LOWERCASE",
+          "PARSE_DATE",
+          "PARSE_NUMBER"
+        ],
+        "title": "TransformationKind",
+        "type": "string"
+      },
       "UnifiedInventory": {
         "additionalProperties": false,
         "description": "Partial-capable inventory across configured database engines.",
@@ -14828,34 +16070,6 @@
         "title": "ValidateDataSourceRequest",
         "type": "object"
       },
-      "ValidationCheck": {
-        "additionalProperties": false,
-        "properties": {
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "PASSED",
-              "FAILED"
-            ],
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "status",
-          "message"
-        ],
-        "title": "ValidationCheck",
-        "type": "object"
-      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -14894,6 +16108,33 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "ValidationFindingView": {
+        "additionalProperties": false,
+        "properties": {
+          "check": {
+            "$ref": "#/components/schemas/return_platform__graph_schema_analyzer__domain__validation_result__ValidationCheck"
+          },
+          "element": {
+            "title": "Element",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          }
+        },
+        "required": [
+          "check",
+          "severity",
+          "element",
+          "message"
+        ],
+        "title": "ValidationFindingView",
         "type": "object"
       },
       "ValidationIssue": {
@@ -15049,6 +16290,59 @@
         "title": "ValidationReceipt",
         "type": "object"
       },
+      "ValidationResultView": {
+        "additionalProperties": false,
+        "properties": {
+          "checks_run": {
+            "items": {
+              "$ref": "#/components/schemas/return_platform__graph_schema_analyzer__domain__validation_result__ValidationCheck"
+            },
+            "title": "Checks Run",
+            "type": "array"
+          },
+          "draft_id": {
+            "title": "Draft Id",
+            "type": "string"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationFindingView"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "missing_checks": {
+            "items": {
+              "$ref": "#/components/schemas/return_platform__graph_schema_analyzer__domain__validation_result__ValidationCheck"
+            },
+            "title": "Missing Checks",
+            "type": "array"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "result_id": {
+            "title": "Result Id",
+            "type": "string"
+          },
+          "revision_id": {
+            "title": "Revision Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "result_id",
+          "draft_id",
+          "revision_id",
+          "passed",
+          "findings",
+          "checks_run",
+          "missing_checks"
+        ],
+        "title": "ValidationResultView",
+        "type": "object"
+      },
       "WarningMeta": {
         "additionalProperties": false,
         "properties": {
@@ -15150,6 +16444,34 @@
         "title": "Workspace",
         "type": "object"
       },
+      "return_platform__api__data_source_config_v2__ValidationCheck": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PASSED",
+              "FAILED"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "status",
+          "message"
+        ],
+        "title": "ValidationCheck",
+        "type": "object"
+      },
       "return_platform__api__data_source_config_v2__ValidationResult": {
         "additionalProperties": false,
         "properties": {
@@ -15160,7 +16482,7 @@
           },
           "checks": {
             "items": {
-              "$ref": "#/components/schemas/ValidationCheck"
+              "$ref": "#/components/schemas/return_platform__api__data_source_config_v2__ValidationCheck"
             },
             "title": "Checks",
             "type": "array"
@@ -15198,6 +16520,26 @@
         ],
         "title": "ValidationResult",
         "type": "object"
+      },
+      "return_platform__graph_schema_analyzer__domain__validation_result__ValidationCheck": {
+        "enum": [
+          "SOURCE_EXISTS",
+          "DATASET_EXISTS",
+          "FIELD_EXISTS",
+          "TYPE_COMPATIBILITY",
+          "IDENTIFIERS_AVAILABLE",
+          "RELATIONSHIPS_RESOLVABLE",
+          "CARDINALITY_PLAUSIBLE",
+          "TRANSFORMATION_SUPPORTED",
+          "SEARCH_ANCHORS_VIABLE",
+          "CYPHER_COMPILES",
+          "QUERY_SAFETY_PASSES",
+          "GRAPH_INDEX_DEFINITION_VALID",
+          "GRAPH_CONSTRAINT_VALID",
+          "SYNC_PROJECTION_EXECUTABLE"
+        ],
+        "title": "ValidationCheck",
+        "type": "string"
       },
       "return_platform__operations__associate_flow__AnchorType": {
         "enum": [
@@ -15336,6 +16678,951 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/config/releases": {
+      "get": {
+        "operationId": "list_releases_api_config_releases_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_dict_str__Any___"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Releases",
+        "tags": [
+          "Configuration"
+        ]
+      }
+    },
+    "/api/config/releases/{release_id}": {
+      "get": {
+        "operationId": "get_release_api_config_releases__release_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Release",
+        "tags": [
+          "Configuration"
+        ]
+      }
+    },
+    "/api/config/runtime": {
+      "get": {
+        "description": "The active validated snapshot -- what is serving right now.\n\nRead from `app.state` rather than rebuilt: the snapshot the process is\nactually using is the honest answer, and rebuilding one here could report a\nconfiguration nothing is running.",
+        "operationId": "get_runtime_configuration_api_config_runtime_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Runtime Configuration",
+        "tags": [
+          "Configuration"
+        ]
+      }
+    },
+    "/api/graph-schema/analyses": {
+      "get": {
+        "operationId": "list_analyses_api_graph_schema_analyses_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SessionStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AnalysisSessionView"
+                  },
+                  "title": "Response List Analyses Api Graph Schema Analyses Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Analyses",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      },
+      "post": {
+        "operationId": "create_analysis_api_graph_schema_analyses_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisSessionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Analysis",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-schema/analyses/{analysis_id}": {
+      "get": {
+        "operationId": "get_analysis_api_graph_schema_analyses__analysis_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisSessionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Analysis",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-schema/analyses/{analysis_id}/abandon": {
+      "post": {
+        "description": "Abandonment is the one transition available before discovery exists, and it\nis what keeps a DRAFT from living forever if the analyst walks away.",
+        "operationId": "abandon_analysis_api_graph_schema_analyses__analysis_id__abandon_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisSessionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Abandon Analysis",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-schema/analyses/{analysis_id}/clarifications": {
+      "get": {
+        "operationId": "list_clarifications_api_graph_schema_analyses__analysis_id__clarifications_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClarificationView"
+                  },
+                  "title": "Response List Clarifications Api Graph Schema Analyses  Analysis Id  Clarifications Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Clarifications",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-schema/analyses/{analysis_id}/clarifications/{clarification_id}/answer": {
+      "post": {
+        "operationId": "answer_clarification_api_graph_schema_analyses__analysis_id__clarifications__clarification_id__answer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "clarification_id",
+            "required": true,
+            "schema": {
+              "title": "Clarification Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerClarificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarificationView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Answer Clarification",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-schema/analyses/{analysis_id}/drafts": {
+      "post": {
+        "operationId": "create_draft_api_graph_schema_analyses__analysis_id__drafts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Draft",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-schema/analyses/{analysis_id}/snapshot": {
+      "get": {
+        "operationId": "get_snapshot_api_graph_schema_analyses__analysis_id__snapshot_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Snapshot",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-schema/drafts/{draft_id}": {
+      "get": {
+        "operationId": "get_draft_api_graph_schema_drafts__draft_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Draft",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-schema/drafts/{draft_id}/approve": {
+      "post": {
+        "operationId": "approve_draft_api_graph_schema_drafts__draft_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Draft",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-schema/drafts/{draft_id}/mutations": {
+      "post": {
+        "description": "Typed commands only -- the request model is the enforcement point.",
+        "operationId": "apply_draft_mutations_api_graph_schema_drafts__draft_id__mutations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyMutationsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Draft Mutations",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-schema/drafts/{draft_id}/revisions": {
+      "get": {
+        "operationId": "list_revisions_api_graph_schema_drafts__draft_id__revisions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RevisionView"
+                  },
+                  "title": "Response List Revisions Api Graph Schema Drafts  Draft Id  Revisions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Revisions",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-schema/drafts/{draft_id}/revisions/{sequence}/diff": {
+      "get": {
+        "description": "Diff a revision against its predecessor.\n\nReconstructed by replaying the recorded commands rather than by storing a\nshape snapshot per revision: the commands *are* the history, and a stored\nshape could drift from them.",
+        "operationId": "get_revision_diff_api_graph_schema_drafts__draft_id__revisions__sequence__diff_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sequence",
+            "required": true,
+            "schema": {
+              "title": "Sequence",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaDiff"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Revision Diff",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-schema/drafts/{draft_id}/validate": {
+      "post": {
+        "operationId": "validate_draft_api_graph_schema_drafts__draft_id__validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationResultView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate Draft",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/returns": {
+      "get": {
+        "operationId": "list_returns_api_returns_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_ReturnSessionView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Returns",
+        "tags": [
+          "Returns"
+        ]
+      }
+    },
+    "/api/returns/{session_id}": {
+      "get": {
+        "operationId": "get_return_api_returns__session_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ReturnSessionView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Return",
+        "tags": [
+          "Returns"
+        ]
+      }
+    },
+    "/api/returns/{session_id}/timeline": {
+      "get": {
+        "description": "Named `timeline`, not `events`.\n\nThe legacy path is `/events`, but the aggregate this belongs to calls it a\ntimeline and so does the plan's domain list. The canonical name should match\nthe domain rather than inherit an implementation word; the legacy path keeps\nworking until Wave F.",
+        "operationId": "get_timeline_api_returns__session_id__timeline_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 1000,
+              "maximum": 10000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_TimelineEvent__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Timeline",
+        "tags": [
+          "Returns"
+        ]
+      }
+    },
     "/api/v1/ai-gateway/metrics": {
       "get": {
         "operationId": "list_usage_metrics_api_v1_ai_gateway_metrics_get",
