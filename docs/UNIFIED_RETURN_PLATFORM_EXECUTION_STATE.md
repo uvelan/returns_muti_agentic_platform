@@ -1486,15 +1486,100 @@ exist; the field is `subject`). `python -c "import return_platform.main"`: clean
 tests pass. The full real-infra suite was **not** re-run for this slice — no runtime path
 changed, but it is owed before C3.2 lands on top.
 
+## Wave C3.2 — discovery, prompt framing, and the analyzer reasoning loop (this slice)
+
+Three commits: composition-root wiring (`3212bb6`), discovery + prompt framing (`7b8f76a`),
+and the reasoning graph.
+
+**Wiring (owed from C3.1).** `main.py` now bootstraps a `SystemStore` in the FastAPI
+process — re-introduced after Commit 3 removed it once the order agent stopped needing one
+— builds the analyzer's persistence onto `app.state`, and mounts the router, so
+`/api/graph-schema` is live. Bootstrap failure degrades to an explicit `UNAVAILABLE`
+state and a 503 from the routes rather than blocking startup: the analyzer is an operator
+tool, and the return flow must keep serving if schema analysis cannot persist. The manifest
+bootstrap moved from `dynamic_knowledge/integration/reasoning_bootstrap.py` to
+`bootstrap/system_store.py` and lost the "reasoning" name — it always loaded the whole
+manifest, and with a second unrelated consumer, leaving it in a business module would make
+the analyzer's composition depend on `dynamic_knowledge`. The API layer is typed against
+`PersistencePort`, not the concrete repository bundle (it had been reaching into
+`persistence.clarifications.load`, which defeats the port).
+
+**Module activation deliberately not done.** The router is mounted conventionally in
+`create_app` rather than through `module_ids`. `bootstrap/lifespan.py`'s own docstring puts
+router mounting in "steps 13–15 … supplied by the caller", and mounting during lifespan
+would mutate `app.routes` after the OpenAPI schema is built. Deferred until the kernel owns
+mounting; `module.py` already satisfies the contract.
+
+**Discovery separates access from retention.** `SamplingPolicy` splits "how many rows may
+be read" from "what may be kept" — easy to conflate, and conflating them is how a source
+that permits reading for reasoning silently starts persisting. Default is read nothing,
+keep nothing. A hard `MAX_PERMITTED_SAMPLE_ROWS` ceiling refuses (rather than clamps) a
+policy asking for more: a request for a million rows is an exfiltration shape, not an
+analysis. `DiscoveryService` enforces §13.6's ordering — read, build always-plaintext
+metadata, classify, redact, seal, *then* build the snapshot — so a snapshot can never
+exist claiming a classification that was not applied. Two decisions worth recording: a
+mixed analysis reports the **weakest** guarantee it can honestly make (one raw-retaining
+source makes the shared document raw; claiming REDACTED would be false), and the
+**shortest** retention period governs (samples share one document, so honouring the
+longest would silently extend another source's retention).
+
+**Prompt framing treats labelling as insufficient.** The six blocks (§10.5) are built by
+`application/prompt_context.py`. Announcing block 5 as untrusted is necessary but not
+sufficient: content that can emit its own `=== BLOCK 1: SYSTEM POLICY ===` line would
+append trusted-looking text after it, and prompt structure is only a boundary if content
+cannot forge the marker. So every block's content is scanned and forged delimiters
+neutralised — **including source metadata**, since a column name also originates outside
+the platform. Tested adversarially with a sample row and a column name that each try it,
+plus a case/spacing variant.
+
+**Reasoning loop.** `reasoning/` compiles the §14.4 graph and stops at
+`READY_FOR_APPROVAL` — never build/activate/drain/retire/DDL. A test AST-scans the whole
+package for those names; weaker than proving it never happens, but it catches the realistic
+mistake (someone adding a convenient `request_build()` instead of routing through
+`ApprovalService`). Clarification is a real `interrupt()` whose payload carries references
+and the question only. Every loop is bounded by `limits.py`, and exhausting a budget routes
+to `NEEDS_HUMAN_REVIEW` with a reason rather than raising — an analysis needing a human is
+a normal outcome. State carries no raw samples, only `source_snapshot_id`/
+`source_schema_hash`; `ANALYZER_CHECKPOINT_ALLOWLIST` and the TypedDict keys are asserted
+identical.
+
+**Two real bugs the tests caught, both mine.**
+1. `state.get("proposal", {}).get(...)` returned `None` and crashed, because `.get` only
+   applies its default when the key is *absent* — and both the revise and clarify paths set
+   `proposal` explicitly to `None`. Fixed to `(state.get("proposal") or {})` at both sites.
+2. **A design flaw, not a typo:** `IDENTIFY_GAPS` runs before `PROPOSE_SCHEMA`, but its gap
+   signal is the model's own `open_questions`, which do not exist until it has proposed. On
+   a first pass it always saw none, so **the clarification branch was unreachable** — the
+   graph completed instead of suspending. Fixed with an `open_questions` edge from
+   `PROPOSE_SCHEMA` back to `IDENTIFY_GAPS`: a proposal arriving with open questions means
+   the model guessed, and validating a guess burns a validation attempt on something a
+   human could answer. This is a deliberate departure from the design doc's diagram, which
+   draws PROPOSE straight into VALIDATE; documented in `routing.route_after_propose_schema`
+   and in the graph's own docstring.
+
+**Gate receipts.** `ruff format --check`/`ruff check` clean. `mypy src`: 47 errors in 16
+files — **unchanged baseline**, now across 448 source files (a transient failure was
+LangGraph's `add_node` overloads rejecting a precise `Callable` node alias; resolved with
+`NodeFn = Any`, the same accommodation `dynamic_knowledge/order_agent/graph_nodes.py`
+already makes). `tests/graph_schema_analyzer/` 56/56, plus the platform architecture tests.
+The full real-infra suite has **not** been re-run since C3.1 — no runtime path outside the
+analyzer changed, but it is owed before C3.3.
+
 ## Next READY slice
 
-Wave C2 is complete (Commits 1–4) and C3.1 has landed. Next is **C3.2 — source discovery
-+ AI reasoning**, which should open by finishing C3.1's deferred wiring: activate
-`graph_schema_analyzer` in `main.py`'s `module_ids`, re-introduce a `SystemStore` into the
-FastAPI process, and mount the module router. Then C3.3 (typed mutations / graph-only
-editing), C4 (Phase 12: graph generation lifecycle), after which Wave D (Phases 13–16)
-opens. Still owed from Commit 4: time-skipping coverage for the idle-timeout and
-continue-as-new paths.
+Wave C2 is complete and C3.1/C3.2 have landed. Next is **C3.3 — interactive graph-only
+editing and validation**: typed mutation commands (§10.4), revisions and diffs, the 13
+validation checks, and approval — plus the `APPLY_TYPED_MUTATION` node and the USER_REVIEW
+"modification" branch the reasoning graph currently omits. The model must never emit
+executable source DDL/DML, and indexes/constraints apply to the graph target only. Then C4
+(Phase 12: graph generation lifecycle), after which Wave D (Phases 13–16) opens.
+
+Owed before or alongside C3.3: re-run the full real-infra suite (not run since C3.1); wire
+the real `SourceDiscoveryPort`/`SchemaReasoningPort`/`GraphTargetPort` adapters in
+`bootstrap/adapters/` (the analyzer's ports have no production bindings yet, so discovery
+and reasoning are reachable only from tests); a real-Mongo proof of
+`SourceSampleRepository`'s encrypted round trip; and time-skipping coverage for Commit 4's
+idle-timeout and continue-as-new paths.
 
 Open follow-up tasks, none blocking C3: `task_f1fc6b63` (wire `CheckpointRedactor` into
 real checkpoint writes and correct Commit 2's untrue ledger claim), and

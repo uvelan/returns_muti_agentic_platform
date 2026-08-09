@@ -3,15 +3,34 @@
 Derives a graph schema from configured data sources, with a human in the loop.
 Design doc §2.7 (module shape), §9.3 (API), §13.6 (sample classification).
 
-## What lands in this slice (Wave C3.1)
+## What exists today (C3.1 + C3.2)
 
-The **persistent, independent module**: domain, ports, per-entity persistence,
-`module.py`, and the versionless `/api/graph-schema` surface for session
-lifecycle, snapshot inspection, and clarifications.
+- **C3.1** — the persistent, independent module: domain, ports, per-entity
+  persistence, `module.py`, versionless `/api/graph-schema`.
+- **C3.2** — composition-root wiring, bounded source discovery with classified
+  sample retention, the six-block prompt framing, and the LangGraph
+  analysis/clarification/proposal/validation loop.
 
-Discovery, AI reasoning (`reasoning/`, `application/`), typed mutations,
-validation, and approval are **C3.2/C3.3**. Their routes are absent rather than
-stubbed, so the OpenAPI schema never advertises an endpoint that does nothing.
+Typed mutations, graph-only editing, and approval are **C3.3**. Their routes and
+nodes are absent rather than stubbed, so neither the OpenAPI schema nor the graph
+advertises something that does nothing.
+
+## The reasoning loop
+
+`reasoning/` compiles a LangGraph that thinks, clarifies, proposes, and
+validates — and **stops at `READY_FOR_APPROVAL`**. It never builds, activates,
+drains, retires, or emits source DDL. A test scans the whole package for those
+operation names, because the realistic mistake is someone adding a convenient
+`request_build()` call here rather than routing through `ApprovalService`.
+
+Every loop is bounded by `limits.py`; exhausting a budget routes to
+`NEEDS_HUMAN_REVIEW` with a reason rather than raising. An analysis needing a
+human is a normal outcome, not an error.
+
+State holds **no raw source samples** — only `source_snapshot_id` and
+`source_schema_hash`. An analysis checkpoint may sit at rest for days, so putting
+samples there would create a second, unclassified copy with a different retention
+story from the one the operator was promised.
 
 ## Why the boundary is this strict
 
