@@ -25,6 +25,7 @@ records how many invocations overlap. A correct mutex yields exactly one.
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from datetime import UTC, datetime
 
@@ -48,7 +49,10 @@ from return_platform.workflows.stage_results import (
     bind_stage_activity_result,
 )
 
-_TEMPORAL_TARGET = "localhost:7233"
+# Host runs reach Temporal on the published port; inside the compose network
+# the real-infra runner sets PLATFORM_TEST_TEMPORAL_TARGET. Same convention as
+# tests/conftest.py and tests/test_order_discovery_workflow.py.
+_TEMPORAL_TARGET = os.getenv("PLATFORM_TEST_TEMPORAL_TARGET", "localhost:7233")
 _SESSION_ID = "3e3d274b-229f-4f46-a7d1-f5d94bd9b53d"
 _CORRELATION_ID = "894231ea-f972-4a26-8944-420e3abcbd67"
 _OBSERVED_AT = datetime(2026, 7, 22, 10, 0, tzinfo=UTC)

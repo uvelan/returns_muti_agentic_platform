@@ -1837,6 +1837,71 @@ Still owed, in rough priority order:
 `NVIDIA_API_KEY`/`GOOGLE_API_KEY` item is also resolved: see the correction above; the keys
 were never actually required.
 
+## Wave C4 / Phase 12, slice 1 — DRAINING, lease-aware retirement, failure rollback
+
+Status: DONE. Slice 1 of Phase 12; the phase is **not** complete (see below).
+
+Phase 12 asks for the full generation lifecycle. Three of its requirements were
+documented-but-absent rather than merely unbuilt, which is worse — the docstrings read
+as if the behaviour existed:
+
+- `GenerationReadLease` and `GenerationWriteReservation` both promised that "cleanup of a
+  RETIRED generation waits for every read lease ... to drain or expire". Neither model was
+  referenced anywhere in `src/` outside its own definition. The orchestrator went
+  ACTIVE → RETIRED the instant its compare-and-swap succeeded.
+- `DRAINING` was not in `GraphGenerationStatus` at all.
+- A build that raised anywhere after `create_generation` left its candidate parked in
+  BUILDING/CATCHING_UP/VALIDATING forever, indistinguishable from a rebuild still running.
+  `test_lifecycle_orchestrator.py` asserted exactly this with the comment
+  `# stuck, not cleaned up`.
+
+**Built.** `DRAINING` added to the status enum. New
+`dynamic_knowledge/lifecycle/lease_store.py`: a `GenerationLeaseStore` protocol and a
+Mongo implementation holding the drain flag and both lease classes in **one document per
+generation**, so single-document write atomicity is the entire concurrency argument — no
+transaction, no read-then-write window. Retirement is now ACTIVE → DRAINING → RETIRED,
+closing the lease store to new work *before* changing the Neo4j status (the other order
+leaves a window where the generation reads DRAINING but would still hand out a lease
+nobody waits for), then waiting on outstanding work bounded by `drain_timeout_seconds`.
+Expired leases do not count, so a crashed holder drains itself. `_retire` never raises:
+it runs after the CAS, so the activation has already succeeded, and a generation left in
+DRAINING is safe — unreachable, just not yet cleaned up. `build_and_activate` now rolls a
+failed candidate to FAILED, best-effort, never masking the original exception, and never
+from ACTIVE.
+
+**Verification.** 9 orchestrator tests (`test_generation_drain.py`) asserting the
+transition *path*, not just the destination — ACTIVE→RETIRED and ACTIVE→DRAINING→RETIRED
+both end RETIRED and only one is correct — plus 7 real-Mongo tests
+(`test_generation_lease_store_real_infra.py`), including a 25-iteration acquire-vs-drain
+race asserting there is no third outcome: a lease is either refused, or granted **and**
+counted. A granted-but-uncounted lease is the reader whose generation gets retired out
+from under it, which is the whole failure this prevents.
+
+**Also fixed, my own defect from the previous slice.**
+`test_return_workflow_concurrency.py` and `test_return_workflow_rejection.py` hardcoded
+`localhost:7233` instead of reading `PLATFORM_TEST_TEMPORAL_TARGET`, the convention
+`tests/conftest.py` and `tests/test_order_discovery_workflow.py` already follow. They
+passed on the host and failed in the real-infra container — the container run is what
+caught it.
+
+**Full real-infra suite: 1820 passed, 2 skipped, 1 failed** (21m15s). The one failure was
+`test_a_conflicting_command_id_...` tripping its own 20s `asyncio.wait_for` bound under
+full-suite load; the file passes in 4s in isolation, and the `wait_for` cancellation is
+what produced the accompanying `UnfinishedUpdateHandlersWarning` (the test's `finally`
+terminated the workflow mid-update). The bound is a *hang* detector — the failure it
+guards against is infinite — so it was raised to 120s, which discriminates identically
+without flaking. Not a logic defect, but recorded rather than quietly re-run: a timeout
+tuned tight enough to flake is a real defect in the test.
+
+**Still open in Phase 12** (this slice deliberately did not attempt them): deep validation
+is still a bare state transition with a comment saying so; nothing in the request path
+*acquires* a read lease or write reservation yet, so the drain currently has nothing real
+to wait for; the rebuild trigger is unimplemented; `REBIND_ON_RESUME` vs strict pinning is
+not modelled; and there is no architecture test for "no code below handle acquisition
+resolves current generation independently". The Wave C real-infra gate (Mongo/SQL
+discovery → Neo4j build N+1 → live sync → activation → drain → validation-failure-keeps-N)
+has not been run end to end.
+
 ## Rejected stage commands no longer wedge the return session (`task_bd3a4652`)
 
 Status: DONE.

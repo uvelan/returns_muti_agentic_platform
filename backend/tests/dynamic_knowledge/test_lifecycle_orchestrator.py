@@ -260,4 +260,7 @@ async def test_sync_failure_during_build_propagates_and_still_releases_the_lease
         )
     assert lease_store.held == {}
     (generation_id,) = writer.statuses.keys()
-    assert writer.statuses[generation_id] == GraphGenerationStatus.BUILDING  # stuck, not cleaned up
+    # Previously this asserted BUILDING -- "stuck, not cleaned up" -- recording a
+    # known gap. The orchestrator now rolls a failed candidate back, so a dead
+    # rebuild no longer leaves something that reads as an in-progress build.
+    assert writer.statuses[generation_id] == GraphGenerationStatus.FAILED

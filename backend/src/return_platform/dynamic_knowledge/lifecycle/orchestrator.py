@@ -5,17 +5,25 @@ what changed since the build started (CATCHING_UP), validate, activate
 the previous generation. See the source-to-graph alignment plan's
 "Activation protocol" for the full state machine this implements.
 
-Known simplification versus the full plan: nothing in this codebase yet
-acquires a GenerationReadLease/GenerationWriteReservation when resolving
-ActiveRuntimeSnapshot (no request-resolution path does that today), so the
-old generation's retirement here has no real drain to wait for -- it
-transitions ACTIVE -> RETIRED immediately after the CAS succeeds. That is
-not safe once something actually starts pinning requests to a generation;
-real lease-draining must be added before this runs against live traffic.
+Retirement drains. The previous generation goes ACTIVE -> DRAINING -> RETIRED,
+and the DRAINING step waits for every GenerationReadLease and
+GenerationWriteReservation naming it to be released or to pass its TTL (see
+lifecycle/lease_store.py). Requests that resolved ActiveRuntimeSnapshot just
+before the cutover are still reading the old generation, and on-demand sync may
+still be writing to it; removing it out from under them is what this avoids.
+Nothing in the request path acquires those leases *yet* -- that wiring is the
+next slice -- but the drain is now real rather than a comment, so the wiring
+does not also have to retrofit the protocol.
+
+A failed build no longer leaks a candidate. Any exception between creating the
+generation and a successful activation marks it FAILED, so a dead rebuild's
+candidate does not sit in BUILDING indefinitely looking like work in progress.
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Protocol
@@ -25,11 +33,24 @@ from return_platform.dynamic_knowledge.graph.generation import (
     GraphGenerationStatus,
 )
 from return_platform.dynamic_knowledge.graph.generation_writer import Neo4jGenerationWriter
+from return_platform.dynamic_knowledge.lifecycle.lease_store import (
+    GenerationLeaseStore,
+    LeaseClass,
+)
 from return_platform.dynamic_knowledge.lifecycle.mongo_store import (
     ActiveRuntimeSnapshotStore,
     RebuildLeaseStore,
 )
 from return_platform.dynamic_knowledge.schema import ActiveSchema
+
+_LOGGER = logging.getLogger(__name__)
+
+# Terminal states, plus the one state a *candidate* can never be rolled back
+# from: once a generation is ACTIVE and referenced by the snapshot, marking it
+# FAILED would strand live traffic on a generation flagged as broken.
+_NOT_ROLLBACK_ELIGIBLE = frozenset(
+    {GraphGenerationStatus.ACTIVE, GraphGenerationStatus.FAILED, GraphGenerationStatus.RETIRED}
+)
 
 
 class ActivationError(RuntimeError):
@@ -64,6 +85,9 @@ class GenerationLifecycleOrchestrator:
         sync_coordinator: RebuildSyncCoordinator,
         owner_instance_id: str,
         lease_ttl_seconds: int = 3600,
+        generation_lease_store: GenerationLeaseStore | None = None,
+        drain_timeout_seconds: float = 120.0,
+        drain_poll_seconds: float = 1.0,
     ) -> None:
         self._snapshot_store = snapshot_store
         self._lease_store = lease_store
@@ -71,6 +95,12 @@ class GenerationLifecycleOrchestrator:
         self._sync_coordinator = sync_coordinator
         self._owner_instance_id = owner_instance_id
         self._lease_ttl_seconds = lease_ttl_seconds
+        # Optional so existing construction sites keep working; when absent the
+        # generation is still moved through DRAINING (the state is what other
+        # components key off) but there is no outstanding work to wait for.
+        self._generation_lease_store = generation_lease_store
+        self._drain_timeout_seconds = drain_timeout_seconds
+        self._drain_poll_seconds = drain_poll_seconds
 
     async def build_and_activate(
         self,
@@ -172,7 +202,9 @@ class GenerationLifecycleOrchestrator:
             )
             swapped = await self._snapshot_store.compare_and_swap(
                 snapshot_name=snapshot_name,
-                expected_activation_version=previous.activation_version if previous is not None else None,
+                expected_activation_version=previous.activation_version
+                if previous is not None
+                else None,
                 new_snapshot=new_snapshot,
             )
             if not swapped:
@@ -197,8 +229,37 @@ class GenerationLifecycleOrchestrator:
             if previous is not None:
                 await self._retire(previous.graph_generation_id)
             return new_snapshot
+        except BaseException:
+            # Roll the candidate back to FAILED so a dead rebuild does not leave
+            # it parked in BUILDING/CATCHING_UP/VALIDATING, where the next
+            # operator to inspect it sees an in-progress build that will never
+            # finish. Best-effort by construction: the original failure is what
+            # the caller needs, so a rollback that itself fails is logged and
+            # swallowed rather than replacing it.
+            await self._mark_failed(graph_generation_id)
+            raise
         finally:
             await self._lease_store.release(snapshot_name=snapshot_name, lease_id=lease.lease_id)
+
+    async def _mark_failed(self, graph_generation_id: str) -> None:
+        try:
+            status = await self._generation_writer.get_status(
+                graph_generation_id=graph_generation_id
+            )
+            if status is None or status[0] in _NOT_ROLLBACK_ELIGIBLE:
+                return
+            current_status, fencing_token = status
+            await self._generation_writer.transition(
+                graph_generation_id=graph_generation_id,
+                fencing_token=fencing_token,
+                expected_status=current_status,
+                new_status=GraphGenerationStatus.FAILED,
+            )
+        except Exception:
+            _LOGGER.exception(
+                "Could not roll back generation %s to FAILED; it may need manual cleanup",
+                graph_generation_id,
+            )
 
     async def _transition(
         self,
@@ -220,10 +281,86 @@ class GenerationLifecycleOrchestrator:
             raise ActivationError(str(error), stage=stage) from error
 
     async def _retire(self, graph_generation_id: str) -> None:
+        """ACTIVE -> DRAINING -> (wait for outstanding work) -> RETIRED.
+
+        Ordering matters: the lease store is closed to new work *before* the
+        Neo4j status changes. Doing it the other way round leaves a window in
+        which the generation reads as DRAINING while the lease store would
+        still hand out a lease on it, and that lease would never be waited for.
+
+        Never raises. This runs after the compare-and-swap has already made the
+        successor authoritative, so the activation has succeeded whatever
+        happens here; failing it now would report a false negative for a
+        cutover that is complete and serving. A generation left in DRAINING is
+        safe -- unreachable, just not yet cleaned up -- so a stuck drain is
+        logged for an operator rather than escalated.
+        """
         status = await self._generation_writer.get_status(graph_generation_id=graph_generation_id)
-        if status is None or status[0] is GraphGenerationStatus.RETIRED:
+        if status is None or status[0] in {
+            GraphGenerationStatus.RETIRED,
+            GraphGenerationStatus.FAILED,
+        }:
             return
         current_status, fencing_token = status
-        await self._transition(
-            graph_generation_id, fencing_token, current_status, GraphGenerationStatus.RETIRED, stage="RETIRE_PREVIOUS"
-        )
+
+        if self._generation_lease_store is not None:
+            await self._generation_lease_store.begin_drain(graph_generation_id=graph_generation_id)
+
+        if current_status is not GraphGenerationStatus.DRAINING:
+            try:
+                await self._generation_writer.transition(
+                    graph_generation_id=graph_generation_id,
+                    fencing_token=fencing_token,
+                    expected_status=current_status,
+                    new_status=GraphGenerationStatus.DRAINING,
+                )
+            except Exception:
+                _LOGGER.exception(
+                    "Could not move generation %s to DRAINING; leaving it as-is",
+                    graph_generation_id,
+                )
+                return
+
+        if not await self._await_drain(graph_generation_id):
+            return
+
+        try:
+            await self._generation_writer.transition(
+                graph_generation_id=graph_generation_id,
+                fencing_token=fencing_token,
+                expected_status=GraphGenerationStatus.DRAINING,
+                new_status=GraphGenerationStatus.RETIRED,
+            )
+        except Exception:
+            _LOGGER.exception(
+                "Generation %s drained but could not be marked RETIRED", graph_generation_id
+            )
+
+    async def _await_drain(self, graph_generation_id: str) -> bool:
+        """True once no unexpired lease or reservation names this generation.
+
+        Bounded: a holder that crashed will never release, so the wait relies on
+        lease TTLs rather than on cooperative release, and gives up entirely
+        after `drain_timeout_seconds` so a misbehaving holder cannot pin the
+        retirement step forever.
+        """
+        if self._generation_lease_store is None:
+            return True
+        deadline = asyncio.get_running_loop().time() + self._drain_timeout_seconds
+        while True:
+            outstanding = await self._generation_lease_store.outstanding(
+                graph_generation_id=graph_generation_id
+            )
+            if not any(outstanding.values()):
+                return True
+            if asyncio.get_running_loop().time() >= deadline:
+                _LOGGER.warning(
+                    "Generation %s still has outstanding work after %.0fs "
+                    "(reads=%d, writes=%d); leaving it DRAINING for operator review",
+                    graph_generation_id,
+                    self._drain_timeout_seconds,
+                    outstanding.get(LeaseClass.READ, 0),
+                    outstanding.get(LeaseClass.WRITE, 0),
+                )
+                return False
+            await asyncio.sleep(self._drain_poll_seconds)

@@ -27,6 +27,7 @@ server's task-failure-vs-update-failure policy, which no fake reproduces.
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from datetime import UTC, datetime
 
@@ -54,16 +55,21 @@ from return_platform.workflows.stage_results import (
     bind_stage_activity_result,
 )
 
-_TEMPORAL_TARGET = "localhost:7233"
+# Host runs reach Temporal on the published port; inside the compose network the
+# real-infra runner sets PLATFORM_TEST_TEMPORAL_TARGET. Same convention as
+# tests/conftest.py and tests/test_order_discovery_workflow.py.
+_TEMPORAL_TARGET = os.getenv("PLATFORM_TEST_TEMPORAL_TARGET", "localhost:7233")
 _SESSION_ID = "5a1c9f2e-7d84-4c31-9b60-2f8e13a4c507"
 _CORRELATION_ID = "c41d0b77-1e93-49a6-8f52-6ab0d3e91c48"
 _OBSERVED_AT = datetime(2026, 8, 9, 10, 0, tzinfo=UTC)
 
 # A wedged workflow shows up as a hang, not a failure, so every await that could
-# be caught in the retry loop is bounded. Comfortably above the ~0.2s the probe
-# activities take, low enough that a regression fails the suite instead of
-# stalling it.
-_UPDATE_TIMEOUT = 20.0
+# be caught in the retry loop is bounded. This is a hang detector, not a latency
+# assertion: the failure it guards against is *infinite*, so a generous bound
+# discriminates just as well as a tight one and does not flake. An earlier 20s
+# bound passed in isolation (the whole file runs in ~4s) but tripped once during
+# a loaded 21-minute full-suite run, terminating the workflow mid-update.
+_UPDATE_TIMEOUT = 120.0
 
 
 def _workflow_input() -> ReturnWorkflowInput:

@@ -29,13 +29,26 @@ actually pinned."""
 
 
 class GraphGenerationStatus(StrEnum):
-    """PREPARING -> BUILDING -> CATCHING_UP -> VALIDATING -> READY_FOR_ACTIVATION -> ACTIVE -> RETIRED.
+    """PREPARING -> BUILDING -> CATCHING_UP -> VALIDATING -> READY_FOR_ACTIVATION
+    -> ACTIVE -> DRAINING -> RETIRED.
 
     A generation's Neo4j-side GraphGeneration marker briefly carries ACTIVE
     status *before* the MongoDB ActiveRuntimeSnapshot compare-and-swap during
     cutover -- that overlap is expected, not a bug. ACTIVE status alone never
     makes a generation eligible to serve traffic; only being referenced by
     ActiveRuntimeSnapshot does.
+
+    DRAINING is the converse of that overlap, on the way out. Once the CAS has
+    moved ActiveRuntimeSnapshot to the successor, no *new* request can resolve
+    to this generation -- but requests that resolved a moment earlier are still
+    reading it, and on-demand sync may still be writing to it. DRAINING says
+    exactly that: no longer reachable, not yet safe to remove. RETIRED is only
+    reached once every GenerationReadLease and GenerationWriteReservation
+    naming it has been released or has passed its TTL.
+
+    FAILED is terminal and reachable from any pre-ACTIVE state: a rebuild that
+    dies mid-build must not leave its candidate parked in BUILDING forever,
+    where it looks like an in-progress rebuild to anything inspecting status.
     """
 
     PREPARING = "PREPARING"
@@ -44,6 +57,7 @@ class GraphGenerationStatus(StrEnum):
     VALIDATING = "VALIDATING"
     READY_FOR_ACTIVATION = "READY_FOR_ACTIVATION"
     ACTIVE = "ACTIVE"
+    DRAINING = "DRAINING"
     FAILED = "FAILED"
     RETIRED = "RETIRED"
 
