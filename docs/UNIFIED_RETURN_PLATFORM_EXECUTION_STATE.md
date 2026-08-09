@@ -1746,6 +1746,51 @@ changed between them. `mypy src` unchanged at 47 errors in 16 files; analyzer su
 "~99 pre-existing errors" means the suite was invoked the old way, not that something
 regressed.
 
+## ReturnWorkflow.complete_stage mutex race — fixed (this slice)
+
+**A real concurrency defect in shipped Phase 6 code, now reproduced and fixed.** It is the
+same `wait_condition` batch-release bug found in `OrderDiscoveryWorkflow.submit_turn`
+during Wave C2 Commit 3, flagged then as `task_92c35ace` and left because it needed its own
+test and commit.
+
+`complete_stage` waited once on `self._persistence_ready and not
+self._transition_in_progress`, then set the flag. `wait_condition` never resolves
+synchronously — it registers a future and the SDK evaluates all pending conditions in one
+batch pass — so two handlers parked on that predicate are released **together** when
+`run()` sets `_persistence_ready = True` after the initialize activity. Neither sees the
+other take the flag.
+
+**Worse here than in the order agent**: `self._state = next_state` happens only *after* the
+transition activity returns, so both handlers read the same `previous_state`, compute a
+`next_state` from it, and each persist a transition against the authoritative session
+record. Reproduced against a real Temporal server:
+`max_concurrent_transitions == 2`. Fixed with the same re-check loop, and the test was
+confirmed to discriminate — it fails with the loop removed and passes with it restored.
+
+**Second, independent defect found while building the test (`task_bd3a4652`, not fixed
+here).** `ReturnWorkflowTransitionError` is a plain `RuntimeError`, and Temporal treats a
+non-`ApplicationError` raised from an update handler as a **workflow task failure**, not an
+update failure — so it retries forever. A single out-of-order or conflicting
+`complete_stage` command therefore wedges the entire return session permanently; later
+updates fail with "Workflow Task in failed state". This is reachable from any caller
+sending a stale or duplicate command, and the existing unit tests miss it because they call
+`advance_return_workflow` as a pure function rather than through a running workflow. The
+first version of this test used two *different* commands and hung on exactly this;
+switching to one shared command (which `advance_return_workflow` deduplicates to a no-op)
+isolates the race without touching the wedging path.
+
+**Environment note.** Those wedged executions accumulated across several hung runs and
+loaded the Temporal Postgres store enough that the server went unhealthy and even
+`list_workflows` timed out; recovery needed a `docker restart` of the Temporal container.
+Worth knowing before writing further real-Temporal negative tests: a test that provokes a
+workflow-task failure leaves a permanently-retrying execution behind.
+
+**Gate receipts.** `ruff format --check`/`ruff check` clean. `tests/test_return_workflow_concurrency.py`
+2/2 (and 2/2 failing with the fix reverted, confirming the test is real).
+`test_return_workflow.py` + `test_return_workflow_worker.py` + `test_order_discovery_workflow.py`:
+29/29, no regression. **Not** re-run: the full real-infra suite — the Temporal restart
+happened mid-slice and a full pass is owed before the next change lands on top.
+
 ## Next READY slice
 
 **Wave C3 is complete** (C3.1/C3.2/C3.3). Next is **C4 — Phase 12: graph generation

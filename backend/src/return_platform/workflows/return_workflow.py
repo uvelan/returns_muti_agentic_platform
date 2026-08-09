@@ -389,10 +389,32 @@ class ReturnWorkflow:
         self,
         command: ReturnWorkflowAdvanceCommand,
     ) -> ReturnWorkflowExecutionState:
-        """Apply one ordered idempotent stage-completion command."""
-        await workflow.wait_condition(
-            lambda: self._persistence_ready and not self._transition_in_progress
-        )
+        """Apply one ordered idempotent stage-completion command.
+
+        The `while` is load-bearing, not defensive. `workflow.wait_condition`
+        never resolves synchronously: it registers a future and the SDK later
+        evaluates every pending condition in one batch pass
+        (`_WorkflowInstanceImpl._run_once` / `_conditions`). Two handlers parked
+        on this same predicate are therefore released *together* the moment
+        `run()` sets `_persistence_ready = True`, and neither observes the
+        other setting `_transition_in_progress` — a single `await` here admits
+        both.
+
+        That is especially damaging in this workflow because `self._state` is
+        only assigned *after* the transition activity returns, so both handlers
+        would read the same `previous_state`, compute a `next_state` from it,
+        and each persist a transition against the authoritative session record.
+        Re-checking after every release is what makes a loser go back and wait.
+
+        Verified by `tests/test_return_workflow_concurrency.py` against a real
+        Temporal server; before this loop it observed two overlapping
+        `transition_return_session` calls. The same bug was found and fixed
+        first in `OrderDiscoveryWorkflow.submit_turn`.
+        """
+        while not self._persistence_ready or self._transition_in_progress:
+            await workflow.wait_condition(
+                lambda: self._persistence_ready and not self._transition_in_progress
+            )
         self._transition_in_progress = True
         try:
             previous_state = self._require_state()
