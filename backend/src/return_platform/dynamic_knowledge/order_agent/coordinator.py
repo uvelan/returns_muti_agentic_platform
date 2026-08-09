@@ -33,6 +33,7 @@ from return_platform.dynamic_knowledge.knowledge.guards import (
 )
 from return_platform.dynamic_knowledge.lifecycle.handle import GenerationHandleProvider
 from return_platform.dynamic_knowledge.lifecycle.lease_store import GenerationLeaseStore
+from return_platform.dynamic_knowledge.lifecycle.mongo_store import ActiveRuntimeSnapshotStore
 from return_platform.dynamic_knowledge.on_demand_sync.coordinator import OnDemandSyncCoordinator
 from return_platform.dynamic_knowledge.order_agent.contracts import (
     AgentTurnRequest,
@@ -151,6 +152,7 @@ class DynamicOrderAgentCoordinator:
         terminal_retention_hours: float = 168.0,
         generation_lease_store: GenerationLeaseStore | None = None,
         owner_instance_id: str = "order-agent",
+        active_snapshot_store: ActiveRuntimeSnapshotStore | None = None,
     ) -> None:
         self._schema = schema
         self._conversations = conversation_store
@@ -163,6 +165,7 @@ class DynamicOrderAgentCoordinator:
             graph_state,
             lease_store=generation_lease_store,
             owner_instance_id=owner_instance_id,
+            snapshot_store=active_snapshot_store,
         )
         self._evidence_store = evidence_store
         self._mongo_client = mongo_client

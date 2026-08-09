@@ -15,6 +15,11 @@ from pymongo.errors import DuplicateKeyError
 
 from return_platform.dynamic_knowledge.graph.generation import ActiveRuntimeSnapshot, RebuildLease
 
+ACTIVE_RUNTIME_SNAPSHOTS_COLLECTION = "dynamic_graph_active_snapshots"
+"""Platform-Mongo collection holding one document per snapshot_name. Named
+beside the store so the activation writer and the request-path reader cannot
+drift onto different collections."""
+
 
 class ActiveRuntimeSnapshotStore(Protocol):
     async def read(self, *, snapshot_name: str) -> ActiveRuntimeSnapshot | None: ...

@@ -135,9 +135,7 @@ async def test_a_draining_generation_yields_an_unleased_handle_rather_than_faili
 
 @pytest.mark.asyncio
 async def test_a_lease_store_outage_does_not_fail_the_request() -> None:
-    provider = GenerationHandleProvider(
-        _Resolver(), lease_store=_LeaseStore(raise_on_acquire=True)
-    )
+    provider = GenerationHandleProvider(_Resolver(), lease_store=_LeaseStore(raise_on_acquire=True))
 
     async with provider.acquire_read(object()) as handle:  # type: ignore[arg-type]
         assert handle.leased is False
@@ -195,3 +193,104 @@ def test_only_the_handle_provider_resolves_the_current_generation() -> None:
         "GenerationHandleProvider.acquire_read(), so the generation they pin is "
         "invisible to retirement's drain: " + ", ".join(offenders)
     )
+
+
+# --- which "current generation" wins ----------------------------------------
+
+
+class _SnapshotStore:
+    def __init__(self, snapshot: object | None = None, *, raises: bool = False) -> None:
+        self.snapshot = snapshot
+        self.raises = raises
+
+    async def read(self, *, snapshot_name: str) -> object | None:
+        if self.raises:
+            raise RuntimeError("mongo unreachable")
+        return self.snapshot
+
+    async def compare_and_swap(self, **kwargs: object) -> bool:  # pragma: no cover
+        raise NotImplementedError
+
+
+def _snapshot(graph_generation_id: str, activation_version: int) -> object:
+    return type(
+        "_Snapshot",
+        (),
+        {
+            "graph_generation_id": graph_generation_id,
+            "activation_version": activation_version,
+        },
+    )()
+
+
+@pytest.mark.asyncio
+async def test_the_active_runtime_snapshot_wins_over_the_legacy_resolver() -> None:
+    """Two notions of "current" exist: the older `dynamic_graph_generations`
+    lookup, and ActiveRuntimeSnapshot -- the pointer the activation
+    compare-and-swap actually moves. Resolving the older one would let a request
+    read a generation the cutover has already replaced."""
+    resolver = _Resolver("gen-legacy")
+    store = _LeaseStore()
+    provider = GenerationHandleProvider(
+        resolver,
+        lease_store=store,
+        snapshot_store=_SnapshotStore(_snapshot("gen-snapshot", 7)),  # type: ignore[arg-type]
+    )
+
+    async with provider.acquire_read(object()) as handle:  # type: ignore[arg-type]
+        assert handle.graph_generation_id == "gen-snapshot"
+    # The legacy resolver was not consulted at all.
+    assert resolver.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_the_real_activation_version_reaches_the_lease() -> None:
+    """Carried through instead of the 0 placeholder earlier slices recorded, so
+    a lease says which activation it belongs to."""
+    recorded: list[int] = []
+    store = _LeaseStore()
+    original = store.acquire_read_lease
+
+    async def _recording(**kwargs: object) -> object | None:
+        recorded.append(int(kwargs["snapshot_activation_version"]))  # type: ignore[arg-type]
+        return await original(**kwargs)  # type: ignore[arg-type]
+
+    store.acquire_read_lease = _recording  # type: ignore[assignment]
+    provider = GenerationHandleProvider(
+        _Resolver(),
+        lease_store=store,
+        snapshot_store=_SnapshotStore(_snapshot("gen-snapshot", 7)),  # type: ignore[arg-type]
+    )
+
+    async with provider.acquire_read(object()):  # type: ignore[arg-type]
+        pass
+
+    assert recorded == [7]
+
+
+@pytest.mark.asyncio
+async def test_no_snapshot_yet_falls_back_to_the_legacy_resolver() -> None:
+    """Production has never run a rebuild, so there is no snapshot and
+    LEGACY_GENERATION_ID is still what serves. Removing the fallback would break
+    every request until the first rebuild completed."""
+    resolver = _Resolver("gen-legacy")
+    provider = GenerationHandleProvider(
+        resolver, lease_store=_LeaseStore(), snapshot_store=_SnapshotStore(None)
+    )
+
+    async with provider.acquire_read(object()) as handle:  # type: ignore[arg-type]
+        assert handle.graph_generation_id == "gen-legacy"
+    assert resolver.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_a_snapshot_read_failure_falls_back_rather_than_failing_the_request() -> None:
+    resolver = _Resolver("gen-legacy")
+    provider = GenerationHandleProvider(
+        resolver,
+        lease_store=_LeaseStore(),
+        snapshot_store=_SnapshotStore(raises=True),
+    )
+
+    async with provider.acquire_read(object()) as handle:  # type: ignore[arg-type]
+        assert handle.graph_generation_id == "gen-legacy"

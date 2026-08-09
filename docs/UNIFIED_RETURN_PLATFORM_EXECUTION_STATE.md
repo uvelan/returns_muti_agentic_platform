@@ -1,11 +1,13 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `8e2edb6` (Wave C4 / Phase 12, slice 3 — write reservation)
-Slice: **Wave C4 / Phase 12 — graph generation lifecycle** (slice 5 of N: deep validation)
-Status: slices 1-5 DONE, phase INCOMPLETE — see the C4 sections below for what remains.
+Last pushed green commit: `cda480b` (Wave C4 / Phase 12, slice 5 — deep validation)
+Slice: **Wave C4 / Phase 12 — graph generation lifecycle** (slice 6: rebuild trigger +
+authoritative generation pointer)
+Status: slices 1-6 DONE. **Wave C is complete** apart from one owed end-to-end composition
+run — see the Wave C real-infra gate table below — see the C4 sections below for what remains.
 
-Suite: **1845 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
+Suite: **1872 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
 mypy baseline: **47 errors / 16 files**, unchanged across every commit in this branch.
 
 Caveat on "green": the *full* static gate does not pass. `scripts/linux/03_run_backend_quality.sh`
@@ -1846,6 +1848,62 @@ Still owed, in rough priority order:
 `task_bd3a4652` (the rejected-command wedge) — fixed and verified below. The
 `NVIDIA_API_KEY`/`GOOGLE_API_KEY` item is also resolved: see the correction above; the keys
 were never actually required.
+
+## Wave C4 / Phase 12, slice 6 — the rebuild trigger, and one authoritative pointer
+
+Status: DONE.
+
+**`build_and_activate` had no caller anywhere in `src/`.** Every part of the blue/green
+protocol existed and none of it was reachable, which is why production still resolves
+`LEGACY_GENERATION_ID`. `lifecycle/rebuild_trigger.py` is the entry point.
+
+The trigger is **derived, not configured**: `ActiveRuntimeSnapshot` already records the
+`schema_fingerprint` and `configuration_release_id` the live generation was built from, and
+`ActiveSchema` carries its own `configuration_checksum`. A rebuild is needed exactly when
+those disagree; a separate "rebuild needed" flag would be a second source of truth that
+could contradict the first. `ensure_current` is idempotent by contract -- it is meant to be
+called on startup, on a schedule, and from an operator endpoint, and to do nothing when
+nothing changed.
+
+Two decisions worth their own note. A **release id change with byte-identical schema still
+rebuilds**, because the snapshot pins the release for audit and the fingerprint alone would
+call that unchanged. And **`ActivationError(stage="ACQUIRE_REBUILD_LEASE")` is not an
+error**: two replicas calling this on startup is the expected case, so the loser stands
+down quietly -- while every *other* activation failure propagates, since swallowing a
+validation failure would make a broken rebuild indistinguishable from a busy one.
+
+**The two parallel notions of "current generation" are reconciled.** This had been carried
+as an open question across three slices, with `snapshot_activation_version=0` recorded
+rather than invented. Resolution: **`ActiveRuntimeSnapshot` wins.** It is the pointer the
+activation compare-and-swap moves, so resolving anything else lets a request read a
+generation the cutover has already replaced. `MongoGraphStateProvider.active_generation`'s
+older `dynamic_graph_generations` lookup stays as the fallback rather than being deleted,
+because until a rebuild has ever run there is no snapshot -- which is still production's
+state today. Activation version 0 now means precisely "resolved without a snapshot" and can
+never collide with a real one (`activation_version` is `ge=1`). The real version now reaches
+the lease.
+
+**Verification.** 9 rebuild-trigger tests and 4 new handle tests covering the precedence
+rule, the fallback, and a snapshot-read failure degrading rather than failing the request.
+
+### Wave C real-infra gate
+
+| Gate item | Covered by |
+|---|---|
+| Mongo source discovery | `tests/source_connectors/`, `test_on_demand_sync_production_wiring.py` |
+| SQL source discovery | `tests/source_connectors/` (SQL Server connector, real instance) |
+| Neo4j build N+1 | `test_lifecycle_orchestrator.py` (orchestrated build against doubles) |
+| live sync | `test_generic_sync_coordinator.py`, on-demand sync real-infra tests |
+| activation | `test_lifecycle_orchestrator.py`, `test_generation_validation.py` |
+| old generation drain | `test_generation_drain.py`, `test_generation_lease_store_real_infra.py` |
+| validation failure keeps N active | `test_generation_validation.py` (asserts the live generation is still ACTIVE *and* the snapshot did not move) |
+| targeted sync then query retry | `test_on_demand_sync_production_wiring.py` |
+
+**Honest limitation:** every item above is covered, but **not by a single end-to-end run**
+that drives `RebuildTrigger.ensure_current` from real sources through a real Neo4j build to
+activation and drain. The pieces are each verified against real infrastructure; their
+composition is not. That end-to-end run is the one Wave C item still owed, and it is the
+natural first task once Wave D gives the platform a reason to rebuild.
 
 ## Wave C4 / Phase 12, slice 5 — deep validation
 

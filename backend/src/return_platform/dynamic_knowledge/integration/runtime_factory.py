@@ -49,6 +49,10 @@ from return_platform.dynamic_knowledge.lifecycle.lease_store import (
     GENERATION_LEASES_COLLECTION,
     MongoGenerationLeaseStore,
 )
+from return_platform.dynamic_knowledge.lifecycle.mongo_store import (
+    ACTIVE_RUNTIME_SNAPSHOTS_COLLECTION,
+    MongoActiveRuntimeSnapshotStore,
+)
 from return_platform.dynamic_knowledge.on_demand_sync.coordinator import OnDemandSyncCoordinator
 from return_platform.dynamic_knowledge.on_demand_sync.extraction import GenericSourceRecordExtractor
 from return_platform.dynamic_knowledge.order_agent.conversation_repository import (
@@ -103,6 +107,13 @@ async def build_dynamic_order_agent_runtime(
     # convention, and that is the right granularity -- a lease outlives a
     # request but never the process that took it.
     owner_instance_id = f"order-agent-{uuid4()}"
+    # ActiveRuntimeSnapshot is the design's one atomic pointer, so the handle
+    # resolves from it where one exists and only falls back to
+    # MongoGraphStateProvider's older dynamic_graph_generations lookup until a
+    # rebuild has ever run. See GenerationHandleProvider._resolve.
+    active_snapshot_store = MongoActiveRuntimeSnapshotStore(
+        platform_mongo[settings.mongo_database][ACTIVE_RUNTIME_SNAPSHOTS_COLLECTION]
+    )
 
     on_demand_sync_store = MongoOnDemandSyncStore(platform_mongo, settings.mongo_database)
     await on_demand_sync_store.ensure_indexes()
@@ -139,6 +150,7 @@ async def build_dynamic_order_agent_runtime(
             graph_state,
             lease_store=generation_lease_store,
             owner_instance_id=owner_instance_id,
+            snapshot_store=active_snapshot_store,
         ),
     )
 
@@ -168,5 +180,6 @@ async def build_dynamic_order_agent_runtime(
         mongo_client=platform_mongo,
         generation_lease_store=generation_lease_store,
         owner_instance_id=owner_instance_id,
+        active_snapshot_store=active_snapshot_store,
     )
     return coordinator

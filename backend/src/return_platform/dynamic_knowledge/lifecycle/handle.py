@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from return_platform.dynamic_knowledge.lifecycle.lease_store import GenerationLeaseStore
+from return_platform.dynamic_knowledge.lifecycle.mongo_store import ActiveRuntimeSnapshotStore
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
 _LOGGER = logging.getLogger(__name__)
@@ -47,6 +48,10 @@ _LOGGER = logging.getLogger(__name__)
 # rather than hours. Retirement's own drain wait is bounded independently, so
 # this is not the only backstop.
 DEFAULT_READ_LEASE_TTL_SECONDS = 900
+
+#: The snapshot name the Order Discovery graph activates under. One named
+#: snapshot per servable graph; there is only one today.
+DEFAULT_SNAPSHOT_NAME = "ORDER_DISCOVERY"
 
 
 class GenerationResolver(Protocol):
@@ -96,11 +101,15 @@ class GenerationHandleProvider:
         lease_store: GenerationLeaseStore | None = None,
         owner_instance_id: str = "unknown",
         read_lease_ttl_seconds: int = DEFAULT_READ_LEASE_TTL_SECONDS,
+        snapshot_store: ActiveRuntimeSnapshotStore | None = None,
+        snapshot_name: str = DEFAULT_SNAPSHOT_NAME,
     ) -> None:
         self._resolver = resolver
         self._lease_store = lease_store
         self._owner_instance_id = owner_instance_id
         self._read_lease_ttl_seconds = read_lease_ttl_seconds
+        self._snapshot_store = snapshot_store
+        self._snapshot_name = snapshot_name
 
     @asynccontextmanager
     async def acquire_read(self, schema: ActiveSchema) -> AsyncIterator[GenerationHandle]:
@@ -110,8 +119,10 @@ class GenerationHandleProvider:
         an exception that leaked a lease would block the next retirement for the
         full TTL, turning a transient request failure into an operational one.
         """
-        graph_generation_id = await self._resolver.active_generation(schema)
-        lease_id = await self._try_acquire(graph_generation_id)
+        graph_generation_id, activation_version = await self._resolve(schema)
+        lease_id = await self._try_acquire(
+            graph_generation_id, snapshot_activation_version=activation_version
+        )
         try:
             yield GenerationHandle(
                 graph_generation_id=graph_generation_id,
@@ -241,18 +252,46 @@ class GenerationHandleProvider:
                         graph_generation_id,
                     )
 
-    async def _try_acquire(self, graph_generation_id: str) -> str | None:
+    async def _resolve(self, schema: ActiveSchema) -> tuple[str, int]:
+        """Which generation serves this request, and at what activation version.
+
+        Two notions of "current" exist in this codebase.
+        `MongoGraphStateProvider.active_generation` reads the
+        `dynamic_graph_generations` collection and predates the blue/green
+        protocol; `ActiveRuntimeSnapshot` is the design's "one atomic pointer
+        every request resolves". **The snapshot wins where one exists** -- it is
+        the pointer the activation compare-and-swap moves, so resolving anything
+        else would let a request read a generation the cutover has already
+        replaced.
+
+        The legacy resolver stays as the fallback rather than being deleted:
+        until a rebuild has ever run there is no snapshot, and that is still the
+        state of production today (see `LEGACY_GENERATION_ID`). Activation
+        version 0 means "resolved without a snapshot" and is never a real
+        version -- `ActiveRuntimeSnapshot.activation_version` is `ge=1`.
+        """
+        if self._snapshot_store is not None:
+            try:
+                snapshot = await self._snapshot_store.read(snapshot_name=self._snapshot_name)
+            except Exception:
+                _LOGGER.exception(
+                    "Could not read ActiveRuntimeSnapshot %r; falling back to the legacy resolver",
+                    self._snapshot_name,
+                )
+            else:
+                if snapshot is not None:
+                    return snapshot.graph_generation_id, snapshot.activation_version
+        return await self._resolver.active_generation(schema), 0
+
+    async def _try_acquire(
+        self, graph_generation_id: str, *, snapshot_activation_version: int = 0
+    ) -> str | None:
         if self._lease_store is None:
             return None
         try:
             lease = await self._lease_store.acquire_read_lease(
                 graph_generation_id=graph_generation_id,
-                # No ActiveRuntimeSnapshot is threaded through this path yet --
-                # `active_generation` reads the `dynamic_graph_generations`
-                # collection, a parallel notion of "current" that predates the
-                # snapshot. Recorded as 0 rather than invented, so nothing reads
-                # it as a real activation version.
-                snapshot_activation_version=0,
+                snapshot_activation_version=snapshot_activation_version,
                 owner_instance_id=self._owner_instance_id,
                 ttl_seconds=self._read_lease_ttl_seconds,
             )
