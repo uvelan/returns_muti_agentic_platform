@@ -1,12 +1,12 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `c1a1216` (Wave D2 / Phase 14, slice 2 — MANUAL route wiring)
-Slice: **Wave D3 / Phase 15 — canonical configuration API** (slice 1: read surface)
+Last pushed green commit: `e90c0ac` (Wave D3 / Phase 15, slice 1 — /api/config read surface)
+Slice: **Wave D4 / Phase 16 — canonical returns API** (slice 1: read surface + duplicate inventory)
 Status: slices 1-6 DONE. **Wave C is complete** apart from one owed end-to-end composition
 run — see the Wave C real-infra gate table below — see the C4 sections below for what remains.
 
-Suite: **1912 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
+Suite: **1916 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
 mypy baseline: **47 errors / 16 files**, unchanged across every commit in this branch.
 
 Caveat on "green": the *full* static gate does not pass. `scripts/linux/03_run_backend_quality.sh`
@@ -1847,6 +1847,49 @@ Still owed, in rough priority order:
 `task_bd3a4652` (the rejected-command wedge) — fixed and verified below. The
 `NVIDIA_API_KEY`/`GOOGLE_API_KEY` item is also resolved: see the correction above; the keys
 were never actually required.
+
+## Wave D4 / Phase 16, slice 1 — canonical `/api/returns` read surface
+
+Status: read surface DONE, duplicate inventory DONE and executable. The write surface is
+held back on purpose — see below.
+
+`/api/returns` now exists with `GET ""`, `GET /{session_id}` and
+`GET /{session_id}/timeline`, reading through the same `OperationalRepository` the legacy
+router uses. Named `timeline` rather than the legacy `events`: the aggregate and the plan's
+own domain list both call it a timeline, and the canonical name should follow the domain
+rather than inherit an implementation word.
+
+### The return domain is served by nine routers across six prefixes
+
+**Three of them share `/api/v1/returns`** — `returns.py`, `physical_operations.py` and
+`return_artifacts.py` — so the module owning a legacy path is not derivable from the path.
+There is also a genuine duplicate pair: `GET /{session_id}/artifacts` in
+`physical_operations.py` and `GET /{session_id}/production-artifacts` in
+`return_artifacts.py`.
+
+Phase 16's instruction is "resolve duplicate current implementations **before** deleting
+anything", and every duplicate is on the *write* side. Publishing a canonical write surface
+first would have added a tenth way to mutate a return rather than replacing nine, so the
+canonical surface is read-only until they are reconciled. A test enforces that, and another
+enforces "no generic advance" on the canonical surface (the existing test covered only the
+legacy one).
+
+**The inventory is a test, not a table in a doc.** `test_the_number_of_return_routers_has_not_grown`
+fails if a tenth return-domain router appears, so consolidation cannot quietly run
+backwards while it is in progress. That decision paid for itself immediately: the inventory
+was hand-written as *eight* routers and the test caught `return_agents.py`, which is exactly
+what a prose list misses. The corrected count is nine, recorded in both the test and the
+router docstring.
+
+**Verification.** 4 architecture tests. Full suite **1916 passed, 2 skipped, 0 failed**.
+mypy 47/16 across 489 files.
+
+**Still open in D4.** The write consolidation itself: reconciling the two artifact
+endpoints, the overlapping stage actions between `production_workflow.py` and
+`physical_operations.py`, and the associate flow that drives the same session by another
+route. Then the aggregate's remaining domains — support, fulfillment, warehouse, artifacts,
+outbox events — need canonical read paths; only session, list and timeline are exposed so
+far.
 
 ## Wave D3 / Phase 15, slice 1 — canonical `/api/config` read surface
 
