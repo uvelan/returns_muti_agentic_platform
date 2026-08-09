@@ -10,10 +10,16 @@ and the DRAINING step waits for every GenerationReadLease and
 GenerationWriteReservation naming it to be released or to pass its TTL (see
 lifecycle/lease_store.py). Requests that resolved ActiveRuntimeSnapshot just
 before the cutover are still reading the old generation, and on-demand sync may
-still be writing to it; removing it out from under them is what this avoids.
-Nothing in the request path acquires those leases *yet* -- that wiring is the
-next slice -- but the drain is now real rather than a comment, so the wiring
-does not also have to retrofit the protocol.
+still be writing to it; removing it out from under them is what this avoids. The
+request path takes those claims for real -- `order_agent/coordinator.py` leases
+per turn and `on_demand_sync/coordinator.py` reserves per write, both through
+`lifecycle/handle.py`.
+
+Validation is real too. `_validate` runs schema-derived checks (see
+`graph/validation.py`) between VALIDATING and READY_FOR_ACTIVATION, and raising
+there is what implements the Wave C gate's "validation failure keeps N active":
+the candidate is marked FAILED and the compare-and-swap never runs, so the
+currently-active generation is untouched.
 
 A failed build no longer leaks a candidate. Any exception between creating the
 generation and a successful activation marks it FAILED, so a dead rebuild's
@@ -41,6 +47,7 @@ from return_platform.dynamic_knowledge.lifecycle.mongo_store import (
     ActiveRuntimeSnapshotStore,
     RebuildLeaseStore,
 )
+from return_platform.dynamic_knowledge.lifecycle.neo4j_validator import GenerationValidator
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
 _LOGGER = logging.getLogger(__name__)
@@ -88,6 +95,7 @@ class GenerationLifecycleOrchestrator:
         generation_lease_store: GenerationLeaseStore | None = None,
         drain_timeout_seconds: float = 120.0,
         drain_poll_seconds: float = 1.0,
+        validator: GenerationValidator | None = None,
     ) -> None:
         self._snapshot_store = snapshot_store
         self._lease_store = lease_store
@@ -101,6 +109,9 @@ class GenerationLifecycleOrchestrator:
         self._generation_lease_store = generation_lease_store
         self._drain_timeout_seconds = drain_timeout_seconds
         self._drain_poll_seconds = drain_poll_seconds
+        # Optional so existing construction sites keep working, but absence is
+        # logged loudly at activation rather than passing quietly.
+        self._validator = validator
 
     async def build_and_activate(
         self,
@@ -171,9 +182,7 @@ class GenerationLifecycleOrchestrator:
                 GraphGenerationStatus.VALIDATING,
                 stage="VALIDATE",
             )
-            # Deep validation (Atlas Search release checks, count/consistency
-            # checks) is out of scope for this pass -- validation here is
-            # just the state transition itself succeeding.
+            await self._validate(schema=schema, graph_generation_id=graph_generation_id)
             await self._transition(
                 graph_generation_id,
                 fencing_token,
@@ -240,6 +249,31 @@ class GenerationLifecycleOrchestrator:
             raise
         finally:
             await self._lease_store.release(snapshot_name=snapshot_name, lease_id=lease.lease_id)
+
+    async def _validate(self, *, schema: ActiveSchema, graph_generation_id: str) -> None:
+        """Deep validation, between VALIDATING and READY_FOR_ACTIVATION.
+
+        Raising here is the mechanism behind the Wave C gate's "validation
+        failure keeps N active": the exception propagates to
+        `build_and_activate`'s handler, which marks the candidate FAILED and
+        never reaches the ActiveRuntimeSnapshot compare-and-swap, so the
+        currently-active generation is untouched.
+
+        A validator that is not configured is *not* a silent pass -- it is
+        logged, because "we validated and it was fine" and "we did not
+        validate" must not look the same in an incident.
+        """
+        if self._validator is None:
+            _LOGGER.warning(
+                "No generation validator configured; activating %s without deep validation",
+                graph_generation_id,
+            )
+            return
+        report = await self._validator.validate(
+            schema=schema, graph_generation_id=graph_generation_id
+        )
+        if not report.passed:
+            raise ActivationError(report.summary(), stage="VALIDATE")
 
     async def _mark_failed(self, graph_generation_id: str) -> None:
         try:

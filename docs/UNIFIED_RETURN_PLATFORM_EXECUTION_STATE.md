@@ -2,8 +2,8 @@
 
 Branch: `refactor/unified-return-platform`
 Last pushed green commit: `8e2edb6` (Wave C4 / Phase 12, slice 3 — write reservation)
-Slice: **Wave C4 / Phase 12 — graph generation lifecycle** (slice 4 of N: REBIND_ON_RESUME)
-Status: slices 1-4 DONE, phase INCOMPLETE — see the C4 sections below for what remains.
+Slice: **Wave C4 / Phase 12 — graph generation lifecycle** (slice 5 of N: deep validation)
+Status: slices 1-5 DONE, phase INCOMPLETE — see the C4 sections below for what remains.
 
 Suite: **1845 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
 mypy baseline: **47 errors / 16 files**, unchanged across every commit in this branch.
@@ -1846,6 +1846,51 @@ Still owed, in rough priority order:
 `task_bd3a4652` (the rejected-command wedge) — fixed and verified below. The
 `NVIDIA_API_KEY`/`GOOGLE_API_KEY` item is also resolved: see the correction above; the keys
 were never actually required.
+
+## Wave C4 / Phase 12, slice 5 — deep validation
+
+Status: DONE.
+
+`VALIDATING -> READY_FOR_ACTIVATION` was the state transition itself, with a comment
+saying real validation was out of scope. A build that projected zero nodes, or whose edges
+attached to the previous generation, would activate and start serving.
+
+`graph/validation.py` compiles checks **derived from the schema, never hand-configured** --
+the discipline `constraints.py` follows, because a separately-maintained validator drifts
+and then reports green on exactly the builds it no longer understands:
+
+| Check | Severity | Why |
+|---|---|---|
+| `NODE_LABEL_POPULATED` | ERROR | an entity projecting zero nodes means the build lost a slice of the domain |
+| `NODE_KEY_COMPLETE` | ERROR | Neo4j treats a null property as *absent* from a uniqueness constraint rather than a violation, so the constraint does not catch this and the node is unfindable by the lookup the constraint exists to serve |
+| `RELATIONSHIP_ENDPOINTS_SAME_GENERATION` | ERROR | the blue/green bleed: an edge stamped with the new generation attached to an endpoint in the old one. Invisible to every other check, and it dangles once the old generation retires |
+| `RELATIONSHIP_TYPE_POPULATED` | WARNING | a sparse source legitimately produces no edges of a type; failing activation on it would make the platform unable to rebuild at all |
+
+`lifecycle/neo4j_validator.py` runs them; the Cypher is pure compilation so it is testable
+without a database. Labels and relationship types are interpolated (Cypher cannot
+parameterise them) and that is safe **only** because both come from `GraphIdentifier`,
+pattern-constrained to `^[A-Za-z_][A-Za-z0-9_]*$` at load time; generation ids, which are
+not so constrained, are always parameters.
+
+The orchestrator's `_validate` raises on ERROR, which is what implements the Wave C gate
+item "validation failure keeps N active": the candidate is marked FAILED by the slice-1
+rollback and the compare-and-swap never runs. A missing validator is logged loudly rather
+than passing silently -- "we validated and it was fine" and "we did not validate" must not
+look the same in an incident.
+
+**Verification.** 8 unit tests (including the gate item asserting the live generation is
+still ACTIVE *and* the snapshot did not move) plus **6 real-Neo4j tests**. The real-infra
+ones are not optional here: a typo in a label or property name produces valid Cypher that
+counts zero and reports every generation healthy, which no unit test can catch.
+
+**Two operational lessons recorded so they are not relearned.** Neo4j auth must come from
+`GRAPH_PASSWORD` (the variable `compose.yaml` uses for `NEO4J_AUTH`) with **no default** --
+a wrong guess trips Neo4j's authentication rate limiter, which then fails every Neo4j test
+in the run and needs a container restart to clear. `run_real_infra_suite.sh` now sources it
+from the repo `.env` and forwards it, and fails fast if it is absent. Separately: running
+all six compose services plus the test runner concurrently starves Neo4j badly enough that
+these six tests time out past 10 minutes; with only Neo4j and the runner up they complete
+in **1.2 seconds**. Start only what a focused run needs.
 
 ## Wave C4 / Phase 12, slice 4 — REBIND_ON_RESUME (and the stale cache it exposes)
 
