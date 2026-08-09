@@ -410,6 +410,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/principal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The calling principal, its roles, and its capabilities
+         * @description 401 when unauthenticated -- never an anonymous principal with no grants.
+         *
+         *     Returning an empty capability set for an unauthenticated caller would make
+         *     "not signed in" and "signed in with nothing granted" indistinguishable, and
+         *     the shell needs to tell those apart to decide between a sign-in prompt and
+         *     an empty state.
+         */
+        get: operations["get_principal_api_principal_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/returns": {
         parameters: {
             query?: never;
@@ -4333,6 +4358,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[PrincipalView] */
+        APIResponse_PrincipalView_: {
+            data?: components["schemas"]["PrincipalView"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[ReleaseManifest] */
         APIResponse_ReleaseManifest_: {
             data?: components["schemas"]["ReleaseManifest"] | null;
@@ -7184,6 +7215,22 @@ export interface components {
             total_operations: number;
         };
         /**
+         * PrincipalView
+         * @description Typed so it lands in the OpenAPI snapshot the frontend generates from.
+         *
+         *     `roles` is reported alongside `capabilities` for display and support
+         *     ("signed in as X with role Y"), not for the UI to branch on -- the
+         *     capability list is what decides whether an action is offered.
+         */
+        PrincipalView: {
+            /** Capabilities */
+            capabilities: string[];
+            /** Roles */
+            roles: string[];
+            /** Subject */
+            subject: string;
+        };
+        /**
          * ProductPresence
          * @enum {string}
          */
@@ -9960,6 +10007,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_principal_api_principal_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_PrincipalView_"];
                 };
             };
         };

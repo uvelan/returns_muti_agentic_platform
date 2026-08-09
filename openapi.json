@@ -2482,6 +2482,39 @@
         "title": "APIResponse[OperationalWritePlan]",
         "type": "object"
       },
+      "APIResponse_PrincipalView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PrincipalView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[PrincipalView]",
+        "type": "object"
+      },
       "APIResponse_ReleaseManifest_": {
         "additionalProperties": false,
         "properties": {
@@ -10968,6 +11001,37 @@
         "title": "PlanImpact",
         "type": "object"
       },
+      "PrincipalView": {
+        "additionalProperties": false,
+        "description": "Typed so it lands in the OpenAPI snapshot the frontend generates from.\n\n`roles` is reported alongside `capabilities` for display and support\n(\"signed in as X with role Y\"), not for the UI to branch on -- the\ncapability list is what decides whether an action is offered.",
+        "properties": {
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "roles",
+          "capabilities"
+        ],
+        "title": "PrincipalView",
+        "type": "object"
+      },
       "ProductPresence": {
         "enum": [
           "PRESENT_AT_BRANCH",
@@ -17615,6 +17679,28 @@
         "summary": "Validate Draft",
         "tags": [
           "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/principal": {
+      "get": {
+        "description": "401 when unauthenticated -- never an anonymous principal with no grants.\n\nReturning an empty capability set for an unauthenticated caller would make\n\"not signed in\" and \"signed in with nothing granted\" indistinguishable, and\nthe shell needs to tell those apart to decide between a sign-in prompt and\nan empty state.",
+        "operationId": "get_principal_api_principal_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_PrincipalView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "The calling principal, its roles, and its capabilities",
+        "tags": [
+          "Principal"
         ]
       }
     },

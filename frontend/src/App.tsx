@@ -7,6 +7,8 @@ import { ToastProvider } from "./components/ToastProvider";
 import { RuntimeConfigProvider } from "./components/RuntimeConfigProvider";
 import { LoadingState } from "./components/LoadingState";
 import { routes } from "./routes";
+import { isDomainPath } from "./domains/registry";
+import { CapabilityProvider } from "./hooks/CapabilityProvider";
 import {
   COPILOT_V2_PATH,
   legacyRouteDestination,
@@ -19,6 +21,9 @@ const CopilotV2Page = lazy(() => import("./features/copilot-v2/CopilotV2Page").t
 ));
 const DataSourceConfigApp = lazy(() => import("./features/data-source-config/DataSourceConfigApp").then(
   (module) => ({ default: module.DataSourceConfigApp }),
+));
+const DomainApp = lazy(() => import("./domains/DomainShell").then(
+  (module) => ({ default: module.DomainApp }),
 ));
 
 function NotFoundPage() {
@@ -73,7 +78,21 @@ export function App() {
     <ErrorBoundary>
       <ToastProvider>
         <RuntimeConfigProvider>
-          {pathname.startsWith("/v2/config") ? (
+          {/*
+            Phase 17: the four canonical domains are matched BEFORE the legacy
+            fallback below. That fallback redirects everything outside `/v1`
+            and `/v2/...` into the legacy app, so without this branch the new
+            routes are unreachable -- the plan flags this file as a mandatory,
+            non-no-op edit for exactly that reason. Legacy routing is otherwise
+            untouched and no legacy UI is removed until Wave F.
+          */}
+          {isDomainPath(pathname) ? (
+            <Suspense fallback={<LoadingState message="Loading platform..." />}>
+              <CapabilityProvider>
+                <DomainApp />
+              </CapabilityProvider>
+            </Suspense>
+          ) : pathname.startsWith("/v2/config") ? (
             <Suspense fallback={<LoadingState message="Loading datasource configuration..." />}>
               <DataSourceConfigApp />
             </Suspense>
