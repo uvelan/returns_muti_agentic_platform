@@ -120,6 +120,11 @@ class AgentTurnContext(BaseModel):
     query_evidence: tuple[QueryEvidence, ...] = ()
     schema_details: dict[str, Any] = Field(default_factory=dict)
     tool_failures: tuple[dict[str, Any], ...] = ()
+    # Clarifying questions already asked this turn and the associate's answers,
+    # oldest first. Populated when a CLARIFY paused the graph and the associate
+    # answered (see graph_nodes.make_clarify_node) -- without this the resumed
+    # `decide` would re-ask the same question, having no record it was answered.
+    clarification_exchanges: tuple[dict[str, str], ...] = ()
 
 
 class AgentTurnResult(BaseModel):
@@ -130,6 +135,11 @@ class AgentTurnResult(BaseModel):
     client_turn_id: str
     graph_generation_id: str
     response: StructuredAgentResponse
+    # Set when the reasoning graph suspended on a clarifying question instead of
+    # completing: the LangGraph thread the associate's next turn must resume.
+    # Deliberately not sensitive -- it is composed from the conversation_id and
+    # client_turn_id the caller itself supplied (see ReasoningThreadIdFactory).
+    pending_clarification_thread_id: str | None = None
     query_evidence: tuple[QueryEvidence, ...]
     model_provider: str
     model_name: str

@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command
 
 from return_platform.dynamic_knowledge.knowledge.cypher_compiler import CypherCompiler
 from return_platform.dynamic_knowledge.knowledge.evidence import (
@@ -386,21 +387,109 @@ class ClarifyModel:
         raise AssertionError("must not be called")
 
 
+class ClarifyThenRespondModel:
+    """Clarifies on the first decide, then -- once the associate's answer has
+    been recorded in `clarification_exchanges` -- responds for real."""
+
+    def __init__(self) -> None:
+        self.decide_calls = 0
+        self.seen_exchanges: tuple[dict[str, str], ...] = ()
+
+    async def decide(self, context: AgentTurnContext) -> ModelInvocationResult:
+        self.decide_calls += 1
+        self.seen_exchanges = context.clarification_exchanges
+        if self.decide_calls == 1:
+            action = AgentAction(
+                business_capability="order-discovery",
+                action_type=ActionType.CLARIFY,
+                decision_summary="Need more information before searching.",
+                response=StructuredAgentResponse(
+                    status="NEEDS_CLARIFICATION",
+                    business_capability="order-discovery",
+                    statements=(),
+                    requested_input="Which order number are you asking about?",
+                ),
+            )
+        else:
+            action = AgentAction(
+                business_capability="order-discovery",
+                action_type=ActionType.RESPOND,
+                decision_summary="The associate supplied the missing order number.",
+                response=StructuredAgentResponse(
+                    status="DISCOVERY_COMPLETE",
+                    business_capability="order-discovery",
+                    statements=(
+                        ResponseStatement(
+                            statement_id="s1",
+                            statement_type=StatementType.CLARIFICATION_QUESTION,
+                            text="Answered after the clarification was resolved.",
+                            evidence_refs=(),
+                        ),
+                    ),
+                ),
+            )
+        return ModelInvocationResult(
+            action=action,
+            provider="provider-a",
+            model="standard-model",
+            prompt_tokens=1,
+            completion_tokens=1,
+        )
+
+    async def correct_action(self, **kwargs: Any) -> ModelInvocationResult:
+        raise AssertionError("must not be called")
+
+    async def correct_response(self, **kwargs: Any) -> ModelInvocationResult:
+        raise AssertionError("must not be called")
+
+
 @pytest.mark.asyncio
-async def test_clarify_ends_the_turn_with_a_requested_input_response(
+async def test_clarify_suspends_the_graph_instead_of_ending_the_turn(
     active_schema: ActiveSchema,
 ) -> None:
+    """CLARIFY is no longer terminal: the graph pauses on `interrupt()` with the
+    question as the interrupt value and NO final_response, so the same execution
+    can later be resumed rather than a fresh turn being started."""
     graph = make_graph(active_schema, ClarifyModel())
-    final_state = await graph.ainvoke(
+    state = await graph.ainvoke(
         initial_state(active_schema),
         context=TurnRuntimeContext(guard_context=guard_context(active_schema)),
         config={"configurable": {"thread_id": "t5"}},
     )
-    assert final_state["final_response"]["status"] == "NEEDS_CLARIFICATION"
-    assert final_state["final_response"]["requested_input"] == (
-        "Which order number are you asking about?"
+    interrupts = state["__interrupt__"]
+    assert len(interrupts) == 1
+    assert interrupts[0].value["status"] == "NEEDS_CLARIFICATION"
+    assert interrupts[0].value["requested_input"] == ("Which order number are you asking about?")
+    assert state.get("final_response") is None
+
+
+@pytest.mark.asyncio
+async def test_clarify_resumes_the_same_thread_with_the_associates_answer(
+    active_schema: ActiveSchema,
+) -> None:
+    """The associate's answer resumes the SAME paused execution (same thread_id)
+    via Command(resume=...) rather than starting a new one -- and the answer is
+    visible to the resumed `decide` so it cannot re-ask the same question."""
+    model = ClarifyThenRespondModel()
+    graph = make_graph(active_schema, model)
+    config = {"configurable": {"thread_id": "t5-resume"}}
+    context = TurnRuntimeContext(guard_context=guard_context(active_schema))
+
+    paused = await graph.ainvoke(initial_state(active_schema), context=context, config=config)
+    assert paused["__interrupt__"]
+    assert model.decide_calls == 1
+
+    resumed = await graph.ainvoke(Command(resume="ORD-10001"), context=context, config=config)
+
+    assert resumed.get("__interrupt__") in (None, ())
+    assert resumed["final_response"]["status"] == "DISCOVERY_COMPLETE"
+    assert resumed["clarifications_used"] == 1
+    assert resumed["clarification_exchanges"] == (
+        {"question": "Which order number are you asking about?", "answer": "ORD-10001"},
     )
-    assert final_state["clarifications_used"] == 1
+    # The resumed decide genuinely saw the answer.
+    assert model.decide_calls == 2
+    assert model.seen_exchanges[0]["answer"] == "ORD-10001"
 
 
 class ReplanThenRespondModel:

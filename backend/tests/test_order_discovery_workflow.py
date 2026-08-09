@@ -208,6 +208,78 @@ async def test_generation_changed_signal_updates_execution_state() -> None:
             await handle.terminate()
 
 
+class _ClarifyingStubActivities:
+    """First turn reports a paused clarification; every later turn completes.
+    Records the `resume_thread_id` each invocation was handed so the test can
+    prove the workflow -- not the caller -- is what routes an answer back to
+    the paused graph thread."""
+
+    def __init__(self, *, pending_thread_id: str) -> None:
+        self._pending_thread_id = pending_thread_id
+        self.calls = 0
+        self.seen_resume_thread_ids: list[str | None] = []
+
+    @activity.defn(name="run_order_discovery_turn")
+    async def run_order_discovery_turn(
+        self, request: RunOrderDiscoveryTurnActivityInput
+    ) -> OrderDiscoveryTurnOutcome:
+        self.calls += 1
+        self.seen_resume_thread_ids.append(request.resume_thread_id)
+        return OrderDiscoveryTurnOutcome(
+            result=AgentTurnResultPayload(
+                conversation_id=request.conversation_id,
+                conversation_version=self.calls,
+                client_turn_id=request.client_turn_id,
+                agent_turn_result_json="{}",
+                pending_clarification_thread_id=(
+                    self._pending_thread_id if self.calls == 1 else None
+                ),
+            ),
+            error=None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_pending_clarification_is_routed_into_the_next_turns_resume() -> None:
+    """A turn that pauses on a clarifying question records its thread on the
+    workflow; the associate's next turn is then handed that thread as
+    `resume_thread_id` (so the coordinator resumes rather than starting over),
+    and the pointer is consumed exactly once."""
+    client = await Client.connect(_TEMPORAL_TARGET)
+    task_queue = f"test-order-discovery-{uuid.uuid4().hex[:8]}"
+    stub = _ClarifyingStubActivities(pending_thread_id="order-discovery:conv-4:t1:1")
+    async with worker.Worker(
+        client,
+        task_queue=task_queue,
+        workflows=(OrderDiscoveryWorkflow,),
+        activities=(stub.run_order_discovery_turn,),
+    ):
+        handle = await client.start_workflow(
+            OrderDiscoveryWorkflow.run,
+            OrderDiscoveryWorkflowInput(conversation_id="conv-4", agent_id="agent_a"),
+            id=f"test-order-discovery-{uuid.uuid4().hex[:8]}",
+            task_queue=task_queue,
+        )
+        try:
+            await handle.execute_update(OrderDiscoveryWorkflow.submit_turn, _command("t1"))
+            paused = await handle.query(OrderDiscoveryWorkflow.execution_state)
+            assert paused.pending_clarification_thread_id == "order-discovery:conv-4:t1:1"
+
+            await handle.execute_update(OrderDiscoveryWorkflow.submit_turn, _command("t2"))
+            resolved = await handle.query(OrderDiscoveryWorkflow.execution_state)
+            assert resolved.pending_clarification_thread_id is None
+            assert resolved.turns_handled == 2
+
+            # First turn started fresh; second was handed the paused thread.
+            assert stub.seen_resume_thread_ids == [None, "order-discovery:conv-4:t1:1"]
+
+            # A third turn must NOT re-resume an already-consumed clarification.
+            await handle.execute_update(OrderDiscoveryWorkflow.submit_turn, _command("t3"))
+            assert stub.seen_resume_thread_ids[2] is None
+        finally:
+            await handle.terminate()
+
+
 @pytest.mark.asyncio
 async def test_workflow_state_survives_worker_process_restart() -> None:
     """The workflow's in-memory attributes (`_last_known_graph_generation_id`,

@@ -72,7 +72,10 @@ class OrderDiscoveryActivities:
         )
         try:
             result = await self._coordinator.process_turn(
-                agent_turn_request, guard_context, workflow_id=request.workflow_id
+                agent_turn_request,
+                guard_context,
+                workflow_id=request.workflow_id,
+                resume_thread_id=request.resume_thread_id,
             )
         except OrderAgentFailure as exc:
             return OrderDiscoveryTurnOutcome(
@@ -87,6 +90,7 @@ class OrderDiscoveryActivities:
                 conversation_version=result.conversation_version,
                 client_turn_id=result.client_turn_id,
                 agent_turn_result_json=result.model_dump_json(),
+                pending_clarification_thread_id=result.pending_clarification_thread_id,
             ),
             error=None,
         )

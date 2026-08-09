@@ -13,6 +13,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, Protocol, cast
 
+from langgraph.types import Command
 from pymongo import AsyncMongoClient
 
 from return_platform.dynamic_knowledge.knowledge.cypher_compiler import CypherCompiler
@@ -150,12 +151,20 @@ class DynamicOrderAgentCoordinator:
         guard_context: GuardContext,
         *,
         workflow_id: str | None = None,
+        resume_thread_id: str | None = None,
     ) -> AgentTurnResult:
         """`workflow_id` is optional and stamped onto the run's `reasoning_runs`
         record verbatim -- the Temporal workflow host (Wave C2, Commit 3) passes
         its own `workflow.info().workflow_id` so `abandonment.py`'s "active
         Temporal workflow" precondition can find it; callers with no Temporal
-        workflow of their own (direct/test invocations) leave it unset."""
+        workflow of their own (direct/test invocations) leave it unset.
+
+        `resume_thread_id`, when set, means this turn is the associate's answer
+        to a clarifying question that suspended an earlier turn's graph
+        execution: instead of starting a fresh reasoning attempt, the existing
+        paused thread is resumed with `Command(resume=request.message)` and
+        continues from inside the `clarify` node. Only the Temporal workflow
+        knows a clarification is outstanding, so only it passes this."""
         policy = self._schema.agent_policies.get(request.agent_id)
         if policy is None or policy.agent_id != guard_context.agent_policy.agent_id:
             raise OrderAgentFailure(
@@ -175,10 +184,16 @@ class DynamicOrderAgentCoordinator:
                 retryable=True,
             )
 
-        thread_id = ReasoningThreadIdFactory.order_discovery_thread_id(
+        # A resumed clarification deliberately keeps the ORIGINAL turn's thread:
+        # one paused graph execution is still one reasoning attempt, it just spans
+        # two HTTP requests. thread_ids.py's "a thread is one attempt, not one
+        # conversation" invariant is preserved -- this is the same attempt.
+        thread_id = resume_thread_id or ReasoningThreadIdFactory.order_discovery_thread_id(
             conversation_id=request.conversation_id, turn_id=request.client_turn_id, attempt=1
         )
         run_id = thread_id
+        # Idempotent for an already-registered thread, which is exactly the resume
+        # case (see test_run_lifecycle.py::test_start_run_is_idempotent_for_the_same_thread).
         await self._run_lifecycle.start_run(
             run_id=run_id, thread_id=thread_id, workflow_id=workflow_id
         )
@@ -206,12 +221,19 @@ class DynamicOrderAgentCoordinator:
             "clarifications_used": 0,
             "replans_used": 0,
             "targeted_syncs_used": 0,
+            "clarification_exchanges": (),
             "final_response": None,
         }
 
+        # Resuming feeds the answer into the suspended `interrupt()` and discards
+        # `initial_state` entirely -- the paused checkpoint already holds the real
+        # accumulated state, and re-sending a fresh initial state would clobber it.
+        graph_input: OrderAgentGraphState | Command[Any] = (
+            Command(resume=request.message) if resume_thread_id else initial_state
+        )
         try:
             final_state = await self._graph.ainvoke(
-                initial_state,
+                graph_input,
                 context=TurnRuntimeContext(guard_context=guard_context),
                 config={
                     "configurable": {"thread_id": thread_id},
@@ -228,6 +250,39 @@ class DynamicOrderAgentCoordinator:
                 terminal_at=datetime.now(UTC),
             )
             raise
+
+        # A graph that suspended on `interrupt()` returns its state with an
+        # `__interrupt__` entry and no `final_response`. That run is PENDING, not
+        # terminal: marking it COMPLETED here would stamp an expiry on the very
+        # checkpoint the associate's answer needs to resume from, and
+        # abandonment.py would be free to sweep a conversation that is simply
+        # waiting on a human. The turn is still committed, so the associate sees
+        # the question and the conversation version advances normally.
+        interrupts = final_state.get("__interrupt__")
+        if interrupts:
+            question = StructuredAgentResponse.model_validate(interrupts[0].value)
+            paused = AgentTurnResult(
+                conversation_id=request.conversation_id,
+                conversation_version=version + 1,
+                client_turn_id=request.client_turn_id,
+                graph_generation_id=graph_generation_id,
+                response=question,
+                query_evidence=await self._evidence_store.get_many(
+                    final_state.get("evidence_refs", ())
+                ),
+                model_provider=final_state["last_provider"],
+                model_name=final_state["last_model"],
+                pending_clarification_thread_id=thread_id,
+            )
+            return await self._conversations.commit_turn(
+                request=request,
+                expected_version=version,
+                result=paused,
+                conversation_state={
+                    **conversation_state,
+                    "orderSearchCache": final_state.get("order_search_cache"),
+                },
+            )
 
         await self._retention.mark_terminal(
             self._system_store,

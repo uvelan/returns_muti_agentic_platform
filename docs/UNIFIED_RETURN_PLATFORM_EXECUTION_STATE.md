@@ -1311,12 +1311,109 @@ session reusing it must re-copy before trusting its results.
 - New test files individually: `test_order_discovery_workflow.py` (6/6, mutex test
   stable across 5 consecutive runs), `test_order_discovery_worker.py` (7/7).
 
+## Phase 7 / Wave C2, Commit 4 — interrupt-based CLARIFY + workflow lifecycle (this slice)
+
+**Scope.** Task #80, the two pieces Commit 3 deferred. Designed inline rather than via a
+Plan-agent pass (the agent was cut off by a session limit mid-design), verifying both
+third-party APIs directly against the installed packages instead of assuming them.
+
+**A. CLARIFY is now a real LangGraph `interrupt()`/`Command(resume=...)` pause.**
+Previously CLARIFY ended the turn and the associate's follow-up became a brand-new
+reasoning attempt on a brand-new thread, discarding everything the paused attempt had
+already established. Now:
+- `graph_nodes.make_clarify_node` calls `interrupt(<serialized clarifying question>)`
+  after its existing guards. **Verified from `langgraph.types.interrupt`'s own source:
+  on resume LangGraph re-executes the node from its first line**, so everything above
+  the `interrupt()` runs twice. That is safe here only because all of it is read-only
+  (budget check, two guards, an evidence read) — noted in an inline comment so nothing
+  side-effecting is ever added above that line.
+- `clarify` is no longer terminal. New `graph.py::_route_after_clarify` sends a resumed
+  clarify back to `decide` (a correction still routes exactly as before). Reaching the
+  router at all means the pause is over — the interrupted pass never returns.
+- New `clarification_exchanges` state field (added to `OrderAgentGraphState`, the
+  checkpoint allowlist, and `AgentTurnContext`) records `{question, answer}` pairs so the
+  resumed `decide` can see the answer and cannot re-ask the same question. Both halves are
+  conversation text of the same sensitivity as `user_message`, already checkpointed.
+- `coordinator.process_turn` gained `resume_thread_id`. When set it reuses the original
+  turn's thread and passes `Command(resume=request.message)` **instead of** the initial
+  state (re-sending a fresh initial state would clobber the paused checkpoint). It detects
+  the pause via `__interrupt__` in the returned state and — critically — **skips
+  `mark_terminal`**: a paused run is PENDING, not COMPLETED. Marking it terminal would
+  stamp an expiry on the very checkpoint the answer needs and free `abandonment.py` to
+  sweep a conversation that is merely waiting on a human. The turn is still committed, so
+  the associate sees the question and the conversation version advances normally.
+- `thread_ids.py`'s "a thread is one attempt, not one conversation" invariant is
+  **preserved, not changed**: a resumed clarification is still one attempt, now spanning
+  two HTTP requests.
+- The workflow owns the pending pointer (`RunOrderDiscoveryTurnActivityInput.resume_thread_id`
+  in, `AgentTurnResultPayload.pending_clarification_thread_id` out), consuming it exactly
+  once and restoring it if the turn raises or errors, so a failed answer never strands a
+  paused thread that no later turn can reach.
+
+**B. `OrderDiscoveryWorkflow` no longer runs forever.** `run()`'s
+`wait_condition(lambda: False)` became a loop handling the two costs of staying alive:
+- **Unbounded history** — defers to Temporal's own server-side
+  `workflow.info().is_continue_as_new_suggested()` (accounts for both event count and
+  history size) rather than an arbitrary turn count, awaits `all_handlers_finished()` so
+  an in-flight `submit_turn` is never severed, then `continue_as_new`s carrying the durable
+  coordination state on the input so the reset is invisible to callers.
+  `OrderDiscoveryWorkflowInput` gained defaulted carry-over fields for exactly this.
+- **Abandoned conversations** — a 7-day idle timeout on the same `wait_condition`. Because
+  its timeout is absolute rather than sliding, an `_idle_deadline_extended` flag (set by
+  `submit_turn`/`generation_changed`) distinguishes "genuinely idle" from "activity
+  happened mid-window", re-arming in the latter case. Ending the workflow destroys nothing
+  durable: the conversation document and checkpoints remain, and `api/order_agent.py`
+  transparently starts a fresh execution on the next turn.
+
+**Tests (fast; all pass).** `test_order_agent_graph.py` — the old
+`test_clarify_ends_the_turn_with_a_requested_input_response` asserted the now-removed
+terminal behavior and was replaced by two tests: the graph suspends with the question as
+the interrupt value and no `final_response`, and a `Command(resume=...)` on the same
+thread continues to a real answer with the exchange recorded and visible to the resumed
+`decide` (9/9). `test_order_discovery_workflow.py` — a new real-Temporal test proving the
+pending pointer is set from the paused turn, handed to the next turn as `resume_thread_id`,
+and consumed exactly once so a third turn does not re-resume it (7/7).
+
+**Real finding, flagged not fixed (`task_f1fc6b63`).** Commit 2's ledger entry claims
+`ORDER_DISCOVERY_CHECKPOINT_ALLOWLIST` is what "`CheckpointRedactor` enforces against every
+checkpoint write" and that an unlisted field "fails closed". **That is not true in the
+code**: `CheckpointRedactor` is constructed nowhere in `src/` and `enforce()` is never
+called from `SystemStoreCheckpointSaver` or the coordinator — the allowlist is only
+exercised by an isolated unit test comparing it to the TypedDict's keys. Wiring it as-is
+would also immediately fail, because the graph's own transient routing key `_corrected` is
+in neither the TypedDict nor the allowlist. Left as its own task rather than silently
+expanding this commit; the Commit 2 claim needs correcting there too.
+
+**Not done (unchanged scope boundaries).** The 7-day idle timeout and the continue-as-new
+path have no automated test — both need Temporal's time-skipping test environment
+(`WorkflowEnvironment.start_time_skipping()`, which downloads a test-server binary) rather
+than the real server this suite uses. The mechanisms are implemented and type-check, but
+are **not** behaviourally proven; that is the first thing to add when time-skipping is
+available. Still no LLM-driven end-to-end proof, for the same missing-API-key reason as
+Commit 3.
+
+**Gate receipts.** `ruff format --check`/`ruff check` on the 9-file change set: clean.
+`mypy src`: 47 errors in 16 files — unchanged baseline (a transient 48th,
+`Command` missing type arguments, was fixed to `Command[Any]`). `compileall`: clean.
+Fast suites: `test_order_agent_graph.py` 9/9, `test_order_agent_graph_state.py` 3/3,
+`test_order_discovery_workflow.py` 7/7, `test_order_discovery_worker.py` 7/7.
+Full real-infra suite (batched at the end of the session at the user's instruction, run
+inside a freshly re-synced `c2-test-runner` against real Mongo/Neo4j/SQL Server/Temporal,
+same four exclusions as Commit 3): **1580 passed, 2 skipped, 0 failed**, 99 errors — all
+99 the same pre-existing `NVIDIA_API_KEY`/`GOOGLE_API_KEY` fixture gap, unchanged in count
+from Commit 3. The +2 over Commit 3's 1578 are this commit's net-new tests.
+
 ## Next READY slice
 
-Task #80: the remaining real-infra work this commit deliberately deferred — the
-`interrupt()`-based CLARIFY resume upgrade (now that a durable workflow host exists to
-resume across), and revisiting the never-terminating-workflow standing cost
-(continue-as-new/retention). Independently, `task_92c35ace` (spawned, not yet started):
+Wave C2 is now complete (Commits 1–4). The next plan slice is **C3 — Phases 9–11: Graph
+Schema Analyzer complete module**, then C4 (Phase 12: graph generation lifecycle), after
+which Wave D (Phases 13–16) opens. Before starting C3, two things owed from Commit 4:
+re-run the full real-infra suite (batched, not yet done for that commit), and add
+time-skipping coverage for the idle-timeout/continue-as-new paths.
+
+Open follow-up tasks, none blocking C3: `task_f1fc6b63` (wire `CheckpointRedactor` into
+real checkpoint writes and correct Commit 2's untrue ledger claim), and
+`task_92c35ace` (spawned, not yet started):
 apply this commit's `wait_condition` re-check fix to `ReturnWorkflow.complete_stage`,
 which has the identical latent race. Also still open, not part of any Phase 7 commit: the
 flagged Neo4j volume dedup task, the pre-existing `openapi-drift`/`associate_flow.py`

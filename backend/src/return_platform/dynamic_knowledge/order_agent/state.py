@@ -110,6 +110,11 @@ class OrderAgentGraphState(TypedDict, total=False):
     requested_schema_entity_ids: tuple[str, ...]
     evidence_refs: tuple[str, ...]
     order_search_cache: dict[str, Any] | None
+    # {"question", "answer"} pairs from CLARIFY pauses resumed within this turn.
+    # Both halves are conversation text of exactly the same sensitivity as
+    # `user_message` (already checkpointed above): a model-generated question and
+    # the associate's own reply. Bounded by the policy's max_clarifications.
+    clarification_exchanges: tuple[dict[str, str], ...]
 
     # Current in-flight model action.
     action: dict[str, Any] | None
@@ -144,6 +149,7 @@ ORDER_DISCOVERY_CHECKPOINT_ALLOWLIST: frozenset[str] = frozenset(
         "requested_schema_entity_ids",
         "evidence_refs",
         "order_search_cache",
+        "clarification_exchanges",
         "action",
         "last_provider",
         "last_model",

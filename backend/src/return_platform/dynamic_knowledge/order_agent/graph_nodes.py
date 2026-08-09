@@ -26,6 +26,7 @@ from uuid import uuid4
 
 from langgraph.graph import END
 from langgraph.runtime import Runtime
+from langgraph.types import interrupt
 
 from return_platform.dynamic_knowledge.fingerprint import on_demand_request_digest, sha256_digest
 from return_platform.dynamic_knowledge.knowledge.cypher_compiler import (
@@ -161,6 +162,7 @@ async def _build_context(deps: GraphDependencies, state: dict[str, Any]) -> Agen
     )
     order_search_cache = state.get("order_search_cache")
     return AgentTurnContext(
+        clarification_exchanges=state.get("clarification_exchanges", ()),
         conversation_id=state["conversation_id"],
         client_turn_id=state["client_turn_id"],
         user_message=state["user_message"],
@@ -834,9 +836,28 @@ def make_clarify_node(deps: GraphDependencies) -> Any:
                 "correction_attempts": correction_attempts + 1,
                 "_corrected": True,
             }
+        # Pause the whole graph execution here and surface the clarifying question
+        # to the caller. `interrupt()` raises GraphInterrupt on this pass; the
+        # coordinator turns that into the turn's visible response and records the
+        # thread as pending. When the associate answers (a later HTTP request /
+        # Temporal update), the graph is resumed with Command(resume=<answer>) and
+        # LangGraph RE-EXECUTES THIS NODE FROM ITS FIRST LINE -- everything above
+        # runs a second time, which is safe precisely because it is all read-only
+        # validation (budget check, two guards, an evidence read). Nothing above
+        # may ever be given a side effect without revisiting this.
+        answer = interrupt(action.response.model_dump(mode="json"))
         return {
-            "final_response": action.response.model_dump(mode="json"),
+            "clarification_exchanges": (
+                *state.get("clarification_exchanges", ()),
+                {
+                    "question": action.response.requested_input or "",
+                    "answer": str(answer),
+                },
+            ),
             "clarifications_used": state.get("clarifications_used", 0) + 1,
+            # Drop the CLARIFY action so the resumed `decide` produces a fresh one
+            # against the newly-answered context instead of re-proposing this one.
+            "action": None,
             "_corrected": False,
         }
 

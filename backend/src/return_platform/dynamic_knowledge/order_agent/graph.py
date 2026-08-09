@@ -49,14 +49,30 @@ _AFTER_CORRECTABLE_NODE_TARGETS: dict[Hashable, str] = {"decide": "decide", **_A
 
 
 def _route_after_terminal_node(state: dict[str, Any]) -> str:
-    """Shared router for respond/clarify: a correction re-routes exactly like a
-    fresh decide() would; success ends the graph."""
+    """Router for respond: a correction re-routes exactly like a fresh decide()
+    would; success ends the graph."""
     if state.get("_corrected", False):
         return route_after_action(state)
     return "__end__"
 
 
 _AFTER_TERMINAL_NODE_TARGETS: dict[Hashable, str] = {"__end__": END, **_AFTER_ACTION_TARGETS}
+
+
+def _route_after_clarify(state: dict[str, Any]) -> str:
+    """`clarify` is no longer terminal. It either corrects an invalid clarifying
+    question (routing exactly like respond's correction path), or it has already
+    suspended on `interrupt()` and been resumed with the associate's answer -- in
+    which case reasoning genuinely continues, so control returns to `decide` with
+    the answer now recorded in `clarification_exchanges`. Reaching this router at
+    all means the pause is over; the interrupted pass never returns from the node.
+    """
+    if state.get("_corrected", False):
+        return route_after_action(state)
+    return "decide"
+
+
+_AFTER_CLARIFY_TARGETS: dict[Hashable, str] = {"decide": "decide", **_AFTER_ACTION_TARGETS}
 
 
 def build_order_agent_graph(
@@ -90,7 +106,7 @@ def build_order_agent_graph(
     graph.add_conditional_edges(
         "request_on_demand_sync", route_after_correctable_node, _AFTER_CORRECTABLE_NODE_TARGETS
     )
-    graph.add_conditional_edges("clarify", _route_after_terminal_node, _AFTER_TERMINAL_NODE_TARGETS)
+    graph.add_conditional_edges("clarify", _route_after_clarify, _AFTER_CLARIFY_TARGETS)
     graph.add_edge("replan", "decide")
     graph.add_conditional_edges("respond", _route_after_terminal_node, _AFTER_TERMINAL_NODE_TARGETS)
     # out_of_scope always raises OrderAgentFailure before returning -- this edge

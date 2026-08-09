@@ -42,13 +42,34 @@ __all__ = [
 # multi-step AI reasoning loop.
 _TURN_ACTIVITY_TIMEOUT: Final = timedelta(minutes=10)
 
+# A conversation with no turn submitted and no generation notice for this long is
+# treated as abandoned by the associate, and the workflow ends itself rather than
+# running forever. Deliberately generous: an associate can legitimately leave a
+# return half-finished over a weekend and come back to it. Ending the workflow does
+# NOT destroy the conversation -- the Mongo conversation document and any LangGraph
+# checkpoint remain, and `api/order_agent.py` transparently starts a fresh workflow
+# execution for the same conversation_id on the next turn (its
+# WorkflowAlreadyStartedError path simply doesn't trigger). What ends is only the
+# in-memory Temporal coordination state; a clarification paused mid-graph is still
+# resumable because the pending-thread pointer is persisted on the conversation
+# document, not only here.
+_CONVERSATION_IDLE_TIMEOUT: Final = timedelta(days=7)
+
 
 @dataclass(frozen=True, slots=True)
 class OrderDiscoveryWorkflowInput:
-    """Business-data-free input for one Order Discovery workflow execution."""
+    """Business-data-free input for one Order Discovery workflow execution.
+
+    Every field after `agent_id` exists only to carry durable coordination state
+    across a `continue_as_new` boundary (see `OrderDiscoveryWorkflow.run`), so a
+    history reset is invisible to callers. They default to "fresh conversation"
+    values, so the first start of a conversation passes only the first two.
+    """
 
     conversation_id: str
     agent_id: str
+    last_known_graph_generation_id: str | None = None
+    pending_clarification_thread_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +107,12 @@ class RunOrderDiscoveryTurnActivityInput:
     roles: frozenset[str]
     branch_ids: frozenset[str]
     workflow_id: str
+    # When set, this turn is the associate's answer to a clarifying question, and
+    # the coordinator must RESUME the already-paused graph execution on this thread
+    # (LangGraph `Command(resume=...)`) instead of starting a fresh one. The
+    # workflow owns this decision because it is the only component that durably
+    # knows a clarification is outstanding for this conversation.
+    resume_thread_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +127,10 @@ class AgentTurnResultPayload:
     conversation_version: int
     client_turn_id: str
     agent_turn_result_json: str
+    # Non-None when the graph paused on a clarifying question instead of
+    # completing: the thread the next turn must resume. The workflow stores it so
+    # the following submit_turn resumes rather than starting over.
+    pending_clarification_thread_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +164,8 @@ class OrderDiscoveryWorkflowState:
     agent_id: str
     turn_in_progress: bool
     last_known_graph_generation_id: str | None
+    pending_clarification_thread_id: str | None = None
+    turns_handled: int = 0
 
 
 @workflow.defn(name="return-platform-order-discovery-v1")
@@ -144,6 +177,9 @@ class OrderDiscoveryWorkflow:
         self._agent_id: str | None = None
         self._turn_in_progress = False
         self._last_known_graph_generation_id: str | None = None
+        self._pending_clarification_thread_id: str | None = None
+        self._turns_handled = 0
+        self._idle_deadline_extended = False
 
     def _require_conversation_id(self) -> str:
         if self._conversation_id is None:
@@ -157,13 +193,59 @@ class OrderDiscoveryWorkflow:
 
     @workflow.run
     async def run(self, workflow_input: OrderDiscoveryWorkflowInput) -> None:
-        """A conversation has no defined end the way a Return's stage
-        sequence reaches COMPLETED -- an associate can resume it days later --
-        so this workflow waits forever for submit_turn updates/
-        generation_changed signals rather than reaching a terminal state."""
+        """A conversation has no defined end the way a Return's stage sequence
+        reaches COMPLETED -- an associate can resume it days later -- so this
+        workflow stays alive across turns instead of running to a terminal
+        state. Two bounded costs of "stays alive" are handled here.
+
+        **Unbounded history.** Every turn appends events, and a long-lived
+        conversation would grow its history without limit. Rather than pick an
+        arbitrary turn count, this defers to Temporal's own server-side signal
+        (`is_continue_as_new_suggested()`, which accounts for both event count
+        and history size) and then `continue_as_new`s, carrying the durable
+        coordination state forward on the input so the reset is invisible to
+        callers. `all_handlers_finished()` is awaited first so an in-flight
+        `submit_turn` update is never severed mid-flight.
+
+        **Genuinely abandoned conversations.** Without an end condition, an
+        associate who walks away leaves a workflow running forever. After
+        `_CONVERSATION_IDLE_TIMEOUT` with no turn and no generation notice, the
+        workflow returns (completing normally). Nothing durable is lost -- see
+        that constant's own note.
+        """
         self._conversation_id = workflow_input.conversation_id
         self._agent_id = workflow_input.agent_id
-        await workflow.wait_condition(lambda: False)
+        self._last_known_graph_generation_id = workflow_input.last_known_graph_generation_id
+        self._pending_clarification_thread_id = workflow_input.pending_clarification_thread_id
+
+        while True:
+            self._idle_deadline_extended = False
+            try:
+                await workflow.wait_condition(
+                    lambda: workflow.info().is_continue_as_new_suggested(),
+                    timeout=_CONVERSATION_IDLE_TIMEOUT,
+                    timeout_summary="conversation-idle-timeout",
+                )
+            except TimeoutError:
+                # The window elapsed. `_idle_deadline_extended` is set by any
+                # real activity (a submitted turn, a generation notice) since
+                # this iteration began -- if there was any, the conversation is
+                # not idle and we simply re-arm a fresh window rather than
+                # ending a live conversation. A turn still running right now
+                # counts as activity for the same reason.
+                if self._idle_deadline_extended or self._turn_in_progress:
+                    continue
+                await workflow.wait_condition(lambda: workflow.all_handlers_finished())
+                return
+            await workflow.wait_condition(lambda: workflow.all_handlers_finished())
+            workflow.continue_as_new(
+                OrderDiscoveryWorkflowInput(
+                    conversation_id=self._require_conversation_id(),
+                    agent_id=self._require_agent_id(),
+                    last_known_graph_generation_id=self._last_known_graph_generation_id,
+                    pending_clarification_thread_id=self._pending_clarification_thread_id,
+                )
+            )
 
     @workflow.query(name="execution_state")
     def execution_state(self) -> OrderDiscoveryWorkflowState:
@@ -173,6 +255,8 @@ class OrderDiscoveryWorkflow:
             agent_id=self._require_agent_id(),
             turn_in_progress=self._turn_in_progress,
             last_known_graph_generation_id=self._last_known_graph_generation_id,
+            pending_clarification_thread_id=self._pending_clarification_thread_id,
+            turns_handled=self._turns_handled,
         )
 
     @workflow.signal(name="generation_changed")
@@ -192,6 +276,7 @@ class OrderDiscoveryWorkflow:
         queued turn) on top of this without any workflow topology change.
         """
         self._last_known_graph_generation_id = notice.new_graph_generation_id
+        self._idle_deadline_extended = True
 
     @workflow.update(name="submit_turn")
     async def submit_turn(
@@ -223,6 +308,12 @@ class OrderDiscoveryWorkflow:
                 lambda: self._conversation_id is not None and not self._turn_in_progress
             )
         self._turn_in_progress = True
+        self._idle_deadline_extended = True
+        # Captured before the await so a clarification recorded by an earlier turn
+        # is consumed exactly once: if this turn is the answer, the pointer is
+        # cleared now, and only re-set below if the graph pauses *again*.
+        resume_thread_id = self._pending_clarification_thread_id
+        self._pending_clarification_thread_id = None
         try:
             outcome: OrderDiscoveryTurnOutcome = await workflow.execute_activity(
                 "run_order_discovery_turn",
@@ -239,11 +330,24 @@ class OrderDiscoveryWorkflow:
                     roles=command.roles,
                     branch_ids=command.branch_ids,
                     workflow_id=workflow.info().workflow_id,
+                    resume_thread_id=resume_thread_id,
                 ),
                 result_type=OrderDiscoveryTurnOutcome,
                 start_to_close_timeout=_TURN_ACTIVITY_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=1),
             )
-            return outcome
+        except BaseException:
+            # The turn never produced an outcome, so the clarification it was
+            # meant to answer is still outstanding -- restore the pointer rather
+            # than stranding a paused graph thread no later turn can reach.
+            self._pending_clarification_thread_id = resume_thread_id
+            raise
         finally:
             self._turn_in_progress = False
+        if outcome.result is not None:
+            self._turns_handled += 1
+            self._pending_clarification_thread_id = outcome.result.pending_clarification_thread_id
+        else:
+            # A failed turn leaves the paused thread exactly as it was.
+            self._pending_clarification_thread_id = resume_thread_id
+        return outcome
