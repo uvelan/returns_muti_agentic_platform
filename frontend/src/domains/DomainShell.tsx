@@ -1,9 +1,20 @@
 import { Link, Route, Router, Switch, useLocation } from "wouter";
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ComponentType, type ReactNode } from "react";
 
 import { useCapabilities } from "../hooks/capabilityContext";
 import { DOMAINS, type DomainDefinition } from "./registry";
 import { DomainLanding } from "./DomainLanding";
+
+/**
+ * Domains whose screen is built. The rest fall back to `DomainLanding` until
+ * their phase lands, so adding a screen is one entry here rather than an edit
+ * to the routing below.
+ */
+const DOMAIN_SCREENS: Partial<Record<string, ComponentType>> = {
+  "/graph-schema": lazy(() =>
+    import("./graph-schema/GraphSchemaPage").then((m) => ({ default: m.GraphSchemaPage })),
+  ),
+};
 
 /**
  * The unified four-domain shell (Phase 17).
@@ -120,15 +131,22 @@ export function DomainApp() {
     <Router>
       <DomainFrame>
         <Switch>
-          {DOMAINS.map((domain) => (
-            <Route key={domain.path} path={domain.path}>
-              {can(domain.requires) ? (
-                <DomainLanding domain={domain} />
-              ) : (
-                <Forbidden domain={domain} />
-              )}
-            </Route>
-          ))}
+          {DOMAINS.map((domain) => {
+            const Screen = DOMAIN_SCREENS[domain.path];
+            return (
+              <Route key={domain.path} path={domain.path}>
+                {!can(domain.requires) ? (
+                  <Forbidden domain={domain} />
+                ) : Screen ? (
+                  <Suspense fallback={<p className="text-sm text-slate-600">Loading...</p>}>
+                    <Screen />
+                  </Suspense>
+                ) : (
+                  <DomainLanding domain={domain} />
+                )}
+              </Route>
+            );
+          })}
           <Route>
             {visible.length === 0 ? <NoDomainsAvailable /> : <DomainLanding domain={visible[0]} />}
           </Route>
