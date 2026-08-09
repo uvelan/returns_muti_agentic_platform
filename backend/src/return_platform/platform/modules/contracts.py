@@ -21,6 +21,7 @@ from return_platform.platform.contracts.correlation import CorrelationContext
 from return_platform.platform.contracts.epoch import RuntimeEpoch
 from return_platform.platform.contracts.runtime_configuration import RuntimeConfigurationHandle
 from return_platform.platform.modules.descriptor import ModuleDescriptor
+from return_platform.platform.system_store.repository import SystemStore
 
 
 class HealthStatus(StrEnum):
@@ -52,6 +53,14 @@ class ModuleRuntimeContext(Protocol):
     secrets, redactor, and audit are added once Phase 3 introduces those platform
     packages -- extending this Protocol, not redesigning it.
 
+    `system_store` is the first of those to land (Wave C3.1, when the Graph Schema
+    Analyzer became the first module needing durable per-entity persistence). It is
+    a platform service, so exposing it here is not the cross-module coupling R2a
+    forbids -- a module still reaches *another module's* services only through
+    `capabilities`. It is optional because not every module persists anything, and
+    a composition root that has not built a store must be able to say so rather
+    than fabricate one.
+
     Declared as read-only properties, not plain attributes: a plain `x: T` Protocol
     member means "readable AND writable" to mypy, which the natural frozen
     implementation (see bootstrap/context.py's RuntimeContext) cannot satisfy.
@@ -65,6 +74,8 @@ class ModuleRuntimeContext(Protocol):
     def clock(self) -> Clock: ...
     @property
     def correlation(self) -> CorrelationContext: ...
+    @property
+    def system_store(self) -> SystemStore | None: ...
 
 
 class ReconfigureOutcome(StrEnum):

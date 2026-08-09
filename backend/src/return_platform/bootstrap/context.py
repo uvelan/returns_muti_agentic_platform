@@ -8,6 +8,11 @@ Phase 1B scope: only the fields backed by a contract that exists today --
 configuration, capabilities, clock, correlation. system_store, secrets, redactor, and
 audit are added to ModuleRuntimeContext (and to this assembly) once Phase 3 introduces
 those platform packages -- extending this dataclass, not redesigning it.
+
+`system_store` landed in Wave C3.1 (the Graph Schema Analyzer is the first module
+with durable per-entity persistence). It defaults to None so every existing
+construction site stays valid and a composition root without a store says so
+explicitly instead of fabricating one.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ from return_platform.platform.capabilities.contracts import CapabilityRegistry
 from return_platform.platform.contracts.clock import Clock
 from return_platform.platform.contracts.correlation import CorrelationContext
 from return_platform.platform.contracts.runtime_configuration import RuntimeConfigurationHandle
+from return_platform.platform.system_store.repository import SystemStore
 
 
 class SystemClock:
@@ -48,3 +54,4 @@ class RuntimeContext:
     capabilities: CapabilityRegistry
     clock: Clock
     correlation: CorrelationContext
+    system_store: SystemStore | None = None

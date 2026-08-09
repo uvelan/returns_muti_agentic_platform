@@ -93,3 +93,47 @@ payload:
         - name: expires_at_ttl
           fields: [expires_at]
           expire_after_seconds: 0
+    analysis_sessions:
+      physical_name: platform_analysis_sessions
+      schema_version: 1
+      indexes:
+        - name: analysis_id_unique
+          fields: [analysis_id]
+          unique: true
+        - name: status
+          fields: [status]
+    source_snapshots:
+      physical_name: platform_source_snapshots
+      schema_version: 1
+      indexes:
+        - name: snapshot_id_unique
+          fields: [snapshot_id]
+          unique: true
+        - name: analysis_id
+          fields: [analysis_id]
+        # Only snapshots that actually retained samples carry sample_expires_at;
+        # metadata is retained indefinitely, so this TTL expires the sample
+        # reference without touching the plaintext dataset metadata (13.6).
+        - name: sample_expires_at_ttl
+          fields: [sample_expires_at]
+          expire_after_seconds: 0
+    source_samples:
+      physical_name: platform_source_samples
+      schema_version: 1
+      encrypted: true
+      indexes:
+        - name: samples_ref_unique
+          fields: [samples_ref]
+          unique: true
+        - name: expires_at_ttl
+          fields: [expires_at]
+          expire_after_seconds: 0
+    clarifications:
+      physical_name: platform_clarifications
+      schema_version: 1
+      indexes:
+        - name: clarification_id_unique
+          fields: [clarification_id]
+          unique: true
+        - name: analysis_id
+          fields: [analysis_id]

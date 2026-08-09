@@ -1403,13 +1403,98 @@ same four exclusions as Commit 3): **1580 passed, 2 skipped, 0 failed**, 99 erro
 99 the same pre-existing `NVIDIA_API_KEY`/`GOOGLE_API_KEY` fixture gap, unchanged in count
 from Commit 3. The +2 over Commit 3's 1578 are this commit's net-new tests.
 
+## Wave C3.1 — Graph Schema Analyzer: persistent independent module (this slice)
+
+**Scope.** Phase 9 of C3: the module's skeleton and persistence, built from scratch
+(nothing existed under `src/return_platform/graph_schema_analyzer/`). Deliberately does
+**not** include discovery, AI reasoning, mutations, validation, or approval — those are
+C3.2/C3.3. Their routes are absent rather than stubbed, so OpenAPI never advertises an
+endpoint that does nothing.
+
+**What landed.**
+- `domain/` — `AnalysisSession` (explicit transition table; illegal jumps like
+  DRAFT→APPROVED raise rather than being emergently possible), `SourceSchemaSnapshot`
+  (immutable, content-addressed), `Clarification`, typed errors. Pure: an architecture
+  test asserts it imports no port, no persistence, no framework.
+- `ports/` — `SourceDiscoveryPort`, `SchemaReasoningPort`, `GraphTargetPort`,
+  `PersistencePort`, `AnalyzerAuditPort`. **No `adapters/` package**, per §2.7.
+- `persistence/` — one repository per entity family, each with the write discipline that
+  entity actually needs: compare-and-set on `(analysis_id, version)` for sessions
+  (multiple analysts edit one session over days, so a lost update is realistic, not
+  theoretical); idempotent content-addressed upsert for snapshots (safe *because*
+  they're immutable — there is no prior state to destroy); state-machine-guarded upsert
+  for clarifications. `build_system_store_persistence()` is a typed factory so **mypy**
+  proves port conformance, rather than leaving it to a runtime `isinstance` that only
+  checks method names exist (design doc's three-layer conformance table).
+- `api/` — versionless `/api/graph-schema` (§9.3), with wire models separate from domain
+  models: `SnapshotView` exposes `sample_classification` so an operator can audit how
+  samples were handled, but deliberately **not** `samples_ref`, which is an internal
+  pointer into an encrypted structure.
+- `module.py` — **the codebase's first `module.py`**, which is load-bearing beyond this
+  module: `tests/platform/test_no_module_cross_imports.py` treats a package as "migrated"
+  exactly when it has one, so this file switched that architecture test on for
+  `graph_schema_analyzer` automatically, and brought it under
+  `test_no_adapters_package_outside_bootstrap`. Both verified passing.
+- `config/platform/system_store.yaml` — four new structures: `analysis_sessions`,
+  `source_snapshots` (with a `sample_expires_at` TTL that expires the *sample reference*
+  while plaintext dataset metadata is retained indefinitely), `source_samples`
+  (`encrypted: true` + TTL), `clarifications`. Verified through the real manifest loader.
+
+**Section 13.6 enforced in the constructor, not the repository.** `SampleClassification`
+(`NONE`/`REDACTED`/`ENCRYPTED`) is validated inside `SourceSchemaSnapshot`'s own
+validator, so a snapshot that misrepresents how its samples were handled is impossible to
+*hold*, not merely impossible to save — there is no path that builds one and decides
+later. `ENCRYPTED` without `sample_expires_at` is rejected outright: raw retained samples
+with no TTL are an indefinite liability the moment a key leaks.
+
+**Platform contract extended (design-sanctioned, not a redesign).**
+`ModuleRuntimeContext` gained `system_store: SystemStore | None`, and
+`bootstrap/context.py`'s `RuntimeContext` gained the matching defaulted field. The
+Protocol's own docstring had always said system_store/secrets/redactor/audit would be
+added "once Phase 3 introduces those platform packages — extending this Protocol, not
+redesigning it"; the analyzer is the first module with durable per-entity persistence, so
+this is the first of them to land. Defaulted to `None` so every existing construction site
+stays valid. Note this is *not* the R2a coupling: the system store is a platform service,
+and a module still reaches another **module's** services only through `capabilities`.
+`CapabilityName` was deliberately left alone — it is a closed enum of cross-module
+capabilities, and persistence is not one.
+
+**Real bug found in my own architecture test, worth recording because the same sharp edge
+exists elsewhere.** The first version used `imported.startswith(FORBIDDEN_PREFIXES)` with
+`"return_platform.graph"` in the list — which prefix-matches
+`"return_platform.graph_schema_analyzer"`, so the module flagged all 40 of its own
+internal imports as violations of itself. Fixed with package-boundary matching
+(`imported == name or imported.startswith(f"{name}.")`). **`tests/platform/test_layering.py`
+carries the identical `return_platform.graph` / `return_platform.graph_schema_analyzer`
+pair with a bare `startswith`** — harmless there today only because `platform/*` imports
+neither, so it is a latent trap rather than a live bug. Not fixed here (different test,
+different slice); noted so it is not rediscovered the hard way.
+
+**Not wired into the composition root.** `module.py` is complete and type-checks, but the
+module is not in `main.py`'s `module_ids` and its router is not mounted, so the API is
+unreachable at runtime. Mounting is explicitly the caller's job (`bootstrap/lifespan.py`'s
+own docstring puts router mounting in "steps 13–15 … supplied by the caller"), and doing
+it properly also requires re-introducing a `SystemStore` into the FastAPI process — which
+Commit 3 removed once order-agent stopped needing one there. Called out in the module
+README and deferred to the start of C3.2 rather than half-wired.
+
+**Gate receipts.** `ruff format --check`/`ruff check` on the 25-file change set: clean.
+`mypy src`: 47 errors in 16 files — **unchanged baseline** with 21 new files checked (a
+transient 48th was a real bug: the API layer used `Principal.principal_id`, which does not
+exist; the field is `subject`). `python -c "import return_platform.main"`: clean.
+`tests/graph_schema_analyzer/` 17/17; `tests/platform/` architecture + manifest-loader
+tests pass. The full real-infra suite was **not** re-run for this slice — no runtime path
+changed, but it is owed before C3.2 lands on top.
+
 ## Next READY slice
 
-Wave C2 is now complete (Commits 1–4). The next plan slice is **C3 — Phases 9–11: Graph
-Schema Analyzer complete module**, then C4 (Phase 12: graph generation lifecycle), after
-which Wave D (Phases 13–16) opens. Before starting C3, two things owed from Commit 4:
-re-run the full real-infra suite (batched, not yet done for that commit), and add
-time-skipping coverage for the idle-timeout/continue-as-new paths.
+Wave C2 is complete (Commits 1–4) and C3.1 has landed. Next is **C3.2 — source discovery
++ AI reasoning**, which should open by finishing C3.1's deferred wiring: activate
+`graph_schema_analyzer` in `main.py`'s `module_ids`, re-introduce a `SystemStore` into the
+FastAPI process, and mount the module router. Then C3.3 (typed mutations / graph-only
+editing), C4 (Phase 12: graph generation lifecycle), after which Wave D (Phases 13–16)
+opens. Still owed from Commit 4: time-skipping coverage for the idle-timeout and
+continue-as-new paths.
 
 Open follow-up tasks, none blocking C3: `task_f1fc6b63` (wire `CheckpointRedactor` into
 real checkpoint writes and correct Commit 2's untrue ledger claim), and
