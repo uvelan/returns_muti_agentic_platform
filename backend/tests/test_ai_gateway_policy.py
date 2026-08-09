@@ -2,8 +2,8 @@
 
 import pytest
 
-from return_platform.ai_gateway.providers import ProviderError
-from return_platform.ai_gateway.service import AIGatewayService, _PayloadPolicyError
+from return_platform.ai.gateway.service import AIGatewayService, _PayloadPolicyError
+from return_platform.ai.providers import ProviderError
 from return_platform.operations.models import AIDecision, AIRequestStatus
 
 

@@ -7,9 +7,9 @@ from typing import Any
 
 import httpx
 
-from return_platform.ai_gateway.providers.contracts import ProviderError
+from return_platform.ai.providers.contracts import ProviderError
 
-logger = logging.getLogger("return_platform.ai_gateway.providers.http")
+logger = logging.getLogger("return_platform.ai.providers.http")
 
 
 def secret_value(value: object) -> str | None:

@@ -6,14 +6,14 @@ import json
 import logging
 from typing import Any
 
-from return_platform.ai_gateway.providers.contracts import (
+from return_platform.ai.providers.contracts import (
     ProviderError,
     ProviderRequest,
     ProviderResponse,
 )
-from return_platform.ai_gateway.providers.http import HTTPProvider
+from return_platform.ai.providers.http import HTTPProvider
 
-logger = logging.getLogger("return_platform.ai_gateway.providers.openai_compatible")
+logger = logging.getLogger("return_platform.ai.providers.openai_compatible")
 
 
 class OpenAICompatibleProvider(HTTPProvider):

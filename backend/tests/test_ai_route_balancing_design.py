@@ -8,9 +8,10 @@ from typing import Any, cast
 import pytest
 from pydantic import SecretStr
 
-from return_platform.ai_gateway.configuration import ModelTier, load_ai_gateway_configuration
-from return_platform.ai_gateway.providers import ProviderError, ProviderResponse
-from return_platform.ai_gateway.routing import AIRoute, AIRoutePool, build_routes
+from return_platform.ai.providers import ProviderError, ProviderResponse
+from return_platform.ai.routing.routes import AIRoute, build_routes
+from return_platform.ai.routing.selection import AIRoutePool
+from return_platform.ai.routing.tasks import ModelTier, load_ai_gateway_configuration
 from return_platform.configuration.bootstrap_runtime_integrations import (
     _project_validated_pairs,
     _ValidatedPair,

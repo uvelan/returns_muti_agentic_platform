@@ -19,7 +19,7 @@ import sys
 import time
 from pathlib import Path
 
-from return_platform.ai_gateway.providers.manual import DEFAULT_MANUAL_LLM_DIR
+from return_platform.ai.providers.manual import DEFAULT_MANUAL_LLM_DIR
 
 POLL_SECONDS = 0.5
 

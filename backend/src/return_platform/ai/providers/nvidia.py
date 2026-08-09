@@ -1,7 +1,7 @@
 """NVIDIA NIM hosted API adapter."""
 
-from return_platform.ai_gateway.providers.http import secret_value
-from return_platform.ai_gateway.providers.openai_compatible import OpenAICompatibleProvider
+from return_platform.ai.providers.http import secret_value
+from return_platform.ai.providers.openai_compatible import OpenAICompatibleProvider
 from return_platform.configuration.settings import Settings
 
 

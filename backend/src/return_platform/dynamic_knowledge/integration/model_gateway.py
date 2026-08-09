@@ -9,11 +9,12 @@ import time
 from collections import Counter
 from typing import Any
 
-from return_platform.ai_gateway.configuration import AIGatewayConfiguration, ModelTier
-from return_platform.ai_gateway.providers import ProviderError, ProviderRequest
-from return_platform.ai_gateway.providers.schema_cleaner import clean_gemini_schema
-from return_platform.ai_gateway.routing import AIRoute, AIRoutePool
-from return_platform.ai_gateway.safety import inspect_input, inspect_output
+from return_platform.ai.providers import ProviderError, ProviderRequest
+from return_platform.ai.providers.schema_cleaner import clean_gemini_schema
+from return_platform.ai.routing.routes import AIRoute
+from return_platform.ai.routing.selection import AIRoutePool
+from return_platform.ai.routing.tasks import AIGatewayConfiguration, ModelTier
+from return_platform.ai.safety import inspect_input, inspect_output
 from return_platform.configuration.settings import Settings
 from return_platform.dynamic_knowledge.knowledge.evidence import StructuredAgentResponse
 from return_platform.dynamic_knowledge.order_agent.contracts import (
@@ -128,28 +129,21 @@ class RoutePoolReasoningModelGateway:
         }
         safety = inspect_input(payload)
         if not safety.allowed:
-            raise StandardReasoningUnavailable(
-                f"Order Agent input rejected: {safety.status.value}"
-            )
+            raise StandardReasoningUnavailable(f"Order Agent input rejected: {safety.status.value}")
         estimated_tokens = max(1, len(context_json) // 4)
         standard_candidates = await self._route_pool.candidates(
             self._task,
             task_id=self._task_id,
         )
         if not standard_candidates and not self._task.allowTierEscalation:
-            raise StandardReasoningUnavailable(
-                "No healthy standard-reasoning route is available"
-            )
+            raise StandardReasoningUnavailable("No healthy standard-reasoning route is available")
         schema_str = json.dumps(clean_gemini_schema(AgentAction.model_json_schema()))
         full_prompt = (
             f"{self._task.systemPrompt}\n\n"
             "REQUIRED RESPONSE SCHEMA (Output exactly this JSON structure):\n"
             f"```json\n{schema_str}\n```"
         )
-        deadline = (
-            asyncio.get_running_loop().time()
-            + self._settings.ai_global_timeout_seconds
-        )
+        deadline = asyncio.get_running_loop().time() + self._settings.ai_global_timeout_seconds
         attempts = 0
         last_error = "PROVIDER_UNAVAILABLE"
         failure_summary: Counter[str] = Counter()
@@ -203,8 +197,7 @@ class RoutePoolReasoningModelGateway:
                     return result
 
         summary = ",".join(
-            f"{error_code}:{count}"
-            for error_code, count in sorted(failure_summary.items())
+            f"{error_code}:{count}" for error_code, count in sorted(failure_summary.items())
         )
         raise StandardReasoningUnavailable(
             "All standard-reasoning and lightweight-fallback routes failed; "
@@ -368,12 +361,7 @@ class RoutePoolReasoningModelGateway:
 def _parse_agent_action(text: str) -> AgentAction:
     value = text.strip()
     if value.startswith("```"):
-        value = (
-            value.removeprefix("```json")
-            .removeprefix("```")
-            .removesuffix("```")
-            .strip()
-        )
+        value = value.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     try:
         payload = json.loads(value)
     except (TypeError, ValueError):
