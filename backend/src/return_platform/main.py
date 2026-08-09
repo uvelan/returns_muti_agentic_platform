@@ -51,6 +51,7 @@ from return_platform.bootstrap.context import (
 )
 from return_platform.bootstrap.lifespan import module_lifespan
 from return_platform.bootstrap.system_store import bootstrap_system_store
+from return_platform.configuration.api.router import router as canonical_configuration_router
 from return_platform.configuration.graph_repository import (
     ConfigurationGraphRepository,
     InMemoryConfigurationGraphRepository,
@@ -1042,6 +1043,7 @@ def create_app(
     fastapi_app.include_router(associate_returns_router)
     fastapi_app.include_router(dynamic_order_agent_router)
     fastapi_app.include_router(graph_schema_analyzer_router)
+    fastapi_app.include_router(canonical_configuration_router)
     fastapi_app.include_router(data_source_config_v2_router)
     fastapi_app.include_router(platform_v2_router)
     fastapi_app.include_router(support_router)

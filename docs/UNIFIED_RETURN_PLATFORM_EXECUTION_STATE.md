@@ -1,12 +1,12 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `d082444` (Wave D2 / Phase 14, slice 1 — interception store)
-Slice: **Wave D2 / Phase 14 — durable interception** (slice 2: wired into route construction)
+Last pushed green commit: `c1a1216` (Wave D2 / Phase 14, slice 2 — MANUAL route wiring)
+Slice: **Wave D3 / Phase 15 — canonical configuration API** (slice 1: read surface)
 Status: slices 1-6 DONE. **Wave C is complete** apart from one owed end-to-end composition
 run — see the Wave C real-infra gate table below — see the C4 sections below for what remains.
 
-Suite: **1902 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
+Suite: **1912 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
 mypy baseline: **47 errors / 16 files**, unchanged across every commit in this branch.
 
 Caveat on "green": the *full* static gate does not pass. `scripts/linux/03_run_backend_quality.sh`
@@ -1847,6 +1847,53 @@ Still owed, in rough priority order:
 `task_bd3a4652` (the rejected-command wedge) — fixed and verified below. The
 `NVIDIA_API_KEY`/`GOOGLE_API_KEY` item is also resolved: see the correction above; the keys
 were never actually required.
+
+## Wave D3 / Phase 15, slice 1 — canonical `/api/config` read surface
+
+Status: read surface DONE. **The mutation surface is blocked on a decision, not on effort**
+— see the finding below.
+
+`/api/config` now exists, versionless like `/api/graph-schema`, with `GET /runtime`,
+`GET /releases` and `GET /releases/{id}`. Handlers read through the same
+`ConfigurationGraphRepository` the Data Console router uses rather than reimplementing
+anything.
+
+**"Secrets are stored in Vault and APIs return references only" is enforced on the way
+out.** `redact_secret_values` masks a resolved value under any secret-shaped key while
+letting a `vault://` reference through untouched — an operator must be able to see *which*
+secret a binding points at. It runs on the whole response, not on hand-picked fields,
+because hand-picking is what eventually misses one; a test asserts every handler builds its
+response through the single `_ok` helper, so a new endpoint cannot bypass the scrub. Key
+matching is substring and case-insensitive (`apiKey`, `api_key`, `API_KEY`, `googleApiKey`)
+and non-strings under secret-ish keys are left alone, since a `null` or a
+`secretRequired: true` is structure rather than credential.
+
+### The finding: there are two configuration release lifecycles, and the hardened one is wired to nothing
+
+`ReleaseService` — the one that recomputes and compares checksums on VALIDATED→APPROVED and
+APPROVED→ACTIVE, added in Slice 3R specifically to close that gap — is constructed in
+**exactly one place in the repository: `tests/configuration/test_release_lifecycle.py`.**
+No production path uses it.
+
+What production actually runs is `data_console/api/configuration.py`'s
+`promote_release_status`, which hand-rolls the lifecycle inline with its own
+`allowed_transitions` table and **no checksum recompute**. So Phase 15's "activation and
+adoption use the already hardened configuration/epoch mechanisms" is currently false, and
+Slice 3R's hardening protects a code path nothing calls.
+
+Adding canonical mutation endpoints on top of that would have made it three lifecycles, or
+silently blessed whichever one the new file happened to call. The canonical surface
+therefore ships **read-only** until it is decided which lifecycle is authoritative and that
+one is wired. That is a real decision with real blast radius — it changes what happens on
+every configuration promotion — and it is the blocking item for the rest of D3.
+
+**Also still open in D3:** the plan lists sources, integrations, business config, modules,
+security and audit alongside runtime and releases. Only runtime and releases are exposed
+canonically; the others live under Data Console routers or do not exist yet, and mapping
+each one is its own slice.
+
+**Verification.** 10 tests. Full suite **1912 passed, 2 skipped, 0 failed**. mypy 47/16
+across 488 files.
 
 ## Wave D2 / Phase 14, slice 1 — durable interception store
 
