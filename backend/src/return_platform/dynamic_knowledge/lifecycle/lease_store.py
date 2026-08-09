@@ -43,6 +43,12 @@ from return_platform.dynamic_knowledge.graph.generation import (
     GenerationWriteReservation,
 )
 
+GENERATION_LEASES_COLLECTION = "dynamic_graph_generation_leases"
+"""Platform-Mongo collection holding one document per generation. Named here
+rather than at the composition root so the reader (retirement) and the writer
+(request path) cannot drift onto different collections -- which would look
+exactly like a drain that always finds zero outstanding work."""
+
 
 class LeaseClass(StrEnum):
     """The two kinds of outstanding work retirement must wait on.

@@ -1,10 +1,22 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Verified HEAD: pending this slice's commit (previous: `8d39923`)
-Last pushed green commit: `8d39923` (Phase 7 / Wave C2, Commit 1 — foundations)
-Slice: **Phase 7 / Wave C2 — Order Discovery LangGraph decomposition + Temporal host (Commit 2: LangGraph decomposition)**
-Status: DONE (Commit 2 of 3; Commit 3 = Temporal workflow host, not yet started)
+Last pushed green commit: `305acac` (Wave C4 / Phase 12, slice 1 — DRAINING + lease-aware
+retirement + failure rollback)
+Slice: **Wave C4 / Phase 12 — graph generation lifecycle** (slice 2 of N: the request path
+takes a read lease)
+Status: slices 1 and 2 DONE, phase INCOMPLETE — see the C4 sections below for what remains.
+
+Suite: **1829 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
+mypy baseline: **47 errors / 16 files**, unchanged across every commit in this branch.
+
+Caveat on "green": the *full* static gate does not pass. `scripts/linux/03_run_backend_quality.sh`
+runs `ruff check .` from `backend/`, which reports **246 lint errors and 90 unformatted
+files** under the pinned ruff 0.15.21 — all in older Phase-2 `configuration/` and
+`bootstrap/reconciler.py` code, none from recent slices. Recent slices have reported green
+on the strength of the *changed-files* gate (`scripts/dev/run_changed_gate.py`), which is a
+narrower claim than the wording above previously implied. Paying it down is Wave G/H
+(Phase 29, full static integrity).
 
 ## Phase 7 / Wave C2, Commit 1 — Foundations
 
@@ -1836,6 +1848,58 @@ Still owed, in rough priority order:
 `task_bd3a4652` (the rejected-command wedge) — fixed and verified below. The
 `NVIDIA_API_KEY`/`GOOGLE_API_KEY` item is also resolved: see the correction above; the keys
 were never actually required.
+
+## Wave C4 / Phase 12, slice 2 — the request path actually takes a lease
+
+Status: DONE. Slice 2 of Phase 12; the phase is still **not** complete.
+
+Slice 1 built the drain. On its own that was machinery with nothing to wait for: no
+request-path code acquired a `GenerationReadLease`, so `outstanding()` always returned
+zero and retirement would still have removed a generation a live turn was reading. This
+slice closes that.
+
+**`dynamic_knowledge/lifecycle/handle.py`** makes "resolved but not leased" unrepresentable.
+`GenerationHandleProvider.acquire_read()` is an async context manager that resolves the
+generation and claims the lease as one step, and releases on exit including on failure —
+there is no API that hands back a generation id without having recorded the claim, and no
+way to hold the claim past the `async with`. That is Phase 12's "no code below handle
+acquisition resolves 'current generation' independently", made structural rather than
+advisory.
+
+**The lease is best-effort by design.** `acquire_read` yields an unleased handle when no
+store is configured, when the store errors, and when the store *refuses*. A refusal means
+the generation started draining between resolution and acquisition — exactly the case the
+plan answers with `REBIND_ON_RESUME`, which does not exist yet. Until it does, degrading
+to the unleased behaviour that shipped before this slice beats failing a request that
+would have worked. `GenerationHandle.leased` reports which happened so nothing has to
+infer it.
+
+**Wired for real.** `runtime_factory.py` now constructs `MongoGenerationLeaseStore` on
+`dynamic_graph_generation_leases` and passes it to the coordinator; without that this
+slice would have been inert. The collection name is a constant in `lease_store.py` rather
+than at the composition root, because reader (retirement) and writer (request path)
+drifting onto different collections would look exactly like a drain that always finds
+nothing.
+
+`process_turn` was split: it now owns the `async with`, and the ~150-line turn body moved
+to `_run_turn`. Wrapping in place would have re-indented the whole body and made the diff
+unreviewable.
+
+**Verification.** 8 tests in `test_generation_handle.py`, the last of which is an AST-based
+architecture test asserting no call to `.active_generation(...)` outside `handle.py`. It
+matches calls rather than text so the protocol declaration and the Mongo implementation
+(both `def`s) are not false positives. 330 passed across `tests/dynamic_knowledge` and
+`tests/reasoning`.
+
+**Deliberately not done here.** The write side: on-demand sync writes to the graph and
+should hold a `GenerationWriteReservation`, which the store supports and nothing acquires.
+A resumed clarification currently reuses the *original* turn's `graph_generation_id` from
+the paused checkpoint — that is strict pinning, the opposite of the plan's
+`REBIND_ON_RESUME` default, and changing it is a behavioural decision rather than a wiring
+one. Also note `active_generation` reads the `dynamic_graph_generations` collection, a
+notion of "current" parallel to `ActiveRuntimeSnapshot`; the handle records
+`snapshot_activation_version=0` rather than inventing a version, and reconciling the two
+is its own slice.
 
 ## Wave C4 / Phase 12, slice 1 — DRAINING, lease-aware retirement, failure rollback
 

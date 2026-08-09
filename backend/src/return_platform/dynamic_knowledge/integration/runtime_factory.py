@@ -10,6 +10,8 @@ Temporal workflow instead of holding a coordinator of its own (see
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from neo4j import AsyncDriver
 from pymongo import AsyncMongoClient
 
@@ -41,6 +43,10 @@ from return_platform.dynamic_knowledge.knowledge.guards import (
     ResponseSafetyGuard,
     SchemaQueryGuard,
     StrongAnchorGuard,
+)
+from return_platform.dynamic_knowledge.lifecycle.lease_store import (
+    GENERATION_LEASES_COLLECTION,
+    MongoGenerationLeaseStore,
 )
 from return_platform.dynamic_knowledge.on_demand_sync.coordinator import OnDemandSyncCoordinator
 from return_platform.dynamic_knowledge.on_demand_sync.extraction import GenericSourceRecordExtractor
@@ -83,6 +89,14 @@ async def build_dynamic_order_agent_runtime(
     graph_state = MongoGraphStateProvider(platform_mongo, settings.mongo_database)
     await conversation_documents.ensure_indexes()
     await graph_state.ensure_indexes()
+
+    # Without this the coordinator still resolves a generation through the
+    # handle, but takes no lease -- the drain in
+    # GenerationLifecycleOrchestrator._retire would have nothing to wait for and
+    # could retire a generation a live turn is still reading.
+    generation_lease_store = MongoGenerationLeaseStore(
+        platform_mongo[settings.mongo_database][GENERATION_LEASES_COLLECTION]
+    )
 
     on_demand_sync_store = MongoOnDemandSyncStore(platform_mongo, settings.mongo_database)
     await on_demand_sync_store.ensure_indexes()
@@ -138,5 +152,11 @@ async def build_dynamic_order_agent_runtime(
         system_store=system_store,
         envelope_encryptor=reasoning_encryptor,
         mongo_client=platform_mongo,
+        generation_lease_store=generation_lease_store,
+        # Identifies the holder of a read lease. There is no instance_id
+        # setting; `bootstrap/system_store.py` establishes a per-process uuid as
+        # the convention, and that is the right granularity here -- a lease
+        # outlives a request but never the process that took it.
+        owner_instance_id=f"order-agent-{uuid4()}",
     )
     return coordinator

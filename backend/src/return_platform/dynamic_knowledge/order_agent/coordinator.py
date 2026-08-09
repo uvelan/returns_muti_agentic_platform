@@ -30,6 +30,8 @@ from return_platform.dynamic_knowledge.knowledge.guards import (
     SchemaQueryGuard,
     StrongAnchorGuard,
 )
+from return_platform.dynamic_knowledge.lifecycle.handle import GenerationHandleProvider
+from return_platform.dynamic_knowledge.lifecycle.lease_store import GenerationLeaseStore
 from return_platform.dynamic_knowledge.on_demand_sync.coordinator import OnDemandSyncCoordinator
 from return_platform.dynamic_knowledge.order_agent.contracts import (
     AgentTurnRequest,
@@ -116,10 +118,21 @@ class DynamicOrderAgentCoordinator:
         on_demand_sync: OnDemandSyncCoordinator | None,
         cypher_compiler: CypherCompiler | None = None,
         terminal_retention_hours: float = 168.0,
+        generation_lease_store: GenerationLeaseStore | None = None,
+        owner_instance_id: str = "order-agent",
     ) -> None:
         self._schema = schema
         self._conversations = conversation_store
         self._graph_state = graph_state
+        # Constructed here rather than injected: the rule is that generation
+        # resolution goes through a handle, and letting a caller supply its own
+        # resolver would reopen the door this closes. The lease store stays
+        # optional so existing construction sites keep working unleased.
+        self._generation_handles = GenerationHandleProvider(
+            graph_state,
+            lease_store=generation_lease_store,
+            owner_instance_id=owner_instance_id,
+        )
         self._evidence_store = evidence_store
         self._mongo_client = mongo_client
         self._system_store = system_store
@@ -170,7 +183,34 @@ class DynamicOrderAgentCoordinator:
             raise OrderAgentFailure(
                 "ORDER_AGENT_OUT_OF_SCOPE", "Agent policy is unavailable.", retryable=False
             )
-        graph_generation_id = await self._graph_state.active_generation(self._schema)
+        # Resolving the generation and claiming a read lease on it are one step
+        # (see lifecycle/handle.py). The lease is held for exactly this turn and
+        # released on the way out, including on failure -- notably *not* across a
+        # clarification pause, which can last days and would pin a generation
+        # against retirement for the whole time. A resumed turn takes its own
+        # lease here.
+        async with self._generation_handles.acquire_read(self._schema) as handle:
+            return await self._run_turn(
+                request,
+                guard_context,
+                graph_generation_id=handle.graph_generation_id,
+                workflow_id=workflow_id,
+                resume_thread_id=resume_thread_id,
+            )
+
+    async def _run_turn(
+        self,
+        request: AgentTurnRequest,
+        guard_context: GuardContext,
+        *,
+        graph_generation_id: str,
+        workflow_id: str | None,
+        resume_thread_id: str | None,
+    ) -> AgentTurnResult:
+        """The turn itself, with its generation already resolved and pinned.
+
+        Split out so the lease's scope is a single visible `async with` rather
+        than a hundred-line indented block whose exit path is easy to lose."""
         version, conversation_state, replay = await self._conversations.load_for_turn(
             request=request,
             graph_generation_id=graph_generation_id,
