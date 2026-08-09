@@ -10,6 +10,7 @@ from uuid import UUID
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
+from temporalio.exceptions import ApplicationError
 
 from return_platform.canonical.operations import WorkflowStage
 from return_platform.workflows.stage_results import (
@@ -100,13 +101,32 @@ _SAFE_MESSAGES: Final = {
 }
 
 
-class ReturnWorkflowTransitionError(RuntimeError):
-    """Deterministic safe workflow rejection without raw business data."""
+class ReturnWorkflowTransitionError(ApplicationError):
+    """Deterministic safe workflow rejection without raw business data.
+
+    The `ApplicationError` base is load-bearing, not decoration. Temporal only
+    *fails* a workflow or update when the raised exception is a `FailureError`;
+    anything else is treated as a **workflow task** failure, which the server
+    retries indefinitely with no backoff ceiling. While this was a plain
+    `RuntimeError`, a single rejected `complete_stage` command -- an operator
+    retrying a stale request, two consoles acting at once, any
+    `STAGE_OUT_OF_ORDER` or `COMMAND_CONFLICT` -- wedged the entire return
+    session: the update never returned, the caller hung, and the workflow
+    re-ran the same doomed task forever. Every one of these codes is a
+    deterministic verdict on immutable inputs, so a retry can only ever reach
+    the same conclusion; `non_retryable` states that rather than leaving it to
+    a retry policy.
+
+    `type` carries the stable `ReturnWorkflowErrorCode` across the wire, since
+    only the message and type survive serialization -- the `code` attribute
+    below exists for in-process callers, and a client receiving the failure
+    reads `ApplicationError.type` to discriminate.
+    """
 
     def __init__(self, code: ReturnWorkflowErrorCode) -> None:
         self.code = code
         self.safe_message = _SAFE_MESSAGES[code]
-        super().__init__(self.safe_message)
+        super().__init__(self.safe_message, type=code.value, non_retryable=True)
 
 
 def _raise_error(code: ReturnWorkflowErrorCode) -> Never:

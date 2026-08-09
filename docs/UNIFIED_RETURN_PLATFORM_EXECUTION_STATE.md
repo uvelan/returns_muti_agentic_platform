@@ -1825,20 +1825,68 @@ Still owed, in rough priority order:
    and tier-escalation regression coverage the extraction needs is available, and
    `tests/test_manual_provider_reasoning_e2e.py` gives a keyless way to exercise the real
    invocation path end to end. The extraction is ready to do.
-2. **`task_bd3a4652` — a rejected `complete_stage` command wedges the whole return
-   session.** `ReturnWorkflowTransitionError` is a plain `RuntimeError`, so Temporal fails
-   the workflow task rather than the update and retries forever. Reachable from any stale
-   or duplicate command. Arguably the most serious open correctness item.
-3. The reasoning graph's `APPLY_TYPED_MUTATION` node and the USER_REVIEW modification
+2. The reasoning graph's `APPLY_TYPED_MUTATION` node and the USER_REVIEW modification
    branch (the mutation machinery they would drive now exists).
-4. Time-skipping coverage for Wave C2 Commit 4's idle-timeout and continue-as-new paths.
-5. `task_f1fc6b63` (concurrent session): wire `CheckpointRedactor` into real checkpoint
+3. Time-skipping coverage for Wave C2 Commit 4's idle-timeout and continue-as-new paths.
+4. `task_f1fc6b63` (concurrent session): wire `CheckpointRedactor` into real checkpoint
    writes and correct Commit 2's untrue ledger claim about it.
 
 **Done since this list was first written:** `task_92c35ace` (the
-`ReturnWorkflow.complete_stage` mutex race) — fixed and verified in `99101c7`. The
+`ReturnWorkflow.complete_stage` mutex race) — fixed and verified in `99101c7`.
+`task_bd3a4652` (the rejected-command wedge) — fixed and verified below. The
 `NVIDIA_API_KEY`/`GOOGLE_API_KEY` item is also resolved: see the correction above; the keys
 were never actually required.
+
+## Rejected stage commands no longer wedge the return session (`task_bd3a4652`)
+
+Status: DONE.
+
+`ReturnWorkflowTransitionError` was a plain `RuntimeError`. Temporal only *fails* a
+workflow or update when the raised exception is a `FailureError`; anything else is a
+**workflow task** failure, which the server retries indefinitely. So every deterministic
+rejection — `STAGE_OUT_OF_ORDER`, `COMMAND_CONFLICT`, `ALREADY_COMPLETED`,
+`PERSISTENCE_MISMATCH` — put the session into a permanent retry loop instead of returning
+a verdict.
+
+**The blast radius was larger than "one wedged return."** `ReturnOrchestrator.run_forever`
+is a sequential claim→process→release loop, and `_complete` awaits `execute_update`. A
+single rejected command therefore hung the orchestrator worker itself, which then stopped
+claiming *any* further returns. What looked like a per-session defect was a worker-wide
+stall.
+
+Fix: `ReturnWorkflowTransitionError` now extends `ApplicationError` with
+`type=<ReturnWorkflowErrorCode>` and `non_retryable=True` — matching the convention
+`activities.py::transition_return_session` already used. Only the message and type survive
+serialization, so `type` is what carries the stable code to a client; the `code` attribute
+remains for in-process callers. The rejection now fails the update, the workflow stays
+alive, and the orchestrator's existing `except Exception → _fail` path marks the return
+FAILED with a HIGH-priority support case and moves on.
+
+Also fixed in the same blast radius: `_fail` derived its failure code from
+`type(error).__name__`, which would have stamped every distinct rejection as the opaque
+`WORKFLOWUPDATEFAILEDERROR` on both the return record and the operator's support case. It
+now unwraps `WorkflowUpdateFailedError` → `ApplicationError.type`.
+
+**Verification.** `tests/test_return_workflow_rejection.py` (3 tests) against a real
+Temporal server. The load-bearing assertion in each is the *last* one — that after the
+rejection the workflow still answers queries and still accepts a valid command — because a
+test asserting only "the update raised" would pass against a permanently poisoned
+workflow. Confirmed to discriminate: with the base class reverted to `RuntimeError` both
+async tests fail on their bounded timeouts (47s vs 6s, i.e. the hang reproduced), and both
+pass with it restored. Full local set: 95 passed across
+`-k "return_workflow or orchestrator or return_session or operations"`. mypy holds at the
+47-error/16-file baseline. Ruff clean on all three changed files.
+
+**Finding, not fixed here: the full backend quality gate does not currently pass.**
+`scripts/linux/03_run_backend_quality.sh` runs `ruff check .` and `ruff format --check .`
+from `backend/`; on this branch that reports **246 lint errors and 90 unformatted files**
+under the pinned ruff 0.15.21. None are in code this session touched — they are
+concentrated in older Phase-2 `configuration/` and `bootstrap/reconciler.py` files
+(`typing.Optional`/`List` style, `W293`, unsorted imports). Recent slices have been
+reporting "green" on the strength of the *changed-files* gate
+(`scripts/dev/run_changed_gate.py`), which is a narrower claim than the ledger's wording
+implied. Paying this down is Wave G/H scope (Phase 29, "full static integrity"); recording
+it here so the discrepancy is not rediscovered as a regression.
 
 Longer-standing items, not part of any Phase 7/C3 commit: the flagged Neo4j volume dedup
 task, the pre-existing `openapi-drift`/`associate_flow.py` formatting conditions, a real

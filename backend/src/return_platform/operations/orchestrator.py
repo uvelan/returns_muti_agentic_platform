@@ -8,8 +8,8 @@ from datetime import datetime
 from typing import Any, Final, cast
 
 import httpx
-from temporalio.client import Client, WorkflowHandle
-from temporalio.exceptions import WorkflowAlreadyStartedError
+from temporalio.client import Client, WorkflowHandle, WorkflowUpdateFailedError
+from temporalio.exceptions import ApplicationError, WorkflowAlreadyStartedError
 
 from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
 from return_platform.ai_gateway.routing import AIRoutePool
@@ -204,8 +204,26 @@ class ReturnOrchestrator:
                     await self._repository.release_return(session.id, "FAILED")
                     await self._repository.release_discovery_lock(session.id, reason="FAILED")
 
+    @staticmethod
+    def _failure_code(error: Exception) -> str:
+        """Name the actual verdict, not the transport that carried it.
+
+        A rejected stage command arrives as `WorkflowUpdateFailedError` wrapping
+        an `ApplicationError` whose `type` is the stable
+        `ReturnWorkflowErrorCode`. Using the outer class name would stamp every
+        distinct rejection -- out-of-order, command conflict, already-completed
+        -- with the same opaque `WORKFLOWUPDATEFAILEDERROR`, and that code is
+        what lands on the return record and on the HIGH-priority support case an
+        operator has to triage.
+        """
+        if isinstance(error, WorkflowUpdateFailedError):
+            cause = error.cause
+            if isinstance(cause, ApplicationError) and cause.type:
+                return cause.type.upper()[:100]
+        return type(error).__name__.upper()[:100]
+
     async def _fail(self, session: ReturnSessionView, error: Exception) -> None:
-        code = type(error).__name__.upper()[:100]
+        code = self._failure_code(error)
         await self._repository.update_return(
             session.id,
             {
