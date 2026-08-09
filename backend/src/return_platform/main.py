@@ -13,6 +13,7 @@ from neo4j import AsyncGraphDatabase
 from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
+from return_platform.ai.interception.store import SystemStoreInterceptionStore
 from return_platform.ai_gateway.configuration import (
     build_loaded_ai_gateway_configuration,
     load_ai_gateway_configuration,
@@ -20,6 +21,7 @@ from return_platform.ai_gateway.configuration import (
 from return_platform.ai_gateway.routing import AIRoutePool, build_routes
 from return_platform.api.ai_gateway import router as ai_gateway_router
 from return_platform.api.associate_returns import router as associate_returns_router
+from return_platform.api.canonical_ai import router as canonical_ai_router
 from return_platform.api.canonical_returns import router as canonical_returns_router
 from return_platform.api.data_source_config_v2 import router as data_source_config_v2_router
 from return_platform.api.dependencies import router as dependencies_router
@@ -625,7 +627,9 @@ async def lifespan(
             )
         else:
             try:
-                analyzer_system_store, _ = await bootstrap_system_store(settings, resources.mongo)
+                analyzer_system_store, analyzer_encryptor = await bootstrap_system_store(
+                    settings, resources.mongo
+                )
             except Exception as exc:  # noqa: BLE001 - degrade, never block startup
                 app.state.graph_schema_analyzer_status = {
                     "state": "INITIALIZATION_FAILED",
@@ -635,6 +639,14 @@ async def lifespan(
             else:
                 app.state.graph_schema_analyzer_persistence = build_system_store_persistence(
                     analyzer_system_store
+                )
+                # The AI Control Center's interception queue. Bound here rather
+                # than at route-pool construction because this is where the
+                # SystemStore first exists in this process; the queue is a read
+                # surface, so unlike the MANUAL provider it does not need to be
+                # in place before routes are built.
+                app.state.ai_interception_store = SystemStoreInterceptionStore(
+                    analyzer_system_store, analyzer_encryptor
                 )
                 # Bind the analyzer's outward ports. Each is independently
                 # optional: discovery needs a source client, validation needs
@@ -1046,6 +1058,7 @@ def create_app(
     fastapi_app.include_router(graph_schema_analyzer_router)
     fastapi_app.include_router(canonical_configuration_router)
     fastapi_app.include_router(canonical_returns_router)
+    fastapi_app.include_router(canonical_ai_router)
     fastapi_app.include_router(data_source_config_v2_router)
     fastapi_app.include_router(platform_v2_router)
     fastapi_app.include_router(support_router)

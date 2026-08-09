@@ -79,6 +79,8 @@ class InterceptionStore(Protocol):
 
     async def cancel(self, *, interception_id: str, status: InterceptionStatus) -> None: ...
 
+    async def list_pending(self, *, limit: int = 100) -> list[Interception]: ...
+
 
 class SystemStoreInterceptionStore:
     def __init__(self, system_store: SystemStore, encryptor: EnvelopeEncryptor) -> None:
@@ -220,6 +222,25 @@ class SystemStoreInterceptionStore:
                 f"interception {interception_id!r} stopped being PENDING during the write"
             )
         return _from_document(updated, response_text=response_text)
+
+    async def list_pending(self, *, limit: int = 100) -> list[Interception]:
+        """The operator queue: what is waiting on a human, oldest first.
+
+        Deliberately does **not** unseal any payload. Decrypting every held
+        prompt to render a list would defeat sealing them, and an operator
+        scanning the queue needs identity and age, not content -- the payload is
+        fetched by whoever opens one to answer it.
+
+        Oldest first because the queue is worked in arrival order and the oldest
+        item is the one closest to expiring unanswered.
+        """
+        cursor = (
+            self._store.read_only(AI_INTERCEPTIONS)
+            .find({"status": InterceptionStatus.PENDING.value})
+            .sort("created_at", 1)
+            .limit(limit)
+        )
+        return [_from_document(document) async for document in cursor]
 
     async def cancel(self, *, interception_id: str, status: InterceptionStatus) -> None:
         """Close a pending interception without an answer.

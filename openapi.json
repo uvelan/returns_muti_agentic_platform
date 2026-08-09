@@ -16678,6 +16678,170 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/ai/interceptions": {
+      "get": {
+        "description": "Requests currently held waiting on a human.\n\n**Identifiers and status only.** The held prompt is sealed at rest and is\ndeliberately not on this surface: an operator listing the queue does not\nneed to see every pending prompt, and decrypting them all to render a list\nwould defeat sealing them. Whoever actually answers one fetches its payload\nexplicitly through the store.\n\nReturns an empty list rather than 503 when no store is configured. A\ndeployment with no interception store has no pending interceptions, which is\na true answer; failing here would break the AI screen for every environment\nthat never uses the manual path.",
+        "operationId": "list_interceptions_api_ai_interceptions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_dict_str__Any___"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Interceptions",
+        "tags": [
+          "AI Control Center"
+        ]
+      }
+    },
+    "/api/ai/metrics": {
+      "get": {
+        "operationId": "list_metrics_api_ai_metrics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "traceId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Traceid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "taskId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Taskid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 10000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_AIUsageAttemptView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Metrics",
+        "tags": [
+          "AI Control Center"
+        ]
+      }
+    },
+    "/api/ai/metrics/summary": {
+      "get": {
+        "operationId": "metrics_summary_api_ai_metrics_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AIUsageSummaryView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Metrics Summary",
+        "tags": [
+          "AI Control Center"
+        ]
+      }
+    },
+    "/api/ai/routes": {
+      "get": {
+        "description": "Every resolved `(provider, model, credential, tier)` and its live health.\n\nThis is the screen that answers \"why did that task fail over?\" -- circuit\nstate and per-route counters are the only place that is visible.",
+        "operationId": "list_routes_api_ai_routes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_AIRouteHealthView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Routes",
+        "tags": [
+          "AI Control Center"
+        ]
+      }
+    },
+    "/api/ai/tasks": {
+      "get": {
+        "description": "The configured tasks and what each is permitted.\n\n`allowedProviders` and `allowedInputKeys` matter operationally: they are the\npolicy that stops a caller reaching a provider or sending a field the task\nwas never approved for.",
+        "operationId": "list_tasks_api_ai_tasks_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_AITaskView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Tasks",
+        "tags": [
+          "AI Control Center"
+        ]
+      }
+    },
     "/api/config/releases": {
       "get": {
         "operationId": "list_releases_api_config_releases_get",

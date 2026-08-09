@@ -260,3 +260,47 @@ async def test_cancelling_an_answered_interception_does_not_discard_the_answer(
 
     record = await store.get(interception_id)
     assert record is not None and record.status is InterceptionStatus.ANSWERED
+
+
+# --- the operator queue ------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_the_pending_queue_lists_oldest_first_without_unsealing(
+    system_store: SystemStore,
+) -> None:
+    """What `/api/ai/interceptions` serves.
+
+    Oldest first because the queue is worked in arrival order and the oldest
+    item is closest to expiring unanswered. The returned records carry no
+    payload: decrypting every held prompt to render a list would defeat sealing
+    them, and an operator scanning the queue needs identity and age, not
+    content.
+    """
+    store = SystemStoreInterceptionStore(system_store, _encryptor())
+    first = f"i-{uuid.uuid4().hex[:8]}"
+    second = f"i-{uuid.uuid4().hex[:8]}"
+    await _open(store, first)
+    await asyncio.sleep(0.01)
+    await _open(store, second)
+
+    pending = await store.list_pending()
+    ids = [record.interception_id for record in pending]
+
+    assert ids.index(first) < ids.index(second), "queue must be oldest first"
+    listed = next(r for r in pending if r.interception_id == first)
+    assert listed.response_text is None, "listing must not carry payload content"
+    assert listed.task_id == "ORDER_AGENT_REASONING_V1"
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_an_answered_interception_leaves_the_queue(system_store: SystemStore) -> None:
+    """Otherwise an operator is shown work someone else already did."""
+    store = SystemStoreInterceptionStore(system_store, _encryptor())
+    interception_id = f"i-{uuid.uuid4().hex[:8]}"
+    await _open(store, interception_id)
+    assert any(r.interception_id == interception_id for r in await store.list_pending())
+
+    await store.answer(interception_id=interception_id, response_text="done", answered_by="op-1")
+
+    assert not any(r.interception_id == interception_id for r in await store.list_pending())

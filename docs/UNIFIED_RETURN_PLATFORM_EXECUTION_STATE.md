@@ -1,12 +1,12 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `1eb1164` (Wave D4 / Phase 16, slice 1 — /api/returns read surface)
-Slice: **OpenAPI contract regeneration + drift-check repair**
+Last pushed green commit: `e06dac3` (OpenAPI regeneration + drift-check repair)
+Slice: **Canonical `/api/ai` — the fourth domain; Wave D's completion condition met**
 Status: slices 1-6 DONE. **Wave C is complete** apart from one owed end-to-end composition
 run — see the Wave C real-infra gate table below — see the C4 sections below for what remains.
 
-Suite: **1916 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
+Suite: **1918 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
 mypy baseline: **47 errors / 16 files**, unchanged across every commit in this branch.
 
 Caveat on "green": the *full* static gate does not pass. `scripts/linux/03_run_backend_quality.sh`
@@ -1847,6 +1847,50 @@ Still owed, in rough priority order:
 `task_bd3a4652` (the rejected-command wedge) — fixed and verified below. The
 `NVIDIA_API_KEY`/`GOOGLE_API_KEY` item is also resolved: see the correction above; the keys
 were never actually required.
+
+## Canonical `/api/ai` — the AI Control Center read surface
+
+Status: DONE. **Wave D's completion condition is now met**: "backend exposes the four
+canonical API domains needed by the frontend and all are generated into OpenAPI."
+
+`/api/ai` exposes `routes`, `tasks`, `metrics`, `metrics/summary` and `interceptions`,
+reading through the same `AIGatewayService` and `OperationalRepository` as
+`/api/v1/ai-gateway`, which keeps working until Wave F.
+
+**Structured observability, never private reasoning.** Phase 21's rule is "expose
+structured node/action observability, not private chain-of-thought", and nothing here
+returns a prompt, a completion or a model's working. `routes` returns health counters and
+circuit state — the only place "why did that task fail over?" is answerable. `tasks`
+returns policy, including `allowedProviders` and `allowedInputKeys`, which are what stop a
+caller reaching a provider or sending a field the task was never approved for.
+
+**`interceptions` returns identity and status only.** The held prompt is sealed at rest and
+is deliberately off this surface: decrypting every pending prompt to render a queue would
+defeat sealing them, and an operator scanning the queue needs identity and age, not
+content. Whoever opens one to answer it fetches the payload explicitly.
+
+**A D2 gap closed on the way.** The endpoint needed a queue and
+`SystemStoreInterceptionStore` had none, so `list_pending()` was added — oldest first,
+because the queue is worked in arrival order and the oldest item is closest to expiring
+unanswered. Two real-Mongo tests cover it, including that an answered interception leaves
+the queue (otherwise an operator is shown work someone else already did). The store is now
+bound on `app.state` in the analyzer's degrade-safe block, where the SystemStore first
+exists in the API process.
+
+### Contract state
+
+**207 paths.** `/api/graph-schema` 13, `/api/ai` 5, `/api/config` 3, `/api/returns` 3.
+Drift check passes on consecutive runs; all four JSON snapshots and the generated `.d.ts`
+agree.
+
+**Verification.** Backend **1918 passed, 2 skipped**; frontend **64 passed** with `tsc -b`
+clean against the regenerated types. mypy 47/16 across 490 files.
+
+**What "Wave D complete" does and does not mean.** The four domains exist and are
+published, which is what unblocks the frontend's E2–E5. Three phase-level items remain
+open and are described in their own sections above: D2's at-least-once resume worker, D3's
+mutation surface (blocked on the two-store lifecycle question), and D4's write
+consolidation across nine routers.
 
 ## OpenAPI contract regeneration, and the drift check made trustworthy
 

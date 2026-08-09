@@ -4,6 +4,118 @@
  */
 
 export interface paths {
+    "/api/ai/interceptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Interceptions
+         * @description Requests currently held waiting on a human.
+         *
+         *     **Identifiers and status only.** The held prompt is sealed at rest and is
+         *     deliberately not on this surface: an operator listing the queue does not
+         *     need to see every pending prompt, and decrypting them all to render a list
+         *     would defeat sealing them. Whoever actually answers one fetches its payload
+         *     explicitly through the store.
+         *
+         *     Returns an empty list rather than 503 when no store is configured. A
+         *     deployment with no interception store has no pending interceptions, which is
+         *     a true answer; failing here would break the AI screen for every environment
+         *     that never uses the manual path.
+         */
+        get: operations["list_interceptions_api_ai_interceptions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Metrics */
+        get: operations["list_metrics_api_ai_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/metrics/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Metrics Summary */
+        get: operations["metrics_summary_api_ai_metrics_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/routes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Routes
+         * @description Every resolved `(provider, model, credential, tier)` and its live health.
+         *
+         *     This is the screen that answers "why did that task fail over?" -- circuit
+         *     state and per-route counters are the only place that is visible.
+         */
+        get: operations["list_routes_api_ai_routes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tasks
+         * @description The configured tasks and what each is permitted.
+         *
+         *     `allowedProviders` and `allowedInputKeys` matter operationally: they are the
+         *     policy that stops a caller reaching a provider or sending a field the task
+         *     was never approved for.
+         */
+        get: operations["list_tasks_api_ai_tasks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/config/releases": {
         parameters: {
             query?: never;
@@ -9206,6 +9318,119 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_interceptions_api_ai_interceptions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_dict_str__Any___"];
+                };
+            };
+        };
+    };
+    list_metrics_api_ai_metrics_get: {
+        parameters: {
+            query?: {
+                traceId?: string | null;
+                taskId?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_AIUsageAttemptView__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    metrics_summary_api_ai_metrics_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AIUsageSummaryView_"];
+                };
+            };
+        };
+    };
+    list_routes_api_ai_routes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_AIRouteHealthView__"];
+                };
+            };
+        };
+    };
+    list_tasks_api_ai_tasks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_AITaskView__"];
+                };
+            };
+        };
+    };
     list_releases_api_config_releases_get: {
         parameters: {
             query?: {
