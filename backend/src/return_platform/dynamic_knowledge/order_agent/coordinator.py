@@ -145,8 +145,17 @@ class DynamicOrderAgentCoordinator:
         self._graph = build_order_agent_graph(deps, checkpointer=checkpointer)
 
     async def process_turn(
-        self, request: AgentTurnRequest, guard_context: GuardContext
+        self,
+        request: AgentTurnRequest,
+        guard_context: GuardContext,
+        *,
+        workflow_id: str | None = None,
     ) -> AgentTurnResult:
+        """`workflow_id` is optional and stamped onto the run's `reasoning_runs`
+        record verbatim -- the Temporal workflow host (Wave C2, Commit 3) passes
+        its own `workflow.info().workflow_id` so `abandonment.py`'s "active
+        Temporal workflow" precondition can find it; callers with no Temporal
+        workflow of their own (direct/test invocations) leave it unset."""
         policy = self._schema.agent_policies.get(request.agent_id)
         if policy is None or policy.agent_id != guard_context.agent_policy.agent_id:
             raise OrderAgentFailure(
@@ -170,7 +179,9 @@ class DynamicOrderAgentCoordinator:
             conversation_id=request.conversation_id, turn_id=request.client_turn_id, attempt=1
         )
         run_id = thread_id
-        await self._run_lifecycle.start_run(run_id=run_id, thread_id=thread_id)
+        await self._run_lifecycle.start_run(
+            run_id=run_id, thread_id=thread_id, workflow_id=workflow_id
+        )
 
         initial_state: OrderAgentGraphState = {
             "conversation_id": request.conversation_id,

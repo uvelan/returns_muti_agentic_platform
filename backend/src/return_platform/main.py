@@ -1,11 +1,9 @@
 import asyncio
-import base64
 import logging
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import cast
-from uuid import uuid4
 
 import redis.asyncio as redis
 from fastapi import FastAPI, Request, Response, status
@@ -105,11 +103,11 @@ from return_platform.dependency_simulation.configuration import (
     load_dependency_simulation_configuration,
 )
 from return_platform.dependency_simulation.repository import MongoSimulationRepository
+from return_platform.dynamic_knowledge.api.order_agent import DynamicOrderAgentRuntime
 from return_platform.dynamic_knowledge.api.order_agent import (
     router as dynamic_order_agent_router,
 )
 from return_platform.dynamic_knowledge.integration.runtime_factory import (
-    build_dynamic_order_agent_runtime,
     dynamic_order_agent_enabled,
 )
 from return_platform.operations.repository import OperationalRepository
@@ -117,22 +115,6 @@ from return_platform.operations.return_support.service import ReturnSupportServi
 from return_platform.platform.capabilities.registry import InMemoryCapabilityRegistry
 from return_platform.platform.contracts.runtime_configuration import RuntimeConfigurationView
 from return_platform.platform.modules.registry import ModuleRegistry
-from return_platform.platform.secrets.envelope import AesGcmEnvelopeEncryptor
-from return_platform.platform.system_store.bootstrap import SystemStoreBootstrapper
-from return_platform.platform.system_store.manifest_loader import (
-    load_system_store_config,
-    structure_definitions,
-)
-from return_platform.platform.system_store.migrations import MigrationRunner
-from return_platform.platform.system_store.mongo import (
-    FencedMongoTransactionGuard,
-    MongoBootstrapStateStore,
-    MongoLeaseStore,
-    MongoSystemStoreAdapter,
-    MongoVersionLedger,
-    PymongoStructureGateway,
-)
-from return_platform.platform.system_store.repository import SystemStore
 from return_platform.resources import (
     AsyncValkeyClient,
     RuntimeResources,
@@ -327,42 +309,6 @@ async def _initialize_neo4j(
         resources.neo4j = None
         if settings.environment == "production":
             raise RuntimeError("Required Neo4j dependency is unavailable") from exc
-
-
-async def _bootstrap_reasoning_system_store(
-    settings: Settings,
-    platform_mongo: AsyncMongoClient[dict[str, object]],
-) -> tuple[SystemStore, AesGcmEnvelopeEncryptor]:
-    """Bootstrap the real Mongo-backed SystemStore the reasoning subsystem's
-    encrypted checkpoint/evidence structures need. Nothing in `src` did this before --
-    only test fixtures constructed a SystemStore/EnvelopeEncryptor directly."""
-
-    config = load_system_store_config(settings.system_store_manifest_path)
-    structures = structure_definitions(config)
-    bootstrapper = SystemStoreBootstrapper(
-        lease_store=MongoLeaseStore(platform_mongo, database="platform"),
-        adapter=MongoSystemStoreAdapter(
-            PymongoStructureGateway(platform_mongo, database="platform")
-        ),
-        migration_runner=MigrationRunner(MongoVersionLedger(platform_mongo, database="platform")),
-        bootstrap_state=MongoBootstrapStateStore(platform_mongo, database="platform"),
-        guard=FencedMongoTransactionGuard(platform_mongo, database="platform"),
-        owner_instance_id=str(uuid4()),
-        fail_closed_on_drift=config.fail_closed_on_drift,
-    )
-    await bootstrapper.bootstrap(
-        structures, auto_bootstrap_missing=config.auto_bootstrap_missing_structures
-    )
-    system_store = SystemStore(
-        platform_mongo,
-        {definition.logical_name: definition for definition in structures},
-        database="platform",
-    )
-    encryptor = AesGcmEnvelopeEncryptor(
-        key=base64.b64decode(settings.reasoning_encryption_key.get_secret_value()),
-        key_ref=settings.reasoning_encryption_key_secret_reference or "reasoning-dev-key",
-    )
-    return system_store, encryptor
 
 
 async def _initialize_valkey(
@@ -625,64 +571,31 @@ async def lifespan(
             "state": "DISABLED",
         }
         if dynamic_agent_enabled:
-            platform_mongo = resources.mongo
-            neo4j_driver = resources.neo4j
-            source_mongo = resources.source_mongo
-            missing_dependencies = tuple(
-                dependency
-                for dependency, resource in (
-                    ("mongodb", platform_mongo),
-                    ("neo4j", neo4j_driver),
-                    ("source_mongodb", source_mongo),
-                )
-                if resource is None
-            )
-            if missing_dependencies:
+            # Turn processing itself now runs entirely inside the dedicated
+            # order-discovery-worker process's Activity (see
+            # workflows/order_discovery_activities.py) -- the FastAPI process
+            # only needs a Temporal client to route a turn to that worker's
+            # workflow, not a DynamicOrderAgentCoordinator of its own.
+            temporal_client = resources.temporal
+            if temporal_client is None:
                 app.state.dynamic_order_agent_status = {
                     "enabled": True,
                     "state": "DEPENDENCIES_UNAVAILABLE",
-                    "missing_dependencies": missing_dependencies,
+                    "missing_dependencies": ("temporal",),
                 }
                 logger.warning(
                     "dynamic_order_agent_dependencies_unavailable",
-                    extra={"missing_dependencies": missing_dependencies},
+                    extra={"missing_dependencies": ("temporal",)},
                 )
             else:
-                assert platform_mongo is not None
-                assert neo4j_driver is not None
-                assert source_mongo is not None
-                try:
-                    system_store, envelope_encryptor = await _bootstrap_reasoning_system_store(
-                        settings, platform_mongo
-                    )
-                    app.state.reasoning_system_store = system_store
-                    app.state.reasoning_envelope_encryptor = envelope_encryptor
-                    app.state.dynamic_order_agent_runtime = await build_dynamic_order_agent_runtime(
-                        settings=settings,
-                        platform_mongo=platform_mongo,
-                        source_mongo=source_mongo,
-                        neo4j_driver=neo4j_driver,
-                        ai_gateway_configuration=ai_gateway_configuration,
-                        route_pool=app.state.ai_gateway_route_pool,
-                        system_store=system_store,
-                        reasoning_encryptor=envelope_encryptor,
-                    )
-                except Exception as exc:
-                    _log_initialization_failure("dynamic_order_agent", exc)
-                    app.state.dynamic_order_agent_status = {
-                        "enabled": True,
-                        "state": "INITIALIZATION_FAILED",
-                        "error_type": type(exc).__name__,
-                    }
-                    if settings.environment == "production":
-                        raise RuntimeError(
-                            "The enabled Order Discovery Agent failed to initialize"
-                        ) from exc
-                else:
-                    app.state.dynamic_order_agent_status = {
-                        "enabled": True,
-                        "state": "READY",
-                    }
+                app.state.dynamic_order_agent_runtime = DynamicOrderAgentRuntime(
+                    temporal_client=temporal_client,
+                    task_queue=settings.order_discovery_workflow_task_queue,
+                )
+                app.state.dynamic_order_agent_status = {
+                    "enabled": True,
+                    "state": "READY",
+                }
 
         logger.info(
             "application_resources_initialized",

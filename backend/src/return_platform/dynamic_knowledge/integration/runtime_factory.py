@@ -1,17 +1,21 @@
-"""Build the dynamic Order Agent from the branch's existing runtime resources."""
+"""Build the dynamic Order Agent from the branch's existing runtime resources.
+
+`build_dynamic_order_agent_runtime` returns a real `DynamicOrderAgentCoordinator`
+directly -- since Phase 7 / Wave C2, Commit 3, only the dedicated
+`order-discovery-worker` process (see `workflows/order_discovery_activities.py`)
+ever constructs one; the FastAPI process routes turns to that worker's
+Temporal workflow instead of holding a coordinator of its own (see
+`dynamic_knowledge/api/order_agent.py`).
+"""
 
 from __future__ import annotations
 
-from typing import Any, cast
-
-from fastapi import Request
 from neo4j import AsyncDriver
 from pymongo import AsyncMongoClient
 
 from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
 from return_platform.ai_gateway.routing import AIRoutePool
 from return_platform.configuration.settings import Settings
-from return_platform.dynamic_knowledge.api.order_agent import DynamicOrderAgentRuntime
 from return_platform.dynamic_knowledge.config_loader import load_active_schema
 from return_platform.dynamic_knowledge.graph.generation_writer import Neo4jGenerationWriter
 from return_platform.dynamic_knowledge.graph.neo4j_writer import Neo4jDynamicGraphWriter
@@ -31,9 +35,7 @@ from return_platform.dynamic_knowledge.integration.on_demand_sync_adapters impor
 )
 from return_platform.dynamic_knowledge.knowledge.guards import (
     CapabilityGuard,
-    GuardContext,
     HallucinationGuard,
-    PrincipalContext,
     QuerySafetyGuard,
     QuerySafetyPolicy,
     ResponseSafetyGuard,
@@ -49,7 +51,6 @@ from return_platform.dynamic_knowledge.order_agent.coordinator import DynamicOrd
 from return_platform.platform.reasoning.evidence_store import QueryEvidenceStore
 from return_platform.platform.secrets.envelope import EnvelopeEncryptor
 from return_platform.platform.system_store.repository import SystemStore
-from return_platform.security.principal import Principal
 from return_platform.source_connectors.mongodb import MongoDBSourceScanConnector
 from return_platform.source_connectors.sqlserver import (
     SqlServerConnectionSettings,
@@ -73,7 +74,7 @@ async def build_dynamic_order_agent_runtime(
     route_pool: AIRoutePool,
     system_store: SystemStore,
     reasoning_encryptor: EnvelopeEncryptor,
-) -> DynamicOrderAgentRuntime:
+) -> DynamicOrderAgentCoordinator:
     schema = load_active_schema(settings.dynamic_knowledge_schema_path)
     conversation_documents = MongoAtomicConversationStore(
         platform_mongo,
@@ -138,27 +139,4 @@ async def build_dynamic_order_agent_runtime(
         envelope_encryptor=reasoning_encryptor,
         mongo_client=platform_mongo,
     )
-
-    async def guard_context_factory(request: Request, agent_id: str) -> GuardContext:
-        principal = cast(Principal, request.state.principal)
-        policy = schema.agent_policies.get(agent_id)
-        if policy is None:
-            raise ValueError("Unknown dynamic agent policy")
-        tenant_id = str(getattr(request.state, "tenant_id", "default"))
-        branch_ids_raw: Any = getattr(request.state, "branch_ids", ())
-        branch_ids = frozenset(str(value) for value in branch_ids_raw)
-        return GuardContext(
-            schema=schema,
-            agent_policy=policy,
-            principal=PrincipalContext(
-                principal_id=principal.subject,
-                tenant_id=tenant_id,
-                roles=principal.roles,
-                branch_ids=branch_ids,
-            ),
-        )
-
-    return DynamicOrderAgentRuntime(
-        coordinator=coordinator,
-        guard_context_factory=guard_context_factory,
-    )
+    return coordinator

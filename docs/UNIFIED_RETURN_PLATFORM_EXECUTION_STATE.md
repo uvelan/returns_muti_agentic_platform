@@ -1131,23 +1131,199 @@ and re-running the full gate on exactly that list.
   runs), `test_order_agent_graph_state.py` (3/3): all pass in isolation and as part of
   the full suite.
 
+## Phase 7 / Wave C2, Commit 3 — Temporal workflow host for Order Discovery (this slice)
+
+**Scope.** Per the user's explicit "proceed" (endorsing a faster-path plan proposed in
+response to "best way to finish faster without dropping quality"): defer the
+`interrupt()`-based CLARIFY resume upgrade (CLARIFY stays a same-turn terminal action,
+unchanged from Commit 2) and mirror `ReturnWorkflow`'s established Temporal shape as
+closely as the two workflows' different natures allow, rather than re-deriving Temporal
+idioms from scratch. Moves turn processing for Order Discovery conversations out of
+synchronous in-process coordinator calls into a durable Temporal workflow — one workflow
+execution per conversation, one Activity per turn.
+
+**New Temporal host.**
+- `workflows/order_discovery_workflow.py` (new) — `OrderDiscoveryWorkflow`
+  (`@workflow.defn(name="return-platform-order-discovery-v1")`): `run()` records
+  `conversation_id`/`agent_id` then waits forever (`wait_condition(lambda: False)`) — a
+  conversation has no defined end the way a Return's stage sequence reaches COMPLETED, so
+  unlike `ReturnWorkflow` this workflow never reaches a terminal state (a new, accepted
+  standing cost: every conversation accumulates a permanently-running workflow execution;
+  continue-as-new/retention-sweep flagged as future follow-up, not built here).
+  `execution_state` query for observability. `generation_changed` signal records
+  `_last_known_graph_generation_id` only — deliberately an "observable no-op" that does
+  not gate or short-circuit `submit_turn`, because Neo4j's own generation fencing and
+  `HallucinationGuard`'s generation check already make a mid-turn generation change safe
+  without any workflow-level intervention (same "real mechanism, no real caller yet"
+  precedent as CLARIFY/REPLAN in Commit 2). `submit_turn` update calls the
+  `run_order_discovery_turn` Activity (10-minute timeout, `maximum_attempts=1` — a failed
+  turn is a structured result, not something Temporal should blindly retry).
+- **Real concurrency bug found and fixed while building the `submit_turn` mutex, not part
+  of the original ask.** The obvious translation of `ReturnWorkflow.complete_stage`'s
+  guard —
+  `await workflow.wait_condition(lambda: not self._turn_in_progress); self._turn_in_progress = True` —
+  is unsafe. Temporal's `wait_condition` (`_workflow_instance.py::workflow_wait_condition`)
+  never checks its condition synchronously; it always registers `(fn, future)` and
+  suspends, and `_run_once` later evaluates *all* pending conditions in one batch pass
+  before any of the newly-released continuations get to run. Two concurrent `submit_turn`
+  calls admitted into the same workflow task can both observe `not self._turn_in_progress`
+  as true in the same batch (neither has mutated it yet), both get released together, and
+  both proceed to flip the flag and call `execute_activity` — the "mutex" does not
+  serialize them. Caught concretely by a real-Temporal test
+  (`test_submit_turn_mutex_serializes_concurrent_submissions`): two `asyncio.gather`'d
+  `execute_update` calls produced `max_concurrent_calls == 2` against the stub activity.
+  Fixed by re-validating the guard in a loop after every wait instead of trusting a single
+  `wait_condition` call:
+  ```python
+  while self._conversation_id is None or self._turn_in_progress:
+      await workflow.wait_condition(
+          lambda: self._conversation_id is not None and not self._turn_in_progress
+      )
+  self._turn_in_progress = True
+  ```
+  Stable across 5 consecutive runs after the fix. **`ReturnWorkflow.complete_stage` uses
+  the identical unsafe pattern and was not touched in this commit** (out of scope — it's
+  already-shipped code from Phase 6) — flagged as a separate follow-up task
+  (`task_92c35ace`) rather than bundled in here, since fixing it requires its own
+  real-Temporal regression test and commit.
+- `workflows/order_discovery_activities.py` (new) — `OrderDiscoveryActivities(coordinator,
+  schema)`. `run_order_discovery_turn` looks up the agent's policy directly off the held
+  `schema` (no coordinator call needed for an unknown `agent_id`), reconstructs
+  `GuardContext`/`PrincipalContext` from the minimal identity fields that travel across
+  the Temporal boundary (`principal_id`/`tenant_id`/`roles`/`branch_ids` — never the full
+  `ActiveSchema`/`GuardContext`, mirroring the old `runtime_factory.py` `guard_context_factory`
+  closure, now removed from there since the FastAPI process no longer needs it), and
+  converts a known `OrderAgentFailure` into a structured `OrderDiscoveryTurnOutcome.error`
+  return value rather than raising across the Activity boundary — only genuinely
+  unexpected exceptions become real Activity failures.
+- Data-converter strategy: deliberately did **not** configure
+  `temporalio.contrib.pydantic.pydantic_data_converter` on the shared Temporal `Client`
+  (also used by `ReturnWorkflow`/`ProductionReturnWorkflow`) — `AgentTurnResult` (a
+  pydantic model) crosses the Temporal boundary as an opaque `model_dump_json()` string
+  inside a plain dataclass field, decoded via `AgentTurnResult.model_validate_json(...)`
+  at the FastAPI route. **Confirmed real, minor wire-fidelity note**: the default JSON
+  converter has no representation for `frozenset`, so `SubmitOrderDiscoveryTurnCommand.roles`/
+  `.branch_ids` (`frozenset[str]`) come back as plain `list[str]` after a real
+  encode/decode round trip — harmless here because the only consumer,
+  `PrincipalContext` (a pydantic model), coerces the list back to `frozenset[str]` on
+  construction, but a strict dataclass `==` after decode would incorrectly fail; the round-trip test
+  (`test_temporal_default_converter_round_trips_workflow_contracts`) asserts on
+  `frozenset(decoded.roles) == command.roles` instead of dataclass equality, documenting
+  why.
+- `workflows/order_discovery_worker.py` + `scripts/run_order_discovery_worker.py` (new) —
+  `ORDER_DISCOVERY_TASK_QUEUE = "return-platform-order-discovery-v1"`,
+  `create_order_discovery_worker`. The worker script mirrors
+  `run_return_workflow_worker.py`'s shape exactly: both Mongo clients, Neo4j driver,
+  connectivity checks, `bootstrap_reasoning_system_store()` (see below),
+  `build_dynamic_order_agent_runtime(...)`, `load_active_schema(...)`, heartbeat loop,
+  cleanup in `finally`.
+- `dynamic_knowledge/integration/reasoning_bootstrap.py` (new) — `bootstrap_reasoning_system_store()`
+  extracted verbatim out of `main.py`'s former private `_bootstrap_reasoning_system_store`,
+  now shared by both the FastAPI process and the new worker script.
+
+**Architectural simplification discovered mid-implementation.** Since turn processing now
+runs entirely inside the worker process's Activity, the FastAPI process no longer needs a
+`DynamicOrderAgentCoordinator`, `SystemStore` bootstrap, or Mongo/Neo4j dependency checks
+for the order-agent feature at all — only a Temporal `Client` + the task queue name. This
+cascaded through three files: `main.py`'s `dynamic_agent` startup block shrank to
+constructing a `DynamicOrderAgentRuntime(temporal_client, task_queue)` and no longer calls
+`bootstrap_reasoning_system_store`/`build_dynamic_order_agent_runtime` at all;
+`dynamic_knowledge/api/order_agent.py` was rewritten around
+`client.start_workflow(...)` + `except WorkflowAlreadyStartedError: get_workflow_handle(...)`
++ `execute_update(OrderDiscoveryWorkflow.submit_turn, command)` (the exact pattern
+`operations/orchestrator.py` already uses for `ReturnWorkflow`); `runtime_factory.py`'s
+`build_dynamic_order_agent_runtime` now returns the plain `DynamicOrderAgentCoordinator`
+instead of wrapping it in a `DynamicOrderAgentRuntime` (that type now lives in
+`api/order_agent.py` with a different, Temporal-facing meaning), and its
+`guard_context_factory` closure was deleted (reconstruction now happens once, in the
+Activity).
+
+**Other wiring.**
+- `coordinator.py::process_turn` gained an optional `workflow_id: str | None = None` kwarg,
+  passed to `ReasoningRunLifecycle.start_run(...)`, so `platform/reasoning/abandonment.py`'s
+  "active Temporal workflow" precondition (previously always a no-op for order-discovery
+  runs, since `workflow_id` was always `None`) becomes meaningful once a real workflow
+  exists. Direct/test callers with no Temporal workflow of their own leave it unset.
+- `Settings.order_discovery_workflow_task_queue` (new field, same
+  not-programmatically-linked-to-the-worker's-hardcoded-default convention
+  `return_workflow_task_queue` already uses — deliberately mirrored rather than
+  "fixed", for consistency with established style) + a new `order-discovery-worker`
+  service block in `compose.yaml` (mirrors `return-workflow-worker`'s dependencies:
+  `runtime-configuration-init`, `mongodb-rs-init`, `temporal`, `neo4j`).
+
+**Deliberately not done this commit (documented scope boundary, per user's "proceed").**
+- No `interrupt()`-based CLARIFY resume across HTTP requests — CLARIFY is still a
+  same-turn terminal action, exactly as Commit 2 left it.
+- No full LLM-driven end-to-end test (Workflow → Activity → real `DynamicOrderAgentCoordinator`
+  → real LangGraph → real Mongo commit). The graph's entry node (`decide`) always calls
+  the model gateway — there is no LLM-free fast path even for exact-identifier queries —
+  and the pre-existing missing `NVIDIA_API_KEY`/`GOOGLE_API_KEY` values (already blocking
+  `test_order_agent_rest.py` and ~99 other tests, flagged at Phase 8's and Commit 2's
+  checkpoints) make this infeasible in this environment. Not worked around with a mock
+  model gateway, since that would not be a real-infra proof. The coordinator's own real
+  wiring (real Mongo, real checkpoint/run-lifecycle persistence) is already proved by
+  Commit 2's `test_order_agent_coordinator_real_infra.py`; what Commit 3 adds on top
+  (the Temporal mutex, signal, and crash-survival mechanics) is proved directly against
+  real Temporal instead, without needing the LLM call.
+- No continue-as-new or retention sweep for the never-terminating workflow — flagged as a
+  known, accepted standing cost, not a gap to close later in this phase.
+
+**Test suite (all against real, running infra — no fakes/mocks of Temporal itself).**
+- `test_order_discovery_workflow.py` (new, 6 tests) — data-converter round-trip
+  (documents the frozenset→list wire behavior above), sandbox-preparability
+  (`SandboxedWorkflowRunner().prepare_workflow`), dataclass frozen/slotted shape, and
+  three tests against a real Temporal server (`localhost:7233` on host,
+  `PLATFORM_TEST_TEMPORAL_TARGET` override for the `c2-test-runner` container, matching
+  the established `PLATFORM_TEST_MONGO_HOST`/`PLATFORM_TEST_NEO4J_HOST` convention): the
+  mutex-serialization test that caught the concurrency bug above (stable across 5 runs
+  post-fix), a `generation_changed` signal → `execution_state` query observability test,
+  and a resume-after-crash test that starts a workflow under one real `Worker`, submits a
+  turn and a signal, fully tears that `Worker` down (`async with` exits — no Python object
+  survives), stands up a second, independent `Worker` for the same task queue, and
+  confirms a fresh query/update against the still-running workflow execution sees the
+  pre-crash state and can still make progress — a direct proof that Temporal's replay
+  mechanism (not any persistence code of ours) is what survives a worker-process restart.
+- `test_order_discovery_worker.py` (new, 7 tests) — exact workflow/activity name
+  registration (mirrors `test_return_workflow_worker.py`), invalid-task-queue rejection
+  before worker creation (parametrized, 6 cases).
+
+**Process note.** The `c2-test-runner` container (created ~2 hours prior in this session)
+has no live bind mount — it is a frozen `COPY` snapshot from creation time. Running the
+full suite against it without first `docker cp`-ing the current working tree silently
+re-verified stale, pre-Commit-3 code (confirmed by grepping the in-container
+`coordinator.py` for `workflow_id` and finding nothing). Caught before drawing any
+conclusions from those runs; fixed by `docker cp backend/src backend/tests` into the
+container before every real-infra run for the remainder of this commit. Worth carrying
+into Commit 3's follow-up work: this container has no automatic resync, so any future
+session reusing it must re-copy before trusting its results.
+
+**Gate receipts.**
+- `ruff format --check` / `ruff check` on the exact 12-file Commit 3 change set: clean.
+- `mypy src`: 47 errors in 16 files — **unchanged** from the Commit 2 baseline.
+- `python -m compileall -q` / `python -c "import return_platform.main"`: clean.
+- `pytest tests/ -q` inside the freshly-synced `c2-test-runner` container (real Mongo +
+  real Neo4j + real Temporal, `PLATFORM_TEST_MONGO_HOST=mongodb`
+  `PLATFORM_TEST_NEO4J_HOST=neo4j` `PLATFORM_TEST_SQLSERVER_HOST=sqlserver`
+  `PLATFORM_TEST_TEMPORAL_TARGET=temporal:7233`), excluding `test_order_agent_rest.py`
+  and the same three container-artifact-only files flagged in Commit 2's ledger entry:
+  **1578 passed, 2 skipped, 0 failed**, 99 errors — all 99 the same pre-existing
+  `NVIDIA_API_KEY`/`GOOGLE_API_KEY` fixture gap, zero relation to this commit's diff.
+- New test files individually: `test_order_discovery_workflow.py` (6/6, mutex test
+  stable across 5 consecutive runs), `test_order_discovery_worker.py` (7/7).
+
 ## Next READY slice
 
-Commit 3 of Phase 7 / Wave C2 (Task #79): a real Temporal workflow host for Order
-Discovery conversations — one workflow per conversation, one Activity per turn
-(`run_order_discovery_turn`), `SystemStoreCheckpointSaver`-backed, a `GENERATION_CHANGED`
-signal handler, `api/order_agent.py`'s route updated to go through the workflow instead
-of calling `coordinator.process_turn` directly, and — per Commit 2's own flagged seam —
-upgrading `CLARIFY` from a same-turn terminal action to a real LangGraph `interrupt()`/
-`Command(resume=...)` pattern that can pause a thread across HTTP requests (no graph
-topology change needed, only the `clarify` node's internal strategy). Then Task #80: the
-remaining real-infra tests (end-to-end Temporal+LangGraph turn, generation-change
-mid-conversation abandon+restart, resume-after-crash) and the final gate/push. Also
-still open, not part of any Phase 7 commit: the flagged Neo4j volume dedup task, the
-pre-existing `openapi-drift`/`associate_flow.py` formatting conditions, the missing
-`NVIDIA_API_KEY`/`GOOGLE_API_KEY` values in `.env` (now blocking a wider swath of tests
-than at Phase 8's checkpoint), a real KMS-backed `EnvelopeEncryptor` (Phase 9),
-`ReasoningObservability` wiring into the coordinator, the `ReturnPlatformConfiguration` ↔
-`RuntimeSnapshot` configuration-system bridge, mapping `orchestrator.py`'s real per-stage
-business logic onto agents, the 4-way source-config schema reconciliation, and the
-`LogicalTargetedReadPlan` AND/OR condition-tree redesign v2's full query shape would need.
+Task #80: the remaining real-infra work this commit deliberately deferred — the
+`interrupt()`-based CLARIFY resume upgrade (now that a durable workflow host exists to
+resume across), and revisiting the never-terminating-workflow standing cost
+(continue-as-new/retention). Independently, `task_92c35ace` (spawned, not yet started):
+apply this commit's `wait_condition` re-check fix to `ReturnWorkflow.complete_stage`,
+which has the identical latent race. Also still open, not part of any Phase 7 commit: the
+flagged Neo4j volume dedup task, the pre-existing `openapi-drift`/`associate_flow.py`
+formatting conditions, the missing `NVIDIA_API_KEY`/`GOOGLE_API_KEY` values in `.env`
+(now blocking a wider swath of tests than at Phase 8's checkpoint), a real KMS-backed
+`EnvelopeEncryptor` (Phase 9), `ReasoningObservability` wiring into the coordinator, the
+`ReturnPlatformConfiguration` ↔ `RuntimeSnapshot` configuration-system bridge, mapping
+`orchestrator.py`'s real per-stage business logic onto agents, the 4-way source-config
+schema reconciliation, and the `LogicalTargetedReadPlan` AND/OR condition-tree redesign
+v2's full query shape would need.

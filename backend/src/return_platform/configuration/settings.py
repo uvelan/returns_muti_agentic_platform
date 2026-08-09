@@ -108,6 +108,10 @@ class Settings(BaseSettings):
         default="return-platform-return-v1",
         pattern=r"^[a-z][a-z0-9-]{0,126}$",
     )
+    order_discovery_workflow_task_queue: str = Field(
+        default="return-platform-order-discovery-v1",
+        pattern=r"^[a-z][a-z0-9-]{0,126}$",
+    )
     orchestration_poll_seconds: float = Field(default=1.0, ge=0.1, le=30.0)
     worker_readiness_ttl_seconds: int = Field(default=30, ge=5, le=300)
 
