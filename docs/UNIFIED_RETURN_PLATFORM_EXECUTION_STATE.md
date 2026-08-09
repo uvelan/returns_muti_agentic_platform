@@ -1691,6 +1691,61 @@ failed, 99 errors** — 99 being exactly the long-standing `NVIDIA_API_KEY`/`GOO
 fixture gap, unchanged since Commit 3. This is the first full-suite run since C3.1 and it
 closes that three-slice gap. The +107 over Commit 4's 1580 is this wave's new tests.
 
+## Correction — the "99 pre-existing errors" baseline was never a real blocker
+
+**Every gate receipt from Phase 8 onward reported ~99 errors as an accepted, pre-existing
+condition caused by `NVIDIA_API_KEY`/`GOOGLE_API_KEY` being rotated out by `fbfcf05`. That
+framing was wrong, and it cost real work.** It blocked the AI adapter (`task_971021e8`),
+was cited as the reason there could be no LLM-driven end-to-end test in Commits 3 and 4,
+and was carried forward unexamined across eight commits.
+
+The 99 errors are entirely an **invocation** problem, not a code or credential problem:
+
+- **95** — `tests/conftest.py`'s `test_settings` fixture calls `_required_environment_variable`
+  for those two keys purely to populate `Settings` fields. None of the affected tests makes
+  a provider call. **Any non-empty placeholder satisfies them**; passing
+  `NVIDIA_API_KEY=placeholder-not-a-real-key GOOGLE_API_KEY=placeholder-not-a-real-key`
+  takes the suite from 99 errors to 4.
+- **4** — `tests/source_connectors/test_sqlserver_connector_docker.py` inherits
+  `PLATFORM_SQLSERVER_PORT=14330` from `.env`, which is the *host-published* port. Inside
+  the compose network SQL Server listens on **1433**. DNS resolves and the port is open;
+  only the number was wrong. Overriding it takes 4 to 0.
+
+**And real credentials were never required to exercise the AI path anyway.** The platform
+already ships `ManualFileProvider`: it writes the exact request a model would receive to
+`.manual_llm/requests/` and waits for a human-authored reply in `.manual_llm/responses/`,
+`scripts/manual_llm_responder.py` is its interactive companion, and
+`ORDER_AGENT_REASONING_V1` **already lists `MANUAL` in `allowedProviders`**. Settings refuse
+MANUAL in production and the provider itself gates on `environment in {development, test}`,
+so it is structurally undeployable.
+
+`tests/test_manual_provider_reasoning_e2e.py` (5 tests) now closes the "no LLM-driven
+end-to-end test" gap that Commits 3 and 4 both recorded. It drives the genuine production
+path — `build_routes` → `AIRoutePool.candidates` → tier/provider gating → rate-limit
+acquisition → `ManualFileProvider.generate` → response-schema parse → typed `AgentAction` —
+with the model's reply supplied by a background task standing in for the human. It proves a
+well-formed reply is carried through and a malformed one is rejected rather than coerced;
+it does **not** prove anything about real model behaviour, which is stated in the module
+docstring so the coverage is not overread.
+
+Two implementation notes worth keeping: `ManualFileProvider`'s directory is **not**
+configurable — `routing.py` constructs it with no `base_dir`, so it is always `.manual_llm`
+relative to the process CWD, and a test must patch the module global. And the retry path
+needs a responder that answers *every* request, not just the first, or each retry waits out
+the provider timeout (42s → 5s for that file).
+
+`scripts/dev/run_real_infra_suite.sh` now encodes the correct invocation — including the
+wipe-before-`docker cp` step — so none of this has to be rediscovered.
+
+**Gate receipt: the suite is green for the first time.** With both invocation fixes, against
+real Mongo/Neo4j/SQL Server/Temporal: **1795 passed, 2 skipped, 0 failed, 0 errors** (481s).
+Compare with the run earlier the same day: 1687 passed / 99 errors. Nothing about the code
+changed between them. `mypy src` unchanged at 47 errors in 16 files; analyzer suite 107/107.
+
+**Use this number, not the old baseline, as the reference point.** Any future report of
+"~99 pre-existing errors" means the suite was invoked the old way, not that something
+regressed.
+
 ## Next READY slice
 
 **Wave C3 is complete** (C3.1/C3.2/C3.3). Next is **C4 — Phase 12: graph generation
@@ -1711,20 +1766,20 @@ noted in the fixture so it goes back to function scope if that stops holding.
 Still owed, in rough priority order:
 
 1. **`SchemaReasoningPort` has no adapter — the analyzer cannot propose a schema in
-   production.** Spawned as `task_971021e8` rather than done inline, because doing it
-   correctly is a refactor of live code that currently cannot be verified. Detail worth
-   keeping: `AIGatewayService.evaluate` is **not** usable here — its `_parse_response`
-   requires exactly `{decision, explanation, confidenceMillionths}`, so it cannot carry a
+   production.** Spawned as `task_971021e8`. Detail worth keeping:
+   `AIGatewayService.evaluate` is **not** usable here — its `_parse_response` requires
+   exactly `{decision, explanation, confidenceMillionths}`, so it cannot carry a
    `SchemaProposal`. The real structured-output path is
    `dynamic_knowledge/integration/model_gateway.py`'s `RoutePoolReasoningModelGateway`
    (385 lines, of which only ~33 touch order-agent types). The design mandates exactly one
-   AI execution path, so the options were duplicate ~350 lines (violates that and will
+   AI execution path, so the options are duplicate ~350 lines (violates that and will
    drift), write an adapter without failover (a silent reliability regression), or extract
-   the generic machinery (correct). Extraction was blocked because
-   `tests/test_ai_route_balancing_design.py` — the failover and tier-escalation tests that
-   would prove it safe — are among the ~99 blocked by the missing
-   `NVIDIA_API_KEY`/`GOOGLE_API_KEY`. **Restore those keys first; the refactor is
-   unverifiable without them.**
+   the generic machinery (correct).
+   **The blocker recorded on that task is now removed** — see the correction above.
+   `tests/test_ai_route_balancing_design.py` passes with placeholder keys, so the failover
+   and tier-escalation regression coverage the extraction needs is available, and
+   `tests/test_manual_provider_reasoning_e2e.py` gives a keyless way to exercise the real
+   invocation path end to end. The extraction is ready to do.
 2. The reasoning graph's `APPLY_TYPED_MUTATION` node and the USER_REVIEW modification
    branch (the mutation machinery they would drive now exists).
 3. Time-skipping coverage for Wave C2 Commit 4's idle-timeout and continue-as-new paths.
