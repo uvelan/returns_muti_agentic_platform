@@ -1565,21 +1565,95 @@ already makes). `tests/graph_schema_analyzer/` 56/56, plus the platform architec
 The full real-infra suite has **not** been re-run since C3.1 — no runtime path outside the
 analyzer changed, but it is owed before C3.3.
 
+## Wave C3.3 — typed mutations, validation, and approval (this slice)
+
+Two commits: the mutation domain + services (`35d81a5`), then persistence, API, and the
+end-to-end flow.
+
+**"No model-authored executable statement reaches a database" is now structural.** All 17
+commands from §10.4 are closed pydantic models with `extra="forbid"` and only enumerated,
+pattern-constrained identifier fields. There is deliberately no `statement`/`sql`/`cypher`/
+`expression` field anywhere in `domain/mutation.py`, and a test asserts that absence — a
+command that *could* carry an executable string would make the guarantee a policy someone
+has to remember rather than a property of the type system. Identifiers are regex-bounded
+for the same reason: `Order) DETACH DELETE n //` is not a label, and rejecting it at parse
+time beats escaping it at compile time. `TransformationKind` is a closed enum because a
+transformation is the most tempting place to accept arbitrary code. Enforcement lands at
+the narrowest point available — the API's request model — so a smuggled command never
+reaches analyzer code at all.
+
+**The draft state machine enforces §10.4's core rule itself.** Any mutation returns a draft
+to DRAFT and clears its `validation_result_id`, *including* from APPROVED: a validation
+result describes one specific shape, and building on a stale one is the failure the whole
+machine exists to prevent. Editing an approved schema is legitimate; silently keeping the
+approval is not. Approval is bound to a specific `revision_id` **and**
+`validation_result_id`, not just to a draft, and a decision is final — the audit question
+is "what did this person decide", which a mutable answer cannot serve.
+
+**Validation: 14 checks, and the design doc's count is wrong.** §10.4 says "all 13 must
+pass" then enumerates fourteen. Implemented the names — dropping one to match a prose
+number would drop an explicitly named safety check. Two behaviours worth recording: every
+check always runs (an analyst fixing one problem should see all of them, not discover the
+next one on the next attempt, and each attempt costs a reasoning-loop budget slot), and an
+**unevaluable check is a failure, not a skip** — an unreachable graph target records an
+ERROR, and `ValidationResult.passed` additionally requires every required check to appear
+in `checks_run`, so "we could not tell" can never read as "it is fine". The validate
+endpoint 503s without a graph target rather than running partially.
+
+**Crash ordering in `DraftService`.** No cross-collection transaction is available, so the
+order is: append the revision (insert-only, unique on `(draft_id, sequence)`), *then*
+advance the draft. A crash between them leaves an orphan revision whose sequence exceeds
+`current_revision` — detectable, idempotent to retry, and safe, because the draft still
+describes a shape that was really built. The reverse order would point a draft at a
+revision that does not exist, which is unrecoverable history loss.
+
+**Two real bugs caught by tests, both mine.**
+1. **Aliasing in `apply_mutations`.** It shallow-copied entity dicts, so the nested
+   `properties` dict stayed shared with the input shape and `AddProperty` mutated the
+   caller's supposedly-immutable shape in place. The module's whole claim is purity. Found
+   because a diff test saw no change between before and after — both had been changed.
+   Fixed with `deepcopy`.
+2. **Extending `PersistencePort` silently 503'd the older test double.** `resolve_persistence`
+   guards with a runtime `isinstance` against the Protocol, so a double missing any new
+   method makes every route unavailable. That is correct fail-closed behaviour and is
+   exactly how the drift surfaced; resolved by making one complete double rather than
+   several partial ones. Worth knowing before the real bootstrap adapters land: **any
+   adapter that has not caught up with the port will 503, not fail at import.**
+
+Also removed a `_NullTarget` stand-in mypy correctly rejected. Rather than fudge the type,
+`DraftService.validation` became optional — only `validate()` needs it, and a stand-in that
+silently approves everything is precisely the thing that turns a missing target into a
+passing validation.
+
+**Not done (C3.3 scope boundary).** The reasoning graph's `APPLY_TYPED_MUTATION` node and
+the USER_REVIEW "modification" branch are still absent — the mutation machinery they would
+drive now exists, but wiring the model into it is a separate step and belongs with the AI
+adapter, which has no production binding yet either.
+
+**Gate receipts.** `ruff format --check`/`ruff check` clean. `mypy src`: 47 errors in 16
+files — **unchanged baseline**, now across 459 source files.
+`tests/graph_schema_analyzer/` 91/91 plus the platform architecture tests (94 total).
+`import return_platform.main` clean. Manifest additions (`schema_revisions`,
+`validation_results`, `schema_approvals`) verified through the real loader. The full
+real-infra suite has **not** run since C3.1 and is now overdue.
+
 ## Next READY slice
 
-Wave C2 is complete and C3.1/C3.2 have landed. Next is **C3.3 — interactive graph-only
-editing and validation**: typed mutation commands (§10.4), revisions and diffs, the 13
-validation checks, and approval — plus the `APPLY_TYPED_MUTATION` node and the USER_REVIEW
-"modification" branch the reasoning graph currently omits. The model must never emit
-executable source DDL/DML, and indexes/constraints apply to the graph target only. Then C4
-(Phase 12: graph generation lifecycle), after which Wave D (Phases 13–16) opens.
+**Wave C3 is complete** (C3.1/C3.2/C3.3). Next is **C4 — Phase 12: graph generation
+lifecycle** (build, catch-up, deep validation, READY_FOR_ACTIVATION, atomic activation,
+read/write/session leases, DRAINING, RETIRED, failure rollback, rebuild trigger), after
+which Wave D (Phases 13–16) opens.
 
-Owed before or alongside C3.3: re-run the full real-infra suite (not run since C3.1); wire
-the real `SourceDiscoveryPort`/`SchemaReasoningPort`/`GraphTargetPort` adapters in
-`bootstrap/adapters/` (the analyzer's ports have no production bindings yet, so discovery
-and reasoning are reachable only from tests); a real-Mongo proof of
-`SourceSampleRepository`'s encrypted round trip; and time-skipping coverage for Commit 4's
-idle-timeout and continue-as-new paths.
+**Before C4, the analyzer's outstanding debt should be paid — it is now the critical
+path.** The module is complete and tested in isolation but has **no production port
+bindings**: `SourceDiscoveryPort`, `SchemaReasoningPort`, and `GraphTargetPort` are
+unimplemented in `bootstrap/adapters/`, so discovery, AI proposal, and validation are
+reachable only from tests. Note the fail-closed consequence found in C3.3: an adapter that
+does not fully satisfy a port makes the routes 503 rather than failing at import. Also
+owed: the full real-infra suite (not run since C3.1, now three slices stale); a real-Mongo
+proof of `SourceSampleRepository`'s encrypted round trip and of the new draft/revision
+unique indexes; the reasoning graph's `APPLY_TYPED_MUTATION` node; and time-skipping
+coverage for Commit 4's idle-timeout and continue-as-new paths.
 
 Open follow-up tasks, none blocking C3: `task_f1fc6b63` (wire `CheckpointRedactor` into
 real checkpoint writes and correct Commit 2's untrue ledger claim), and

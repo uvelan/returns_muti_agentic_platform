@@ -137,3 +137,34 @@ payload:
           unique: true
         - name: analysis_id
           fields: [analysis_id]
+    schema_revisions:
+      physical_name: platform_schema_revisions
+      schema_version: 1
+      indexes:
+        - name: revision_id_unique
+          fields: [revision_id]
+          unique: true
+        # Append-only history: one sequence number per draft, enforced by the
+        # database rather than by the writer, so a concurrent second writer
+        # cannot silently produce two "revision 4"s.
+        - name: draft_sequence_unique
+          fields: [draft_id, sequence]
+          unique: true
+    validation_results:
+      physical_name: platform_validation_results
+      schema_version: 1
+      indexes:
+        - name: result_id_unique
+          fields: [result_id]
+          unique: true
+        - name: draft_revision
+          fields: [draft_id, revision_id]
+    schema_approvals:
+      physical_name: platform_schema_approvals
+      schema_version: 1
+      indexes:
+        - name: approval_id_unique
+          fields: [approval_id]
+          unique: true
+        - name: draft_id
+          fields: [draft_id]

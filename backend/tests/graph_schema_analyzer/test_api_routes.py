@@ -27,18 +27,32 @@ from return_platform.graph_schema_analyzer.domain import (
     SourceSchemaSnapshot,
     UnknownAnalysis,
 )
+from return_platform.graph_schema_analyzer.domain.approval import Approval
+from return_platform.graph_schema_analyzer.domain.schema_draft import GraphSchemaDraft
+from return_platform.graph_schema_analyzer.domain.schema_revision import SchemaRevision
+from return_platform.graph_schema_analyzer.domain.validation_result import ValidationResult
 from return_platform.graph_schema_analyzer.ports.system_store_port import PersistencePort
 
 NOW = datetime(2026, 8, 9, 12, 0, tzinfo=UTC)
 
 
 class InMemoryPersistence:
-    """Structurally satisfies PersistencePort."""
+    """Structurally satisfies the whole PersistencePort.
+
+    One complete double rather than several partial ones: `resolve_persistence`
+    guards with a runtime `isinstance` against the Protocol, so a double missing
+    any method makes every route 503 -- which is correct fail-closed behaviour,
+    and exactly how extending the port was caught here.
+    """
 
     def __init__(self) -> None:
         self.sessions: dict[str, AnalysisSession] = {}
         self.snapshots: dict[str, SourceSchemaSnapshot] = {}
         self.clarifications: dict[str, Clarification] = {}
+        self.drafts: dict[str, GraphSchemaDraft] = {}
+        self.revisions: list[SchemaRevision] = []
+        self.validation_results: dict[str, ValidationResult] = {}
+        self.approvals: list[Approval] = []
         self.fail_next_save_with_conflict = False
 
     async def create_session(self, session: AnalysisSession) -> None:
@@ -84,6 +98,53 @@ class InMemoryPersistence:
 
     async def list_clarifications(self, analysis_id: str) -> Sequence[Clarification]:
         return [c for c in self.clarifications.values() if c.analysis_id == analysis_id]
+
+    # --- drafts / revisions / validation / approval ------------------------
+    async def create_draft(self, draft: GraphSchemaDraft) -> None:
+        self.drafts[draft.draft_id] = draft
+
+    async def save_draft(self, draft: GraphSchemaDraft, *, expected_version: int) -> None:
+        stored = self.drafts.get(draft.draft_id)
+        if stored is None or stored.version != expected_version:
+            raise ConcurrentModification(
+                f"draft {draft.draft_id} expected v{expected_version}, "
+                f"stored v{stored.version if stored else None}"
+            )
+        self.drafts[draft.draft_id] = draft
+
+    async def load_draft(self, draft_id: str) -> GraphSchemaDraft:
+        try:
+            return self.drafts[draft_id]
+        except KeyError as exc:
+            raise UnknownAnalysis(draft_id) from exc
+
+    async def load_draft_for_analysis(self, analysis_id: str) -> GraphSchemaDraft | None:
+        return next((d for d in self.drafts.values() if d.analysis_id == analysis_id), None)
+
+    async def append_revision(self, revision: SchemaRevision) -> None:
+        if any(
+            r.draft_id == revision.draft_id and r.sequence == revision.sequence
+            for r in self.revisions
+        ):
+            raise ConcurrentModification("duplicate (draft_id, sequence)")
+        self.revisions.append(revision)
+
+    async def list_revisions(self, draft_id: str) -> Sequence[SchemaRevision]:
+        return sorted(
+            (r for r in self.revisions if r.draft_id == draft_id), key=lambda r: r.sequence
+        )
+
+    async def save_validation_result(self, result: ValidationResult) -> None:
+        self.validation_results[result.result_id] = result
+
+    async def load_validation_result(self, result_id: str) -> ValidationResult:
+        return self.validation_results[result_id]
+
+    async def save_approval(self, approval: Approval) -> None:
+        self.approvals.append(approval)
+
+    async def list_approvals(self, draft_id: str) -> Sequence[Approval]:
+        return [a for a in self.approvals if a.draft_id == draft_id]
 
 
 @pytest.fixture
