@@ -63,6 +63,7 @@ class AgentAction(BaseModel):
     original_query_plan: LogicalQueryPlan | None = None
     response: StructuredAgentResponse | None = None
     search_intent: OrderSearchIntent | None = None
+    selected_candidate_id: str | None = None
 
     @model_validator(mode="after")
     def validate_action_payload(self) -> AgentAction:
@@ -73,15 +74,21 @@ class AgentAction(BaseModel):
                 self.strong_anchor_request is not None and self.original_query_plan is not None
             ),
             ActionType.RESPOND: self.response is not None,
-            ActionType.CLARIFY: (
-                self.response is not None and bool(self.response.requested_input)
-            ),
+            ActionType.CLARIFY: (self.response is not None and bool(self.response.requested_input)),
             ActionType.REPLAN: True,
             ActionType.OUT_OF_SCOPE: True,
             ActionType.GET_SCHEMA: bool(self.schema_entity_ids),
         }
         if not requirements[self.action_type]:
             raise ValueError(f"missing payload for action type {self.action_type.value}")
+        if (
+            self.query_plan is not None
+            and self.query_plan.candidate_set_id is not None
+            and not self.selected_candidate_id
+        ):
+            raise ValueError(
+                "query_plan references a candidate_set_id but selected_candidate_id is missing"
+            )
         return self
 
 

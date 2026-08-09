@@ -1,16 +1,21 @@
-"""Multi-step LLM reasoning loop with no deterministic business fallback."""
+"""Order Discovery turn orchestration: builds/wraps the LangGraph StateGraph
+defined in graph.py/graph_nodes.py, and owns everything that graph itself must
+not: conversation load/commit, reasoning-run lifecycle bookkeeping, and
+evidence rehydration for the final committed AgentTurnResult.
+
+No business logic lives here anymore -- see graph_nodes.py for that. This
+module is the seam between the durable conversation record (ConversationStore)
+and one reasoning attempt (the compiled graph, checkpointed independently).
+"""
 
 from __future__ import annotations
 
-import logging
-from typing import Any, Protocol
-from uuid import uuid4
+from datetime import UTC, datetime
+from typing import Any, Protocol, cast
 
-from return_platform.dynamic_knowledge.fingerprint import on_demand_request_digest, sha256_digest
-from return_platform.dynamic_knowledge.knowledge.cypher_compiler import (
-    CypherCompiler,
-    QueryCompilationError,
-)
+from pymongo import AsyncMongoClient
+
+from return_platform.dynamic_knowledge.knowledge.cypher_compiler import CypherCompiler
 from return_platform.dynamic_knowledge.knowledge.evidence import (
     QueryEvidence,
     StructuredAgentResponse,
@@ -18,7 +23,6 @@ from return_platform.dynamic_knowledge.knowledge.evidence import (
 from return_platform.dynamic_knowledge.knowledge.guards import (
     CapabilityGuard,
     GuardContext,
-    GuardRejected,
     HallucinationGuard,
     QuerySafetyGuard,
     ResponseSafetyGuard,
@@ -26,69 +30,40 @@ from return_platform.dynamic_knowledge.knowledge.guards import (
     StrongAnchorGuard,
 )
 from return_platform.dynamic_knowledge.on_demand_sync.coordinator import OnDemandSyncCoordinator
-from return_platform.dynamic_knowledge.on_demand_sync.planner import build_targeted_read_plan
 from return_platform.dynamic_knowledge.order_agent.contracts import (
-    ActionType,
-    AgentAction,
-    AgentTurnContext,
     AgentTurnRequest,
     AgentTurnResult,
-    ModelInvocationResult,
-    OrderSearchIntent,
 )
-from return_platform.dynamic_knowledge.order_agent.search_strategy import (
-    RESULT_PAGE_SIZE,
-    build_customer_fuzzy_probe_plan,
-    build_progressive_plans,
-    fuzzy_match_customers,
-    rank_search_results,
-    search_intent_signature,
+from return_platform.dynamic_knowledge.order_agent.errors import OrderAgentFailure
+from return_platform.dynamic_knowledge.order_agent.graph import build_order_agent_graph
+from return_platform.dynamic_knowledge.order_agent.graph_nodes import (
+    EvidenceStore,
+    GraphDependencies,
+    KnowledgeGateway,
+    ReasoningModelGateway,
+    TurnRuntimeContext,
 )
+from return_platform.dynamic_knowledge.order_agent.state import OrderAgentGraphState
 from return_platform.dynamic_knowledge.schema import ActiveSchema
+from return_platform.platform.reasoning.checkpoint import SystemStoreCheckpointSaver
+from return_platform.platform.reasoning.retention import (
+    CheckpointRetentionPolicy,
+    RunLifecycleState,
+)
+from return_platform.platform.reasoning.run_lifecycle import ReasoningRunLifecycle
+from return_platform.platform.reasoning.thread_ids import ReasoningThreadIdFactory
+from return_platform.platform.secrets.envelope import EnvelopeEncryptor
+from return_platform.platform.system_store.repository import SystemStore
 
-logger = logging.getLogger("return_platform.dynamic_knowledge.order_agent.coordinator")
+__all__ = ["DynamicOrderAgentCoordinator", "OrderAgentFailure"]
 
-
-class OrderAgentFailure(RuntimeError):
-    def __init__(self, code: str, message: str, *, retryable: bool) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.retryable = retryable
-
-
-class ReasoningModelGateway(Protocol):
-    async def decide(self, context: AgentTurnContext) -> ModelInvocationResult: ...
-    async def correct_action(
-        self,
-        *,
-        context: AgentTurnContext,
-        invalid_action: AgentAction | None,
-        validation_error: str,
-    ) -> ModelInvocationResult: ...
-    async def correct_response(
-        self,
-        *,
-        context: AgentTurnContext,
-        invalid_response: StructuredAgentResponse,
-        validation_error: str,
-    ) -> ModelInvocationResult: ...
-
-
-class KnowledgeGateway(Protocol):
-    async def compact_schema(self, schema: ActiveSchema, agent_id: str) -> dict[str, Any]: ...
-    async def schema_details(
-        self, schema: ActiveSchema, entity_ids: tuple[str, ...]
-    ) -> dict[str, Any]: ...
-    async def execute(
-        self,
-        *,
-        schema: ActiveSchema,
-        graph_generation_id: str,
-        plan: Any,
-        compiled_cypher: str,
-        parameters: dict[str, Any],
-    ) -> Any: ...
+# Each policy-enforced loop turn is several LangGraph super-steps (decide ->
+# validate_action -> a business node -> back to decide); the default
+# recursion_limit (25) is comfortably exceeded by policy's own allowed ceiling
+# (max_reasoning_steps up to 32), so every invocation raises this explicitly
+# rather than risking LangGraph's own GraphRecursionError masking a real
+# OrderAgentFailure("MAX_REASONING_STEPS_REACHED", ...) that would otherwise fire first.
+_RECURSION_LIMIT = 256
 
 
 class ConversationStore(Protocol):
@@ -97,7 +72,7 @@ class ConversationStore(Protocol):
         *,
         request: AgentTurnRequest,
         graph_generation_id: str,
-    ) -> tuple[int, dict[str, Any], AgentTurnResult | None]: ...
+    ) -> tuple[int, dict[str, object], AgentTurnResult | None]: ...
 
     async def commit_turn(
         self,
@@ -105,7 +80,7 @@ class ConversationStore(Protocol):
         request: AgentTurnRequest,
         expected_version: int,
         result: AgentTurnResult,
-        conversation_state: dict[str, Any],
+        conversation_state: dict[str, object],
     ) -> AgentTurnResult: ...
 
 
@@ -114,7 +89,10 @@ class GraphStateProvider(Protocol):
 
 
 class DynamicOrderAgentCoordinator:
-    """All conversational interpretation is delegated to a standard reasoning model."""
+    """Owns one compiled Order Discovery reasoning graph and the conversation/
+    run-lifecycle bookkeeping around invoking it. All conversational
+    interpretation is delegated to the graph's `decide` node's standard
+    reasoning model -- there is no deterministic business fallback."""
 
     def __init__(
         self,
@@ -129,23 +107,42 @@ class DynamicOrderAgentCoordinator:
         query_safety_guard: QuerySafetyGuard,
         strong_anchor_guard: StrongAnchorGuard,
         hallucination_guard: HallucinationGuard,
+        evidence_store: EvidenceStore,
+        system_store: SystemStore,
+        envelope_encryptor: EnvelopeEncryptor,
+        mongo_client: AsyncMongoClient[dict[str, object]],
         response_safety_guard: ResponseSafetyGuard | None = None,
         on_demand_sync: OnDemandSyncCoordinator | None,
         cypher_compiler: CypherCompiler | None = None,
+        terminal_retention_hours: float = 168.0,
     ) -> None:
         self._schema = schema
-        self._model = model_gateway
-        self._knowledge = knowledge_gateway
         self._conversations = conversation_store
         self._graph_state = graph_state
-        self._capability_guard = capability_guard
-        self._schema_guard = schema_guard
-        self._query_safety_guard = query_safety_guard
-        self._strong_anchor_guard = strong_anchor_guard
-        self._hallucination_guard = hallucination_guard
-        self._response_safety_guard = response_safety_guard or ResponseSafetyGuard()
-        self._on_demand_sync = on_demand_sync
-        self._compiler = cypher_compiler or CypherCompiler()
+        self._evidence_store = evidence_store
+        self._mongo_client = mongo_client
+        self._system_store = system_store
+        self._run_lifecycle = ReasoningRunLifecycle(system_store)
+        self._retention = CheckpointRetentionPolicy(
+            terminal_retention_hours=terminal_retention_hours
+        )
+
+        deps = GraphDependencies(
+            schema=schema,
+            model_gateway=model_gateway,
+            knowledge_gateway=knowledge_gateway,
+            evidence_store=evidence_store,
+            capability_guard=capability_guard,
+            schema_guard=schema_guard,
+            query_safety_guard=query_safety_guard,
+            strong_anchor_guard=strong_anchor_guard,
+            hallucination_guard=hallucination_guard,
+            response_safety_guard=response_safety_guard or ResponseSafetyGuard(),
+            on_demand_sync=on_demand_sync,
+            compiler=cypher_compiler or CypherCompiler(),
+        )
+        checkpointer = SystemStoreCheckpointSaver(system_store, envelope_encryptor)
+        self._graph = build_order_agent_graph(deps, checkpointer=checkpointer)
 
     async def process_turn(
         self, request: AgentTurnRequest, guard_context: GuardContext
@@ -156,7 +153,7 @@ class DynamicOrderAgentCoordinator:
                 "ORDER_AGENT_OUT_OF_SCOPE", "Agent policy is unavailable.", retryable=False
             )
         graph_generation_id = await self._graph_state.active_generation(self._schema)
-        version, state, replay = await self._conversations.load_for_turn(
+        version, conversation_state, replay = await self._conversations.load_for_turn(
             request=request,
             graph_generation_id=graph_generation_id,
         )
@@ -168,543 +165,89 @@ class DynamicOrderAgentCoordinator:
                 "The conversation was updated by another request.",
                 retryable=True,
             )
-        context = AgentTurnContext(
-            conversation_id=request.conversation_id,
-            client_turn_id=request.client_turn_id,
-            user_message=request.message,
-            schema_version=self._schema.schema_version,
-            graph_generation_id=graph_generation_id,
-            configuration_release_id=self._schema.configuration_release_id,
-            policy_version=self._schema.policy_version,
-            prompt_version=self._schema.prompt_version,
-            compact_schema=await self._knowledge.compact_schema(self._schema, request.agent_id),
-            conversation_state=state,
+
+        thread_id = ReasoningThreadIdFactory.order_discovery_thread_id(
+            conversation_id=request.conversation_id, turn_id=request.client_turn_id, attempt=1
         )
-        invocation = await self._invoke_decide(context)
-        last_provider = invocation.provider
-        last_model = invocation.model
-        queries_used = 0
-        correction_attempts = 0
+        run_id = thread_id
+        await self._run_lifecycle.start_run(run_id=run_id, thread_id=thread_id)
 
-        for _step in range(policy.max_reasoning_steps):
-            action = invocation.action
-            if action.action_type is ActionType.OUT_OF_SCOPE:
-                raise OrderAgentFailure(
-                    "ORDER_AGENT_OUT_OF_SCOPE",
-                    "That's outside what I can help with here — I'm set up for order "
-                    "discovery and return-management questions. Let me know if there's "
-                    "something in that space I can look into.",
-                    retryable=False,
-                )
-            try:
-                self._capability_guard.validate(guard_context, action.business_capability)
-            except GuardRejected as exc:
-                if exc.code == "ORDER_AGENT_INVALID_CAPABILITY":
-                    # The model chose a real, in-scope capability but formatted the
-                    # string wrong (casing, separators) - that's a recoverable
-                    # correction, not a hard stop, unlike a genuinely disallowed role.
-                    if correction_attempts >= policy.max_correction_attempts:
-                        raise OrderAgentFailure(
-                            "ORDER_AGENT_OUT_OF_SCOPE", exc.message, retryable=False
-                        ) from exc
-                    correction_attempts += 1
-                    invocation = await self._invoke_correction(
-                        context=context,
-                        invalid_action=action,
-                        validation_error=exc.message,
-                    )
-                    last_provider, last_model = invocation.provider, invocation.model
-                    continue
-                raise OrderAgentFailure(exc.code, exc.message, retryable=False) from exc
-
-            if action.action_type is ActionType.GET_SCHEMA:
-                details = await self._knowledge.schema_details(
-                    self._schema, action.schema_entity_ids
-                )
-                context = context.model_copy(
-                    update={"schema_details": {**context.schema_details, **details}}
-                )
-                invocation = await self._invoke_decide(context)
-                last_provider, last_model = invocation.provider, invocation.model
-                continue
-
-            if action.action_type is ActionType.GRAPH_QUERY:
-                if queries_used >= policy.max_graph_queries_per_turn:
-                    raise OrderAgentFailure(
-                        "ORDER_AGENT_QUERY_BUDGET_EXCEEDED",
-                        "The request exceeded the configured knowledge-query limits.",
-                        retryable=False,
-                    )
-                plan = action.query_plan
-                if plan is None:
-                    raise AssertionError("validated GRAPH_QUERY action lacks query_plan")
-                try:
-                    self._schema_guard.validate(guard_context, plan)
-                    self._query_safety_guard.validate(plan)
-                    compiled = self._compiler.compile_read(self._schema, plan)
-                except (GuardRejected, ValueError) as exc:
-                    if correction_attempts >= policy.max_correction_attempts:
-                        code = (
-                            exc.code
-                            if isinstance(exc, GuardRejected)
-                            else "ORDER_AGENT_MODEL_OUTPUT_INVALID"
-                        )
-                        raise OrderAgentFailure(code, str(exc), retryable=True) from exc
-                    correction_attempts += 1
-                    invocation = await self._invoke_correction(
-                        context=context,
-                        invalid_action=action,
-                        validation_error=str(exc),
-                    )
-                    last_provider, last_model = invocation.provider, invocation.model
-                    continue
-                raw_result = await self._knowledge.execute(
-                    schema=self._schema,
-                    graph_generation_id=graph_generation_id,
-                    plan=plan,
-                    compiled_cypher=compiled.cypher,
-                    parameters=compiled.parameters,
-                )
-                evidence = QueryEvidence.create(
-                    query_execution_id=str(uuid4()),
-                    schema_version=self._schema.schema_version,
-                    graph_generation_id=graph_generation_id,
-                    logical_plan_checksum=sha256_digest(plan.model_dump(mode="json")),
-                    compiled_query_checksum=compiled.checksum,
-                    result=raw_result,
-                )
-                queries_used += 1
-                context = context.model_copy(
-                    update={"query_evidence": (*context.query_evidence, evidence)}
-                )
-                invocation = await self._invoke_decide(context)
-                last_provider, last_model = invocation.provider, invocation.model
-                continue
-
-            if action.action_type is ActionType.ORDER_SEARCH:
-                intent = action.search_intent
-                if intent is None:
-                    raise AssertionError("validated ORDER_SEARCH action lacks search_intent")
-
-                cache = context.conversation_state.get("orderSearchCache")
-                if intent.wantsMoreResults and isinstance(cache, dict) and cache.get("candidates"):
-                    cached_candidates = cache["candidates"]
-                    shown = int(cache.get("shown", 0))
-                    page = cached_candidates[shown : shown + RESULT_PAGE_SIZE]
-                    ranked = {
-                        "intent": intent.model_dump(),
-                        "candidates": page,
-                        "total_found": cache.get("totalFound", len(cached_candidates)),
-                        "unsupported_signals": [],
-                    }
-                    evidence = QueryEvidence.create(
-                        query_execution_id=str(uuid4()),
-                        schema_version=self._schema.schema_version,
-                        graph_generation_id=graph_generation_id,
-                        logical_plan_checksum=sha256_digest(intent.model_dump(mode="json")),
-                        compiled_query_checksum=sha256_digest(
-                            {"cachedPage": True, "shown": shown + len(page)}
-                        ),
-                        result=ranked,
-                    )
-                    updated_cache = {**cache, "shown": shown + len(page)}
-                    context = context.model_copy(
-                        update={
-                            "query_evidence": (*context.query_evidence, evidence),
-                            "conversation_state": {
-                                **context.conversation_state,
-                                "orderSearchCache": updated_cache,
-                            },
-                        }
-                    )
-                    invocation = await self._invoke_decide(context)
-                    last_provider, last_model = invocation.provider, invocation.model
-                    continue
-
-                if queries_used >= policy.max_graph_queries_per_turn:
-                    raise OrderAgentFailure(
-                        "ORDER_AGENT_QUERY_BUDGET_EXCEEDED",
-                        "The request exceeded the configured knowledge-query limits.",
-                        retryable=False,
-                    )
-
-                plans = build_progressive_plans(intent)
-                raw_results: list[Any] = []
-                compiled_checksums: list[str] = []
-                for plan in plans:
-                    if queries_used >= policy.max_graph_queries_per_turn:
-                        break
-                    try:
-                        # Every candidate plan must clear the same schema and role
-                        # authorization checks as an explicit GRAPH_QUERY action —
-                        # progressive search is not exempt from field-level policy.
-                        self._schema_guard.validate(guard_context, plan)
-                        self._query_safety_guard.validate(plan)
-                        compiled = self._compiler.compile_read(self._schema, plan)
-                    except (GuardRejected, QueryCompilationError) as exc:
-                        # This specific candidate plan is invalid for the active
-                        # schema or policy (e.g. an unsupported field/operator
-                        # combination) — skip it and keep trying the rest.
-                        logger.debug(
-                            "order_search_plan_rejected",
-                            extra={
-                                "conversation_id": context.conversation_id,
-                                "client_turn_id": context.client_turn_id,
-                                "operation": plan.operation.value,
-                                "entity_id": plan.start_entity_id,
-                                "reason": str(exc),
-                            },
-                        )
-                        continue
-                    try:
-                        raw_result = await self._knowledge.execute(
-                            schema=self._schema,
-                            graph_generation_id=graph_generation_id,
-                            plan=plan,
-                            compiled_cypher=compiled.cypher,
-                            parameters=compiled.parameters,
-                        )
-                    except Exception as exc:
-                        # A validated, well-formed plan still failed to execute —
-                        # that is an infrastructure problem (e.g. the graph store
-                        # is unreachable), not "no matching order". Surface it
-                        # instead of quietly reporting zero candidates.
-                        raise OrderAgentFailure(
-                            "ORDER_AGENT_SEARCH_EXECUTION_FAILED",
-                            "The order search could not be completed against the knowledge graph.",
-                            retryable=True,
-                        ) from exc
-                    raw_results.append(raw_result)
-                    compiled_checksums.append(compiled.checksum)
-                    queries_used += 1
-
-                ranked = rank_search_results(intent, raw_results)
-
-                if (
-                    ranked["total_found"] == 0
-                    and intent.customerNames
-                    and queries_used < policy.max_graph_queries_per_turn
-                ):
-                    ranked = await self._fuzzy_customer_fallback(
-                        intent=intent,
-                        ranked=ranked,
-                        guard_context=guard_context,
-                        graph_generation_id=graph_generation_id,
-                        context=context,
-                    )
-                    queries_used += 1
-
-                page_candidates = ranked["candidates"][:RESULT_PAGE_SIZE]
-                new_cache = {
-                    "signature": search_intent_signature(intent),
-                    "intent": ranked["intent"],
-                    "candidates": ranked["candidates"],
-                    "shown": len(page_candidates),
-                    "totalFound": ranked["total_found"],
-                }
-
-                evidence = QueryEvidence.create(
-                    query_execution_id=str(uuid4()),
-                    schema_version=self._schema.schema_version,
-                    graph_generation_id=graph_generation_id,
-                    logical_plan_checksum=sha256_digest(intent.model_dump(mode="json")),
-                    compiled_query_checksum=sha256_digest(
-                        {"plans": sorted(compiled_checksums)}
-                    ),
-                    result={**ranked, "candidates": page_candidates},
-                )
-                context = context.model_copy(
-                    update={
-                        "query_evidence": (*context.query_evidence, evidence),
-                        "conversation_state": {
-                            **context.conversation_state,
-                            "orderSearchCache": new_cache,
-                        },
-                    }
-                )
-                invocation = await self._invoke_decide(context)
-                last_provider, last_model = invocation.provider, invocation.model
-                continue
-
-            if action.action_type is ActionType.REQUEST_ON_DEMAND_SYNC:
-                if self._on_demand_sync is None:
-                    raise OrderAgentFailure(
-                        "ON_DEMAND_SYNC_SOURCE_UNAVAILABLE",
-                        "Targeted source synchronization is not enabled.",
-                        retryable=True,
-                    )
-                anchor_request = action.strong_anchor_request
-                original_query = action.original_query_plan
-                if anchor_request is None or original_query is None:
-                    raise AssertionError("validated sync action lacks required payload")
-                try:
-                    normalized_values = self._strong_anchor_guard.validate(
-                        guard_context, anchor_request
-                    )
-                    self._schema_guard.validate(guard_context, original_query)
-                    self._query_safety_guard.validate(original_query)
-                except GuardRejected as exc:
-                    if correction_attempts >= policy.max_correction_attempts:
-                        raise OrderAgentFailure(exc.code, exc.message, retryable=True) from exc
-                    correction_attempts += 1
-                    invocation = await self._invoke_correction(
-                        context=context,
-                        invalid_action=action,
-                        validation_error=exc.message,
-                    )
-                    last_provider, last_model = invocation.provider, invocation.model
-                    continue
-                entity = self._schema.entities[anchor_request.entity_id]
-                normalized_for_plan = {
-                    anchor.field_id: (anchor.operator, normalized_values[anchor.field_id])
-                    for anchor in anchor_request.anchors
-                }
-                source_plan = build_targeted_read_plan(
-                    schema=self._schema,
-                    entity_id=anchor_request.entity_id,
-                    normalized_anchors=normalized_for_plan,
-                )
-                digest = on_demand_request_digest(
-                    tenant_scope=guard_context.principal.tenant_id,
-                    source_asset_id=entity.source_asset_id,
-                    entity_id=anchor_request.entity_id,
-                    strong_anchor_id=anchor_request.strong_anchor_id,
-                    normalized_anchors=normalized_values,
-                    schema_version=self._schema.schema_version,
-                    graph_generation_id=graph_generation_id,
-                    mapping_version=self._schema.compiler_version,
-                )
-                await self._on_demand_sync.synchronize(
-                    schema=self._schema,
-                    graph_generation_id=graph_generation_id,
-                    request_digest=digest,
-                    plan=source_plan,
-                )
-                compiled = self._compiler.compile_read(self._schema, original_query)
-                raw_result = await self._knowledge.execute(
-                    schema=self._schema,
-                    graph_generation_id=graph_generation_id,
-                    plan=original_query,
-                    compiled_cypher=compiled.cypher,
-                    parameters=compiled.parameters,
-                )
-                evidence = QueryEvidence.create(
-                    query_execution_id=str(uuid4()),
-                    schema_version=self._schema.schema_version,
-                    graph_generation_id=graph_generation_id,
-                    logical_plan_checksum=sha256_digest(original_query.model_dump(mode="json")),
-                    compiled_query_checksum=compiled.checksum,
-                    result=raw_result,
-                )
-                queries_used += 1
-                context = context.model_copy(
-                    update={"query_evidence": (*context.query_evidence, evidence)}
-                )
-                invocation = await self._invoke_decide(context)
-                last_provider, last_model = invocation.provider, invocation.model
-                continue
-
-            if action.action_type in {ActionType.RESPOND, ActionType.OUT_OF_SCOPE}:
-                if action.response is None:
-                    raise AssertionError("validated response action lacks response")
-                try:
-                    self._response_safety_guard.validate(
-                        action.response,
-                        allowed_capabilities=guard_context.agent_policy.allowed_business_capabilities,
-                    )
-                except GuardRejected as exc:
-                    raise OrderAgentFailure(exc.code, exc.message, retryable=True) from exc
-                validation = self._hallucination_guard.validate(
-                    response=action.response,
-                    evidence=context.query_evidence,
-                    graph_generation_id=graph_generation_id,
-                )
-                if not validation.valid:
-                    logger.warning(
-                        "order_agent_response_validation_failed",
-                        extra={
-                            "conversation_id": context.conversation_id,
-                            "client_turn_id": context.client_turn_id,
-                            "correction_attempts": correction_attempts,
-                            "failures": [
-                                {
-                                    "statement_id": item.statement_id,
-                                    "reason": item.reason,
-                                }
-                                for item in validation.failures
-                            ],
-                        },
-                    )
-                    if correction_attempts >= policy.max_correction_attempts:
-                        raise OrderAgentFailure(
-                            "ORDER_AGENT_RESPONSE_VALIDATION_FAILED",
-                            "The response could not be validated against the active knowledge graph.",
-                            retryable=True,
-                        )
-                    correction_attempts += 1
-                    invocation = await self._invoke_response_correction(
-                        context=context,
-                        invalid_response=action.response,
-                        validation_error="; ".join(item.reason for item in validation.failures),
-                    )
-                    last_provider, last_model = invocation.provider, invocation.model
-                    continue
-                return await self._commit_response(
-                    request=request,
-                    expected_version=version,
-                    context=context,
-                    response=action.response,
-                    provider=last_provider,
-                    model=last_model,
-                )
-
-        raise OrderAgentFailure(
-            "MAX_REASONING_STEPS_REACHED",
-            "The reasoning step limit was reached before discovery completed.",
-            retryable=True,
-        )
-
-    async def _invoke_decide(self, context: AgentTurnContext) -> ModelInvocationResult:
-        try:
-            return await self._model.decide(context)
-        except Exception as exc:
-            logger.exception(
-                "order_agent_decide_failed",
-                extra={
-                    "conversation_id": context.conversation_id,
-                    "client_turn_id": context.client_turn_id,
-                },
-            )
-            raise OrderAgentFailure(
-                "ORDER_AGENT_LLM_FAILED",
-                "The configured reasoning models could not process the request.",
-                retryable=True,
-            ) from exc
-
-    async def _invoke_correction(
-        self,
-        *,
-        context: AgentTurnContext,
-        invalid_action: AgentAction,
-        validation_error: str,
-    ) -> ModelInvocationResult:
-        try:
-            return await self._model.correct_action(
-                context=context,
-                invalid_action=invalid_action,
-                validation_error=validation_error,
-            )
-        except Exception as exc:
-            raise OrderAgentFailure(
-                "ORDER_AGENT_LLM_FAILED",
-                "The configured reasoning models could not correct an invalid action.",
-                retryable=True,
-            ) from exc
-
-    async def _invoke_response_correction(
-        self,
-        *,
-        context: AgentTurnContext,
-        invalid_response: StructuredAgentResponse,
-        validation_error: str,
-    ) -> ModelInvocationResult:
-        try:
-            return await self._model.correct_response(
-                context=context,
-                invalid_response=invalid_response,
-                validation_error=validation_error,
-            )
-        except Exception as exc:
-            raise OrderAgentFailure(
-                "ORDER_AGENT_LLM_FAILED",
-                "The configured reasoning models could not correct an invalid response.",
-                retryable=True,
-            ) from exc
-
-    async def _fuzzy_customer_fallback(
-        self,
-        *,
-        intent: OrderSearchIntent,
-        ranked: dict[str, Any],
-        guard_context: GuardContext,
-        graph_generation_id: str,
-        context: AgentTurnContext,
-    ) -> dict[str, Any]:
-        """Best-effort misspelling recovery when an exact/partial name search finds nothing.
-
-        Fetches one bounded, unfiltered batch of customers and scores it client-side
-        with difflib — never blocks or fails the turn if this step itself errors,
-        since the associate is no worse off than the zero-result search that
-        triggered it.
-        """
-        plan = build_customer_fuzzy_probe_plan()
-        try:
-            self._schema_guard.validate(guard_context, plan)
-            self._query_safety_guard.validate(plan)
-            compiled = self._compiler.compile_read(self._schema, plan)
-            raw_result = await self._knowledge.execute(
-                schema=self._schema,
-                graph_generation_id=graph_generation_id,
-                plan=plan,
-                compiled_cypher=compiled.cypher,
-                parameters=compiled.parameters,
-            )
-        except Exception:
-            logger.debug(
-                "order_search_fuzzy_fallback_unavailable",
-                extra={
-                    "conversation_id": context.conversation_id,
-                    "client_turn_id": context.client_turn_id,
-                },
-            )
-            return ranked
-
-        rows = raw_result.get("rows", []) if isinstance(raw_result, dict) else []
-        matches = fuzzy_match_customers(intent.customerNames, rows)
-        if not matches:
-            return ranked
-
-        logger.info(
-            "order_search_fuzzy_fallback_matched",
-            extra={
-                "conversation_id": context.conversation_id,
-                "client_turn_id": context.client_turn_id,
-                "match_count": len(matches),
-            },
-        )
-        candidates = [
-            {"data": row, "score": 0.6, "matches": ["customer_name_fuzzy"]} for row in matches
-        ]
-        return {
-            "intent": ranked["intent"],
-            "candidates": candidates,
-            "total_found": len(candidates),
-            "unsupported_signals": ranked["unsupported_signals"],
+        initial_state: OrderAgentGraphState = {
+            "conversation_id": request.conversation_id,
+            "client_turn_id": request.client_turn_id,
+            "user_message": request.message,
+            "schema_version": self._schema.schema_version,
+            "graph_generation_id": graph_generation_id,
+            "configuration_release_id": self._schema.configuration_release_id,
+            "policy_version": self._schema.policy_version,
+            "prompt_version": self._schema.prompt_version,
+            "agent_id": request.agent_id,
+            "run_id": run_id,
+            "requested_schema_entity_ids": (),
+            "evidence_refs": (),
+            "order_search_cache": cast(
+                "dict[str, Any] | None", conversation_state.get("orderSearchCache")
+            ),
+            "action": None,
+            "reasoning_steps_used": 0,
+            "queries_used": 0,
+            "correction_attempts": 0,
+            "clarifications_used": 0,
+            "replans_used": 0,
+            "targeted_syncs_used": 0,
+            "final_response": None,
         }
 
-    async def _commit_response(
-        self,
-        *,
-        request: AgentTurnRequest,
-        expected_version: int,
-        context: AgentTurnContext,
-        response: StructuredAgentResponse,
-        provider: str,
-        model: str,
-    ) -> AgentTurnResult:
+        try:
+            final_state = await self._graph.ainvoke(
+                initial_state,
+                context=TurnRuntimeContext(guard_context=guard_context),
+                config={
+                    "configurable": {"thread_id": thread_id},
+                    "recursion_limit": _RECURSION_LIMIT,
+                },
+            )
+        except Exception:
+            await self._retention.mark_terminal(
+                self._system_store,
+                self._mongo_client,
+                run_id=run_id,
+                thread_id=thread_id,
+                lifecycle_state=RunLifecycleState.FAILED,
+                terminal_at=datetime.now(UTC),
+            )
+            raise
+
+        await self._retention.mark_terminal(
+            self._system_store,
+            self._mongo_client,
+            run_id=run_id,
+            thread_id=thread_id,
+            lifecycle_state=RunLifecycleState.COMPLETED,
+            terminal_at=datetime.now(UTC),
+        )
+
+        response = StructuredAgentResponse.model_validate(final_state["final_response"])
+        evidence: tuple[QueryEvidence, ...] = await self._evidence_store.get_many(
+            final_state.get("evidence_refs", ())
+        )
+        new_conversation_state = {
+            **conversation_state,
+            "orderSearchCache": final_state.get("order_search_cache"),
+        }
         provisional = AgentTurnResult(
             conversation_id=request.conversation_id,
-            conversation_version=expected_version + 1,
+            conversation_version=version + 1,
             client_turn_id=request.client_turn_id,
-            graph_generation_id=context.graph_generation_id,
+            graph_generation_id=graph_generation_id,
             response=response,
-            query_evidence=context.query_evidence,
-            model_provider=provider,
-            model_name=model,
+            query_evidence=evidence,
+            model_provider=final_state["last_provider"],
+            model_name=final_state["last_model"],
         )
         return await self._conversations.commit_turn(
             request=request,
-            expected_version=expected_version,
+            expected_version=version,
             result=provisional,
-            conversation_state=context.conversation_state,
+            conversation_state=new_conversation_state,
         )

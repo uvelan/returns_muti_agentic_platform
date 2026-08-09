@@ -1,10 +1,14 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Verified HEAD: pending this slice's commit (previous: `7fd10ad`)
-Last pushed green commit: `7fd10ad` (Phase 8 / Wave C1 — canonical source connectors)
-Slice: **Phase 7 / Wave C2 — Order Discovery LangGraph decomposition + Temporal host (Commit 1: Foundations)**
-Status: DONE (Commit 1 of 3; Commit 2 = LangGraph node decomposition, Commit 3 = Temporal workflow host, both not yet started)
+Verified HEAD: pending this slice's commit (previous: `8d39923`)
+Last pushed green commit: `8d39923` (Phase 7 / Wave C2, Commit 1 — foundations)
+Slice: **Phase 7 / Wave C2 — Order Discovery LangGraph decomposition + Temporal host (Commit 2: LangGraph decomposition)**
+Status: DONE (Commit 2 of 3; Commit 3 = Temporal workflow host, not yet started)
+
+## Phase 7 / Wave C2, Commit 1 — Foundations
+
+Status: DONE (see git history for `8d39923`; superseded as "current slice" by Commit 2 below).
 
 ## Phase 8 / Wave C1 — Canonical read-only source connector framework
 
@@ -948,21 +952,202 @@ end-to-end, unless resolved first.
   (same container): 268 passed, 46 errors — all 46 the pre-existing `NVIDIA_API_KEY`
   fixture gap above, zero relation to this commit's diff.
 
+## Phase 7 / Wave C2, Commit 2 — LangGraph node decomposition (this slice)
+
+**Scope.** Decomposed `DynamicOrderAgentCoordinator.process_turn()`'s ~710-line
+imperative for-loop into a compiled `langgraph.graph.StateGraph`, per a Plan-agent
+design pass (mirroring Phase 8/Commit 1's discovery-then-plan approach given this was
+the largest single phase attempted this session). The design surfaced one significant,
+previously-unbuilt gap — nothing in `src` wired a real `SystemStore`/`EnvelopeEncryptor`
+into app startup, only test fixtures constructed them — user explicitly chose to build
+this as step 0 rather than stub it or defer it, so the whole slice is verifiable
+end-to-end against real Mongo.
+
+**Step 0 — real SystemStore bootstrap at app startup (previously missing entirely).**
+New `platform/system_store/manifest_loader.py` loads `config/platform/system_store.yaml`
+directly into bootstrap-ready `StructureDefinition`s via a **local** pydantic payload
+model (`_SystemStoreConfigPayload`/`_SystemStoreStructurePayload`) rather than importing
+`configuration.domain.system_store.SystemStoreConfig` — `platform/*` must never import a
+domain module (design doc §13.1, rule R2a, enforced by
+`tests/platform/test_layering.py::test_platform_imports_no_domain_module`); this was
+caught and fixed after an initial version imported the domain type directly, which is
+exactly why that architecture test exists. Deliberately bypasses the full configuration
+release/manifest pipeline (DRAFT/VALIDATED/APPROVED/ACTIVE approval semantics) — the
+system-store manifest declares which Mongo collections/indexes exist, not a versioned
+business-schema release. `main.py` gained `_bootstrap_reasoning_system_store()`, called
+from the existing `dynamic_agent_enabled` block before `build_dynamic_order_agent_runtime`,
+constructing a real `SystemStoreBootstrapper` (winner/waiter/takeover, matching Slice
+3R.8's established pattern exactly) and a real `AesGcmEnvelopeEncryptor`. New
+`Settings.reasoning_encryption_key`/`reasoning_encryption_key_secret_reference` (base64,
+validated to decode to exactly 32 bytes; production mode requires the Vault reference and
+rejects the dev-default value, matching `validation_fingerprint_key`'s established
+pattern) and `Settings.system_store_manifest_path`.
+
+**The LangGraph decomposition itself.**
+- `dynamic_knowledge/order_agent/errors.py` (new) — `OrderAgentFailure` moved out of
+  `coordinator.py` into its own module so `graph_nodes.py` and `coordinator.py` can both
+  import it without a circular dependency; re-exported from `coordinator.py` unchanged
+  for every existing importer (`api/order_agent.py`, `runtime_factory.py`).
+- `dynamic_knowledge/order_agent/state.py` — new `OrderAgentGraphState` TypedDict (every
+  field a bounded/model-generated value or a reference/id/counter, never raw `QueryEvidence`)
+  and the literal `ORDER_DISCOVERY_CHECKPOINT_ALLOWLIST` frozenset `CheckpointRedactor`
+  enforces against every checkpoint write. A dedicated pure test
+  (`test_order_agent_graph_state.py`) asserts the allowlist and the TypedDict's own keys
+  never drift apart, and that `CheckpointRedactor` genuinely rejects an extra key.
+- `dynamic_knowledge/order_agent/graph_nodes.py` (new, ~950 lines) — 10 node functions
+  (`decide`, `validate_action`, `out_of_scope`, `get_schema`, `graph_query`,
+  `order_search`, `request_on_demand_sync`, `clarify`, `replan`, `respond`) plus routing
+  functions, each a 1:1 port of the equivalent original `process_turn()` branch. Static
+  dependencies (guards, gateways, the compiler, the evidence store) close over via a
+  `GraphDependencies` dataclass built once at graph-compile time; per-invocation data that
+  must never be checkpointed (`GuardContext`, carrying principal/tenant/role information)
+  flows through LangGraph's `Runtime.context` (`TurnRuntimeContext`), never through state.
+  Evidence-by-reference: every node that produces `QueryEvidence` calls
+  `EvidenceStore.put(run_id=..., evidence=...)` and stores only `query_execution_id` in
+  `evidence_refs`; `decide`/`respond`/`clarify` rehydrate full evidence via `get_many()`
+  immediately before calling the model gateway or `HallucinationGuard`. New budget gates
+  (`max_clarifications`, `max_replans`, `max_targeted_syncs_per_turn` — declared in
+  Commit 1, unconsumed until now) each raise a new, additive `OrderAgentFailure` code
+  (`ORDER_AGENT_CLARIFICATION_BUDGET_EXCEEDED`/`ORDER_AGENT_REPLAN_BUDGET_EXCEEDED`/
+  `ORDER_AGENT_SYNC_BUDGET_EXCEEDED`) on top of every existing code/message/retryable
+  flag reproduced verbatim. `CLARIFY` is a same-turn terminal action (not a LangGraph
+  `interrupt()`) — the associate's follow-up answer becomes a brand-new turn/thread,
+  keeping `thread_ids.py`'s "one thread per turn" invariant intact and needing no
+  Temporal wiring; flagged as a small, swappable seam (a `ClarificationStrategy`-shaped
+  extension point) for Commit 3 to later upgrade to a real `interrupt()`/`Command(resume=...)`
+  pattern without a graph topology change. `REPLAN` resets `evidence_refs`/
+  `order_search_cache` but preserves every turn-wide budget counter (a replan cannot be
+  used to bypass ceilings). `CandidateSet` (built in an earlier phase, previously zero
+  production consumers) is now wired for real: `order_search` builds one per fresh search
+  with a 30-minute TTL, embedded in `order_search_cache["candidateSet"]` (no new store —
+  ids/checksums/timestamps only, comparable sensitivity to what `orderSearchCache` already
+  persisted unencrypted); a new `AgentAction.selected_candidate_id` field +
+  `LogicalQueryPlan.candidate_set_id`-triggered validator rule let `graph_query` resolve
+  and ground a later "the second one"-style reference against it via
+  `CandidateSet.validate_selection()`, routed through the same correction protocol as any
+  other guard rejection.
+- **Two real bugs found and fixed while wiring `CandidateSet`, not part of the original
+  ask:** `search_strategy.rank_search_results`'s dedup-key fallback was `str(id(row))` —
+  Python object identity, never stable across process restarts or even two calls in the
+  same process for equivalent data, so it could never serve as a `CandidateSet` member a
+  later turn's `validate_selection()` could match against. Fixed with a new shared
+  `candidate_key(row)` helper (sales_order_number/customer_id/sku, falling back to a
+  deterministic `sha256_digest(row)`), used identically by `rank_search_results` and the
+  fuzzy-customer-fallback path (previously built candidates with no key at all). Each
+  candidate's output dict gained a `candidate_id` field so callers never need to
+  re-derive the key.
+- `dynamic_knowledge/order_agent/graph.py` (new) — `build_order_agent_graph(deps,
+  checkpointer=...)`, wiring/topology only; every node's behavior lives in
+  `graph_nodes.py`. `out_of_scope` is reached directly from routing, never through
+  `respond`'s guards — preserving a real dead-code finding from the original
+  coordinator.py (an `OUT_OF_SCOPE` branch inside the RESPOND handler that was provably
+  unreachable, since `OUT_OF_SCOPE` was always intercepted earlier in the loop).
+- `dynamic_knowledge/order_agent/coordinator.py` (rewritten, same public class name and
+  `process_turn(request, guard_context) -> AgentTurnResult` signature — a true drop-in
+  replacement, zero changes needed in `api/order_agent.py`) — now builds the compiled
+  graph once at construction (real `SystemStoreCheckpointSaver`), and `process_turn`
+  owns exactly what the graph must not: conversation load/commit (unchanged), a real
+  `ReasoningRunLifecycle.start_run()` per turn (`thread_id = run_id =
+  ReasoningThreadIdFactory.order_discovery_thread_id(conversation_id, client_turn_id,
+  attempt=1)`), invoking the graph with `recursion_limit=256` (LangGraph's default of 25
+  is comfortably exceeded by policy's own allowed ceiling on `max_reasoning_steps`, up to
+  32, given each policy-enforced loop turn spans several LangGraph super-steps), and
+  `CheckpointRetentionPolicy.mark_terminal(..., COMPLETED)` on success /
+  `..., FAILED)` on any exception (re-raised unchanged after stamping) — the only place
+  run-lifecycle bookkeeping happens, keeping the graph itself free of it.
+- `dynamic_knowledge/integration/runtime_factory.py` — `build_dynamic_order_agent_runtime`
+  now constructs `QueryEvidenceStore(system_store, reasoning_encryptor)` and threads
+  `system_store`/`envelope_encryptor`/`mongo_client` into the rewritten coordinator.
+
+**Test suite rewrite.** The old fake-based `tests/dynamic_knowledge/test_order_agent.py`
+could no longer construct a coordinator with pure fakes (real `SystemStore`/checkpointer/
+run-lifecycle are now load-bearing constructor dependencies) — deleted, superseded by:
+- `test_order_agent_graph.py` (new, 8 tests, fake gateways + LangGraph's `InMemorySaver`,
+  no real infra needed) — ports all 3 of the old file's scenarios byte-for-byte
+  (model-failure-has-no-fallback, query-then-respond, miscased-capability-corrected) onto
+  the compiled graph directly, plus 5 new scenarios covering behavior that didn't exist
+  before this commit: `OUT_OF_SCOPE` fails closed before any capability check, `CLARIFY`
+  ends the turn with `requested_input` set, `REPLAN` resets evidence and continues
+  reasoning, `max_reasoning_steps` budget enforcement, and `ORDER_SEARCH` completing
+  cleanly to an empty-result cache (the shared `active_schema` fixture only defines
+  `entity_a`/`entity_b`, not the real-world entities `search_strategy.py` hardcodes, so
+  every progressive plan is guard-rejected — a genuine, pre-existing test-fixture
+  limitation, not something this commit could fix without touching the shared fixture;
+  `test_search_strategy.py`'s own tests already cover real scoring/matching).
+- `test_order_agent_coordinator_real_infra.py` (new, real Mongo via the `c2-test-runner`
+  throwaway container) — proves the coordinator *wrapper* (not just the graph) works
+  end-to-end: bootstraps a uniquely-suffixed copy of the real system-store manifest,
+  builds a real `SystemStore`/`AesGcmEnvelopeEncryptor`/real `MongoAtomicConversationStore`/
+  `MongoGraphStateProvider` (fake model/knowledge gateways — no live AI/Neo4j needed to
+  prove this specific wiring), runs one full turn, and asserts a real `reasoning_runs`
+  document exists with `lifecycle_state=COMPLETED` and `expires_at` set, and a real
+  encrypted `reasoning_checkpoints` document exists for the thread. Stable across 3
+  consecutive runs.
+- `test_reasoning_system_store_bootstrap.py` (new, step-0 verification) — the real
+  manifest loads and includes the reasoning structures with `encrypted: true` where
+  declared; the dev-default reasoning key decodes to exactly 32 bytes and round-trips
+  through `AesGcmEnvelopeEncryptor`; a uniquely-suffixed copy of the real manifest
+  bootstraps against real Mongo, a second bootstrap reuses structures and creates
+  nothing, and a real encrypted document written through the bootstrapped `SystemStore`
+  round-trips through the real encryptor.
+
+**Self-inflicted process note (corrected before commit):** a `ruff format .`/`ruff check .`
+invocation was mistakenly run repo-wide instead of scoped to this slice's files,
+reformatting ~90 unrelated files (pre-existing formatting debt untouched by this
+session) and introducing one worse-than-before cosmetic change. Caught immediately via
+`git status`; every unintended file was restored with `git checkout --` before staging,
+confirmed by diffing the resulting file list against the intended Commit 2 change set
+and re-running the full gate on exactly that list.
+
+**Deliberately not done this commit (scope boundary, not a gap — Commit 3):**
+- No Temporal workflow host — `coordinator.process_turn` is still invoked synchronously
+  from `api/order_agent.py`, unchanged.
+- No `GENERATION_CHANGED` signal handling, no `interrupt()`-based CLARIFY resume across
+  HTTP requests — both require the workflow host Commit 3 builds.
+- `ReasoningObservability` (structured logging/metrics around graph execution) was not
+  wired into the coordinator — a separable concern layerable later without changing the
+  core checkpoint/evidence/lifecycle mechanics built here.
+
+**Gate receipts.**
+- `ruff format --check` / `ruff check` on the exact 16-file Commit 2 change set: clean.
+- `mypy src`: 47 errors in 15 files — **unchanged** from the Commit 1 baseline (confirmed
+  identical count both before and after this commit's full diff, including after the
+  `ruff format .` incident was corrected). All new occurrences are the same two
+  already-accepted false-positive classes documented in Commit 1 (`GraphDriver`/
+  `GenerationDriver` vs. `AsyncDriver` structural-typing; frozen `StructureDefinition` vs.
+  `_StructureLike` Protocol's implicit mutable-attribute variance) — zero new categories.
+- `python -m compileall -q src` / `python -c "import return_platform.main"`: clean.
+- `pytest tests/ -q` (real Mongo + real Neo4j, via the `c2-test-runner` throwaway
+  container attached to `return-multi-agent-platform_platform`, excluding
+  `test_order_agent_rest.py` and three container-artifact-only files that depend on
+  `repo_root/scripts/` this `backend/`-only container copy doesn't include —
+  `test_ai_model_probe_evaluator.py`, `tests/gate_tools/`, `test_runtime_env_key_sync.py`,
+  all confirmed pre-existing per Phase 8's own ledger entry): **1566 passed, 2 skipped, 0
+  failed**, 99 errors — every one of the 99 confirmed to be the same pre-existing
+  `NVIDIA_API_KEY`/`GOOGLE_API_KEY` fixture gap flagged in Phase 8's ledger entry (spot-
+  checked several directly), zero relation to this commit's diff.
+- `test_order_agent_graph.py` (8/8), `test_order_agent_coordinator_real_infra.py` (1/1,
+  stable across 3 runs), `test_reasoning_system_store_bootstrap.py` (3/3, stable across 3
+  runs), `test_order_agent_graph_state.py` (3/3): all pass in isolation and as part of
+  the full suite.
+
 ## Next READY slice
 
-Commit 2 of Phase 7 / Wave C2: LangGraph node decomposition of
-`DynamicOrderAgentCoordinator` (Task #78) — nodes for decide/get_schema/graph_query/
-order_search/request_on_demand_sync/clarify/replan/respond, evidence-by-reference
-checkpoint design using this commit's new `QueryEvidenceStore`, `CandidateSet`
-wiring, `CheckpointRedactor` allowlist enforcement. Then Commit 3 (Task #79): a real
-Temporal workflow host for Order Discovery conversations (one workflow per
-conversation, one Activity per turn, `SystemStoreCheckpointSaver`-backed,
-`GENERATION_CHANGED` signal handling, `api/order_agent.py` route change). Also still
-open, not part of any Phase 7 commit: the flagged Neo4j volume dedup task, the
+Commit 3 of Phase 7 / Wave C2 (Task #79): a real Temporal workflow host for Order
+Discovery conversations — one workflow per conversation, one Activity per turn
+(`run_order_discovery_turn`), `SystemStoreCheckpointSaver`-backed, a `GENERATION_CHANGED`
+signal handler, `api/order_agent.py`'s route updated to go through the workflow instead
+of calling `coordinator.process_turn` directly, and — per Commit 2's own flagged seam —
+upgrading `CLARIFY` from a same-turn terminal action to a real LangGraph `interrupt()`/
+`Command(resume=...)` pattern that can pause a thread across HTTP requests (no graph
+topology change needed, only the `clarify` node's internal strategy). Then Task #80: the
+remaining real-infra tests (end-to-end Temporal+LangGraph turn, generation-change
+mid-conversation abandon+restart, resume-after-crash) and the final gate/push. Also
+still open, not part of any Phase 7 commit: the flagged Neo4j volume dedup task, the
 pre-existing `openapi-drift`/`associate_flow.py` formatting conditions, the missing
-`NVIDIA_API_KEY`/`GOOGLE_API_KEY` values in `.env` (now blocking a wider swath of
-tests than at Phase 8's checkpoint), a real KMS-backed `EnvelopeEncryptor` (Phase 9),
-the `ReturnPlatformConfiguration` ↔ `RuntimeSnapshot` configuration-system bridge,
-mapping `orchestrator.py`'s real per-stage business logic onto agents, the 4-way
-source-config schema reconciliation, and the `LogicalTargetedReadPlan` AND/OR
-condition-tree redesign v2's full query shape would need.
+`NVIDIA_API_KEY`/`GOOGLE_API_KEY` values in `.env` (now blocking a wider swath of tests
+than at Phase 8's checkpoint), a real KMS-backed `EnvelopeEncryptor` (Phase 9),
+`ReasoningObservability` wiring into the coordinator, the `ReturnPlatformConfiguration` ↔
+`RuntimeSnapshot` configuration-system bridge, mapping `orchestrator.py`'s real per-stage
+business logic onto agents, the 4-way source-config schema reconciliation, and the
+`LogicalTargetedReadPlan` AND/OR condition-tree redesign v2's full query shape would need.

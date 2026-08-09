@@ -18,7 +18,6 @@ class RuntimeConfigurationError(RuntimeError):
     pass
 
 
-
 async def _resolve_required(
     resolver: VaultHTTPSecretResolver,
     reference_text: str,
@@ -27,9 +26,13 @@ async def _resolve_required(
     try:
         resolved = await resolver.get_secret(reference)
     except Exception as exc:
-        raise RuntimeConfigurationError(f"Required Vault secret is unavailable: {reference.to_uri()}") from exc
+        raise RuntimeConfigurationError(
+            f"Required Vault secret is unavailable: {reference.to_uri()}"
+        ) from exc
     if resolved is None:
-        raise RuntimeConfigurationError(f"Required Vault secret is unavailable: {reference.to_uri()}")
+        raise RuntimeConfigurationError(
+            f"Required Vault secret is unavailable: {reference.to_uri()}"
+        )
     return resolved.value
 
 
@@ -73,6 +76,7 @@ async def resolve_runtime_settings_from_vault(
         "sqlserver_password": settings.sqlserver_password_secret_reference,
         "validation_fingerprint_key": (settings.validation_fingerprint_key_secret_reference),
         "contact_lookup_hmac_key": settings.contact_lookup_hmac_key_secret_reference,
+        "reasoning_encryption_key": settings.reasoning_encryption_key_secret_reference,
     }
     for field_name, reference in scalar_references.items():
         if reference:

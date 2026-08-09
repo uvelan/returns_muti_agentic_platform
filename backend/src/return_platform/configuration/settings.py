@@ -1,3 +1,4 @@
+import base64
 import json
 from pathlib import Path
 from typing import Literal, Self
@@ -17,6 +18,10 @@ DEFAULT_AI_GATEWAY_CONFIGURATION_PATH = BACKEND_ROOT / "config" / "ai_gateway.ya
 DEFAULT_DYNAMIC_KNOWLEDGE_SCHEMA_PATH = (
     BACKEND_ROOT / "config" / "dynamic_knowledge" / "active-schema.return-order.yaml"
 )
+DEFAULT_SYSTEM_STORE_MANIFEST_PATH = BACKEND_ROOT / "config" / "platform" / "system_store.yaml"
+# Base64-encoded, deterministically-derived 32 raw bytes -- development-only. Never a
+# valid production value (rejected explicitly below when vault_secrets_resolved).
+DEV_DEFAULT_REASONING_ENCRYPTION_KEY_B64 = "z4hdfhOkyWNWVgigtCB8skElDHzOmAVUs6NEYWF+WQo="
 
 
 class Settings(BaseSettings):
@@ -41,6 +46,7 @@ class Settings(BaseSettings):
     ai_gateway_configuration_path: Path = Field(default=DEFAULT_AI_GATEWAY_CONFIGURATION_PATH)
     dynamic_order_agent_enabled: bool = True
     dynamic_knowledge_schema_path: Path = DEFAULT_DYNAMIC_KNOWLEDGE_SCHEMA_PATH
+    system_store_manifest_path: Path = DEFAULT_SYSTEM_STORE_MANIFEST_PATH
     environment: Literal["development", "test", "staging", "production"] = "development"
 
     vault_enabled: bool = False
@@ -66,6 +72,8 @@ class Settings(BaseSettings):
     )
     contact_lookup_hmac_key_secret_reference: str | None = None
     contact_lookup_hmac_key: SecretStr = SecretStr("development-contact-lookup-hmac-key-change-me")
+    reasoning_encryption_key_secret_reference: str | None = None
+    reasoning_encryption_key: SecretStr = SecretStr(DEV_DEFAULT_REASONING_ENCRYPTION_KEY_B64)
 
     probe_timeout_seconds: float = Field(default=2.0, gt=0.0, le=30.0)
     dependency_connect_timeout_seconds: float = Field(default=5.0, gt=0.0, le=30.0)
@@ -218,7 +226,7 @@ class Settings(BaseSettings):
     feedback_learning_enabled: bool = True
     audit_retention_days: int = Field(default=90, ge=7, le=3_650)
 
-    @field_validator("dynamic_knowledge_schema_path")
+    @field_validator("dynamic_knowledge_schema_path", "system_store_manifest_path")
     @classmethod
     def resolve_dynamic_knowledge_schema_path(cls, value: Path) -> Path:
         resolved_path = value.expanduser()
@@ -491,6 +499,22 @@ class Settings(BaseSettings):
             raise ValueError("Secret must not be blank.")
         return value
 
+    @field_validator("reasoning_encryption_key")
+    @classmethod
+    def validate_reasoning_encryption_key(cls, value: SecretStr) -> SecretStr:
+        raw = value.get_secret_value()
+        try:
+            decoded = base64.b64decode(raw, validate=True)
+        except Exception as exc:
+            raise ValueError(
+                "reasoning_encryption_key must be a base64-encoded 256-bit (32-byte) key"
+            ) from exc
+        if len(decoded) != 32:
+            raise ValueError(
+                f"reasoning_encryption_key must decode to exactly 32 bytes, got {len(decoded)}"
+            )
+        return value
+
     @field_validator("ai_studio_sqlserver_password", mode="before")
     @classmethod
     def normalize_blank_optional_secret(cls, value: object) -> object:
@@ -691,6 +715,9 @@ class Settings(BaseSettings):
                 "contact_lookup_hmac_key_secret_reference": (
                     self.contact_lookup_hmac_key_secret_reference
                 ),
+                "reasoning_encryption_key_secret_reference": (
+                    self.reasoning_encryption_key_secret_reference
+                ),
             }
             missing = sorted(name for name, value in required_references.items() if not value)
             if missing:
@@ -700,6 +727,11 @@ class Settings(BaseSettings):
                     raise ValueError("Production validation fingerprint key must be replaced.")
                 if self.contact_lookup_hmac_key.get_secret_value().endswith("change-me"):
                     raise ValueError("Production contact lookup HMAC key must be replaced.")
+                if (
+                    self.reasoning_encryption_key.get_secret_value()
+                    == DEV_DEFAULT_REASONING_ENCRYPTION_KEY_B64
+                ):
+                    raise ValueError("Production reasoning encryption key must be replaced.")
             hosted_ai_keys_present = any(
                 (
                     self.google_api_keys,

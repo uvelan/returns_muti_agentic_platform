@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any, TypedDict
 
 from pydantic import BaseModel, ConfigDict
 
@@ -78,3 +79,81 @@ class CandidateSet(BaseModel):
             raise ValueError("candidate set expired")
         if candidate_id not in self.candidate_ids:
             raise ValueError("candidate is not present in the immutable candidate set")
+
+
+class OrderAgentGraphState(TypedDict, total=False):
+    """One LangGraph checkpoint's state for one Order Discovery reasoning turn.
+
+    Every field here is either a bounded, model-generated/derived value (`action`,
+    `final_response` -- schema-constrained by AgentAction/StructuredAgentResponse,
+    never a raw source document) or a reference/id/counter. Full `QueryEvidence`
+    (including its raw `result`) is never stored here -- only `query_execution_id`
+    values in `evidence_refs`, rehydrated on demand via QueryEvidenceStore. See
+    ORDER_DISCOVERY_CHECKPOINT_ALLOWLIST, which this schema's keys must exactly
+    match; a field added here without adding it there fails closed at every
+    checkpoint write via CheckpointRedactor.enforce().
+    """
+
+    # Pinned identity, set once at graph input, never mutated.
+    conversation_id: str
+    client_turn_id: str
+    user_message: str
+    schema_version: str
+    graph_generation_id: str
+    configuration_release_id: str
+    policy_version: str
+    prompt_version: str
+    agent_id: str
+    run_id: str
+
+    # Accumulated working state -- ids only, never raw business data.
+    requested_schema_entity_ids: tuple[str, ...]
+    evidence_refs: tuple[str, ...]
+    order_search_cache: dict[str, Any] | None
+
+    # Current in-flight model action.
+    action: dict[str, Any] | None
+    last_provider: str
+    last_model: str
+    capability_validated: bool
+
+    # Budgets/counters.
+    reasoning_steps_used: int
+    queries_used: int
+    correction_attempts: int
+    clarifications_used: int
+    replans_used: int
+    targeted_syncs_used: int
+
+    # Terminal payload.
+    final_response: dict[str, Any] | None
+
+
+ORDER_DISCOVERY_CHECKPOINT_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "conversation_id",
+        "client_turn_id",
+        "user_message",
+        "schema_version",
+        "graph_generation_id",
+        "configuration_release_id",
+        "policy_version",
+        "prompt_version",
+        "agent_id",
+        "run_id",
+        "requested_schema_entity_ids",
+        "evidence_refs",
+        "order_search_cache",
+        "action",
+        "last_provider",
+        "last_model",
+        "capability_validated",
+        "reasoning_steps_used",
+        "queries_used",
+        "correction_attempts",
+        "clarifications_used",
+        "replans_used",
+        "targeted_syncs_used",
+        "final_response",
+    }
+)

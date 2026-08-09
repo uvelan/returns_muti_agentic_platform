@@ -46,6 +46,9 @@ from return_platform.dynamic_knowledge.order_agent.conversation_repository impor
     AtomicConversationRepository,
 )
 from return_platform.dynamic_knowledge.order_agent.coordinator import DynamicOrderAgentCoordinator
+from return_platform.platform.reasoning.evidence_store import QueryEvidenceStore
+from return_platform.platform.secrets.envelope import EnvelopeEncryptor
+from return_platform.platform.system_store.repository import SystemStore
 from return_platform.security.principal import Principal
 from return_platform.source_connectors.mongodb import MongoDBSourceScanConnector
 from return_platform.source_connectors.sqlserver import (
@@ -68,6 +71,8 @@ async def build_dynamic_order_agent_runtime(
     neo4j_driver: AsyncDriver,
     ai_gateway_configuration: LoadedAIGatewayConfiguration,
     route_pool: AIRoutePool,
+    system_store: SystemStore,
+    reasoning_encryptor: EnvelopeEncryptor,
 ) -> DynamicOrderAgentRuntime:
     schema = load_active_schema(settings.dynamic_knowledge_schema_path)
     conversation_documents = MongoAtomicConversationStore(
@@ -128,6 +133,10 @@ async def build_dynamic_order_agent_runtime(
         hallucination_guard=HallucinationGuard(),
         response_safety_guard=ResponseSafetyGuard(),
         on_demand_sync=on_demand_sync,
+        evidence_store=QueryEvidenceStore(system_store, reasoning_encryptor),
+        system_store=system_store,
+        envelope_encryptor=reasoning_encryptor,
+        mongo_client=platform_mongo,
     )
 
     async def guard_context_factory(request: Request, agent_id: str) -> GuardContext:

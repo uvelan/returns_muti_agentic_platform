@@ -113,9 +113,7 @@ def normalize_string(val: str) -> str:
 
 def _unsupported_signals_present(intent: OrderSearchIntent) -> tuple[str, ...]:
     return tuple(
-        field_name
-        for field_name in _UNSUPPORTED_INTENT_FIELDS
-        if getattr(intent, field_name)
+        field_name for field_name in _UNSUPPORTED_INTENT_FIELDS if getattr(intent, field_name)
     )
 
 
@@ -355,6 +353,21 @@ def _date_condition(intent: OrderSearchIntent) -> QueryCondition | None:
     )
 
 
+def candidate_key(row: dict[str, Any]) -> str:
+    """The stable identity a candidate row is deduplicated and referenced by --
+    shared between `rank_search_results` and any fallback path (e.g. fuzzy
+    customer matching) that builds candidates outside the normal ranking loop,
+    so every candidate a turn ever surfaces gets one consistent `candidate_id`
+    a later turn's `CandidateSet.validate_selection()` can match against."""
+    key = row.get("sales_order_number") or row.get("customer_id") or row.get("sku")
+    if key:
+        return str(key)
+    # A deterministic fallback -- str(id(row)) is Python object identity, never
+    # stable across process restarts (or even across two calls in the same
+    # process for equivalent data), so it cannot serve as a CandidateSet member.
+    return sha256_digest(row)
+
+
 def rank_search_results(
     intent: OrderSearchIntent,
     raw_results: list[dict[str, Any]],
@@ -373,15 +386,10 @@ def rank_search_results(
             if not isinstance(row, dict):
                 continue
 
-            key = (
-                row.get("sales_order_number")
-                or row.get("customer_id")
-                or row.get("sku")
-                or str(id(row))
-            )
+            key = candidate_key(row)
 
             candidate = candidates.setdefault(
-                key, {"data": row, "score": 0.0, "matches": []}
+                key, {"candidate_id": key, "data": row, "score": 0.0, "matches": []}
             )
             # A row for the same key may arrive from more than one plan with a
             # different (possibly narrower) field selection — merge rather
