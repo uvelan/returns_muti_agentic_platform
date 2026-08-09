@@ -1,14 +1,20 @@
-"""Bootstraps the real Mongo-backed SystemStore + EnvelopeEncryptor the
-reasoning subsystem's encrypted checkpoint/evidence structures need.
+"""Bootstraps the real Mongo-backed SystemStore + EnvelopeEncryptor from the
+system-store manifest.
 
-Shared by every process that needs a `DynamicOrderAgentCoordinator`: the
-FastAPI process (`main.py`) and the dedicated `order-discovery-worker`
-Temporal worker process (`scripts/run_order_discovery_worker.py`) both need
-their own `SystemStore`/`EnvelopeEncryptor`, but the underlying Mongo
-structures/migrations are shared infrastructure that must not be bootstrapped
-by two independently-written copies of the same logic -- mirrors
-`configuration/runtime_integrations.py`'s `verify_runtime_validation_receipts`,
-which `run_return_workflow_worker.py` already imports the same way.
+Every process that persists through the system store needs its own instance,
+but the underlying Mongo structures/migrations are shared infrastructure that
+must not be bootstrapped by two independently-written copies of the same logic.
+Today that is the FastAPI process (`main.py`), the `order-discovery-worker`
+Temporal worker (`scripts/run_order_discovery_worker.py`), and -- since Wave
+C3.1 -- the Graph Schema Analyzer's persistence.
+
+Lives in `bootstrap/` because it belongs to the composition root. It was
+originally `dynamic_knowledge/integration/reasoning_bootstrap.py` and named for
+the reasoning subsystem, which was accurate while that was its only caller;
+once a second, unrelated consumer appeared, keeping generic manifest bootstrap
+inside a business module would have meant the analyzer's composition depended on
+`dynamic_knowledge`. It loads the whole manifest, not a reasoning subset, so the
+name went with it.
 """
 
 from __future__ import annotations
@@ -37,13 +43,12 @@ from return_platform.platform.system_store.mongo import (
 from return_platform.platform.system_store.repository import SystemStore
 
 
-async def bootstrap_reasoning_system_store(
+async def bootstrap_system_store(
     settings: Settings,
     platform_mongo: AsyncMongoClient[dict[str, object]],
 ) -> tuple[SystemStore, AesGcmEnvelopeEncryptor]:
-    """Bootstrap the real Mongo-backed SystemStore the reasoning subsystem's
-    encrypted checkpoint/evidence structures need. Nothing in `src` did this before --
-    only test fixtures constructed a SystemStore/EnvelopeEncryptor directly."""
+    """Bootstrap every structure the manifest declares, and the envelope
+    encryptor guarding the ones marked `encrypted: true`."""
 
     config = load_system_store_config(settings.system_store_manifest_path)
     structures = structure_definitions(config)

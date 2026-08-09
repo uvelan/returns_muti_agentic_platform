@@ -74,6 +74,9 @@ class SystemStorePersistence:
     async def save_clarification(self, clarification: Clarification) -> None:
         await self.clarifications.save(clarification)
 
+    async def load_clarification(self, clarification_id: str) -> Clarification:
+        return await self.clarifications.load(clarification_id)
+
     async def list_clarifications(self, analysis_id: str) -> Sequence[Clarification]:
         return await self.clarifications.list_for_analysis(analysis_id)
 

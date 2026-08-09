@@ -31,6 +31,11 @@ class PersistencePort(Protocol):
     """One port, three entity families -- each with its own repository behind it."""
 
     # --- analysis sessions -------------------------------------------------
+    async def create_session(self, session: AnalysisSession) -> None:
+        """Insert a new session. Distinct from `save_session` because creation has
+        no predecessor version to compare against, and must fail on a duplicate id
+        rather than adopting whatever document already exists."""
+
     async def save_session(self, session: AnalysisSession, *, expected_version: int) -> None:
         """Compare-and-set on `expected_version`. Raises ConcurrentModification if
         the stored version moved."""
@@ -52,5 +57,8 @@ class PersistencePort(Protocol):
 
     # --- clarifications ----------------------------------------------------
     async def save_clarification(self, clarification: Clarification) -> None: ...
+
+    async def load_clarification(self, clarification_id: str) -> Clarification:
+        """Raises UnknownAnalysis when absent, matching load_session."""
 
     async def list_clarifications(self, analysis_id: str) -> Sequence[Clarification]: ...

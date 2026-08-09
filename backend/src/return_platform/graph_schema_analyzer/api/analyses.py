@@ -36,16 +36,21 @@ from return_platform.graph_schema_analyzer.domain.errors import (
     InvalidSessionTransition,
     UnknownAnalysis,
 )
-from return_platform.graph_schema_analyzer.persistence import SystemStorePersistence
+from return_platform.graph_schema_analyzer.ports.system_store_port import PersistencePort
 from return_platform.security.principal import Principal
 
 router = APIRouter(prefix="/api/graph-schema", tags=["Graph Schema Analyzer"])
 
 
-def resolve_persistence(request: Request) -> SystemStorePersistence:
-    """The analyzer's persistence, attached to app.state during startup."""
+def resolve_persistence(request: Request) -> PersistencePort:
+    """The analyzer's persistence, attached to app.state during startup.
+
+    Typed as the port, not the concrete `SystemStorePersistence`: the API layer
+    must not reach past the contract into repository internals, or swapping the
+    backing store later becomes an API-layer change.
+    """
     persistence = getattr(request.app.state, "graph_schema_analyzer_persistence", None)
-    if not isinstance(persistence, SystemStorePersistence):
+    if not isinstance(persistence, PersistencePort):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
@@ -65,7 +70,7 @@ def _actor(request: Request) -> str:
     return principal.subject if principal is not None else "anonymous"
 
 
-_Persistence = Annotated[SystemStorePersistence, Depends(resolve_persistence)]
+_Persistence = Annotated[PersistencePort, Depends(resolve_persistence)]
 
 
 @router.post(
@@ -169,7 +174,7 @@ async def answer_clarification(
     persistence: _Persistence,
 ) -> ClarificationView:
     try:
-        clarification = await persistence.clarifications.load(clarification_id)
+        clarification = await persistence.load_clarification(clarification_id)
     except UnknownAnalysis as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

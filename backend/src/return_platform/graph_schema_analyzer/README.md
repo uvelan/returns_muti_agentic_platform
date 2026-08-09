@@ -63,10 +63,17 @@ itself refuses a plaintext write to it.
 
 ## Wiring status
 
-`module.py` is complete and type-checks, and its persistence binds to the
-`system_store` now carried on `ModuleRuntimeContext` (extended in this slice —
-the Protocol always said this field would arrive once `platform/system_store`
-existed). **Activation in `main.py`'s composition root is not done**: the module
-is not yet in `module_ids`, and the router is not yet mounted. That wiring is the
-first step of C3.2, and until it happens the API surface is unreachable at
-runtime. It is called out here rather than left to be discovered.
+`main.py` bootstraps a `SystemStore` (re-introduced into the FastAPI process,
+which Commit 3 had removed once the order agent stopped needing one), builds the
+analyzer's persistence onto `app.state`, and mounts this router — so
+`/api/graph-schema` is live. Failure to bootstrap degrades to an explicit
+`INITIALIZATION_FAILED`/`UNAVAILABLE` state and a 503 from the routes rather than
+blocking application startup: the analyzer is an operator tool, and the return
+flow must not stop serving because schema analysis cannot persist.
+
+`module.py` is complete and satisfies the platform `ModuleRuntime` contract, but
+the router is currently mounted conventionally in `create_app` rather than through
+module activation — `bootstrap/lifespan.py`'s own docstring places router mounting
+in "steps 13–15 … supplied by the caller", and mounting during lifespan would
+mutate `app.routes` after the OpenAPI schema is built. Activating the module
+through `module_ids` is deferred until the kernel owns mounting.

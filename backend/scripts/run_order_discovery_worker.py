@@ -9,11 +9,9 @@ from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
 from return_platform.ai_gateway.routing import AIRoutePool, build_routes
+from return_platform.bootstrap.system_store import bootstrap_system_store
 from return_platform.configuration.runtime_loader import resolve_process_configuration
 from return_platform.dynamic_knowledge.config_loader import load_active_schema
-from return_platform.dynamic_knowledge.integration.reasoning_bootstrap import (
-    bootstrap_reasoning_system_store,
-)
 from return_platform.dynamic_knowledge.integration.runtime_factory import (
     build_dynamic_order_agent_runtime,
 )
@@ -48,9 +46,7 @@ async def _run() -> None:
             await source_mongo.admin.command("ping")
         await neo4j_driver.verify_connectivity()
 
-        system_store, envelope_encryptor = await bootstrap_reasoning_system_store(
-            settings, platform_mongo
-        )
+        system_store, envelope_encryptor = await bootstrap_system_store(settings, platform_mongo)
         route_pool = AIRoutePool(
             build_routes(settings), runtime.ai_gateway_configuration.configuration
         )

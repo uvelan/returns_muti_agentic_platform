@@ -41,6 +41,7 @@ from return_platform.bootstrap.context import (
     SystemClock,
 )
 from return_platform.bootstrap.lifespan import module_lifespan
+from return_platform.bootstrap.system_store import bootstrap_system_store
 from return_platform.configuration.graph_repository import (
     ConfigurationGraphRepository,
     InMemoryConfigurationGraphRepository,
@@ -110,6 +111,8 @@ from return_platform.dynamic_knowledge.api.order_agent import (
 from return_platform.dynamic_knowledge.integration.runtime_factory import (
     dynamic_order_agent_enabled,
 )
+from return_platform.graph_schema_analyzer.api import router as graph_schema_analyzer_router
+from return_platform.graph_schema_analyzer.persistence import build_system_store_persistence
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_support.service import ReturnSupportService
 from return_platform.platform.capabilities.registry import InMemoryCapabilityRegistry
@@ -597,6 +600,33 @@ async def lifespan(
                     "state": "READY",
                 }
 
+        # Graph Schema Analyzer (Wave C3). Unlike the order agent it does its own
+        # durable work in-process, so this process needs a real SystemStore --
+        # re-introduced here after Commit 3 removed it, since the order agent no
+        # longer needed one. Degrades to an explicit UNAVAILABLE state rather than
+        # failing startup: the analyzer is an operator tool, and the return flow
+        # must not stop serving because schema analysis cannot persist.
+        app.state.graph_schema_analyzer_status = {"state": "UNAVAILABLE"}
+        if resources.mongo is None:
+            logger.warning(
+                "graph_schema_analyzer_dependencies_unavailable",
+                extra={"missing_dependencies": ("mongodb",)},
+            )
+        else:
+            try:
+                analyzer_system_store, _ = await bootstrap_system_store(settings, resources.mongo)
+            except Exception as exc:  # noqa: BLE001 - degrade, never block startup
+                app.state.graph_schema_analyzer_status = {
+                    "state": "INITIALIZATION_FAILED",
+                    "detail": str(exc),
+                }
+                logger.warning("graph_schema_analyzer_initialization_failed", exc_info=exc)
+            else:
+                app.state.graph_schema_analyzer_persistence = build_system_store_persistence(
+                    analyzer_system_store
+                )
+                app.state.graph_schema_analyzer_status = {"state": "READY"}
+
         logger.info(
             "application_resources_initialized",
             extra={
@@ -638,6 +668,12 @@ async def lifespan(
     finally:
         if hasattr(app.state, "dynamic_order_agent_runtime"):
             del app.state.dynamic_order_agent_runtime
+        if hasattr(app.state, "graph_schema_analyzer_persistence"):
+            # Holds no connection of its own -- it borrows resources.mongo, which
+            # close_resources() below owns -- so dropping the reference is the whole
+            # of teardown. Removed anyway so a torn-down app cannot serve analyzer
+            # requests against a closed client.
+            del app.state.graph_schema_analyzer_persistence
         configure_graph_sync(None)
         configure_source_mongodb(None)
         if (
@@ -941,6 +977,7 @@ def create_app(
     fastapi_app.include_router(integration_outbox_router)
     fastapi_app.include_router(associate_returns_router)
     fastapi_app.include_router(dynamic_order_agent_router)
+    fastapi_app.include_router(graph_schema_analyzer_router)
     fastapi_app.include_router(data_source_config_v2_router)
     fastapi_app.include_router(platform_v2_router)
     fastapi_app.include_router(support_router)
