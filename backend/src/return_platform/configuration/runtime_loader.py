@@ -67,9 +67,7 @@ async def resolve_process_configuration(
         bootstrap = configured
         resolver = None
     baseline = load_return_configuration(bootstrap.return_configuration_path)
-    baseline_ai_gateway = load_ai_gateway_configuration(
-        bootstrap.ai_gateway_configuration_path
-    )
+    baseline_ai_gateway = load_ai_gateway_configuration(bootstrap.ai_gateway_configuration_path)
     baseline_dependency_simulation = load_dependency_simulation_configuration(
         bootstrap.dependency_simulation_configuration_path
     )
@@ -90,16 +88,12 @@ async def resolve_process_configuration(
     try:
         snapshot = await ConfigurationSnapshotBuilder(repository).build_snapshot(
             baseline.configuration,
-            allow_baseline_fallback=(
-                bootstrap.environment in _DEVELOPMENT_ENVIRONMENTS
-            ),
+            allow_baseline_fallback=(bootstrap.environment in _DEVELOPMENT_ENVIRONMENTS),
             default_ai_gateway_configuration=baseline_ai_gateway.configuration,
             default_dependency_simulation_configuration=(
                 baseline_dependency_simulation.configuration
             ),
-            require_all_behavior_domains=(
-                bootstrap.environment not in _DEVELOPMENT_ENVIRONMENTS
-            ),
+            require_all_behavior_domains=(bootstrap.environment not in _DEVELOPMENT_ENVIRONMENTS),
         )
     finally:
         await driver.close()

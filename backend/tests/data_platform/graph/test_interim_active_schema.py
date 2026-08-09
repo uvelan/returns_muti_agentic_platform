@@ -20,7 +20,11 @@ from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
     RawSourcePage,
 )
 from return_platform.dynamic_knowledge.on_demand_sync.extraction import GenericSourceRecordExtractor
-from return_platform.dynamic_knowledge.schema import ActiveSchema, EntitySourceAccess, RelationshipSourceAccess
+from return_platform.dynamic_knowledge.schema import (
+    ActiveSchema,
+    EntitySourceAccess,
+    RelationshipSourceAccess,
+)
 
 
 @pytest.fixture
@@ -80,7 +84,9 @@ def test_every_relationship_compiles_a_stage_b_reconciliation_statement(
         )
         assert "MERGE (a)-[rel:" in compiled.cypher
         # cardinality checks must compile too, even when no bound is configured (empty tuple)
-        compile_relationship_cardinality_checks(schema, relationship_id, graph_generation_id="gen-1")
+        compile_relationship_cardinality_checks(
+            schema, relationship_id, graph_generation_id="gen-1"
+        )
 
 
 def test_every_relationship_has_a_derivable_index_on_both_endpoints(schema: ActiveSchema) -> None:
@@ -90,12 +96,16 @@ def test_every_relationship_has_a_derivable_index_on_both_endpoints(schema: Acti
 
 def _page(document: dict[str, object]) -> RawSourcePage:
     return RawSourcePage(
-        documents=(RawSourceDocument(operation="UPSERT", document=document, source_identity="doc-1"),),
+        documents=(
+            RawSourceDocument(operation="UPSERT", document=document, source_identity="doc-1"),
+        ),
         observed_at=datetime(2026, 8, 7, tzinfo=UTC),
     )
 
 
-def test_customer_extraction_coalesces_identity_and_hashes_contact_fields(schema: ActiveSchema) -> None:
+def test_customer_extraction_coalesces_identity_and_hashes_contact_fields(
+    schema: ActiveSchema,
+) -> None:
     document = {
         "partyId": "900781",
         "customerId": None,
@@ -126,7 +136,10 @@ def test_customer_extraction_coalesces_identity_and_hashes_contact_fields(schema
     assert len(account_mutations) == 2
     account_keys = {m.resolved_key["account_number"] for m in account_mutations}
     assert account_keys == {"232385", "28634"}
-    assert all(m.record is not None and m.record.values["customer_key"] == "900781" for m in account_mutations)
+    assert all(
+        m.record is not None and m.record.values["customer_key"] == "900781"
+        for m in account_mutations
+    )
 
 
 @pytest.mark.asyncio

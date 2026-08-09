@@ -85,14 +85,20 @@ def test_record_limit_is_validated(
 ) -> None:
     client, _coordinator = seed_client
 
-    assert client.post(
-        "/api/v1/seed-data/apply",
-        json={"recordLimit": 9},
-    ).status_code == 422
-    assert client.post(
-        "/api/v1/seed-data/apply",
-        json={"recordLimit": 1_000_001},
-    ).status_code == 422
+    assert (
+        client.post(
+            "/api/v1/seed-data/apply",
+            json={"recordLimit": 9},
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/v1/seed-data/apply",
+            json={"recordLimit": 1_000_001},
+        ).status_code
+        == 422
+    )
 
 
 def test_delete_requires_confirmation_and_is_seed_scoped(

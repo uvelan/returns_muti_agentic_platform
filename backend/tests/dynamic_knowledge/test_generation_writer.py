@@ -24,7 +24,9 @@ class FakeResult:
 
 
 class FakeTransaction:
-    def __init__(self, *, transition_matched: int = 1, lookup_rows: list[dict[str, Any]] | None = None) -> None:
+    def __init__(
+        self, *, transition_matched: int = 1, lookup_rows: list[dict[str, Any]] | None = None
+    ) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self._transition_matched = transition_matched
         self._lookup_rows = lookup_rows or []
@@ -44,7 +46,7 @@ class FakeSession:
     def __init__(self, tx: FakeTransaction) -> None:
         self._tx = tx
 
-    async def __aenter__(self) -> "FakeSession":
+    async def __aenter__(self) -> FakeSession:
         return self
 
     async def __aexit__(self, *exc_info: Any) -> None:

@@ -147,9 +147,7 @@ async def test_mark_terminal_also_stamps_query_evidence(
     )
     assert expires_at - now == timedelta(hours=168)
 
-    evidence_doc = await store.read_only("order_discovery_query_evidence").find_one(
-        {"_id": "qe-1"}
-    )
+    evidence_doc = await store.read_only("order_discovery_query_evidence").find_one({"_id": "qe-1"})
     run_doc_after = await runs.find_one({"_id": run_id})
     assert evidence_doc["expires_at"] == run_doc_after["expires_at"]
 

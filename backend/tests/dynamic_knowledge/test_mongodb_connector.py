@@ -11,7 +11,10 @@ from return_platform.dynamic_knowledge.connectors.mongodb import (
     MongoDBSourceScanConnector,
     SeedPin,
 )
-from return_platform.dynamic_knowledge.on_demand_sync.contracts import CursorComparison, SourceCursor
+from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
+    CursorComparison,
+    SourceCursor,
+)
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
 
@@ -19,13 +22,11 @@ class FakeMongoCursor:
     def __init__(self, documents: list[dict[str, Any]]) -> None:
         self._documents = documents
 
-    def sort(self, field: str, direction: int) -> "FakeMongoCursor":
-        self._documents = sorted(
-            self._documents, key=lambda d: d[field], reverse=direction < 0
-        )
+    def sort(self, field: str, direction: int) -> FakeMongoCursor:
+        self._documents = sorted(self._documents, key=lambda d: d[field], reverse=direction < 0)
         return self
 
-    def limit(self, count: int) -> "FakeMongoCursor":
+    def limit(self, count: int) -> FakeMongoCursor:
         self._documents = self._documents[:count]
         return self
 
@@ -42,7 +43,9 @@ class FakeMongoCollection:
         self.documents = documents
         self.last_query: dict[str, Any] | None = None
 
-    def find(self, query: dict[str, Any], projection: dict[str, Any] | None = None) -> FakeMongoCursor:
+    def find(
+        self, query: dict[str, Any], projection: dict[str, Any] | None = None
+    ) -> FakeMongoCursor:
         del projection
         self.last_query = query
         selected = [doc for doc in self.documents if _matches(doc, query)]
@@ -102,9 +105,21 @@ async def test_capture_high_watermark_returns_the_max_of_the_configured_field(
     # "configured_changed_at" -- the connector must resolve through it, never
     # query/sort by the field_id string directly.
     documents = [
-        {"_id": ObjectId(), "configured_id": "A-1", "configured_changed_at": datetime(2026, 1, 1, tzinfo=UTC)},
-        {"_id": ObjectId(), "configured_id": "A-2", "configured_changed_at": datetime(2026, 1, 3, tzinfo=UTC)},
-        {"_id": ObjectId(), "configured_id": "A-3", "configured_changed_at": datetime(2026, 1, 2, tzinfo=UTC)},
+        {
+            "_id": ObjectId(),
+            "configured_id": "A-1",
+            "configured_changed_at": datetime(2026, 1, 1, tzinfo=UTC),
+        },
+        {
+            "_id": ObjectId(),
+            "configured_id": "A-2",
+            "configured_changed_at": datetime(2026, 1, 3, tzinfo=UTC),
+        },
+        {
+            "_id": ObjectId(),
+            "configured_id": "A-3",
+            "configured_changed_at": datetime(2026, 1, 2, tzinfo=UTC),
+        },
     ]
     collection = FakeMongoCollection(documents)
     connector = MongoDBSourceScanConnector(FakeDatabase({"objects": collection}), schema=schema)
@@ -171,16 +186,22 @@ def test_compare_cursors_rejects_mismatched_types(active_schema: ActiveSchema) -
         cursor_type="FIELD_DATETIME", encoded_value=datetime(2026, 8, 6, tzinfo=UTC).isoformat()
     )
     with pytest.raises(MongoConnectorError, match="different types"):
-        connector.compare_cursors(source_asset_id="source_a", left=object_id_cursor, right=field_cursor)
+        connector.compare_cursors(
+            source_asset_id="source_a", left=object_id_cursor, right=field_cursor
+        )
 
 
 @pytest.mark.asyncio
 async def test_scan_without_cursor_field_bounds_by_object_id(active_schema: ActiveSchema) -> None:
     schema = _mongo_source_schema(active_schema, cursor_field=None)
     ids = [ObjectId(bytes([i]) * 12) for i in range(1, 4)]
-    documents = [{"_id": oid, "configured_id": f"A-{index}"} for index, oid in enumerate(ids, start=1)]
+    documents = [
+        {"_id": oid, "configured_id": f"A-{index}"} for index, oid in enumerate(ids, start=1)
+    ]
     collection = FakeMongoCollection(documents)
-    connector = MongoDBSourceScanConnector(FakeDatabase({"objects": collection}), schema=schema, page_size=10)
+    connector = MongoDBSourceScanConnector(
+        FakeDatabase({"objects": collection}), schema=schema, page_size=10
+    )
 
     through = SourceCursor(cursor_type="OBJECT_ID", encoded_value=str(ids[-1]))
     pages = [
@@ -199,9 +220,13 @@ async def test_scan_without_cursor_field_bounds_by_object_id(active_schema: Acti
 async def test_scan_pages_at_the_configured_page_size(active_schema: ActiveSchema) -> None:
     schema = _mongo_source_schema(active_schema, cursor_field=None)
     ids = [ObjectId(bytes([i]) * 12) for i in range(1, 6)]
-    documents = [{"_id": oid, "configured_id": f"A-{index}"} for index, oid in enumerate(ids, start=1)]
+    documents = [
+        {"_id": oid, "configured_id": f"A-{index}"} for index, oid in enumerate(ids, start=1)
+    ]
     collection = FakeMongoCollection(documents)
-    connector = MongoDBSourceScanConnector(FakeDatabase({"objects": collection}), schema=schema, page_size=2)
+    connector = MongoDBSourceScanConnector(
+        FakeDatabase({"objects": collection}), schema=schema, page_size=2
+    )
 
     through = SourceCursor(cursor_type="OBJECT_ID", encoded_value=str(ids[-1]))
     pages = [
@@ -219,12 +244,26 @@ async def test_scan_with_cursor_field_bounds_by_that_field(active_schema: Active
     # "changed_at" is the field_id; its physical_path in the shared fixture is
     # "configured_changed_at".
     documents = [
-        {"_id": ObjectId(), "configured_id": "A-1", "configured_changed_at": datetime(2026, 1, 1, tzinfo=UTC)},
-        {"_id": ObjectId(), "configured_id": "A-2", "configured_changed_at": datetime(2026, 1, 2, tzinfo=UTC)},
-        {"_id": ObjectId(), "configured_id": "A-3", "configured_changed_at": datetime(2026, 1, 3, tzinfo=UTC)},
+        {
+            "_id": ObjectId(),
+            "configured_id": "A-1",
+            "configured_changed_at": datetime(2026, 1, 1, tzinfo=UTC),
+        },
+        {
+            "_id": ObjectId(),
+            "configured_id": "A-2",
+            "configured_changed_at": datetime(2026, 1, 2, tzinfo=UTC),
+        },
+        {
+            "_id": ObjectId(),
+            "configured_id": "A-3",
+            "configured_changed_at": datetime(2026, 1, 3, tzinfo=UTC),
+        },
     ]
     collection = FakeMongoCollection(documents)
-    connector = MongoDBSourceScanConnector(FakeDatabase({"objects": collection}), schema=schema, page_size=10)
+    connector = MongoDBSourceScanConnector(
+        FakeDatabase({"objects": collection}), schema=schema, page_size=10
+    )
 
     after = SourceCursor(
         cursor_type="FIELD_DATETIME", encoded_value=datetime(2026, 1, 1, tzinfo=UTC).isoformat()
@@ -285,7 +324,9 @@ async def test_scan_with_seed_pin_filters_to_matching_seed_and_ignores_cursor_bo
 async def test_scan_truncates_to_max_records_per_source(active_schema: ActiveSchema) -> None:
     schema = _mongo_source_schema(active_schema, cursor_field=None)
     ids = [ObjectId(bytes([i]) * 12) for i in range(1, 6)]
-    documents = [{"_id": oid, "configured_id": f"A-{index}"} for index, oid in enumerate(ids, start=1)]
+    documents = [
+        {"_id": oid, "configured_id": f"A-{index}"} for index, oid in enumerate(ids, start=1)
+    ]
     collection = FakeMongoCollection(documents)
     connector = MongoDBSourceScanConnector(
         FakeDatabase({"objects": collection}), schema=schema, page_size=10, max_records_per_source=2
@@ -302,10 +343,17 @@ async def test_scan_truncates_to_max_records_per_source(active_schema: ActiveSch
 
 
 @pytest.mark.asyncio
-async def test_scan_with_seed_pin_ignores_max_records_per_source(active_schema: ActiveSchema) -> None:
+async def test_scan_with_seed_pin_ignores_max_records_per_source(
+    active_schema: ActiveSchema,
+) -> None:
     schema = _mongo_source_schema(active_schema, cursor_field=None)
     documents = [
-        {"_id": ObjectId(), "configured_id": f"A-{i}", "seedVersion": "v2", "seedDigest": "digest-v2"}
+        {
+            "_id": ObjectId(),
+            "configured_id": f"A-{i}",
+            "seedVersion": "v2",
+            "seedDigest": "digest-v2",
+        }
         for i in range(5)
     ]
     collection = FakeMongoCollection(documents)
@@ -333,7 +381,12 @@ async def test_scan_with_seed_pin_fails_closed_on_digest_mismatch(
 ) -> None:
     schema = _mongo_source_schema(active_schema, cursor_field=None)
     documents = [
-        {"_id": ObjectId(), "configured_id": "A-1", "seedVersion": "v2", "seedDigest": "unexpected"},
+        {
+            "_id": ObjectId(),
+            "configured_id": "A-1",
+            "seedVersion": "v2",
+            "seedDigest": "unexpected",
+        },
     ]
     collection = FakeMongoCollection(documents)
     connector = MongoDBSourceScanConnector(

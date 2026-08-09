@@ -1,5 +1,7 @@
+from collections.abc import Mapping
+
 from pydantic import BaseModel, ConfigDict
-from typing import Mapping, Any
+
 
 class SourceConfigNode(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -15,6 +17,7 @@ class SourceConfigNode(BaseModel):
     line_number_path: str | None = None
     schema_fingerprint_required: bool = True
     enabled: bool = True
+
 
 class SourcesConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")

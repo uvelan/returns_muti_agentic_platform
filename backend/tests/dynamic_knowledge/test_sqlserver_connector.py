@@ -11,7 +11,10 @@ from return_platform.dynamic_knowledge.connectors.sqlserver import (
     SqlServerConnectorError,
     SqlServerSourceScanConnector,
 )
-from return_platform.dynamic_knowledge.on_demand_sync.contracts import CursorComparison, SourceCursor
+from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
+    CursorComparison,
+    SourceCursor,
+)
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
 
@@ -20,7 +23,7 @@ class FakeCursor:
         self._rows = rows
         self.executed: tuple[str, dict[str, Any]] | None = None
 
-    def __enter__(self) -> "FakeCursor":
+    def __enter__(self) -> FakeCursor:
         return self
 
     def __exit__(self, *exc_info: Any) -> None:
@@ -37,7 +40,7 @@ class FakeConnection:
     def __init__(self, cursor: FakeCursor) -> None:
         self._cursor = cursor
 
-    def __enter__(self) -> "FakeConnection":
+    def __enter__(self) -> FakeConnection:
         return self
 
     def __exit__(self, *exc_info: Any) -> None:
@@ -84,7 +87,11 @@ async def test_resolve_rejects_entities_disagreeing_on_the_cursor_columns_physic
 
     raw = active_schema.model_dump(mode="json")
     raw["entities"]["entity_a"]["source_asset_id"] = "source_b"
-    raw["sources"]["source_b"]["object_ref"] = {"database": "db", "namespace": "dbo", "name": "objects"}
+    raw["sources"]["source_b"]["object_ref"] = {
+        "database": "db",
+        "namespace": "dbo",
+        "name": "objects",
+    }
     raw["sources"]["source_b"]["incremental_cursor_field"] = "id"
     schema = ActiveSchema.model_validate(raw)
     connector = SqlServerSourceScanConnector(_connection_settings(), schema=schema)

@@ -1,5 +1,8 @@
+from collections.abc import Mapping
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict
-from typing import Mapping, Any, List
+
 
 class AgentConfigNode(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -7,10 +10,10 @@ class AgentConfigNode(BaseModel):
     enabled: bool = True
     execution_mode: str | None = None
     ai_assisted: bool = True
-    input_contexts: List[str] = []
+    input_contexts: list[str] = []
     output_context: str | None = None
-    capabilities: List[str] = []
-    forbidden_capabilities: List[str] = []
+    capabilities: list[str] = []
+    forbidden_capabilities: list[str] = []
     direct_agent_calls_allowed: bool = False
     idempotency_required: bool = True
     implementation: str | None = None
@@ -21,6 +24,7 @@ class AgentConfigNode(BaseModel):
     max_concurrency: int | None = None
     retry_policy: Mapping[str, Any] | None = None
     timeout: str | None = None
+
 
 class AgentsConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")

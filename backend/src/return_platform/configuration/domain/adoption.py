@@ -1,6 +1,7 @@
-from pydantic import BaseModel, ConfigDict
 from datetime import datetime
-from typing import List
+
+from pydantic import BaseModel, ConfigDict
+
 
 class ConfigurationAdoption(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -10,5 +11,5 @@ class ConfigurationAdoption(BaseModel):
     adopted_at: datetime
     pending_release_id: str | None = None
     requires_restart: bool = False
-    draining_epochs: List[int] = []
+    draining_epochs: list[int] = []
     heartbeat_at: datetime

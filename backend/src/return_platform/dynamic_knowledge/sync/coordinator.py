@@ -162,7 +162,9 @@ class GenericSyncCoordinator:
         if self._run_recorder is not None and sync_run_id is None:
             raise ValueError("sync_run_id is required when a run_recorder is configured")
 
-        participating = source_asset_ids if source_asset_ids is not None else frozenset(schema.sources)
+        participating = (
+            source_asset_ids if source_asset_ids is not None else frozenset(schema.sources)
+        )
         ordered_source_ids = sorted(participating)
         connectors_by_source = {
             source_asset_id: self._connectors.resolve(source_asset_id)
@@ -185,7 +187,9 @@ class GenericSyncCoordinator:
                         SourceWatermarkRecord(
                             source_asset_id=source_asset_id,
                             captured_watermark=watermarks[source_asset_id],
-                            connector_version=type(connectors_by_source[source_asset_id]).__qualname__,
+                            connector_version=type(
+                                connectors_by_source[source_asset_id]
+                            ).__qualname__,
                         )
                         for source_asset_id in ordered_source_ids
                     ),

@@ -157,7 +157,9 @@ def _coalesce_schema(active_schema: ActiveSchema) -> ActiveSchema:
 def _page(document: dict[str, object], source_identity: str = "doc-1") -> RawSourcePage:
     return RawSourcePage(
         documents=(
-            RawSourceDocument(operation="UPSERT", document=document, source_identity=source_identity),
+            RawSourceDocument(
+                operation="UPSERT", document=document, source_identity=source_identity
+            ),
         ),
         observed_at=datetime(2026, 8, 6, tzinfo=UTC),
     )
@@ -180,7 +182,10 @@ def test_exploded_customer_account_deduplicates_identical_natural_key(
     ids = {mutation.resolved_key["id"] for mutation in mutations}
     assert ids == {"PLYMOUTH*232385", "MINNWW*28634"}
     assert all(mutation.operation == "UPSERT" for mutation in mutations)
-    assert all(mutation.record is not None and mutation.record.values["parent_id"] == "900781" for mutation in mutations)
+    assert all(
+        mutation.record is not None and mutation.record.values["parent_id"] == "900781"
+        for mutation in mutations
+    )
 
 
 def test_where_selector_admits_only_phone_contact_points(active_schema: ActiveSchema) -> None:
@@ -239,9 +244,7 @@ def test_contact_lookup_digest_derive_is_omitted_for_blank_source_value(
     schema = _contact_digest_schema(active_schema)
     document = {"configured_id": "A-1", "configured_name": "   ", "configured_count": 1}
     key_reference = "vault://return-platform/contact-lookup#hmac_key"
-    mutations = GenericSourceRecordExtractor(
-        resolved_secrets={key_reference: "s" * 32}
-    ).extract(
+    mutations = GenericSourceRecordExtractor(resolved_secrets={key_reference: "s" * 32}).extract(
         schema=schema,
         source_asset_id="source_a",
         page=_page(document),
@@ -314,9 +317,7 @@ def test_delete_document_without_key_values_produces_no_mutation(
     active_schema: ActiveSchema,
 ) -> None:
     page = RawSourcePage(
-        documents=(
-            RawSourceDocument(operation="DELETE", document=None, source_identity="doc-1"),
-        ),
+        documents=(RawSourceDocument(operation="DELETE", document=None, source_identity="doc-1"),),
         observed_at=datetime(2026, 8, 6, tzinfo=UTC),
     )
     mutations = GenericSourceRecordExtractor().extract(

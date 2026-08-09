@@ -64,7 +64,10 @@ class DataSourceWrite(DataSourceModel):
     @classmethod
     def validate_vault_reference(cls, value: str) -> str:
         normalized = value.strip()
-        if not normalized.startswith("vault://secret/production/data-sources/") or "#" not in normalized:
+        if (
+            not normalized.startswith("vault://secret/production/data-sources/")
+            or "#" not in normalized
+        ):
             raise ValueError(
                 "credentialVaultReference must use the production data-sources Vault path"
             )
@@ -260,20 +263,14 @@ async def _store_credential(
 
 
 async def _load_credential(request: Request, vault_reference: str) -> SecretStr:
-    resolved = await _secret_resolver(request).get_secret(
-        parse_secret_reference(vault_reference)
-    )
+    resolved = await _secret_resolver(request).get_secret(parse_secret_reference(vault_reference))
     if resolved is None:
         raise HTTPException(status_code=422, detail="A credential has not been saved yet.")
     return SecretStr(resolved.value)
 
 
 def _document_to_view(document: dict[str, Any]) -> DataSourceView:
-    payload = {
-        key: value
-        for key, value in document.items()
-        if key not in {"_id", "_deleted"}
-    }
+    payload = {key: value for key, value in document.items() if key not in {"_id", "_deleted"}}
     return DataSourceView.model_validate({"id": str(document["_id"]), **payload})
 
 
@@ -349,8 +346,7 @@ async def list_data_sources(
 ) -> APIResponse[list[DataSourceView]]:
     resources = _resources(request)
     stored = {
-        str(document["_id"]): document
-        for document in await _stored_source_documents(resources)
+        str(document["_id"]): document for document in await _stored_source_documents(resources)
     }
     sources: list[DataSourceView] = []
     for source_id, builtin in _builtins(resources).items():

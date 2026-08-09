@@ -116,12 +116,12 @@ def get_synthetic_name(stable_number: int, *, seed: int = 0) -> str:
     """Return a stable, realistic-looking identity assembled from synthetic name pools."""
 
     digest = hashlib.sha256(f"{seed}:{stable_number}:synthetic-name".encode()).digest()
-    first_name = _SYNTHETIC_FIRST_NAMES[int.from_bytes(digest[:4], "big") % len(
-        _SYNTHETIC_FIRST_NAMES
-    )]
-    last_name = _SYNTHETIC_LAST_NAMES[int.from_bytes(digest[4:8], "big") % len(
-        _SYNTHETIC_LAST_NAMES
-    )]
+    first_name = _SYNTHETIC_FIRST_NAMES[
+        int.from_bytes(digest[:4], "big") % len(_SYNTHETIC_FIRST_NAMES)
+    ]
+    last_name = _SYNTHETIC_LAST_NAMES[
+        int.from_bytes(digest[4:8], "big") % len(_SYNTHETIC_LAST_NAMES)
+    ]
     return f"{first_name} {last_name}"
 
 

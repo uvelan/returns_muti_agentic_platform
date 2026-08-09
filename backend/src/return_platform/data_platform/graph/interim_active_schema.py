@@ -121,7 +121,9 @@ def _field(
     }
 
 
-def _node(projection_id: str, entity_id: str, label: str, *, key: str, properties: list[str]) -> dict[str, Any]:
+def _node(
+    projection_id: str, entity_id: str, label: str, *, key: str, properties: list[str]
+) -> dict[str, Any]:
     return {
         "projection_id": projection_id,
         "entity_id": entity_id,
@@ -267,7 +269,11 @@ _SOURCES = {
     "sql_support_ticket": _source(
         "sql_support_ticket",
         "MSSQL",
-        {"database": "return_platform", "namespace": "integration", "name": "return_support_ticket"},
+        {
+            "database": "return_platform",
+            "namespace": "integration",
+            "name": "return_support_ticket",
+        },
         incremental_cursor_field="updated_at",
     ),
 }
@@ -366,16 +372,30 @@ _ENTITIES = {
                 searchable=True,
                 filterable=True,
             ),
-            "customer_name": _field("customer_name", physical_path=["salesHdr", "salesHdrData", "custName"]),
-            "order_status": _field("order_status", physical_path=["salesHdrEventData", "orderStatus"], filterable=True),
-            "sell_warehouse_id": _field("sell_warehouse_id", physical_path=["salesHdrEventData", "sellWhseId"]),
+            "customer_name": _field(
+                "customer_name", physical_path=["salesHdr", "salesHdrData", "custName"]
+            ),
+            "order_status": _field(
+                "order_status", physical_path=["salesHdrEventData", "orderStatus"], filterable=True
+            ),
+            "sell_warehouse_id": _field(
+                "sell_warehouse_id", physical_path=["salesHdrEventData", "sellWhseId"]
+            ),
             "ship_from_warehouse_id": _field(
                 "ship_from_warehouse_id", physical_path=["salesHdrEventData", "shipFromWhseId"]
             ),
-            "shipping_method": _field("shipping_method", physical_path=["salesHdr", "shipping", "shipViaCode"]),
-            "delivered_at": _field("delivered_at", physical_path=["deliveredAt"], data_type="DATETIME"),
-            "source_system": _field("source_system", physical_path=["salesHdrEventData", "srcSysCode"]),
-            "source_updated_at": _field("source_updated_at", physical_path=["updatedAt"], data_type="DATETIME"),
+            "shipping_method": _field(
+                "shipping_method", physical_path=["salesHdr", "shipping", "shipViaCode"]
+            ),
+            "delivered_at": _field(
+                "delivered_at", physical_path=["deliveredAt"], data_type="DATETIME"
+            ),
+            "source_system": _field(
+                "source_system", physical_path=["salesHdrEventData", "srcSysCode"]
+            ),
+            "source_updated_at": _field(
+                "source_updated_at", physical_path=["updatedAt"], data_type="DATETIME"
+            ),
             "seed_version": _field("seed_version", physical_path=["seedVersion"]),
             "seed_digest": _field("seed_digest", physical_path=["seedDigest"]),
         },
@@ -404,11 +424,18 @@ _ENTITIES = {
                 filterable=True,
             ),
             "product_id": _field(
-                "product_id", physical_path=["lineData", "productId"], searchable=True, filterable=True
+                "product_id",
+                physical_path=["lineData", "productId"],
+                searchable=True,
+                filterable=True,
             ),
-            "master_product_id": _field("master_product_id", physical_path=["lineData", "masterProductId"]),
+            "master_product_id": _field(
+                "master_product_id", physical_path=["lineData", "masterProductId"]
+            ),
             "sku": _field("sku", physical_path=["lineData", "sku"], searchable=True),
-            "product_description": _field("product_description", physical_path=["lineData", "productDesc"]),
+            "product_description": _field(
+                "product_description", physical_path=["lineData", "productDesc"]
+            ),
             "product_type": _field("product_type", physical_path=["lineData", "productType"]),
             "ordered_quantity": _field(
                 "ordered_quantity", physical_path=["lineData", "orderQty"], data_type="INTEGER"
@@ -448,9 +475,17 @@ _ENTITIES = {
                 searchable=True,
                 filterable=True,
             ),
-            "carrier_code": _field("carrier_code", physical_path=["shipmentInfoEventData", "carrierCode"]),
-            "shipped_at": _field("shipped_at", physical_path=["shipmentInfoEventData", "shippedAt"], data_type="DATETIME"),
-            "source_updated_at": _field("source_updated_at", physical_path=["updatedAt"], data_type="DATETIME"),
+            "carrier_code": _field(
+                "carrier_code", physical_path=["shipmentInfoEventData", "carrierCode"]
+            ),
+            "shipped_at": _field(
+                "shipped_at",
+                physical_path=["shipmentInfoEventData", "shippedAt"],
+                data_type="DATETIME",
+            ),
+            "source_updated_at": _field(
+                "source_updated_at", physical_path=["updatedAt"], data_type="DATETIME"
+            ),
             "seed_version": _field("seed_version", physical_path=["seedVersion"]),
             "seed_digest": _field("seed_digest", physical_path=["seedDigest"]),
         },
@@ -460,12 +495,22 @@ _ENTITIES = {
         "product",
         "product_lookup",
         {
-            "product_id": _field("product_id", physical_path=["productId"], nullable=False, searchable=True, filterable=True),
+            "product_id": _field(
+                "product_id",
+                physical_path=["productId"],
+                nullable=False,
+                searchable=True,
+                filterable=True,
+            ),
             "sku": _field("sku", physical_path=["sku"], searchable=True, filterable=True),
             "master_product_id": _field("master_product_id", physical_path=["masterProductId"]),
-            "product_description": _field("product_description", physical_path=["productDescription"], searchable=True),
+            "product_description": _field(
+                "product_description", physical_path=["productDescription"], searchable=True
+            ),
             "product_type": _field("product_type", physical_path=["productType"], filterable=True),
-            "source_updated_at": _field("source_updated_at", physical_path=["updatedAt"], data_type="DATETIME"),
+            "source_updated_at": _field(
+                "source_updated_at", physical_path=["updatedAt"], data_type="DATETIME"
+            ),
             "seed_version": _field("seed_version", physical_path=["seedVersion"]),
             "seed_digest": _field("seed_digest", physical_path=["seedDigest"]),
         },
@@ -475,13 +520,35 @@ _ENTITIES = {
         "return",
         "sql_returns",
         {
-            "return_reference": _field("return_reference", physical_path=["return_reference"], nullable=False, searchable=True, filterable=True),
+            "return_reference": _field(
+                "return_reference",
+                physical_path=["return_reference"],
+                nullable=False,
+                searchable=True,
+                filterable=True,
+            ),
             "session_id": _field("session_id", physical_path=["session_id"]),
-            "sales_order_id": _field("sales_order_id", physical_path=["order_reference"], searchable=True, filterable=True),
-            "customer_reference": _field("customer_reference", physical_path=["customer_reference"]),
-            "return_status": _field("return_status", physical_path=["return_status"], filterable=True),
-            "eligibility_decision": _field("eligibility_decision", physical_path=["eligibility_decision"]),
-            "source_updated_at": _field("source_updated_at", physical_path=["updated_at"], data_type="DATETIME", nullable=False),
+            "sales_order_id": _field(
+                "sales_order_id",
+                physical_path=["order_reference"],
+                searchable=True,
+                filterable=True,
+            ),
+            "customer_reference": _field(
+                "customer_reference", physical_path=["customer_reference"]
+            ),
+            "return_status": _field(
+                "return_status", physical_path=["return_status"], filterable=True
+            ),
+            "eligibility_decision": _field(
+                "eligibility_decision", physical_path=["eligibility_decision"]
+            ),
+            "source_updated_at": _field(
+                "source_updated_at",
+                physical_path=["updated_at"],
+                data_type="DATETIME",
+                nullable=False,
+            ),
         },
         natural_key=["return_reference"],
     ),
@@ -489,14 +556,32 @@ _ENTITIES = {
         "return_item",
         "sql_return_items",
         {
-            "return_item_id": _field("return_item_id", physical_path=["return_item_id"], nullable=False, searchable=True, filterable=True),
-            "return_reference": _field("return_reference", physical_path=["return_reference"], searchable=True, filterable=True),
-            "order_line_id": _field("order_line_id", physical_path=["order_line_id"], searchable=True, filterable=True),
+            "return_item_id": _field(
+                "return_item_id",
+                physical_path=["return_item_id"],
+                nullable=False,
+                searchable=True,
+                filterable=True,
+            ),
+            "return_reference": _field(
+                "return_reference",
+                physical_path=["return_reference"],
+                searchable=True,
+                filterable=True,
+            ),
+            "order_line_id": _field(
+                "order_line_id", physical_path=["order_line_id"], searchable=True, filterable=True
+            ),
             "product_id": _field("product_id", physical_path=["product_id"], searchable=True),
             "quantity": _field("quantity", physical_path=["quantity"], data_type="INTEGER"),
             "reason_code": _field("reason_code", physical_path=["reason_code"], filterable=True),
             "item_status": _field("item_status", physical_path=["item_status"], filterable=True),
-            "source_updated_at": _field("source_updated_at", physical_path=["created_at"], data_type="DATETIME", nullable=False),
+            "source_updated_at": _field(
+                "source_updated_at",
+                physical_path=["created_at"],
+                data_type="DATETIME",
+                nullable=False,
+            ),
         },
         natural_key=["return_item_id"],
     ),
@@ -504,13 +589,32 @@ _ENTITIES = {
         "return_tracking",
         "sql_return_tracking",
         {
-            "tracking_id": _field("tracking_id", physical_path=["tracking_id"], nullable=False, searchable=True, filterable=True),
-            "return_reference": _field("return_reference", physical_path=["return_reference"], searchable=True, filterable=True),
-            "tracking_type": _field("tracking_type", physical_path=["tracking_type"], filterable=True),
-            "tracking_reference": _field("tracking_reference", physical_path=["tracking_reference"], searchable=True),
+            "tracking_id": _field(
+                "tracking_id",
+                physical_path=["tracking_id"],
+                nullable=False,
+                searchable=True,
+                filterable=True,
+            ),
+            "return_reference": _field(
+                "return_reference",
+                physical_path=["return_reference"],
+                searchable=True,
+                filterable=True,
+            ),
+            "tracking_type": _field(
+                "tracking_type", physical_path=["tracking_type"], filterable=True
+            ),
+            "tracking_reference": _field(
+                "tracking_reference", physical_path=["tracking_reference"], searchable=True
+            ),
             "carrier_code": _field("carrier_code", physical_path=["carrier_code"]),
-            "tracking_status": _field("tracking_status", physical_path=["tracking_status"], filterable=True),
-            "event_at": _field("event_at", physical_path=["event_at"], data_type="DATETIME", nullable=False),
+            "tracking_status": _field(
+                "tracking_status", physical_path=["tracking_status"], filterable=True
+            ),
+            "event_at": _field(
+                "event_at", physical_path=["event_at"], data_type="DATETIME", nullable=False
+            ),
         },
         natural_key=["tracking_id"],
     ),
@@ -518,16 +622,38 @@ _ENTITIES = {
         "bay_assignment",
         "sql_bay_assignment",
         {
-            "assignment_id": _field("assignment_id", physical_path=["assignment_id"], nullable=False, searchable=True, filterable=True),
-            "return_reference": _field("return_reference", physical_path=["return_reference"], searchable=True, filterable=True),
-            "order_line_id": _field("order_line_id", physical_path=["order_line_id"], searchable=True, filterable=True),
+            "assignment_id": _field(
+                "assignment_id",
+                physical_path=["assignment_id"],
+                nullable=False,
+                searchable=True,
+                filterable=True,
+            ),
+            "return_reference": _field(
+                "return_reference",
+                physical_path=["return_reference"],
+                searchable=True,
+                filterable=True,
+            ),
+            "order_line_id": _field(
+                "order_line_id", physical_path=["order_line_id"], searchable=True, filterable=True
+            ),
             "item_number": _field("item_number", physical_path=["item_number"]),
-            "package_count": _field("package_count", physical_path=["package_count"], data_type="INTEGER"),
+            "package_count": _field(
+                "package_count", physical_path=["package_count"], data_type="INTEGER"
+            ),
             "warehouse_id": _field("warehouse_id", physical_path=["warehouse_id"]),
             "bay_id": _field("bay_id", physical_path=["bay_id"]),
             "status": _field("status", physical_path=["status"], filterable=True),
-            "confirmed_by_associate_id": _field("confirmed_by_associate_id", physical_path=["confirmed_by_associate_id"]),
-            "source_updated_at": _field("source_updated_at", physical_path=["created_at"], data_type="DATETIME", nullable=False),
+            "confirmed_by_associate_id": _field(
+                "confirmed_by_associate_id", physical_path=["confirmed_by_associate_id"]
+            ),
+            "source_updated_at": _field(
+                "source_updated_at",
+                physical_path=["created_at"],
+                data_type="DATETIME",
+                nullable=False,
+            ),
         },
         natural_key=["assignment_id"],
     ),
@@ -535,12 +661,27 @@ _ENTITIES = {
         "support_ticket",
         "sql_support_ticket",
         {
-            "ticket_id": _field("ticket_id", physical_path=["ticket_id"], nullable=False, searchable=True, filterable=True),
+            "ticket_id": _field(
+                "ticket_id",
+                physical_path=["ticket_id"],
+                nullable=False,
+                searchable=True,
+                filterable=True,
+            ),
             "session_id": _field("session_id", physical_path=["session_id"]),
             "status": _field("status", physical_path=["status"], filterable=True),
-            "external_reference": _field("external_reference", physical_path=["external_reference"], searchable=True),
-            "return_reference": _field("return_reference", physical_path=["return_reference"], searchable=True, filterable=True),
-            "updated_at": _field("updated_at", physical_path=["updated_at"], data_type="DATETIME", nullable=False),
+            "external_reference": _field(
+                "external_reference", physical_path=["external_reference"], searchable=True
+            ),
+            "return_reference": _field(
+                "return_reference",
+                physical_path=["return_reference"],
+                searchable=True,
+                filterable=True,
+            ),
+            "updated_at": _field(
+                "updated_at", physical_path=["updated_at"], data_type="DATETIME", nullable=False
+            ),
         },
         natural_key=["ticket_id"],
     ),
@@ -548,126 +689,261 @@ _ENTITIES = {
 
 _NODES = {
     "node_customer": _node(
-        "node_customer", "customer", "Customer", key="customer_key",
-        properties=["party_id", "customer_id", "customer_name", "phone_hash", "email_hash", "source_updated_at", "seed_version", "seed_digest"],
+        "node_customer",
+        "customer",
+        "Customer",
+        key="customer_key",
+        properties=[
+            "party_id",
+            "customer_id",
+            "customer_name",
+            "phone_hash",
+            "email_hash",
+            "source_updated_at",
+            "seed_version",
+            "seed_digest",
+        ],
     ),
     "node_customer_account": _node(
-        "node_customer_account", "customer_account", "CustomerAccount", key="account_number",
+        "node_customer_account",
+        "customer_account",
+        "CustomerAccount",
+        key="account_number",
         properties=["customer_key"],
     ),
     "node_sales_order": _node(
-        "node_sales_order", "sales_order", "SalesOrder", key="order_id",
+        "node_sales_order",
+        "sales_order",
+        "SalesOrder",
+        key="order_id",
         properties=[
-            "customer_id", "customer_name", "order_status", "sell_warehouse_id",
-            "ship_from_warehouse_id", "shipping_method", "delivered_at", "source_system",
-            "source_updated_at", "seed_version", "seed_digest",
+            "customer_id",
+            "customer_name",
+            "order_status",
+            "sell_warehouse_id",
+            "ship_from_warehouse_id",
+            "shipping_method",
+            "delivered_at",
+            "source_system",
+            "source_updated_at",
+            "seed_version",
+            "seed_digest",
         ],
     ),
     "node_order_line": _node(
-        "node_order_line", "order_line", "OrderLine", key="order_line_id",
+        "node_order_line",
+        "order_line",
+        "OrderLine",
+        key="order_line_id",
         properties=[
-            "sales_order_id", "product_id", "master_product_id", "sku",
-            "product_description", "product_type", "ordered_quantity", "shipped_quantity",
+            "sales_order_id",
+            "product_id",
+            "master_product_id",
+            "sku",
+            "product_description",
+            "product_type",
+            "ordered_quantity",
+            "shipped_quantity",
         ],
     ),
     "node_shipment": _node(
-        "node_shipment", "shipment", "Shipment", key="tracking_number",
-        properties=["sales_order_id", "carrier_code", "shipped_at", "source_updated_at", "seed_version", "seed_digest"],
+        "node_shipment",
+        "shipment",
+        "Shipment",
+        key="tracking_number",
+        properties=[
+            "sales_order_id",
+            "carrier_code",
+            "shipped_at",
+            "source_updated_at",
+            "seed_version",
+            "seed_digest",
+        ],
     ),
     "node_product": _node(
-        "node_product", "product", "Product", key="product_id",
-        properties=["sku", "master_product_id", "product_description", "product_type", "source_updated_at", "seed_version", "seed_digest"],
+        "node_product",
+        "product",
+        "Product",
+        key="product_id",
+        properties=[
+            "sku",
+            "master_product_id",
+            "product_description",
+            "product_type",
+            "source_updated_at",
+            "seed_version",
+            "seed_digest",
+        ],
     ),
     "node_return": _node(
-        "node_return", "return", "Return", key="return_reference",
-        properties=["session_id", "sales_order_id", "customer_reference", "return_status", "eligibility_decision", "source_updated_at"],
+        "node_return",
+        "return",
+        "Return",
+        key="return_reference",
+        properties=[
+            "session_id",
+            "sales_order_id",
+            "customer_reference",
+            "return_status",
+            "eligibility_decision",
+            "source_updated_at",
+        ],
     ),
     "node_return_item": _node(
-        "node_return_item", "return_item", "ReturnItem", key="return_item_id",
-        properties=["return_reference", "order_line_id", "product_id", "quantity", "reason_code", "item_status", "source_updated_at"],
+        "node_return_item",
+        "return_item",
+        "ReturnItem",
+        key="return_item_id",
+        properties=[
+            "return_reference",
+            "order_line_id",
+            "product_id",
+            "quantity",
+            "reason_code",
+            "item_status",
+            "source_updated_at",
+        ],
     ),
     "node_return_tracking": _node(
-        "node_return_tracking", "return_tracking", "ReturnTracking", key="tracking_id",
-        properties=["return_reference", "tracking_type", "tracking_reference", "carrier_code", "tracking_status", "event_at"],
+        "node_return_tracking",
+        "return_tracking",
+        "ReturnTracking",
+        key="tracking_id",
+        properties=[
+            "return_reference",
+            "tracking_type",
+            "tracking_reference",
+            "carrier_code",
+            "tracking_status",
+            "event_at",
+        ],
     ),
     "node_bay_assignment": _node(
-        "node_bay_assignment", "bay_assignment", "BayAssignment", key="assignment_id",
+        "node_bay_assignment",
+        "bay_assignment",
+        "BayAssignment",
+        key="assignment_id",
         properties=[
-            "return_reference", "order_line_id", "item_number", "package_count",
-            "warehouse_id", "bay_id", "status", "confirmed_by_associate_id", "source_updated_at",
+            "return_reference",
+            "order_line_id",
+            "item_number",
+            "package_count",
+            "warehouse_id",
+            "bay_id",
+            "status",
+            "confirmed_by_associate_id",
+            "source_updated_at",
         ],
     ),
     "node_support_ticket": _node(
-        "node_support_ticket", "support_ticket", "SupportTicket", key="ticket_id",
+        "node_support_ticket",
+        "support_ticket",
+        "SupportTicket",
+        key="ticket_id",
         properties=["session_id", "status", "external_reference", "return_reference", "updated_at"],
     ),
 }
 
 _RELATIONSHIPS = {
     "customer_has_account": _relationship(
-        "customer_has_account", "HAS_ACCOUNT",
-        source_entity_id="customer", target_entity_id="customer_account",
-        source_match_fields=["customer_key"], target_match_fields=["customer_key"],
+        "customer_has_account",
+        "HAS_ACCOUNT",
+        source_entity_id="customer",
+        target_entity_id="customer_account",
+        source_match_fields=["customer_key"],
+        target_match_fields=["customer_key"],
         cardinality="ONE_TO_MANY",
     ),
     "customer_placed_order": _relationship(
-        "customer_placed_order", "PLACED_ORDER",
-        source_entity_id="customer", target_entity_id="sales_order",
-        source_match_fields=["customer_key"], target_match_fields=["customer_id"],
+        "customer_placed_order",
+        "PLACED_ORDER",
+        source_entity_id="customer",
+        target_entity_id="sales_order",
+        source_match_fields=["customer_key"],
+        target_match_fields=["customer_id"],
         cardinality="ONE_TO_MANY",
     ),
     "sales_order_has_order_line": _relationship(
-        "sales_order_has_order_line", "HAS_ORDER_LINE",
-        source_entity_id="sales_order", target_entity_id="order_line",
-        source_match_fields=["order_id"], target_match_fields=["sales_order_id"],
-        cardinality="ONE_TO_MANY", access="SEED_ONLY",
+        "sales_order_has_order_line",
+        "HAS_ORDER_LINE",
+        source_entity_id="sales_order",
+        target_entity_id="order_line",
+        source_match_fields=["order_id"],
+        target_match_fields=["sales_order_id"],
+        cardinality="ONE_TO_MANY",
+        access="SEED_ONLY",
     ),
     "order_line_references_product": _relationship(
-        "order_line_references_product", "REFERENCES_PRODUCT",
-        source_entity_id="order_line", target_entity_id="product",
-        source_match_fields=["product_id"], target_match_fields=["product_id"],
-        cardinality="MANY_TO_ONE", access="SEED_ONLY",
+        "order_line_references_product",
+        "REFERENCES_PRODUCT",
+        source_entity_id="order_line",
+        target_entity_id="product",
+        source_match_fields=["product_id"],
+        target_match_fields=["product_id"],
+        cardinality="MANY_TO_ONE",
+        access="SEED_ONLY",
     ),
     "sales_order_has_original_shipment": _relationship(
-        "sales_order_has_original_shipment", "HAS_ORIGINAL_SHIPMENT",
-        source_entity_id="sales_order", target_entity_id="shipment",
-        source_match_fields=["order_id"], target_match_fields=["sales_order_id"],
+        "sales_order_has_original_shipment",
+        "HAS_ORIGINAL_SHIPMENT",
+        source_entity_id="sales_order",
+        target_entity_id="shipment",
+        source_match_fields=["order_id"],
+        target_match_fields=["sales_order_id"],
         cardinality="ONE_TO_MANY",
     ),
     "sales_order_has_return": _relationship(
-        "sales_order_has_return", "HAS_RETURN",
-        source_entity_id="sales_order", target_entity_id="return",
-        source_match_fields=["order_id"], target_match_fields=["sales_order_id"],
+        "sales_order_has_return",
+        "HAS_RETURN",
+        source_entity_id="sales_order",
+        target_entity_id="return",
+        source_match_fields=["order_id"],
+        target_match_fields=["sales_order_id"],
         cardinality="ONE_TO_MANY",
     ),
     "return_has_return_item": _relationship(
-        "return_has_return_item", "HAS_RETURN_ITEM",
-        source_entity_id="return", target_entity_id="return_item",
-        source_match_fields=["return_reference"], target_match_fields=["return_reference"],
+        "return_has_return_item",
+        "HAS_RETURN_ITEM",
+        source_entity_id="return",
+        target_entity_id="return_item",
+        source_match_fields=["return_reference"],
+        target_match_fields=["return_reference"],
         cardinality="ONE_TO_MANY",
     ),
     "return_item_for_line": _relationship(
-        "return_item_for_line", "RETURN_ITEM_FOR_LINE",
-        source_entity_id="return_item", target_entity_id="order_line",
-        source_match_fields=["order_line_id"], target_match_fields=["order_line_id"],
-        cardinality="MANY_TO_ONE", access="SEED_ONLY",
+        "return_item_for_line",
+        "RETURN_ITEM_FOR_LINE",
+        source_entity_id="return_item",
+        target_entity_id="order_line",
+        source_match_fields=["order_line_id"],
+        target_match_fields=["order_line_id"],
+        cardinality="MANY_TO_ONE",
+        access="SEED_ONLY",
     ),
     "return_has_tracking": _relationship(
-        "return_has_tracking", "HAS_TRACKING",
-        source_entity_id="return", target_entity_id="return_tracking",
-        source_match_fields=["return_reference"], target_match_fields=["return_reference"],
+        "return_has_tracking",
+        "HAS_TRACKING",
+        source_entity_id="return",
+        target_entity_id="return_tracking",
+        source_match_fields=["return_reference"],
+        target_match_fields=["return_reference"],
         cardinality="ONE_TO_MANY",
     ),
     "bay_assignment_binds_return_item": _relationship(
-        "bay_assignment_binds_return_item", "BINDS_RETURN_ITEM",
-        source_entity_id="bay_assignment", target_entity_id="return_item",
+        "bay_assignment_binds_return_item",
+        "BINDS_RETURN_ITEM",
+        source_entity_id="bay_assignment",
+        target_entity_id="return_item",
         source_match_fields=["return_reference", "order_line_id"],
         target_match_fields=["return_reference", "order_line_id"],
     ),
     "return_tracked_by_support_ticket": _relationship(
-        "return_tracked_by_support_ticket", "TRACKED_BY_SUPPORT_TICKET",
-        source_entity_id="return", target_entity_id="support_ticket",
-        source_match_fields=["return_reference"], target_match_fields=["return_reference"],
+        "return_tracked_by_support_ticket",
+        "TRACKED_BY_SUPPORT_TICKET",
+        source_entity_id="return",
+        target_entity_id="support_ticket",
+        source_match_fields=["return_reference"],
+        target_match_fields=["return_reference"],
         cardinality="ONE_TO_MANY",
     ),
 }

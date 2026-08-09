@@ -80,7 +80,9 @@ class GenericSourceRecordExtractor:
             for document in page.documents:
                 if document.operation == "DELETE":
                     mutations.extend(
-                        _delete_mutations(entity, document, source_asset_id, projection_id, read_scope)
+                        _delete_mutations(
+                            entity, document, source_asset_id, projection_id, read_scope
+                        )
                     )
                     continue
                 if document.document is None:

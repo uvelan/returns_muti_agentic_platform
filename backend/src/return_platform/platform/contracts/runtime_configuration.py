@@ -32,6 +32,7 @@ class RuntimeConfigurationView(Protocol):
 
 from return_platform.platform.contracts.epoch import RuntimeEpoch
 
+
 @runtime_checkable
 class RuntimeConfigurationHandle(Protocol):
     """Resolves views. Deliberately has no read method of its own."""

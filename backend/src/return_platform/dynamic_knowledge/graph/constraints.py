@@ -53,7 +53,9 @@ def required_node_constraints(schema: ActiveSchema) -> tuple[RequiredNodeConstra
         graph_properties = ("graph_generation_id",) + tuple(
             entity.fields[field_id].graph_property for field_id in node.key_fields
         )
-        constraints.append(RequiredNodeConstraint(label=node.label, graph_properties=graph_properties))
+        constraints.append(
+            RequiredNodeConstraint(label=node.label, graph_properties=graph_properties)
+        )
     return tuple(constraints)
 
 

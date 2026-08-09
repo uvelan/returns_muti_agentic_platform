@@ -37,7 +37,8 @@ def test_field_with_both_physical_path_and_derive_is_rejected(
 
 def test_ownership_policy_requires_explode(active_schema: ActiveSchema) -> None:
     raw = _with_entity_a_patch(
-        active_schema, ownership_policy={"mode": "REPLACE_CHILD_SET", "owner_identity": "SOURCE_DOCUMENT"}
+        active_schema,
+        ownership_policy={"mode": "REPLACE_CHILD_SET", "owner_identity": "SOURCE_DOCUMENT"},
     )
     with pytest.raises(ValidationError, match="not exploded from a parent document"):
         ActiveSchema.model_validate(raw)

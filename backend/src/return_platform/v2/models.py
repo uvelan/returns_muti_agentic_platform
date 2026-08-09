@@ -47,9 +47,7 @@ class ConfigurationModule(V2Model):
     module_id: str = Field(alias="moduleId", pattern=r"^[a-z][a-z0-9_.-]+$")
     module_type: str = Field(alias="moduleType", pattern=r"^[A-Z][A-Z0-9_]+$")
     schema_version: str = Field(alias="schemaVersion", pattern=r"^\d+\.\d+$")
-    configuration_version: str = Field(
-        alias="configurationVersion", pattern=r"^\d+\.\d+\.\d+$"
-    )
+    configuration_version: str = Field(alias="configurationVersion", pattern=r"^\d+\.\d+\.\d+$")
     owner: str = Field(min_length=2, max_length=100)
     status: ModuleStatus = ModuleStatus.DRAFT
     dependencies: tuple[ModuleDependency, ...] = ()
@@ -64,21 +62,15 @@ class ModuleCreate(V2Model):
     module_id: str = Field(alias="moduleId", pattern=r"^[a-z][a-z0-9_.-]+$")
     module_type: str = Field(alias="moduleType", pattern=r"^[A-Z][A-Z0-9_]+$")
     schema_version: str = Field(alias="schemaVersion", pattern=r"^\d+\.\d+$")
-    configuration_version: str = Field(
-        alias="configurationVersion", pattern=r"^\d+\.\d+\.\d+$"
-    )
+    configuration_version: str = Field(alias="configurationVersion", pattern=r"^\d+\.\d+\.\d+$")
     owner: str = Field(min_length=2, max_length=100)
     dependencies: tuple[ModuleDependency, ...] = ()
     payload: dict[str, Any]
 
 
 class DraftCreate(V2Model):
-    configuration_version: str = Field(
-        alias="configurationVersion", pattern=r"^\d+\.\d+\.\d+$"
-    )
-    from_version: str | None = Field(
-        default=None, alias="fromVersion", pattern=r"^\d+\.\d+\.\d+$"
-    )
+    configuration_version: str = Field(alias="configurationVersion", pattern=r"^\d+\.\d+\.\d+$")
+    from_version: str | None = Field(default=None, alias="fromVersion", pattern=r"^\d+\.\d+\.\d+$")
 
 
 class FieldPatch(V2Model):
@@ -119,9 +111,7 @@ class ReleaseManifest(V2Model):
     release_id: str = Field(alias="releaseId", pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]+$")
     status: ReleaseStatus = ReleaseStatus.DRAFT
     modules: tuple[ReleaseModuleRef, ...]
-    dependency_lock_digest: str = Field(
-        alias="dependencyLockDigest", pattern=r"^[a-f0-9]{64}$"
-    )
+    dependency_lock_digest: str = Field(alias="dependencyLockDigest", pattern=r"^[a-f0-9]{64}$")
     created_at: datetime = Field(alias="createdAt", default_factory=utc_now)
     created_by: str = Field(alias="createdBy", min_length=1)
     activated_at: datetime | None = Field(default=None, alias="activatedAt")

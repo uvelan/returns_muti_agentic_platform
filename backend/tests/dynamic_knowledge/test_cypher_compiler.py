@@ -55,17 +55,12 @@ def test_contains_and_prefix_match_case_insensitively(active_schema: ActiveSchem
         start_entity_id="entity_a",
         fields=("id", "name"),
         filters=(
-            QueryCondition(
-                entity_id="entity_a", field_id="name", operator="PREFIX", value="Ma"
-            ),
+            QueryCondition(entity_id="entity_a", field_id="name", operator="PREFIX", value="Ma"),
         ),
         limit=10,
     )
     prefix_compiled = CypherCompiler().compile_read(active_schema, prefix_plan)
-    assert (
-        "toLower(n0.`configured_name`) STARTS WITH toLower($p0)"
-        in prefix_compiled.cypher
-    )
+    assert "toLower(n0.`configured_name`) STARTS WITH toLower($p0)" in prefix_compiled.cypher
 
 
 def test_traversal_uses_only_configured_relationship(active_schema: ActiveSchema) -> None:
@@ -135,7 +130,9 @@ def test_exists_returns_boolean_value(active_schema: ActiveSchema) -> None:
 def test_unimplemented_operations_fail_loudly_instead_of_silently(
     active_schema: ActiveSchema, operation: QueryOperation
 ) -> None:
-    kwargs = {"semantic_query": "blue faucet"} if operation is QueryOperation.SEMANTIC_SEARCH else {}
+    kwargs = (
+        {"semantic_query": "blue faucet"} if operation is QueryOperation.SEMANTIC_SEARCH else {}
+    )
     plan = LogicalQueryPlan(operation=operation, start_entity_id="entity_a", **kwargs)
     with pytest.raises(Exception, match="not implemented"):
         CypherCompiler().compile_read(active_schema, plan)

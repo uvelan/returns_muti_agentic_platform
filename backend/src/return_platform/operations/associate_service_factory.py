@@ -55,9 +55,7 @@ def build_associate_conversation_service(request: Request) -> AssociateConversat
             else None
         ),
         ai_gateway_route_pool=(
-            ai_gateway_route_pool
-            if isinstance(ai_gateway_route_pool, AIRoutePool)
-            else None
+            ai_gateway_route_pool if isinstance(ai_gateway_route_pool, AIRoutePool) else None
         ),
         configuration_release_id=(
             snapshot.release_id if isinstance(snapshot, PinnedConfigurationSnapshot) else None

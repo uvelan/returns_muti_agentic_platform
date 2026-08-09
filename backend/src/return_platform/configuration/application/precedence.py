@@ -9,17 +9,18 @@ BOOTSTRAP_ENV may only supply an explicit allowlist of deployment/bootstrap
 fields.  Business configuration must not come from environment variables.
 Secret values must never enter the snapshot; only Vault URI references are allowed.
 """
+
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import StrEnum
-from typing import Any, Dict, Mapping, Set
-
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Allowlisted BOOTSTRAP_ENV keys (deployment-only configuration)
 # ---------------------------------------------------------------------------
 
-BOOTSTRAP_ENV_ALLOWLIST: Set[str] = {
+BOOTSTRAP_ENV_ALLOWLIST: set[str] = {
     # Runtime environment identity
     "environment",
     "region",
@@ -40,7 +41,7 @@ BOOTSTRAP_ENV_ALLOWLIST: Set[str] = {
 }
 
 # Fields that ACTIVE_RELEASE must not override (bootstrap/deployment owned)
-BOOTSTRAP_ONLY_KEYS: Set[str] = BOOTSTRAP_ENV_ALLOWLIST
+BOOTSTRAP_ONLY_KEYS: set[str] = BOOTSTRAP_ENV_ALLOWLIST
 
 
 class PrecedenceLayer(StrEnum):
@@ -76,7 +77,7 @@ class ConfigurationPrecedenceEvaluator:
         bootstrap_env: Mapping[str, Any],
         baseline: Mapping[str, Any],
         active_release: Mapping[str, Any] | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Resolve effective configuration from all three input layers.
 
         Returns a plain dict that can be used to construct a RuntimeSnapshot.
@@ -91,7 +92,7 @@ class ConfigurationPrecedenceEvaluator:
                 )
 
         # 2. Start from baseline
-        result: Dict[str, Any] = self._deep_copy(baseline)
+        result: dict[str, Any] = self._deep_copy(baseline)
 
         # 3. Merge ACTIVE_RELEASE overrides (release-controlled values only)
         if active_release:
@@ -121,9 +122,9 @@ class ConfigurationPrecedenceEvaluator:
 
     def apply_overrides(
         self,
-        base_config: Dict[str, Any],
-        overrides: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        base_config: dict[str, Any],
+        overrides: dict[str, Any],
+    ) -> dict[str, Any]:
         """Simple recursive merge — use resolve() for authority-aware resolution."""
         return self._merge(base_config, overrides)
 
@@ -132,16 +133,17 @@ class ConfigurationPrecedenceEvaluator:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _deep_copy(d: Mapping[str, Any]) -> Dict[str, Any]:
+    def _deep_copy(d: Mapping[str, Any]) -> dict[str, Any]:
         import copy
+
         return copy.deepcopy(dict(d))
 
     @classmethod
     def _merge(
         cls,
-        base: Dict[str, Any],
-        overrides: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        base: dict[str, Any],
+        overrides: dict[str, Any],
+    ) -> dict[str, Any]:
         result = dict(base)
         for key, value in overrides.items():
             if isinstance(value, dict) and isinstance(result.get(key), dict):

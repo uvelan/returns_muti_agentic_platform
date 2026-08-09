@@ -172,14 +172,20 @@ class SqlServerSourceScanConnector:
         after: SourceCursor | None,
         through: SourceCursor,
     ) -> AsyncIterator[RawSourcePage]:
-        del schema  # this connector always uses the schema bound at construction; see class docstring
+        del (
+            schema
+        )  # this connector always uses the schema bound at construction; see class docstring
         namespace, table, cursor_field = self._resolve(source_asset_id)
         params: dict[str, Any] = {"through": datetime.fromisoformat(through.encoded_value)}
         predicate = f"[{cursor_field}] <= %(through)s"
         if after is not None:
             params["after"] = datetime.fromisoformat(after.encoded_value)
             predicate = f"[{cursor_field}] > %(after)s AND {predicate}"
-        top = f"TOP ({int(self._max_records_per_source)}) " if self._max_records_per_source is not None else ""
+        top = (
+            f"TOP ({int(self._max_records_per_source)}) "
+            if self._max_records_per_source is not None
+            else ""
+        )
         query = (
             f"SELECT {top}* FROM [{namespace}].[{table}] "
             f"WHERE {predicate} ORDER BY [{cursor_field}] ASC"
@@ -215,7 +221,9 @@ class SqlServerSourceScanConnector:
         output shape for every caller.
         """
 
-        del schema  # this connector always uses the schema bound at construction; see class docstring
+        del (
+            schema
+        )  # this connector always uses the schema bound at construction; see class docstring
         compiled = compile_source_read(self._schema, plan)
         query = _COLON_PARAMETER.sub(r"%(\1)s", compiled.statement)
         rows = await asyncio.to_thread(_run_query, self._connection, query, compiled.parameters)
@@ -228,7 +236,10 @@ class SqlServerSourceScanConnector:
             for row in rows
         )
         return RawSourcePage(
-            documents=documents, next_cursor=None, high_watermark=None, observed_at=datetime.now(UTC)
+            documents=documents,
+            next_cursor=None,
+            high_watermark=None,
+            observed_at=datetime.now(UTC),
         )
 
     def _resolve(self, source_asset_id: str) -> tuple[str, str, str]:

@@ -17,7 +17,9 @@ from return_platform.dynamic_knowledge.schema import ActiveSchema, ConnectorType
 
 
 class GraphProjector(Protocol):
-    async def project(self, *, schema: ActiveSchema, mutations: tuple[DynamicRecordMutation, ...]) -> object: ...
+    async def project(
+        self, *, schema: ActiveSchema, mutations: tuple[DynamicRecordMutation, ...]
+    ) -> object: ...
 
 
 class GraphWriter(Protocol):

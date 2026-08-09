@@ -81,9 +81,7 @@ class DurableOrderSyncCoordinator:
             raise ValueError("Persisted sync-job idempotency state must be an object")
         self._idempotency = {str(key): str(value) for key, value in raw_keys.items()}
 
-    async def enqueue_partial(
-        self, request: PartialSyncRequest, max_attempts: int = 3
-    ) -> SyncJob:
+    async def enqueue_partial(self, request: PartialSyncRequest, max_attempts: int = 3) -> SyncJob:
         return await self._enqueue(
             "PARTIAL_ORDER_SYNC",
             request.model_dump(mode="json", by_alias=True),

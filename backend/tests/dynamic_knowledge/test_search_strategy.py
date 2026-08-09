@@ -141,9 +141,7 @@ def test_rank_caps_candidates_at_max_cached_but_reports_true_total() -> None:
     """Pagination depends on total_found staying accurate even once the merged
     candidate list itself is capped for caching/token-budget reasons."""
     intent = OrderSearchIntent(customerNames=("Maya",))
-    rows = [
-        {"customer_id": f"CUST-{i}", "customer_name": f"Maya {i}"} for i in range(40)
-    ]
+    rows = [{"customer_id": f"CUST-{i}", "customer_name": f"Maya {i}"} for i in range(40)]
     ranked = rank_search_results(intent, [{"rows": rows}])
     assert len(ranked["candidates"]) == MAX_CACHED_CANDIDATES
     assert ranked["total_found"] == 40

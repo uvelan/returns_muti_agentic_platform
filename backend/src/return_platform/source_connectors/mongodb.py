@@ -138,9 +138,12 @@ class MongoDBSourceScanConnector:
         if not latest:
             # No documents yet -- "now" is a safe upper bound; an empty
             # collection must not block the rest of the run.
-            return SourceCursor(cursor_type=_FIELD_DATETIME, encoded_value=datetime.now(UTC).isoformat())
+            return SourceCursor(
+                cursor_type=_FIELD_DATETIME, encoded_value=datetime.now(UTC).isoformat()
+            )
         return SourceCursor(
-            cursor_type=_FIELD_DATETIME, encoded_value=_encode_field_value(_dotted_get(latest[0], sort_field))
+            cursor_type=_FIELD_DATETIME,
+            encoded_value=_encode_field_value(_dotted_get(latest[0], sort_field)),
         )
 
     def _resolve_physical_field(self, source_asset_id: str, field_id: str) -> str:
@@ -190,7 +193,9 @@ class MongoDBSourceScanConnector:
         after: SourceCursor | None,
         through: SourceCursor,
     ) -> AsyncIterator[RawSourcePage]:
-        del schema  # this connector always uses the schema bound at construction; see class docstring
+        del (
+            schema
+        )  # this connector always uses the schema bound at construction; see class docstring
         source = self._schema.sources[source_asset_id]
         collection_name = source.object_ref.get("name")
         if not collection_name:
@@ -236,7 +241,11 @@ class MongoDBSourceScanConnector:
         batch: list[RawSourceDocument] = []
         last_sort_value: Any = None
         async for document in mongo_cursor:
-            last_sort_value = document.get(sort_field) if cursor_field is None else _dotted_get(document, sort_field)
+            last_sort_value = (
+                document.get(sort_field)
+                if cursor_field is None
+                else _dotted_get(document, sort_field)
+            )
             batch.append(
                 RawSourceDocument(
                     operation="UPSERT",
@@ -258,7 +267,9 @@ class MongoDBSourceScanConnector:
         the only shape any caller produces today) rather than re-deriving filter
         translation here; this is the first connector to actually execute it."""
 
-        del schema  # this connector always uses the schema bound at construction; see class docstring
+        del (
+            schema
+        )  # this connector always uses the schema bound at construction; see class docstring
         source = self._schema.sources[plan.source_asset_id]
         collection_name = source.object_ref.get("name")
         if not collection_name:

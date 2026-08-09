@@ -40,9 +40,7 @@ def _coordinator() -> DurableOrderSyncCoordinator:
             ),
         )
     )
-    return DurableOrderSyncCoordinator(
-        OrderSyncService(source, InMemoryOrderProjectionStore())
-    )
+    return DurableOrderSyncCoordinator(OrderSyncService(source, InMemoryOrderProjectionStore()))
 
 
 @pytest.mark.asyncio

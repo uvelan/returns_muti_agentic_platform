@@ -4,9 +4,9 @@ test_canonical_application.py
 Covers: manifest validation, semantic validator, compatibility domain mapping,
         and precedence model.
 """
+
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -18,15 +18,14 @@ from return_platform.configuration.application.compatibility import (
 )
 from return_platform.configuration.application.loader import (
     ConfigurationLoader,
-    ConfigurationManifest,
 )
 from return_platform.configuration.application.precedence import (
     ConfigurationPrecedenceEvaluator,
     PrecedenceViolationError,
 )
 from return_platform.configuration.application.validator import (
-    ConfigurationValidator,
     ConfigurationValidationError,
+    ConfigurationValidator,
 )
 from return_platform.configuration.domain.agents import AgentConfigNode, AgentsConfig
 from return_platform.configuration.domain.ai import AiConfig
@@ -53,6 +52,7 @@ CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
 # Helpers for building minimal snapshots
 # ---------------------------------------------------------------------------
 
+
 def _minimal_snapshot(
     agents=None,
     modules=None,
@@ -62,9 +62,11 @@ def _minimal_snapshot(
     ai=None,
     system_store=None,
 ):
-    mod_map = modules or {"agent.order_discovery": ModuleConfigNode(
-        module_id="agent.order_discovery", module_type="AGENT"
-    )}
+    mod_map = modules or {
+        "agent.order_discovery": ModuleConfigNode(
+            module_id="agent.order_discovery", module_type="AGENT"
+        )
+    }
     agent_map = agents or {"order_discovery": AgentConfigNode()}
     # Accept either a SourcesConfig instance or a dict; default to empty
     if sources is None:
@@ -91,6 +93,7 @@ def _minimal_snapshot(
 # 1. Loader & compatibility — integration smoke test
 # ===========================================================================
 
+
 def test_loader_and_compatibility():
     adapter = LegacyCompatibilityAdapter(CONFIG_DIR)
     snapshot = adapter.build_canonical_snapshot()
@@ -113,6 +116,7 @@ def test_validator_smoke():
 # ===========================================================================
 # 2. Manifest validation
 # ===========================================================================
+
 
 def _write_config(tmp: Path, manifest: dict, modules: dict | None = None) -> Path:
     """Write a manifest and optional module files to a temp directory."""
@@ -175,9 +179,13 @@ def test_unreferenced_yaml_is_not_authoritative(tmp_path):
         "status": "DRAFT",
         "modules": {},
     }
-    _write_config(tmp_path, manifest, {
-        "agents/extra.yaml": {"module_id": "agent.extra", "module_type": "AGENT"},
-    })
+    _write_config(
+        tmp_path,
+        manifest,
+        {
+            "agents/extra.yaml": {"module_id": "agent.extra", "module_type": "AGENT"},
+        },
+    )
     loader = ConfigurationLoader(tmp_path)
     mf = loader.load_manifest()
     entries = loader.load_manifest_entries(mf)
@@ -227,7 +235,7 @@ def test_manifest_module_id_must_match_document(tmp_path):
     }
     modules = {
         "agents/mismatch.yaml": {
-            "module_id": "agent.wrong_id",   # mismatch
+            "module_id": "agent.wrong_id",  # mismatch
             "module_type": "AGENT",
             "schema_version": "1.0",
         },
@@ -251,7 +259,7 @@ def test_manifest_type_prefix_must_match_document(tmp_path):
     modules = {
         "agents/type_mismatch.yaml": {
             "module_id": "agent.type_mismatch",
-            "module_type": "WORKFLOW",     # wrong type for agent.* prefix
+            "module_type": "WORKFLOW",  # wrong type for agent.* prefix
             "schema_version": "1.0",
         },
     }
@@ -299,7 +307,7 @@ def test_duplicate_manifest_key_fails(tmp_path):
         "status: DRAFT\n"
         "modules:\n"
         "  agent.dup: {path: agents/a.yaml}\n"
-        "  agent.dup: {path: agents/b.yaml}\n"   # duplicate
+        "  agent.dup: {path: agents/b.yaml}\n"  # duplicate
     )
     (tmp_path / "manifest.yaml").write_text(dup_yaml)
     loader = ConfigurationLoader(tmp_path)
@@ -311,12 +319,15 @@ def test_duplicate_manifest_key_fails(tmp_path):
 # 3. Semantic validator tests
 # ===========================================================================
 
+
 def test_agent_resolves_to_agent_manifest_module():
     """Agent 'order_discovery' must appear in modules as 'agent.order_discovery'."""
     snapshot = _minimal_snapshot(
-        modules={"agent.order_discovery": ModuleConfigNode(
-            module_id="agent.order_discovery", module_type="AGENT"
-        )},
+        modules={
+            "agent.order_discovery": ModuleConfigNode(
+                module_id="agent.order_discovery", module_type="AGENT"
+            )
+        },
         agents={"order_discovery": AgentConfigNode()},
     )
     ConfigurationValidator().validate_snapshot(snapshot)  # should not raise
@@ -325,9 +336,9 @@ def test_agent_resolves_to_agent_manifest_module():
 def test_validator_handles_agent_id_namespace_normalization():
     """Missing 'agent.' prefix module → validation error naming the agent."""
     snapshot = _minimal_snapshot(
-        modules={"unrelated.module": ModuleConfigNode(
-            module_id="unrelated.module", module_type="AGENT"
-        )},
+        modules={
+            "unrelated.module": ModuleConfigNode(module_id="unrelated.module", module_type="AGENT")
+        },
         agents={"order_discovery": AgentConfigNode()},
     )
     with pytest.raises(ConfigurationValidationError, match="order_discovery"):
@@ -336,11 +347,7 @@ def test_validator_handles_agent_id_namespace_normalization():
 
 def test_validator_rejects_dangling_ai_route_ref():
     snapshot = _minimal_snapshot(
-        agents={
-            "order_discovery": AgentConfigNode(
-                ai_route_ref="NONEXISTENT_ROUTE"
-            )
-        },
+        agents={"order_discovery": AgentConfigNode(ai_route_ref="NONEXISTENT_ROUTE")},
         ai=AiConfig(routes={"OTHER_ROUTE": {"task_id": "t1"}}),
     )
     with pytest.raises(ConfigurationValidationError, match="NONEXISTENT_ROUTE"):
@@ -349,9 +356,7 @@ def test_validator_rejects_dangling_ai_route_ref():
 
 def test_validator_rejects_dangling_ai_task_ref_when_route_declares_task():
     snapshot = _minimal_snapshot(
-        agents={
-            "order_discovery": AgentConfigNode(ai_route_ref="MY_ROUTE")
-        },
+        agents={"order_discovery": AgentConfigNode(ai_route_ref="MY_ROUTE")},
         ai=AiConfig(
             routes={"MY_ROUTE": {"task_id": "MISSING_TASK"}},
             tasks={"OTHER_TASK": {}},
@@ -363,9 +368,7 @@ def test_validator_rejects_dangling_ai_task_ref_when_route_declares_task():
 
 def test_validator_rejects_unknown_ai_provider_ref():
     snapshot = _minimal_snapshot(
-        agents={
-            "order_discovery": AgentConfigNode(ai_route_ref="MY_ROUTE")
-        },
+        agents={"order_discovery": AgentConfigNode(ai_route_ref="MY_ROUTE")},
         ai=AiConfig(
             routes={"MY_ROUTE": {"provider": "MISSING_PROVIDER"}},
             providers={"KNOWN_PROVIDER": {}},
@@ -377,9 +380,7 @@ def test_validator_rejects_unknown_ai_provider_ref():
 
 def test_ai_route_task_rejected_when_tasks_empty():
     snapshot = _minimal_snapshot(
-        agents={
-            "order_discovery": AgentConfigNode(ai_route_ref="MY_ROUTE")
-        },
+        agents={"order_discovery": AgentConfigNode(ai_route_ref="MY_ROUTE")},
         ai=AiConfig(
             routes={"MY_ROUTE": {"task_id": "MISSING_TASK"}},
             tasks={},
@@ -391,9 +392,7 @@ def test_ai_route_task_rejected_when_tasks_empty():
 
 def test_ai_route_provider_rejected_when_providers_empty():
     snapshot = _minimal_snapshot(
-        agents={
-            "order_discovery": AgentConfigNode(ai_route_ref="MY_ROUTE")
-        },
+        agents={"order_discovery": AgentConfigNode(ai_route_ref="MY_ROUTE")},
         ai=AiConfig(
             routes={"MY_ROUTE": {"provider": "MISSING_PROVIDER"}},
             providers={},
@@ -409,7 +408,7 @@ def test_unknown_module_dependency_rejected():
             "agent.order_discovery": ModuleConfigNode(
                 module_id="agent.order_discovery",
                 module_type="AGENT",
-                dependencies=[{"module_id": "agent.unknown_module"}]
+                dependencies=[{"module_id": "agent.unknown_module"}],
             )
         }
     )
@@ -423,7 +422,7 @@ def test_self_dependency_rejected():
             "agent.order_discovery": ModuleConfigNode(
                 module_id="agent.order_discovery",
                 module_type="AGENT",
-                dependencies=[{"module_id": "agent.order_discovery"}]
+                dependencies=[{"module_id": "agent.order_discovery"}],
             )
         }
     )
@@ -448,21 +447,16 @@ def test_dependency_cycle_rejected():
             "a": AgentConfigNode(),
             "b": AgentConfigNode(),
             "c": AgentConfigNode(),
-        }
+        },
     )
     with pytest.raises(ConfigurationValidationError, match="dependency cycle detected"):
         ConfigurationValidator().validate_snapshot(snapshot)
 
 
-
 def test_validator_does_not_treat_workflow_stage_name_as_agent_id():
     """Workflow stages like ORDER_DISCOVERY must NOT be validated as agent IDs."""
     snapshot = _minimal_snapshot(
-        workflows={
-            "return_session": WorkflowDefinition(
-                stages=["ORDER_DISCOVERY", "FULFILLMENT"]
-            )
-        },
+        workflows={"return_session": WorkflowDefinition(stages=["ORDER_DISCOVERY", "FULFILLMENT"])},
     )
     # Should not raise — stage names are business states, not agent IDs
     ConfigurationValidator().validate_snapshot(snapshot)
@@ -470,9 +464,7 @@ def test_validator_does_not_treat_workflow_stage_name_as_agent_id():
 
 def test_validator_rejects_duplicate_workflow_stage_id():
     snapshot = _minimal_snapshot(
-        workflows={
-            "wf1": WorkflowDefinition(stages=["ORDER_DISCOVERY", "ORDER_DISCOVERY"])
-        },
+        workflows={"wf1": WorkflowDefinition(stages=["ORDER_DISCOVERY", "ORDER_DISCOVERY"])},
     )
     with pytest.raises(ConfigurationValidationError, match="duplicate stage"):
         ConfigurationValidator().validate_snapshot(snapshot)
@@ -486,7 +478,7 @@ def test_validator_rejects_dangling_graph_source_ref():
                     # A string/None value means a logical cross-reference into SourcesConfig.
                     # A dict value means an embedded source definition (DK-style), which is
                     # NOT a SourcesConfig cross-reference and must not be validated here.
-                    sources={"sales_inv": None}   # logical ref, not embedded dict
+                    sources={"sales_inv": None}  # logical ref, not embedded dict
                 )
             }
         ),
@@ -507,9 +499,7 @@ def test_validator_allows_graph_with_no_source_refs():
 
 def test_validator_rejects_empty_source_connector_type():
     snapshot = _minimal_snapshot(
-        sources=SourcesConfig(
-            sources={"bad_source": SourceConfigNode(connector_type="")}
-        )
+        sources=SourcesConfig(sources={"bad_source": SourceConfigNode(connector_type="")})
     )
     with pytest.raises(ConfigurationValidationError, match="connector_type"):
         ConfigurationValidator().validate_snapshot(snapshot)
@@ -521,7 +511,7 @@ def test_validator_rejects_non_read_only_source_access_mode():
             sources={
                 "bad_src": SourceConfigNode(
                     connector_type="MONGODB",
-                    access_mode="READ_WRITE",   # must be read-only
+                    access_mode="READ_WRITE",  # must be read-only
                 )
             }
         )
@@ -547,9 +537,7 @@ def test_validator_accepts_read_only_source():
 def test_validator_rejects_empty_system_store_physical_name():
     snapshot = _minimal_snapshot(
         system_store=SystemStoreConfig(
-            structures={
-                "my_collection": SystemStoreStructure(physical_name="  ")
-            }
+            structures={"my_collection": SystemStoreStructure(physical_name="  ")}
         )
     )
     with pytest.raises(ConfigurationValidationError, match="physical_name"):
@@ -565,9 +553,7 @@ def test_validator_allows_same_suffix_in_different_namespaces():
             ),
         },
         agents={"order_discovery": AgentConfigNode()},
-        graph=GraphConfig(
-            graphs={"order_discovery": GraphSchemaNode()}
-        ),
+        graph=GraphConfig(graphs={"order_discovery": GraphSchemaNode()}),
     )
     ConfigurationValidator().validate_snapshot(snapshot)  # should not raise
 
@@ -575,6 +561,7 @@ def test_validator_allows_same_suffix_in_different_namespaces():
 # ===========================================================================
 # 4. Compatibility domain mapping
 # ===========================================================================
+
 
 def test_policy_manifest_entry_is_preserved_in_modules():
     snapshot = build_snapshot_from_legacy_configs(CONFIG_DIR)
@@ -676,17 +663,13 @@ def test_compatibility_translation_fails_closed_on_invalid_agent_schema(tmp_path
         "schema_version": "2.0",
         "release_id": "fail-closed",
         "status": "DRAFT",
-        "modules": {
-            "agent.bad": {"path": "agents/bad.yaml"}
-        }
+        "modules": {"agent.bad": {"path": "agents/bad.yaml"}},
     }
     modules = {
         "agents/bad.yaml": {
             "module_id": "agent.bad",
             "module_type": "AGENT",
-            "payload": {
-                "invalid_field_that_is_forbidden": 123
-            }
+            "payload": {"invalid_field_that_is_forbidden": 123},
         }
     }
     _write_config(tmp_path, manifest, modules)
@@ -700,9 +683,7 @@ def test_compatibility_translation_fails_closed_on_invalid_source_schema(tmp_pat
         "schema_version": "2.0",
         "release_id": "fail-closed-source",
         "status": "DRAFT",
-        "modules": {
-            "source.bad": {"path": "sources/bad.yaml"}
-        }
+        "modules": {"source.bad": {"path": "sources/bad.yaml"}},
     }
     modules = {
         "sources/bad.yaml": {
@@ -711,7 +692,7 @@ def test_compatibility_translation_fails_closed_on_invalid_source_schema(tmp_pat
             "payload": {
                 # missing connector_type
                 "access_mode": "READ_ONLY"
-            }
+            },
         }
     }
     _write_config(tmp_path, manifest, modules)
@@ -724,11 +705,12 @@ def test_compatibility_translation_fails_closed_on_invalid_source_schema(tmp_pat
 # 5. Precedence model
 # ===========================================================================
 
+
 def test_bootstrap_env_rejects_non_allowlisted_business_key():
     evaluator = ConfigurationPrecedenceEvaluator()
     with pytest.raises(PrecedenceViolationError, match="max_return_value"):
         evaluator.resolve(
-            bootstrap_env={"max_return_value": 500},   # business key — not allowed
+            bootstrap_env={"max_return_value": 500},  # business key — not allowed
             baseline={},
         )
 
@@ -749,7 +731,7 @@ def test_active_release_cannot_override_bootstrap_only_value():
         evaluator.resolve(
             bootstrap_env={},
             baseline={},
-            active_release={"log_level": "DEBUG"},   # bootstrap-only key
+            active_release={"log_level": "DEBUG"},  # bootstrap-only key
         )
 
 
@@ -772,6 +754,7 @@ def test_secret_ref_is_preserved_without_resolution():
 # ===========================================================================
 # 6. Legacy precedence apply_overrides (backward compat)
 # ===========================================================================
+
 
 def test_precedence_evaluator_apply_overrides():
     evaluator = ConfigurationPrecedenceEvaluator()

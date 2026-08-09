@@ -8,10 +8,7 @@ def test_missing_keys_are_copied_from_example_without_overwriting_existing(
     tmp_path: Path,
 ) -> None:
     script_path = (
-        Path(__file__).resolve().parents[2]
-        / "scripts"
-        / "linux"
-        / "ensure_runtime_env_keys.py"
+        Path(__file__).resolve().parents[2] / "scripts" / "linux" / "ensure_runtime_env_keys.py"
     )
     namespace: dict[str, Any] = runpy.run_path(str(script_path))
     update = cast(

@@ -73,7 +73,7 @@ class FakeSession:
     def __init__(self, tx: FakeTransaction) -> None:
         self._tx = tx
 
-    async def __aenter__(self) -> "FakeSession":
+    async def __aenter__(self) -> FakeSession:
         return self
 
     async def __aexit__(self, *exc_info: Any) -> None:
@@ -350,7 +350,9 @@ async def test_ownership_reconciliation_fencing_mismatch_raises_and_writes_nothi
 
 
 @pytest.mark.asyncio
-async def test_ownership_reconciliation_upserts_current_children(active_schema: ActiveSchema) -> None:
+async def test_ownership_reconciliation_upserts_current_children(
+    active_schema: ActiveSchema,
+) -> None:
     tx = FakeTransaction(fence_matched=1)
     writer = Neo4jDynamicGraphWriter(FakeDriver(tx))
     child_hash = canonical_key_hash({"related_id": "CHILD-1"})
@@ -403,7 +405,9 @@ async def test_ownership_reconciliation_keeps_node_still_owned_by_another_parent
     stale_hash = canonical_key_hash({"related_id": "CHILD-SHARED"})
     tx = FakeTransaction(
         fence_matched=1,
-        existing_ownership_rows=[{"entity_key_hash": stale_hash, "key__related_id": "CHILD-SHARED"}],
+        existing_ownership_rows=[
+            {"entity_key_hash": stale_hash, "key__related_id": "CHILD-SHARED"}
+        ],
         remaining_ownership_count=1,  # a different parent document still owns it
     )
     writer = Neo4jDynamicGraphWriter(FakeDriver(tx))

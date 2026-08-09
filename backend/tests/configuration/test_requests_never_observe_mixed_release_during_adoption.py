@@ -1,12 +1,15 @@
-import pytest
 import asyncio
+
+import pytest
+
 from return_platform.bootstrap.epoch import (
     EpochAdmission,
-    SimpleRuntimeEpoch,
     EpochAllocator,
-    ReconfigurationCoordinator
+    ReconfigurationCoordinator,
+    SimpleRuntimeEpoch,
 )
 from return_platform.platform.modules.contracts import ReconfigureOutcome
+
 
 @pytest.mark.asyncio
 async def test_requests_never_observe_mixed_release_during_adoption():
@@ -38,9 +41,7 @@ async def test_requests_never_observe_mixed_release_during_adoption():
     mod_a = MockModuleWithResources("ModuleA")
     mod_b = MockModuleWithResources("ModuleB")
 
-    coordinator = ReconfigurationCoordinator(
-        {"mod_a": mod_a, "mod_b": mod_b}, admission
-    )
+    coordinator = ReconfigurationCoordinator({"mod_a": mod_a, "mod_b": mod_b}, admission)
 
     stop_event = asyncio.Event()
     violations = []

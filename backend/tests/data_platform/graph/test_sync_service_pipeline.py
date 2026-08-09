@@ -27,11 +27,13 @@ class FakeMongoCursor:
     def __init__(self, documents: list[dict[str, Any]]) -> None:
         self._documents = documents
 
-    def sort(self, field: str, direction: int) -> "FakeMongoCursor":
-        self._documents = sorted(self._documents, key=lambda d: str(d.get(field)), reverse=direction < 0)
+    def sort(self, field: str, direction: int) -> FakeMongoCursor:
+        self._documents = sorted(
+            self._documents, key=lambda d: str(d.get(field)), reverse=direction < 0
+        )
         return self
 
-    def limit(self, count: int) -> "FakeMongoCursor":
+    def limit(self, count: int) -> FakeMongoCursor:
         self._documents = self._documents[:count]
         return self
 
@@ -47,7 +49,9 @@ class FakeMongoCollection:
     def __init__(self, documents: list[dict[str, Any]]) -> None:
         self.documents = documents
 
-    def find(self, query: dict[str, Any], projection: dict[str, Any] | None = None) -> FakeMongoCursor:
+    def find(
+        self, query: dict[str, Any], projection: dict[str, Any] | None = None
+    ) -> FakeMongoCursor:
         del query, projection
         return FakeMongoCursor(list(self.documents))
 
@@ -83,7 +87,9 @@ class FakeTransaction:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self._fence_matched = fence_matched
 
-    async def run(self, query: str, parameters: dict[str, Any] | None = None, **kwargs: Any) -> FakeResult:
+    async def run(
+        self, query: str, parameters: dict[str, Any] | None = None, **kwargs: Any
+    ) -> FakeResult:
         self.calls.append((query, parameters or kwargs))
         if "MATCH (g:GraphGeneration" in query and "RETURN count(g)" in query:
             return FakeResult([{"matched": self._fence_matched}])
@@ -100,7 +106,7 @@ class FakeSession:
     def __init__(self, tx: FakeTransaction) -> None:
         self._tx = tx
 
-    async def __aenter__(self) -> "FakeSession":
+    async def __aenter__(self) -> FakeSession:
         return self
 
     async def __aexit__(self, *exc_info: Any) -> None:
@@ -217,7 +223,9 @@ async def test_sync_mongodb_only_writes_customer_and_order_nodes_via_the_generic
     service = _service_with(tx, source_db)
 
     run = await service.sync(
-        GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, maxRecordsPerAsset=100, applySchema=True),
+        GraphSyncRequest(
+            mode=GraphSyncScope.SOURCE_MONGODB, maxRecordsPerAsset=100, applySchema=True
+        ),
         actor_id="test",
     )
 

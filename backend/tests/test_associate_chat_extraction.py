@@ -217,8 +217,8 @@ def test_typo_first_name_requests_possible_full_name_without_revealing_orders() 
     ]
     instance = service()
 
-    state, requested_slots, _set_id, _expires_at, question = (
-        instance._dialogue_projection(candidates)
+    state, requested_slots, _set_id, _expires_at, question = instance._dialogue_projection(
+        candidates
     )
     prompt = instance._clarification_prompt(candidates, requested_slots, question)
 
@@ -266,9 +266,7 @@ def test_ambiguous_order_details_are_redacted_from_public_response() -> None:
         messages=[],
         candidates=candidates,
         discoveryAssessment={
-            "rankedCandidates": [
-                {"candidateId": "CUST-1:ORD-1", "orderReference": "ORD-1"}
-            ]
+            "rankedCandidates": [{"candidateId": "CUST-1:ORD-1", "orderReference": "ORD-1"}]
         },
         version=0,
         createdAt=now,
@@ -382,7 +380,9 @@ async def test_multi_anchor_search_retains_only_orders_matching_every_anchor() -
     async def discover(anchor_type: AnchorType, _anchor_value: str) -> list[OrderCandidate]:
         return by_anchor[anchor_type]
 
-    async def graph_combined(anchors: tuple[StartAssociateConversationRequest, ...]) -> list[OrderCandidate]:
+    async def graph_combined(
+        anchors: tuple[StartAssociateConversationRequest, ...],
+    ) -> list[OrderCandidate]:
         return []
 
     instance._discover_candidates = discover

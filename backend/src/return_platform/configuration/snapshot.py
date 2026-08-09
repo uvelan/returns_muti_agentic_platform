@@ -128,9 +128,7 @@ class ConfigurationSnapshotBuilder:
 
             validated = ReturnPlatformConfiguration.model_validate(payload)
             ai_gateway_payload = domain_payloads.get(AI_GATEWAY_DOMAIN_KEY)
-            dependency_simulation_payload = domain_payloads.get(
-                DEPENDENCY_SIMULATION_DOMAIN_KEY
-            )
+            dependency_simulation_payload = domain_payloads.get(DEPENDENCY_SIMULATION_DOMAIN_KEY)
             if require_all_behavior_domains:
                 missing_domains = [
                     key
@@ -151,9 +149,7 @@ class ConfigurationSnapshotBuilder:
                 else default_ai_gateway_configuration
             )
             validated_dependency_simulation = (
-                DependencySimulationConfiguration.model_validate(
-                    dependency_simulation_payload
-                )
+                DependencySimulationConfiguration.model_validate(dependency_simulation_payload)
                 if dependency_simulation_payload is not None
                 else default_dependency_simulation_configuration
             )

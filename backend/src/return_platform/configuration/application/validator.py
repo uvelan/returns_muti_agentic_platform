@@ -28,10 +28,11 @@ Rules implemented per the Phase 2 plan:
   §3.9  SystemStore structure physical_name non-empty; no duplicate physical names
   §3.10 Duplicate IDs rejected within same namespace only
 """
+
 from __future__ import annotations
 
-from collections import deque
-from typing import Any, Dict, Mapping, Optional, Set
+from collections.abc import Mapping
+from typing import Any
 
 from return_platform.configuration.domain.errors import ConfigurationValidationError
 from return_platform.configuration.domain.release_model import RuntimeSnapshot
@@ -77,9 +78,7 @@ class ConfigurationValidator:
         errors: list[str],
     ) -> None:
         if not snapshot.modules or not snapshot.modules.modules:
-            errors.append(
-                "modules: snapshot must declare at least one module in ModulesConfig"
-            )
+            errors.append("modules: snapshot must declare at least one module in ModulesConfig")
 
     # ------------------------------------------------------------------
     # §3.1a — Module dependency validation (existence, self-dep, cycles)
@@ -91,20 +90,18 @@ class ConfigurationValidator:
         errors: list[str],
     ) -> None:
         modules = snapshot.modules.modules if snapshot.modules else {}
-        all_module_ids: Set[str] = set(modules.keys())
+        all_module_ids: set[str] = set(modules.keys())
 
         # Build adjacency for cycle detection
-        adjacency: Dict[str, list[str]] = {mid: [] for mid in all_module_ids}
+        adjacency: dict[str, list[str]] = {mid: [] for mid in all_module_ids}
 
         for module_id, module in modules.items():
-            for dep in (module.dependencies or []):
+            for dep in module.dependencies or []:
                 dep_id = dep.module_id
 
                 # Self-dependency
                 if dep_id == module_id:
-                    errors.append(
-                        f"modules: module '{module_id}' declares a self-dependency"
-                    )
+                    errors.append(f"modules: module '{module_id}' declares a self-dependency")
                     continue
 
                 # Unknown dependency
@@ -119,11 +116,11 @@ class ConfigurationValidator:
 
         # Cycle detection via DFS
         # visited: 0=unvisited, 1=in-progress, 2=done
-        visited: Dict[str, int] = {mid: 0 for mid in all_module_ids}
+        visited: dict[str, int] = {mid: 0 for mid in all_module_ids}
 
         def _dfs(node: str, path: list[str]) -> list[str] | None:
             if visited[node] == 1:
-                return path + [node]   # cycle found
+                return path + [node]  # cycle found
             if visited[node] == 2:
                 return None
             visited[node] = 1
@@ -138,10 +135,8 @@ class ConfigurationValidator:
             if visited[module_id] == 0:
                 cycle = _dfs(module_id, [])
                 if cycle:
-                    errors.append(
-                        f"modules: dependency cycle detected: {' → '.join(cycle)}"
-                    )
-                    break   # report only the first cycle to avoid noise
+                    errors.append(f"modules: dependency cycle detected: {' → '.join(cycle)}")
+                    break  # report only the first cycle to avoid noise
 
     # ------------------------------------------------------------------
     # §3.1b — Reverse completeness: enabled modules must appear in domain configs
@@ -156,7 +151,9 @@ class ConfigurationValidator:
 
         agent_ids = set(snapshot.agents.agents.keys()) if snapshot.agents.agents else set()
         source_ids = set(snapshot.sources.sources.keys()) if snapshot.sources.sources else set()
-        workflow_ids = set(snapshot.workflow.workflow.keys()) if snapshot.workflow.workflow else set()
+        workflow_ids = (
+            set(snapshot.workflow.workflow.keys()) if snapshot.workflow.workflow else set()
+        )
         graph_ids = set(snapshot.graph.graphs.keys()) if snapshot.graph.graphs else set()
         mapping_ids = set(snapshot.graph.mappings.keys()) if snapshot.graph.mappings else set()
         sync_ids = set(snapshot.graph.sync.keys()) if snapshot.graph.sync else set()
@@ -252,9 +249,7 @@ class ConfigurationValidator:
             impl = agent.implementation
             if impl is not None:
                 if not impl.strip():
-                    errors.append(
-                        f"agents: agent '{agent_id}' has whitespace-only implementation"
-                    )
+                    errors.append(f"agents: agent '{agent_id}' has whitespace-only implementation")
 
             # §3.4 — ai_route_ref must resolve
             route_ref = agent.ai_route_ref
@@ -378,9 +373,7 @@ class ConfigurationValidator:
         for src_id, source in (snapshot.sources.sources or {}).items():
             # connector_type must be non-empty
             if not source.connector_type or not source.connector_type.strip():
-                errors.append(
-                    f"sources: source '{src_id}' has missing or empty connector_type"
-                )
+                errors.append(f"sources: source '{src_id}' has missing or empty connector_type")
 
             # access_mode must be read-only if declared
             access_mode = source.access_mode
@@ -406,15 +399,12 @@ class ConfigurationValidator:
         physical_names_seen: set[str] = set()
         for struct_id, structure in (snapshot.system_store.structures or {}).items():
             if not struct_id.strip():
-                errors.append(
-                    "system_store: logical structure ID must be non-empty"
-                )
+                errors.append("system_store: logical structure ID must be non-empty")
 
             phys = structure.physical_name
             if not phys or not phys.strip():
                 errors.append(
-                    f"system_store: structure '{struct_id}' has missing or empty "
-                    f"physical_name"
+                    f"system_store: structure '{struct_id}' has missing or empty physical_name"
                 )
                 continue
 

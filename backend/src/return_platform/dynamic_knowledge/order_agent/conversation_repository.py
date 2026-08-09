@@ -90,9 +90,7 @@ class AtomicConversationRepository:
             "result": result.model_dump(mode="json"),
         }
         state_to_persist = {
-            key: value
-            for key, value in conversation_state.items()
-            if not key.startswith("_")
+            key: value for key, value in conversation_state.items() if not key.startswith("_")
         }
         replacement = {
             **document,

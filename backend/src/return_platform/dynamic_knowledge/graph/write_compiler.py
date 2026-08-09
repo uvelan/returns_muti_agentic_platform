@@ -110,7 +110,11 @@ def compile_generation_create(
             "CREATE (g:GraphGeneration {generation_id: $generationId, "
             "fencing_token: $fencingToken, status: $status, created_at: datetime()})"
         ),
-        parameters={"generationId": graph_generation_id, "fencingToken": fencing_token, "status": status},
+        parameters={
+            "generationId": graph_generation_id,
+            "fencingToken": fencing_token,
+            "status": status,
+        },
     )
 
 
@@ -253,9 +257,10 @@ def _validate_relationship_key_shape_consistent(group: list[GraphRelationshipMut
     expected_source = frozenset(group[0].source_key_values)
     expected_target = frozenset(group[0].target_key_values)
     for mutation in group:
-        if frozenset(mutation.source_key_values) != expected_source or frozenset(
-            mutation.target_key_values
-        ) != expected_target:
+        if (
+            frozenset(mutation.source_key_values) != expected_source
+            or frozenset(mutation.target_key_values) != expected_target
+        ):
             raise WriteCompilationError(
                 "relationship mutations for the same relationship/operation must share "
                 "identical key fields"
@@ -270,11 +275,7 @@ def _compile_node_upsert(
     key_names = frozenset(group[0].key_values)
     rows = [{"keys": m.key_values, "properties": m.properties} for m in group]
     key_inner = _generation_scoped_pattern("row.keys", key_names)
-    cypher = (
-        "UNWIND $rows AS row "
-        f"MERGE (n:`{label}` {{{key_inner}}}) "
-        "SET n += row.properties"
-    )
+    cypher = f"UNWIND $rows AS row MERGE (n:`{label}` {{{key_inner}}}) SET n += row.properties"
     return CompiledWrite(
         cypher=cypher, parameters={"rows": rows, "generationId": graph_generation_id}
     )
@@ -494,8 +495,10 @@ def compile_relationship_cardinality_checks(
 
 def _generation_scoped_pattern(row_field: str, key_names: frozenset[str]) -> str:
     key_inner = ", ".join(f"`{name}`: {row_field}.`{name}`" for name in sorted(key_names))
-    return f"graph_generation_id: $generationId, {key_inner}" if key_inner else (
-        "graph_generation_id: $generationId"
+    return (
+        f"graph_generation_id: $generationId, {key_inner}"
+        if key_inner
+        else ("graph_generation_id: $generationId")
     )
 
 
@@ -531,7 +534,10 @@ def compile_ownership_upsert(
     for _, key_values in owned_children:
         for name in key_values:
             validate_graph_identifier(name)
-    rows = [{"entityKeyHash": key_hash, "keys": dict(key_values)} for key_hash, key_values in owned_children]
+    rows = [
+        {"entityKeyHash": key_hash, "keys": dict(key_values)}
+        for key_hash, key_values in owned_children
+    ]
     key_inner = _generation_scoped_pattern("row.keys", key_names)
     cypher = (
         "UNWIND $rows AS row "
@@ -575,7 +581,10 @@ def compile_ownership_query_existing(
     node = schema.graph.nodes[projection_id]
     entity = schema.entities[node.entity_id]
     label = validate_graph_identifier(node.label)
-    key_properties = [validate_graph_identifier(entity.fields[field_id].graph_property) for field_id in node.key_fields]
+    key_properties = [
+        validate_graph_identifier(entity.fields[field_id].graph_property)
+        for field_id in node.key_fields
+    ]
     key_returns = ", ".join(f"n.`{prop}` AS `key__{prop}`" for prop in key_properties)
     returns = "o.entity_key_hash AS entity_key_hash" + (f", {key_returns}" if key_returns else "")
     cypher = (

@@ -1,17 +1,21 @@
+from collections.abc import Mapping
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict
-from typing import Mapping, Any, List
+
 
 class SystemStoreStructure(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     physical_name: str
     schema_version: int | None = None
     encrypted: bool = False
-    indexes: List[Mapping[str, Any]] | None = None
+    indexes: list[Mapping[str, Any]] | None = None
+
 
 class SystemStoreConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     provider: str = "MONGODB"
-    allowed_providers: List[str] | None = None
+    allowed_providers: list[str] | None = None
     auto_bootstrap_missing_structures: bool = False
     migration_mode: str | None = None
     fail_closed_on_drift: bool = False

@@ -53,9 +53,7 @@ _PRODUCT_CATALOG = _SEED_CONFIGURATION["productCatalog"]
 
 def _effective_counts() -> dict[str, int]:
     configured = {name: int(_COUNTS[name]) for name in ("customers", "products", "orders")}
-    environment_variable = str(
-        _RUNTIME_OPTIONS.get("recordLimitEnvironmentVariable", "")
-    ).strip()
+    environment_variable = str(_RUNTIME_OPTIONS.get("recordLimitEnvironmentVariable", "")).strip()
     if not environment_variable:
         return configured
     raw_limit = os.getenv(environment_variable, "").strip()
@@ -188,17 +186,10 @@ def effective_seed_counts(record_limit: int | None = None) -> dict[str, int]:
     if record_limit is None:
         return dict(_EFFECTIVE_COUNTS)
     if record_limit < MINIMUM_SEED_RECORD_LIMIT:
-        raise ValueError(
-            f"recordLimit must be at least {MINIMUM_SEED_RECORD_LIMIT}."
-        )
+        raise ValueError(f"recordLimit must be at least {MINIMUM_SEED_RECORD_LIMIT}.")
     if record_limit > MAXIMUM_SEED_RECORD_LIMIT:
-        raise ValueError(
-            f"recordLimit must not exceed {MAXIMUM_SEED_RECORD_LIMIT}."
-        )
-    return {
-        name: min(configured, record_limit)
-        for name, configured in _EFFECTIVE_COUNTS.items()
-    }
+        raise ValueError(f"recordLimit must not exceed {MAXIMUM_SEED_RECORD_LIMIT}.")
+    return {name: min(configured, record_limit) for name, configured in _EFFECTIVE_COUNTS.items()}
 
 
 def manifest_payload(

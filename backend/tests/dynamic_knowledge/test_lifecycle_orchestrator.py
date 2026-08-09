@@ -27,7 +27,11 @@ class FakeSnapshotStore:
         return self.snapshots.get(snapshot_name)
 
     async def compare_and_swap(
-        self, *, snapshot_name: str, expected_activation_version: int | None, new_snapshot: ActiveRuntimeSnapshot
+        self,
+        *,
+        snapshot_name: str,
+        expected_activation_version: int | None,
+        new_snapshot: ActiveRuntimeSnapshot,
     ) -> bool:
         self.cas_calls.append(
             {
@@ -52,7 +56,12 @@ class FakeLeaseStore:
         self.release_calls: list[tuple[str, str]] = []
 
     async def acquire(
-        self, *, snapshot_name: str, graph_generation_id: str, owner_instance_id: str, ttl_seconds: int
+        self,
+        *,
+        snapshot_name: str,
+        graph_generation_id: str,
+        owner_instance_id: str,
+        ttl_seconds: int,
     ) -> RebuildLease | None:
         if snapshot_name in self.held:
             return None
@@ -102,7 +111,9 @@ class FakeGenerationWriter:
         self.statuses[graph_generation_id] = new_status
         self.transitions.append((graph_generation_id, expected_status.value, new_status.value))
 
-    async def get_status(self, *, graph_generation_id: str) -> tuple[GraphGenerationStatus, int] | None:
+    async def get_status(
+        self, *, graph_generation_id: str
+    ) -> tuple[GraphGenerationStatus, int] | None:
         status = self.statuses.get(graph_generation_id)
         if status is None:
             return None
@@ -130,7 +141,10 @@ class FakeSyncCoordinator:
                 "sync_run_id": sync_run_id,
             }
         )
-        if self._raise_on_status is not None and expected_generation_status is self._raise_on_status:
+        if (
+            self._raise_on_status is not None
+            and expected_generation_status is self._raise_on_status
+        ):
             raise RuntimeError("simulated sync failure")
         return 10, 5
 
@@ -141,7 +155,13 @@ def _orchestrator(
     lease_store: FakeLeaseStore | None = None,
     generation_writer: FakeGenerationWriter | None = None,
     sync_coordinator: FakeSyncCoordinator | None = None,
-) -> tuple[GenerationLifecycleOrchestrator, FakeSnapshotStore, FakeLeaseStore, FakeGenerationWriter, FakeSyncCoordinator]:
+) -> tuple[
+    GenerationLifecycleOrchestrator,
+    FakeSnapshotStore,
+    FakeLeaseStore,
+    FakeGenerationWriter,
+    FakeSyncCoordinator,
+]:
     snapshot_store = snapshot_store or FakeSnapshotStore()
     lease_store = lease_store or FakeLeaseStore()
     generation_writer = generation_writer or FakeGenerationWriter()
@@ -185,7 +205,9 @@ async def test_transitions_happen_in_the_correct_order(active_schema: ActiveSche
 
 
 @pytest.mark.asyncio
-async def test_full_sync_is_called_for_both_build_and_catchup_phases(active_schema: ActiveSchema) -> None:
+async def test_full_sync_is_called_for_both_build_and_catchup_phases(
+    active_schema: ActiveSchema,
+) -> None:
     orchestrator, _, _, _, coordinator = _orchestrator()
     await orchestrator.build_and_activate(
         schema=active_schema, snapshot_name="ORDER_DISCOVERY", configuration_release_id="release-1"
@@ -220,11 +242,16 @@ async def test_raises_when_a_rebuild_is_already_in_progress(active_schema: Activ
     orchestrator, _, _, writer, coordinator = _orchestrator(lease_store=lease_store)
     # Simulate a concurrent rebuild already holding the lease.
     await lease_store.acquire(
-        snapshot_name="ORDER_DISCOVERY", graph_generation_id="other-gen", owner_instance_id="other-worker", ttl_seconds=60
+        snapshot_name="ORDER_DISCOVERY",
+        graph_generation_id="other-gen",
+        owner_instance_id="other-worker",
+        ttl_seconds=60,
     )
     with pytest.raises(ActivationError) as excinfo:
         await orchestrator.build_and_activate(
-            schema=active_schema, snapshot_name="ORDER_DISCOVERY", configuration_release_id="release-1"
+            schema=active_schema,
+            snapshot_name="ORDER_DISCOVERY",
+            configuration_release_id="release-1",
         )
     assert excinfo.value.stage == "ACQUIRE_REBUILD_LEASE"
     assert writer.statuses == {}  # no generation was ever created
@@ -240,7 +267,9 @@ async def test_cas_failure_marks_the_candidate_failed_and_releases_the_lease(
     orchestrator, _, lease_store, writer, _ = _orchestrator(snapshot_store=snapshot_store)
     with pytest.raises(ActivationError) as excinfo:
         await orchestrator.build_and_activate(
-            schema=active_schema, snapshot_name="ORDER_DISCOVERY", configuration_release_id="release-1"
+            schema=active_schema,
+            snapshot_name="ORDER_DISCOVERY",
+            configuration_release_id="release-1",
         )
     assert excinfo.value.stage == "ACTIVATE_SNAPSHOT_CAS"
     (generation_id,) = writer.statuses.keys()
@@ -256,7 +285,9 @@ async def test_sync_failure_during_build_propagates_and_still_releases_the_lease
     orchestrator, _, lease_store, writer, _ = _orchestrator(sync_coordinator=coordinator)
     with pytest.raises(RuntimeError, match="simulated sync failure"):
         await orchestrator.build_and_activate(
-            schema=active_schema, snapshot_name="ORDER_DISCOVERY", configuration_release_id="release-1"
+            schema=active_schema,
+            snapshot_name="ORDER_DISCOVERY",
+            configuration_release_id="release-1",
         )
     assert lease_store.held == {}
     (generation_id,) = writer.statuses.keys()

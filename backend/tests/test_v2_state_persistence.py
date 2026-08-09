@@ -76,9 +76,7 @@ async def test_service_state_survives_restart_and_preserves_idempotency() -> Non
     await restarted.bootstrap(CONFIG_ROOT)
     await restarted.bind_state_store(store)
 
-    restored_module = await restarted.configuration.get_module(
-        "policy.restart_test", "1.0.0"
-    )
+    restored_module = await restarted.configuration.get_module("policy.restart_test", "1.0.0")
     restored_context = await restarted.schema_design.get(schema_context.request_id)
     restored_sync = await restarted.order_sync.get(sync.request_id)
     replay = await restarted.order_sync.partial(

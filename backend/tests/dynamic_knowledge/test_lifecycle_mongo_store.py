@@ -36,7 +36,9 @@ class FakeStoreCollection:
             raise DuplicateKeyError("duplicate _id")
         self.documents[doc_id] = dict(payload)
 
-    async def replace_one(self, filter_: dict[str, Any], payload: dict[str, Any]) -> FakeReplaceResult:
+    async def replace_one(
+        self, filter_: dict[str, Any], payload: dict[str, Any]
+    ) -> FakeReplaceResult:
         doc_id = filter_["_id"]
         existing = self.documents.get(doc_id)
         if existing is None or any(

@@ -245,17 +245,13 @@ def test_bootstrap_managed_sources_do_not_override_deployment_settings(
     assert configured.sqlserver_host == test_settings.sqlserver_host
     assert configured.valkey_host == test_settings.valkey_host
     assert configured.temporal_target == test_settings.temporal_target
-    assert (
-        configured.mongo_dsn_secret_reference
-        == test_settings.mongo_dsn_secret_reference
-    )
+    assert configured.mongo_dsn_secret_reference == test_settings.mongo_dsn_secret_reference
     assert (
         configured.source_mongo_dsn_secret_reference
         == test_settings.source_mongo_dsn_secret_reference
     )
     assert (
-        configured.neo4j_password_secret_reference
-        == test_settings.neo4j_password_secret_reference
+        configured.neo4j_password_secret_reference == test_settings.neo4j_password_secret_reference
     )
     assert (
         configured.sqlserver_password_secret_reference

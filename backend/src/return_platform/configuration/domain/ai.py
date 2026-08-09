@@ -1,5 +1,8 @@
+from collections.abc import Mapping
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict
-from typing import Mapping, Any
+
 
 class AiConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")

@@ -31,7 +31,7 @@ class GenerationSession(Protocol):
 
     async def execute_read(self, work: Any, **kwargs: Any) -> Any: ...
 
-    async def __aenter__(self) -> "GenerationSession": ...
+    async def __aenter__(self) -> GenerationSession: ...
 
     async def __aexit__(self, *exc_info: Any) -> None: ...
 
@@ -77,7 +77,9 @@ class Neo4jGenerationWriter:
                 new_status=new_status,
             )
 
-    async def get_status(self, *, graph_generation_id: str) -> tuple[GraphGenerationStatus, int] | None:
+    async def get_status(
+        self, *, graph_generation_id: str
+    ) -> tuple[GraphGenerationStatus, int] | None:
         async with self._driver.session(database=self._database) as session:
             return await session.execute_read(_lookup, graph_generation_id=graph_generation_id)
 

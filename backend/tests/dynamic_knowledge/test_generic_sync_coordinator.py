@@ -92,9 +92,7 @@ class RecordingCheckpoints:
     def __init__(self) -> None:
         self.written: list[SourceCursor] = []
 
-    async def read(
-        self, *, source_asset_id: str, graph_generation_id: str
-    ) -> SourceCursor | None:
+    async def read(self, *, source_asset_id: str, graph_generation_id: str) -> SourceCursor | None:
         return None
 
     async def write(
@@ -266,7 +264,9 @@ class EventLoggingConnector:
     instance in a run, so ordering across *different* sources is observable
     -- NumericOrderedConnector's own scanned_after list can't show that."""
 
-    def __init__(self, source_asset_id: str, events: list[tuple[str, str]], watermark: SourceCursor) -> None:
+    def __init__(
+        self, source_asset_id: str, events: list[tuple[str, str]], watermark: SourceCursor
+    ) -> None:
         self._source_asset_id = source_asset_id
         self._events = events
         self._watermark = watermark
@@ -364,7 +364,9 @@ async def test_full_sync_records_a_manifest_before_scanning_and_completion_after
     assert manifest.sync_run_id == "run-1"
     assert manifest.graph_generation_id == "g1"
     assert manifest.schema_fingerprint == active_schema.configuration_checksum
-    assert {record.source_asset_id for record in manifest.source_watermarks} == set(active_schema.sources)
+    assert {record.source_asset_id for record in manifest.source_watermarks} == set(
+        active_schema.sources
+    )
     assert recorder.scan_completed_calls == ["run-1"]
     assert recorder.reconciliation_completed_calls == ["run-1"]
 
@@ -431,7 +433,9 @@ def _ownership_schema(active_schema: ActiveSchema) -> ActiveSchema:
 def _document_page(source_identity: str, document: dict[str, object]) -> RawSourcePage:
     return RawSourcePage(
         documents=(
-            RawSourceDocument(operation="UPSERT", document=document, source_identity=source_identity),
+            RawSourceDocument(
+                operation="UPSERT", document=document, source_identity=source_identity
+            ),
         ),
         next_cursor=_numeric_cursor(1),
         observed_at=datetime(2026, 8, 6, tzinfo=UTC),
@@ -467,7 +471,9 @@ class RecordingOwnershipReconciler:
 
 
 @pytest.mark.asyncio
-async def test_full_sync_reconciles_ownership_per_parent_document(active_schema: ActiveSchema) -> None:
+async def test_full_sync_reconciles_ownership_per_parent_document(
+    active_schema: ActiveSchema,
+) -> None:
     schema = _ownership_schema(active_schema)
     page = _document_page("parent-1", {"items": [{"itemId": "C-1"}, {"itemId": "C-2"}]})
     connector = NumericOrderedConnector([page], watermark=_numeric_cursor(1))
@@ -538,12 +544,17 @@ async def test_full_sync_without_an_ownership_reconciler_configured_skips_it(
     )
     # No exception, no-op: proves reconcile_ownership doesn't require a reconciler.
     await coordinator.full_sync(
-        schema=schema, graph_generation_id="g1", fencing_token=1, source_asset_ids=frozenset({"source_b"})
+        schema=schema,
+        graph_generation_id="g1",
+        fencing_token=1,
+        source_asset_ids=frozenset({"source_b"}),
     )
 
 
 @pytest.mark.asyncio
-async def test_incremental_sync_never_calls_the_ownership_reconciler(active_schema: ActiveSchema) -> None:
+async def test_incremental_sync_never_calls_the_ownership_reconciler(
+    active_schema: ActiveSchema,
+) -> None:
     schema = _ownership_schema(active_schema)
     raw = schema.model_dump(mode="json")
     # A real field on entity_b so this source actually participates in
@@ -576,7 +587,9 @@ async def test_incremental_sync_scans_from_the_stored_checkpoint(
         writer=RecordingWriter(),
         checkpoints=RecordingCheckpoints(),
     )
-    await coordinator.incremental_sync(schema=active_schema, graph_generation_id="g1", fencing_token=1)
+    await coordinator.incremental_sync(
+        schema=active_schema, graph_generation_id="g1", fencing_token=1
+    )
     # RecordingCheckpoints.read always returns None (no prior checkpoint) in this test.
     assert connector.scanned_after == [None]
 
@@ -624,7 +637,9 @@ async def test_incremental_sync_reconciles_only_relationships_touched_by_the_pag
         checkpoints=RecordingCheckpoints(),
         reconciler=reconciler,
     )
-    await coordinator.incremental_sync(schema=active_schema, graph_generation_id="g1", fencing_token=1)
+    await coordinator.incremental_sync(
+        schema=active_schema, graph_generation_id="g1", fencing_token=1
+    )
     assert len(reconciler.calls) == 1
     assert reconciler.calls[0]["relationship_ids"] == ("a_to_b",)
 
@@ -676,7 +691,9 @@ async def test_incremental_sync_checkpoint_does_not_advance_when_reconciliation_
         reconciler=FailingReconciler(),
     )
     with pytest.raises(RuntimeError, match="reconciliation failed"):
-        await coordinator.incremental_sync(schema=active_schema, graph_generation_id="g1", fencing_token=1)
+        await coordinator.incremental_sync(
+            schema=active_schema, graph_generation_id="g1", fencing_token=1
+        )
     assert checkpoints.written == []
 
 
@@ -693,5 +710,7 @@ async def test_incremental_sync_writes_progressive_checkpoints_across_multiple_p
         writer=RecordingWriter(),
         checkpoints=checkpoints,
     )
-    await coordinator.incremental_sync(schema=active_schema, graph_generation_id="g1", fencing_token=1)
+    await coordinator.incremental_sync(
+        schema=active_schema, graph_generation_id="g1", fencing_token=1
+    )
     assert [cursor.encoded_value for cursor in checkpoints.written] == ["2", "10"]

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 import pytest
 
 from return_platform.dynamic_knowledge.graph.projector import (
@@ -32,7 +30,9 @@ def _one_to_many_schema(
     return ActiveSchema.model_validate(raw)
 
 
-def _upsert(entity_id: str, source_asset_id: str, values: dict[str, object]) -> DynamicRecordMutation:
+def _upsert(
+    entity_id: str, source_asset_id: str, values: dict[str, object]
+) -> DynamicRecordMutation:
     node_projection_id = {"entity_a": "node_a", "entity_b": "node_b"}[entity_id]
     natural_key = {"id": values["id"]}
     return DynamicRecordMutation(
@@ -52,7 +52,9 @@ def _upsert(entity_id: str, source_asset_id: str, values: dict[str, object]) -> 
     )
 
 
-def _delete(entity_id: str, source_asset_id: str, resolved_key: dict[str, object]) -> DynamicRecordMutation:
+def _delete(
+    entity_id: str, source_asset_id: str, resolved_key: dict[str, object]
+) -> DynamicRecordMutation:
     return DynamicRecordMutation(
         operation="DELETE",
         record=None,
@@ -83,7 +85,9 @@ async def test_one_parent_with_three_children_produces_exactly_three_relationshi
     assert len(batch.relationship_mutations) == 3
     # entity_b.id's graph_property is "related_id"; entity_a.id's is "configured_id" --
     # relationship key_values are always keyed by graph_property, never the logical field_id.
-    target_ids = {mutation.target_key_values["related_id"] for mutation in batch.relationship_mutations}
+    target_ids = {
+        mutation.target_key_values["related_id"] for mutation in batch.relationship_mutations
+    }
     assert target_ids == {"CHILD-1", "CHILD-2", "CHILD-3"}
     assert all(
         mutation.source_key_values["configured_id"] == "PARENT-1"

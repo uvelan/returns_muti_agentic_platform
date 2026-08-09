@@ -40,10 +40,8 @@ def configuration_client(
     app.state.ai_gateway_configuration = load_ai_gateway_configuration(
         test_settings.ai_gateway_configuration_path
     )
-    app.state.dependency_simulation_configuration = (
-        load_dependency_simulation_configuration(
-            test_settings.dependency_simulation_configuration_path
-        )
+    app.state.dependency_simulation_configuration = load_dependency_simulation_configuration(
+        test_settings.dependency_simulation_configuration_path
     )
     activation_resources = RuntimeResources(
         settings=test_settings.model_copy(update={"vault_enabled": False}),
@@ -160,10 +158,7 @@ def test_partial_agent_behavior_edit_activates_without_restart(
     assert created.status_code == 201
 
     patched = client.patch(
-        (
-            "/data-console/v1/configuration/releases/agent-behavior-v21/"
-            "domains/RETURN_PLATFORM"
-        ),
+        ("/data-console/v1/configuration/releases/agent-behavior-v21/domains/RETURN_PLATFORM"),
         json={
             "patch": {
                 "agents": {
@@ -176,10 +171,7 @@ def test_partial_agent_behavior_edit_activates_without_restart(
         },
     )
     assert patched.status_code == 200
-    assert (
-        patched.json()["data"]["payload"]["agents"]["order_discovery"]["version"]
-        == "2.1"
-    )
+    assert patched.json()["data"]["payload"]["agents"]["order_discovery"]["version"] == "2.1"
 
     validated = client.post(
         "/data-console/v1/configuration/releases/agent-behavior-v21/promote",
@@ -213,17 +205,12 @@ def test_partial_edit_rejects_invalid_complete_configuration(
     )
 
     invalid = client.patch(
-        (
-            "/data-console/v1/configuration/releases/invalid-agent-behavior/"
-            "domains/RETURN_PLATFORM"
-        ),
+        ("/data-console/v1/configuration/releases/invalid-agent-behavior/domains/RETURN_PLATFORM"),
         json={"patch": {"agents": {"order_discovery": None}}},
     )
 
     assert invalid.status_code == 422
-    detail = client.get(
-        "/data-console/v1/configuration/releases/invalid-agent-behavior"
-    )
+    detail = client.get("/data-console/v1/configuration/releases/invalid-agent-behavior")
     assert "order_discovery" in detail.json()["data"]["domains"]["RETURN_PLATFORM"]["agents"]
 
 
@@ -264,10 +251,7 @@ def test_ai_prompts_and_simulation_behavior_activate_from_graph(
 
     banner = "SIMULATION: graph-controlled dependency behavior is active."
     simulation_patch = client.patch(
-        (
-            f"/data-console/v1/configuration/releases/{release_id}/"
-            "domains/DEPENDENCY_SIMULATION"
-        ),
+        (f"/data-console/v1/configuration/releases/{release_id}/domains/DEPENDENCY_SIMULATION"),
         json={"patch": {"modeBanner": banner}},
     )
     assert simulation_patch.status_code == 200

@@ -33,13 +33,41 @@ def context(schema: ActiveSchema) -> GuardContext:
 @pytest.mark.parametrize(
     ("source", "target", "expected"),
     [
-        (EntitySourceAccess.CONNECTED_SYNC, EntitySourceAccess.CONNECTED_SYNC, RelationshipSourceAccess.CONNECTED_SYNC),
-        (EntitySourceAccess.CONNECTED_SYNC, EntitySourceAccess.CONNECTED_READ, RelationshipSourceAccess.SEED_ONLY),
-        (EntitySourceAccess.CONNECTED_READ, EntitySourceAccess.CONNECTED_READ, RelationshipSourceAccess.SEED_ONLY),
-        (EntitySourceAccess.CONNECTED_SYNC, EntitySourceAccess.SEED_ONLY, RelationshipSourceAccess.SEED_ONLY),
-        (EntitySourceAccess.SEED_ONLY, EntitySourceAccess.SEED_ONLY, RelationshipSourceAccess.SEED_ONLY),
-        (EntitySourceAccess.CONNECTED_SYNC, EntitySourceAccess.DISABLED, RelationshipSourceAccess.DISABLED),
-        (EntitySourceAccess.SEED_ONLY, EntitySourceAccess.DISABLED, RelationshipSourceAccess.DISABLED),
+        (
+            EntitySourceAccess.CONNECTED_SYNC,
+            EntitySourceAccess.CONNECTED_SYNC,
+            RelationshipSourceAccess.CONNECTED_SYNC,
+        ),
+        (
+            EntitySourceAccess.CONNECTED_SYNC,
+            EntitySourceAccess.CONNECTED_READ,
+            RelationshipSourceAccess.SEED_ONLY,
+        ),
+        (
+            EntitySourceAccess.CONNECTED_READ,
+            EntitySourceAccess.CONNECTED_READ,
+            RelationshipSourceAccess.SEED_ONLY,
+        ),
+        (
+            EntitySourceAccess.CONNECTED_SYNC,
+            EntitySourceAccess.SEED_ONLY,
+            RelationshipSourceAccess.SEED_ONLY,
+        ),
+        (
+            EntitySourceAccess.SEED_ONLY,
+            EntitySourceAccess.SEED_ONLY,
+            RelationshipSourceAccess.SEED_ONLY,
+        ),
+        (
+            EntitySourceAccess.CONNECTED_SYNC,
+            EntitySourceAccess.DISABLED,
+            RelationshipSourceAccess.DISABLED,
+        ),
+        (
+            EntitySourceAccess.SEED_ONLY,
+            EntitySourceAccess.DISABLED,
+            RelationshipSourceAccess.DISABLED,
+        ),
     ],
 )
 def test_maximum_relationship_access_matrix(

@@ -54,8 +54,6 @@ async def test_seed_operation_rejects_concurrent_mutations() -> None:
 
 
 def test_seed_delete_requires_explicit_confirmation() -> None:
-    assert SeedDeleteRequest(confirmation="DELETE SEED DATA").confirmation == (
-        "DELETE SEED DATA"
-    )
+    assert SeedDeleteRequest(confirmation="DELETE SEED DATA").confirmation == ("DELETE SEED DATA")
     with pytest.raises(ValidationError):
         SeedDeleteRequest(confirmation="delete")

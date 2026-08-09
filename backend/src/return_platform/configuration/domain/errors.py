@@ -1,4 +1,5 @@
 """Domain-level configuration errors."""
+
 from __future__ import annotations
 
 

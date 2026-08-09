@@ -101,7 +101,11 @@ class MongoOrderSourceGateway(OrderSourceGateway):
                 "salesHdr.salesHdrData.orderId",
             ),
         )
-        return f"{str(account).strip().upper()}*{str(order).strip().upper()}" if account and order else None
+        return (
+            f"{str(account).strip().upper()}*{str(order).strip().upper()}"
+            if account and order
+            else None
+        )
 
     async def _sales_ids(self, query: Mapping[str, Any], limit: int) -> list[str]:
         identifiers: list[str] = []
@@ -205,7 +209,9 @@ class MongoOrderSourceGateway(OrderSourceGateway):
     def _line_documents(document: Mapping[str, Any]) -> list[Mapping[str, Any]]:
         candidate = _first(document, ("salesDtl", "lines", "orderLines"))
         if isinstance(candidate, list):
-            return [cast(Mapping[str, Any], item) for item in candidate if isinstance(item, Mapping)]
+            return [
+                cast(Mapping[str, Any], item) for item in candidate if isinstance(item, Mapping)
+            ]
         return [document]
 
     @classmethod
@@ -224,7 +230,8 @@ class MongoOrderSourceGateway(OrderSourceGateway):
             "itemNumber": _first(source, ("itemNumber", "itemId", "sku")),
             "description": _first(source, ("itemDesc", "description", "itemDescription")),
             "quantityOrdered": _first(source, ("quantityOrdered", "orderQty", "qtyOrdered")),
-            "quantityReturned": _first(source, ("quantityReturned", "returnedQty", "qtyReturned")) or 0,
+            "quantityReturned": _first(source, ("quantityReturned", "returnedQty", "qtyReturned"))
+            or 0,
         }
 
     async def fetch(self, full_order_id: str) -> SourceOrderRecord | None:
@@ -281,7 +288,11 @@ class MongoOrderSourceGateway(OrderSourceGateway):
             ),
             delivery_ticket=(
                 str(value)
-                if (value := _first(header, ("salesHdr.salesHdrData.deliveryTicketNumber", "deliveryTicket")))
+                if (
+                    value := _first(
+                        header, ("salesHdr.salesHdrData.deliveryTicketNumber", "deliveryTicket")
+                    )
+                )
                 else None
             ),
             invoice_numbers=_strings(_first(header, ("invoiceNumbers", "invoiceNumber"))),

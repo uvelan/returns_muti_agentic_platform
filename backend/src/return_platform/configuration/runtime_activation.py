@@ -161,14 +161,10 @@ class RuntimeConfigurationActivator:
             loaded_dependency_simulation = None
             if self._dependency_simulation_baseline_path is not None:
                 if snapshot.dependency_simulation_configuration is None:
-                    raise RuntimeError(
-                        "Graph release has no dependency simulation configuration"
-                    )
-                loaded_dependency_simulation = (
-                    build_loaded_dependency_simulation_configuration(
-                        snapshot.dependency_simulation_configuration,
-                        path=self._dependency_simulation_baseline_path,
-                    )
+                    raise RuntimeError("Graph release has no dependency simulation configuration")
+                loaded_dependency_simulation = build_loaded_dependency_simulation_configuration(
+                    snapshot.dependency_simulation_configuration,
+                    path=self._dependency_simulation_baseline_path,
                 )
             activated_settings = self._resources.settings if self._resources is not None else None
             activated_secret_resolver = None
@@ -177,9 +173,10 @@ class RuntimeConfigurationActivator:
                     self._resources.settings,
                     snapshot.configuration,
                 )
-                activated_settings, activated_secret_resolver = (
-                    await resolve_runtime_settings_from_vault(graph_settings)
-                )
+                (
+                    activated_settings,
+                    activated_secret_resolver,
+                ) = await resolve_runtime_settings_from_vault(graph_settings)
                 changed_infrastructure = [
                     field_name
                     for field_name in _RESTART_REQUIRED_SETTINGS
@@ -189,8 +186,7 @@ class RuntimeConfigurationActivator:
                 if changed_infrastructure:
                     raise RuntimeError(
                         "Released configuration changes infrastructure settings that require a "
-                        "restart: "
-                        + ", ".join(changed_infrastructure)
+                        "restart: " + ", ".join(changed_infrastructure)
                     )
             route_pool = None
             if activated_settings is not None and loaded_ai_gateway is not None:
@@ -239,9 +235,7 @@ class RuntimeConfigurationActivator:
             if loaded_ai_gateway is not None:
                 self._app_state.ai_gateway_configuration = loaded_ai_gateway
             if loaded_dependency_simulation is not None:
-                self._app_state.dependency_simulation_configuration = (
-                    loaded_dependency_simulation
-                )
+                self._app_state.dependency_simulation_configuration = loaded_dependency_simulation
             if route_pool is not None:
                 self._app_state.ai_gateway_route_pool = route_pool
             self._app_state.return_configuration_snapshot = snapshot

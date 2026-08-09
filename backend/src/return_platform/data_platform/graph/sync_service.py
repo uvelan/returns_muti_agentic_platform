@@ -128,7 +128,9 @@ class _CountingConnector:
     async def capture_high_watermark(self, *, source_asset_id: str) -> SourceCursor:
         return await self._inner.capture_high_watermark(source_asset_id=source_asset_id)
 
-    def compare_cursors(self, *, source_asset_id: str, left: SourceCursor, right: SourceCursor) -> Any:
+    def compare_cursors(
+        self, *, source_asset_id: str, left: SourceCursor, right: SourceCursor
+    ) -> Any:
         return self._inner.compare_cursors(source_asset_id=source_asset_id, left=left, right=right)
 
     async def scan(
@@ -142,7 +144,9 @@ class _CountingConnector:
         async for page in self._inner.scan(
             schema=schema, source_asset_id=source_asset_id, after=after, through=through
         ):
-            self._counts[source_asset_id] = self._counts.get(source_asset_id, 0) + len(page.documents)
+            self._counts[source_asset_id] = self._counts.get(source_asset_id, 0) + len(
+                page.documents
+            )
             yield page
 
 
@@ -446,8 +450,12 @@ class GraphSyncService:
         async with self._driver.session(database=self._settings.neo4j_database) as session:
             for constraint in required_node_constraints(self._schema):
                 label = validate_graph_identifier(constraint.label)
-                properties = [validate_graph_identifier(prop) for prop in constraint.graph_properties]
-                name = validate_graph_identifier(f"uq_{label.lower()}_{'_'.join(properties)}".lower())
+                properties = [
+                    validate_graph_identifier(prop) for prop in constraint.graph_properties
+                ]
+                name = validate_graph_identifier(
+                    f"uq_{label.lower()}_{'_'.join(properties)}".lower()
+                )
                 require = ", ".join(f"n.`{prop}`" for prop in properties)
                 query = (
                     f"CREATE CONSTRAINT {name} IF NOT EXISTS "

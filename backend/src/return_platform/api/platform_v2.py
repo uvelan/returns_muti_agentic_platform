@@ -68,9 +68,7 @@ def _translate(exc: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail="V2 operation failed")
 
 
-@router.get(
-    "/configuration/module-schemas", response_model=APIResponse[list[dict[str, Any]]]
-)
+@router.get("/configuration/module-schemas", response_model=APIResponse[list[dict[str, Any]]])
 async def module_schemas(
     request: Request, _actor: str = Depends(require_read_roles)
 ) -> APIResponse[list[dict[str, Any]]]:
@@ -78,9 +76,7 @@ async def module_schemas(
     return APIResponse(data=data, meta=_meta(request))
 
 
-@router.get(
-    "/configuration/modules", response_model=APIResponse[list[ConfigurationModule]]
-)
+@router.get("/configuration/modules", response_model=APIResponse[list[ConfigurationModule]])
 async def list_modules(
     request: Request,
     module_type: str | None = Query(default=None, alias="moduleType"),  # noqa: B008
@@ -155,9 +151,7 @@ async def patch_module_field(
     actor: str = Depends(require_admin_roles),
 ) -> APIResponse[ConfigurationModule]:
     try:
-        data = await _services(request).configuration.patch_fields(
-            module_id, version, body, actor
-        )
+        data = await _services(request).configuration.patch_fields(module_id, version, body, actor)
     except (V2NotFoundError, V2ConflictError, V2ValidationError) as exc:
         raise _translate(exc) from exc
     return APIResponse(data=data, meta=_meta(request))
@@ -238,9 +232,7 @@ async def approve_module(
     return APIResponse(data=data, meta=_meta(request))
 
 
-@router.get(
-    "/configuration/modules/{module_id}/versions/{version}/download"
-)
+@router.get("/configuration/modules/{module_id}/versions/{version}/download")
 async def download_module(
     module_id: str,
     version: str,
@@ -263,9 +255,7 @@ async def download_module(
     )
 
 
-@router.get(
-    "/configuration/releases", response_model=APIResponse[list[ReleaseManifest]]
-)
+@router.get("/configuration/releases", response_model=APIResponse[list[ReleaseManifest]])
 async def list_v2_releases(
     request: Request, _actor: str = Depends(require_read_roles)
 ) -> APIResponse[list[ReleaseManifest]]:
@@ -291,9 +281,7 @@ async def create_v2_release(
     return APIResponse(data=data, meta=_meta(request))
 
 
-@router.get(
-    "/configuration/releases/{release_id}", response_model=APIResponse[ReleaseManifest]
-)
+@router.get("/configuration/releases/{release_id}", response_model=APIResponse[ReleaseManifest])
 async def get_v2_release(
     release_id: str,
     request: Request,
@@ -390,7 +378,8 @@ async def download_v2_release(
         "manifest": release.model_dump(mode="json", by_alias=True),
         "modules": [item.model_dump(mode="json", by_alias=True) for item in modules],
         "secretsIncluded": False,
-        "activatable": release.status in {ReleaseStatus.APPROVED, ReleaseStatus.MIGRATION_READY, ReleaseStatus.ACTIVE},
+        "activatable": release.status
+        in {ReleaseStatus.APPROVED, ReleaseStatus.MIGRATION_READY, ReleaseStatus.ACTIVE},
     }
     content = (
         yaml.safe_dump(package, sort_keys=False)
@@ -419,9 +408,7 @@ async def import_configuration(
     return APIResponse(data=data, meta=_meta(request))
 
 
-@router.get(
-    "/configuration/imports/{import_id}", response_model=APIResponse[ImportRecord]
-)
+@router.get("/configuration/imports/{import_id}", response_model=APIResponse[ImportRecord])
 async def get_configuration_import(
     import_id: str,
     request: Request,
@@ -464,9 +451,7 @@ async def create_schema_design(
     return APIResponse(data=data, meta=_meta(request))
 
 
-@router.get(
-    "/schema-design/requests/{request_id}", response_model=APIResponse[SchemaDesignContext]
-)
+@router.get("/schema-design/requests/{request_id}", response_model=APIResponse[SchemaDesignContext])
 async def get_schema_design(
     request_id: str,
     request: Request,
@@ -594,9 +579,7 @@ async def claim_order_sync_job(
     return APIResponse(data=data, meta=_meta(request))
 
 
-@router.post(
-    "/order-sync/jobs/{job_id}/heartbeat", response_model=APIResponse[SyncJob]
-)
+@router.post("/order-sync/jobs/{job_id}/heartbeat", response_model=APIResponse[SyncJob])
 async def heartbeat_order_sync_job(
     job_id: str,
     body: JobClaimRequest,
@@ -610,9 +593,7 @@ async def heartbeat_order_sync_job(
     return APIResponse(data=data, meta=_meta(request))
 
 
-@router.post(
-    "/order-sync/jobs/{job_id}/execute", response_model=APIResponse[dict[str, Any]]
-)
+@router.post("/order-sync/jobs/{job_id}/execute", response_model=APIResponse[dict[str, Any]])
 async def execute_order_sync_job(
     job_id: str,
     request: Request,
@@ -643,6 +624,7 @@ async def get_order_sync_job(
     except V2NotFoundError as exc:
         raise _translate(exc) from exc
     return APIResponse(data=data, meta=_meta(request))
+
 
 @router.post("/order-sync/partial", response_model=APIResponse[SyncResult])
 async def partial_order_sync(

@@ -53,9 +53,7 @@ class InMemoryV2StateStore:
         document = self._documents.get(namespace)
         return copy.deepcopy(document) if document else None
 
-    async def save(
-        self, namespace: str, payload: dict[str, Any], expected_revision: int
-    ) -> int:
+    async def save(self, namespace: str, payload: dict[str, Any], expected_revision: int) -> int:
         if namespace not in STATE_NAMESPACES:
             raise ValueError(f"Unsupported V2 state namespace: {namespace}")
         async with self._lock:
@@ -98,9 +96,7 @@ class MongoV2StateStore:
                 )
             ]
         )
-        receipt = await self._migration_collection.find_one(
-            {"schemaVersion": STATE_SCHEMA_VERSION}
-        )
+        receipt = await self._migration_collection.find_one({"schemaVersion": STATE_SCHEMA_VERSION})
         expected = {
             "schemaVersion": STATE_SCHEMA_VERSION,
             "namespaces": sorted(STATE_NAMESPACES),
@@ -143,9 +139,7 @@ class MongoV2StateStore:
             raise StateSchemaDriftError(f"V2 state {namespace} revision is invalid")
         return copy.deepcopy(normalized), revision
 
-    async def save(
-        self, namespace: str, payload: dict[str, Any], expected_revision: int
-    ) -> int:
+    async def save(self, namespace: str, payload: dict[str, Any], expected_revision: int) -> int:
         if namespace not in STATE_NAMESPACES:
             raise ValueError(f"Unsupported V2 state namespace: {namespace}")
         next_revision = expected_revision + 1

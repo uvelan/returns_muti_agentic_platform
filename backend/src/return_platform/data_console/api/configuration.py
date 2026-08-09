@@ -368,9 +368,7 @@ async def promote_release_status(
             validated_configuration = ReturnPlatformConfiguration.model_validate(
                 domain_payloads[RETURN_PLATFORM_DOMAIN_KEY]
             )
-            AIGatewayConfiguration.model_validate(
-                domain_payloads[AI_GATEWAY_DOMAIN_KEY]
-            )
+            AIGatewayConfiguration.model_validate(domain_payloads[AI_GATEWAY_DOMAIN_KEY])
             DependencySimulationConfiguration.model_validate(
                 domain_payloads[DEPENDENCY_SIMULATION_DOMAIN_KEY]
             )

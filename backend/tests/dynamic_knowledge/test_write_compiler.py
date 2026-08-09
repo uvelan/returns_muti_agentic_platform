@@ -276,7 +276,9 @@ def test_cardinality_checks_compiled_when_bounds_configured(active_schema: Activ
 
 
 def test_generation_create_is_parameterized() -> None:
-    compiled = compile_generation_create(graph_generation_id=GEN, fencing_token=1, status="PREPARING")
+    compiled = compile_generation_create(
+        graph_generation_id=GEN, fencing_token=1, status="PREPARING"
+    )
     assert "CREATE (g:GraphGeneration" in compiled.cypher
     assert "MERGE" not in compiled.cypher
     assert compiled.parameters == {"generationId": GEN, "fencingToken": 1, "status": "PREPARING"}
@@ -327,7 +329,9 @@ def test_ownership_upsert_merges_ownership_and_owns_relationship(
     assert "MERGE (o:ProjectionOwnership" in compiled.cypher
     assert "MATCH (n:`ConfiguredBeta`" in compiled.cypher
     assert "MERGE (o)-[:OWNS]->(n)" in compiled.cypher
-    assert compiled.parameters["rows"] == [{"entityKeyHash": key_hash, "keys": {"related_id": "CHILD-1"}}]
+    assert compiled.parameters["rows"] == [
+        {"entityKeyHash": key_hash, "keys": {"related_id": "CHILD-1"}}
+    ]
     assert compiled.parameters["sourceIdentity"] == "parent-doc-1"
 
 

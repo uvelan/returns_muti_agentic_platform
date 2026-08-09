@@ -114,9 +114,7 @@ def _camelize_module(raw: Mapping[str, Any]) -> dict[str, Any]:
         "moduleId": raw.get("module_id", raw.get("moduleId")),
         "moduleType": raw.get("module_type", raw.get("moduleType")),
         "schemaVersion": raw.get("schema_version", raw.get("schemaVersion")),
-        "configurationVersion": raw.get(
-            "configuration_version", raw.get("configurationVersion")
-        ),
+        "configurationVersion": raw.get("configuration_version", raw.get("configurationVersion")),
         "owner": raw.get("owner"),
         "dependencies": dependencies,
         "payload": copy.deepcopy(raw.get("payload", {})),
@@ -173,9 +171,15 @@ class ModularConfigurationService:
 
     def snapshot(self) -> dict[str, Any]:
         return {
-            "modules": [item.model_dump(mode="json", by_alias=True) for item in self._modules.values()],
-            "releases": [item.model_dump(mode="json", by_alias=True) for item in self._releases.values()],
-            "imports": [item.model_dump(mode="json", by_alias=True) for item in self._imports.values()],
+            "modules": [
+                item.model_dump(mode="json", by_alias=True) for item in self._modules.values()
+            ],
+            "releases": [
+                item.model_dump(mode="json", by_alias=True) for item in self._releases.values()
+            ],
+            "imports": [
+                item.model_dump(mode="json", by_alias=True) for item in self._imports.values()
+            ],
             "activeReleaseId": self._active_release_id,
         }
 
@@ -198,6 +202,7 @@ class ModularConfigurationService:
         }
         active = payload.get("activeReleaseId")
         self._active_release_id = str(active) if active else None
+
     async def module_schemas(self) -> list[dict[str, Any]]:
         return [
             {
@@ -218,7 +223,9 @@ class ModularConfigurationService:
             if (module_type is None or module.module_type == module_type)
             and (status is None or module.status == status)
         ]
-        return sorted(values, key=lambda item: (item.module_id, _version_tuple(item.configuration_version)))
+        return sorted(
+            values, key=lambda item: (item.module_id, _version_tuple(item.configuration_version))
+        )
 
     async def get_module(self, module_id: str, version: str) -> ConfigurationModule:
         module = self._modules.get((module_id, version))
@@ -230,7 +237,9 @@ class ModularConfigurationService:
         key = (create.module_id, create.configuration_version)
         async with self._lock:
             if key in self._modules:
-                raise V2ConflictError(f"Module {create.module_id}@{create.configuration_version} exists")
+                raise V2ConflictError(
+                    f"Module {create.module_id}@{create.configuration_version} exists"
+                )
             module = self._build_module(create, actor, ModuleStatus.DRAFT)
             self._modules[key] = module
             return copy.deepcopy(module)
@@ -238,7 +247,9 @@ class ModularConfigurationService:
     async def create_draft(
         self, module_id: str, request: DraftCreate, actor: str
     ) -> ConfigurationModule:
-        versions = [item for (identifier, _), item in self._modules.items() if identifier == module_id]
+        versions = [
+            item for (identifier, _), item in self._modules.items() if identifier == module_id
+        ]
         if not versions:
             raise V2NotFoundError(f"Module {module_id} was not found")
         source_version = request.from_version
@@ -383,7 +394,11 @@ class ModularConfigurationService:
         allowed = {
             ModuleStatus.DRAFT: {ModuleStatus.VALIDATED, ModuleStatus.ARCHIVED},
             ModuleStatus.QUARANTINED: {ModuleStatus.DRAFT, ModuleStatus.ARCHIVED},
-            ModuleStatus.VALIDATED: {ModuleStatus.APPROVED, ModuleStatus.DRAFT, ModuleStatus.ARCHIVED},
+            ModuleStatus.VALIDATED: {
+                ModuleStatus.APPROVED,
+                ModuleStatus.DRAFT,
+                ModuleStatus.ARCHIVED,
+            },
             ModuleStatus.APPROVED: {ModuleStatus.RELEASED, ModuleStatus.ARCHIVED},
             ModuleStatus.RELEASED: {ModuleStatus.SUPERSEDED},
             ModuleStatus.SUPERSEDED: {ModuleStatus.ARCHIVED},
@@ -513,17 +528,19 @@ class ModularConfigurationService:
             visited.add(node)
             return cyclic
 
-        return [
-            ValidationIssue(
-                code="DEPENDENCY_CYCLE",
-                path=("modules",),
-                message="Release module dependencies contain a cycle",
-            )
-        ] if any(visit(node) for node in graph) else []
+        return (
+            [
+                ValidationIssue(
+                    code="DEPENDENCY_CYCLE",
+                    path=("modules",),
+                    message="Release module dependencies contain a cycle",
+                )
+            ]
+            if any(visit(node) for node in graph)
+            else []
+        )
 
-    async def transition_release(
-        self, release_id: str, target: ReleaseStatus
-    ) -> ReleaseManifest:
+    async def transition_release(self, release_id: str, target: ReleaseStatus) -> ReleaseManifest:
         allowed = {
             ReleaseStatus.DRAFT: {ReleaseStatus.DEPENDENCIES_RESOLVED, ReleaseStatus.ARCHIVED},
             ReleaseStatus.DEPENDENCIES_RESOLVED: {ReleaseStatus.VALIDATED, ReleaseStatus.DRAFT},
@@ -558,7 +575,10 @@ class ModularConfigurationService:
                     )
                 self._active_release_id = release_id
             updated = current.model_copy(
-                update={"status": target, "activated_at": utc_now() if target is ReleaseStatus.ACTIVE else None}
+                update={
+                    "status": target,
+                    "activated_at": utc_now() if target is ReleaseStatus.ACTIVE else None,
+                }
             )
             self._releases[release_id] = updated
             return copy.deepcopy(updated)
@@ -603,9 +623,7 @@ class ModularConfigurationService:
                 create = ModuleCreate.model_validate(data)
                 modules.append(self._build_module(create, actor, ModuleStatus.QUARANTINED))
         except Exception as exc:
-            issues.append(
-                ValidationIssue(code="IMPORT_REJECTED", message=str(exc)[:500], path=())
-            )
+            issues.append(ValidationIssue(code="IMPORT_REJECTED", message=str(exc)[:500], path=()))
         record = ImportRecord(
             import_id=import_id,
             status="REJECTED" if issues else "QUARANTINED",
@@ -632,7 +650,9 @@ class ModularConfigurationService:
             for module in record.modules:
                 key = (module.module_id, module.configuration_version)
                 if key in self._modules:
-                    raise V2ConflictError(f"Module {module.module_id}@{module.configuration_version} exists")
+                    raise V2ConflictError(
+                        f"Module {module.module_id}@{module.configuration_version} exists"
+                    )
                 self._modules[key] = module.model_copy(update={"status": ModuleStatus.DRAFT})
             updated = record.model_copy(update={"status": "DRAFTS_CREATED"})
             self._imports[import_id] = updated
@@ -648,7 +668,9 @@ class SchemaDesignService:
 
     def snapshot(self) -> dict[str, Any]:
         return {
-            "contexts": [item.model_dump(mode="json", by_alias=True) for item in self._contexts.values()]
+            "contexts": [
+                item.model_dump(mode="json", by_alias=True) for item in self._contexts.values()
+            ]
         }
 
     def restore(self, payload: Mapping[str, Any]) -> None:
@@ -657,6 +679,7 @@ class SchemaDesignService:
             for raw in payload.get("contexts", [])
             for item in (SchemaDesignContext.model_validate(raw),)
         }
+
     async def create(self, request: SchemaDesignCreate, actor: str) -> SchemaDesignContext:
         request_id = str(uuid.uuid4())
         context = SchemaDesignContext(
@@ -698,15 +721,17 @@ class SchemaDesignService:
                             prompt=f"Which immutable field or composite fields identify one {structure.dataset} record?",
                             reason="A stable identity is required before graph nodes can be synchronized safely.",
                             required_owner="SOURCE_OWNER",
-                            evidence=(f"No identity path exists in fingerprint {structure.fingerprint}",),
+                            evidence=(
+                                f"No identity path exists in fingerprint {structure.fingerprint}",
+                            ),
                             options=candidates[:6],
                         )
                     )
             if any(field.sensitive for field in structure.fields):
                 question_id = _digest([structure.source_id, structure.dataset, "privacy"])[:20]
-                if question_id not in context.answers and not (
-                    context.existing_schema or {}
-                ).get("privacyPolicyRef"):
+                if question_id not in context.answers and not (context.existing_schema or {}).get(
+                    "privacyPolicyRef"
+                ):
                     sensitive = tuple(field.path for field in structure.fields if field.sensitive)
                     gaps.append(
                         SchemaQuestion(
@@ -718,7 +743,9 @@ class SchemaDesignService:
                             evidence=tuple(f"Sensitive field: {path}" for path in sensitive[:5]),
                         )
                     )
-            requested_relationship = any("relationship" in item.lower() for item in context.requested_capabilities)
+            requested_relationship = any(
+                "relationship" in item.lower() for item in context.requested_capabilities
+            )
             if requested_relationship and not structure.candidate_joins:
                 question_id = _digest([structure.source_id, structure.dataset, "join"])[:20]
                 if question_id not in context.answers:
@@ -750,7 +777,9 @@ class SchemaDesignService:
                         proposed_value=identity,
                         evidence=(f"Source fingerprint {structure.fingerprint}",),
                         reason="Create a stable canonical node identity",
-                        change_classification="NON_BREAKING" if context.existing_schema is None else "BREAKING_REQUIRES_MAJOR_VERSION",
+                        change_classification="NON_BREAKING"
+                        if context.existing_schema is None
+                        else "BREAKING_REQUIRES_MAJOR_VERSION",
                         required_owner="ARCHITECT",
                     )
                 )
@@ -910,9 +939,7 @@ class OrderSyncService:
 
     _FULL_ORDER_PATTERN = re.compile(r"^([^*\s]+)\*([^*\s]+)$")
 
-    def __init__(
-        self, source: OrderSourceGateway, graph: OrderProjectionStore
-    ) -> None:
+    def __init__(self, source: OrderSourceGateway, graph: OrderProjectionStore) -> None:
         self._source = source
         self._graph = graph
         self._results: dict[str, SyncResult] = {}
@@ -921,7 +948,9 @@ class OrderSyncService:
 
     def snapshot(self) -> dict[str, Any]:
         return {
-            "results": [item.model_dump(mode="json", by_alias=True) for item in self._results.values()],
+            "results": [
+                item.model_dump(mode="json", by_alias=True) for item in self._results.values()
+            ],
             "idempotency": copy.deepcopy(self._idempotency),
         }
 
@@ -935,14 +964,13 @@ class OrderSyncService:
         if not isinstance(raw_idempotency, Mapping):
             raise V2ValidationError("Persisted order-sync idempotency state must be an object")
         self._idempotency = {str(key): str(value) for key, value in raw_idempotency.items()}
+
     @classmethod
     def normalize_full_order_id(cls, value: str) -> str:
         normalized = value.strip().upper()
         match = cls._FULL_ORDER_PATTERN.fullmatch(normalized)
         if match is None:
-            raise V2ValidationError(
-                "fullOrderId must contain exactly ACCOUNT_OR_LOGON*ORDERNUMBER"
-            )
+            raise V2ValidationError("fullOrderId must contain exactly ACCOUNT_OR_LOGON*ORDERNUMBER")
         return f"{match.group(1)}*{match.group(2)}"
 
     @staticmethod
@@ -963,8 +991,12 @@ class OrderSyncService:
                     OrderLineProjection(
                         full_order_line_id=line_id,
                         line_number=number,
-                        item_number=(str(raw["itemNumber"]) if raw.get("itemNumber") is not None else None),
-                        description=(str(raw["description"]) if raw.get("description") is not None else None),
+                        item_number=(
+                            str(raw["itemNumber"]) if raw.get("itemNumber") is not None else None
+                        ),
+                        description=(
+                            str(raw["description"]) if raw.get("description") is not None else None
+                        ),
                         quantity_ordered=raw.get("quantityOrdered"),
                         quantity_returned=raw.get("quantityReturned"),
                     )
@@ -1042,17 +1074,24 @@ class OrderSyncService:
         full_order_id = self.normalize_full_order_id(request.full_order_id)
         if not self._authorized(full_order_id, request.authorization_scope.accounts):
             result = SyncResult(
-                request_id=str(uuid.uuid4()), sync_type="FULL_ORDER_SYNC",
-                status=SyncStatus.REJECTED, release_id=request.release_id,
-                message="Order is outside the authorized account scope", digest=_digest([]),
+                request_id=str(uuid.uuid4()),
+                sync_type="FULL_ORDER_SYNC",
+                status=SyncStatus.REJECTED,
+                release_id=request.release_id,
+                message="Order is outside the authorized account scope",
+                digest=_digest([]),
             )
             return await self._store(request.idempotency_key, result)
         record = await self._source.fetch(full_order_id)
         if record is None:
             result = SyncResult(
-                request_id=str(uuid.uuid4()), sync_type="FULL_ORDER_SYNC",
-                status=SyncStatus.NOT_FOUND, release_id=request.release_id,
-                full_order_ids=(full_order_id,), message="Order was not found", digest=_digest([]),
+                request_id=str(uuid.uuid4()),
+                sync_type="FULL_ORDER_SYNC",
+                status=SyncStatus.NOT_FOUND,
+                release_id=request.release_id,
+                full_order_ids=(full_order_id,),
+                message="Order was not found",
+                digest=_digest([]),
             )
             return await self._store(request.idempotency_key, result)
         projection = self._projection(record, include_lines=True)
@@ -1065,10 +1104,15 @@ class OrderSyncService:
         ):
             raise V2ValidationError("Graph readback verification failed")
         result = SyncResult(
-            request_id=str(uuid.uuid4()), sync_type="FULL_ORDER_SYNC",
-            status=SyncStatus.COMPLETED, release_id=request.release_id,
-            full_order_ids=(full_order_id,), orders=(projection,), records_read=1 + len(record.lines),
-            graph_writes=writes, message="Full order and all authoritative lines synchronized",
+            request_id=str(uuid.uuid4()),
+            sync_type="FULL_ORDER_SYNC",
+            status=SyncStatus.COMPLETED,
+            release_id=request.release_id,
+            full_order_ids=(full_order_id,),
+            orders=(projection,),
+            records_read=1 + len(record.lines),
+            graph_writes=writes,
+            message="Full order and all authoritative lines synchronized",
             digest=_digest(projection.model_dump(mode="json")),
         )
         return await self._store(request.idempotency_key, result)
@@ -1148,13 +1192,12 @@ class V2PlatformServices:
             )
             self._state_revisions[namespace] = revision
 
-    def use_order_adapters(
-        self, source: OrderSourceGateway, graph: OrderProjectionStore
-    ) -> None:
+    def use_order_adapters(self, source: OrderSourceGateway, graph: OrderProjectionStore) -> None:
         """Replace degraded in-memory adapters without losing restored receipts."""
         restored_state = self.order_sync.snapshot()
         self.order_sync = OrderSyncService(source, graph)
         self.order_sync.restore(restored_state)
         self.order_jobs.use_sync_service(self.order_sync)
+
     async def bootstrap(self, config_root: Path) -> None:
         await self.configuration.bootstrap(config_root)

@@ -22,7 +22,6 @@ from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
 from return_platform.dynamic_knowledge.schema import (
     ActiveSchema,
     EntityDeletionPolicy,
-    RelationshipCardinality,
 )
 
 _DELETE_OPERATION_BY_POLICY: dict[EntityDeletionPolicy, str] = {
@@ -165,7 +164,8 @@ def _project_relationships(
                 sources_per_target[target_match_key] += 1
                 if (
                     relationship.maximum_sources_per_target is not None
-                    and sources_per_target[target_match_key] > relationship.maximum_sources_per_target
+                    and sources_per_target[target_match_key]
+                    > relationship.maximum_sources_per_target
                 ):
                     raise GraphProjectionError(
                         f"relationship {relationship.relationship_id!r} exceeds "

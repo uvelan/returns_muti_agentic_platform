@@ -3,24 +3,27 @@
 The manifest is authoritative for modular configuration.
 Directory globbing is NOT used as the authoritative load mechanism.
 """
+
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict
 
 from return_platform.configuration.domain.release import ReleaseStatus
 
-
 # ---------------------------------------------------------------------------
 # Manifest model
 # ---------------------------------------------------------------------------
 
+
 class ManifestEntry(BaseModel):
     """A single module entry in the configuration manifest."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     path: str
@@ -28,6 +31,7 @@ class ManifestEntry(BaseModel):
 
 class ConfigurationManifest(BaseModel):
     """Typed representation of manifest.yaml."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     schema_version: str
@@ -38,6 +42,7 @@ class ConfigurationManifest(BaseModel):
 
 class LoadedManifestModule(BaseModel):
     """A manifest entry together with its loaded and validated document."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     manifest_id: str
@@ -55,7 +60,7 @@ class LoadedManifestModule(BaseModel):
 # a future format change cannot silently load as if it were version 2.0.
 SUPPORTED_MANIFEST_SCHEMA_VERSIONS: frozenset[str] = frozenset({"2.0"})
 
-MODULE_TYPE_PREFIX: Dict[str, str] = {
+MODULE_TYPE_PREFIX: dict[str, str] = {
     "agent": "AGENT",
     "policy": "POLICY",
     "workflow": "WORKFLOW",
@@ -68,7 +73,7 @@ MODULE_TYPE_PREFIX: Dict[str, str] = {
 }
 
 
-def _expected_module_type(manifest_id: str) -> Optional[str]:
+def _expected_module_type(manifest_id: str) -> str | None:
     """Return the expected module_type string for a manifest ID, or None."""
     prefix = manifest_id.split(".")[0]
     return MODULE_TYPE_PREFIX.get(prefix)
@@ -77,6 +82,7 @@ def _expected_module_type(manifest_id: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 # Loader
 # ---------------------------------------------------------------------------
+
 
 class ConfigurationLoader:
     """Manifest-driven configuration loader with security and integrity checks."""
@@ -88,7 +94,7 @@ class ConfigurationLoader:
     # Single-file helpers (used by compatibility adapter for singletons)
     # ------------------------------------------------------------------
 
-    def load_file(self, relative_path: str) -> Dict[str, Any]:
+    def load_file(self, relative_path: str) -> dict[str, Any]:
         """Load and parse a single YAML file relative to config_dir.
 
         Returns an empty dict if the file does not exist.
@@ -106,7 +112,7 @@ class ConfigurationLoader:
     # Manifest loading
     # ------------------------------------------------------------------
 
-    def load_manifest(self, manifest_path: Optional[Path] = None) -> ConfigurationManifest:
+    def load_manifest(self, manifest_path: Path | None = None) -> ConfigurationManifest:
         """Load, parse, and validate manifest.yaml.
 
         Raises ValueError on any structural problem (missing fields,
@@ -146,14 +152,12 @@ class ConfigurationLoader:
         if not isinstance(modules_raw, dict):
             raise ValueError("Manifest 'modules' must be a mapping")
 
-        modules: Dict[str, ManifestEntry] = {}
+        modules: dict[str, ManifestEntry] = {}
         for mod_id, entry_raw in modules_raw.items():
             if not mod_id:
                 raise ValueError("Manifest module ID must be non-empty")
             if not isinstance(entry_raw, dict) or "path" not in entry_raw:
-                raise ValueError(
-                    f"Manifest module {mod_id!r} must have a 'path' field"
-                )
+                raise ValueError(f"Manifest module {mod_id!r} must have a 'path' field")
             modules[mod_id] = ManifestEntry(path=entry_raw["path"])
 
         return ConfigurationManifest(
@@ -170,7 +174,7 @@ class ConfigurationLoader:
     def load_manifest_entries(
         self,
         manifest: ConfigurationManifest,
-    ) -> Dict[str, LoadedManifestModule]:
+    ) -> dict[str, LoadedManifestModule]:
         """Load every module declared in the manifest.
 
         Enforces for each entry:
@@ -184,7 +188,7 @@ class ConfigurationLoader:
         Returns a mapping of manifest_id → LoadedManifestModule.
         Raises ValueError for any integrity violation.
         """
-        result: Dict[str, LoadedManifestModule] = {}
+        result: dict[str, LoadedManifestModule] = {}
 
         for manifest_id, entry in manifest.modules.items():
             raw_path = entry.path
@@ -197,7 +201,10 @@ class ConfigurationLoader:
 
             # 2. Resolve and check containment
             resolved = (self._config_dir / raw_path).resolve()
-            if not str(resolved).startswith(str(self._config_dir) + os.sep) and resolved != self._config_dir:
+            if (
+                not str(resolved).startswith(str(self._config_dir) + os.sep)
+                and resolved != self._config_dir
+            ):
                 raise ValueError(
                     f"Manifest module {manifest_id!r} path escapes config directory: {raw_path!r}"
                 )
@@ -253,8 +260,8 @@ class ConfigurationLoader:
         self,
         path: Path,
         detect_duplicates: bool = False,
-    ) -> Dict[str, Any]:
-        with open(path, "r", encoding="utf-8") as f:
+    ) -> dict[str, Any]:
+        with open(path, encoding="utf-8") as f:
             content = f.read()
 
         if detect_duplicates:
@@ -264,7 +271,7 @@ class ConfigurationLoader:
         return result if isinstance(result, dict) else {}
 
     @staticmethod
-    def _parse_yaml_detect_duplicates(content: str, path: Path) -> Dict[str, Any]:
+    def _parse_yaml_detect_duplicates(content: str, path: Path) -> dict[str, Any]:
         """Parse YAML while detecting duplicate mapping keys."""
 
         class _DuplicateDetector(yaml.SafeLoader):
@@ -278,9 +285,7 @@ class ConfigurationLoader:
             keys_seen: set[str] = set()
             for key, _ in pairs:
                 if key in keys_seen:
-                    raise ValueError(
-                        f"Duplicate manifest key {key!r} in {path}"
-                    )
+                    raise ValueError(f"Duplicate manifest key {key!r} in {path}")
                 keys_seen.add(key)
             return dict(pairs)
 

@@ -25,18 +25,19 @@ Invariants:
   - Singleton compatibility files (ai_gateway.yaml, returns/production.yaml)
     are loaded by explicit contract — NOT by directory discovery.
 """
+
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Mapping
+from typing import Any
 
 from pydantic import ValidationError
 
 from return_platform.configuration.application.loader import (
     ConfigurationLoader,
 )
-from return_platform.configuration.domain.agents import AgentsConfig, AgentConfigNode
+from return_platform.configuration.domain.agents import AgentConfigNode, AgentsConfig
 from return_platform.configuration.domain.ai import AiConfig
 from return_platform.configuration.domain.errors import ConfigurationValidationError
 from return_platform.configuration.domain.features import FeaturesConfig
@@ -46,11 +47,18 @@ from return_platform.configuration.domain.graph import (
     GraphSchemaNode,
     GraphSyncConfig,
 )
-from return_platform.configuration.domain.integrations import IntegrationsConfig, IntegrationDefinition
-from return_platform.configuration.domain.modules import ModuleConfigNode, ModuleDependency, ModulesConfig
+from return_platform.configuration.domain.integrations import (
+    IntegrationDefinition,
+    IntegrationsConfig,
+)
+from return_platform.configuration.domain.modules import (
+    ModuleConfigNode,
+    ModuleDependency,
+    ModulesConfig,
+)
 from return_platform.configuration.domain.platform import PlatformConfig
 from return_platform.configuration.domain.release_model import RuntimeSnapshot
-from return_platform.configuration.domain.sources import SourcesConfig, SourceConfigNode
+from return_platform.configuration.domain.sources import SourceConfigNode, SourcesConfig
 from return_platform.configuration.domain.system_store import (
     SystemStoreConfig,
     SystemStoreStructure,
@@ -94,14 +102,14 @@ class LegacyCompatibilityAdapter:
         loaded_modules = self._loader.load_manifest_entries(manifest)
 
         # 2. Partition by module type
-        agents_map: Dict[str, AgentConfigNode] = {}
-        workflows_map: Dict[str, WorkflowDefinition] = {}
-        sources_map: Dict[str, SourceConfigNode] = {}
-        graphs_map: Dict[str, GraphSchemaNode] = {}
-        mappings_map: Dict[str, GraphMappingConfig] = {}
-        sync_map: Dict[str, GraphSyncConfig] = {}
-        integrations_map: Dict[str, IntegrationDefinition] = {}
-        modules_config_map: Dict[str, ModuleConfigNode] = {}
+        agents_map: dict[str, AgentConfigNode] = {}
+        workflows_map: dict[str, WorkflowDefinition] = {}
+        sources_map: dict[str, SourceConfigNode] = {}
+        graphs_map: dict[str, GraphSchemaNode] = {}
+        mappings_map: dict[str, GraphMappingConfig] = {}
+        sync_map: dict[str, GraphSyncConfig] = {}
+        integrations_map: dict[str, IntegrationDefinition] = {}
+        modules_config_map: dict[str, ModuleConfigNode] = {}
 
         # Singleton-loaded domain state
         system_store_config: SystemStoreConfig = SystemStoreConfig()
@@ -297,16 +305,8 @@ class LegacyCompatibilityAdapter:
             ai_config = AiConfig()
 
         returns_raw = self._loader.load_file("returns/production.yaml")
-        features_dict = (
-            returns_raw.get("features", {})
-            if isinstance(returns_raw, dict)
-            else {}
-        )
-        platform_dict = (
-            returns_raw.get("platform", {})
-            if isinstance(returns_raw, dict)
-            else {}
-        )
+        features_dict = returns_raw.get("features", {}) if isinstance(returns_raw, dict) else {}
+        platform_dict = returns_raw.get("platform", {}) if isinstance(returns_raw, dict) else {}
         features_config = FeaturesConfig(
             flags=features_dict if isinstance(features_dict, dict) else {}
         )

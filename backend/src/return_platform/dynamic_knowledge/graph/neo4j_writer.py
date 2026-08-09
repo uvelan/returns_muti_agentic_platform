@@ -33,7 +33,10 @@ from return_platform.dynamic_knowledge.graph.write_compiler import (
     compile_relationship_writes,
     compile_remaining_ownership_count,
 )
-from return_platform.dynamic_knowledge.on_demand_sync.contracts import GraphMutationBatch, GraphNodeMutation
+from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
+    GraphMutationBatch,
+    GraphNodeMutation,
+)
 from return_platform.dynamic_knowledge.schema import ActiveSchema, EntityDeletionPolicy
 
 _DELETE_OPERATION_BY_POLICY: dict[EntityDeletionPolicy, str] = {
@@ -78,7 +81,7 @@ class GraphWriteTransaction(Protocol):
 class GraphSession(Protocol):
     async def execute_write(self, work: Any, **kwargs: Any) -> Any: ...
 
-    async def __aenter__(self) -> "GraphSession": ...
+    async def __aenter__(self) -> GraphSession: ...
 
     async def __aexit__(self, *exc_info: Any) -> None: ...
 

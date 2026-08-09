@@ -1,5 +1,7 @@
-from typing import Protocol, Any, Optional
+from typing import Any, Protocol
+
 from return_platform.platform.contracts.epoch import RuntimeEpoch
+
 
 class ConfigurationView(Protocol):
     def section(self, name: str) -> Any: ...
@@ -7,6 +9,7 @@ class ConfigurationView(Protocol):
     def release_id(self) -> str: ...
     @property
     def checksum(self) -> str: ...
+
 
 class ConfigurationHandle(Protocol):
     def current(self, epoch: RuntimeEpoch) -> ConfigurationView: ...

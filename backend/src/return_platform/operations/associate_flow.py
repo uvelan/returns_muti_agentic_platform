@@ -925,6 +925,7 @@ class AssociateConversationService:
             )
         ]
         if conversation.candidates:
+
             def ambiguity_rank(item: Any) -> tuple[int, int, int, int, int, str]:
                 values = [
                     value.casefold()
@@ -1027,8 +1028,7 @@ class AssociateConversationService:
         known = [
             "recognized evidence categories: "
             + ", ".join(
-                item.value
-                for item in (conversation.anchorTypes or [conversation.anchorType])
+                item.value for item in (conversation.anchorTypes or [conversation.anchorType])
             ),
             f"source-backed candidate count: {len(conversation.candidates)}",
             f"discovery status: {conversation.status}",
@@ -1139,7 +1139,9 @@ class AssociateConversationService:
 
         if configured_question is not None:
             return configured_question
-        subject = "the matching order and item" if conversation.candidates else "one more order detail"
+        subject = (
+            "the matching order and item" if conversation.candidates else "one more order detail"
+        )
         return f"Could you provide {subject}?"
 
     async def _apply_chat_copy(
@@ -1467,40 +1469,42 @@ class AssociateConversationService:
                 anchor_value,
             ),
         }
-        queries.update({
-            AnchorType.SHIPPING_ADDRESS: (
-                "MATCH (c:Customer)-[:PLACED_ORDER]->(o:SalesOrder) "
-                "WHERE toLower(o.shipping_address) STARTS WITH toLower($value) "
-                "OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine) "
-                "OPTIONAL MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
-                "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
-                anchor_value,
-            ),
-            AnchorType.ZIP_CODE: (
-                "MATCH (c:Customer)-[:PLACED_ORDER]->(o:SalesOrder) "
-                "WHERE toLower(c.postal_code) STARTS WITH toLower($value) "
-                "OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine) "
-                "OPTIONAL MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
-                "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
-                anchor_value,
-            ),
-            AnchorType.DATE_RANGE: (
-                "MATCH (c:Customer)-[:PLACED_ORDER]->(o:SalesOrder) "
-                "WHERE toLower(o.order_date) STARTS WITH toLower($value) "
-                "OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine) "
-                "OPTIONAL MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
-                "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
-                anchor_value,
-            ),
-            AnchorType.PRODUCT_COLOUR: (
-                "MATCH (o:SalesOrder)-[:HAS_ORDER_LINE]->(l:OrderLine) "
-                "MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
-                "WHERE toLower(p.product_color) STARTS WITH toLower($value) "
-                "MATCH (c:Customer)-[:PLACED_ORDER]->(o) "
-                "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
-                anchor_value,
-            ),
-        })
+        queries.update(
+            {
+                AnchorType.SHIPPING_ADDRESS: (
+                    "MATCH (c:Customer)-[:PLACED_ORDER]->(o:SalesOrder) "
+                    "WHERE toLower(o.shipping_address) STARTS WITH toLower($value) "
+                    "OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine) "
+                    "OPTIONAL MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
+                    "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
+                    anchor_value,
+                ),
+                AnchorType.ZIP_CODE: (
+                    "MATCH (c:Customer)-[:PLACED_ORDER]->(o:SalesOrder) "
+                    "WHERE toLower(c.postal_code) STARTS WITH toLower($value) "
+                    "OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine) "
+                    "OPTIONAL MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
+                    "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
+                    anchor_value,
+                ),
+                AnchorType.DATE_RANGE: (
+                    "MATCH (c:Customer)-[:PLACED_ORDER]->(o:SalesOrder) "
+                    "WHERE toLower(o.order_date) STARTS WITH toLower($value) "
+                    "OPTIONAL MATCH (o)-[:HAS_ORDER_LINE]->(l:OrderLine) "
+                    "OPTIONAL MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
+                    "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
+                    anchor_value,
+                ),
+                AnchorType.PRODUCT_COLOUR: (
+                    "MATCH (o:SalesOrder)-[:HAS_ORDER_LINE]->(l:OrderLine) "
+                    "MATCH (l)-[:REFERENCES_PRODUCT]->(p:Product) "
+                    "WHERE toLower(p.product_color) STARTS WITH toLower($value) "
+                    "MATCH (c:Customer)-[:PLACED_ORDER]->(o) "
+                    "RETURN c,o,collect({line:l,product:p}) AS lines LIMIT 20",
+                    anchor_value,
+                ),
+            }
+        )
         if not records:
             query_definition = queries.get(anchor_type)
             if query_definition is None:
@@ -1917,7 +1921,9 @@ class AssociateConversationService:
             if anchor.anchorType == AnchorType.ORDER_NUMBER:
                 conditions.append(f"toLower(o.sales_order_number) STARTS WITH toLower(${val_key})")
             elif anchor.anchorType == AnchorType.CUSTOMER_ID:
-                conditions.append(f"(toLower(c.customer_id) STARTS WITH toLower(${val_key}) OR toLower(c.customer_key) STARTS WITH toLower(${val_key}))")
+                conditions.append(
+                    f"(toLower(c.customer_id) STARTS WITH toLower(${val_key}) OR toLower(c.customer_key) STARTS WITH toLower(${val_key}))"
+                )
             elif anchor.anchorType == AnchorType.PHONE:
                 conditions.append(f"c.phone_hash = ${val_key}")
             elif anchor.anchorType == AnchorType.EMAIL:
@@ -1925,7 +1931,9 @@ class AssociateConversationService:
             elif anchor.anchorType == AnchorType.TRACKING_NUMBER:
                 conditions.append(f"toLower(s.tracking_number) STARTS WITH toLower(${val_key})")
             elif anchor.anchorType == AnchorType.SKU:
-                conditions.append(f"(toLower(p.sku) STARTS WITH toLower(${val_key}) OR toLower(p.product_id) STARTS WITH toLower(${val_key}))")
+                conditions.append(
+                    f"(toLower(p.sku) STARTS WITH toLower(${val_key}) OR toLower(p.product_id) STARTS WITH toLower(${val_key}))"
+                )
             elif anchor.anchorType == AnchorType.SHIPPING_ADDRESS:
                 conditions.append(f"toLower(o.shipping_address) STARTS WITH toLower(${val_key})")
             elif anchor.anchorType == AnchorType.ZIP_CODE:
@@ -2192,7 +2200,9 @@ class AssociateConversationService:
                             customerReference=candidate.customerReference,
                             orderSource=candidate.orderSource,
                             matchedAnchors=tuple(anchor.anchorType.value for anchor in anchors),
-                            evidenceReferences=(f"{candidate.evidenceSource}:{candidate.orderReference}",),
+                            evidenceReferences=(
+                                f"{candidate.evidenceSource}:{candidate.orderReference}",
+                            ),
                         )
                         for candidate in candidates
                     ]
@@ -2205,8 +2215,11 @@ class AssociateConversationService:
                         sessionId="temp-discovery",
                         candidates=tuple(inputs),
                         suppliedEvidence={
-                            _ai_safe_keys.get(anchor.anchorType, anchor.anchorType.name): anchor.anchorValue for anchor in anchors
-                        }
+                            _ai_safe_keys.get(
+                                anchor.anchorType, anchor.anchorType.name
+                            ): anchor.anchorValue
+                            for anchor in anchors
+                        },
                     )
                     analysis = await self._order_analysis_agent.analyze(analysis_req, self._ai)
                     assistant_text = analysis.smartQuestion or (
@@ -2241,9 +2254,7 @@ class AssociateConversationService:
             "_id": conversation_id,
             "status": status,
             "anchorType": payload.anchorType.value,
-            "anchorTypes": [
-                anchor.anchorType.value for anchor in (payload, *additional_anchors)
-            ],
+            "anchorTypes": [anchor.anchorType.value for anchor in (payload, *additional_anchors)],
             "anchorValueMasked": masked_value,
             "orderSource": order_source.value,
             "discoveryAssessment": discovery_assessment,
@@ -2332,7 +2343,9 @@ class AssociateConversationService:
                     )
                 ]
             else:
-                raise ValueError("I couldn't identify an order number, tracking ID, or other searchable detail in your message.")
+                raise ValueError(
+                    "I couldn't identify an order number, tracking ID, or other searchable detail in your message."
+                )
         conversation = await self.start(
             lookups[0],
             actor_id=actor_id,
@@ -2414,7 +2427,10 @@ class AssociateConversationService:
                         for f in self._return_configuration.clarification_policy.fields
                         if f.customer_answerable
                     ]
-                    selected_candidate_id, smart_question = await self._order_analysis_agent.disambiguate(
+                    (
+                        selected_candidate_id,
+                        smart_question,
+                    ) = await self._order_analysis_agent.disambiguate(
                         candidates=candidates,
                         user_response=payload.anchorValue,
                         allowed_fields=allowed_fields,
@@ -2423,7 +2439,9 @@ class AssociateConversationService:
                     )
 
                     if selected_candidate_id:
-                        candidates = [c for c in candidates if c.orderReference == selected_candidate_id]
+                        candidates = [
+                            c for c in candidates if c.orderReference == selected_candidate_id
+                        ]
                         status = "DISCOVERY_READY"
                         assistant_text = conv_config.continue_match_template.format(
                             count=1,
@@ -2566,7 +2584,9 @@ class AssociateConversationService:
         dialogue_states = self._return_configuration.discovery.progressive.dialogue_states
 
         if selected_candidate_id:
-            matched = [c for c in conversation.candidates if c.orderReference == selected_candidate_id]
+            matched = [
+                c for c in conversation.candidates if c.orderReference == selected_candidate_id
+            ]
         else:
             # If no single candidate selected, keep all as matched to let them answer again
             # or could we try to filter based on smart_question? No, AI is meant to return selected_candidate_id if it's narrowed down to one.
@@ -2585,7 +2605,10 @@ class AssociateConversationService:
             next_slots = []
             next_candidates = matched
         else:
-            assistant_text = smart_question or f"I narrowed the result to {len(matched)} orders. What detail distinguishes them?"
+            assistant_text = (
+                smart_question
+                or f"I narrowed the result to {len(matched)} orders. What detail distinguishes them?"
+            )
             next_question = assistant_text
             next_state = dialogue_states.slot_disambiguation
             next_slots = ["ai_disambiguation"]
@@ -2682,7 +2705,9 @@ class AssociateConversationService:
                     )
                 ]
             else:
-                raise ValueError("I couldn't identify an order number, tracking ID, or other searchable detail in your message.")
+                raise ValueError(
+                    "I couldn't identify an order number, tracking ID, or other searchable detail in your message."
+                )
         lookup = lookups[0]
         conversation = await self.continue_discovery(
             conversation_id,

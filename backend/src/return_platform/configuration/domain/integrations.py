@@ -1,5 +1,8 @@
+from collections.abc import Mapping
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict
-from typing import Mapping, Any, List
+
 
 class IntegrationDefinition(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -12,8 +15,9 @@ class IntegrationDefinition(BaseModel):
     configuration_version: str | None = None
     owner: str | None = None
     status: str | None = None
-    dependencies: List[Any] | None = None
+    dependencies: list[Any] | None = None
     payload: Mapping[str, Any] | None = None
+
 
 class IntegrationsConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")

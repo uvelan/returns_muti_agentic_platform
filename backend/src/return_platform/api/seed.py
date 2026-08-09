@@ -93,9 +93,7 @@ async def apply_seed(
             kind="APPLY",
             record_limit=record_limit,
             total_records=(
-                (2 * counts["customers"])
-                + (2 * counts["products"])
-                + (3 * counts["orders"])
+                (2 * counts["customers"]) + (2 * counts["products"]) + (3 * counts["orders"])
             ),
         )
     except RuntimeError as error:
@@ -200,9 +198,7 @@ async def reset_seed(
             kind="RESET",
             record_limit=record_limit,
             total_records=(
-                (2 * counts["customers"])
-                + (2 * counts["products"])
-                + (3 * counts["orders"])
+                (2 * counts["customers"]) + (2 * counts["products"]) + (3 * counts["orders"])
             ),
         )
     except RuntimeError as error:

@@ -5,14 +5,20 @@ from typing import Any
 
 import pytest
 
-from return_platform.dynamic_knowledge.graph.generation import GraphGenerationStatus, GraphWriteReceipt
+from return_platform.dynamic_knowledge.graph.generation import (
+    GraphGenerationStatus,
+    GraphWriteReceipt,
+)
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
     DynamicRecordMutation,
     DynamicSourceRecord,
     GraphMutationBatch,
 )
 from return_platform.dynamic_knowledge.schema import ActiveSchema
-from return_platform.dynamic_knowledge.sync.adapters import ProjectorGraphWriter, SourceConnectorRegistry
+from return_platform.dynamic_knowledge.sync.adapters import (
+    ProjectorGraphWriter,
+    SourceConnectorRegistry,
+)
 
 
 class FakeProjector:
@@ -100,7 +106,9 @@ async def test_project_and_write_reconstructs_mutations_and_returns_receipt_coun
 
 
 @pytest.mark.asyncio
-async def test_project_and_write_advances_chunk_id_across_calls(active_schema: ActiveSchema) -> None:
+async def test_project_and_write_advances_chunk_id_across_calls(
+    active_schema: ActiveSchema,
+) -> None:
     adapter = ProjectorGraphWriter(
         projector=FakeProjector(),
         writer=(writer := FakeWriter()),
@@ -108,7 +116,10 @@ async def test_project_and_write_advances_chunk_id_across_calls(active_schema: A
     )
     records = (
         DynamicSourceRecord(
-            source_asset_id="source_a", entity_id="entity_a", natural_key={"id": "A-1"}, values={"id": "A-1"}
+            source_asset_id="source_a",
+            entity_id="entity_a",
+            natural_key={"id": "A-1"},
+            values={"id": "A-1"},
         ),
     )
     await adapter.project_and_write(
@@ -142,7 +153,10 @@ async def test_project_and_write_honors_a_different_expected_status_per_call(
     )
     records = (
         DynamicSourceRecord(
-            source_asset_id="source_a", entity_id="entity_a", natural_key={"id": "A-1"}, values={"id": "A-1"}
+            source_asset_id="source_a",
+            entity_id="entity_a",
+            natural_key={"id": "A-1"},
+            values={"id": "A-1"},
         ),
     )
     await adapter.project_and_write(
