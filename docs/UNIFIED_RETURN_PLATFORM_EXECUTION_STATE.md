@@ -1637,6 +1637,60 @@ files — **unchanged baseline**, now across 459 source files.
 `validation_results`, `schema_approvals`) verified through the real loader. The full
 real-infra suite has **not** run since C3.1 and is now overdue.
 
+## Post-C3 — analyzer port adapters + the deferred real-infra gate (this slice)
+
+**Two production port bindings.** The analyzer's ports had no implementations, so the
+module was unreachable in production regardless of being wired into startup.
+
+- `bootstrap/adapters/analyzer_source_adapter.py` — `SourceDiscoveryPort` over real Mongo.
+  **Mongo has no declared schema**, so field metadata is *inferred* from observed
+  documents, and the adapter is explicit about the limits of that: a field absent from
+  every sampled document is invisible, and a field whose sampled values disagree is
+  reported as `mixed` rather than guessed. That matters because the analyzer's
+  TYPE_COMPATIBILITY check treats declared types as fact — a confident wrong answer here
+  becomes a silent coercion at sync time. Sampling is bounded twice (caller limit, then a
+  module ceiling) so discovery cannot become a bulk export, and `_id` is stripped as
+  storage bookkeeping that is also not JSON-serialisable.
+- `bootstrap/adapters/analyzer_graph_target_adapter.py` — `GraphTargetPort` over Neo4j.
+  **This is the compiler §10.4 means**: the only place a model-derived structure becomes
+  Cypher. Identifiers are re-validated here rather than trusted from the mutation layer —
+  a compiler that assumes its input was validated upstream is one refactor away from not
+  being — and anything failing the pattern *raises* rather than being escaped, because an
+  escaping bug is silent and a refusal is not. Only `CREATE INDEX`/`CREATE CONSTRAINT` are
+  emitted; there is no path that writes to a source system. `validate_schema` uses Neo4j's
+  own `EXPLAIN` so the database decides validity rather than this adapter re-implementing
+  Cypher's grammar and drifting from it. `request_build` deliberately raises
+  `NotImplementedError` — the generation lifecycle is C4, and a half-build would be worse
+  than a refusal.
+
+Both are bound in `main.py` independently: an operator with Mongo but no Neo4j gets
+discovery and a 503 on validation, rather than a wholly dead module.
+
+**`compile_graph_ddl` is pure and adversarially tested** (16 cases) — six injection-shaped
+labels, a property name carrying a Cypher fragment, determinism, and the Mongo inference
+edge cases (bool-before-int, mixed types, empty sample).
+
+**Container contamination found — and it invalidated a green result.** The `c2-test-runner`
+container is shared mutable state, and `docker cp` *merges* rather than replaces. A
+concurrent session working the `CheckpointRedactor` task (`task_f1fc6b63`) had synced its
+own files into the same container, so the first full run — reported as 1669 passed / 2
+failed, then 1671 passed / 0 failed on a re-run — was executing a **mixture of two
+sessions' code**, including a `tests/reasoning/test_checkpoint_allowlist_fails_closed.py`
+that does not exist in this working tree. The 2-then-0 failure discrepancy is explained by
+the other session writing mid-run. Neither number was attributable to this tree. Resolved
+by `rm -rf`-ing the container's `src`/`tests`/`config` and re-copying from a clean tree
+before re-running. **Carry forward: always wipe before sync, never merge, and never trust
+a container result while another session is active against the same repo.**
+
+**Gate receipts (clean tree, contamination removed).** `ruff format --check`/`ruff check`
+clean. `mypy src`: 47 errors in 16 files — **unchanged baseline**, across 461 source files.
+`import return_platform.main` clean. `tests/graph_schema_analyzer/` 107/107 locally.
+Full real-infra suite in the wiped-and-resynced `c2-test-runner` (real Mongo/Neo4j/SQL
+Server/Temporal, same four exclusions as prior slices): **1687 passed, 2 skipped, 0
+failed, 99 errors** — 99 being exactly the long-standing `NVIDIA_API_KEY`/`GOOGLE_API_KEY`
+fixture gap, unchanged since Commit 3. This is the first full-suite run since C3.1 and it
+closes that three-slice gap. The +107 over Commit 4's 1580 is this wave's new tests.
+
 ## Next READY slice
 
 **Wave C3 is complete** (C3.1/C3.2/C3.3). Next is **C4 — Phase 12: graph generation
@@ -1644,16 +1698,21 @@ lifecycle** (build, catch-up, deep validation, READY_FOR_ACTIVATION, atomic acti
 read/write/session leases, DRAINING, RETIRED, failure rollback, rebuild trigger), after
 which Wave D (Phases 13–16) opens.
 
-**Before C4, the analyzer's outstanding debt should be paid — it is now the critical
-path.** The module is complete and tested in isolation but has **no production port
-bindings**: `SourceDiscoveryPort`, `SchemaReasoningPort`, and `GraphTargetPort` are
-unimplemented in `bootstrap/adapters/`, so discovery, AI proposal, and validation are
-reachable only from tests. Note the fail-closed consequence found in C3.3: an adapter that
-does not fully satisfy a port makes the routes 503 rather than failing at import. Also
-owed: the full real-infra suite (not run since C3.1, now three slices stale); a real-Mongo
-proof of `SourceSampleRepository`'s encrypted round trip and of the new draft/revision
-unique indexes; the reasoning graph's `APPLY_TYPED_MUTATION` node; and time-skipping
-coverage for Commit 4's idle-timeout and continue-as-new paths.
+`SourceDiscoveryPort` and `GraphTargetPort` now have production bindings (above). Still
+owed, in rough priority order:
+
+1. **`SchemaReasoningPort` has no adapter.** It is the last unbound port, so the reasoning
+   graph's AI call cannot run in production — the analyzer can discover, edit, validate,
+   and approve, but not propose. Needs `bootstrap/adapters/analyzer_ai_adapter.py` wrapping
+   the same `AIGatewayService` the agents use, so routing/failover/interception stay shared.
+2. **No real-infra test touches the analyzer's own persistence.** `SourceSampleRepository`'s
+   encrypted round trip and the new `(draft_id, sequence)` unique index are unproven against
+   real Mongo; both are currently only exercised through in-memory doubles.
+3. The reasoning graph's `APPLY_TYPED_MUTATION` node and the USER_REVIEW modification
+   branch (the mutation machinery they would drive now exists).
+4. Time-skipping coverage for Wave C2 Commit 4's idle-timeout and continue-as-new paths.
+5. `task_f1fc6b63` (concurrent session): wire `CheckpointRedactor` into real checkpoint
+   writes. `task_92c35ace`: the `ReturnWorkflow.complete_stage` mutex race.
 
 Open follow-up tasks, none blocking C3: `task_f1fc6b63` (wire `CheckpointRedactor` into
 real checkpoint writes and correct Commit 2's untrue ledger claim), and

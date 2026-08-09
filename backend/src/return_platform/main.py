@@ -35,6 +35,12 @@ from return_platform.api.runtime_config import router as runtime_config_router
 from return_platform.api.seed import router as seed_router
 from return_platform.api.support import router as support_router
 from return_platform.api.warehouse_placement import router as warehouse_placement_router
+from return_platform.bootstrap.adapters.analyzer_graph_target_adapter import (
+    build_neo4j_graph_target_adapter,
+)
+from return_platform.bootstrap.adapters.analyzer_source_adapter import (
+    build_mongo_source_discovery_adapter,
+)
 from return_platform.bootstrap.context import (
     RuntimeContext,
     StaticCorrelationContext,
@@ -625,7 +631,28 @@ async def lifespan(
                 app.state.graph_schema_analyzer_persistence = build_system_store_persistence(
                     analyzer_system_store
                 )
-                app.state.graph_schema_analyzer_status = {"state": "READY"}
+                # Bind the analyzer's outward ports. Each is independently
+                # optional: discovery needs a source client, validation needs
+                # Neo4j, and an operator with one but not the other should still
+                # get the half that works rather than a wholly dead module. The
+                # routes that need a missing port 503 individually.
+                if resources.source_mongo is not None:
+                    app.state.graph_schema_analyzer_source_discovery = (
+                        build_mongo_source_discovery_adapter(
+                            resources.source_mongo,
+                            database_name=settings.source_mongo_database,
+                            source_id=settings.source_mongo_database,
+                        )
+                    )
+                if resources.neo4j is not None:
+                    app.state.graph_schema_analyzer_graph_target = build_neo4j_graph_target_adapter(
+                        resources.neo4j
+                    )
+                app.state.graph_schema_analyzer_status = {
+                    "state": "READY",
+                    "source_discovery": resources.source_mongo is not None,
+                    "graph_target": resources.neo4j is not None,
+                }
 
         logger.info(
             "application_resources_initialized",
@@ -668,6 +695,12 @@ async def lifespan(
     finally:
         if hasattr(app.state, "dynamic_order_agent_runtime"):
             del app.state.dynamic_order_agent_runtime
+        for analyzer_attribute in (
+            "graph_schema_analyzer_source_discovery",
+            "graph_schema_analyzer_graph_target",
+        ):
+            if hasattr(app.state, analyzer_attribute):
+                delattr(app.state, analyzer_attribute)
         if hasattr(app.state, "graph_schema_analyzer_persistence"):
             # Holds no connection of its own -- it borrows resources.mongo, which
             # close_resources() below owns -- so dropping the reference is the whole
