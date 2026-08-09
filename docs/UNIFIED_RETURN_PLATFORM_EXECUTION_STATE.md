@@ -1698,20 +1698,37 @@ lifecycle** (build, catch-up, deep validation, READY_FOR_ACTIVATION, atomic acti
 read/write/session leases, DRAINING, RETIRED, failure rollback, rebuild trigger), after
 which Wave D (Phases 13–16) opens.
 
-`SourceDiscoveryPort` and `GraphTargetPort` now have production bindings (above). Still
-owed, in rough priority order:
+`SourceDiscoveryPort` and `GraphTargetPort` have production bindings, and the analyzer's
+persistence now has a real-Mongo proof (`tests/graph_schema_analyzer/test_persistence_real_infra.py`,
+9 tests): samples round-trip through the encrypted structure, the raw document contains no
+business values, **the store itself** refuses a plaintext write to `source_samples`, an
+encrypted structure hands out no raw collection, `(draft_id, sequence)` genuinely raises
+`DuplicateKeyError` on a second insert, and draft compare-and-set rejects a stale write.
+Its fixture is module-scoped — bootstrapping the full manifest per test cost 182s for 9
+tests versus 13.7s shared; safe only because every test allocates uuid-based ids, which is
+noted in the fixture so it goes back to function scope if that stops holding.
 
-1. **`SchemaReasoningPort` has no adapter.** It is the last unbound port, so the reasoning
-   graph's AI call cannot run in production — the analyzer can discover, edit, validate,
-   and approve, but not propose. Needs `bootstrap/adapters/analyzer_ai_adapter.py` wrapping
-   the same `AIGatewayService` the agents use, so routing/failover/interception stay shared.
-2. **No real-infra test touches the analyzer's own persistence.** `SourceSampleRepository`'s
-   encrypted round trip and the new `(draft_id, sequence)` unique index are unproven against
-   real Mongo; both are currently only exercised through in-memory doubles.
-3. The reasoning graph's `APPLY_TYPED_MUTATION` node and the USER_REVIEW modification
+Still owed, in rough priority order:
+
+1. **`SchemaReasoningPort` has no adapter — the analyzer cannot propose a schema in
+   production.** Spawned as `task_971021e8` rather than done inline, because doing it
+   correctly is a refactor of live code that currently cannot be verified. Detail worth
+   keeping: `AIGatewayService.evaluate` is **not** usable here — its `_parse_response`
+   requires exactly `{decision, explanation, confidenceMillionths}`, so it cannot carry a
+   `SchemaProposal`. The real structured-output path is
+   `dynamic_knowledge/integration/model_gateway.py`'s `RoutePoolReasoningModelGateway`
+   (385 lines, of which only ~33 touch order-agent types). The design mandates exactly one
+   AI execution path, so the options were duplicate ~350 lines (violates that and will
+   drift), write an adapter without failover (a silent reliability regression), or extract
+   the generic machinery (correct). Extraction was blocked because
+   `tests/test_ai_route_balancing_design.py` — the failover and tier-escalation tests that
+   would prove it safe — are among the ~99 blocked by the missing
+   `NVIDIA_API_KEY`/`GOOGLE_API_KEY`. **Restore those keys first; the refactor is
+   unverifiable without them.**
+2. The reasoning graph's `APPLY_TYPED_MUTATION` node and the USER_REVIEW modification
    branch (the mutation machinery they would drive now exists).
-4. Time-skipping coverage for Wave C2 Commit 4's idle-timeout and continue-as-new paths.
-5. `task_f1fc6b63` (concurrent session): wire `CheckpointRedactor` into real checkpoint
+3. Time-skipping coverage for Wave C2 Commit 4's idle-timeout and continue-as-new paths.
+4. `task_f1fc6b63` (concurrent session): wire `CheckpointRedactor` into real checkpoint
    writes. `task_92c35ace`: the `ReturnWorkflow.complete_stage` mutex race.
 
 Open follow-up tasks, none blocking C3: `task_f1fc6b63` (wire `CheckpointRedactor` into
