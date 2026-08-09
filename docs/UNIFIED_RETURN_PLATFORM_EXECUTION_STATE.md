@@ -1,8 +1,8 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `e06dac3` (OpenAPI regeneration + drift-check repair)
-Slice: **Canonical `/api/ai` — the fourth domain; Wave D's completion condition met**
+Last pushed green commit: `c3e4592` (canonical /api/ai — Wave D four-domain condition met)
+Slice: **Wave D2 / Phase 14, slice 3 — the resume bridge**
 Status: slices 1-6 DONE. **Wave C is complete** apart from one owed end-to-end composition
 run — see the Wave C real-infra gate table below — see the C4 sections below for what remains.
 
@@ -1847,6 +1847,51 @@ Still owed, in rough priority order:
 `task_bd3a4652` (the rejected-command wedge) — fixed and verified below. The
 `NVIDIA_API_KEY`/`GOOGLE_API_KEY` item is also resolved: see the correction above; the keys
 were never actually required.
+
+## Wave D2 / Phase 14, slice 3 — the resume bridge (at-least-once)
+
+Status: DONE. D2's "at-least-once resume worker" requirement is met.
+
+**No second worker was built, deliberately.** One already existed and is good:
+`platform/reasoning/resume_worker.py` claims `reasoning_resume_commands` under a lease,
+delivers Temporal signals with exponential backoff, and deduplicates workflow-side on
+`command_id`. A second worker beside it would have meant two lease disciplines, two backoff
+policies, and two places to get at-least-once wrong. `InterceptionResumeDispatcher`
+therefore **bridges** rather than delivers: an answered interception becomes a resume
+command row, and the existing worker takes it from there.
+
+**The interception record is its own outbox.** The answer and the resume intent live in
+different collections, so one write cannot cover both, and a cross-collection transaction
+would be another mechanism to keep correct. Nothing extra is written at answer time:
+`ANSWERED` with no `resume_enqueued_at` *is* the queue. The only durable state is the
+interception itself.
+
+**At-least-once rests on a unique index, not on the stamp.** A crash between "wrote the
+command" and "stamped the interception" replays the enqueue on the next pass. That is safe
+because the command id is *derived* (`interception:{id}`) and `command_id` carries a unique
+index, so the replay collides in the database rather than delivering a second signal. The
+test for this deletes the stamp to simulate the crash and asserts exactly one command
+survives — which is how this actually fails in production, and a test that only ran the
+happy path would not have caught a random command id.
+
+**One correctness detail found while wiring it.** The stamp writes through the *guarded*
+store rather than the raw collection: `ai_interceptions` is `encrypted: true`, and a
+plaintext write must be refused even when the field being added is only a timestamp. That
+required promoting the metadata allowlist from private to shared so both writers declare an
+identical set — two writers with different allowlists would be a slow leak.
+
+**Two test defects the real database caught, both worth recording.** The first draft of
+the real-infra tests *created* a unique index on `reasoning_resume_commands.command_id` --
+but `system_store.yaml` already declares `command_id_unique` on it, so the second unnamed
+index was an `IndexOptionsConflict`. Asserting the index instead of creating it is also the
+better test: one that provisions its own indexes can pass while production lacks them. The
+second reached for `SystemStore.collection()` on `ai_interceptions` to simulate the crash,
+and the Slice 3R.6 encryption guard refused it -- the hardening working against a test, as
+designed. The simulation now goes through the guarded `replace_one`.
+
+**Still open in D2:** the API-process route wiring (its pool is built before the SystemStore
+exists) and an operator console to answer held requests; `/api/ai/interceptions` and the
+store's `request_payload` are the two halves it would need.
 
 ## Canonical `/api/ai` — the AI Control Center read surface
 

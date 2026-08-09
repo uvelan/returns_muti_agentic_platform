@@ -28,9 +28,15 @@ import pytest
 import pytest_asyncio
 from pymongo import AsyncMongoClient
 
+from return_platform.ai.interception.dispatcher import (
+    RESUME_COMMANDS,
+    InterceptionResumeDispatcher,
+    resume_command_id,
+)
 from return_platform.ai.interception.records import InterceptionStatus, ResumeCommand
 from return_platform.ai.interception.store import (
     AI_INTERCEPTIONS,
+    METADATA_FIELDS,
     InterceptionNotPending,
     SystemStoreInterceptionStore,
 )
@@ -304,3 +310,133 @@ async def test_an_answered_interception_leaves_the_queue(system_store: SystemSto
     await store.answer(interception_id=interception_id, response_text="done", answered_by="op-1")
 
     assert not any(r.interception_id == interception_id for r in await store.list_pending())
+
+
+# --- the resume bridge -------------------------------------------------------
+
+
+async def _assert_command_index(system_store: SystemStore) -> None:
+    """The unique index is the correctness mechanism, so assert it exists.
+
+    An earlier version of this helper *created* the index, which failed against
+    a bootstrapped store: `system_store.yaml` already declares
+    `command_id_unique` on `reasoning_resume_commands`, and a second unnamed
+    index on the same key is an IndexOptionsConflict. Asserting rather than
+    creating also keeps the manifest the single source of provisioning -- a test
+    that creates its own indexes can pass while production lacks them.
+    """
+    names = await system_store.collection(RESUME_COMMANDS).index_information()
+    unique_on_command_id = [
+        name
+        for name, spec in names.items()
+        if spec.get("unique") and [k for k, _ in spec.get("key", [])] == ["command_id"]
+    ]
+    assert unique_on_command_id, (
+        "reasoning_resume_commands must carry a unique index on command_id -- it is what "
+        "makes a replayed enqueue collide instead of delivering a second signal"
+    )
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_an_answered_interception_becomes_a_resume_command(
+    system_store: SystemStore,
+) -> None:
+    await _assert_command_index(system_store)
+    store = SystemStoreInterceptionStore(system_store, _encryptor())
+    dispatcher = InterceptionResumeDispatcher(system_store)
+    interception_id = f"i-{uuid.uuid4().hex[:8]}"
+    await _open(store, interception_id)
+    await store.answer(interception_id=interception_id, response_text="{}", answered_by="op-1")
+
+    assert await dispatcher.dispatch_once() >= 1
+
+    command = await system_store.read_only(RESUME_COMMANDS).find_one(
+        {"command_id": resume_command_id(interception_id)}
+    )
+    assert command is not None
+    assert command["status"] == "PENDING"
+    # The resume command stored with the interception is what reaches the worker.
+    assert command["workflow_id"] == "wf-1"
+    assert command["run_id"] == "run-1"
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_a_pending_interception_is_not_enqueued(system_store: SystemStore) -> None:
+    """Resuming work a human has not answered would feed the graph an empty
+    reply and burn the turn."""
+    await _assert_command_index(system_store)
+    store = SystemStoreInterceptionStore(system_store, _encryptor())
+    interception_id = f"i-{uuid.uuid4().hex[:8]}"
+    await _open(store, interception_id)
+
+    await InterceptionResumeDispatcher(system_store).dispatch_once()
+
+    assert (
+        await system_store.read_only(RESUME_COMMANDS).find_one(
+            {"command_id": resume_command_id(interception_id)}
+        )
+    ) is None
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_dispatching_twice_produces_exactly_one_command(
+    system_store: SystemStore,
+) -> None:
+    """The at-least-once property, tested the way it actually fails.
+
+    A crash between "wrote the command" and "stamped the interception" replays
+    the enqueue. Safety comes from the unique index on the derived command id,
+    not from the stamp -- so this deletes the stamp to simulate the crash and
+    asserts the replay does not deliver a second signal.
+    """
+    await _assert_command_index(system_store)
+    store = SystemStoreInterceptionStore(system_store, _encryptor())
+    dispatcher = InterceptionResumeDispatcher(system_store)
+    interception_id = f"i-{uuid.uuid4().hex[:8]}"
+    await _open(store, interception_id)
+    await store.answer(interception_id=interception_id, response_text="{}", answered_by="op-1")
+    await dispatcher.dispatch_once()
+
+    # Simulate the crash: the command exists, the stamp never landed. Rewritten
+    # through the guarded store rather than a raw handle -- `ai_interceptions`
+    # is encrypted, so `SystemStore.collection()` refuses it outright, which is
+    # the 3R.6 hardening doing its job even against a test.
+    document = await system_store.read_only(AI_INTERCEPTIONS).find_one(
+        {"interception_id": interception_id}
+    )
+    assert document is not None
+    unstamped = {k: v for k, v in document.items() if k != "resume_enqueued_at"}
+    await system_store.replace_one(
+        AI_INTERCEPTIONS,
+        {"interception_id": interception_id},
+        unstamped,
+        allowed_metadata_fields=METADATA_FIELDS | {"resume_enqueued_at"},
+    )
+    await dispatcher.dispatch_once()
+
+    count = await system_store.read_only(RESUME_COMMANDS).count_documents(
+        {"command_id": resume_command_id(interception_id)}
+    )
+    assert count == 1, "a replayed enqueue must not produce a second resume command"
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_a_dispatched_interception_leaves_the_dispatch_queue(
+    system_store: SystemStore,
+) -> None:
+    """The stamp is an optimisation, but it has to work -- otherwise every pass
+    re-reads every answered interception the platform has ever had."""
+    await _assert_command_index(system_store)
+    store = SystemStoreInterceptionStore(system_store, _encryptor())
+    dispatcher = InterceptionResumeDispatcher(system_store)
+    interception_id = f"i-{uuid.uuid4().hex[:8]}"
+    await _open(store, interception_id)
+    await store.answer(interception_id=interception_id, response_text="{}", answered_by="op-1")
+    await dispatcher.dispatch_once()
+
+    document = await system_store.read_only(AI_INTERCEPTIONS).find_one(
+        {"interception_id": interception_id}
+    )
+    assert document is not None and document.get("resume_enqueued_at") is not None
+    # And the payload is still sealed after the stamping rewrite.
+    assert SECRET_PROMPT not in str(document)

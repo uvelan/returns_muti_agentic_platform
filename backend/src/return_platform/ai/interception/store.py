@@ -34,8 +34,9 @@ AI_INTERCEPTIONS = "ai_interceptions"
 #: Everything an operator console needs to list and filter, and nothing that
 #: describes the request's content. A task id is a routing label; a prompt is
 #: not, and letting one leak into plaintext metadata would defeat sealing the
-#: payload at all.
-_METADATA_FIELDS = frozenset(
+#: payload at all. Public because the resume dispatcher writes through the same
+#: guarded path and must declare the identical allowlist.
+METADATA_FIELDS = frozenset(
     {
         "interception_id",
         "task_id",
@@ -141,7 +142,7 @@ class SystemStoreInterceptionStore:
                 "answered_by": None,
                 "_envelope": self._seal(raw),
             },
-            allowed_metadata_fields=_METADATA_FIELDS,
+            allowed_metadata_fields=METADATA_FIELDS,
         )
         return Interception(
             interception_id=interception_id,
@@ -213,7 +214,7 @@ class SystemStoreInterceptionStore:
             AI_INTERCEPTIONS,
             {"interception_id": interception_id, "status": InterceptionStatus.PENDING.value},
             updated,
-            allowed_metadata_fields=_METADATA_FIELDS,
+            allowed_metadata_fields=METADATA_FIELDS,
         )
         # `replace_one` returns pymongo's UpdateResult, not a bool; matched_count
         # is what says the compare-and-set filter still held at write time.
@@ -260,7 +261,7 @@ class SystemStoreInterceptionStore:
             AI_INTERCEPTIONS,
             {"interception_id": interception_id, "status": InterceptionStatus.PENDING.value},
             updated,
-            allowed_metadata_fields=_METADATA_FIELDS,
+            allowed_metadata_fields=METADATA_FIELDS,
         )
 
 
