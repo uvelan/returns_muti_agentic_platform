@@ -1,8 +1,8 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `2c8071f` (Wave D2 / Phase 14, slice 3 — the resume bridge)
-Slice: **Wave C end-to-end composition run — the last owed Wave C item**
+Last pushed green commit: `f3112b6` (Wave C end-to-end composition run)
+Slice: **`GET /api/session` — the last thing Wave D owed Wave E**
 Status: slices 1-6 DONE. **Wave C is complete** apart from one owed end-to-end composition
 run — see the Wave C real-infra gate table below — see the C4 sections below for what remains.
 
@@ -1847,6 +1847,55 @@ Still owed, in rough priority order:
 `task_bd3a4652` (the rejected-command wedge) — fixed and verified below. The
 `NVIDIA_API_KEY`/`GOOGLE_API_KEY` item is also resolved: see the correction above; the keys
 were never actually required.
+
+## `GET /api/session` — Wave E is now unblocked on the backend
+
+Status: DONE.
+
+Wave E1's report named two backend dependencies. The four canonical domains were the first
+and are published. **This is the second**, and it was the one actually holding the frontend
+back: the platform has always resolved a `Principal` per request — middleware sets
+`request.state.principal`, every `require_*_roles` dependency reads it — and never returned
+it anywhere. So the frontend could not know who the user is, and its capability hook
+**fails open**, reporting `granted` when no principal is available because failing closed
+would have blanked the console for everyone.
+
+`GET /api/session` returns the caller's own subject, roles and capabilities.
+
+**Roles are translated to capabilities server-side.** E1 mirrored `READ_ROLES`/`WRITE_ROLES`
+in TypeScript (`shared/rbac.ts`) because there was nothing else to do; that is a second copy
+of an authorization rule, and the copy that drifts is always the one nobody re-reads.
+Deriving from the same frozensets the dependencies enforce means one definition. A test
+asserts every role in `READ_ROLES` grants something and every role in `WRITE_ROLES` grants
+write, so adding a role to `roles.py` and forgetting this endpoint fails loudly.
+
+**Two deliberate decisions.** The endpoint carries *no* role dependency: guarding it with
+`require_read_roles` would answer 403 to precisely the caller who most needs an answer —
+signed in, no usable role — and the UI would render a failed request instead of "you have
+no access". A caller with no principal at all is different and gets 401, because there is
+nothing truthful to return. And capabilities are coarse (`config:read`, `config:write`)
+because that is the granularity the routes actually enforce; finer-grained ones would let
+the UI promise precision the server does not deliver.
+
+**Backend authorization remains authoritative.** This is presentation input. A caller who
+forges a capability list client-side gains nothing.
+
+**A test defect the container caught.** The first draft selected roles with
+`next(iter(frozenset))`, whose order varies with `PYTHONHASHSEED`; it passed on the host and
+failed in the container because the arbitrary pick was sometimes `CONSOLE_ADMIN`, which is
+also a write role. Selection is now sorted, and the file was re-run under four hash seeds.
+
+**Verification.** 6 tests. Contract regenerated: **209 paths** — `/api/graph-schema` 13,
+`/api/ai` 5, `/api/config` 3, `/api/returns` 3, `/api/session` 1. Full suite **1962 passed,
+2 skipped**; frontend `tsc -b` clean. mypy 47/16 across 496 files.
+
+### What Wave D still owes, and to whom
+
+Nothing to Wave E. E2–E5 can be built against the published contract.
+
+Open, and independent of E: D3's mutation surface (blocked on the two-store configuration
+lifecycle decision), D4's write consolidation across nine routers, D2's API-process route
+wiring and operator console, and D1's untested "evaluate and invoke share one path" claim.
 
 ## Wave D2 / Phase 14, slice 3 — the resume bridge (at-least-once)
 

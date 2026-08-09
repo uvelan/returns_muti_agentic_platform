@@ -17873,6 +17873,28 @@
         ]
       }
     },
+    "/api/session": {
+      "get": {
+        "description": "The caller's own identity and capabilities.\n\n**No role dependency on purpose.** Guarding this with `require_read_roles`\nwould make it answer 403 for exactly the caller who most needs an answer \u2014\nsomeone signed in with no usable role. Such a caller gets an empty\ncapability list, which the UI can render as \"you have no access\" instead of\na blank screen with a failed request.\n\nA caller with *no principal at all* is a different case: middleware could not\nidentify them, so there is nothing truthful to return and 401 is the honest\nanswer.",
+        "operationId": "get_session_api_session_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Session",
+        "tags": [
+          "Session"
+        ]
+      }
+    },
     "/api/v1/ai-gateway/metrics": {
       "get": {
         "operationId": "list_usage_metrics_api_v1_ai_gateway_metrics_get",

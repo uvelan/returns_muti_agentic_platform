@@ -494,6 +494,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Session
+         * @description The caller's own identity and capabilities.
+         *
+         *     **No role dependency on purpose.** Guarding this with `require_read_roles`
+         *     would make it answer 403 for exactly the caller who most needs an answer —
+         *     someone signed in with no usable role. Such a caller gets an empty
+         *     capability list, which the UI can render as "you have no access" instead of
+         *     a blank screen with a failed request.
+         *
+         *     A caller with *no principal at all* is a different case: middleware could not
+         *     identify them, so there is nothing truthful to return and 401 is the honest
+         *     answer.
+         */
+        get: operations["get_session_api_session_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ai-gateway/metrics": {
         parameters: {
             query?: never;
@@ -10124,6 +10154,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_session_api_session_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
                 };
             };
         };
