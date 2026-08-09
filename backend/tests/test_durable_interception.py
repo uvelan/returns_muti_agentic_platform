@@ -329,3 +329,53 @@ def test_the_record_has_nowhere_to_put_chain_of_thought() -> None:
     )
     with pytest.raises((AttributeError, TypeError)):
         interception.reasoning = "hidden"  # type: ignore[attr-defined]
+
+
+# --- route construction picks the durable provider when a store exists -------
+
+
+def _manual_only_settings() -> Settings:
+    return Settings.model_construct(
+        environment="test",
+        ai_provider_order="MANUAL",
+        ai_max_payload_bytes=1_000_000,
+        ai_global_timeout_seconds=30.0,
+        ai_timeout_seconds=30.0,
+    )
+
+
+def test_routes_use_the_durable_provider_when_a_store_is_supplied() -> None:
+    """The wiring, not just the class. Without this the durable store is a
+    module nothing constructs -- which is exactly what it was before this
+    slice."""
+    from return_platform.ai.routing.routes import build_routes
+
+    routes = build_routes(_manual_only_settings(), interception_store=_Store())
+
+    assert routes, "MANUAL should produce at least one route"
+    assert all(isinstance(r.provider, DurableInterceptionProvider) for r in routes)
+
+
+def test_routes_fall_back_to_the_filesystem_provider_without_a_store() -> None:
+    """A bare `pytest` run or a script with no platform Mongo still gets a
+    working MANUAL provider. Refusing instead would break the keyless
+    manual-response workflow that is most of what MANUAL is for."""
+    from return_platform.ai.routing.routes import build_routes
+
+    routes = build_routes(_manual_only_settings())
+
+    assert routes
+    assert all(isinstance(r.provider, ManualFileProvider) for r in routes)
+
+
+def test_both_manual_providers_report_the_same_identity_to_traces() -> None:
+    """Swapping the storage backend must not change what a trace records, or
+    historical traces would stop comparing to new ones."""
+    from return_platform.ai.routing.routes import build_routes
+
+    durable = build_routes(_manual_only_settings(), interception_store=_Store())
+    filesystem = build_routes(_manual_only_settings())
+
+    assert {(r.provider.name, r.provider.model) for r in durable} == {
+        (r.provider.name, r.provider.model) for r in filesystem
+    }

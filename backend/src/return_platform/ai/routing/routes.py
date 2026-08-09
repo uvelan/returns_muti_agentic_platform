@@ -16,8 +16,10 @@ from dataclasses import dataclass
 
 from pydantic import SecretStr
 
+from return_platform.ai.interception.store import InterceptionStore
 from return_platform.ai.providers.anthropic import AnthropicProvider
 from return_platform.ai.providers.contracts import AIProvider
+from return_platform.ai.providers.durable_interception import DurableInterceptionProvider
 from return_platform.ai.providers.google import GeminiProvider
 from return_platform.ai.providers.manual import ManualFileProvider
 from return_platform.ai.providers.nvidia import NvidiaProvider
@@ -58,6 +60,7 @@ def _provider(
     *,
     key: SecretStr | None,
     model: str,
+    interception_store: InterceptionStore | None = None,
 ) -> AIProvider:
     if provider_name == "GOOGLE":
         return GeminiProvider(
@@ -80,6 +83,13 @@ def _provider(
     if provider_name == "SIMULATOR":
         return SimulatorProvider(settings)
     if provider_name == "MANUAL":
+        # The durable store is preferred whenever the caller has one. Falling
+        # back to the filesystem rather than refusing keeps MANUAL usable in a
+        # bare `pytest` or a script with no platform Mongo, which is most of
+        # what MANUAL is for -- but any process that has a SystemStore gets the
+        # durable path without opting in.
+        if interception_store is not None:
+            return DurableInterceptionProvider(settings, interception_store)
         return ManualFileProvider(settings)
     raise ValueError(f"Unsupported AI provider: {provider_name}")
 
@@ -150,7 +160,9 @@ def _validated_route_bindings(
     return {key: frozenset(value) for key, value in bindings.items()}
 
 
-def build_routes(settings: Settings) -> tuple[AIRoute, ...]:
+def build_routes(
+    settings: Settings, *, interception_store: InterceptionStore | None = None
+) -> tuple[AIRoute, ...]:
     provider_order = tuple(p.strip() for p in settings.ai_provider_order.split(","))
     logger.debug("ai_route_build_started", extra={"provider_order": provider_order})
     validated_bindings = _validated_route_bindings(settings)
@@ -176,7 +188,13 @@ def build_routes(settings: Settings) -> tuple[AIRoute, ...]:
                         if credential is None
                         else f"{provider_name.lower()}-key-{credential_priority + 1}"
                     )
-                    adapter = _provider(provider_name, settings, key=credential, model=model)
+                    adapter = _provider(
+                        provider_name,
+                        settings,
+                        key=credential,
+                        model=model,
+                        interception_store=interception_store,
+                    )
                     route_id = f"{provider_name.lower()}/{model}/{credential_id}"
                     routes.append(
                         AIRoute(

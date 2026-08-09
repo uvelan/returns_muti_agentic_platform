@@ -1,12 +1,12 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `3e66e8e` (Wave D1 / Phase 13 — AI Gateway consolidation)
-Slice: **Wave D2 / Phase 14 — durable interception** (slice 1: the durable store)
+Last pushed green commit: `d082444` (Wave D2 / Phase 14, slice 1 — interception store)
+Slice: **Wave D2 / Phase 14 — durable interception** (slice 2: wired into route construction)
 Status: slices 1-6 DONE. **Wave C is complete** apart from one owed end-to-end composition
 run — see the Wave C real-infra gate table below — see the C4 sections below for what remains.
 
-Suite: **1899 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
+Suite: **1902 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
 mypy baseline: **47 errors / 16 files**, unchanged across every commit in this branch.
 
 Caveat on "green": the *full* static gate does not pass. `scripts/linux/03_run_backend_quality.sh`
@@ -1850,9 +1850,8 @@ were never actually required.
 
 ## Wave D2 / Phase 14, slice 1 — durable interception store
 
-Status: the store and provider are built and tested. **Not yet wired**: `routes.py:83`
-still constructs `ManualFileProvider`, so MANUAL continues to resolve to the filesystem
-handoff in a running system. See the end of this section.
+Status: store, provider, and route wiring done. The at-least-once resume worker and the
+operator API remain open — see the end of this section.
 
 `ManualFileProvider` writes JSON to `.manual_llm/requests/` **relative to the process CWD**
 and polls a sibling directory for the reply. Every in-flight request is lost on restart, a
@@ -1891,10 +1890,27 @@ store-level refusal of a plaintext write, and two concurrent `answer()` calls pr
 exactly one winner and one refusal. Full suite **1899 passed, 2 skipped, 0 failed**.
 mypy 47/16 across 485 files.
 
-**Still open in D2.** (1) **Wiring**: `build_routes(settings)` has no SystemStore or
-encryptor, so constructing the durable provider there means threading both through route
-construction — a composition change worth its own slice rather than a rushed one.
-(2) **The at-least-once resume worker**: this provider still *blocks* a coroutine while a
+### Slice 2 — wired into route construction
+
+`build_routes` takes an optional `interception_store`. When present, MANUAL resolves to the
+durable provider; when absent it still resolves to `ManualFileProvider`, so a bare `pytest`
+run or a script with no platform Mongo keeps a working keyless manual path — which is most
+of what MANUAL is for.
+
+Wired in `scripts/run_order_discovery_worker.py`, which is the process that actually runs
+MANUAL reasoning turns and already bootstraps a SystemStore *before* it builds routes. The
+FastAPI process builds its pool at `main.py:577`, before the analyzer's
+`bootstrap_system_store` at ~626, so wiring it there means reordering a deliberately
+degrade-safe startup sequence. Left alone rather than reordered late in a long session;
+the analyzer's MANUAL path therefore still uses the filesystem provider in the API process.
+
+Three tests cover the wiring itself: a supplied store yields durable providers, no store
+falls back, and **both report the same `(name, model)` to traces** — swapping the storage
+backend must not change what a trace records, or historical traces stop comparing to new
+ones.
+
+**Still open in D2.** (1) **The API process** still builds its route pool before the
+SystemStore exists (above). (2) **The at-least-once resume worker**: this provider still *blocks* a coroutine while a
 human thinks, which is the polling model the plan wants gone. The record is already shaped
 for the fix — `ResumeCommand` exists so a worker can complete the work without the original
 coroutine — but the caller must be able to release its turn, which the Order Agent can

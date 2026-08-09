@@ -8,6 +8,7 @@ from neo4j import AsyncGraphDatabase
 from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
+from return_platform.ai.interception.store import SystemStoreInterceptionStore
 from return_platform.ai_gateway.routing import AIRoutePool, build_routes
 from return_platform.bootstrap.system_store import bootstrap_system_store
 from return_platform.configuration.runtime_loader import resolve_process_configuration
@@ -47,8 +48,17 @@ async def _run() -> None:
         await neo4j_driver.verify_connectivity()
 
         system_store, envelope_encryptor = await bootstrap_system_store(settings, platform_mongo)
+        # This is the process that actually runs MANUAL reasoning turns, and it
+        # already has a SystemStore before routes are built -- so MANUAL resolves
+        # to the durable interception store here rather than to
+        # ManualFileProvider's `.manual_llm/` directory, which would be relative
+        # to whatever CWD the worker container happened to start in.
         route_pool = AIRoutePool(
-            build_routes(settings), runtime.ai_gateway_configuration.configuration
+            build_routes(
+                settings,
+                interception_store=SystemStoreInterceptionStore(system_store, envelope_encryptor),
+            ),
+            runtime.ai_gateway_configuration.configuration,
         )
         coordinator = await build_dynamic_order_agent_runtime(
             settings=settings,
