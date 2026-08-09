@@ -1,12 +1,12 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `742dab6` (Wave C4 / Phase 12, slice 6 — Wave C complete)
-Slice: **Wave D1 / Phase 13 — AI Gateway consolidation**
+Last pushed green commit: `3e66e8e` (Wave D1 / Phase 13 — AI Gateway consolidation)
+Slice: **Wave D2 / Phase 14 — durable interception** (slice 1: the durable store)
 Status: slices 1-6 DONE. **Wave C is complete** apart from one owed end-to-end composition
 run — see the Wave C real-infra gate table below — see the C4 sections below for what remains.
 
-Suite: **1880 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
+Suite: **1899 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
 mypy baseline: **47 errors / 16 files**, unchanged across every commit in this branch.
 
 Caveat on "green": the *full* static gate does not pass. `scripts/linux/03_run_backend_quality.sh`
@@ -1847,6 +1847,60 @@ Still owed, in rough priority order:
 `task_bd3a4652` (the rejected-command wedge) — fixed and verified below. The
 `NVIDIA_API_KEY`/`GOOGLE_API_KEY` item is also resolved: see the correction above; the keys
 were never actually required.
+
+## Wave D2 / Phase 14, slice 1 — durable interception store
+
+Status: the store and provider are built and tested. **Not yet wired**: `routes.py:83`
+still constructs `ManualFileProvider`, so MANUAL continues to resolve to the filesystem
+handoff in a running system. See the end of this section.
+
+`ManualFileProvider` writes JSON to `.manual_llm/requests/` **relative to the process CWD**
+and polls a sibling directory for the reply. Every in-flight request is lost on restart, a
+second replica cannot see the first's files, answering requires filesystem access to the
+container, and nothing records who answered.
+
+**Built.** `ai/interception/{records,store}.py` and
+`ai/providers/durable_interception.py`. The interception, its sealed request payload and
+its `ResumeCommand` are **one document**, which is how the plan's "persist interception and
+embedded resume command atomically" is satisfied without a transaction anyone could forget.
+Status transitions are compare-and-set filtered on `PENDING`, so two operators answering the
+same request produce one winner and one `InterceptionNotPending` rather than a silent
+overwrite.
+
+**`ai_interceptions` is now `encrypted: true`.** It previously was not. A held request is
+the full prompt a provider would have received — for the analyzer that includes block 5
+UNTRUSTED SOURCE SAMPLE, rows read out of a customer's database — and, once answered, a
+human's reply to it. Sealing the prompt while leaving the reply in the clear would be
+theatre, so both live inside the envelope; only the fields an operator console filters on
+stay queryable.
+
+**Two plan rules turned out to be already satisfied by the existing design, and are now
+pinned by tests rather than left to luck.** Human output reports `MANUAL` /
+`manual-human-v1` and never the provider whose place the human took — a trace that recorded
+it as a model's would corrupt any evaluation set built from it. And the provider returns a
+plain `ProviderResponse`, so a human answer travels the identical schema-parse and
+`inspect_output` path a model's does; validating in the provider would have created a
+second, weaker validation path for the least trustworthy input in the system.
+
+"No hidden chain-of-thought" is enforced by the record's shape: `Interception` is a frozen
+slots dataclass with nowhere to put reasoning, and a test asserts a `reasoning` attribute
+cannot even be assigned.
+
+**Verification.** 12 unit tests plus 7 against real Mongo — including sealing, the
+store-level refusal of a plaintext write, and two concurrent `answer()` calls producing
+exactly one winner and one refusal. Full suite **1899 passed, 2 skipped, 0 failed**.
+mypy 47/16 across 485 files.
+
+**Still open in D2.** (1) **Wiring**: `build_routes(settings)` has no SystemStore or
+encryptor, so constructing the durable provider there means threading both through route
+construction — a composition change worth its own slice rather than a rushed one.
+(2) **The at-least-once resume worker**: this provider still *blocks* a coroutine while a
+human thinks, which is the polling model the plan wants gone. The record is already shaped
+for the fix — `ResumeCommand` exists so a worker can complete the work without the original
+coroutine — but the caller must be able to release its turn, which the Order Agent can
+express (`interrupt()` + Temporal) and the analyzer cannot yet. (3) An operator API/console
+to list and answer pending interceptions; `render_request_for_operator` is the only piece
+of that in place.
 
 ## Wave D1 / Phase 13 — AI Gateway consolidation
 

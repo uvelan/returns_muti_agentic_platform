@@ -30,6 +30,17 @@ payload:
     ai_interceptions:
       physical_name: platform_ai_interceptions
       schema_version: 1
+      # A held request is the full prompt a provider would have received, which
+      # for the schema analyzer includes block 5 UNTRUSTED SOURCE SAMPLE -- rows
+      # read out of a customer's database -- and, once answered, the human's
+      # reply to it. Sealed at rest for the same reason source_samples is.
+      encrypted: true
+      indexes:
+        - name: interception_id_unique
+          fields: [interception_id]
+          unique: true
+        - name: pending_by_task
+          fields: [status, task_id]
     graph_schema_drafts:
       physical_name: platform_graph_schema_drafts
       schema_version: 1
