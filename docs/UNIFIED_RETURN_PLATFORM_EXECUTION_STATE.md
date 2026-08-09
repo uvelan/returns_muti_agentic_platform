@@ -1825,22 +1825,25 @@ Still owed, in rough priority order:
    and tier-escalation regression coverage the extraction needs is available, and
    `tests/test_manual_provider_reasoning_e2e.py` gives a keyless way to exercise the real
    invocation path end to end. The extraction is ready to do.
-2. The reasoning graph's `APPLY_TYPED_MUTATION` node and the USER_REVIEW modification
+2. **`task_bd3a4652` — a rejected `complete_stage` command wedges the whole return
+   session.** `ReturnWorkflowTransitionError` is a plain `RuntimeError`, so Temporal fails
+   the workflow task rather than the update and retries forever. Reachable from any stale
+   or duplicate command. Arguably the most serious open correctness item.
+3. The reasoning graph's `APPLY_TYPED_MUTATION` node and the USER_REVIEW modification
    branch (the mutation machinery they would drive now exists).
-3. Time-skipping coverage for Wave C2 Commit 4's idle-timeout and continue-as-new paths.
-4. `task_f1fc6b63` (concurrent session): wire `CheckpointRedactor` into real checkpoint
-   writes. `task_92c35ace`: the `ReturnWorkflow.complete_stage` mutex race.
+4. Time-skipping coverage for Wave C2 Commit 4's idle-timeout and continue-as-new paths.
+5. `task_f1fc6b63` (concurrent session): wire `CheckpointRedactor` into real checkpoint
+   writes and correct Commit 2's untrue ledger claim about it.
 
-Open follow-up tasks, none blocking C3: `task_f1fc6b63` (wire `CheckpointRedactor` into
-real checkpoint writes and correct Commit 2's untrue ledger claim), and
-`task_92c35ace` (spawned, not yet started):
-apply this commit's `wait_condition` re-check fix to `ReturnWorkflow.complete_stage`,
-which has the identical latent race. Also still open, not part of any Phase 7 commit: the
-flagged Neo4j volume dedup task, the pre-existing `openapi-drift`/`associate_flow.py`
-formatting conditions, the missing `NVIDIA_API_KEY`/`GOOGLE_API_KEY` values in `.env`
-(now blocking a wider swath of tests than at Phase 8's checkpoint), a real KMS-backed
-`EnvelopeEncryptor` (Phase 9), `ReasoningObservability` wiring into the coordinator, the
-`ReturnPlatformConfiguration` ↔ `RuntimeSnapshot` configuration-system bridge, mapping
-`orchestrator.py`'s real per-stage business logic onto agents, the 4-way source-config
-schema reconciliation, and the `LogicalTargetedReadPlan` AND/OR condition-tree redesign
-v2's full query shape would need.
+**Done since this list was first written:** `task_92c35ace` (the
+`ReturnWorkflow.complete_stage` mutex race) — fixed and verified in `99101c7`. The
+`NVIDIA_API_KEY`/`GOOGLE_API_KEY` item is also resolved: see the correction above; the keys
+were never actually required.
+
+Longer-standing items, not part of any Phase 7/C3 commit: the flagged Neo4j volume dedup
+task, the pre-existing `openapi-drift`/`associate_flow.py` formatting conditions, a real
+KMS-backed `EnvelopeEncryptor` (Phase 9), `ReasoningObservability` wiring into the
+coordinator, the `ReturnPlatformConfiguration` ↔ `RuntimeSnapshot` configuration-system
+bridge, mapping `orchestrator.py`'s real per-stage business logic onto agents, the 4-way
+source-config schema reconciliation, and the `LogicalTargetedReadPlan` AND/OR condition-tree
+redesign v2's full query shape would need.
