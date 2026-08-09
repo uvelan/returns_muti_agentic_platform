@@ -44,6 +44,7 @@ from return_platform.dynamic_knowledge.knowledge.guards import (
     SchemaQueryGuard,
     StrongAnchorGuard,
 )
+from return_platform.dynamic_knowledge.lifecycle.handle import GenerationHandleProvider
 from return_platform.dynamic_knowledge.lifecycle.lease_store import (
     GENERATION_LEASES_COLLECTION,
     MongoGenerationLeaseStore,
@@ -97,6 +98,11 @@ async def build_dynamic_order_agent_runtime(
     generation_lease_store = MongoGenerationLeaseStore(
         platform_mongo[settings.mongo_database][GENERATION_LEASES_COLLECTION]
     )
+    # Identifies the holder of a lease. There is no instance_id setting;
+    # `bootstrap/system_store.py` establishes a per-process uuid as the
+    # convention, and that is the right granularity -- a lease outlives a
+    # request but never the process that took it.
+    owner_instance_id = f"order-agent-{uuid4()}"
 
     on_demand_sync_store = MongoOnDemandSyncStore(platform_mongo, settings.mongo_database)
     await on_demand_sync_store.ensure_indexes()
@@ -126,6 +132,14 @@ async def build_dynamic_order_agent_runtime(
             Neo4jGenerationWriter(neo4j_driver, database=settings.neo4j_database),
         ),
         store=on_demand_sync_store,
+        # Shares the coordinator's lease store, so a read lease and the write
+        # reservation taken inside that same turn are counted against one
+        # generation document and one drain.
+        generation_handles=GenerationHandleProvider(
+            graph_state,
+            lease_store=generation_lease_store,
+            owner_instance_id=owner_instance_id,
+        ),
     )
 
     coordinator = DynamicOrderAgentCoordinator(
@@ -153,10 +167,6 @@ async def build_dynamic_order_agent_runtime(
         envelope_encryptor=reasoning_encryptor,
         mongo_client=platform_mongo,
         generation_lease_store=generation_lease_store,
-        # Identifies the holder of a read lease. There is no instance_id
-        # setting; `bootstrap/system_store.py` establishes a per-process uuid as
-        # the convention, and that is the right granularity here -- a lease
-        # outlives a request but never the process that took it.
-        owner_instance_id=f"order-agent-{uuid4()}",
+        owner_instance_id=owner_instance_id,
     )
     return coordinator

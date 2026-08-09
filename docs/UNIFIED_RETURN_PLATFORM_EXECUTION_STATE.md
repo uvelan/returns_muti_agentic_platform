@@ -1,13 +1,13 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `305acac` (Wave C4 / Phase 12, slice 1 — DRAINING + lease-aware
-retirement + failure rollback)
-Slice: **Wave C4 / Phase 12 — graph generation lifecycle** (slice 2 of N: the request path
-takes a read lease)
-Status: slices 1 and 2 DONE, phase INCOMPLETE — see the C4 sections below for what remains.
+Last pushed green commit: `e9dca2a` (Wave C4 / Phase 12, slice 2 — read lease on the
+request path)
+Slice: **Wave C4 / Phase 12 — graph generation lifecycle** (slice 3 of N: write reservation
+on on-demand sync)
+Status: slices 1-3 DONE, phase INCOMPLETE — see the C4 sections below for what remains.
 
-Suite: **1829 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
+Suite: **1835 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
 mypy baseline: **47 errors / 16 files**, unchanged across every commit in this branch.
 
 Caveat on "green": the *full* static gate does not pass. `scripts/linux/03_run_backend_quality.sh`
@@ -1848,6 +1848,44 @@ Still owed, in rough priority order:
 `task_bd3a4652` (the rejected-command wedge) — fixed and verified below. The
 `NVIDIA_API_KEY`/`GOOGLE_API_KEY` item is also resolved: see the correction above; the keys
 were never actually required.
+
+## Wave C4 / Phase 12, slice 3 — the write side reserves, and refuses a drain
+
+Status: DONE. Slice 3 of Phase 12; the phase is still **not** complete.
+
+On-demand sync writes into the graph and held no `GenerationWriteReservation`, so
+retirement's drain could not see in-flight writes at all.
+
+**The finding that made this more than bookkeeping.** The Neo4j write fence was assumed to
+cover this. It does not. `OnDemandNeo4jGraphWriter.write` reads the generation's *current*
+status via `get_status` and passes that same value as `expected_generation_status`, so
+`compile_generation_fence` only rejects a status change *during* the write — a DRAINING
+generation is accepted without complaint. Before this slice, on-demand sync would happily
+write into a generation about to be retired, and report success for data that then
+disappeared.
+
+**So the write path's refusal policy is deliberately the opposite of the read path's.** A
+refused read degrades to unleased, because serving from a generation on its way out is
+merely stale. A refused write raises `GenerationDraining` (retryable) so the caller
+re-resolves and writes to the successor, which is already ACTIVE. A store *outage* still
+degrades to unreserved in both cases — an outage carries no information about the
+generation, and refusing to write because the bookkeeping is unavailable would take the
+platform down for a cleanup concern.
+
+**The reservation is taken before the source read, not just around the graph write.**
+Reserving only around the write leaves a window where retirement begins draining during
+the source read, counts nothing outstanding, retires, and the write lands in something
+already gone. Holding across the read only makes a drain wait slightly longer.
+
+`synchronize` keeps the `async with` and the body moved to `_execute`, same reasoning as
+`process_turn`/`_run_turn` in slice 2. `runtime_factory` shares one
+`owner_instance_id` and one lease store between the coordinator and the sync coordinator,
+so a read lease and a write reservation taken inside the same turn are counted against one
+generation document and one drain.
+
+**Verification.** 6 tests in `test_generation_write_reservation.py`, including a drain that
+starts *mid-write* (the reservation must remain counted) and the refusal path asserting the
+body never runs. Full real-infra suite: **1835 passed, 2 skipped, 0 failed**. mypy 47/16.
 
 ## Wave C4 / Phase 12, slice 2 — the request path actually takes a lease
 

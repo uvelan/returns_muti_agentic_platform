@@ -55,6 +55,21 @@ class GenerationResolver(Protocol):
     async def active_generation(self, schema: ActiveSchema) -> str: ...
 
 
+class GenerationDraining(RuntimeError):
+    """A write was attempted against a generation that is being retired.
+
+    Retryable: a successor generation is already ACTIVE, so re-resolving and
+    writing there is expected to succeed. The caller should not treat this as a
+    source or graph fault.
+    """
+
+    def __init__(self, graph_generation_id: str) -> None:
+        self.graph_generation_id = graph_generation_id
+        super().__init__(
+            f"generation {graph_generation_id!r} is draining and no longer accepts writes"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class GenerationHandle:
     """One request's pinned view of which generation serves it.
@@ -117,6 +132,71 @@ class GenerationHandleProvider:
                         "Could not release read lease %s on generation %s; "
                         "it will expire on its TTL",
                         lease_id,
+                        graph_generation_id,
+                    )
+
+    @asynccontextmanager
+    async def reserve_write(self, graph_generation_id: str) -> AsyncIterator[GenerationHandle]:
+        """Claim a write reservation on an *already resolved* generation.
+
+        Not a resolution step -- on-demand sync inherits the generation its
+        calling turn pinned, so this only records the claim. Retirement counts
+        READ and WRITE separately because they fail differently: an outstanding
+        read means stale results, an outstanding write means data written into a
+        generation that is about to disappear.
+
+        **Refusal fails, unlike the read path.** A refused read degrades to
+        unleased because serving a request from a generation still on its way
+        out is merely stale. A refused write means the generation is draining
+        and a successor is already ACTIVE, so anything written here is
+        discarded at retirement -- silently, and with the sync reporting
+        success. `GenerationDraining` is retryable precisely so the caller
+        re-resolves and writes to the live generation instead.
+
+        Nothing else catches this. The Neo4j write fence
+        (`compile_generation_fence`) reads the generation's *current* status and
+        passes it as the expected one, so it rejects a status change mid-write
+        but happily accepts a write to a DRAINING generation.
+
+        Store absence or a store outage still degrades to unreserved: refusing
+        to write because the bookkeeping is unavailable would take the platform
+        down for a cleanup concern.
+        """
+        reservation_id: str | None = None
+        if self._lease_store is not None:
+            try:
+                reservation = await self._lease_store.acquire_write_reservation(
+                    graph_generation_id=graph_generation_id,
+                    snapshot_activation_version=0,
+                    owner_instance_id=self._owner_instance_id,
+                    ttl_seconds=self._read_lease_ttl_seconds,
+                )
+            except Exception:
+                _LOGGER.exception(
+                    "Could not acquire a write reservation on generation %s; proceeding unreserved",
+                    graph_generation_id,
+                )
+            else:
+                if reservation is None:
+                    raise GenerationDraining(graph_generation_id)
+                reservation_id = reservation.reservation_id
+        try:
+            yield GenerationHandle(
+                graph_generation_id=graph_generation_id,
+                leased=reservation_id is not None,
+                lease_id=reservation_id,
+            )
+        finally:
+            if reservation_id is not None and self._lease_store is not None:
+                try:
+                    await self._lease_store.release(
+                        graph_generation_id=graph_generation_id, lease_id=reservation_id
+                    )
+                except Exception:
+                    _LOGGER.exception(
+                        "Could not release write reservation %s on generation %s; "
+                        "it will expire on its TTL",
+                        reservation_id,
                         graph_generation_id,
                     )
 
