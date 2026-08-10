@@ -67,7 +67,6 @@ from temporalio.exceptions import ApplicationError
 from temporalio.service import RPCError
 
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
-from return_platform.data_console.api.auth import require_read_roles, require_write_roles
 from return_platform.operations.associate_service_factory import (
     build_associate_conversation_service,
 )
@@ -87,7 +86,11 @@ from return_platform.operations.repository import (
 )
 from return_platform.operations.return_support.service import ReturnSupportService
 from return_platform.resources import RuntimeResources
-from return_platform.security.authorization import actor_roles
+from return_platform.security.authorization import (
+    actor_roles,
+    require_read_roles,
+    require_write_roles,
+)
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 from return_platform.workflows.production_return_workflow import ProductionReturnEventType
 

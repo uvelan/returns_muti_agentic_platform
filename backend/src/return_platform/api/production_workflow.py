@@ -7,7 +7,6 @@ from typing import cast
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from return_platform.data_console.api.auth import require_read_roles, require_write_roles
 from return_platform.operations.models import ReturnSessionView
 from return_platform.operations.production_event_authorization import (
     ProductionEventNotPermitted,
@@ -17,7 +16,11 @@ from return_platform.operations.production_workflow import (
     ProductionWorkflowCoordinator,
     resolve_production_coordinator,
 )
-from return_platform.security.authorization import actor_roles
+from return_platform.security.authorization import (
+    actor_roles,
+    require_read_roles,
+    require_write_roles,
+)
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 from return_platform.workflows.production_return_workflow import ProductionReturnEventType
 

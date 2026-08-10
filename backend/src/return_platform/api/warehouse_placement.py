@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
-from return_platform.data_console.api.auth import require_warehouse_roles
 from return_platform.operations.production_event_authorization import (
     ProductionEventNotPermitted,
     authorize_production_event,
@@ -18,7 +17,7 @@ from return_platform.operations.repository import ConcurrencyConflictError, Oper
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
 from return_platform.operations.warehouse.service import WarehousePlacementService
 from return_platform.resources import RuntimeResources
-from return_platform.security.authorization import actor_roles
+from return_platform.security.authorization import actor_roles, require_warehouse_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 from return_platform.workflows.production_return_workflow import ProductionReturnEventType
 

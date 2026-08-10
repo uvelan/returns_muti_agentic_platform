@@ -34,7 +34,6 @@ FORBIDDEN_PREFIXES = (
     "return_platform.canonical",
     "return_platform.configuration",
     "return_platform.conversation",
-    "return_platform.data_console",
     "return_platform.data_governance",
     "return_platform.data_platform",
     "return_platform.dependency_simulation",

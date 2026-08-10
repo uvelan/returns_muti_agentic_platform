@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from return_platform.data_console.api.runtime_validation import (
+from return_platform.configuration.runtime_validation import (
     DataSourceValidateAndStageRequest,
     _extract_hosts,
     _validate_mongodb_dsn_security,

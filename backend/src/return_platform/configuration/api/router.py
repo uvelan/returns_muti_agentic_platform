@@ -28,21 +28,21 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from return_platform.configuration.api.secrets import redact_secret_values
-from return_platform.data_console.api.audit import AuditLog
-from return_platform.data_console.api.audit import get_audit_log as console_get_audit_log
-from return_platform.data_console.api.audit import list_audit_logs as console_list_audit_logs
-from return_platform.data_console.api.auth import require_read_roles, require_write_roles
-from return_platform.data_console.api.configuration import (
+from return_platform.configuration.api.audit import AuditLog
+from return_platform.configuration.api.audit import get_audit_log as console_get_audit_log
+from return_platform.configuration.api.audit import list_audit_logs as console_list_audit_logs
+from return_platform.configuration.api.releases import (
     PromoteReleasePayload,
     resolve_configuration_repository,
 )
-from return_platform.data_console.api.configuration import (
+from return_platform.configuration.api.releases import (
     promote_release_status as console_promote_release_status,
 )
-from return_platform.data_console.api.sources import SourceDetail, SourceItem
-from return_platform.data_console.api.sources import get_source as console_get_source
-from return_platform.data_console.api.sources import get_sources as console_get_sources
+from return_platform.configuration.api.secrets import redact_secret_values
+from return_platform.configuration.api.sources import SourceDetail, SourceItem
+from return_platform.configuration.api.sources import get_source as console_get_source
+from return_platform.configuration.api.sources import get_sources as console_get_sources
+from return_platform.security.authorization import require_read_roles, require_write_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 router = APIRouter(prefix="/api/config", tags=["Configuration"])

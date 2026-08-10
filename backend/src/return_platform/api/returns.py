@@ -7,7 +7,6 @@ from typing import cast
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
-from return_platform.data_console.api.auth import require_read_roles, require_write_roles
 from return_platform.operations.events import event_stream
 from return_platform.operations.models import ReturnCreateRequest, ReturnSessionView, TimelineEvent
 from return_platform.operations.repository import (
@@ -15,6 +14,7 @@ from return_platform.operations.repository import (
     resolve_operational_repository,
 )
 from return_platform.resources import RuntimeResources
+from return_platform.security.authorization import require_read_roles, require_write_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 router = APIRouter(prefix="/api/v1/returns", tags=["Returns"])

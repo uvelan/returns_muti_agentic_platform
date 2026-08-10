@@ -41,13 +41,12 @@ from return_platform.ai.gateway.models import (
 from return_platform.ai.gateway.service import AIGatewayService
 from return_platform.ai.interception.records import InterceptionStatus
 from return_platform.ai.interception.store import InterceptionNotPending
-from return_platform.data_console.api.auth import require_read_roles
 from return_platform.operations.repository import (
     OperationalRepository,
     resolve_operational_repository,
 )
 from return_platform.security import capabilities
-from return_platform.security.authorization import require_capability
+from return_platform.security.authorization import require_capability, require_read_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 router = APIRouter(prefix="/api/ai", tags=["AI Control Center"])

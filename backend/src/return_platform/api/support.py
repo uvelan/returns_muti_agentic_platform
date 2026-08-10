@@ -6,7 +6,6 @@ from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from return_platform.data_console.api.auth import require_read_roles, require_write_roles
 from return_platform.operations.models import (
     ReturnSessionView,
     SupportCaseView,
@@ -16,6 +15,7 @@ from return_platform.operations.repository import (
     ConcurrencyConflictError,
     resolve_operational_repository,
 )
+from return_platform.security.authorization import require_read_roles, require_write_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 router = APIRouter(prefix="/api/v1/support", tags=["Support Operations"])

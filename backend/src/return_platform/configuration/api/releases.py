@@ -28,12 +28,12 @@ from return_platform.configuration.snapshot import (
     RETURN_PLATFORM_DOMAIN_KEY,
     ConfigurationSnapshotBuilder,
 )
-from return_platform.data_console.api.auth import require_read_roles, require_write_roles
 from return_platform.dependency_simulation.configuration import (
     DependencySimulationConfiguration,
     LoadedDependencySimulationConfiguration,
 )
 from return_platform.resources import RuntimeResources
+from return_platform.security.authorization import require_read_roles, require_write_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 router = APIRouter(prefix="/data-console/v1/configuration", tags=["Graph Configuration"])

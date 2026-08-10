@@ -9,13 +9,13 @@ from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from return_platform.ai_gateway.configuration import load_ai_gateway_configuration
+from return_platform.configuration.api.releases import router
 from return_platform.configuration.graph_repository import (
     InMemoryConfigurationGraphRepository,
 )
 from return_platform.configuration.return_configuration import load_return_configuration
 from return_platform.configuration.runtime_activation import RuntimeConfigurationActivator
 from return_platform.configuration.settings import Settings
-from return_platform.data_console.api.configuration import router
 from return_platform.data_governance import LoadedAssetCatalog
 from return_platform.dependency_simulation.configuration import (
     load_dependency_simulation_configuration,
@@ -75,7 +75,7 @@ def configuration_client(
         return None
 
     monkeypatch.setattr(
-        "return_platform.data_console.api.configuration.verify_runtime_validation_receipts",
+        "return_platform.configuration.api.releases.verify_runtime_validation_receipts",
         accept_receipts,
     )
     return TestClient(app)

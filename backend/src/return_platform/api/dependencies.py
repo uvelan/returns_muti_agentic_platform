@@ -9,8 +9,7 @@ from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from return_platform.data_console.api.auth import require_read_roles
-from return_platform.data_console.infrastructure.probes import (
+from return_platform.api.dependency_probes import (
     probe_mongodb,
     probe_neo4j,
     probe_source_mongodb,
@@ -20,6 +19,7 @@ from return_platform.data_console.infrastructure.probes import (
 )
 from return_platform.operations.models import normalize_utc_datetime
 from return_platform.operations.repository import resolve_operational_repository
+from return_platform.security.authorization import require_read_roles
 from return_platform.shared.contracts import APIResponse, DependencyProbeResult, ResponseMeta
 
 router = APIRouter(prefix="/api/v1/system/dependencies", tags=["Operational Readiness"])

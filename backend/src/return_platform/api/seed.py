@@ -6,7 +6,6 @@ from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from return_platform.data_console.api.auth import require_read_roles, require_write_roles
 from return_platform.operations.models import (
     SeedApplyRequest,
     SeedDeleteRequest,
@@ -20,6 +19,7 @@ from return_platform.operations.seed_coordinator import SeedCoordinator
 from return_platform.operations.seed_manifest import effective_seed_counts
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
 from return_platform.resources import RuntimeResources
+from return_platform.security.authorization import require_read_roles, require_write_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 router = APIRouter(prefix="/api/v1/seed-data", tags=["Seed Data"])

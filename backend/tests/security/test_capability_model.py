@@ -8,7 +8,7 @@ from typing import get_type_hints
 import pytest
 from fastapi import HTTPException, Request
 
-from return_platform.data_console.api import auth as legacy_auth
+from return_platform.security import authorization
 from return_platform.security import capabilities as caps
 from return_platform.security import roles as r
 from return_platform.security.authorization import require_capability, require_roles
@@ -39,37 +39,17 @@ def _request_for(*role_names: str) -> Request:
 # --- The move preserved the model exactly ------------------------------------
 
 
-@pytest.mark.parametrize(
-    "name",
-    [
-        "READ_ROLES",
-        "WRITE_ROLES",
-        "ADMIN_ROLES",
-        "ASSOCIATE_ROLES",
-        "SUPPORT_ROLES",
-        "LOGISTICS_ROLES",
-        "WAREHOUSE_ROLES",
-        "AUDIT_ROLES",
-        "CONSOLE_READ_ROLES",
-        "BUSINESS_READ_ROLES",
-        "RETURN_COLLABORATION_ROLES",
-    ],
-)
-def test_shim_exposes_the_same_role_sets_as_the_canonical_module(name: str) -> None:
-    """The shim is a move, not a redefinition.
-
-    If these ever diverge, 34 importers silently enforce a different policy
-    from the canonical one.
-    """
-    assert getattr(legacy_auth, name) == getattr(r, name)
-
-
-def test_shim_dependencies_still_annotate_request() -> None:
+def test_role_dependencies_still_annotate_request() -> None:
     """FastAPI injects `Depends(require_read_roles)` by inspecting the annotation.
 
     Widening or dropping it breaks injection at runtime in every importer while
     still importing and type-checking cleanly, so it is asserted rather than
     trusted.
+
+    Retargeted in Wave F5: these lived in `data_console/api/auth.py`, a Phase 17
+    shim whose docstring said Wave F would sweep it away. It did. The companion
+    test that checked the shim re-exported the canonical role sets went with it
+    -- there is no second definition left to diverge.
     """
     for name in (
         "require_read_roles",
@@ -82,7 +62,7 @@ def test_shim_dependencies_still_annotate_request() -> None:
         "require_warehouse_roles",
         "require_audit_roles",
     ):
-        function = getattr(legacy_auth, name)
+        function = getattr(authorization, name)
         assert list(inspect.signature(function).parameters) == ["request"]
         # Resolved, not compared as source text: the module uses
         # `from __future__ import annotations`, so the raw annotation is the

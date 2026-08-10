@@ -18,11 +18,11 @@ from return_platform.configuration.return_configuration import (
     ReturnPlatformConfiguration,
     RuntimeIntegrationsConfiguration,
 )
-from return_platform.configuration.settings import Settings
-from return_platform.data_console.api.runtime_validation import (
+from return_platform.configuration.runtime_validation import (
     ai_binding_checksum,
     probe_ai_provider_model,
 )
+from return_platform.configuration.settings import Settings
 from return_platform.secrets.vault import (
     ResolvedSecret,
     SecretResolver,

@@ -25,6 +25,14 @@ from return_platform.api.canonical_principal import router as canonical_principa
 from return_platform.api.canonical_returns import router as canonical_returns_router
 from return_platform.api.canonical_session import router as canonical_session_router
 from return_platform.api.dependencies import router as dependencies_router
+from return_platform.api.dependency_probes import (
+    probe_mongodb,
+    probe_neo4j,
+    probe_source_mongodb,
+    probe_sqlserver,
+    probe_temporal,
+    probe_valkey,
+)
 from return_platform.api.dependency_simulator import router as dependency_simulator_router
 from return_platform.api.integration_outbox import router as integration_outbox_router
 from return_platform.api.physical_operations import router as physical_operations_router
@@ -70,14 +78,6 @@ from return_platform.configuration.runtime_integrations import (
 )
 from return_platform.configuration.settings import Settings
 from return_platform.configuration.snapshot import ConfigurationSnapshotBuilder
-from return_platform.data_console.infrastructure.probes import (
-    probe_mongodb,
-    probe_neo4j,
-    probe_source_mongodb,
-    probe_sqlserver,
-    probe_temporal,
-    probe_valkey,
-)
 from return_platform.data_governance import load_asset_catalog
 from return_platform.data_platform.graph.sync_service import GraphSyncService
 from return_platform.data_platform.operational_generation.adapters.graph_sync import (

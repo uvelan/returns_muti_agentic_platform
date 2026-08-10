@@ -11,8 +11,7 @@ from typing import cast
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
-from return_platform.data_console.api.auth import require_read_roles
-from return_platform.data_console.infrastructure.probes import (
+from return_platform.api.dependency_probes import (
     probe_mongodb,
     probe_neo4j,
     probe_source_mongodb,
@@ -20,6 +19,7 @@ from return_platform.data_console.infrastructure.probes import (
 )
 from return_platform.data_platform.schema_registry import DataAssetSchema, SchemaRegistry
 from return_platform.resources import RuntimeResources
+from return_platform.security.authorization import require_read_roles
 from return_platform.shared.contracts import (
     APIResponse,
     DependencyProbeResult,

@@ -7,7 +7,6 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
-from return_platform.data_console.api.auth import require_associate_roles, require_read_roles
 from return_platform.operations.associate_flow import (
     AssociateChatTurnRequest,
     AssociateConversationService,
@@ -24,7 +23,11 @@ from return_platform.operations.associate_service_factory import (
 from return_platform.operations.production_workflow import ProductionWorkflowCoordinator
 from return_platform.operations.repository import OperationalRepository
 from return_platform.resources import RuntimeResources
-from return_platform.security.authorization import actor_roles
+from return_platform.security.authorization import (
+    actor_roles,
+    require_associate_roles,
+    require_read_roles,
+)
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 router = APIRouter(prefix="/api/v1/associate-returns", tags=["Associate Returns"])

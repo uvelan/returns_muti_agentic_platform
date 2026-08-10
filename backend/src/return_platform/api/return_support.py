@@ -7,12 +7,6 @@ from typing import cast
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
-from return_platform.data_console.api.auth import (
-    require_associate_roles,
-    require_read_roles,
-    require_return_collaboration_roles,
-    require_support_roles,
-)
 from return_platform.operations.production_event_authorization import (
     unauthorized_events_for,
 )
@@ -28,7 +22,13 @@ from return_platform.operations.return_support.service import (
     production_events_for_support_action,
 )
 from return_platform.resources import RuntimeResources
-from return_platform.security.authorization import actor_roles
+from return_platform.security.authorization import (
+    actor_roles,
+    require_associate_roles,
+    require_read_roles,
+    require_return_collaboration_roles,
+    require_support_roles,
+)
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 from return_platform.workflows.production_return_workflow import ProductionReturnEventType
 

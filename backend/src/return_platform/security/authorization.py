@@ -19,6 +19,17 @@ from fastapi import HTTPException, Request
 
 from return_platform.security.capabilities import capabilities_for_roles
 from return_platform.security.principal import Principal
+from return_platform.security.roles import (
+    ADMIN_ROLES,
+    ASSOCIATE_ROLES,
+    AUDIT_ROLES,
+    LOGISTICS_ROLES,
+    READ_ROLES,
+    RETURN_COLLABORATION_ROLES,
+    SUPPORT_ROLES,
+    WAREHOUSE_ROLES,
+    WRITE_ROLES,
+)
 
 
 def resolve_principal(request: Request) -> Principal:
@@ -69,3 +80,51 @@ def require_capability(capability: str) -> Callable[[Request], str]:
         return str(principal.subject)
 
     return dependency
+
+
+# --- the named role dependencies --------------------------------------------
+#
+# These lived in `data_console/api/auth.py`, a shim Phase 17 left behind when it
+# moved the role model here. Its own docstring said the sweep that deletes it is
+# Wave F; this is that sweep. Thirty-two modules imported them through the shim
+# and now import them from the module that already owned `require_roles`.
+#
+# `request: Request` is load-bearing, not decoration: FastAPI resolves
+# `Depends(require_read_roles)` by inspecting the annotation, so widening it
+# breaks injection at runtime in every one of those call sites.
+
+
+def require_read_roles(request: Request) -> str:
+    return str(require_roles(READ_ROLES)(request))
+
+
+def require_write_roles(request: Request) -> str:
+    return str(require_roles(WRITE_ROLES)(request))
+
+
+def require_admin_roles(request: Request) -> str:
+    return str(require_roles(ADMIN_ROLES)(request))
+
+
+def require_associate_roles(request: Request) -> str:
+    return str(require_roles(ASSOCIATE_ROLES)(request))
+
+
+def require_support_roles(request: Request) -> str:
+    return str(require_roles(SUPPORT_ROLES)(request))
+
+
+def require_return_collaboration_roles(request: Request) -> str:
+    return str(require_roles(RETURN_COLLABORATION_ROLES)(request))
+
+
+def require_logistics_roles(request: Request) -> str:
+    return str(require_roles(LOGISTICS_ROLES)(request))
+
+
+def require_warehouse_roles(request: Request) -> str:
+    return str(require_roles(WAREHOUSE_ROLES)(request))
+
+
+def require_audit_roles(request: Request) -> str:
+    return str(require_roles(AUDIT_ROLES)(request))

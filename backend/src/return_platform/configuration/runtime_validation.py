@@ -19,9 +19,9 @@ from pymongo import AsyncMongoClient
 from pymongo.uri_parser import parse_uri
 
 from return_platform.configuration.settings import Settings
-from return_platform.data_console.api.auth import require_read_roles, require_write_roles
 from return_platform.resources import RuntimeResources
 from return_platform.secrets.vault import SecretResolver, parse_secret_reference
+from return_platform.security.authorization import require_read_roles, require_write_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 from return_platform.validation.gates import (
     SecretValidationError,

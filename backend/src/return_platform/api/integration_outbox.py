@@ -8,8 +8,8 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from return_platform.data_console.api.auth import require_audit_roles
 from return_platform.resources import RuntimeResources
+from return_platform.security.authorization import require_audit_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 router = APIRouter(prefix="/api/v1/integration-outbox", tags=["Integration Outbox"])

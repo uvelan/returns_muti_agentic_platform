@@ -22,8 +22,8 @@ from return_platform.agents.contracts import (
 )
 from return_platform.agents.registry import AgentRegistry
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
-from return_platform.data_console.api.auth import require_read_roles, require_write_roles
 from return_platform.resources import RuntimeResources
+from return_platform.security.authorization import require_read_roles, require_write_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 router = APIRouter(prefix="/api/v1/return-agents", tags=["Return Agents"])

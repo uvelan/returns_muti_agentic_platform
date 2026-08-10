@@ -7,11 +7,6 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
-from return_platform.data_console.api.auth import (
-    require_associate_roles,
-    require_logistics_roles,
-    require_read_roles,
-)
 from return_platform.operations.physical.service import (
     BranchStagingRequest,
     BranchStagingService,
@@ -27,7 +22,12 @@ from return_platform.operations.production_event_authorization import (
 from return_platform.operations.production_workflow import ProductionWorkflowCoordinator
 from return_platform.operations.repository import ConcurrencyConflictError, OperationalRepository
 from return_platform.resources import RuntimeResources
-from return_platform.security.authorization import actor_roles
+from return_platform.security.authorization import (
+    actor_roles,
+    require_associate_roles,
+    require_logistics_roles,
+    require_read_roles,
+)
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 from return_platform.workflows.production_return_workflow import ProductionReturnEventType
 
