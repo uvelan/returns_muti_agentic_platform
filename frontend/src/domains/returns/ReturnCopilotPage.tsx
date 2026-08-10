@@ -1,29 +1,41 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { returnsApi, type ReturnSessionView } from "../../api/returnsDomain";
+import {
+  RETURN_EVENT_TYPES,
+  returnsApi,
+  type ReturnEventType,
+  type ReturnSessionView,
+} from "../../api/returnsDomain";
 import { useCapabilities } from "../../hooks/capabilityContext";
 import { QUEUES, type QueueId } from "./queues";
 
 /**
- * The Return Business Copilot (Phase 18), read-only.
+ * The Return Business Copilot (Phase 18).
  *
  * **One screen, not separate support and warehouse products.** Queues are
  * views over the same session list, and selecting one never changes which
  * workspace renders -- that is the consolidation this phase exists to do.
  *
- * **Read-only because `/api/returns` is.** Three GETs, no writes: the
- * canonical write surface is deliberately held back until the nine legacy
- * return routers are reconciled (D4). So there are no structured actions, no
- * decision controls, and no approvals here. Rendering them against legacy
- * endpoints would add a tenth way to mutate a return, which is precisely what
- * the backend is holding the line against.
+ * **Actions are events, and there is exactly one action endpoint.** D4 published
+ * `POST /api/returns/{id}/events`; every structured action on this screen goes
+ * through it, including cancelling. There is no per-action endpoint and no
+ * generic advance: the operator names an event that *happened* and the evidence
+ * for it, and the state machine decides what stage that implies.
+ *
+ * **The screen does not know which events are legal, on purpose.** Preconditions
+ * live in `_validate_transition`, and reproducing them here would be a second
+ * copy that drifts from the first -- the exact failure mode this whole
+ * consolidation exists to remove. So every event type is offered, the backend
+ * refuses the ones that do not apply, and the refusal is shown verbatim. A 409
+ * that says "RECEIPT_CONFIRMED is already recorded" is more useful than a
+ * disabled button with no explanation.
  *
  * **Queue visibility is presentation only, and honestly so.** `/api/returns`
  * authorizes on read roles alone, so every reader receives every session --
- * hiding a queue would restrict nothing. Queues are therefore shown to anyone
- * who can read, and per-action RBAC becomes meaningful when the write surface
- * lands and there are actions to gate.
+ * hiding a queue would restrict nothing. Per-action RBAC is real, though: the
+ * action panel is gated on `returns.session.write`, and the backend gates each
+ * individual event type on the actor's roles regardless.
  */
 
 export function ReturnCopilotPage() {
@@ -181,16 +193,169 @@ function Workspace({ sessionId }: { sessionId: string | null }) {
         </ol>
       </div>
 
+      <ConversationPanel sessionId={sessionId} />
+      <ActionPanel sessionId={sessionId} />
+    </section>
+  );
+}
+
+function ConversationPanel({ sessionId }: { sessionId: string }) {
+  const conversation = useQuery({
+    queryKey: ["returns", "conversation", sessionId],
+    queryFn: () => returnsApi.conversation(sessionId),
+  });
+
+  const messages = Array.isArray(conversation.data?.messages)
+    ? (conversation.data.messages as Record<string, unknown>[])
+    : [];
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <h2 className="text-sm font-semibold text-slate-900">Discovery conversation</h2>
+      {conversation.isLoading ? <p className="mt-2 text-sm text-slate-500">Loading...</p> : null}
+      {conversation.error ? (
+        <p className="mt-2 text-sm text-red-700">{conversation.error.message}</p>
+      ) : null}
+      {!conversation.isLoading && conversation.data === null ? (
+        // Not an error and not an empty conversation: this return never had one.
+        // Most SYSTEM-channel returns will land here.
+        <p className="mt-2 text-sm text-slate-600">
+          This return did not come from a discovery conversation.
+        </p>
+      ) : null}
+      {messages.length > 0 ? (
+        <ol className="mt-3 flex flex-col gap-2">
+          {messages.map((message, index) => (
+            <li key={text(message.id, String(index))} className="rounded-md bg-slate-50 p-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                {text(message.role, text(message.author, "message"))}
+              </p>
+              <p className="text-sm text-slate-900">{text(message.content, text(message.text, ""))}</p>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </div>
+  );
+}
+
+function ActionPanel({ sessionId }: { sessionId: string }) {
+  const { can } = useCapabilities();
+  const queryClient = useQueryClient();
+  const [eventType, setEventType] = useState<ReturnEventType>(RETURN_EVENT_TYPES[0]);
+  const [evidence, setEvidence] = useState("");
+
+  const record = useMutation({
+    mutationFn: () =>
+      returnsApi.recordEvent(sessionId, {
+        // The idempotency key. Generated per submission rather than per render,
+        // so a retry of *this* click is a no-op while a deliberate second
+        // action is a distinct event.
+        eventId: `ui-${sessionId}-${eventType}-${String(Date.now())}`,
+        eventType,
+        evidenceReference: evidence,
+      }),
+    onSuccess: async () => {
+      setEvidence("");
+      // The event moves the stage and appends to the timeline, so both the
+      // session list and this session's timeline are stale.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["returns", "list"] }),
+        queryClient.invalidateQueries({ queryKey: ["returns", "timeline", sessionId] }),
+      ]);
+    },
+  });
+
+  if (!can("returns.session.write")) {
+    // A button that 403s is worse than no button. The backend gates each event
+    // type on the actor's roles as well, so this is presentation, not the
+    // boundary.
+    return (
       <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-sm font-semibold text-slate-900">Conversation and actions</h2>
-        <p className="mt-2 text-sm text-slate-500">
-          Not built. <code>/api/returns</code> serves the session, its timeline and the
-          session list -- there is no conversation route and no action route. Structured
-          actions, decision controls and approvals arrive with the canonical write surface,
-          which is held back until the nine legacy return routers are reconciled.
+        <h2 className="text-sm font-semibold text-slate-900">Actions</h2>
+        <p className="mt-2 text-sm text-slate-600">
+          You have read access to returns but cannot record events.
         </p>
       </div>
-    </section>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <h2 className="text-sm font-semibold text-slate-900">Record an event</h2>
+      <p className="mt-1 text-xs text-slate-500">
+        Every action is an event carrying its evidence, including cancelling the return.
+        Which events apply depends on the return&apos;s current state, which the workflow
+        decides -- an event that does not apply is refused with the reason.
+      </p>
+
+      <form
+        className="mt-3 flex flex-col gap-2"
+        onSubmit={(submitEvent) => {
+          submitEvent.preventDefault();
+          record.mutate();
+        }}
+      >
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-slate-700">Event</span>
+          <select
+            aria-label="Event type"
+            value={eventType}
+            onChange={(changeEvent) => {
+              setEventType(changeEvent.target.value as ReturnEventType);
+            }}
+            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+          >
+            {RETURN_EVENT_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-slate-700">Evidence reference</span>
+          <input
+            aria-label="Evidence reference"
+            value={evidence}
+            onChange={(changeEvent) => {
+              setEvidence(changeEvent.target.value);
+            }}
+            placeholder="scan id, document reference, ticket"
+            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+          />
+        </label>
+
+        <button
+          type="submit"
+          // The backend requires at least three characters. Enforced here too so
+          // the common mistake is caught without a round trip -- but the backend
+          // remains the boundary, not this.
+          disabled={evidence.trim().length < 3 || record.isPending}
+          className="self-start rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+        >
+          {record.isPending ? "Recording..." : "Record event"}
+        </button>
+      </form>
+
+      {record.error ? (
+        // Shown verbatim. The backend distinguishes "already recorded" from
+        // "out of order" from "the workflow service is unavailable", and
+        // flattening those into "something went wrong" would throw away the
+        // only thing that tells an operator what to do next.
+        <p role="alert" className="mt-2 text-sm text-red-700">
+          {record.error.message}
+        </p>
+      ) : null}
+      {record.isSuccess ? (
+        <p className="mt-2 text-sm text-green-700">
+          Recorded. Stage is now {record.data.stage}
+          {record.data.cancelled ? " (cancelled)" : ""}
+          {record.data.caseFullyClosed ? " (closed)" : ""}.
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -259,6 +424,8 @@ function ContextColumn({ session }: { session: ReturnSessionView | null }) {
         </Group>
       ) : null}
 
+      <SupportGroup sessionId={session.id} />
+
       {session.aiRequestId !== null ? (
         <p className="text-xs text-slate-500">
           {/* The AI call itself lives on the AI surface; duplicating it here
@@ -268,6 +435,62 @@ function ContextColumn({ session }: { session: ReturnSessionView | null }) {
         </p>
       ) : null}
     </aside>
+  );
+}
+
+/**
+ * Render an `unknown` that the UI expects to be scalar.
+ *
+ * These payloads are `dict[str, Any]` on the backend because their shapes
+ * belong to the support and conversation modules, not to returns. `String(x)`
+ * on a nested object produces `[object Object]`, which looks like data and is
+ * not -- so anything non-scalar falls back instead. Silently showing the
+ * fallback is the right failure here: the alternative is a row that appears to
+ * carry a value.
+ */
+function text(value: unknown, fallback = "-"): string {
+  if (typeof value === "string") return value === "" ? fallback : value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return fallback;
+}
+
+function SupportGroup({ sessionId }: { sessionId: string }) {
+  const support = useQuery({
+    queryKey: ["returns", "support", sessionId],
+    queryFn: () => returnsApi.support(sessionId),
+  });
+
+  if (support.isLoading || support.error) {
+    return null;
+  }
+
+  const platformCase = support.data?.case ?? null;
+  const workItem = support.data?.workItem ?? null;
+  if (platformCase === null && workItem === null) {
+    return null;
+  }
+
+  return (
+    <Group title="Support">
+      {/* Two records, kept apart. A case means the *platform* raised this
+          because a flow failed; a work item means a *person* is working it.
+          Collapsing them into one "support status" would lose which. */}
+      {platformCase !== null ? (
+        <>
+          <Row label="Case" value={text(platformCase.caseType)} />
+          <Row label="Case status" value={text(platformCase.status)} />
+          <Row label="Priority" value={text(platformCase.priority)} />
+          {platformCase.slaBreached === true ? <Row label="SLA" value="Breached" /> : null}
+        </>
+      ) : null}
+      {workItem !== null ? (
+        <>
+          <Row label="Work item" value={text(workItem.subject, text(workItem.id))} />
+          <Row label="Work status" value={text(workItem.status)} />
+          <Row label="Queue" value={text(workItem.queue)} />
+        </>
+      ) : null}
+    </Group>
   );
 }
 
