@@ -1,23 +1,27 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `7f11ff9` (/support and /conversation unparked — Wave D fully closed)
-Slice: **Wave D is closed, including the parked pair.** Every item across D1–D4 is done.
-Status: **Waves C, D and E's backend are complete.** All four of Wave E's blockers are
-closed (`870e066`, `04e5ec3`, `23abcdc`, `5474e54`), and the canonical surface now carries
-writes: `/api/returns` has create and events, `/api/config` has promotion, `/api/ai` has
-cancel. 223 contract paths.
+Last pushed green commit: `944cb82` (F2 - the V2 platform shell retired)
+Slice: **Wave F is three phases in.** F4, F1, F2 and F3 are done; F5 is next.
+Status: **Waves C, D and E are complete, and the cutover has started.** Wave E's four
+screens are wired to the canonical surface. Wave F has deleted the legacy frontend (F4),
+unregistered the Data Console routers (F1) and retired the V2 shell (F2). F3's criterion
+holds and has tests.
 
-**What is left in the backend is Wave F's deletions, and they are gated on the frontend
-cutover, not on backend work.** F1 (unregister Data Console), F2 (retire the V2 shell) and
-F5 (delete superseded implementations) all require the plan's own rule — prove zero
-legitimate runtime consumers before deleting. The legacy frontend at `/v1` still mounts
-~28 routes against exactly those routers, so the scan cannot come back clean until F4
-removes it. F3's correctness criterion is already met and now has tests; see
-"Wave F3 — main.py is already a composition root".
+**The frontend is four routes.** 191 files and 18,572 lines deleted. Everything the four
+canonical domains did not replace - the whole Data Console, the system tooling - is gone
+rather than superseded. That was an explicit owner decision; see "Wave F4".
 
-Suite: **2057 passed, 3 skipped, 0 failed** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
-Contract: **217 paths**; drift clean on consecutive runs.
+**The contract has more than halved: 223 -> 107 paths.** 223 after Wave E's writes landed,
+148 after F1 unmounted eighteen Data Console routers, 107 after F2 removed the V2 shell.
+Router mounts in `main.py`: 42 -> 24 -> 22.
+
+**What is left:** F5 (delete the modules F1 unmounted, at zero consumers), then Waves G
+and H. Nothing is gated any more - F4 removed the consumer that blocked the deletions.
+
+Suite: **2071 passed, 3 skipped, 0 failed** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
+Frontend: eslint clean, `tsc -b` clean, 65 unit tests, 6 Playwright e2e.
+Contract: **107 paths**; drift clean in verify mode.
 mypy baseline: **42 errors / 14 files**. This moved for the first time since Phase 4 —
 retiring the Mongo release lifecycle took five of the old 47 with it. Quote 42/14.
 Contract: **211 paths**; drift check passes on consecutive runs; frontend `tsc -b` clean.
@@ -2730,6 +2734,108 @@ reason. Two earlier Wave D worktrees were abandoned uncommitted and came within 
 
 **All four are closed.** Wave E's backend dependencies are met; what remains in E is
 frontend work, which the owner has taken.
+
+## Wave E frontend - the four screens, wired
+
+Status: DONE (`a2ba0dc`, `a6a0d6f`, `0c733c2`, `ff20569`, `1acbede`).
+
+Each screen got what its phase specifies, and three of the four turned up the same class
+of bug: **a frontend type naming values the backend never emits, failing silently because
+the field was optional and the values were strings.** Third, fourth and fifth instances
+after E5's snake_case interception row.
+
+* **E2 - Return Business Copilot.** The action panel is one endpoint, `POST /{id}/events`.
+  There is no Cancel button because cancellation is an event; a `cancel()` helper would
+  re-introduce the split D4 just closed. All twenty event types are offered and the screen
+  deliberately does *not* filter by stage - that would be a second copy of
+  `_validate_transition`. A test asserts the count of twenty so the tempting filter fails.
+* **E3 - Configuration.** `ReleaseStatus` named the Mongo lifecycle D3 deleted, so the
+  Overview tab searched for `status === "ACTIVE"` and reported "No ACTIVE release found"
+  in every deployment, including ones with a published release. Promotion buttons now come
+  from `ALLOWED_PROMOTIONS`, mirroring `RELEASE_TRANSITIONS`.
+* **E4 - Graph Schema Analyzer.** The canvas draws. A grid and an edge list rather than a
+  layout engine: cardinality is the half a count hides, and that is what a reviewer needs.
+  Writing the "one fetch" test found that the canvas and tabs shared a cache entry but
+  refetched on each new observer.
+* **E5 - AI Control Center.** Cancel wired. The stat tiles counted `CLAIMED` and
+  `RESPONDED`, which `InterceptionStatus` does not have.
+
+Also fixed: `npm run lint` was failing at HEAD on a pre-existing error in a legacy file, so
+`04_run_frontend_quality.sh` could not have passed. And the four canonical screens were the
+only ones unviewable without Docker, because `/api/principal` had no mock handler.
+
+---
+
+## Wave F4 - the legacy frontend, deleted
+
+Status: DONE (`6a1a0aa`). 191 files, 18,572 lines.
+
+**76 legacy routes, not the ~28 an earlier reading of this ledger claimed.** That figure
+came from a truncated grep and was wrong in both directions that matter: it understated the
+deletion and it understated what had no replacement.
+
+Of the 76: 41 Data Console, 11 system tooling, 8 AI gateway, 14 return-domain, plus
+`/overview`, `/seed-data`, `/v2/copilot` and `/v2/config`. The four canonical domains
+replace the return-domain screens. **They replace nothing else.** The data browser, graph
+explorer, inventory, workspaces, scenarios, jobs, imports/exports, AI studio and graph sync
+have no canonical equivalent and are absent, not superseded. The owner chose that
+explicitly when the alternative - deleting only the replaced routes - was offered.
+
+**The survivor set was computed, not hand-listed**: a transitive closure from `main.tsx`,
+the test setup and the mock worker gave 44 reachable modules and 168 unreachable. Across
+229 files, hand-picking is how a still-imported module gets deleted.
+
+**Deleting the legacy frontend briefly took down the canonical one.**
+`RuntimeConfigProvider` blocks first paint on `/api/v1/runtime-config`, which in mock mode
+was served by the Data Console handler file being deleted. Every canonical screen rendered
+"Configuration Error". Caught by the replacement e2e - not by the 65 unit tests, and not by
+the manual browser pass, which had run *before* the deletion. The four obsolete Playwright
+specs drove only deleted routes; `canonical-domains.spec.ts` replaced them.
+
+That left a real finding: **the four-domain shell has a hard dependency on a versioned
+legacy route.** `/api/v1/runtime-config` survives F1 and F2 for that reason.
+
+**It also broke a gate, and I shipped it.** `validate_stage4_source.py` asserts frontend
+routes from `frontend/src/routes.ts`; F4 deleted that file, so the script raised
+FileNotFoundError inside `05_run_contract_and_config_checks.sh` and two stage gates. Fixed
+in `f7a44db`, which also repaired two *older* stale paths in the same script - the SQL
+migration directory moved in `b19570f` and the provider package in `6ff5162`, so it had
+been failing long before F4 for reasons nobody had noticed.
+
+---
+
+## Wave F1/F2 - unregister, then retire
+
+Status: DONE (`3c633b8`, `944cb82`). Contract 223 -> 148 -> 107.
+
+**F1 unregistered eighteen Data Console routers.** The scan the plan mandates: the
+surviving frontend calls only the four canonical prefixes, `/api/principal` and
+`/api/v1/runtime-config`; six shell scripts call `/api/v1/*` but none Data Console; nothing
+self-calls over HTTP. One consumer existed - `validate_graph_evidence_api.sh`, which
+nothing invokes - and it was retired with the routers rather than kept alive to justify
+them.
+
+**Unregistered, not deleted**, because `configuration.py`, `sources.py`, `audit.py` and
+`auth.py` still export handlers the canonical `/api/config` router imports directly. That
+is F5's work. One commit that both unmounts and rewrites is one where half the diff is not
+reviewable.
+
+**F2 retired the V2 shell**: two routers, the `return_platform/v2/` package, and four
+pieces of lifespan wiring including a middleware hook that called `persist_all()` after
+every `/api/v2/` mutation. `/api/v2/order-agent` stays - it is Wave C's Order Discovery
+surface and merely shared the prefix, which is exactly why that prefix-scoped hook would
+have fired for it.
+
+`V2PlatformServices.bootstrap()` pointed at `config/v2`, a directory that does not exist.
+
+**A scan of mine was wrong and the suite caught it.** I listed v2's test consumers with
+`grep | head`, which truncated at ten lines and hid two files; collection failed on the
+first run after the deletion. Without `head` the list was three, the third being a stale
+`"return_platform.v2"` entry in the analyzer's forbidden-import list that would have gone
+on asserting nothing imports a module that no longer exists. **`head` on a
+prove-zero-consumers scan is how a deletion ships broken.**
+
+---
 
 ## Wave D4 — the canonical write surface
 
