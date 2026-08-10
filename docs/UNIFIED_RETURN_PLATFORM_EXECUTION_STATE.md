@@ -1,14 +1,20 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `23abcdc` (E4 blocker — the analyzer draft shape is serialized)
-Slice: **Wave D is closed.** Every item across D1–D4 is done bar one parked by the owner
-(`/support` and `/conversation` canonical reads)
-Status: **Waves C and D are complete.** **Wave E's five phases are built, but still mostly
-read-only** — its screens were finished before any mutation surface existed. Three of its
-four blockers are now gone (`870e066`, `04e5ec3`, `23abcdc`) and E5's manual-response flow
-is wired. **The one that remains is D4's write consolidation**, and it is the whole of what
-is left before Wave F. See the Wave E sections.
+Last pushed green commit: `7f11ff9` (/support and /conversation unparked — Wave D fully closed)
+Slice: **Wave D is closed, including the parked pair.** Every item across D1–D4 is done.
+Status: **Waves C, D and E's backend are complete.** All four of Wave E's blockers are
+closed (`870e066`, `04e5ec3`, `23abcdc`, `5474e54`), and the canonical surface now carries
+writes: `/api/returns` has create and events, `/api/config` has promotion, `/api/ai` has
+cancel. 223 contract paths.
+
+**What is left in the backend is Wave F's deletions, and they are gated on the frontend
+cutover, not on backend work.** F1 (unregister Data Console), F2 (retire the V2 shell) and
+F5 (delete superseded implementations) all require the plan's own rule — prove zero
+legitimate runtime consumers before deleting. The legacy frontend at `/v1` still mounts
+~28 routes against exactly those routers, so the scan cannot come back clean until F4
+removes it. F3's correctness criterion is already met and now has tests; see
+"Wave F3 — main.py is already a composition root".
 
 Suite: **2057 passed, 3 skipped, 0 failed** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
 Contract: **217 paths**; drift clean on consecutive runs.
@@ -1968,7 +1974,30 @@ In rough order of blast radius:
    `shippingInstructions`, `shipmentEvents`, `pickup` and `integrationCommands`, and a
    second path would duplicate them. *Warehouse* needs a new SQL read (bay assignment is in
    `platform.bay_assignment`; the repository has only `list_bay_candidates`, a planning
-   read). *Support* and *conversation* are **parked by the owner** — see below.
+   read). *Support* and *conversation* were parked, and are **now closed** — see "The parked pair, unparked" below.
+3a. **D3's promotion endpoint — CLOSED** (`d14e5c1`). `POST /api/config/releases/{id}/promote`.
+   The open question was scope, not risk: which promotions belong on a versionless
+   canonical API versus the Data Console's operator surface. **All of them.** Splitting the
+   lifecycle would mean an operator takes a release to VALIDATED on one API and changes
+   tools to publish it, and neither surface could tell a caller which transitions it was
+   allowed to make. It delegates, like the reads — the console handler validates three
+   behaviour domains, verifies unexpired runtime-validation receipts, requires
+   `expected_head_revision`, and refreshes the process's active configuration; a canonical
+   copy doing four of those five would be the second lifecycle D3 deleted. The response is
+   re-scrubbed, because `GET /releases/{id}` redacts the same domain payloads and the same
+   operator can call both.
+
+3b. **E5's remaining operator actions — one built, four assessed** (`d14e5c1`). `POST
+   /api/ai/interceptions/{id}/cancel` is the one with a backing mechanism, and it needed
+   care: `store.cancel` returns *silently* when the record is not PENDING, because its
+   other caller is the expiry sweep for which losing the race is normal. A handler trusting
+   the absence of an exception would tell an operator they cancelled something that had in
+   fact been answered, so the outcome is read back. Of the other four: Claim/Release need a
+   new concept in the store, and the CAS on `answer` already makes a double answer safe
+   rather than merely unlikely; Replay and Generate Candidate are hard to justify at all,
+   since an interception exists *because* the AI could not be called and generating a
+   candidate answer with an AI contradicts why the request was held.
+
 4. **D3's remaining read domains — CLOSED** (`10a107b`). `/api/config` gained `sources` and
    `audit`, both delegating to the Data Console handlers rather than reimplementing them.
    The other four needed nothing: business config and integrations are already in
@@ -1981,15 +2010,41 @@ In rough order of blast radius:
 6. **D2's operator console — CLOSED** (`04e5ec3`).
 7. **D1's untested claim — CLOSED** (`3d3b3a5`).
 
-**Parked at the owner's request:** `/api/returns/{id}/support` and `/conversation`. Findings
-recorded so they need not be re-derived: **support has two stores** —
-`repository.support_cases` (which has a session-scoped `get_support_case_for_session`) and
-`return_support/service.py`'s `support_work_items` — both empty in dev, and which is
-authoritative is unresolved. Exposing one canonically before settling that would repeat D3's
-mistake at smaller scale. The session→conversation direction was not confirmed to exist.
+### The parked pair, unparked — and neither was the problem it looked like
 
-Nothing in Wave D is open except the parked pair. Wave F — the cutover — is next, and is
-blocked on Wave E's frontend consuming the canonical domains rather than on backend work.
+**`/support`: the two stores are not competing implementations.** The park was right to
+wait on "which is authoritative", but the question dissolves once you look at who writes
+each. `support_cases` is raised *by the platform* — `orchestrator._fail` creates one when a
+return flow fails, with a case type, a priority and an SLA; nothing human opens one.
+`support_work_items` is opened *by a person* through the support workbench, and carries a
+message thread and an eleven-state lifecycle. Different creators, different lifecycles,
+neither derivable from the other. This is the artifact/evidence situation for the third
+time: a shared word over different things.
+
+So the response is two nullable fields rather than a merge. Both are at most one per
+return — each collection has `sessionId` uniquely indexed, which is *why* `workItem` is
+singular and not a list — and either can be absent. A return that never failed has no
+case; a return support never touched has no work item.
+
+The work-item service is resolved leniently. `api/return_support.py` 503s when its
+dependencies are missing, which is right for a router whose every endpoint is a work item,
+and wrong here: the case needs only the operational repository, and it is the record an
+operator is most likely after, because the platform raised it when something broke.
+
+**`/conversation` was genuinely unanswerable, for a much smaller reason than assumed.**
+`returnSessionId` is stamped on the conversation when `submit_details` creates the return,
+so the link was in the data — but only conversation-to-session, with no accessor and no
+index for the reverse. Given a session there was no way to find its conversation. One
+method (`AssociateConversationService.get_for_session`) and one sparse compound index
+closed it. Sparse because most conversations never reach a return; not unique because a
+session reached by two attempts is unusual but not corruption, and a unique index would
+turn it into a write failure at the worst possible moment.
+
+`null` is a successful answer on both endpoints, not a 404 — a SYSTEM-channel return has no
+conversation and never will, and 404 would be indistinguishable from "no such return",
+which the parent check already covers.
+
+**Wave D is now closed with nothing parked.**
 
 ## Closing Wave D — D1's claim, D2's wiring and console, D3's remaining reads
 
@@ -2662,18 +2717,92 @@ reason. Two earlier Wave D worktrees were abandoned uncommitted and came within 
    which do not exist.
 2. ~~**D2's operator API**~~ — **partly built** (`04e5ec3`). Unseal and answer exist and E5
    uses them. Claim, Generate Candidate, Replay and Release still have no route.
-3. **D4's write consolidation** — the duplicates are reconciled (`5fdc17f`, `bc1baf7`,
-   `f7244fd`, `7c700e3`), so the reason for withholding writes is gone. Publishing them
-   means taking down `test_the_canonical_surface_is_read_only_while_duplicates_are_unresolved`,
-   which was added precisely to stop a write surface appearing before that work was done.
-   **This is the largest remaining step in the programme** and blocks E2 entirely and E3
-   substantially.
+3. ~~**D4's write consolidation**~~ — **done** (`5474e54`). `POST /api/returns` and
+   `POST /api/returns/{id}/events` replace five legacy routes, and the read-only test is
+   replaced by an enumeration of the write surface rather than deleted. Two defects fell
+   out of it: the two legacy cancellation paths disagreed about the discovery lock, and a
+   rejected transition hung for the full RPC deadline because the workflow declared no
+   `failure_exception_types`. See "Wave D4 — the canonical write surface".
 4. ~~**Serialize the analyzer draft shape**~~ — **done** (`23abcdc`). `GET
    /drafts/{id}/shape` exists and E4's canvas has data to draw. It was not "one backend
    change" — see the section above for the two design decisions that made it three. The
    frontend canvas itself is still unbuilt; nothing backend blocks it.
 
-**Only item 3 remains**, and it is the whole of what is left before Wave F.
+**All four are closed.** Wave E's backend dependencies are met; what remains in E is
+frontend work, which the owner has taken.
+
+## Wave D4 — the canonical write surface
+
+Status: DONE (`5474e54`). Two routes replace five.
+
+`POST /api/returns` (create) and `POST /api/returns/{session_id}/events`. The other three
+legacy routes should not exist, and working out why found two real defects.
+
+### The two ways to cancel disagreed, and consolidating them would have kept the wrong one
+
+`POST /api/v1/returns/{id}/cancel` wrote `status: CANCELLED` straight to Mongo and released
+the discovery lock — and never told the workflow. The workflow's own CANCELLED event
+updated durable state *and* the session document, and left the discovery lock held.
+Whichever a caller used, one of the two records was wrong.
+
+The obvious consolidation — "cancellation is just an event now" — would have made the
+leaking one the only one. `ProductionWorkflowCoordinator.record_event` now releases the
+lock when `state.cancelled`, so the single canonical path does everything both did. Put in
+the coordinator rather than the route because it has to hold for every caller, including
+the workflow's own; a test asserts it there for the same reason.
+
+### A rejected transition hung for ten seconds, on the commonest case
+
+`apply_production_return_event` raises `ValueError` to *refuse* an event — out of order, or
+an effect already recorded. `@workflow.defn` declared no `failure_exception_types`, and
+Temporal's default is to treat a non-Failure exception as a workflow **task** failure: the
+task retries forever, `execute_update` never returns, and the caller waits out the
+10-second `rpc_timeout` before getting a generic 409.
+
+For a UI that is not the rare case — it is the double-click and the screen acting on stale
+state. Declaring `ValueError` makes those fail the *update* instead, immediately, with the
+reason attached. The canonical handler maps `WorkflowUpdateFailedError` to a 409 carrying
+the wrapped `ApplicationError`'s message (the same discrimination `orchestrator._failure_code`
+already did) and `RPCError` to **503** — the legacy handler reported an unreachable Temporal
+as 409, which invites a client to fix a request that was already correct.
+
+### What replaced the read-only test
+
+Not nothing, and not "writes are fine now": an enumeration. Consolidation that ends with
+nine canonical writes instead of nine legacy ones has achieved nothing, so the write
+surface is pinned to exactly two paths, and a test asserts there is no canonical `/cancel`
+at all.
+
+`create_return` now has three callers rather than two. That is recorded, with the note that
+it drops back to two when Wave F deletes `api/returns.py` — and the channel partition is
+enforced on both, so deleting either guard still fails something.
+
+---
+
+## Wave F3 — main.py is already a composition root
+
+Status: criterion met, held by tests (`d14e5c1`). The size reduction belongs to F1/F2/F5.
+
+F3 asks for "no business logic / provider selection / source-specific logic". Measured:
+the only routes `main.py` defines are the two health probes, it runs no datastore query,
+and it compares against no source technology. `_resolve_principal_provider` picks an
+implementation from settings, which is what a composition root is for.
+
+What makes the file 1089 lines is 42 router imports and mounts plus the bootstrap
+sequence — and router mounting is on F3's own list of what belongs there. Restructuring the
+401-line lifespan now would be churn that F1, F2 and F5 undo when they delete the routers
+it is sequencing. So the work was to hold the criterion, not to refactor: four tests, one
+of which asserts the mount count so a deletion that leaves a dangling mount fails, and the
+count is the honest measure of how much cutover is left.
+
+### Why F1, F2 and F5 are not being done now
+
+The plan's own rule: "Before each deletion, prove zero legitimate runtime consumers with
+one dependency scan." The legacy frontend at `/v1` still mounts ~28 routes against exactly
+the routers those phases delete. The scan cannot come back clean until F4 removes it, and
+F4 is frontend work the owner has taken. **These are gated, not skipped.**
+
+---
 
 ## Wave D2 / Phase 14, slice 3 — the resume bridge (at-least-once)
 
