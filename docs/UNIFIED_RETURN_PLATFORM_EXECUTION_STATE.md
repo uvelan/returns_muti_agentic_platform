@@ -1,13 +1,13 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `bc1baf7` (D4 slice 2 — canonical `/artifacts` and `/evidence`)
-Slice: **Wave D4 — the write consolidation**, two slices landed
+Last pushed green commit: `f7244fd` (D4 slice 3 — no transition recorded twice)
+Slice: **Wave D4 — the write consolidation**, three slices landed
 Status: **Wave C complete. Wave D's completion condition met**, with items still open — see
 "Wave D: what remains" below. **Wave E is complete** (all five phases, read-only — see the
 Wave E section). Wave F is blocked on E's cutover, not on backend work.
 
-Suite: **1999 passed, 2 skipped, 0 failed** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
+Suite: **2009 passed, 2 skipped, 0 failed** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
 mypy baseline: **47 errors / 16 files**, unchanged across every commit in this branch.
 Contract: **211 paths**; drift check passes on consecutive runs; frontend `tsc -b` clean.
 
@@ -1922,10 +1922,11 @@ connector regression test.
 Wave D's *completion condition* — "backend exposes the four canonical API domains and all
 are generated into OpenAPI" — is met, and nothing in D still blocks Wave E.
 
-**Two D4 slices have landed since this list was written** (`5fdc17f`, `bc1baf7`): the
-production-event authorization consolidation and the `/artifacts` + `/evidence` naming.
-Both are described in their own sections below. Item 2 has shrunk accordingly, and one of
-the three duplicates it named turned out not to exist.
+**Three D4 slices have landed since this list was written** (`5fdc17f`, `bc1baf7`,
+`f7244fd`): the production-event authorization consolidation, the `/artifacts` +
+`/evidence` naming, and the double-recording fix behind the stage-action overlap. Each is
+described in its own section below. Item 2 has shrunk to one thing, and of the three
+duplicates it originally named, one turned out not to exist at all.
 
 In rough order of blast radius:
 
@@ -1937,13 +1938,20 @@ In rough order of blast radius:
    lifecycle inline with no checksum recompute. Adding canonical mutation endpoints would
    make it three lifecycles or silently bless one. Deciding which is authoritative changes
    what happens on every configuration promotion; it is a data migration, not a refactor.
-2. **D4's write consolidation — what is left of it.** Two of the three items this entry
-   originally named are closed. Still open: the overlapping stage actions between
-   `production_workflow.py` and `physical_operations.py`, and the associate flow that
-   drives the same session by another route. Phase 16 says resolve duplicates *before*
-   deleting, so the canonical surface stays read-only until they are;
+2. **D4's write consolidation — one item left.** Still open: the associate flow that
+   drives the same session by another route. The other two are closed — the artifact pair
+   was never a duplicate, and the stage-action overlap's actual cost (a completed
+   transition applied twice) is fixed. Phase 16 says resolve duplicates *before* deleting,
+   so the canonical surface stays read-only until the associate flow is reconciled;
    `test_the_number_of_return_routers_has_not_grown` keeps the count from running backwards
    meanwhile.
+
+   Note that `POST /production-returns/{id}/events` still contradicts design doc §9.1,
+   which says progress is action-driven and callers submit *intent* rather than naming the
+   transition. It survives because eight event types (receipt confirmation, license-plate
+   assignment, the three waivers, vendor recovery ×2) have no action endpoint and it is
+   their only path. Building those eight is the work that would let it go — a bounded,
+   separate slice, not a blocker on anything.
 3. **D4's remaining read domains.** Session, list, timeline, artifacts and evidence are
    canonical. Support, fulfillment, warehouse and outbox events have no canonical read path
    yet.
@@ -1962,6 +1970,84 @@ In rough order of blast radius:
    limiters) and differ only in response contract. That is prose, not a test.
 
 Item 1 is the substantive one. 2–7 are bounded and independent of each other.
+
+## Wave D4, slice 3 — the stage-action overlap, and what it was actually costing
+
+Status: DONE (`f7244fd`).
+
+### The overlap is a shape mismatch, not two implementations
+
+`POST /returns/{id}/pickup-actions` submits an **action**: it writes a pickup request and
+derives the workflow event from it. `POST /production-returns/{id}/events` submits the
+**transition**, with a caller-supplied event id and a free-text evidence reference.
+
+Design doc §9.1 settles which is right — progress is action-driven, and "each of these
+submits *intent*; the orchestrator evaluates stage prerequisites and decides whether a
+transition occurs." `/events` inverts that.
+
+It survives anyway, and that is recorded rather than glossed: **eight event types have no
+action endpoint** (`RECEIPT_CONFIRMED`, `LICENSE_PLATE_ASSIGNED`, the three `*_NOT_REQUIRED`
+waivers, `PRODUCT_DISPOSITION_COMPLETED`, `VENDOR_RECOVERY_REQUIRED`,
+`VENDOR_RECOVERY_COMPLETED`) and `/events` is their only path. Removing it would strand
+eight human acts. Building those eight action endpoints is what would let it go.
+
+### What the overlap was actually costing
+
+Verified before fixing, not inferred. Because each path derives its own event id, one real
+carrier booking recorded through both produces two ids for one fact — and the state machine
+**accepted the second**.
+
+Neither existing guard caught it:
+
+* `applied_event_ids` is for a retry of the *same* event.
+* `_validate_transition` checks preconditions, and a transition's preconditions stay
+  satisfied after it occurs. `CARRIER_BOOKING_CONFIRMED` requires `bol_tendered`, which
+  never goes back to false.
+
+So the second application appended to `applied_event_ids` — carried in Temporal workflow
+state, so it grows without bound — and re-ran `_project_business_event`, writing a second
+`shipment_events` row. The repository upserts on `(sourceSystem, sourceEventId)`, and the
+two paths derive that key differently: the action path passes
+`LOGISTICS_CONFIRMATION` + `{pickupRequestId}:{action}:{version}`, while `/events` falls
+back to `PLATFORM_EVIDENCE` + `{eventType}:{free-text evidence reference}`. Different keys,
+no collapse. **The evidence record showed one booking twice.**
+
+### The fix
+
+`_already_recorded` refuses a new event id for a transition whose effect is already
+recorded. The two idempotency rules now differ deliberately:
+
+* **Same event id → silent no-op.** At-least-once signal delivery depends on it; if this
+  ever starts raising, every duplicate delivery becomes a 409.
+* **Different event id for a completed transition → refusal.** It is either a duplicate
+  report or a second real occurrence, and both need a human rather than a second
+  application. The message names the event and says to resend the original id.
+
+Nineteen of twenty types key on the flag they own. `PHYSICAL_HANDOFF_CONFIRMED` shares
+`physical_return_complete` with `RECEIPT_CONFIRMED` and `PHYSICAL_RETURN_NOT_REQUIRED` —
+correct rather than approximate, since a handoff after receipt is out of order and a
+handoff after the physical return was waived is contradictory. `CANCELLED` keeps the older
+shape: once cancelled, every further event is silently ignored, because a late signal for a
+cancelled return is expected rather than exceptional.
+
+### A test that was abandoned, and why
+
+The first draft walked the state machine per event type to reach each transition and try it
+twice. It needed three corrections in a row — stop before the terminal short-circuit, avoid
+the waiver shortcuts, declare vendor recovery before closure — each pushing more of
+`_validate_transition`'s ordering into the test. It was dropped: a test that has to
+reconstruct the rules it checks ends up asserting its own copy of them.
+
+The exhaustive part is now structural — `_already_recorded` is total over the enum, and a
+missing entry is a `KeyError`, i.e. a 500 — plus a check that nothing reads as already
+recorded on a fresh return, which is what catches an inverted marker. Behaviour is covered
+at three lifecycle positions: early, mid (six preconditions deep), and a waiver. **That is
+less coverage than intended**, recorded here rather than left to look complete.
+
+**Verification.** 10 tests. Suite **2009 passed, 2 skipped** — nothing in the tree depended
+on the double application. ruff clean, mypy 47/16. Status codes per path are unchanged and
+still differ (409 from `/events`, 422 from pickup-actions, a deferred-signal audit row from
+support); pre-existing, not widened here.
 
 ## Wave D4, slice 2 — `/artifacts` and `/evidence`, and the name that caused the confusion
 
