@@ -141,6 +141,65 @@ def _require(condition: bool, message: str) -> None:
         raise ValueError(message)
 
 
+def _already_recorded(
+    state: ProductionReturnWorkflowState, event_type: ProductionReturnEventType
+) -> bool:
+    """Has this transition's effect already been recorded?
+
+    Distinct from the `applied_event_ids` check above, which catches a *retry of
+    the same event*. This catches a **different** event id claiming a transition
+    that has already happened -- which is what two endpoints recording one
+    real-world fact necessarily produce, because each derives its own event id.
+
+    `_validate_transition` cannot catch it: it checks preconditions, and the
+    preconditions for a transition remain satisfied after that transition
+    occurs. `CARRIER_BOOKING_CONFIRMED` requires `bol_tendered`, which stays true
+    forever, so a second one was accepted -- appending to `applied_event_ids`
+    (carried in Temporal workflow state, so it grows without bound) and
+    re-running `_project_business_event`, which writes a second `shipment_events`
+    row because the two paths derive different `(sourceSystem, sourceEventId)`
+    dedup keys.
+
+    Each event type is keyed on the flag it owns. `PHYSICAL_HANDOFF_CONFIRMED` is
+    the one exception: `physical_return_complete` is also set by
+    `RECEIPT_CONFIRMED` and `PHYSICAL_RETURN_NOT_REQUIRED`. That is correct
+    rather than approximate -- a handoff after receipt is out of order anyway,
+    and a handoff after the physical return was waived is contradictory.
+    """
+    return {
+        ProductionReturnEventType.DISCOVERY_CONFIRMED: state.discovery_confirmed,
+        ProductionReturnEventType.RETURN_DETAILS_CONFIRMED: state.return_details_confirmed,
+        ProductionReturnEventType.SUPPORT_REQUEST_CREATED: state.support_request_created,
+        ProductionReturnEventType.SUPPORT_ACKNOWLEDGED: state.support_acknowledged,
+        ProductionReturnEventType.OMC_RETURN_CREATED: state.return_created,
+        ProductionReturnEventType.SHIPPING_INSTRUCTIONS_ISSUED: state.shipping_instructions_issued,
+        ProductionReturnEventType.BOL_TENDERED: state.bol_tendered,
+        ProductionReturnEventType.CARRIER_BOOKING_CONFIRMED: state.carrier_booking_confirmed,
+        ProductionReturnEventType.PHYSICAL_HANDOFF_CONFIRMED: state.physical_return_complete,
+        ProductionReturnEventType.PHYSICAL_RETURN_NOT_REQUIRED: not state.physical_return_required,
+        ProductionReturnEventType.RECEIPT_CONFIRMED: state.receipt_confirmed,
+        ProductionReturnEventType.LICENSE_PLATE_NOT_REQUIRED: not state.license_plate_required,
+        ProductionReturnEventType.WAREHOUSE_PROCESSING_NOT_REQUIRED: (
+            not state.warehouse_processing_required
+        ),
+        ProductionReturnEventType.LICENSE_PLATE_ASSIGNED: state.license_plate_assigned,
+        ProductionReturnEventType.CUSTOMER_RESOLUTION_COMPLETED: (
+            state.customer_resolution_complete
+        ),
+        ProductionReturnEventType.PRODUCT_DISPOSITION_COMPLETED: (
+            state.product_disposition_complete
+        ),
+        ProductionReturnEventType.WAREHOUSE_PROCESSING_COMPLETED: (
+            state.warehouse_processing_complete
+        ),
+        ProductionReturnEventType.VENDOR_RECOVERY_REQUIRED: state.vendor_recovery_required,
+        ProductionReturnEventType.VENDOR_RECOVERY_COMPLETED: state.vendor_recovery_complete,
+        # `CANCELLED` is handled by the `state.cancelled` early return, which
+        # short-circuits every event once a return is cancelled.
+        ProductionReturnEventType.CANCELLED: state.cancelled,
+    }[event_type]
+
+
 def _validate_transition(
     state: ProductionReturnWorkflowState, event_type: ProductionReturnEventType
 ) -> None:
@@ -212,6 +271,14 @@ def apply_production_return_event(
         return state
     if state.cancelled or state.case_fully_closed:
         return state
+    if _already_recorded(state, event.event_type):
+        raise ValueError(
+            f"{event.event_type.value} is already recorded for this return. "
+            "Re-sending the original event id is a no-op; a new event id for a "
+            "transition that has already happened is either a duplicate report "
+            "or a second real occurrence, and both need a decision rather than "
+            "a silent second application."
+        )
     _validate_transition(state, event.event_type)
     updates: dict[str, Any] = {
         "applied_event_ids": (*state.applied_event_ids, event.event_id),
