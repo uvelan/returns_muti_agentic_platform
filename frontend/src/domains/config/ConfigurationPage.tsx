@@ -1,27 +1,37 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { configApi, type ConfigurationRelease } from "../../api/configuration";
+import {
+  ALLOWED_PROMOTIONS,
+  configApi,
+  type ConfigurationRelease,
+  type PromotionTarget,
+} from "../../api/configuration";
 import { useCapabilities } from "../../hooks/capabilityContext";
 import { JsonView } from "./JsonView";
 
 /**
- * The platform Configuration experience (Phase 19), read-only.
+ * The platform Configuration experience (Phase 19).
  *
- * **Two of nine tabs have a canonical endpoint.** `/api/config` serves the
- * runtime snapshot and the release ledger. Data Sources, Integrations,
- * Business, Modules, Security and Audit are served today by Data Console
- * routers, which Wave F retires -- binding this screen to them would make the
- * canonical Configuration UI depend on the very product it replaces, and every
- * such call would break at cutover. They are named as pending instead.
+ * **Four of nine tabs have a canonical endpoint**, up from two. D3 added
+ * `/api/config/sources` and `/api/config/audit`, both delegating to the Data
+ * Console handlers rather than reimplementing them, so this screen reaches them
+ * through the canonical path and nothing here breaks at cutover.
  *
- * **No promotion controls, and the reason is a live decision.** Two
- * configuration release lifecycles exist: the hardened `ReleaseService` that
- * recomputes checksums on VALIDATED->APPROVED and APPROVED->ACTIVE, which is
- * constructed nowhere outside a test file, and the hand-rolled transition
- * table in Data Console that production actually runs, which does not
- * recompute. Offering Approve or Activate here would silently bless whichever
- * one this screen happened to call, on every future promotion.
+ * Of the five that remain, three will never need one and say so rather than
+ * claiming to be pending: business config and integrations are *already* served
+ * -- `/runtime` returns the whole snapshot and they are fields on it -- and
+ * modules would return `[]` forever because the kernel module registry is empty
+ * by design. Security is not configuration: the role model is code, and
+ * publishing the role-to-capability table would let a UI reimplement
+ * authorization locally, which the capability layer exists to prevent.
+ *
+ * **Promotion controls exist now, and drive one lifecycle.** The blocker was
+ * real -- two release lifecycles existed and a button would have silently
+ * blessed whichever it happened to call. D3 settled it in favour of the graph
+ * and deleted the other. The buttons offered are derived from
+ * `ALLOWED_PROMOTIONS`, which mirrors the backend's `RELEASE_TRANSITIONS`, so
+ * an operator is not shown a promotion that will be refused.
  *
  * **Redaction is server-side and stays there.** `redact_secret_values` scrubs
  * resolved secrets before the response is built and leaves `vault://`
@@ -43,14 +53,19 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number];
 
+/**
+ * Tabs with no endpoint of their own, and why -- three of these are *already
+ * served* rather than missing, which is a different statement and worth making.
+ */
 const UNBACKED: Partial<Record<Tab, string>> = {
-  "Data Sources":
-    "Served today by the Data Console sources and browser routers, which Wave F retires. A canonical /api/config/sources does not exist yet.",
-  Integrations: "No canonical endpoint. Phase 15 lists it; it has not been built.",
-  Business: "No canonical endpoint. Phase 15 lists it; it has not been built.",
-  Modules: "No canonical endpoint. Phase 15 lists it; it has not been built.",
-  Security: "No canonical endpoint. Phase 15 lists it; it has not been built.",
-  Audit: "No canonical endpoint. Phase 15 lists it; it has not been built.",
+  Integrations:
+    "Already served. Integrations are fields on the runtime snapshot (configuration.integrations and configuration.runtime_integrations), visible on the Runtime tab. A second endpoint would duplicate them.",
+  Business:
+    "Already served. The runtime snapshot's configuration field is the business configuration; see the Runtime tab.",
+  Modules:
+    "No endpoint, deliberately. The kernel module registry is empty by design, so a /modules route would answer [] forever -- a shell that always says nothing is worse than an honest absence. A release's module list is reachable through its domain payloads.",
+  Security:
+    "Not configuration. The role model is code, and a caller's own grants are on /api/principal. Publishing the whole role-to-capability table would let this screen reimplement authorization locally, which is what the capability layer exists to prevent.",
 };
 
 export function ConfigurationPage() {
@@ -106,9 +121,52 @@ function TabBody({ tab, canReadReleases }: { tab: Tab; canReadReleases: boolean 
       return <RuntimeTab />;
     case "Releases":
       return <ReleasesTab canRead={canReadReleases} />;
+    case "Data Sources":
+      return <SourcesTab />;
+    case "Audit":
+      return <AuditTab />;
     default:
       return null;
   }
+}
+
+function SourcesTab() {
+  const sources = useQuery({ queryKey: ["config", "sources"], queryFn: configApi.sources });
+
+  if (sources.isLoading) return <p className="text-sm text-slate-500">Loading...</p>;
+  if (sources.error) return <p className="text-sm text-red-700">{sources.error.message}</p>;
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <h2 className="text-sm font-semibold text-slate-900">Configured sources</h2>
+      <p className="mt-1 text-xs text-slate-500">
+        Health is probed server-side. Secret references are shown as
+        <code className="mx-1">vault://</code>
+        pointers rather than resolved values.
+      </p>
+      <JsonView value={sources.data} />
+    </div>
+  );
+}
+
+function AuditTab() {
+  const audit = useQuery({ queryKey: ["config", "audit"], queryFn: configApi.audit });
+
+  if (audit.isLoading) return <p className="text-sm text-slate-500">Loading...</p>;
+  if (audit.error) return <p className="text-sm text-red-700">{audit.error.message}</p>;
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <h2 className="text-sm font-semibold text-slate-900">Platform audit</h2>
+      <p className="mt-1 text-xs text-slate-500">
+        {/* The path says config; the records do not promise to be only config.
+            They carry their own action and target. */}
+        Not filtered to configuration -- these are platform audit records, and each carries
+        its own action and target.
+      </p>
+      <JsonView value={audit.data} />
+    </div>
+  );
 }
 
 function OverviewTab({ canReadReleases }: { canReadReleases: boolean }) {
@@ -119,7 +177,11 @@ function OverviewTab({ canReadReleases }: { canReadReleases: boolean }) {
     enabled: canReadReleases,
   });
 
-  const active = (releases.data ?? []).find((r) => r.status === "ACTIVE");
+  // RELEASED, not ACTIVE. This searched for `"ACTIVE"` -- a status from the
+  // Mongo lifecycle D3 deleted -- so it matched nothing and the card reported
+  // "No ACTIVE release found" in every deployment, including ones with a
+  // perfectly good published release.
+  const active = (releases.data ?? []).find((r) => r.status === "RELEASED");
 
   return (
     <div className="flex flex-col gap-4">
@@ -141,7 +203,7 @@ function OverviewTab({ canReadReleases }: { canReadReleases: boolean }) {
           ) : active ? (
             <p className="break-all font-mono text-xs text-slate-800">{active.release_id}</p>
           ) : (
-            <p className="text-sm text-slate-600">No ACTIVE release found.</p>
+            <p className="text-sm text-slate-600">No RELEASED release found.</p>
           )}
         </Card>
         <Card title="Releases">
@@ -152,9 +214,9 @@ function OverviewTab({ canReadReleases }: { canReadReleases: boolean }) {
       </div>
 
       <p className="text-sm text-slate-500">
-        Promotion controls are absent by design: two release lifecycles exist and which
-        one is authoritative is an open decision. Approving or activating from here would
-        pick one silently, on every future promotion.
+        Promotion is on the Releases tab. One lifecycle drives it -- DRAFT to VALIDATED to
+        RELEASED, with ARCHIVED available as a retirement -- and publishing requires the
+        configuration head revision, so two operators cannot both publish.
       </p>
     </div>
   );
@@ -256,9 +318,116 @@ function ReleasesTab({ canRead }: { canRead: boolean }) {
         ) : detail.error ? (
           <p className="mt-2 text-sm text-red-700">{detail.error.message}</p>
         ) : detail.data ? (
-          <ReleaseDetail release={detail.data} />
+          <>
+            <ReleaseDetail release={detail.data} />
+            <PromotionControls release={detail.data} />
+          </>
         ) : null}
       </aside>
+    </div>
+  );
+}
+
+function PromotionControls({ release }: { release: ConfigurationRelease }) {
+  const { can } = useCapabilities();
+  const queryClient = useQueryClient();
+  const [headRevision, setHeadRevision] = useState("");
+
+  const promote = useMutation({
+    mutationFn: (status: PromotionTarget) =>
+      configApi.promote(
+        release.release_id ?? "",
+        status,
+        // Only sent when publishing -- the backend requires it there and
+        // ignores it elsewhere. Parsed rather than coerced so a non-numeric
+        // entry becomes "not supplied" and the backend's 422 explains it,
+        // instead of silently becoming NaN.
+        status === "RELEASED" ? Number.parseInt(headRevision, 10) : undefined,
+      ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["config", "releases"] }),
+        queryClient.invalidateQueries({ queryKey: ["config", "release", release.release_id] }),
+        // Publishing refreshes the process's active configuration, so the
+        // runtime snapshot this screen shows is stale too.
+        queryClient.invalidateQueries({ queryKey: ["config", "runtime"] }),
+      ]);
+    },
+  });
+
+  if (!can("config.release.promote")) {
+    return (
+      <p className="mt-3 border-t border-slate-200 pt-3 text-sm text-slate-600">
+        Promoting a release requires config.release.promote.
+      </p>
+    );
+  }
+
+  const targets = ALLOWED_PROMOTIONS[release.status ?? ""] ?? [];
+  if (targets.length === 0) {
+    return (
+      <p className="mt-3 border-t border-slate-200 pt-3 text-sm text-slate-600">
+        {/* RELEASED and ARCHIVED are both ends of the line. A release leaves
+            RELEASED by being superseded, which publishing its successor does --
+            not by a promotion of its own. */}
+        No promotion is available from {release.status ?? "this status"}.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-3 border-t border-slate-200 pt-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Promote</h3>
+
+      {targets.includes("RELEASED") ? (
+        <label className="mt-2 flex flex-col gap-1 text-sm">
+          <span className="text-slate-700">Expected head revision</span>
+          <input
+            aria-label="Expected head revision"
+            inputMode="numeric"
+            value={headRevision}
+            onChange={(event) => {
+              setHeadRevision(event.target.value);
+            }}
+            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+          />
+          <span className="text-xs text-slate-500">
+            Required to publish. An optimistic check on the configuration head, so two
+            operators publishing different releases cannot both win.
+          </span>
+        </label>
+      ) : null}
+
+      <div className="mt-2 flex flex-wrap gap-2">
+        {targets.map((target) => (
+          <button
+            key={target}
+            type="button"
+            disabled={
+              promote.isPending || (target === "RELEASED" && headRevision.trim() === "")
+            }
+            onClick={() => {
+              promote.mutate(target);
+            }}
+            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+          >
+            {target}
+          </button>
+        ))}
+      </div>
+
+      {promote.error ? (
+        // Verbatim. The backend refuses for genuinely different reasons -- a
+        // missing behaviour domain, an expired validation receipt, a checksum
+        // that no longer matches, a head-revision conflict -- and each needs a
+        // different response from the operator.
+        <p role="alert" className="mt-2 text-sm text-red-700">
+          {promote.error.message}
+        </p>
+      ) : null}
+      {promote.isSuccess ? (
+        <p className="mt-2 text-sm text-green-700">Promoted.</p>
+      ) : null}
     </div>
   );
 }
