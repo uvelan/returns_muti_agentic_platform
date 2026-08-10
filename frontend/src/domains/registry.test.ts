@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { DOMAINS, DOMAIN_PATHS, isDomainPath } from "./registry";
-import { legacyRouteDestination, normalizeBrowserPath } from "../versioning";
 
 describe("the four-domain registry", () => {
   it("declares exactly the four canonical domains", () => {
@@ -19,12 +18,17 @@ describe("the four-domain registry", () => {
     expect(isDomainPath("/graph-schema/draft/1")).toBe(true);
   });
 
-  it("does not match legacy paths or lookalikes", () => {
-    expect(isDomainPath("/v1/associate/returns")).toBe(false);
-    expect(isDomainPath("/v2/config")).toBe(false);
-    // A prefix match without the separator would swallow this.
+  it("does not match lookalikes", () => {
+    // A prefix match without the separator would swallow these, and since Wave
+    // F4 anything unmatched redirects to /returns -- so a lookalike that
+    // wrongly matched would render the wrong domain, and one that wrongly
+    // failed would bounce a real route to the front door.
     expect(isDomainPath("/returns-legacy")).toBe(false);
     expect(isDomainPath("/configuration")).toBe(false);
+    // Old bookmarks. They no longer resolve to anything and must not be
+    // mistaken for a domain on the way to the redirect.
+    expect(isDomainPath("/v1/associate/returns")).toBe(false);
+    expect(isDomainPath("/v2/config")).toBe(false);
   });
 
   it("gives every domain a distinct visibility capability", () => {
@@ -37,18 +41,6 @@ describe("the four-domain registry", () => {
     // read-only auditor loses the domain entirely.
     for (const domain of DOMAINS) {
       expect(domain.requires.endsWith(".read")).toBe(true);
-    }
-  });
-});
-
-describe("the legacy fallback no longer swallows the domain routes", () => {
-  it("would have redirected every domain path before Phase 17", () => {
-    // Guards the reason App.tsx had to change: if this ever stops being true
-    // the domain branch in App.tsx is dead code and the routes silently
-    // regress to the legacy app.
-    for (const path of DOMAIN_PATHS) {
-      const destination = legacyRouteDestination(normalizeBrowserPath(path), "", "");
-      expect(destination.startsWith("/v1")).toBe(true);
     }
   });
 });

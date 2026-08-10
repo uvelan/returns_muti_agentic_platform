@@ -100,6 +100,38 @@ const SESSION = {
 };
 
 export const canonicalHandlers = [
+  /**
+   * Still `/api/v1`, and worth noticing.
+   *
+   * `RuntimeConfigProvider` wraps the whole shell and blocks first paint on
+   * this, so without it every canonical screen renders "Configuration Error".
+   * It lived in the Data Console handlers until Wave F4 deleted them, which is
+   * how removing the legacy *frontend* briefly took down the canonical one.
+   *
+   * The endpoint itself is a leftover: the four-domain shell has a hard
+   * dependency on a versioned legacy route. Not F4's to fix -- the backend
+   * router is still mounted and Wave F2 owns it -- but it is the reason this
+   * handler is in the canonical file rather than deleted with its neighbours.
+   */
+  http.get("/api/v1/runtime-config", async () => {
+    await delay(50);
+    return HttpResponse.json(
+      envelope(
+        {
+          releaseId: "mock-baseline",
+          environment: "development",
+          apiBasePath: "/api/v1",
+          features: {},
+          capabilities: {
+            availableSourceTypes: ["MONGODB", "SQLSERVER", "NEO4J"],
+            availableModelProviders: ["GOOGLE", "NVIDIA"],
+          },
+        },
+        "runtime-config",
+      ),
+    );
+  }),
+
   http.get("/api/principal", async () => {
     await delay(50);
     return HttpResponse.json(

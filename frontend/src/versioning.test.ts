@@ -1,28 +1,35 @@
 import { describe, expect, it } from "vitest";
 
-import { routes } from "./routes";
-import {
-  COPILOT_V2_PATH,
-  legacyRouteDestination,
-  normalizeBrowserPath,
-  VERSION_ONE_PREFIX,
-} from "./versioning";
+import { normalizeBrowserPath } from "./versioning";
 
-describe("frontend route versioning", () => {
-  it("keeps every existing root route reachable under v1", () => {
-    for (const route of routes) {
-      expect(legacyRouteDestination(route.path)).toBe(`${VERSION_ONE_PREFIX}${route.path}`);
-    }
+/**
+ * What is left of this file after Wave F4.
+ *
+ * It used to assert that every legacy route stayed reachable under `/v1` and
+ * that `/v2/copilot` was reserved. Both were true and both are gone: there is
+ * no legacy app to stay reachable, and `App` now redirects anything that is not
+ * a canonical domain to `/returns`.
+ *
+ * `normalizeBrowserPath` survives because `App` and `isDomainPath` have to
+ * agree on what a path *is* before either compares one.
+ */
+describe("browser path normalisation", () => {
+  it("strips trailing slashes so /returns/ still matches /returns", () => {
+    // The bug this prevents: wouter reports the trailing slash, `isDomainPath`
+    // compares exactly, the match fails, and the shell redirects a canonical
+    // route to itself in a loop.
+    expect(normalizeBrowserPath("/returns/")).toBe("/returns");
+    expect(normalizeBrowserPath("/graph-schema///")).toBe("/graph-schema");
   });
 
-  it("redirects the old root to the v1 returns assistant and preserves URL state", () => {
-    expect(legacyRouteDestination("/", "?source=legacy", "#message")).toBe(
-      "/v1/associate/returns?source=legacy#message",
-    );
-    expect(normalizeBrowserPath("/support/returns/")).toBe("/support/returns");
+  it("leaves an already-normal path alone", () => {
+    expect(normalizeBrowserPath("/config")).toBe("/config");
+    expect(normalizeBrowserPath("/returns/abc-123")).toBe("/returns/abc-123");
   });
 
-  it("reserves the v2 UI surface for Copilot", () => {
-    expect(COPILOT_V2_PATH).toBe("/v2/copilot");
+  it("normalises the root to a single slash rather than an empty string", () => {
+    // An empty string is falsy, and every caller here branches on the result.
+    expect(normalizeBrowserPath("/")).toBe("/");
+    expect(normalizeBrowserPath("")).toBe("/");
   });
 });

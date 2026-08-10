@@ -1,109 +1,55 @@
-import { Link, Redirect, Route, Router, Switch, useLocation } from "wouter";
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
+import { Redirect, useLocation } from "wouter";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { Shell } from "./components/Shell";
-import { ToastProvider } from "./components/ToastProvider";
-import { RuntimeConfigProvider } from "./components/RuntimeConfigProvider";
 import { LoadingState } from "./components/LoadingState";
-import { routes } from "./routes";
+import { RuntimeConfigProvider } from "./components/RuntimeConfigProvider";
+import { ToastProvider } from "./components/ToastProvider";
+import { DomainApp } from "./domains/DomainShell";
 import { isDomainPath } from "./domains/registry";
 import { CapabilityProvider } from "./hooks/CapabilityProvider";
-import {
-  COPILOT_V2_PATH,
-  legacyRouteDestination,
-  normalizeBrowserPath,
-  VERSION_ONE_PREFIX,
-} from "./versioning";
+import { normalizeBrowserPath } from "./versioning";
 
-const CopilotV2Page = lazy(() => import("./features/copilot-v2/CopilotV2Page").then(
-  (module) => ({ default: module.CopilotV2Page }),
-));
-const DataSourceConfigApp = lazy(() => import("./features/data-source-config/DataSourceConfigApp").then(
-  (module) => ({ default: module.DataSourceConfigApp }),
-));
-const DomainApp = lazy(() => import("./domains/DomainShell").then(
-  (module) => ({ default: module.DomainApp }),
-));
-
-function NotFoundPage() {
-  return (
-    <section
-      className="flex min-h-[60vh] flex-col items-center justify-center gap-4 text-center"
-      aria-labelledby="not-found-heading"
-    >
-      <p className="text-sm font-medium uppercase tracking-wider text-slate-500">Page not found</p>
-      <h1 id="not-found-heading" className="text-4xl font-semibold text-slate-900">404</h1>
-      <p className="max-w-md text-sm text-slate-600">The requested console module could not be found.</p>
-      <Link
-        href="/overview"
-        className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
-      >
-        Return to overview
-      </Link>
-    </section>
-  );
-}
-
-function VersionOneApp() {
-  return (
-    <Router base="/v1">
-      <Shell>
-        <Suspense fallback={<LoadingState message="Loading module..." />}>
-          <Switch>
-            {routes.map((route) => (
-              <Route key={route.path} path={route.path} component={route.component} />
-            ))}
-            <Route path="/" component={routes.find(r => r.path === "/associate/returns")?.component} />
-            <Route>
-              <NotFoundPage />
-            </Route>
-          </Switch>
-        </Suspense>
-      </Shell>
-    </Router>
-  );
-}
-
+/**
+ * Wave F4: four user routes, and nothing else.
+ *
+ * This file used to branch four ways -- the canonical domains, the `/v2/config`
+ * datasource app, the Order Discovery Copilot at `/v2/copilot`, and a `/v1`
+ * fallback that swallowed every other path into the legacy Data Console. All of
+ * that is gone, along with the 76 legacy routes behind it.
+ *
+ * **What that deleted, stated plainly.** The four canonical domains replace the
+ * return-domain screens. They do not replace the Data Console: the data
+ * browser, graph explorer, inventory, workspaces, scenarios, jobs, imports and
+ * exports, AI studio and the system tooling had no canonical equivalent and are
+ * now absent rather than superseded. That was the owner's decision, and F4's
+ * stated end state ("exactly four user routes") is what it means.
+ *
+ * **Anything unrecognised goes to `/returns`**, not to a 404. Every legacy
+ * bookmark is now an unrecognised path, and the honest thing to do with someone
+ * arriving from one is to put them on the platform's front door rather than a
+ * dead end that says nothing about where the screens went.
+ *
+ * `DomainApp` is no longer lazy. It was split out when it was one of four
+ * possible applications; it is now the only one, so the extra chunk bought a
+ * round trip on first paint and nothing else.
+ */
 export function App() {
   const [location] = useLocation();
   const pathname = normalizeBrowserPath(location);
-  const legacyDestination = legacyRouteDestination(
-    pathname,
-    window.location.search,
-    window.location.hash,
-  );
 
   return (
     <ErrorBoundary>
       <ToastProvider>
         <RuntimeConfigProvider>
-          {/*
-            Phase 17: the four canonical domains are matched BEFORE the legacy
-            fallback below. That fallback redirects everything outside `/v1`
-            and `/v2/...` into the legacy app, so without this branch the new
-            routes are unreachable -- the plan flags this file as a mandatory,
-            non-no-op edit for exactly that reason. Legacy routing is otherwise
-            untouched and no legacy UI is removed until Wave F.
-          */}
           {isDomainPath(pathname) ? (
             <Suspense fallback={<LoadingState message="Loading platform..." />}>
               <CapabilityProvider>
                 <DomainApp />
               </CapabilityProvider>
             </Suspense>
-          ) : pathname.startsWith("/v2/config") ? (
-            <Suspense fallback={<LoadingState message="Loading datasource configuration..." />}>
-              <DataSourceConfigApp />
-            </Suspense>
-          ) : pathname === COPILOT_V2_PATH ? (
-            <Suspense fallback={<LoadingState message="Loading Order Discovery Copilot..." />}>
-              <CopilotV2Page />
-            </Suspense>
-          ) : pathname === VERSION_ONE_PREFIX || pathname.startsWith(`${VERSION_ONE_PREFIX}/`) ? (
-            <VersionOneApp />
           ) : (
-            <Redirect to={legacyDestination} replace />
+            <Redirect to="/returns" replace />
           )}
         </RuntimeConfigProvider>
       </ToastProvider>
