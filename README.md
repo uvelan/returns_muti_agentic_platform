@@ -20,7 +20,7 @@ Production-oriented return orchestration with an associate-facing Order Discover
 The application runs Python and React as host processes by default. Infrastructure runs in Docker Compose.
 
 ```text
-Associate Copilot / Customer / Support / Data Console
+Four canonical domains: /returns  /config  /graph-schema  /ai   
                          |
                          v
                    FastAPI backend
@@ -105,52 +105,60 @@ The associate Copilot is the real order-discovery entry point for the return flo
 8. The confirmed customer, order, and line continue into the return workflow.
 9. AI failure returns a deterministic response and does not break the business flow.
 
-The existing console is canonical under `/v1` (including `/v1/associate/returns`);
-legacy unversioned browser routes redirect to their `/v1` equivalents. The
-responsive Order Discovery Copilot v2 workspace is available at
-`/v2/copilot` and calls only the `/api/v2/copilot` API family. The internal
-Copilot Operations Console uses the same persistent conversation service and
-is restricted by backend administrative authorization.
+### User routes
 
-### Versioned UI routes
+Four, and nothing else. Wave F4 deleted the `/v1` console (76 routes), the
+`/v2/copilot` workspace and the `/v2/config` datasource app; anything
+unrecognised now redirects to `/returns`.
 
-| Experience | Canonical route | Notes |
+| Domain | Route | Canonical API |
 |---|---|---|
-| Existing Returns Assistant | `/v1/associate/returns` | All existing console routes are canonical below `/v1` |
-| Order Discovery Copilot v2 | `/v2/copilot` | Responsive desktop, tablet, and mobile workspace |
-| Legacy unversioned routes | `/associate/returns`, `/overview`, and others | Redirect to the matching `/v1/...` route |
+| Return Business Copilot | `/returns` | `/api/returns` |
+| Configuration | `/config` | `/api/config` |
+| Graph Schema Analyzer | `/graph-schema` | `/api/graph-schema` |
+| AI Control Center | `/ai` | `/api/ai` |
 
-### Copilot v2 API endpoints
+**What that removed has no replacement.** The Data Console -- data browser,
+graph explorer, inventory, workspaces, scenarios, jobs, imports and exports, AI
+studio, graph sync -- and the system tooling had no canonical equivalent and are
+absent rather than superseded. That was a deliberate decision, not an oversight.
 
-The v2 API surface is intentionally limited to Order Discovery Copilot
-operations. It delegates to the same production conversation, evidence,
-authorization, locking, and return-submission services used by v1.
+Two `/api/v1` paths remain in use by the four-domain shell: `/api/principal` is
+canonical, and `/api/v1/runtime-config` is a versioned legacy route the shell
+cannot boot without. The latter is a known leftover.
+
+### Order Discovery API endpoints
+
+**Corrected in Wave G4.** This section documented eight `/api/v2/copilot/*`
+endpoints. None of them exist, and none appear in `openapi.json` -- the prefix
+was never served. What actually serves Order Discovery:
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/api/v2/copilot/conversations` | List recent Copilot conversations |
-| `POST` | `/api/v2/copilot/conversations` | Start discovery with a structured anchor |
-| `POST` | `/api/v2/copilot/chat` | Start discovery from natural language |
-| `GET` | `/api/v2/copilot/conversations/{conversation_id}` | Load one conversation |
-| `POST` | `/api/v2/copilot/conversations/{conversation_id}/chat` | Continue with natural language |
-| `POST` | `/api/v2/copilot/conversations/{conversation_id}/messages` | Submit a structured clarification anchor |
-| `POST` | `/api/v2/copilot/conversations/{conversation_id}/confirm` | Confirm and lock the selected order line |
-| `POST` | `/api/v2/copilot/conversations/{conversation_id}/details` | Submit return details to the production workflow |
+| `GET` | `/api/v1/associate-returns/conversations` | List recent discovery conversations |
+| `POST` | `/api/v1/associate-returns/conversations` | Start discovery with a structured anchor |
+| `POST` | `/api/v1/associate-returns/chat` | Start discovery from natural language |
+| `GET` | `/api/v1/associate-returns/conversations/{conversation_id}` | Load one conversation |
+| `POST` | `/api/v1/associate-returns/conversations/{conversation_id}/chat` | Continue with natural language |
+| `POST` | `/api/v1/associate-returns/conversations/{conversation_id}/messages` | Submit a structured clarification anchor |
+| `POST` | `/api/v1/associate-returns/conversations/{conversation_id}/confirm` | Confirm and lock the selected order line |
+| `POST` | `/api/v1/associate-returns/conversations/{conversation_id}/details` | Submit return details to the production workflow |
+| `POST` | `/api/v2/order-agent/conversations/{conversation_id}/turns` | One durable agent turn (Wave C3, Temporal-hosted) |
+
+`/api/v2/order-agent` is the only `/api/v2` prefix that survived Wave F2's
+removal of the V2 platform shell. It is unrelated to that shell and merely
+shared the prefix.
+
+The conversation surface is reachable canonically read-only through
+`GET /api/returns/{session_id}/conversation`. It has no canonical *write*
+surface: the associate flow is partitioned by channel from
+`POST /api/returns`, and consolidating it was not in Wave D4's scope.
 
 Start a natural-language discovery conversation:
 
 ```bash
-curl -fsS \
-  -H 'Content-Type: application/json' \
-  -H 'X-Correlation-ID: readme-copilot-v2-001' \
-  -d '{"message":"Find the damaged faucet order for customer ZIP 30301"}' \
-  http://127.0.0.1:8000/api/v2/copilot/chat | jq
+curl -fsS   -H 'Content-Type: application/json'   -H 'X-Correlation-ID: readme-discovery-001'   -d '{"message":"Find the damaged faucet order for customer ZIP 30301"}'   http://127.0.0.1:8000/api/v1/associate-returns/chat | jq
 ```
-
-The response uses the standard `APIResponse` envelope. Use the returned
-conversation `id`, `version`, candidate-set metadata, and requested
-clarification fields for subsequent calls; do not invent or reuse stale
-versions.
 
 ## Graph-first runtime configuration
 
@@ -359,21 +367,23 @@ backend/
   config/                         version-controlled policy schemas and baseline values
   scripts/                        container entry points
   src/return_platform/
-    ai_gateway/                   bounded provider/model/key routing
-    api/                          production APIs
-    configuration/                graph releases, snapshots, and runtime resolver
+    agents/                       the six-agent plugin contract and registry
+    ai/                           provider routing, interception, gateway service
+    api/                          production APIs, canonical and legacy
+    configuration/                graph releases, snapshots, runtime resolver, sources, audit
     conversation/                 reusable conversation contracts and state engine
-    data_console/                 internal administration and evidence APIs
     data_platform/                graph, schema, and source integration
+    graph_schema_analyzer/        source-driven schema proposal and approval
     operations/                   Copilot and return business flow
-    secrets/                      Vault resolver and redaction
-    validation/                   validation gates and receipts
+    platform/                     dependency-free kernel: system store, reasoning, secrets
+    security/                     roles, capabilities, and the FastAPI role dependencies
+    source_connectors/            one read path per source technology
     workers/                      asynchronous operational workers
 frontend/
   src/
-    api/                          typed HTTP clients
-    features/operations/          associate-facing production pages
-    features/data-console/        internal administration pages
+    api/                          typed HTTP clients, one per canonical domain
+    domains/                      the four canonical screens and the shell
+    mocks/                        MSW handlers for `npm run dev:mock`
 infra/                            Docker infrastructure configuration
 scripts/                          Linux bootstrap, execution, validation, and evidence scripts
 ```
@@ -583,8 +593,10 @@ Containerized URLs:
 
 | Service | URL |
 |---|---|
-| Copilot v2 UI | `http://localhost:3000/v2/copilot` |
-| Existing v1 Returns Assistant | `http://localhost:3000/v1/associate/returns` |
+| Return Business Copilot | `http://localhost:3000/returns` |
+| Configuration | `http://localhost:3000/config` |
+| Graph Schema Analyzer | `http://localhost:3000/graph-schema` |
+| AI Control Center | `http://localhost:3000/ai` |
 | Backend API | `http://localhost:8000` |
 | OpenAPI document | `http://localhost:8000/openapi.json` |
 | API documentation | `http://localhost:8000/docs` |
@@ -597,8 +609,10 @@ Verify the deployment:
 docker compose --profile containerized-app ps
 curl -fsS http://127.0.0.1:8000/health/live | jq
 curl -fsS http://127.0.0.1:8000/health/ready | jq
+# The four canonical prefixes. This checked "/api/v2/copilot", which the
+# backend has never served.
 curl -fsS http://127.0.0.1:8000/openapi.json |
-  jq '.paths | keys | map(select(startswith("/api/v2/copilot")))'
+  jq '.paths | keys | map(select(test("^/api/(returns|config|graph-schema|ai)")))'
 ```
 
 Inspect status:

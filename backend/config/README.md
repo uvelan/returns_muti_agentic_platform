@@ -83,3 +83,21 @@ No other file is loaded this way. Adding a new singleton requires an explicit ne
    already be a manifest entry.
 4. Run the configuration test suite (`backend/tests/configuration/`) — `test_loader_and_compatibility`
    and `test_validator_smoke` exercise the real files in this directory end to end.
+
+## Declared but not yet loaded
+
+Wave G2 asked for legacy compatibility configuration to be removed once no
+production consumer remained. Scanned, there is none: every entry here is either
+read at runtime or named by the target design as intended-but-unwired. Those two
+states look identical from the filesystem, so the second is listed:
+
+- `policies/` -- `candidate_scoring.yaml`, `clarification.yaml`, `privacy.yaml`,
+  `return_eligibility.yaml`. Named in the target design's configuration tree.
+  No code loads them.
+- `live_validation/data_assets.sampling.yaml` -- named in the target design.
+  No code loads it. (The `live_validation` string elsewhere in the repository is
+  a coincidence: two validation scripts use it in *database* names.)
+
+These are unimplemented design, not dead compatibility shims, so G2 deleted
+nothing. Anyone treating an unreferenced file here as dead should check this
+list first.

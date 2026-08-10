@@ -1,25 +1,23 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `944cb82` (F2 - the V2 platform shell retired)
-Slice: **Wave F is three phases in.** F4, F1, F2 and F3 are done; F5 is next.
-Status: **Waves C, D and E are complete, and the cutover has started.** Wave E's four
-screens are wired to the canonical surface. Wave F has deleted the legacy frontend (F4),
-unregistered the Data Console routers (F1) and retired the V2 shell (F2). F3's criterion
-holds and has tests.
+Last pushed green commit: `4ac6b6e` (G1/G3 - Compose profiles, obsolete scripts retired)
+Slice: **Wave F is complete. Wave G is three phases in** (G1, G2, G3 done; G4 done here).
+Status: The cutover is finished. Four user routes, 107 contract paths, 22 router mounts,
+and no `data_console` or `v2` package. What remains is Wave H's final gates.
 
-**The frontend is four routes.** 191 files and 18,572 lines deleted. Everything the four
-canonical domains did not replace - the whole Data Console, the system tooling - is gone
-rather than superseded. That was an explicit owner decision; see "Wave F4".
+**Wave F, end to end:** contract 223 -> 107 paths; router mounts 42 -> 22; backend source
+files 496 -> 470; frontend 229 -> 48 files and 76+4 routes -> 4. Every test-count drop is a
+deleted subject, not lost coverage.
 
-**The contract has more than halved: 223 -> 107 paths.** 223 after Wave E's writes landed,
-148 after F1 unmounted eighteen Data Console routers, 107 after F2 removed the V2 shell.
-Router mounts in `main.py`: 42 -> 24 -> 22.
+**Open, and worth someone's attention:**
+`test_return_workflow_concurrency.py::test_a_second_completion_sees_the_first_ones_state`
+has now failed in **2 of 5** full-suite runs while passing consistently in isolation. It
+predates Wave F and is unrelated to any of it. Calling it flaky is beginning to excuse
+rather than explain it; it wants a real investigation into test pollution or a genuine
+mutex race.
 
-**What is left:** F5 (delete the modules F1 unmounted, at zero consumers), then Waves G
-and H. Nothing is gated any more - F4 removed the consumer that blocked the deletions.
-
-Suite: **2071 passed, 3 skipped, 0 failed** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
+Suite: **2048 passed, 8 skipped, 1 intermittent** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
 Frontend: eslint clean, `tsc -b` clean, 65 unit tests, 6 Playwright e2e.
 Contract: **107 paths**; drift clean in verify mode.
 mypy baseline: **42 errors / 14 files**. This moved for the first time since Phase 4 —
@@ -2734,6 +2732,92 @@ reason. Two earlier Wave D worktrees were abandoned uncommitted and came within 
 
 **All four are closed.** Wave E's backend dependencies are met; what remains in E is
 frontend work, which the owner has taken.
+
+## Wave F5 - data_console deleted, in two parts
+
+Status: DONE (`8a0d81a`, `007326f`).
+
+**Part 1: fourteen modules at zero consumers**, ~4,000 lines, plus three test files. Chosen
+by a reachability closure seeded from every import crossing into the package from outside:
+six modules reached, fourteen not. Contract unchanged at 107, because F1 had already
+unmounted all of them -- which is the expected result and the reason the unmount came
+first.
+
+`test_inventory_api.py` was deleted one commit after F1 rewired it onto a standalone app.
+That rewire was still right: F1 was an unmount, and presupposing F5's outcome inside it
+would have made the unmount unreviewable as an unmount.
+
+**Part 2: the six that were reached were never Data Console code.** They were shared code
+living in its package.
+
+`api/auth.py` was already a **Phase 17 shim** whose own docstring said "the import sweep
+that deletes it is Wave F". It defined nine `require_*_roles` one-liners wrapping
+`require_roles` -- which lives in `security/authorization.py`, so the wrapper and the thing
+it wraps sat in different packages. 21 files swept. `audit`, `sources` and `configuration`
+(renamed `releases.py`) went to `configuration/api/`; `runtime_validation` beside its
+bootstrap; `probes` beside its API consumer.
+
+**An architecture test caught a bad destination.** `probes.py` went to `platform/` first
+and `test_platform_imports_no_domain_module` failed -- `platform/` is the dependency-free
+kernel and probes imports `configuration.settings`. The test named the exact import.
+
+Two references the sed sweep missed, both found by re-grepping rather than trusting the
+rewrite: a different import form (`from ...api import auth as legacy_auth`) and a stale
+entry in the analyzer's forbidden-import list. **Third occurrence of that shape** after F2's
+two. Re-grep after every sweep.
+
+---
+
+## Wave G - infrastructure, scripts, config, docs
+
+Status: G1, G2, G3 DONE (`4ac6b6e`); G4 done here.
+
+**G1 - three Compose profiles.** Default now matches the plan exactly: ten infrastructure
+and bootstrap services. `temporal-ui` and `seed-runner` moved to a new `dev-tools` profile;
+`runtime-configuration-init` moved *into* the default, because it seeds the graph
+configuration every process reads at startup and leaving it behind the app profile meant a
+default stack that could serve configuration to nothing.
+
+`containerized-app` keeps **eight** services, not the plan's five. `order-discovery-worker`
+(Wave C3, built after the plan was written), `data-job-worker` and
+`integration-outbox-worker` all exist with real entrypoints. Deleting working services to
+match a list that predates them is the mistake this programme keeps catching; the
+divergence is recorded in a test.
+
+A `diagnostics` dev-tool now exists and replaces something worse:
+`run_real_infra_suite.sh` expects a `c2-test-runner` container that nothing in the
+repository creates -- a hand-made `python:3.13-slim` that source was `docker cp`-ed into,
+which is why syncing merges rather than replaces and why a stale file in it already
+produced one false green. The suite script is deliberately not rewired onto it yet.
+
+**G2 - nothing to remove, which is the finding.** The phase asks for legacy compatibility
+configuration to be deleted at zero consumers. Scanned, there is none. Every entry under
+`backend/config/` is either read at runtime or named by the target design as
+intended-but-unwired: `policies/` (four files) and `live_validation/data_assets.sampling.yaml`
+have no loader but are in the design's configuration tree. Unimplemented design is not a
+dead compatibility shim, so G2 deleted nothing and `backend/config/README.md` now lists the
+declared-but-unloaded set, because the two states are indistinguishable from the
+filesystem.
+
+**G3 - mostly repairing what F4 broke.** `verify_mandatory_routes.py` and
+`mandatory_routes.json` deleted (seventeen routes in a file F4 removed;
+`validate_stage4_source.py` owns that assertion now).
+`validate_stage4m_dependency_simulation.py` lost its six UI assertions and kept its backend
+ones. `validate_stage4_source.py` itself needed two further updates for F5 and G1. **Three
+separate gate scripts were left broken by F4**; all three pass now.
+
+**G4 - the README was substantially false.** Corrections: `/v1` was described as the
+canonical console; the repository layout listed `data_console/` and
+`features/data-console/`; the containerized URL table pointed at `/v2/copilot` and
+`/v1/associate/returns`.
+
+And one that predates Wave F entirely: **the README documented eight `/api/v2/copilot/*`
+endpoints that have never existed** and appear in no contract. Replaced with what actually
+serves Order Discovery -- `/api/v1/associate-returns/*` plus the Temporal-hosted
+`/api/v2/order-agent/.../turns` -- and the verification snippet that grepped the contract
+for `/api/v2/copilot` now checks the four canonical prefixes.
+
+---
 
 ## Wave E frontend - the four screens, wired
 
