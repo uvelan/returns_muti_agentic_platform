@@ -1,6 +1,9 @@
 import asyncio
+from collections.abc import AsyncIterator
+from typing import Any
 
 import pytest
+import pytest_asyncio
 from pymongo import AsyncMongoClient
 
 from return_platform.configuration.application.activation import (
@@ -48,22 +51,27 @@ def _snapshot(release_id: str) -> RuntimeSnapshot:
     )
 
 
-@pytest.mark.asyncio
-async def test_concurrent_activation(test_settings: Settings) -> None:
-    """Proves that concurrent activation attempts are strictly serialized.
+@pytest_asyncio.fixture
+async def activation_collections(
+    test_settings: Settings,
+) -> AsyncIterator[tuple[ActivationService, Any, Any]]:
+    """Clean before *and* after.
 
-    Exactly one activation must succeed. The others must receive an
-    ActivationConflictError. The pointer version must advance exactly once.
-    The loser remains in APPROVED status.
+    This test used to clean only before inserting, so every run left `r1`, `r2`,
+    `r3` and an active pointer behind in the shared dev database. They were
+    still there months later, and were briefly mistaken for real configuration
+    data while measuring the D3 lifecycle decision -- a test that leaves rows an
+    operator might inspect is a test that can be misread as production state.
+
+    Cleaning at both ends rather than only at the end: a previous run that died
+    mid-test still has to be recoverable from.
     """
     client = AsyncMongoClient(test_settings.mongo_dsn.get_secret_value())
     service = ActivationService(client)
-
-    # Ensure indexes and clear collections for isolation.
-    # ActivationService always operates against the "platform" database
-    # (see ActivationService.__init__) regardless of the business
-    # mongo_database setting -- the test must target the same database
-    # and collection names or it silently observes an empty collection.
+    # `ActivationService` always operates against the "platform" database (see
+    # its `__init__`) regardless of the business `mongo_database` setting -- the
+    # test must target the same database and collection names or it silently
+    # observes an empty collection.
     await service.initialize_indexes()
     db = client.get_database("platform")
     releases = db.get_collection("configuration_releases")
@@ -71,6 +79,25 @@ async def test_concurrent_activation(test_settings: Settings) -> None:
 
     await releases.delete_many({})
     await pointer.delete_many({})
+    try:
+        yield service, releases, pointer
+    finally:
+        await releases.delete_many({})
+        await pointer.delete_many({})
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_activation(
+    activation_collections: tuple[ActivationService, Any, Any],
+) -> None:
+    """Proves that concurrent activation attempts are strictly serialized.
+
+    Exactly one activation must succeed. The others must receive an
+    ActivationConflictError. The pointer version must advance exactly once.
+    The loser remains in APPROVED status.
+    """
+    service, releases, pointer = activation_collections
 
     # Create 3 approved releases, each with a real snapshot/checksum pair.
     await releases.insert_many(

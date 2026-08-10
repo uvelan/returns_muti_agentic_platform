@@ -34,9 +34,37 @@ class _SystemStoreStructurePayload(BaseModel):
     indexes: list[Mapping[str, Any]] | None = None
 
 
+#: The providers this package actually implements. Every concrete class here is
+#: Mongo -- `MongoLeaseStore`, `PymongoStructureGateway`, `MongoVersionLedger`,
+#: `MongoBootstrapStateStore` -- and the abstraction seam reflects that: the
+#: protocol is `MongoStructureGateway`, and `IndexDefinition` carries
+#: `partial_filter_expression` and `expire_after_seconds`, which are Mongo
+#: concepts rather than neutral ones.
+#:
+#: `system_store.yaml` advertises `allowed_providers: [NEO4J, MONGODB,
+#: POSTGRESQL, SQLSERVER]`, which is the intended destination and not the current
+#: capability. Adding a provider here means implementing a gateway for it, not
+#: editing this set.
+SUPPORTED_PROVIDERS: frozenset[str] = frozenset({"MONGODB"})
+
+
+class UnsupportedSystemStoreProvider(Exception):
+    """The manifest asked for a datastore this build cannot serve.
+
+    Raised at load time rather than tolerated, because the alternative is what
+    the code did before: `provider` was not even a field on the payload model,
+    so `extra="ignore"` dropped it at parse time and a manifest declaring
+    `provider: POSTGRESQL` bootstrapped silently onto Mongo. A configuration
+    value that is read by nothing and contradicted by everything is worse than
+    no configuration value, because operators reasonably believe it.
+    """
+
+
 class _SystemStoreConfigPayload(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore")
 
+    provider: str = "MONGODB"
+    allowed_providers: list[str] | None = None
     auto_bootstrap_missing_structures: bool = False
     fail_closed_on_drift: bool = False
     structures: Mapping[str, _SystemStoreStructurePayload] = {}
@@ -53,7 +81,35 @@ def load_system_store_config(path: Path) -> _SystemStoreConfigPayload:
     raw = yaml.safe_load(resolved.read_bytes())
     if not isinstance(raw, dict):
         raise ValueError("System store manifest must be a YAML object.")
-    return _SystemStoreModuleFile.model_validate(raw).payload
+    config = _SystemStoreModuleFile.model_validate(raw).payload
+    _require_serviceable_provider(config, source=resolved)
+    return config
+
+
+def _require_serviceable_provider(config: _SystemStoreConfigPayload, *, source: Path) -> None:
+    """Refuse to bootstrap onto a datastore this build has no gateway for.
+
+    Two distinct failures, reported separately because the fixes differ:
+
+    * `provider` names something unimplemented -- the manifest is asking for a
+      backend that does not exist yet. Fail closed; silently using Mongo would
+      make the platform's own configuration untrue.
+    * `provider` is not in its own `allowed_providers` -- the manifest
+      contradicts itself, and whichever half is wrong, running is not the
+      answer.
+    """
+    provider = config.provider.strip().upper()
+    if provider not in SUPPORTED_PROVIDERS:
+        raise UnsupportedSystemStoreProvider(
+            f"{source} declares provider {config.provider!r}, which this build has no "
+            f"gateway for. Implemented: {', '.join(sorted(SUPPORTED_PROVIDERS))}."
+        )
+    declared = config.allowed_providers
+    if declared is not None and provider not in {item.strip().upper() for item in declared}:
+        raise UnsupportedSystemStoreProvider(
+            f"{source} declares provider {config.provider!r} but lists allowed_providers "
+            f"{sorted(declared)}, which excludes it."
+        )
 
 
 def structure_definitions(

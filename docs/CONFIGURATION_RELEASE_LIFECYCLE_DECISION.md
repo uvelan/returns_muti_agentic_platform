@@ -70,11 +70,23 @@ compare-and-swap activation and its concurrency tests all protect a code path no
 
 ## Three things worth noticing before choosing
 
-**The three test fixtures in `configuration_releases` are a leak, not data.** `r1`/`r2`/`r3`
-with checksums `c1`/`c2`/`c3` are from `tests/configuration/test_release_lifecycle.py`
-running against a shared dev database and never cleaning up. Whatever is decided, those
-should be removed and the test given an isolated database or a teardown — a test suite that
-leaves rows in a database an operator might inspect is its own small problem.
+**The rows in `configuration_releases` are leaks, not data — and there are two sets.**
+Corrected after tracing them properly; the first version of this document attributed both to
+`test_release_lifecycle.py`, which turned out to use an in-memory client and touch no real
+database at all.
+
+* **`platform.configuration_releases`** (3 rows + an active pointer) — definitively
+  `tests/configuration/test_concurrent_activation.py`. It cleaned *before* inserting and
+  never after, and the residue matches its outcome exactly: `r1` SUPERSEDED, `r3` ACTIVE,
+  `r2` the APPROVED loser. Fixed — the setup now runs in a fixture that cleans at both ends.
+* **`return_platform.configuration_releases`** (3 rows, all APPROVED, placeholder checksums
+  `c1`/`c2`/`c3`) — **origin unknown.** `ActivationService` has targeted the `platform`
+  database in every revision back to its introduction, so no version of that test wrote
+  these. They are unreachable by current code, which reads only `platform`.
+
+A test suite that leaves rows in a database an operator might inspect is its own small
+problem, and this one cost real time: these rows were briefly read as evidence that the
+Mongo lifecycle held production data.
 
 **The Neo4j transition table is written out three times.** `data_console/api/configuration.py:345`,
 and twice in `configuration/graph_repository.py` (`:154` in-memory, `:388` Neo4j). Whichever
@@ -100,9 +112,13 @@ zero uses anywhere in `platform/system_store/`. Every concrete implementation is
 
 Two consequences:
 
-1. A config declaring `provider: POSTGRESQL` today validates, logs nothing, and runs on
-   Mongo. That is a config value that lies, and it should fail closed regardless of what is
-   decided here. Small, independent, no decision needed.
+1. ~~A config declaring `provider: POSTGRESQL` today validates, logs nothing, and runs on
+   Mongo.~~ **Fixed.** It was worse than described: `provider` was not a field on the
+   bootstrap loader's payload model at all, so `extra="ignore"` discarded it at parse time —
+   the value never reached any code that could have honoured it. `load_system_store_config`
+   now refuses a provider no gateway implements, and separately refuses a manifest whose
+   `provider` sits outside its own `allowed_providers`. `allowed_providers` still records
+   the intended destination; only the active provider has to be serviceable.
 2. Declaring the release store as a SystemStore structure would mean **"MONGODB, declared
    properly"** — not "any datasource". Real portability needs a provider-neutral gateway
    contract and at least one non-Mongo implementation, which is Wave G/H-sized and should
