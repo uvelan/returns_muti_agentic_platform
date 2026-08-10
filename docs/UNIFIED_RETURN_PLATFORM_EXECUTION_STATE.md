@@ -1,15 +1,16 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `870e066` (D3 — the Mongo release lifecycle retired)
-Slice: **Wave D3 — one configuration release lifecycle.** Option A executed in three
-slices; D4's write consolidation closed before it in four
-Status: **Wave C complete. Wave D's completion condition met, and its two substantive
-open items — D3's lifecycle decision and D4's write consolidation — are both now
-closed.** What remains in D is additive; see "Wave D: what remains" below. **Wave E is complete** (all five phases, read-only — see the
+Last pushed green commit: `10a107b` (D3 — canonical sources and audit reads)
+Slice: **Wave D is closed.** Every item across D1–D4 is done bar one parked by the owner
+(`/support` and `/conversation` canonical reads)
+Status: **Waves C, D and E are complete.** D1's untested claim, D2's wiring and operator
+surface, D3's lifecycle decision and remaining reads, and D4's write consolidation are all
+closed — see "Wave D: what remains" below for the one parked item and why. **Wave E is complete** (all five phases, read-only — see the
 Wave E section). Wave F is blocked on E's cutover, not on backend work.
 
-Suite: **2033 passed, 2 skipped, 0 failed** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
+Suite: **2057 passed, 3 skipped, 0 failed** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
+Contract: **217 paths**; drift clean on consecutive runs.
 mypy baseline: **42 errors / 14 files**. This moved for the first time since Phase 4 —
 retiring the Mongo release lifecycle took five of the old 47 with it. Quote 42/14.
 Contract: **211 paths**; drift check passes on consecutive runs; frontend `tsc -b` clean.
@@ -1960,24 +1961,114 @@ In rough order of blast radius:
 
    The canonical write surface is no longer blocked by anything.
 
-3. **D4's remaining read domains.** Session, list, timeline, artifacts and evidence are
-   canonical. Support, fulfillment, warehouse and outbox events have no canonical read path
-   yet.
-4. **D3's remaining read domains.** Only runtime and releases are canonical. Sources,
-   integrations, business config, modules, security and audit live under Data Console
-   routers or do not exist; each is its own slice.
-5. **D2's API-process route wiring.** `main.py` builds its route pool at ~577, before the
-   analyzer's `bootstrap_system_store` at ~626, so MANUAL in the API process still resolves
-   to the filesystem `ManualFileProvider`. The worker process is correctly wired. Fixing it
-   means reordering a deliberately degrade-safe startup sequence.
-6. **D2's operator console.** `/api/ai/interceptions` (identity and status) and the store's
-   `request_payload` are the two halves; nothing joins them into a surface an operator can
-   answer a held request from.
-7. **D1's untested claim.** The `ai/README.md` argues that `AIGatewayService.evaluate` and
-   `StructuredOutputInvoker.invoke` share one path (route pool, config, guards, breakers,
-   limiters) and differ only in response contract. That is prose, not a test.
+3. **D4's remaining read domains — CLOSED as far as they are real.** Session, list,
+   timeline, artifacts and evidence are canonical. Of the four the plan still named:
+   *fulfillment* and *outbox events* need no endpoint — `/evidence` already returns
+   `shippingInstructions`, `shipmentEvents`, `pickup` and `integrationCommands`, and a
+   second path would duplicate them. *Warehouse* needs a new SQL read (bay assignment is in
+   `platform.bay_assignment`; the repository has only `list_bay_candidates`, a planning
+   read). *Support* and *conversation* are **parked by the owner** — see below.
+4. **D3's remaining read domains — CLOSED** (`10a107b`). `/api/config` gained `sources` and
+   `audit`, both delegating to the Data Console handlers rather than reimplementing them.
+   The other four needed nothing: business config and integrations are already in
+   `/runtime`'s snapshot, `modules` would return `[]` forever (`_kernel_module_registry` is
+   empty by design), and `security` is not configuration — the role model is code, and
+   publishing the role-to-capability table would let a UI reimplement authorization
+   locally. All four are pinned by tests, including one that fails if the block explaining
+   why is deleted.
+5. **D2's API-process route wiring — CLOSED** (`04e5ec3`).
+6. **D2's operator console — CLOSED** (`04e5ec3`).
+7. **D1's untested claim — CLOSED** (`3d3b3a5`).
 
-Item 1 is the only one needing a decision. 3–7 are bounded, additive and independent.
+**Parked at the owner's request:** `/api/returns/{id}/support` and `/conversation`. Findings
+recorded so they need not be re-derived: **support has two stores** —
+`repository.support_cases` (which has a session-scoped `get_support_case_for_session`) and
+`return_support/service.py`'s `support_work_items` — both empty in dev, and which is
+authoritative is unresolved. Exposing one canonically before settling that would repeat D3's
+mistake at smaller scale. The session→conversation direction was not confirmed to exist.
+
+Nothing in Wave D is open except the parked pair. Wave F — the cutover — is next, and is
+blocked on Wave E's frontend consuming the canonical domains rather than on backend work.
+
+## Closing Wave D — D1's claim, D2's wiring and console, D3's remaining reads
+
+Status: DONE (`3d3b3a5`, `04e5ec3`, `10a107b`).
+
+### D1 — the shared-path claim is now a test (`3d3b3a5`)
+
+`ai/README.md` argued that `AIGatewayService.evaluate` and
+`StructuredOutputInvoker.invoke` share the route pool, configuration, safety guards,
+breakers and limiters, differing only in response contract. Prose. Five tests decompose it:
+the same injection is refused by both, the same payload ceiling rejects both, both draw
+candidates from the *same* pool object — asserted by task id rather than call count, because
+a count passes if one entry point asks twice and the other has its own pool — and they
+diverge exactly where the README says, `REVIEW_REQUIRED` versus a raise.
+
+`StructuredOutputInvoker` had no test constructing it anywhere before this.
+
+The spy subclasses the real `AIRoutePool` rather than faking it, and takes `**kwargs`
+because `evaluate` passes `force_provider` and `invoke` does not — pinning the exact
+signature made the spy assert a calling convention it has no opinion about, and it broke
+once for that reason before being loosened.
+
+### D2 — one MANUAL provider, an operator surface, and a bridge nobody ran (`04e5ec3`)
+
+**The two processes disagreed.** `build_routes(settings, interception_store=...)` decides
+which MANUAL implementation the pool gets. The worker bootstrapped the SystemStore then
+built routes and got the durable one; `main.py` built routes at line 582 and bootstrapped
+~50 lines later, so it passed `None` and silently got `ManualFileProvider` — writing held
+prompts to local disk, in a container whose disk does not persist. Bootstrap is hoisted
+above route construction, every degrade path unchanged. It also removed a second bootstrap
+that would have run in the same process: two owner ids contending for one lease.
+
+**The operator surface** is two endpoints — unseal the request, then answer it — rather than
+one enriched listing, so unsealing is a distinct auditable act. The payload can carry block
+5 UNTRUSTED SOURCE SAMPLE, which is why it is sealed at rest; decrypting every pending
+prompt to render a queue would defeat that. Gated on `ai.interception.act`, the narrower
+capability, because you unseal in order to answer.
+
+An absent store answers **503** here while the listing answers **`[]`**. That reads as an
+inconsistency until you see it: "no pending interceptions" is true for a deployment that
+never uses the manual path, but "here is interception X" has no truthful empty form, and a
+404 would read as "already handled".
+
+**The gap found between the two: `InterceptionResumeDispatcher` was never constructed
+anywhere.** It existed and was tested; nothing ran it. An answered interception would sit at
+`ANSWERED` forever and the waiting workflow would never be signalled — so shipping the
+operator surface without noticing would have made it a lie. `workers/interception_resume.py`
+runs it, bridging rather than delivering: answered interceptions become resume-command rows
+and the existing reasoning resume worker turns those into Temporal signals, because
+at-least-once is already solved there.
+
+### D3 — sources and audit, and the four that needed nothing (`10a107b`)
+
+Of the plan's six configuration domains, two needed building. Both delegate to the Data
+Console handlers rather than reimplementing the probe fan-out or the audit query; a test
+fails if either stops delegating.
+
+The other four are the interesting part. Business config and integrations are already in
+`/runtime`'s snapshot. `modules` would return `[]` forever. `security` is not configuration —
+the role model is code, and publishing the role-to-capability table would let a UI
+reimplement authorization locally, which the capability layer exists to prevent.
+
+All four are pinned by tests, because "already served by `/runtime`" stops being true the
+moment someone narrows what `/runtime` returns, and an endpoint that always answers nothing
+is worse than an honest absence: it reads as "covered". One test fails if the block
+explaining the reasoning is deleted, which is the realistic way reasoning gets lost.
+
+### The pattern, five for five
+
+Every "missing domain" the plan named turned out to be already-served, unbacked, or not a
+domain: the artifact pair, the associate flow, fulfillment, outbox events, business config,
+integrations, modules, security. The plan's lists were written from intent; the code
+consistently said something else. Checking each against real backing before building saved
+six endpoints that would have shadowed existing data — and the one genuine write-side
+problem (four routers recording workflow transitions with one authorization check between
+them) was on no list at all.
+
+**Verification.** Contract **217 paths**, drift clean. ruff + format clean across 745 files.
+mypy **42/14**. Full real-infra suite **2057 passed, 3 skipped** — the third skip is the
+worker-script assertion, correctly skipped in the container, whose copy omits `scripts/`.
 
 ## Wave D3 — one configuration release lifecycle, and it is the graph
 
