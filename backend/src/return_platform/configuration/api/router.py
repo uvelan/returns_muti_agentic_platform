@@ -99,19 +99,20 @@ async def get_release(
     return _ok(request, data)
 
 
-# --- no mutation surface yet, deliberately -----------------------------------
+# --- no mutation surface yet -------------------------------------------------
 #
-# Phase 15 requires that "activation and adoption use the already hardened
-# configuration/epoch mechanisms". They currently do not, and this is where that
-# shows: `ReleaseService` -- which verifies checksums on the VALIDATED->APPROVED
-# and APPROVED->ACTIVE transitions (Slice 3R) -- is constructed in exactly one
-# place in the repository, `tests/configuration/test_release_lifecycle.py`. No
-# production path uses it. The Data Console router instead hand-rolls the
-# lifecycle inline with its own `allowed_transitions` table and no checksum
-# recompute.
+# The blocker this comment used to describe is gone. There were two configuration
+# release lifecycles -- a checksum-hardened Mongo one that no production path
+# constructed, and the graph one the runtime actually reads. Wave D3 resolved it
+# in favour of the graph (see
+# `docs/CONFIGURATION_RELEASE_LIFECYCLE_DECISION.md`): the transition table is
+# now single-sourced as `graph_repository.RELEASE_TRANSITIONS`, the checksum is
+# frozen at VALIDATED and verified at RELEASED, and `ReleaseService` /
+# `ActivationService` are deleted.
 #
-# Adding canonical mutation endpoints on top of that would make it *three*
-# lifecycles, or would silently bless whichever one this file happened to call.
-# Deciding which is authoritative -- and wiring it -- is a real decision with a
-# real blast radius, so the canonical surface ships read-only until it is made.
+# So a canonical mutation surface here is now merely unbuilt, not blocked. It
+# would promote through `ConfigurationGraphRepository.promote_release`, which is
+# the one path that enforces the lifecycle. What it still needs is a decision
+# about which promotions belong on a versionless canonical API versus the Data
+# Console's operator surface, and that is scope rather than risk.
 # Tracked in the ledger as D3's blocking item.

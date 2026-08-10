@@ -73,32 +73,47 @@ first. It checks:
 ## Release lifecycle
 
 ```
-DRAFT → VALIDATED → APPROVED → ACTIVE → SUPERSEDED
+DRAFT → VALIDATED → RELEASED → SUPERSEDED → ARCHIVED
 ```
 
-`DRAFT`/`VALIDATED`/`APPROVED` (and the `VALIDATED → DRAFT` rejection path) are owned exclusively
-by `application/release_service.py::ReleaseService`; `APPROVED → ACTIVE` and `ACTIVE → SUPERSEDED`
-are owned exclusively by `application/activation.py::ActivationService` — see
-`domain/release.py::RELEASE_SERVICE_TRANSITIONS`. Every transition recomputes the snapshot checksum
-(`application/snapshot.py::compute_checksum`) and compares it against the persisted value before
-proceeding, so a tampered or corrupted stored snapshot is caught before it can be validated,
-approved, or activated. Every transition is a single CAS write on `(release_id, expected_status)`;
-a losing concurrent caller sees `modified_count == 0` and raises `InvalidTransitionError` — proven
-by `tests/configuration/test_release_lifecycle.py`'s barrier-synchronized concurrent
-validate/approve tests, which assert `success_count == 1, failure_count == 1` exactly, not just "at
-least one succeeded."
+Held in Neo4j and enforced by `graph_repository.py::RELEASE_TRANSITIONS`, which is the single
+table all three enforcers share: both repository implementations and the Data Console router's
+early 409 check. `RELEASED` is the live state — `get_active_release` resolves it, and
+`ConfigurationSnapshotBuilder` refuses to start production without one.
 
-## Atomic activation
+There is deliberately no transition *out* of `RELEASED`. A release leaves it only by being
+superseded when its successor publishes, which the publish transaction does atomically; exposing
+`RELEASED → SUPERSEDED` as a promotion would let an operator retire the live configuration with no
+replacement.
 
-`ActivationService.activate_release()` is a single MongoDB transaction (design §13.8): supersede
-the current `ACTIVE` release, activate the target (must be `APPROVED`), CAS-update the
-`configuration_active_pointer` singleton — all three or none. A partial unique index on
-`configuration_releases` where `status = "ACTIVE"` is defence in depth against two `ACTIVE`
-releases ever being representable even if the transaction logic changes. Both `ActivationService`
-and `ReleaseService` always operate against the fixed `platform` database — independent of the
-business `mongo_database` setting — via fixed collection names
-(`configuration_releases`, `configuration_active_pointer`); a test or caller that targets a
-different database/collection name observes an always-empty collection and proves nothing.
+**Wave D3 retired a second lifecycle.** `application/release_service.py::ReleaseService` and
+`application/activation.py::ActivationService` implemented DRAFT → VALIDATED → APPROVED → ACTIVE
+→ SUPERSEDED over MongoDB, with checksum verification and a compare-and-swap activation. It was
+the better-hardened of the two and no production path ever constructed it — both services existed
+only in their own tests, while the runtime read the graph. Keeping both meant two vocabularies
+over two databases; see `docs/CONFIGURATION_RELEASE_LIFECYCLE_DECISION.md` for the measurements
+behind choosing the graph. `domain/release.py::ReleaseStatus` survives as the *manifest* status
+vocabulary and no longer describes any live transition.
+
+## Integrity
+
+The release checksum is frozen and then verified, rather than restamped:
+
+- **DRAFT → VALIDATED** computes the checksum over every domain payload and records it.
+  `save_draft_domain` refuses to touch a release past DRAFT, so this is the point contents stop
+  changing.
+- **VALIDATED → RELEASED** recomputes and *compares*, raising `ConfigurationIntegrityError` on
+  mismatch. Before Wave D3 both repositories recomputed and overwrote, so a domain edited between
+  validation and publication was adopted rather than caught.
+- **Every load of the active release** recomputes and compares again
+  (`ConfigurationSnapshotBuilder.build_snapshot`). This is the strongest of the three: it catches
+  tampering after publication, and in production — where `allow_baseline_fallback=False` — a
+  mismatch means the process refuses to start.
+
+All three go through one `compute_release_checksum`. They were previously three separate
+implementations kept consistent by nothing but having been written the same way. The encoding is
+length-delimited so that a `(domain_key, payload)` pair cannot collide with a different split of
+the same bytes.
 
 pymongo's async driver makes `session.start_transaction()` itself a coroutine — it must be
 `await`ed to obtain the context manager (`async with await session.start_transaction():`). A
