@@ -1,14 +1,14 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `1df6133` (E5 — Respond Manually wired to D2's operator API)
+Last pushed green commit: `23abcdc` (E4 blocker — the analyzer draft shape is serialized)
 Slice: **Wave D is closed.** Every item across D1–D4 is done bar one parked by the owner
 (`/support` and `/conversation` canonical reads)
-Status: **Waves C and D are complete.** **Wave E is built but still mostly read-only** —
-its screens were finished before any mutation surface existed. Two of its four blockers are
-now gone and E5's manual-response flow is wired; the rest waits on canonical writes. See
-the Wave E sections. **Wave E is complete** (all five phases, read-only — see the
-Wave E section). Wave F is blocked on E's cutover, not on backend work.
+Status: **Waves C and D are complete.** **Wave E's five phases are built, but still mostly
+read-only** — its screens were finished before any mutation surface existed. Three of its
+four blockers are now gone (`870e066`, `04e5ec3`, `23abcdc`) and E5's manual-response flow
+is wired. **The one that remains is D4's write consolidation**, and it is the whole of what
+is left before Wave F. See the Wave E sections.
 
 Suite: **2057 passed, 3 skipped, 0 failed** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
 Contract: **217 paths**; drift clean on consecutive runs.
@@ -2526,10 +2526,10 @@ visible to whoever opens the file:
   panel. Wiring them to the legacy routers would add a tenth way to mutate a return, which
   is exactly what D4 is holding the line against.
 - **E3** — 2 of 9 tabs have a canonical endpoint. No promotion controls: see below.
-- **E5** — no Claim / Respond Manually / Generate Candidate / Replay / Release / Cancel,
-  and no manual response editor. D2's operator API does not exist; an editor whose submit
-  cannot submit is worse than none.
-- **E4** — no graph canvas. See below.
+- **E5** — Respond Manually and the response editor are now wired (`1df6133`). Claim,
+  Generate Candidate, Replay, Release and Cancel still have no backend route.
+- **E4** — no graph canvas *in the frontend*. Its backend blocker closed in `23abcdc`;
+  see below.
 
 ### Phase 17's stated premise was wrong, and following it would have caused the harm it warns about
 
@@ -2562,14 +2562,46 @@ cannot quietly become dead code.
 
 ### The analyzer serializes counts, never the draft shape — E4 has no canvas
 
-`/api/graph-schema` returns `entity_count` and `relationship_count`. `draft.shape.entities`
-exists in the domain model and `api/drafts.py:138-139` reads the counts off it and discards
-the rest. **No route returns the entities and relationships a canvas would draw.** The
-column states that instead of rendering invented structure from two integers. Closing it is
-one backend change: serialize the shape.
+Status: **backend closed** (`23abcdc`). The frontend canvas is not built.
 
-Four tabs the required layout names — Properties, Mapping, Indexes, Sync — have no backing
-data on that surface either, and say so.
+`/api/graph-schema` returned `entity_count` and `relationship_count`. `draft.shape.entities`
+existed in the domain model and `api/drafts.py` read the counts off it and discarded the
+rest. **No route returned the entities and relationships a canvas would draw.** The column
+stated that instead of rendering invented structure from two integers.
+
+`GET /drafts/{id}/shape` now returns entities with their properties (type, source field,
+transformation), identifier properties, ownership and sync mode; relationships with both
+endpoints and cardinality; indexes and constraints. That also gives the Properties,
+Mapping, Indexes and Sync tabs their backing data — all four were named by the required
+layout and had none.
+
+**The ledger's "one backend change" was optimistic, and the correction is the interesting
+part.** Two decisions the obvious version would have got wrong:
+
+*The shape is typed at the API boundary, not in the domain.* `GraphSchemaShape` is a plain
+mapping on purpose — it is the *result* of applying typed mutation commands, never an
+editing surface, and typing it in the domain would add a second place every command has to
+satisfy. The cost of leaving it untyped is that a command could start writing a
+differently-named key, which would serialise as a missing field and quietly stop the canvas
+drawing an attribute. The view models set `extra="forbid"`, so it raises instead. No current
+command can produce such a key — which is exactly why the guard is tested rather than
+assumed.
+
+*It is a separate endpoint from the counts, not an addition to them.* Counts are O(1) and
+are what a draft *listing* needs; a real source's schema is unbounded, and inlining it would
+make every listing pay for a payload only the canvas reads. A test fails if the shape ever
+appears on `GET /drafts/{id}`.
+
+An empty draft returns an empty shape rather than 404 — otherwise "no entities yet" is
+indistinguishable from "no such draft".
+
+Seven tests. Gate: ruff clean, mypy unchanged at 42/14, contract PASS at 218 paths, full
+real-infra suite 2064 passed / 3 skipped.
+
+The 15 lint errors that briefly held this commit were F811: importing the sibling module's
+`client`/`persistence` fixtures by name collides with the parameter names every test binds
+them to. Both other modules in the package declare their own fixtures, so this one does too
+— a `conftest.py` would have changed fixture resolution for eight files to save six lines.
 
 ### E3 has no promotion controls because the D3 decision is still open
 
@@ -2636,8 +2668,12 @@ reason. Two earlier Wave D worktrees were abandoned uncommitted and came within 
    which was added precisely to stop a write surface appearing before that work was done.
    **This is the largest remaining step in the programme** and blocks E2 entirely and E3
    substantially.
-4. **Serialize the analyzer draft shape** — one backend change, unblocks E4's canvas.
-   Untouched, and not re-verified as still being one change.
+4. ~~**Serialize the analyzer draft shape**~~ — **done** (`23abcdc`). `GET
+   /drafts/{id}/shape` exists and E4's canvas has data to draw. It was not "one backend
+   change" — see the section above for the two design decisions that made it three. The
+   frontend canvas itself is still unbuilt; nothing backend blocks it.
+
+**Only item 3 remains**, and it is the whole of what is left before Wave F.
 
 ## Wave D2 / Phase 14, slice 3 — the resume bridge (at-least-once)
 
