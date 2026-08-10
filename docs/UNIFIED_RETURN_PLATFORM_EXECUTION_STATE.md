@@ -1,13 +1,14 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `f7244fd` (D4 slice 3 — no transition recorded twice)
-Slice: **Wave D4 — the write consolidation**, three slices landed
+Last pushed green commit: `7c700e3` (D4 slice 4 — return creation single-sourced)
+Slice: **Wave D4 — the write consolidation**, four slices landed; every Phase 16
+duplicate now closed
 Status: **Wave C complete. Wave D's completion condition met**, with items still open — see
 "Wave D: what remains" below. **Wave E is complete** (all five phases, read-only — see the
 Wave E section). Wave F is blocked on E's cutover, not on backend work.
 
-Suite: **2009 passed, 2 skipped, 0 failed** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
+Suite: **2017 passed, 2 skipped, 0 failed** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
 mypy baseline: **47 errors / 16 files**, unchanged across every commit in this branch.
 Contract: **211 paths**; drift check passes on consecutive runs; frontend `tsc -b` clean.
 
@@ -1922,36 +1923,62 @@ connector regression test.
 Wave D's *completion condition* — "backend exposes the four canonical API domains and all
 are generated into OpenAPI" — is met, and nothing in D still blocks Wave E.
 
-**Three D4 slices have landed since this list was written** (`5fdc17f`, `bc1baf7`,
-`f7244fd`): the production-event authorization consolidation, the `/artifacts` +
-`/evidence` naming, and the double-recording fix behind the stage-action overlap. Each is
-described in its own section below. Item 2 has shrunk to one thing, and of the three
-duplicates it originally named, one turned out not to exist at all.
+**Four D4 slices have landed since this list was written** (`5fdc17f`, `bc1baf7`,
+`f7244fd`, `7c700e3`), and **item 2 is now closed**. Each has its own section below.
+
+Worth stating once, because it shaped four slices: of the three duplicates Phase 16 named,
+**two were not duplicates** (the artifact pair, the associate flow) and the third was a
+state-machine defect rather than an API duplicate. The original inventory was written from
+route paths rather than from the code behind them, and route paths were a poor proxy every
+time. The genuine write-side problem — four routers recording workflow transitions with one
+authorization check between them — was not on the list at all.
 
 In rough order of blast radius:
 
-1. **D3's mutation surface — blocked on a decision, not on effort.** There are two
-   configuration release lifecycles over two stores. `ReleaseService` (Mongo:
-   DRAFT→VALIDATED→APPROVED→ACTIVE, checksum-verified on both hardened transitions) is
-   constructed in exactly one place in the repository — a test. What production runs is
-   `data_console/api/configuration.py`'s `promote_release_status`, which hand-rolls the
-   lifecycle inline with no checksum recompute. Adding canonical mutation endpoints would
-   make it three lifecycles or silently bless one. Deciding which is authoritative changes
-   what happens on every configuration promotion; it is a data migration, not a refactor.
-2. **D4's write consolidation — one item left.** Still open: the associate flow that
-   drives the same session by another route. The other two are closed — the artifact pair
-   was never a duplicate, and the stage-action overlap's actual cost (a completed
-   transition applied twice) is fixed. Phase 16 says resolve duplicates *before* deleting,
-   so the canonical surface stays read-only until the associate flow is reconciled;
-   `test_the_number_of_return_routers_has_not_grown` keeps the count from running backwards
-   meanwhile.
+1. **D3's mutation surface — blocked on a decision, not on effort.** Two configuration
+   release lifecycles exist, with **different state vocabularies over different
+   databases**. Re-verified against the code, since this ledger's other duplicate claims
+   did not survive checking:
 
-   Note that `POST /production-returns/{id}/events` still contradicts design doc §9.1,
-   which says progress is action-driven and callers submit *intent* rather than naming the
-   transition. It survives because eight event types (receipt confirmation, license-plate
-   assignment, the three waivers, vendor recovery ×2) have no action endpoint and it is
-   their only path. Building those eight is the work that would let it go — a bounded,
-   separate slice, not a blocker on anything.
+   | | Lifecycle A | Lifecycle B |
+   |---|---|---|
+   | Code | `configuration/application/release_service.py` + `activation.py` | `data_console/api/configuration.py::promote_release_status` |
+   | Store | **MongoDB** `platform.configuration_releases` | **Neo4j** via `Neo4jConfigurationGraphRepository` |
+   | States | DRAFT → VALIDATED → APPROVED → ACTIVE → SUPERSEDED | DRAFT → VALIDATED → RELEASED → SUPERSEDED → ARCHIVED |
+   | Integrity | checksum recomputed and compared on both hardened transitions (Slice 3R); `ConfigurationIntegrityError` on mismatch; activation is a pointer CAS with a unique partial index | required behaviour domains present, and `ReturnPlatformConfiguration` parses. **No checksum recompute.** |
+   | Constructed in production | **nowhere** — `ReleaseService` and `ActivationService` are each constructed in exactly one test | `main.py:441` |
+   | Runtime reads from it | no | **yes** — `runtime_loader.py` resolves the active release from Neo4j, and `RELEASED` is the live state |
+
+   So the hardened lifecycle is the dead one, and the live one is a table inlined in a
+   router. The vocabularies only overlap on DRAFT, VALIDATED and SUPERSEDED: APPROVED and
+   ACTIVE have no Neo4j counterpart, RELEASED and ARCHIVED have no Mongo counterpart. That
+   is why this is a data migration rather than a refactor — whichever lifecycle wins,
+   existing records in the loser's store carry states the winner cannot express, and
+   deciding the mapping changes what happens on every configuration promotion.
+
+   Adding canonical mutation endpoints on top would make it three lifecycles, or silently
+   bless whichever one the new file happened to call. Hence `/api/config` ships read-only.
+
+   **Also found while re-verifying:** the Neo4j `allowed_transitions` table is written out
+   three times — `data_console/api/configuration.py:345` and twice in
+   `configuration/graph_repository.py` (:154 and :388, the in-memory and Neo4j
+   implementations). Whichever lifecycle wins, that wants to become one table. Recorded
+   here rather than fixed, because narrowing the losing lifecycle's rules before the
+   decision is made would prejudge it.
+
+2. **D4's write consolidation — CLOSED** (`5fdc17f`, `bc1baf7`, `f7244fd`, `7c700e3`).
+   All three Phase 16 duplicates are resolved; see the slice sections below.
+
+   One inconsistency remains, and it is additive work rather than a duplicate:
+   `POST /production-returns/{id}/events` contradicts design doc §9.1, which says progress
+   is action-driven and callers submit *intent* rather than naming the transition. It
+   survives because eight event types (`RECEIPT_CONFIRMED`, `LICENSE_PLATE_ASSIGNED`, the
+   three `*_NOT_REQUIRED` waivers, `PRODUCT_DISPOSITION_COMPLETED`,
+   `VENDOR_RECOVERY_REQUIRED`, `VENDOR_RECOVERY_COMPLETED`) have no action endpoint and it
+   is their only path. Building those eight is what lets it retire.
+
+   The canonical write surface is no longer blocked by anything.
+
 3. **D4's remaining read domains.** Session, list, timeline, artifacts and evidence are
    canonical. Support, fulfillment, warehouse and outbox events have no canonical read path
    yet.
@@ -1969,7 +1996,45 @@ In rough order of blast radius:
    `StructuredOutputInvoker.invoke` share one path (route pool, config, guards, breakers,
    limiters) and differ only in response contract. That is prose, not a test.
 
-Item 1 is the substantive one. 2–7 are bounded and independent of each other.
+Item 1 is the only one needing a decision. 3–7 are bounded, additive and independent.
+
+## Wave D4, slice 4 — return creation is single-sourced, and was already
+
+Status: DONE (`7c700e3`). **No production code changed**, because nothing needed to.
+
+### The third claim that did not survive checking
+
+The "associate flow drives the same session by another route" item is, like the artifact
+pair, already resolved:
+
+* `OperationalRepository.create_return` is the **only** writer to the returns collection,
+  and it has exactly two callers.
+* `POST /api/v1/returns` refuses anything but `channel="SYSTEM"` with a 409 naming the
+  associate flow; `submit_details` creates with `channel="ASSOCIATE"`. The entry points are
+  partitioned by channel, not competing.
+* `start_chat`/`continue_chat` do **not** reimplement `start`/`continue_discovery` — they
+  resolve free text into anchors and delegate. A natural-language adapter over the
+  structured API, one implementation underneath. So `/chat` versus `/messages` is not a
+  duplicate pair either, though the route list makes it look like one.
+
+### What was missing
+
+Anything holding it true. The partition rested on a single untested `if` in a router.
+Deleting that line turned both endpoints into general-purpose return creators with nothing
+failing — verified by deleting it, watching two tests fail, and restoring it.
+
+Eight tests. The HTTP ones need no datastore: 409 means refused by the channel guard before
+anything was resolved, 503 means the caller cleared it. Asserting "not 409" would have
+passed with the guard gone, so the SYSTEM cases assert 503 exactly, and one case covers the
+omitted-`channel` default not being a way around it. The structural ones pin the caller set,
+forbid direct writes to the returns collection anywhere else, and fail if a chat method
+stops delegating.
+
+**Noted, not built.** `channel` allows `CUSTOMER` and nothing creates one today. The slot is
+recorded rather than filled, so whoever builds customer-initiated intake finds it reserved
+instead of adding a third entry point.
+
+**Verification.** Suite **2017 passed, 2 skipped**. ruff clean, mypy 47/16.
 
 ## Wave D4, slice 3 — the stage-action overlap, and what it was actually costing
 
