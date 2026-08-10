@@ -1,7 +1,11 @@
 # Configuration release lifecycle — decision brief (Wave D3)
 
-Status: **awaiting a decision.** No code changes proposed here; this exists so the choice is
-made against measurements rather than the sketch that has been in the execution ledger.
+Status: **DECIDED and EXECUTED — Option A.** The graph lifecycle is authoritative; the Mongo
+one is deleted (`0612612`, `fec00b1`, `870e066`).
+
+This document is kept as the record of what the choice was made against, not rewritten to
+look like it was always right. Two of its claims did not survive contact with the code and
+are struck through below; the measurements themselves held.
 
 ## The short version
 
@@ -58,9 +62,23 @@ in development, which is precisely why the emptiness went unnoticed.
 | Code | `configuration/application/release_service.py` + `activation.py` | `data_console/api/configuration.py::promote_release_status` |
 | Store | Mongo `platform.configuration_releases` | Neo4j, via `Neo4jConfigurationGraphRepository` |
 | States | DRAFT → VALIDATED → APPROVED → ACTIVE → SUPERSEDED | DRAFT → VALIDATED → RELEASED → SUPERSEDED → ARCHIVED |
-| Integrity | Checksum recomputed and compared on VALIDATED→APPROVED and APPROVED→ACTIVE (Slice 3R); `ConfigurationIntegrityError` on mismatch; activation is a pointer compare-and-swap behind a unique partial index | Required behaviour domains present, and `ReturnPlatformConfiguration` parses. **No checksum recompute** |
+| Integrity | Checksum recomputed and compared on VALIDATED→APPROVED and APPROVED→ACTIVE (Slice 3R); `ConfigurationIntegrityError` on mismatch; activation is a pointer compare-and-swap behind a unique partial index | ~~Required behaviour domains present, and `ReturnPlatformConfiguration` parses. **No checksum recompute**~~ — **wrong, see below** |
 | Constructed in production | Nowhere | `main.py:441` |
 | Read by the runtime | No | Yes; `RELEASED` is the live state |
+
+**Correction to the integrity row.** The graph path *does* recompute, and
+`ConfigurationSnapshotBuilder` recomputes **and compares** on every load of the active
+release — the strongest check in the system, because it catches tampering after publication
+too. What was actually missing was comparison at *promotion*: both repositories recomputed
+and overwrote, so a release tampered with between validation and publication published
+cleanly and then failed at startup, where production has no baseline fallback. Detection
+existed; it fired at the worst moment and blamed the wrong event. Closed in `fec00b1`.
+
+**And there were three hash implementations, not two** — the two repositories and the
+snapshot builder, kept consistent by nothing but having been written the same way. Proven
+by breaking one. All three now share `compute_release_checksum`, which is also
+length-delimited: the originals concatenated key and payload directly, so `("ab", "c")` and
+`("a", "bc")` collided.
 
 The vocabularies overlap only on DRAFT, VALIDATED and SUPERSEDED. `APPROVED`/`ACTIVE` have no
 Neo4j counterpart; `RELEASED`/`ARCHIVED` have no Mongo one.
@@ -88,10 +106,9 @@ A test suite that leaves rows in a database an operator might inspect is its own
 problem, and this one cost real time: these rows were briefly read as evidence that the
 Mongo lifecycle held production data.
 
-**The Neo4j transition table is written out three times.** `data_console/api/configuration.py:345`,
-and twice in `configuration/graph_repository.py` (`:154` in-memory, `:388` Neo4j). Whichever
-lifecycle wins, that wants to be one table. Deliberately not fixed yet: narrowing the losing
-lifecycle's rules before the decision would prejudge it.
+~~**The Neo4j transition table is written out three times.**~~ **Fixed** (`0612612`) —
+collapsed into `graph_repository.RELEASE_TRANSITIONS`, with a structural test banning a
+fourth copy.
 
 **The SystemStore already exists for exactly this, and neither lifecycle uses it.**
 `config/platform/system_store.yaml` declares platform structures — physical name, schema
@@ -167,24 +184,30 @@ SystemStore, and leave the runtime reading Neo4j for now. Decide the winner late
 * **Costs:** the platform still has two lifecycles afterwards, which is the actual problem.
   This buys time rather than resolving anything.
 
-## Recommendation
+## Outcome
 
-**Option A**, with the provider fail-closed check done separately and first.
+**Option A was chosen and executed.** Three slices: one shared transition table
+(`0612612`), checksum frozen at VALIDATED and verified at RELEASED with all three hash
+implementations collapsed into one (`fec00b1`), and the Mongo lifecycle deleted —
+1132 lines (`870e066`).
 
-The deciding argument is that Option B moves the live configuration path — the one whose
-failure mode is "production does not start" — onto code with zero production mileage, to gain
-integrity guarantees on a path that currently has no data flowing through it. Option A closes
-the gap in the other direction, at the cost of reimplementing an activation CAS in Cypher,
-which is bounded and testable.
+The deciding argument was that Option B would move the live configuration path — the one
+whose failure mode is "production does not start" — onto code with zero production mileage,
+to gain integrity guarantees on a path with no data flowing through it.
 
-That said, Option A discards real work from Slice 3R, and reasonable people would weigh that
-differently. The measurements above are the point of this document; the recommendation is
-one reading of them.
+What Option A cost, recorded so nobody has to rediscover it: a compare-and-swap activation
+behind a unique partial index, a single-transaction supersede-and-activate, and
+barrier-synchronised concurrency tests asserting exactly one winner. Git keeps them.
+`expected_head_revision` on the graph publish path may already be an equivalent CAS — check
+that before rebuilding anything.
 
-## First steps under any option
+mypy improved to 42 errors / 14 files from 47/16; five lived in the deleted modules.
 
-1. Re-run the store counts against production. Nothing here should be acted on until the
-   production numbers are known, because two of the three arguments depend on them.
-2. Make `provider` fail closed when it names a backend no gateway implements. Independent of
-   the decision, and removes a config value that currently lies.
-3. Delete the `r1`/`r2`/`r3` fixtures and isolate the test that created them.
+## Still outstanding
+
+1. **Re-run the store counts against production.** Still not done, and still the one thing
+   that could change the picture: every count in this document is from one developer
+   machine. If production Neo4j holds releases whose checksums were computed under the old
+   concatenating encoding, their next publication fails closed and they need re-validating.
+2. ~~Make `provider` fail closed~~ — done (`8985816`).
+3. ~~Delete the `r1`/`r2`/`r3` fixtures and isolate the test~~ — done (`8985816`).

@@ -1,23 +1,25 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `7c700e3` (D4 slice 4 — return creation single-sourced)
-Slice: **Wave D4 — the write consolidation**, four slices landed; every Phase 16
-duplicate now closed
-Status: **Wave C complete. Wave D's completion condition met**, with items still open — see
-"Wave D: what remains" below. **Wave E is complete** (all five phases, read-only — see the
+Last pushed green commit: `870e066` (D3 — the Mongo release lifecycle retired)
+Slice: **Wave D3 — one configuration release lifecycle.** Option A executed in three
+slices; D4's write consolidation closed before it in four
+Status: **Wave C complete. Wave D's completion condition met, and its two substantive
+open items — D3's lifecycle decision and D4's write consolidation — are both now
+closed.** What remains in D is additive; see "Wave D: what remains" below. **Wave E is complete** (all five phases, read-only — see the
 Wave E section). Wave F is blocked on E's cutover, not on backend work.
 
-Suite: **2017 passed, 2 skipped, 0 failed** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
-mypy baseline: **47 errors / 16 files**, unchanged across every commit in this branch.
+Suite: **2033 passed, 2 skipped, 0 failed** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
+mypy baseline: **42 errors / 14 files**. This moved for the first time since Phase 4 —
+retiring the Mongo release lifecycle took five of the old 47 with it. Quote 42/14.
 Contract: **211 paths**; drift check passes on consecutive runs; frontend `tsc -b` clean.
 
 "Green" now means the **full** gate. `scripts/linux/03_run_backend_quality.sh` runs
 `ruff check .` and `ruff format --check .` from `backend/`, and both pass across all 739
-files as of `bc1baf7`. Every prior entry in this ledger reported green on the *changed-files*
+files as of `870e066`. Every prior entry in this ledger reported green on the *changed-files*
 gate (`scripts/dev/run_changed_gate.py`), which is a narrower claim; read older entries with
 that in mind. Wave G/H's "full static integrity" (Phase 29) is now a much smaller job than
-this ledger previously implied — what is left there is mypy's 47, not ruff's 246.
+this ledger previously implied — what is left there is mypy's 42, not ruff's 246.
 
 ## Phase 7 / Wave C2, Commit 1 — Foundations
 
@@ -1935,25 +1937,15 @@ authorization check between them — was not on the list at all.
 
 In rough order of blast radius:
 
-1. **D3's mutation surface — blocked on a decision.** Full brief, measured against the
-   running system: **[CONFIGURATION_RELEASE_LIFECYCLE_DECISION.md](CONFIGURATION_RELEASE_LIFECYCLE_DECISION.md)**.
-   That document is the maintained version; what follows is only enough to know whether to
-   open it.
+1. **D3's configuration lifecycle — CLOSED** (`0612612`, `fec00b1`, `870e066`). There is
+   one release lifecycle now: the graph one. Brief, with the measurements the choice was
+   made against: **[CONFIGURATION_RELEASE_LIFECYCLE_DECISION.md](CONFIGURATION_RELEASE_LIFECYCLE_DECISION.md)**.
+   Detail in the D3 section below.
 
-   **This entry used to say "two lifecycles over two stores, and choosing is a data
-   migration". Both halves were wrong.** There are four places configuration lives; the one
-   holding production configuration is a YAML file on disk with no lifecycle at all; and
-   neither release lifecycle holds real data — Neo4j has **0** release nodes and Mongo's
-   three are leaked test fixtures (`r1`/`r2`/`r3`, checksums `c1`/`c2`/`c3`). There is
-   almost nothing to migrate. The decision is which lifecycle owns promotion, and it is far
-   cheaper than this ledger has been claiming.
-
-   The one fact that makes it urgent rather than cosmetic: production runs
-   `allow_baseline_fallback=False`, so with no active Neo4j release **startup raises**.
-   Development falls back to the YAML baseline, which is why zero rows went unnoticed.
-
-   Counts are from one developer machine's Docker volumes. Re-measuring against production
-   is step one of any plan, because two of the three arguments depend on it.
+   The mutation surface it was blocking is now merely **unbuilt, not blocked**. It would
+   promote through `ConfigurationGraphRepository.promote_release`, the one path that
+   enforces the lifecycle; what it still needs is a scope decision about which promotions
+   belong on a versionless canonical API versus the Data Console's operator surface.
 
 2. **D4's write consolidation — CLOSED** (`5fdc17f`, `bc1baf7`, `f7244fd`, `7c700e3`).
    All three Phase 16 duplicates are resolved; see the slice sections below.
@@ -1986,6 +1978,91 @@ In rough order of blast radius:
    limiters) and differ only in response contract. That is prose, not a test.
 
 Item 1 is the only one needing a decision. 3–7 are bounded, additive and independent.
+
+## Wave D3 — one configuration release lifecycle, and it is the graph
+
+Status: DONE (`0612612`, `fec00b1`, `870e066`). Option A from the brief, chosen by the
+owner. The decision this ledger carried as blocking for four waves is resolved.
+
+### What was decided, and against what
+
+Two lifecycles existed: a checksum-hardened Mongo one (`ReleaseService` /
+`ActivationService`, DRAFT→VALIDATED→APPROVED→ACTIVE) that **no production path
+constructed**, and the graph one (DRAFT→VALIDATED→RELEASED→SUPERSEDED→ARCHIVED) that
+`main.py` wires and the runtime reads. Measured, not assumed: Neo4j held **0** release
+nodes, Mongo held **3** leaked test fixtures. Nothing to migrate. Full measurements in
+[CONFIGURATION_RELEASE_LIFECYCLE_DECISION.md](CONFIGURATION_RELEASE_LIFECYCLE_DECISION.md).
+
+The hardened lifecycle was the dead one. That is the whole shape of the problem.
+
+### Slice 1 — one transition table (`0612612`)
+
+The state machine was written out three times: both repository implementations and the
+Data Console router's early 409 check. Now `RELEASE_TRANSITIONS` plus `transition_allowed()`.
+
+Eleven parametrised cases pin exactly what the three copies did, so the extraction is
+provably behaviour-preserving, and a structural test bans the literal shape they had.
+`RELEASED` deliberately has no outgoing transition: a release leaves it only by being
+superseded when its successor publishes, and exposing `RELEASED → SUPERSEDED` as a
+promotion would let an operator retire the live configuration with no replacement while
+production refuses to start without one.
+
+### Slice 2 — the checksum verifies instead of stamping (`fec00b1`)
+
+**Two corrections to the brief, both found by reading the code rather than trusting the
+document.**
+
+The brief said the graph path does "no checksum recompute". It does — and more than that,
+`ConfigurationSnapshotBuilder` recomputes and *compares* on every load of the active
+release. That is the **strongest** check in the system: it catches tampering after
+publication, not only between validation and publication.
+
+What was genuinely missing was verification at *promotion*. Both repositories recomputed
+and **overwrote**, so a domain edited between VALIDATED and RELEASED was adopted rather
+than caught, and the release published cleanly — then failed at the load-time check, which
+in production means the process will not start. Detection existed; it fired at the worst
+possible moment and attributed the failure to the wrong event.
+
+The lifecycle now has a freeze point. `save_draft_domain` already refuses to touch anything
+past DRAFT, so VALIDATED records the checksum and RELEASED recomputes and compares, raising
+`ConfigurationIntegrityError`.
+
+**There were three hash implementations, not two** — the two repositories and the snapshot
+builder, coupled by nothing but all three having been written the same way. That was proven
+the hard way: changing one broke five tests with "production cannot start". All three now
+share `compute_release_checksum`.
+
+**A test found a defect in code that was only supposed to be moving.** All three
+concatenated key and payload with no separator, so `("ab", "c")` and `("a", "bc")` hashed
+identically. Ambiguous encoding is a defect in an integrity primitive whether or not the
+current domain keys can express it, so the shared helper is length-delimited. This changes
+every checksum value — safe, because the value is only ever compared against one computed
+by the same function, Neo4j holds no releases, and the failure direction is closed.
+
+### Slice 3 — the Mongo lifecycle is deleted (`870e066`)
+
+1132 lines: both services, both test files, and `RELEASE_SERVICE_TRANSITIONS`.
+
+**What was discarded, stated plainly:** a compare-and-swap activation behind a unique
+partial index, a single-transaction supersede-and-activate, and barrier-synchronised
+concurrency tests asserting exactly one winner. That was the better-engineered lifecycle.
+It also had no callers and no data while the live path's checksum was only a stamp. Git
+keeps it, and `expected_head_revision` may already be an equivalent CAS — worth checking
+before anyone rebuilds it.
+
+`domain/release.py::ReleaseStatus` survives with a docstring saying why: the manifest
+pipeline still parses a status field with it, but `APPROVED`/`ACTIVE` no longer name any
+state the platform transitions through, and reaching for it to model a promotion would be
+a mistake.
+
+Prose was updated rather than left to rot — `configuration/api/router.py`'s "no mutation
+surface" comment described a blocker that no longer exists, and
+`configuration/README.md`'s lifecycle and activation sections documented the deleted
+services in detail.
+
+**Verification.** ruff clean. mypy **42/14**, improved from the 47/16 baseline that had
+held since Phase 4 — five errors lived in the deleted modules. Suite **2033 passed, 2
+skipped** (down 16, all from the deleted test files).
 
 ## Wave D4, slice 4 — return creation is single-sourced, and was already
 
