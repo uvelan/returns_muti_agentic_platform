@@ -73,30 +73,6 @@ from return_platform.configuration.runtime_integrations import (
 )
 from return_platform.configuration.settings import Settings
 from return_platform.configuration.snapshot import ConfigurationSnapshotBuilder
-from return_platform.data_console.api.ai_studio import router as ai_studio_router
-from return_platform.data_console.api.audit import router as audit_router
-from return_platform.data_console.api.browser import router as browser_router
-from return_platform.data_console.api.configuration import router as configuration_router
-from return_platform.data_console.api.copilot_operations import (
-    router as copilot_operations_router,
-)
-from return_platform.data_console.api.feedback_learning import router as feedback_learning_router
-from return_platform.data_console.api.graph import router as graph_router
-from return_platform.data_console.api.graph_evidence import router as graph_evidence_router
-from return_platform.data_console.api.graph_sync import router as graph_sync_router
-from return_platform.data_console.api.inventory import router as inventory_router
-from return_platform.data_console.api.jobs import router as jobs_router
-from return_platform.data_console.api.operational_generation import (
-    router as operational_generation_router,
-)
-from return_platform.data_console.api.router import router as console_router
-from return_platform.data_console.api.runtime_validation import (
-    router as runtime_validation_router,
-)
-from return_platform.data_console.api.scenarios import router as scenarios_router
-from return_platform.data_console.api.schema_catalog import router as schema_catalog_router
-from return_platform.data_console.api.sources import router as sources_router
-from return_platform.data_console.api.workspaces import router as workspaces_router
 from return_platform.data_console.infrastructure.probes import (
     probe_mongodb,
     probe_neo4j,
@@ -1044,25 +1020,17 @@ def create_app(
             },
         )
 
-    fastapi_app.include_router(console_router)
-    fastapi_app.include_router(schema_catalog_router)
-    fastapi_app.include_router(operational_generation_router)
-    fastapi_app.include_router(ai_studio_router)
-    fastapi_app.include_router(graph_sync_router)
-    fastapi_app.include_router(feedback_learning_router)
-    fastapi_app.include_router(graph_router)
-    fastapi_app.include_router(graph_evidence_router)
-    fastapi_app.include_router(inventory_router)
-    fastapi_app.include_router(sources_router)
-    fastapi_app.include_router(browser_router)
-    fastapi_app.include_router(workspaces_router)
-    fastapi_app.include_router(jobs_router)
-    fastapi_app.include_router(scenarios_router)
-    fastapi_app.include_router(audit_router)
-    fastapi_app.include_router(configuration_router)
-    fastapi_app.include_router(copilot_operations_router)
-    fastapi_app.include_router(runtime_validation_router)
     fastapi_app.include_router(runtime_config_router)
+    # --- Wave F1: the Data Console routers are no longer mounted --------------
+    #
+    # Eighteen routers served `/data-console/v1/*` and one `/api/v1/data-console`
+    # prefix. Their only consumer was the legacy frontend, which Wave F4 deleted;
+    # a scan of scripts, workers and compose found nothing else calling them.
+    #
+    # Unregistered, not deleted. `configuration.py`, `sources.py`, `audit.py` and
+    # `auth.py` still export handler functions that the canonical `/api/config`
+    # router imports directly -- a Python import, not an HTTP call -- so the
+    # modules stay until Wave F5 moves those bodies across.
     fastapi_app.include_router(returns_router)
     fastapi_app.include_router(return_agents_router)
     fastapi_app.include_router(return_support_router)

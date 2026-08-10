@@ -127,7 +127,10 @@ def test_router_mounting_is_the_bulk_of_create_app_and_that_is_allowed() -> None
     # Not a target, a reading. Update it when Wave F deletes routers -- the
     # update is the evidence that a deletion actually reached the composition
     # root rather than leaving a dangling mount.
-    assert len(mounts) == 42, (
-        f"{len(mounts)} routers are mounted, expected 42; if Wave F deleted one, "
+    #
+    # 42 -> 24 in Wave F1, which unmounted the eighteen Data Console routers
+    # after Wave F4 removed their only consumer.
+    assert len(mounts) == 24, (
+        f"{len(mounts)} routers are mounted, expected 24; if Wave F deleted one, "
         "update this number in the same commit"
     )

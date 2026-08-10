@@ -5,18 +5,18 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from return_platform.configuration.settings import Settings
 from return_platform.data_console.api.inventory import Neo4jInventory
+from return_platform.data_console.api.inventory import router as inventory_router
 from return_platform.data_governance import LoadedAssetCatalog
 from return_platform.data_governance.inventory.contracts import (
     MongoDBInventory,
     SQLServerInventory,
 )
 from return_platform.data_governance.inventory.sqlserver import SQLServerInventoryError
-from return_platform.main import create_app
 from return_platform.resources import RuntimeResources
 from return_platform.shared.contracts import DependencyErrorCode
 
@@ -28,7 +28,23 @@ def inventory_client(
     test_settings: Settings,
     loaded_empty_catalog: LoadedAssetCatalog,
 ) -> Iterator[tuple[TestClient, RuntimeResources]]:
-    app: FastAPI = create_app(custom_settings=test_settings)
+    # Mounted standalone rather than through `create_app`.
+    #
+    # Wave F1 unmounted the Data Console routers -- their only consumer was the
+    # frontend Wave F4 deleted -- so driving the real app now 404s. What these
+    # tests actually cover is the inventory handler's fan-out across SQL, Mongo
+    # and Neo4j and how it reports a partial failure, none of which depends on
+    # the router being mounted in production. If Wave F5 deletes the module,
+    # this file goes with it.
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def _correlation_id(request: Request, call_next):  # type: ignore[no-untyped-def]
+        # `create_app` sets this; the handler reads it for the response meta.
+        request.state.correlation_id = "test-correlation-id"
+        return await call_next(request)
+
+    app.include_router(inventory_router)
     resources = RuntimeResources(settings=test_settings, catalog=loaded_empty_catalog)
     resources.mongo = cast(Any, object())
     app.state.resources = resources
