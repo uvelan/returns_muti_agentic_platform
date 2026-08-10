@@ -17,6 +17,9 @@ const DOMAIN_SCREENS: Partial<Record<string, ComponentType>> = {
   "/ai": lazy(() =>
     import("./ai/AiControlCenterPage").then((m) => ({ default: m.AiControlCenterPage })),
   ),
+  "/returns": lazy(() =>
+    import("./returns/ReturnCopilotPage").then((m) => ({ default: m.ReturnCopilotPage })),
+  ),
 };
 
 /**
