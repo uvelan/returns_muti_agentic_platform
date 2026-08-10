@@ -21,6 +21,7 @@ from typing import Any
 from return_platform.dynamic_knowledge.schema import (
     ActiveSchema,
     ConnectorType,
+    EntityDefinition,
     validate_graph_identifier,
 )
 from return_platform.source_connectors.contracts import LogicalTargetedReadPlan
@@ -34,17 +35,38 @@ class CompiledSourceRead:
     projected_physical_paths: tuple[tuple[str, ...], ...]
 
 
+def _physical_path(entity: EntityDefinition, field_id: str) -> tuple[str, ...]:
+    """The field's source path, or a refusal naming the field.
+
+    `FieldDefinition.physical_path` is optional because a field may be *derived*
+    (`derive: FieldDerivation`) rather than read from the source. Compiling a
+    read for such a field is a real mistake, and every use below assumed it
+    could not happen: `".".join(None)` raises `TypeError: can only join an
+    iterable`, which says nothing about which field or why, and the projection
+    path let a bare `None` into `projected_physical_paths` for a caller to trip
+    over later.
+    """
+    field = entity.fields[field_id]
+    path = field.physical_path
+    if path is None:
+        raise ValueError(
+            f"field {field_id!r} on entity {entity.entity_id!r} has no physical path; "
+            "a derived field cannot be read directly from the source"
+        )
+    return path
+
+
 def compile_source_read(schema: ActiveSchema, plan: LogicalTargetedReadPlan) -> CompiledSourceRead:
     source = schema.sources[plan.source_asset_id]
     entity = schema.entities[plan.entity_id]
     projected_paths = tuple(
-        entity.fields[field_id].physical_path for field_id in plan.required_field_ids
+        _physical_path(entity, field_id) for field_id in plan.required_field_ids
     )
     if source.connector_type is ConnectorType.MONGODB:
         predicates: list[dict[str, Any]] = []
         parameters: dict[str, Any] = {}
         for index, condition in enumerate(plan.conditions):
-            path = ".".join(entity.fields[condition.field_id].physical_path)
+            path = ".".join(_physical_path(entity, condition.field_id))
             parameter = f"p{index}"
             parameters[parameter] = condition.value
             if condition.operator in {"EXACT", "EQUALS"}:
@@ -90,7 +112,7 @@ def compile_source_read(schema: ActiveSchema, plan: LogicalTargetedReadPlan) -> 
         sql_where: list[str] = []
         parameters = {}
         for index, condition in enumerate(plan.conditions):
-            condition_path = entity.fields[condition.field_id].physical_path
+            condition_path = _physical_path(entity, condition.field_id)
             if len(condition_path) != 1:
                 raise ValueError("SQL anchor path must contain exactly one column segment")
             column = condition_path[0]

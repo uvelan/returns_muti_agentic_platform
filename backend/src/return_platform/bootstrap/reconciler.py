@@ -1,6 +1,8 @@
 import asyncio
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 from pymongo import AsyncMongoClient
 
@@ -22,8 +24,8 @@ class ConfigurationReconciler:
         coordinator: ReconfigurationCoordinator,
         epoch_allocator: EpochAllocator,
         config_handle: RuntimeConfigurationHandleImpl,
-        load_snapshot_fn,
-    ):
+        load_snapshot_fn: Callable[[Any], Any],
+    ) -> None:
         self._client = client
         self._db = client.get_database("platform")
         self._pointer = self._db.get_collection("configuration_active_pointer")
@@ -35,7 +37,7 @@ class ConfigurationReconciler:
         self._config_handle = config_handle
         self._load_snapshot_fn = load_snapshot_fn
 
-        self._active_release_id = None
+        self._active_release_id: str | None = None
         self._active_epoch: int = 0
         self._adopted_at: datetime | None = None
         self._pending_release_id: str | None = None
@@ -81,7 +83,18 @@ class ConfigurationReconciler:
             and target_release_id != self._active_release_id
             and target_release_id != self._pending_release_id
         ):
-            await self._adopt_release(target_release_id, doc.get("checksum", ""))
+            # `doc` is `dict[str, object]`, so both values arrive as `object`.
+            # Narrowed rather than cast: a release id or checksum that is not a
+            # string is a corrupt pointer document, and continuing with one
+            # would put a non-string release id into the epoch allocator.
+            checksum = doc.get("checksum", "")
+            if not isinstance(target_release_id, str) or not isinstance(checksum, str):
+                logger.error(
+                    "configuration_active_pointer holds a non-string release id or checksum; "
+                    "ignoring it rather than adopting a corrupt release"
+                )
+                return
+            await self._adopt_release(target_release_id, checksum)
 
     async def _adopt_release(self, target_release_id: str, checksum: str) -> None:
         try:
