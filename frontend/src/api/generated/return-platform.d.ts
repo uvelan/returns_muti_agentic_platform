@@ -35,6 +35,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ai/interceptions/{interception_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer Interception
+         * @description Record a human answer to a held request.
+         *
+         *     The store's `answer` is a conditional write filtered on `PENDING`, so two
+         *     operators answering at once produce one winner and one 409 -- never a silent
+         *     overwrite of somebody's text. That is the store's guarantee; this surface
+         *     only has to report it honestly.
+         *
+         *     **Answering does not resume the workflow here.** It transitions the
+         *     interception, and `InterceptionResumeDispatcher` turns answered records into
+         *     resume commands, which the reasoning resume worker delivers as Temporal
+         *     signals. Doing the enqueue inline would put a cross-collection write on the
+         *     request path and lose the at-least-once replay that makes the bridge safe.
+         */
+        post: operations["answer_interception_api_ai_interceptions__interception_id__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/interceptions/{interception_id}/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Interception Request
+         * @description The held prompt, unsealed.
+         *
+         *     Gated on `ai.interception.act` rather than `ai.interception.read`, which is
+         *     the narrower of the two on purpose. The payload can contain block 5
+         *     UNTRUSTED SOURCE SAMPLE -- rows read out of a customer's database -- which is
+         *     why it is sealed at rest at all. You unseal it because you are about to
+         *     answer it; browsing the queue needs only the read capability.
+         */
+        get: operations["read_interception_request_api_ai_interceptions__interception_id__request_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ai/metrics": {
         parameters: {
             query?: never;
@@ -6752,6 +6809,11 @@ export interface components {
              */
             format: "JSON" | "YAML";
         };
+        /** InterceptionAnswer */
+        InterceptionAnswer: {
+            /** Responsetext */
+            responseText: string;
+        };
         /** InventoryDetail */
         InventoryDetail: {
             /** Assetid */
@@ -9538,6 +9600,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_list_dict_str__Any___"];
+                };
+            };
+        };
+    };
+    answer_interception_api_ai_interceptions__interception_id__answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interception_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InterceptionAnswer"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_interception_request_api_ai_interceptions__interception_id__request_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interception_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

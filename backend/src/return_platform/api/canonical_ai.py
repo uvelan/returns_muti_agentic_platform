@@ -29,7 +29,8 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, ConfigDict, Field
 
 from return_platform.ai.gateway.models import (
     AIRouteHealthView,
@@ -38,11 +39,14 @@ from return_platform.ai.gateway.models import (
     AIUsageSummaryView,
 )
 from return_platform.ai.gateway.service import AIGatewayService
+from return_platform.ai.interception.store import InterceptionNotPending
 from return_platform.data_console.api.auth import require_read_roles
 from return_platform.operations.repository import (
     OperationalRepository,
     resolve_operational_repository,
 )
+from return_platform.security import capabilities
+from return_platform.security.authorization import require_capability
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 router = APIRouter(prefix="/api/ai", tags=["AI Control Center"])
@@ -181,5 +185,103 @@ async def list_interceptions(
             }
             for record in pending
         ],
+        meta=_meta(request),
+    )
+
+
+# ---------------------------------------------------------------------------
+# The operator surface: opening a held request and answering it
+# ---------------------------------------------------------------------------
+#
+# The listing above is deliberately identity-and-status only. These two are how
+# an operator actually does the work, and they are separate endpoints precisely
+# so that unsealing a prompt is a distinct, auditable act rather than a side
+# effect of looking at a queue.
+
+
+class InterceptionAnswer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    responseText: str = Field(min_length=1, max_length=64_000)
+
+
+def _require_interception_store(request: Request) -> Any:
+    """503 rather than an empty answer.
+
+    The queue listing returns `[]` when no store is configured, because "no
+    pending interceptions" is a true answer for a deployment that never uses the
+    manual path. Opening or answering a specific one is different: there is no
+    truthful empty response to "give me interception X", and pretending it does
+    not exist would read as "already handled".
+    """
+    store = getattr(request.app.state, "ai_interception_store", None)
+    if store is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No AI interception store is configured in this process.",
+        )
+    return store
+
+
+@router.get("/interceptions/{interception_id}/request", response_model=APIResponse[dict[str, Any]])
+async def read_interception_request(
+    interception_id: str,
+    request: Request,
+    _actor_id: str = Depends(require_capability(capabilities.AI_INTERCEPTION_ACT)),
+) -> APIResponse[dict[str, Any]]:
+    """The held prompt, unsealed.
+
+    Gated on `ai.interception.act` rather than `ai.interception.read`, which is
+    the narrower of the two on purpose. The payload can contain block 5
+    UNTRUSTED SOURCE SAMPLE -- rows read out of a customer's database -- which is
+    why it is sealed at rest at all. You unseal it because you are about to
+    answer it; browsing the queue needs only the read capability.
+    """
+    store = _require_interception_store(request)
+    payload = await store.request_payload(interception_id)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Interception {interception_id} has no readable request payload.",
+        )
+    return APIResponse(data=dict(payload), meta=_meta(request))
+
+
+@router.post("/interceptions/{interception_id}/answer", response_model=APIResponse[dict[str, Any]])
+async def answer_interception(
+    interception_id: str,
+    payload: InterceptionAnswer,
+    request: Request,
+    actor_id: str = Depends(require_capability(capabilities.AI_INTERCEPTION_ACT)),
+) -> APIResponse[dict[str, Any]]:
+    """Record a human answer to a held request.
+
+    The store's `answer` is a conditional write filtered on `PENDING`, so two
+    operators answering at once produce one winner and one 409 -- never a silent
+    overwrite of somebody's text. That is the store's guarantee; this surface
+    only has to report it honestly.
+
+    **Answering does not resume the workflow here.** It transitions the
+    interception, and `InterceptionResumeDispatcher` turns answered records into
+    resume commands, which the reasoning resume worker delivers as Temporal
+    signals. Doing the enqueue inline would put a cross-collection write on the
+    request path and lose the at-least-once replay that makes the bridge safe.
+    """
+    store = _require_interception_store(request)
+    try:
+        record = await store.answer(
+            interception_id=interception_id,
+            response_text=payload.responseText,
+            answered_by=actor_id,
+        )
+    except InterceptionNotPending as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    return APIResponse(
+        data={
+            "interceptionId": record.interception_id,
+            "status": record.status.value,
+            "answeredBy": record.answered_by,
+            "answeredAt": record.answered_at.isoformat() if record.answered_at else None,
+        },
         meta=_meta(request),
     )

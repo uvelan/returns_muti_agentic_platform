@@ -579,8 +579,46 @@ async def lifespan(
                 configuration=return_configuration.configuration,
                 operational_repository=operational_repository,
             ).ensure_indexes()
+        # The SystemStore is bootstrapped here, before the route pool, because
+        # the MANUAL provider's durable implementation needs an interception
+        # store *at route construction time* -- and until Wave D2 closed this,
+        # the API process built routes first and silently resolved MANUAL to the
+        # filesystem `ManualFileProvider` while the order-discovery worker, which
+        # bootstraps first, got the durable one. Two processes, two different
+        # MANUAL providers, one of them writing prompts to disk.
+        #
+        # Degrade-safety is preserved exactly: a bootstrap failure sets the
+        # analyzer status, leaves `analyzer_system_store` None, and the route
+        # pool is still built -- with the filesystem provider, which is what this
+        # process had anyway.
+        analyzer_system_store = None
+        analyzer_encryptor = None
+        app.state.graph_schema_analyzer_status = {"state": "UNAVAILABLE"}
+        if resources.mongo is None:
+            logger.warning(
+                "graph_schema_analyzer_dependencies_unavailable",
+                extra={"missing_dependencies": ("mongodb",)},
+            )
+        else:
+            try:
+                analyzer_system_store, analyzer_encryptor = await bootstrap_system_store(
+                    settings, resources.mongo
+                )
+            except Exception as exc:  # noqa: BLE001 - degrade, never block startup
+                app.state.graph_schema_analyzer_status = {
+                    "state": "INITIALIZATION_FAILED",
+                    "detail": str(exc),
+                }
+                logger.warning("graph_schema_analyzer_initialization_failed", exc_info=exc)
+
+        interception_store = (
+            SystemStoreInterceptionStore(analyzer_system_store, analyzer_encryptor)
+            if analyzer_system_store is not None and analyzer_encryptor is not None
+            else None
+        )
+        app.state.ai_interception_store = interception_store
         app.state.ai_gateway_route_pool = AIRoutePool(
-            build_routes(settings),
+            build_routes(settings, interception_store=interception_store),
             ai_gateway_configuration.configuration,
         )
         dynamic_agent_enabled = dynamic_order_agent_enabled(settings)
@@ -621,84 +659,62 @@ async def lifespan(
         # longer needed one. Degrades to an explicit UNAVAILABLE state rather than
         # failing startup: the analyzer is an operator tool, and the return flow
         # must not stop serving because schema analysis cannot persist.
-        app.state.graph_schema_analyzer_status = {"state": "UNAVAILABLE"}
-        if resources.mongo is None:
-            logger.warning(
-                "graph_schema_analyzer_dependencies_unavailable",
-                extra={"missing_dependencies": ("mongodb",)},
+        # The SystemStore was bootstrapped above, before the route pool, so the
+        # MANUAL provider could be the durable one. What is left here is binding
+        # the analyzer's own surfaces onto it.
+        if analyzer_system_store is not None:
+            app.state.graph_schema_analyzer_persistence = build_system_store_persistence(
+                analyzer_system_store
             )
-        else:
-            try:
-                analyzer_system_store, analyzer_encryptor = await bootstrap_system_store(
-                    settings, resources.mongo
-                )
-            except Exception as exc:  # noqa: BLE001 - degrade, never block startup
-                app.state.graph_schema_analyzer_status = {
-                    "state": "INITIALIZATION_FAILED",
-                    "detail": str(exc),
-                }
-                logger.warning("graph_schema_analyzer_initialization_failed", exc_info=exc)
-            else:
-                app.state.graph_schema_analyzer_persistence = build_system_store_persistence(
-                    analyzer_system_store
-                )
-                # The AI Control Center's interception queue. Bound here rather
-                # than at route-pool construction because this is where the
-                # SystemStore first exists in this process; the queue is a read
-                # surface, so unlike the MANUAL provider it does not need to be
-                # in place before routes are built.
-                app.state.ai_interception_store = SystemStoreInterceptionStore(
-                    analyzer_system_store, analyzer_encryptor
-                )
-                # Bind the analyzer's outward ports. Each is independently
-                # optional: discovery needs a source client, validation needs
-                # Neo4j, and an operator with one but not the other should still
-                # get the half that works rather than a wholly dead module. The
-                # routes that need a missing port 503 individually.
-                if resources.source_mongo is not None:
-                    app.state.graph_schema_analyzer_source_discovery = (
-                        build_mongo_source_discovery_adapter(
-                            resources.source_mongo,
-                            database_name=settings.source_mongo_database,
-                            source_id=settings.source_mongo_database,
-                        )
+            # Bind the analyzer's outward ports. Each is independently
+            # optional: discovery needs a source client, validation needs
+            # Neo4j, and an operator with one but not the other should still
+            # get the half that works rather than a wholly dead module. The
+            # routes that need a missing port 503 individually.
+            if resources.source_mongo is not None:
+                app.state.graph_schema_analyzer_source_discovery = (
+                    build_mongo_source_discovery_adapter(
+                        resources.source_mongo,
+                        database_name=settings.source_mongo_database,
+                        source_id=settings.source_mongo_database,
                     )
-                if resources.neo4j is not None:
-                    app.state.graph_schema_analyzer_graph_target = build_neo4j_graph_target_adapter(
-                        resources.neo4j
+                )
+            if resources.neo4j is not None:
+                app.state.graph_schema_analyzer_graph_target = build_neo4j_graph_target_adapter(
+                    resources.neo4j
+                )
+            # Reasoning needs no dependency of its own beyond the shared
+            # route pool, but an empty pool means no provider credential is
+            # configured, and binding the port then would advertise a
+            # capability every call would fail. A misconfigured task raises
+            # from the invoker's constructor; degrade like the rest of this
+            # block rather than failing startup over an operator tool.
+            analyzer_reasoning_bound = False
+            if app.state.ai_gateway_route_pool.routes:
+                try:
+                    app.state.graph_schema_analyzer_reasoning = build_analyzer_ai_adapter(
+                        settings=settings,
+                        configuration=ai_gateway_configuration.configuration,
+                        route_pool=app.state.ai_gateway_route_pool,
                     )
-                # Reasoning needs no dependency of its own beyond the shared
-                # route pool, but an empty pool means no provider credential is
-                # configured, and binding the port then would advertise a
-                # capability every call would fail. A misconfigured task raises
-                # from the invoker's constructor; degrade like the rest of this
-                # block rather than failing startup over an operator tool.
-                analyzer_reasoning_bound = False
-                if app.state.ai_gateway_route_pool.routes:
-                    try:
-                        app.state.graph_schema_analyzer_reasoning = build_analyzer_ai_adapter(
-                            settings=settings,
-                            configuration=ai_gateway_configuration.configuration,
-                            route_pool=app.state.ai_gateway_route_pool,
-                        )
-                    except Exception as exc:  # noqa: BLE001 - degrade, never block startup
-                        logger.warning(
-                            "graph_schema_analyzer_reasoning_unavailable",
-                            exc_info=exc,
-                        )
-                    else:
-                        analyzer_reasoning_bound = True
-                else:
+                except Exception as exc:  # noqa: BLE001 - degrade, never block startup
                     logger.warning(
                         "graph_schema_analyzer_reasoning_unavailable",
-                        extra={"missing_dependencies": ("ai_gateway_routes",)},
+                        exc_info=exc,
                     )
-                app.state.graph_schema_analyzer_status = {
-                    "state": "READY",
-                    "source_discovery": resources.source_mongo is not None,
-                    "graph_target": resources.neo4j is not None,
-                    "reasoning": analyzer_reasoning_bound,
-                }
+                else:
+                    analyzer_reasoning_bound = True
+            else:
+                logger.warning(
+                    "graph_schema_analyzer_reasoning_unavailable",
+                    extra={"missing_dependencies": ("ai_gateway_routes",)},
+                )
+            app.state.graph_schema_analyzer_status = {
+                "state": "READY",
+                "source_discovery": resources.source_mongo is not None,
+                "graph_target": resources.neo4j is not None,
+                "reasoning": analyzer_reasoning_bound,
+            }
 
         logger.info(
             "application_resources_initialized",

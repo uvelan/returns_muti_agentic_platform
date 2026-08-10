@@ -1,0 +1,216 @@
+"""Opening and answering a held AI request, over HTTP.
+
+Wave D2's operator surface. The queue listing was already there and is
+deliberately identity-and-status only; these are the two endpoints that let
+someone actually do the work.
+
+Three properties matter more than the happy path:
+
+* **Unsealing is a separate, capability-gated act.** The payload can contain
+  block 5 UNTRUSTED SOURCE SAMPLE — rows out of a customer's database — which is
+  why it is sealed at rest. Fetching it needs `ai.interception.act`, the
+  narrower capability, not the read one that browsing the queue uses.
+* **A second answer loses.** The store's `answer` is a conditional write on
+  `PENDING`; the surface has to report that as 409 rather than swallow it.
+* **An absent store is 503 here and `[]` on the listing.** "No pending
+  interceptions" is a true answer for a deployment that never uses the manual
+  path; "here is interception X" has no truthful empty form, and answering 404
+  would read as "already handled".
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+import pytest
+from fastapi import FastAPI, Request
+from fastapi.testclient import TestClient
+
+from return_platform.ai.interception.records import (
+    Interception,
+    InterceptionStatus,
+    ResumeCommand,
+)
+from return_platform.ai.interception.store import InterceptionNotPending
+from return_platform.api.canonical_ai import router
+from return_platform.security import capabilities as caps
+from return_platform.security import roles as r
+from return_platform.security.principal import Principal
+
+_ID = "int-1"
+
+
+def _interception(status: InterceptionStatus = InterceptionStatus.PENDING) -> Interception:
+    now = datetime.now(UTC)
+    return Interception(
+        interception_id=_ID,
+        task_id="GRAPH_SCHEMA_PROPOSAL_V1",
+        status=status,
+        resume=ResumeCommand(run_id="run-1", thread_id="thread-1", workflow_id="wf-1"),
+        created_at=now,
+        expires_at=now + timedelta(hours=1),
+        answered_at=now if status is InterceptionStatus.ANSWERED else None,
+        answered_by="operator" if status is InterceptionStatus.ANSWERED else None,
+        response_text="an answer" if status is InterceptionStatus.ANSWERED else None,
+    )
+
+
+class _Store:
+    """Only the three methods this surface uses."""
+
+    def __init__(self, *, pending: bool = True, payload: dict[str, Any] | None = None) -> None:
+        self._pending = pending
+        self._payload = payload if payload is not None else {"prompt": "sealed content"}
+        self.answered_with: tuple[str, str] | None = None
+
+    async def list_pending(self, *, limit: int = 100) -> list[Interception]:
+        del limit
+        return [_interception()] if self._pending else []
+
+    async def request_payload(self, interception_id: str) -> dict[str, Any] | None:
+        return self._payload if interception_id == _ID else None
+
+    async def answer(
+        self, *, interception_id: str, response_text: str, answered_by: str
+    ) -> Interception:
+        if not self._pending:
+            raise InterceptionNotPending(
+                f"interception {interception_id!r} is ANSWERED, not PENDING"
+            )
+        self.answered_with = (response_text, answered_by)
+        self._pending = False
+        return _interception(InterceptionStatus.ANSWERED)
+
+
+def _client(store: object | None, *role_names: str) -> Iterator[TestClient]:
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def _attach(request: Request, call_next):  # type: ignore[no-untyped-def]
+        request.state.principal = Principal(subject="operator", roles=frozenset(role_names))
+        request.state.correlation_id = "test-correlation-id"
+        return await call_next(request)
+
+    app.include_router(router)
+    app.state.ai_interception_store = store
+    with TestClient(app) as client:
+        yield client
+
+
+@pytest.fixture
+def admin_store() -> Iterator[tuple[TestClient, _Store]]:
+    store = _Store()
+    for client in _client(store, r.CONSOLE_ADMIN):
+        yield client, store
+
+
+def test_an_operator_can_read_the_sealed_request(
+    admin_store: tuple[TestClient, _Store],
+) -> None:
+    client, _ = admin_store
+
+    response = client.get(f"/api/ai/interceptions/{_ID}/request")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["data"] == {"prompt": "sealed content"}
+
+
+def test_reading_the_request_needs_the_act_capability() -> None:
+    """A role with `ai.interception.read` but not `.act` may browse the queue and
+    must not unseal a prompt. Asserted through a role that genuinely lacks it
+    rather than by mocking the dependency."""
+    reader_roles = [
+        role
+        for role in sorted(r.ALL_ROLES)
+        if caps.AI_INTERCEPTION_ACT not in caps.capabilities_for_roles(frozenset({role}))
+    ]
+    assert reader_roles, "every role can act; this test cannot distinguish the capabilities"
+
+    for client in _client(_Store(), reader_roles[0]):
+        response = client.get(f"/api/ai/interceptions/{_ID}/request")
+
+    assert response.status_code == 403, response.text
+
+
+def test_the_queue_listing_never_carries_the_payload(
+    admin_store: tuple[TestClient, _Store],
+) -> None:
+    """The whole reason unsealing is a separate endpoint. If the listing ever
+    starts embedding prompts, sealing them at rest stops meaning anything."""
+    client, _ = admin_store
+
+    listed = client.get("/api/ai/interceptions").json()["data"]
+
+    assert listed, "expected a pending interception"
+    for item in listed:
+        assert "prompt" not in item
+        assert "requestPayload" not in item
+        assert set(item) == {
+            "interceptionId",
+            "taskId",
+            "status",
+            "createdAt",
+            "expiresAt",
+            "answeredBy",
+        }
+
+
+def test_answering_records_the_text_and_the_actor(
+    admin_store: tuple[TestClient, _Store],
+) -> None:
+    client, store = admin_store
+
+    response = client.post(
+        f"/api/ai/interceptions/{_ID}/answer", json={"responseText": "use the second candidate"}
+    )
+
+    assert response.status_code == 200, response.text
+    assert store.answered_with == ("use the second candidate", "operator")
+    assert response.json()["data"]["status"] == InterceptionStatus.ANSWERED.value
+
+
+def test_a_second_answer_is_refused(admin_store: tuple[TestClient, _Store]) -> None:
+    """Two operators answering at once produce one winner. The store enforces it
+    with a conditional write; this asserts the surface reports it as a conflict
+    rather than swallowing it into a 200."""
+    client, _ = admin_store
+    first = client.post(f"/api/ai/interceptions/{_ID}/answer", json={"responseText": "mine"})
+    assert first.status_code == 200
+
+    second = client.post(f"/api/ai/interceptions/{_ID}/answer", json={"responseText": "no, mine"})
+
+    assert second.status_code == 409, second.text
+    assert "not PENDING" in second.json()["detail"]
+
+
+def test_an_empty_answer_is_rejected(admin_store: tuple[TestClient, _Store]) -> None:
+    """A blank answer would resume the workflow with nothing, which is worse than
+    leaving it held."""
+    client, store = admin_store
+
+    response = client.post(f"/api/ai/interceptions/{_ID}/answer", json={"responseText": ""})
+
+    assert response.status_code == 422, response.text
+    assert store.answered_with is None
+
+
+def test_an_unknown_interception_is_404(admin_store: tuple[TestClient, _Store]) -> None:
+    client, _ = admin_store
+
+    assert client.get("/api/ai/interceptions/nope/request").status_code == 404
+
+
+def test_without_a_store_the_operator_endpoints_are_503_but_the_queue_is_empty() -> None:
+    """The asymmetry, stated as a test because it looks like an inconsistency
+    until you see why."""
+    for client in _client(None, r.CONSOLE_ADMIN):
+        assert client.get("/api/ai/interceptions").json()["data"] == []
+        assert client.get(f"/api/ai/interceptions/{_ID}/request").status_code == 503
+        assert (
+            client.post(
+                f"/api/ai/interceptions/{_ID}/answer", json={"responseText": "x"}
+            ).status_code
+            == 503
+        )

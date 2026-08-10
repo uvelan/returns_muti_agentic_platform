@@ -9456,6 +9456,22 @@
         "title": "ImportRequest",
         "type": "object"
       },
+      "InterceptionAnswer": {
+        "additionalProperties": false,
+        "properties": {
+          "responseText": {
+            "maxLength": 64000,
+            "minLength": 1,
+            "title": "Responsetext",
+            "type": "string"
+          }
+        },
+        "required": [
+          "responseText"
+        ],
+        "title": "InterceptionAnswer",
+        "type": "object"
+      },
       "InventoryDetail": {
         "additionalProperties": false,
         "properties": {
@@ -16892,6 +16908,102 @@
           }
         },
         "summary": "List Interceptions",
+        "tags": [
+          "AI Control Center"
+        ]
+      }
+    },
+    "/api/ai/interceptions/{interception_id}/answer": {
+      "post": {
+        "description": "Record a human answer to a held request.\n\nThe store's `answer` is a conditional write filtered on `PENDING`, so two\noperators answering at once produce one winner and one 409 -- never a silent\noverwrite of somebody's text. That is the store's guarantee; this surface\nonly has to report it honestly.\n\n**Answering does not resume the workflow here.** It transitions the\ninterception, and `InterceptionResumeDispatcher` turns answered records into\nresume commands, which the reasoning resume worker delivers as Temporal\nsignals. Doing the enqueue inline would put a cross-collection write on the\nrequest path and lose the at-least-once replay that makes the bridge safe.",
+        "operationId": "answer_interception_api_ai_interceptions__interception_id__answer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interception_id",
+            "required": true,
+            "schema": {
+              "title": "Interception Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterceptionAnswer"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Answer Interception",
+        "tags": [
+          "AI Control Center"
+        ]
+      }
+    },
+    "/api/ai/interceptions/{interception_id}/request": {
+      "get": {
+        "description": "The held prompt, unsealed.\n\nGated on `ai.interception.act` rather than `ai.interception.read`, which is\nthe narrower of the two on purpose. The payload can contain block 5\nUNTRUSTED SOURCE SAMPLE -- rows read out of a customer's database -- which is\nwhy it is sealed at rest at all. You unseal it because you are about to\nanswer it; browsing the queue needs only the read capability.",
+        "operationId": "read_interception_request_api_ai_interceptions__interception_id__request_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interception_id",
+            "required": true,
+            "schema": {
+              "title": "Interception Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Interception Request",
         "tags": [
           "AI Control Center"
         ]
