@@ -1,10 +1,13 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `4ac6b6e` (G1/G3 - Compose profiles, obsolete scripts retired)
-Slice: **Wave F is complete. Wave G is three phases in** (G1, G2, G3 done; G4 done here).
-Status: The cutover is finished. Four user routes, 107 contract paths, 22 router mounts,
-and no `data_console` or `v2` package. What remains is Wave H's final gates.
+Last pushed green commit: `19c356b` (H1 - mypy 20 -> 8)
+Slice: **Waves F and G are complete. Wave H1 is done** (`a84718f`, unpushed).
+Status: The cutover is finished and the static gate is clean for the first time in this
+programme's history. What remains is H2 (behavioural campaign) and H3 (final acceptance).
+
+**H1 closed the static gate.** mypy: **0 errors across 470 source files**, down from 42/14
+at Wave D, 20 at the start of H1. Not one error was silenced -- see the H1 section below.
 
 **Wave F, end to end:** contract 223 -> 107 paths; router mounts 42 -> 22; backend source
 files 496 -> 470; frontend 229 -> 48 files and 76+4 routes -> 4. Every test-count drop is a
@@ -12,17 +15,16 @@ deleted subject, not lost coverage.
 
 **Open, and worth someone's attention:**
 `test_return_workflow_concurrency.py::test_a_second_completion_sees_the_first_ones_state`
-has now failed in **2 of 5** full-suite runs while passing consistently in isolation. It
-predates Wave F and is unrelated to any of it. Calling it flaky is beginning to excuse
-rather than explain it; it wants a real investigation into test pollution or a genuine
-mutex race.
+failed **2 of 11** full-suite runs while passing consistently in isolation, and has not
+been caught under capture, so there is no diagnosis -- only two eliminated hypotheses
+(activity timeout: 10s budget vs a 0.2s stub; mutex hole: the `while` re-check is sound,
+`_transition_in_progress` is set synchronously, `finally` always clears). It predates
+Wave F. It is unreproduced, not fixed, and the distinction matters.
 
-Suite: **2048 passed, 8 skipped, 1 intermittent** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
+Suite: **2049 passed, 8 skipped** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
 Frontend: eslint clean, `tsc -b` clean, 65 unit tests, 6 Playwright e2e.
-Contract: **107 paths**; drift clean in verify mode.
-mypy baseline: **42 errors / 14 files**. This moved for the first time since Phase 4 —
-retiring the Mongo release lifecycle took five of the old 47 with it. Quote 42/14.
-Contract: **211 paths**; drift check passes on consecutive runs; frontend `tsc -b` clean.
+Backend static: ruff check + format clean; **mypy clean**; `import return_platform.main` ok.
+Contract: **107 paths**; drift PASS in verify mode at an unchanged hash.
 
 "Green" now means the **full** gate. `scripts/linux/03_run_backend_quality.sh` runs
 `ruff check .` and `ruff format --check .` from `backend/`, and both pass across all 739
@@ -2732,6 +2734,50 @@ reason. Two earlier Wave D worktrees were abandoned uncommitted and came within 
 
 **All four are closed.** Wave E's backend dependencies are met; what remains in E is
 frontend work, which the owner has taken.
+
+## Wave H1 - the static gate, closed by reading the protocols
+
+Status: DONE (`19c356b`, `a84718f`). mypy strict: **20 -> 0** across 470 source files.
+
+**Nothing was silenced.** No `type: ignore` was added; one was *removed*. Every error was
+a protocol or annotation that did not describe its own implementations, and in each case
+the declaration was wrong rather than the code.
+
+**The recurring root cause: `object` and `Any` in a protocol are not "permissive".**
+`sync/adapters.py` declared `GraphWriter.write(batch: object) -> object`. A protocol
+parameter is contravariant, so `object` *demands* an implementation that accepts anything
+-- which `Neo4jDynamicGraphWriter.write(batch: GraphMutationBatch)` is not. The declaration
+intended to avoid an import and instead made itself unsatisfiable, and the `object` return
+then forced a `# type: ignore[attr-defined]` on the receipt field read one line below.
+Both real types live in packages the module already imported from, so naming them added no
+coupling at all.
+
+The same shape, twice more:
+- `GraphDriver.session(**config: Any)` was *considered* as a fix and rejected for the same
+  reason -- it demands acceptance of arbitrary keywords. The precise
+  `session(*, database: str | None = None)` is what the driver actually offers.
+- A bare `x: str` in a Protocol means **settable**, which a frozen Pydantic model cannot
+  satisfy. `_StructureLike` needed `@property`. This is now the second place in the
+  codebase where that bit; `RuntimeConfigurationView` had already documented it.
+
+**Three latent defects surfaced that were not type errors:**
+1. `sync/adapters.py` had a one-method local `SourceConnector` protocol declaring only
+   `capture_high_watermark`. It made `SourceConnectorRegistry` *look* like the
+   `SourceScanRegistry` it exists to be, while `resolve` returned something too narrow for
+   `GenericSyncCoordinator` to accept. The duplicate is deleted; the canonical
+   `SourceScanConnector` is used.
+2. `_CountingConnector(inner: Any)` was missing `capabilities()` entirely -- an
+   `AttributeError` for any caller. Nothing calls it today. Typing the parameter is what
+   revealed it.
+3. `order_agent.py` dispatched on `runtime.__class__.__name__ == "DynamicOrderAgentRuntime"`,
+   which both returned `Any` and would accept any unrelated class sharing the name.
+
+`_NoModulesYetConfigurationHandle` is a placeholder whose every method raises, and its
+`current()` took no epoch while its `pinned` was sync -- against a protocol that passes
+`RuntimeEpoch` and awaits. A placeholder whose signature does not match cannot prove the
+thing it is standing in for.
+
+---
 
 ## Wave F5 - data_console deleted, in two parts
 
