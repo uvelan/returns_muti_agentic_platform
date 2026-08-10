@@ -747,6 +747,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/returns/{session_id}/conversation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Conversation
+         * @description The associate discovery conversation this return came out of, if any.
+         *
+         *     **This direction did not previously exist.** `returnSessionId` is stamped on
+         *     the conversation when `submit_details` creates the return, so the link was in
+         *     the data -- but only conversation-to-session, with no accessor and no index
+         *     for the reverse. Given a session there was no way to find its conversation,
+         *     which is why this endpoint was parked as unresolved rather than merely
+         *     unbuilt. `AssociateConversationService.get_for_session` and a sparse index
+         *     are what closed it.
+         *
+         *     **`null` is a successful answer, not a 404.** A SYSTEM-channel return has no
+         *     conversation behind it and never will; in a batch-driven deployment most
+         *     returns will not. 404 here would mean "no such return", which the parent
+         *     check already covers, and a caller could not tell the two apart.
+         */
+        get: operations["get_conversation_api_returns__session_id__conversation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/returns/{session_id}/events": {
         parameters: {
             query?: never;
@@ -811,6 +844,34 @@ export interface paths {
          *     three; the legacy path keeps its combined shape until Wave F.
          */
         get: operations["get_evidence_api_returns__session_id__evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/returns/{session_id}/support": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Support
+         * @description The return's support records: the platform-raised case and the human work item.
+         *
+         *     Both are optional and independent. See `ReturnSupport` for why they are two
+         *     fields rather than one -- they were parked as an unresolved duplicate and
+         *     are not one.
+         *
+         *     The work-item service is resolved leniently: a deployment without the
+         *     support module still has cases, and 503-ing the whole endpoint because half
+         *     of it is unavailable would hide the half that works.
+         */
+        get: operations["get_support_api_returns__session_id__support_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4774,6 +4835,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[ReturnSupport] */
+        APIResponse_ReturnSupport_: {
+            data?: components["schemas"]["ReturnSupport"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[ReturnWorkflowAssessment] */
         APIResponse_ReturnWorkflowAssessment_: {
             data?: components["schemas"]["ReturnWorkflowAssessment"] | null;
@@ -4867,6 +4934,15 @@ export interface components {
         /** APIResponse[UnifiedInventory] */
         APIResponse_UnifiedInventory_: {
             data?: components["schemas"]["UnifiedInventory"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[Union[dict[str, Any], NoneType]] */
+        APIResponse_Union_dict_str__Any___NoneType__: {
+            /** Data */
+            data?: {
+                [key: string]: unknown;
+            } | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -8353,6 +8429,38 @@ export interface components {
          * @enum {string}
          */
         ReturnStatus: "QUEUED" | "RUNNING" | "INTERCEPTION_PENDING" | "REVIEW_REQUIRED" | "WAITING_SUPPORT" | "WAITING_EXTERNAL" | "APPROVED" | "REJECTED" | "COMPLETED" | "FAILED" | "CANCELLED";
+        /**
+         * ReturnSupport
+         * @description The two support records a return can have, and they are not duplicates.
+         *
+         *     This pair is why `/support` was parked: two stores looked like competing
+         *     implementations of one idea. Measured, they are the artifact/evidence
+         *     situation again -- a shared word over different things.
+         *
+         *     `case` is raised **by the platform**: `orchestrator._fail` creates one when a
+         *     return flow fails, with a type, a priority and an SLA. Nothing human opens
+         *     it.
+         *
+         *     `workItem` is opened **by a person**, through the support workbench. It
+         *     carries a message thread and an eleven-state lifecycle from NEW to
+         *     COMPLETED.
+         *
+         *     Both are at most one per return -- each collection has `sessionId` uniquely
+         *     indexed -- and either can be absent. A return that never failed has no case;
+         *     a return support never touched has no work item. `null` is a real answer for
+         *     both, and collapsing them into one field would lose which of the two a
+         *     caller is looking at.
+         */
+        ReturnSupport: {
+            /** Case */
+            case?: {
+                [key: string]: unknown;
+            } | null;
+            /** Workitem */
+            workItem?: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** ReturnWorkflowAssessment */
         ReturnWorkflowAssessment: {
             /** Complete */
@@ -10999,6 +11107,37 @@ export interface operations {
             };
         };
     };
+    get_conversation_api_returns__session_id__conversation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_Union_dict_str__Any___NoneType__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     record_event_api_returns__session_id__events_post: {
         parameters: {
             query?: never;
@@ -11052,6 +11191,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_ReturnEvidence_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_support_api_returns__session_id__support_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ReturnSupport_"];
                 };
             };
             /** @description Validation Error */

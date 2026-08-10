@@ -2647,6 +2647,39 @@
         "title": "APIResponse[ReturnSessionView]",
         "type": "object"
       },
+      "APIResponse_ReturnSupport_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReturnSupport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ReturnSupport]",
+        "type": "object"
+      },
       "APIResponse_ReturnWorkflowAssessment_": {
         "additionalProperties": false,
         "properties": {
@@ -3173,6 +3206,41 @@
           "meta"
         ],
         "title": "APIResponse[UnifiedInventory]",
+        "type": "object"
+      },
+      "APIResponse_Union_dict_str__Any___NoneType__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[Union[dict[str, Any], NoneType]]",
         "type": "object"
       },
       "APIResponse_ValidationReceipt_": {
@@ -13009,6 +13077,38 @@
         "title": "ReturnStatus",
         "type": "string"
       },
+      "ReturnSupport": {
+        "additionalProperties": false,
+        "description": "The two support records a return can have, and they are not duplicates.\n\nThis pair is why `/support` was parked: two stores looked like competing\nimplementations of one idea. Measured, they are the artifact/evidence\nsituation again -- a shared word over different things.\n\n`case` is raised **by the platform**: `orchestrator._fail` creates one when a\nreturn flow fails, with a type, a priority and an SLA. Nothing human opens\nit.\n\n`workItem` is opened **by a person**, through the support workbench. It\ncarries a message thread and an eleven-state lifecycle from NEW to\nCOMPLETED.\n\nBoth are at most one per return -- each collection has `sessionId` uniquely\nindexed -- and either can be absent. A return that never failed has no case;\na return support never touched has no work item. `null` is a real answer for\nboth, and collapsing them into one field would lose which of the two a\ncaller is looking at.",
+        "properties": {
+          "case": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case"
+          },
+          "workItem": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workitem"
+          }
+        },
+        "title": "ReturnSupport",
+        "type": "object"
+      },
       "ReturnWorkflowAssessment": {
         "additionalProperties": false,
         "properties": {
@@ -18702,6 +18802,49 @@
         ]
       }
     },
+    "/api/returns/{session_id}/conversation": {
+      "get": {
+        "description": "The associate discovery conversation this return came out of, if any.\n\n**This direction did not previously exist.** `returnSessionId` is stamped on\nthe conversation when `submit_details` creates the return, so the link was in\nthe data -- but only conversation-to-session, with no accessor and no index\nfor the reverse. Given a session there was no way to find its conversation,\nwhich is why this endpoint was parked as unresolved rather than merely\nunbuilt. `AssociateConversationService.get_for_session` and a sparse index\nare what closed it.\n\n**`null` is a successful answer, not a 404.** A SYSTEM-channel return has no\nconversation behind it and never will; in a batch-driven deployment most\nreturns will not. 404 here would mean \"no such return\", which the parent\ncheck already covers, and a caller could not tell the two apart.",
+        "operationId": "get_conversation_api_returns__session_id__conversation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_Union_dict_str__Any___NoneType__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Conversation",
+        "tags": [
+          "Returns"
+        ]
+      }
+    },
     "/api/returns/{session_id}/events": {
       "post": {
         "description": "The canonical way to move a return, and the only one.\n\n**This is what replaces `POST /{id}/cancel`.** Cancellation is\n`eventType: CANCELLED` -- not a separate endpoint. The legacy pair were two\nways to cancel that disagreed: `/cancel` wrote `status: CANCELLED` straight\nto Mongo and released the discovery lock but never told the workflow, while\nthe workflow's CANCELLED event updated the durable state and the session\ndocument but left the discovery lock held. Whichever a caller used, one of\nthe two records was wrong. `record_event` now releases the lock itself, so\nthe single canonical path does everything both did.\n\n**It also replaces `POST /{id}/start`.** `record_event` calls\n`ensure_started` first, so a separate start endpoint only exists to create a\nworkflow with no event in it. Callers that want the workflow running send\nthe first event.\n\nNot a generic advance: the caller names an *event that happened* and the\nevidence for it, and the state machine decides which stage that implies.\nAn endpoint taking a target stage would invert that.",
@@ -18793,6 +18936,49 @@
           }
         },
         "summary": "Get Evidence",
+        "tags": [
+          "Returns"
+        ]
+      }
+    },
+    "/api/returns/{session_id}/support": {
+      "get": {
+        "description": "The return's support records: the platform-raised case and the human work item.\n\nBoth are optional and independent. See `ReturnSupport` for why they are two\nfields rather than one -- they were parked as an unresolved duplicate and\nare not one.\n\nThe work-item service is resolved leniently: a deployment without the\nsupport module still has cases, and 503-ing the whole endpoint because half\nof it is unavailable would hide the half that works.",
+        "operationId": "get_support_api_returns__session_id__support_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ReturnSupport_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Support",
         "tags": [
           "Returns"
         ]

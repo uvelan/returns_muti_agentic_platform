@@ -374,6 +374,18 @@ class ReturnSupportService:
         document = await self._work_items.find_one({"_id": work_item_id})
         return None if document is None else self._work_item_view(cast(dict[str, Any], document))
 
+    async def get_work_item_for_session(self, session_id: str) -> SupportWorkItemView | None:
+        """The one work item for a return, if support has been involved.
+
+        Singular because `sessionId` is uniquely indexed on this collection --
+        a return has at most one support work item, by construction. That index
+        already existed; what was missing was any way to use it in this
+        direction, which is why "read a return's support" had no implementation
+        even though the data supported it.
+        """
+        document = await self._work_items.find_one({"sessionId": session_id})
+        return None if document is None else self._work_item_view(cast(dict[str, Any], document))
+
     async def list_messages(self, thread_id: str) -> list[SupportMessageView]:
         cursor = self._messages.find({"threadId": thread_id}).sort("sequence", ASCENDING)
         return [self._message_view(cast(dict[str, Any], item)) async for item in cursor]

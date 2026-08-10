@@ -1193,6 +1193,14 @@ class AssociateConversationService:
     async def ensure_indexes(self) -> None:
         await self._conversations.create_index([("createdAt", -1)])
         await self._conversations.create_index("status")
+        # Reverse of the link `submit_details` writes. Sparse because most
+        # conversations never reach a return, and a non-sparse index over mostly
+        # nulls is pure cost. Not unique: a session reached by two conversation
+        # attempts is unusual but not a corruption, and a unique index would
+        # turn it into a write failure at the worst moment.
+        await self._conversations.create_index(
+            [("returnSessionId", 1), ("createdAt", -1)], sparse=True
+        )
         await self._messages.create_index([("conversationId", 1), ("sequence", 1)], unique=True)
         await self._messages.create_index([("conversationId", 1), ("createdAt", 1)])
         await self._discovery_snapshots.create_index("snapshotId", unique=True)
@@ -2362,6 +2370,27 @@ class AssociateConversationService:
 
     async def get(self, conversation_id: str) -> AssociateConversationView | None:
         document = await self._conversations.find_one({"_id": conversation_id})
+        return None if document is None else self._view(document)
+
+    async def get_for_session(self, session_id: str) -> AssociateConversationView | None:
+        """The conversation a return session came out of, if it came out of one.
+
+        The link already existed in the data -- `returnSessionId` is stamped on
+        the conversation when `submit_details` creates the return -- but only in
+        the conversation-to-session direction, with no accessor and no index for
+        the reverse. That is why "read a return's conversation" was not merely
+        unbuilt but unanswerable: given a session there was no way to find it.
+
+        `None` is a real answer, not an error: a SYSTEM-channel return has no
+        conversation behind it, and most returns in a batch-driven deployment
+        will not.
+
+        Newest first, because a session can in principle be reached by more than
+        one conversation attempt and the last one is the one that created it.
+        """
+        document = await self._conversations.find_one(
+            {"returnSessionId": session_id}, sort=[("createdAt", -1)]
+        )
         return None if document is None else self._view(document)
 
     async def continue_discovery(

@@ -36,9 +36,16 @@ write-side overlap was that four routers recorded production workflow
 transitions and one of them ran the authorization check -- closed separately in
 `operations/production_event_authorization.py`.
 
-Still genuinely open on the write side: the overlapping stage actions between
-`production_workflow.py` and `physical_operations.py`, and the associate flow
-that drives the same session by another route.
+**The two parked reads are here too.** `/support` looked like two competing
+stores and is the same shared-word-over-different-things as artifacts/evidence:
+a case is raised by the platform when a flow fails, a work item is opened by a
+person. `/conversation` was genuinely unanswerable -- the session-to-conversation
+direction had no accessor and no index -- and now is not.
+
+Still open on the write side: the overlapping stage actions between
+`production_workflow.py` and `physical_operations.py`. The associate flow is not
+one of them; it is partitioned by channel, and
+`tests/api/test_return_creation_is_single_sourced.py` holds that.
 
 **No generic advance.** There is deliberately no `POST /{session_id}/advance`
 here and there never will be: a stage completes because a specific,
@@ -59,7 +66,11 @@ from temporalio.client import WorkflowUpdateFailedError
 from temporalio.exceptions import ApplicationError
 from temporalio.service import RPCError
 
+from return_platform.configuration.return_configuration import LoadedReturnConfiguration
 from return_platform.data_console.api.auth import require_read_roles, require_write_roles
+from return_platform.operations.associate_service_factory import (
+    build_associate_conversation_service,
+)
 from return_platform.operations.models import (
     ReturnCreateRequest,
     ReturnSessionView,
@@ -70,7 +81,12 @@ from return_platform.operations.production_event_authorization import (
     authorize_production_event,
 )
 from return_platform.operations.production_workflow import resolve_production_coordinator
-from return_platform.operations.repository import resolve_operational_repository
+from return_platform.operations.repository import (
+    OperationalRepository,
+    resolve_operational_repository,
+)
+from return_platform.operations.return_support.service import ReturnSupportService
+from return_platform.resources import RuntimeResources
 from return_platform.security.authorization import actor_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 from return_platform.workflows.production_return_workflow import ProductionReturnEventType
@@ -110,6 +126,34 @@ class ReturnEventResult(BaseModel):
     cancelled: bool
 
 
+class ReturnSupport(BaseModel):
+    """The two support records a return can have, and they are not duplicates.
+
+    This pair is why `/support` was parked: two stores looked like competing
+    implementations of one idea. Measured, they are the artifact/evidence
+    situation again -- a shared word over different things.
+
+    `case` is raised **by the platform**: `orchestrator._fail` creates one when a
+    return flow fails, with a type, a priority and an SLA. Nothing human opens
+    it.
+
+    `workItem` is opened **by a person**, through the support workbench. It
+    carries a message thread and an eleven-state lifecycle from NEW to
+    COMPLETED.
+
+    Both are at most one per return -- each collection has `sessionId` uniquely
+    indexed -- and either can be absent. A return that never failed has no case;
+    a return support never touched has no work item. `null` is a real answer for
+    both, and collapsing them into one field would lose which of the two a
+    caller is looking at.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    case: dict[str, Any] | None = None
+    workItem: dict[str, Any] | None = None
+
+
 class ReturnEvidence(BaseModel):
     """Everything recorded *about* a return that is not the return itself.
 
@@ -143,6 +187,33 @@ def _without_mongo_id(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         {key: value for key, value in document.items() if key != "_id"} for document in documents
     ]
+
+
+def _optional_support_service(request: Request) -> ReturnSupportService | None:
+    """The work-item service, or `None` when its dependencies are absent.
+
+    `api/return_support.py::_service` raises 503 for the same condition, which is
+    right for a router whose every endpoint is a work item. It is wrong here:
+    `/support` also returns the platform-raised case, which needs only the
+    operational repository, and failing the whole response because half of it is
+    unavailable would hide the half that works.
+    """
+    resources = getattr(request.app.state, "resources", None)
+    loaded = getattr(request.app.state, "return_configuration", None)
+    if (
+        not isinstance(resources, RuntimeResources)
+        or resources.mongo is None
+        or not isinstance(loaded, LoadedReturnConfiguration)
+    ):
+        return None
+    return ReturnSupportService(
+        client=resources.mongo,
+        settings=resources.settings,
+        configuration=loaded.configuration,
+        operational_repository=OperationalRepository(
+            resources.mongo, resources.settings, resources.source_mongo
+        ),
+    )
 
 
 def _meta(request: Request) -> ResponseMeta:
@@ -281,6 +352,70 @@ async def get_evidence(
             ),
             agentDecisions=_without_mongo_id(await repository.list_agent_decisions(session_id)),
         ),
+        meta=_meta(request),
+    )
+
+
+@router.get("/{session_id}/support", response_model=APIResponse[ReturnSupport])
+async def get_support(
+    request: Request,
+    session_id: str,
+    _actor_id: str = Depends(require_read_roles),
+) -> APIResponse[ReturnSupport]:
+    """The return's support records: the platform-raised case and the human work item.
+
+    Both are optional and independent. See `ReturnSupport` for why they are two
+    fields rather than one -- they were parked as an unresolved duplicate and
+    are not one.
+
+    The work-item service is resolved leniently: a deployment without the
+    support module still has cases, and 503-ing the whole endpoint because half
+    of it is unavailable would hide the half that works.
+    """
+    await _require_session(request, session_id)
+    repository = resolve_operational_repository(request)
+    case = await repository.get_support_case_for_session(session_id)
+
+    work_item = None
+    service = _optional_support_service(request)
+    if service is not None:
+        work_item = await service.get_work_item_for_session(session_id)
+
+    return APIResponse(
+        data=ReturnSupport(
+            case=case.model_dump(mode="json") if case is not None else None,
+            workItem=work_item.model_dump(mode="json") if work_item is not None else None,
+        ),
+        meta=_meta(request),
+    )
+
+
+@router.get("/{session_id}/conversation", response_model=APIResponse[dict[str, Any] | None])
+async def get_conversation(
+    request: Request,
+    session_id: str,
+    _actor_id: str = Depends(require_read_roles),
+) -> APIResponse[Any]:
+    """The associate discovery conversation this return came out of, if any.
+
+    **This direction did not previously exist.** `returnSessionId` is stamped on
+    the conversation when `submit_details` creates the return, so the link was in
+    the data -- but only conversation-to-session, with no accessor and no index
+    for the reverse. Given a session there was no way to find its conversation,
+    which is why this endpoint was parked as unresolved rather than merely
+    unbuilt. `AssociateConversationService.get_for_session` and a sparse index
+    are what closed it.
+
+    **`null` is a successful answer, not a 404.** A SYSTEM-channel return has no
+    conversation behind it and never will; in a batch-driven deployment most
+    returns will not. 404 here would mean "no such return", which the parent
+    check already covers, and a caller could not tell the two apart.
+    """
+    await _require_session(request, session_id)
+    service = build_associate_conversation_service(request)
+    conversation = await service.get_for_session(session_id)
+    return APIResponse(
+        data=conversation.model_dump(mode="json") if conversation is not None else None,
         meta=_meta(request),
     )
 
