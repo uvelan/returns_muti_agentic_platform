@@ -72,6 +72,55 @@ export type DraftView = {
   readonly relationship_count: number;
 };
 
+/**
+ * The draft shape, typed at the API boundary on both sides.
+ *
+ * The backend's view models set `extra="forbid"`, so a mutation command that
+ * started writing a differently-named key fails loudly there rather than
+ * arriving here as a quietly missing field. These mirror those models exactly;
+ * a mismatch is a 500 on the server, not a blank column on the screen.
+ */
+export type PropertyShapeView = {
+  readonly type: string;
+  readonly source_field: string | null;
+  readonly transformation: string | null;
+};
+
+export type EntityShapeView = {
+  readonly label: string;
+  readonly source_dataset: string | null;
+  readonly properties: Readonly<Record<string, PropertyShapeView>>;
+  readonly identifier_properties: readonly string[];
+  readonly ownership: string | null;
+  readonly sync_mode: string | null;
+};
+
+export type RelationshipShapeView = {
+  readonly relationship_type: string;
+  readonly from_label: string;
+  readonly to_label: string;
+  readonly cardinality: string | null;
+};
+
+export type GraphIndexShapeView = {
+  readonly label: string;
+  readonly properties: readonly string[];
+};
+
+export type GraphConstraintShapeView = {
+  readonly label: string;
+  readonly property_name: string;
+  readonly unique: boolean;
+  readonly required: boolean;
+};
+
+export type DraftShapeView = {
+  readonly entities: Readonly<Record<string, EntityShapeView>>;
+  readonly relationships: readonly RelationshipShapeView[];
+  readonly graph_indexes: readonly GraphIndexShapeView[];
+  readonly graph_constraints: readonly GraphConstraintShapeView[];
+};
+
 export type RevisionView = {
   readonly revision_id: string;
   readonly sequence: number;
@@ -146,6 +195,16 @@ export const graphSchemaApi = {
       { method: "POST", body: JSON.stringify({ answer }) },
     ),
   getDraft: (draftId: string) => request<DraftView>(`/drafts/${draftId}`),
+
+  /**
+   * The entities and relationships a canvas draws.
+   *
+   * A separate call from `getDraft` on purpose, mirroring the backend split:
+   * counts are O(1) and are what a draft *listing* needs, while a real source's
+   * schema is unbounded. Fetching this only when the canvas is on screen is the
+   * whole point of it not being inlined.
+   */
+  getDraftShape: (draftId: string) => request<DraftShapeView>(`/drafts/${draftId}/shape`),
   listRevisions: (draftId: string) => request<RevisionView[]>(`/drafts/${draftId}/revisions`),
   validateDraft: (draftId: string) =>
     request<ValidationResultView>(`/drafts/${draftId}/validate`, { method: "POST" }),
