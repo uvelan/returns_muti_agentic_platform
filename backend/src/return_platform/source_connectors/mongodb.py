@@ -141,9 +141,27 @@ class MongoDBSourceScanConnector:
             return SourceCursor(
                 cursor_type=_FIELD_DATETIME, encoded_value=datetime.now(UTC).isoformat()
             )
+        newest_value = _dotted_get(latest[0], sort_field)
+        if newest_value is None:
+            # Fail closed, here, where the source and field can still be named.
+            # `_encode_field_value(None)` returns the *string* "None", which is a
+            # perfectly well-formed SourceCursor -- the run then proceeds and dies
+            # much later in `_field_datetime_bounds` with a bare
+            # `ValueError: Invalid isoformat string: 'None'` that mentions neither
+            # the source nor the cursor field.
+            #
+            # Not defaulted: substituting `now()` would silently skip every record
+            # (the silent-empty-build failure mode), and substituting the epoch
+            # would silently rescan the whole collection. A missing cursor value on
+            # the newest document is a schema/data problem for an operator to fix.
+            raise MongoConnectorError(
+                f"source {source_asset_id!r}: newest document has no value at cursor "
+                f"field {sort_field!r} (logical field {source.incremental_cursor_field!r}); "
+                "cannot establish a high watermark"
+            )
         return SourceCursor(
             cursor_type=_FIELD_DATETIME,
-            encoded_value=_encode_field_value(_dotted_get(latest[0], sort_field)),
+            encoded_value=_encode_field_value(newest_value),
         )
 
     def _resolve_physical_field(self, source_asset_id: str, field_id: str) -> str:

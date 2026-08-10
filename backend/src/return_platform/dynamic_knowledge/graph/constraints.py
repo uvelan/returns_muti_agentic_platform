@@ -50,8 +50,9 @@ def required_node_constraints(schema: ActiveSchema) -> tuple[RequiredNodeConstra
     constraints: list[RequiredNodeConstraint] = []
     for node in schema.graph.nodes.values():
         entity = schema.entities[node.entity_id]
-        graph_properties = ("graph_generation_id",) + tuple(
-            entity.fields[field_id].graph_property for field_id in node.key_fields
+        graph_properties = (
+            "graph_generation_id",
+            *(entity.fields[field_id].graph_property for field_id in node.key_fields),
         )
         constraints.append(
             RequiredNodeConstraint(label=node.label, graph_properties=graph_properties)
@@ -70,10 +71,12 @@ def required_relationship_indexes(schema: ActiveSchema) -> tuple[RequiredRelatio
             RequiredRelationshipIndex(
                 relationship_id=relationship.relationship_id,
                 label=source_node.label,
-                graph_properties=("graph_generation_id",)
-                + tuple(
-                    source_entity.fields[field_id].graph_property
-                    for field_id in relationship.source_match_fields
+                graph_properties=(
+                    "graph_generation_id",
+                    *(
+                        source_entity.fields[field_id].graph_property
+                        for field_id in relationship.source_match_fields
+                    ),
                 ),
             )
         )
@@ -81,10 +84,12 @@ def required_relationship_indexes(schema: ActiveSchema) -> tuple[RequiredRelatio
             RequiredRelationshipIndex(
                 relationship_id=relationship.relationship_id,
                 label=target_node.label,
-                graph_properties=("graph_generation_id",)
-                + tuple(
-                    target_entity.fields[field_id].graph_property
-                    for field_id in relationship.target_match_fields
+                graph_properties=(
+                    "graph_generation_id",
+                    *(
+                        target_entity.fields[field_id].graph_property
+                        for field_id in relationship.target_match_fields
+                    ),
                 ),
             )
         )

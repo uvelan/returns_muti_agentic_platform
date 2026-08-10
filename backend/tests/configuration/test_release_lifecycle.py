@@ -244,7 +244,7 @@ async def test_draft_to_approved_is_rejected():
 
 @pytest.mark.asyncio
 async def test_validated_cannot_activate_without_approval():
-    client, release_svc, activation_svc = _make_services()
+    _client, release_svc, activation_svc = _make_services()
     await activation_svc.initialize_indexes()
     snapshot = _make_snapshot()
     await release_svc.create_release("r-no-act-1", snapshot)
@@ -343,7 +343,7 @@ async def test_concurrent_validate_cas_only_one_wins():
     The first to complete the CAS write wins; the second sees modified_count=0
     and raises InvalidTransitionError.
     """
-    client, release_svc, _ = _make_services()
+    _client, release_svc, _ = _make_services()
     snapshot = _make_snapshot()
     await release_svc.create_release("r-cas-v-1", snapshot)
 
@@ -373,7 +373,7 @@ async def test_concurrent_approve_cas_only_one_wins():
     The first to complete the CAS write wins; the second sees modified_count=0
     and raises InvalidTransitionError.
     """
-    client, release_svc, _ = _make_services()
+    _client, release_svc, _ = _make_services()
     snapshot = _make_snapshot()
     await release_svc.create_release("r-cas-a-1", snapshot)
     await release_svc.validate_release("r-cas-a-1")

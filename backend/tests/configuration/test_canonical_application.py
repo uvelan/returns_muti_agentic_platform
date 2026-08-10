@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from return_platform.configuration.application.compatibility import (
     LegacyCompatibilityAdapter,
@@ -220,7 +221,7 @@ def test_manifest_path_traversal_fails(tmp_path):
     _write_config(tmp_path, manifest)
     loader = ConfigurationLoader(tmp_path)
     mf = loader.load_manifest()
-    with pytest.raises(ValueError, match="escapes config directory|missing file"):
+    with pytest.raises(ValueError, match=r"escapes config directory|missing file"):
         loader.load_manifest_entries(mf)
 
 
@@ -736,10 +737,20 @@ def test_active_release_cannot_override_bootstrap_only_value():
 
 
 def test_runtime_snapshot_is_final_immutable_output():
-    """RuntimeSnapshot is frozen; cannot be mutated after creation."""
+    """RuntimeSnapshot is frozen; cannot be mutated after creation.
+
+    Asserts the specific `frozen_instance` error rather than a bare `Exception`.
+    The blind form passed for the wrong reason if `PlatformConfig(...)` itself
+    raised -- e.g. once it gains another required field -- which would leave the
+    immutability claim untested while the test still went green.
+    """
     snapshot = build_snapshot_from_legacy_configs(CONFIG_DIR)
-    with pytest.raises(Exception):
-        snapshot.platform = PlatformConfig(environment="mutation-attempt")  # type: ignore[misc]
+    replacement = PlatformConfig(environment="mutation-attempt")
+
+    with pytest.raises(ValidationError) as excinfo:
+        snapshot.platform = replacement  # type: ignore[misc]
+
+    assert [error["type"] for error in excinfo.value.errors()] == ["frozen_instance"]
 
 
 def test_secret_ref_is_preserved_without_resolution():

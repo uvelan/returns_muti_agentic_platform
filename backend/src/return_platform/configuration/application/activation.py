@@ -184,12 +184,14 @@ class ActivationService:
                         pointer_version + 1,
                     )
 
-            except DuplicateKeyError:
+            except DuplicateKeyError as exc:
                 raise ActivationConflictError(
                     "Concurrent activation detected via unique partial index"
-                )
+                ) from exc
             except OperationFailure as exc:
                 # WriteConflict (112) and transaction errors (251, 244, 258)
                 if exc.code in (112, 251, 244, 258):
-                    raise ActivationConflictError(f"Concurrent activation detected: {exc.details}")
+                    raise ActivationConflictError(
+                        f"Concurrent activation detected: {exc.details}"
+                    ) from exc
                 raise

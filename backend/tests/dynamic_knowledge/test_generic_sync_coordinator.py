@@ -151,7 +151,7 @@ async def test_full_sync_writes_records_from_every_page(active_schema: ActiveSch
         writer=writer,
         checkpoints=RecordingCheckpoints(),
     )
-    nodes, relationships = await coordinator.full_sync(
+    nodes, _relationships = await coordinator.full_sync(
         schema=active_schema, graph_generation_id="g1", fencing_token=1
     )
     assert nodes == 2
@@ -197,7 +197,7 @@ async def test_full_sync_runs_stage_b_reconciliation_after_every_source_complete
         checkpoints=RecordingCheckpoints(),
         reconciler=reconciler,
     )
-    nodes, relationships = await coordinator.full_sync(
+    _nodes, relationships = await coordinator.full_sync(
         schema=active_schema, graph_generation_id="g1", fencing_token=1
     )
     assert relationships == 2
@@ -397,7 +397,7 @@ async def test_full_sync_without_a_reconciler_skips_stage_b(active_schema: Activ
         writer=RecordingWriter(),
         checkpoints=RecordingCheckpoints(),
     )
-    nodes, relationships = await coordinator.full_sync(
+    _nodes, relationships = await coordinator.full_sync(
         schema=active_schema, graph_generation_id="g1", fencing_token=1
     )
     assert relationships == 0

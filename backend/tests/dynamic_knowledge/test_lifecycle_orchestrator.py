@@ -178,7 +178,7 @@ def _orchestrator(
 
 @pytest.mark.asyncio
 async def test_first_activation_ever_creates_version_one(active_schema: ActiveSchema) -> None:
-    orchestrator, snapshot_store, lease_store, writer, coordinator = _orchestrator()
+    orchestrator, snapshot_store, lease_store, writer, _coordinator = _orchestrator()
     snapshot = await orchestrator.build_and_activate(
         schema=active_schema, snapshot_name="ORDER_DISCOVERY", configuration_release_id="release-1"
     )

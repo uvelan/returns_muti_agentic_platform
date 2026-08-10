@@ -142,6 +142,34 @@ async def test_capture_high_watermark_uses_now_when_the_collection_is_empty(
 
 
 @pytest.mark.asyncio
+async def test_capture_high_watermark_rejects_a_newest_document_with_no_cursor_value(
+    active_schema: ActiveSchema,
+) -> None:
+    """A non-empty collection whose newest document has no cursor value used to
+    produce the *string* `"None"` as a perfectly well-formed cursor. The run then
+    continued and died much later inside `_field_datetime_bounds` with a bare
+    `ValueError: Invalid isoformat string: 'None'`, naming neither the source nor
+    the field.
+
+    It must fail here instead, where both can still be named. Note the two
+    plausible defaults are both silently wrong: `now()` skips every record, and
+    the epoch rescans the whole collection.
+    """
+    schema = _mongo_source_schema(active_schema, cursor_field="changed_at")
+    collection = FakeMongoCollection(
+        [{"_id": ObjectId(), "configured_id": "A-1", "configured_changed_at": None}]
+    )
+    connector = MongoDBSourceScanConnector(FakeDatabase({"objects": collection}), schema=schema)
+
+    with pytest.raises(MongoConnectorError) as excinfo:
+        await connector.capture_high_watermark(source_asset_id="source_a")
+
+    message = str(excinfo.value)
+    assert "source_a" in message
+    assert "configured_changed_at" in message
+
+
+@pytest.mark.asyncio
 async def test_capture_high_watermark_rejects_entities_disagreeing_on_the_cursor_fields_physical_path(
     active_schema: ActiveSchema,
 ) -> None:

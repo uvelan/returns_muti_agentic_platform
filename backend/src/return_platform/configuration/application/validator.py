@@ -120,12 +120,12 @@ class ConfigurationValidator:
 
         def _dfs(node: str, path: list[str]) -> list[str] | None:
             if visited[node] == 1:
-                return path + [node]  # cycle found
+                return [*path, node]  # cycle found
             if visited[node] == 2:
                 return None
             visited[node] = 1
             for neighbour in adjacency.get(node, []):
-                result = _dfs(neighbour, path + [node])
+                result = _dfs(neighbour, [*path, node])
                 if result is not None:
                     return result
             visited[node] = 2

@@ -19,7 +19,10 @@ from return_platform.data_platform.graph.sync_service import (
     GraphSyncScope,
     GraphSyncService,
 )
-from return_platform.dynamic_knowledge.graph.neo4j_writer import Neo4jDynamicGraphWriter
+from return_platform.dynamic_knowledge.graph.neo4j_writer import (
+    GenerationFencingError,
+    Neo4jDynamicGraphWriter,
+)
 from return_platform.dynamic_knowledge.graph.projector import GenericGraphProjector
 
 
@@ -248,8 +251,20 @@ async def test_sync_mongodb_only_writes_customer_and_order_nodes_via_the_generic
 async def test_sync_records_failure_status_when_a_write_raises() -> None:
     source_db = FakeDatabase(
         {
+            # `updatedAt` is the configured incremental cursor field. Without it
+            # this document never reached the writer at all: the run died in
+            # `capture_high_watermark` instead, and the blind `pytest.raises`
+            # below swallowed the difference -- the test asserted FAILED status
+            # for a failure that had nothing to do with a write.
             "customerOutboundCDM": FakeMongoCollection(
-                [{"_id": ObjectId(), "partyId": "1", "customerName": "n"}]
+                [
+                    {
+                        "_id": ObjectId(),
+                        "partyId": "1",
+                        "customerName": "n",
+                        "updatedAt": "2026-08-01T00:00:00Z",
+                    }
+                ]
             ),
             "salesInv": FakeMongoCollection([]),
             "shipmentInfo": FakeMongoCollection([]),
@@ -259,7 +274,10 @@ async def test_sync_records_failure_status_when_a_write_raises() -> None:
     tx = FakeTransaction(fence_matched=0)  # fencing mismatch -> write raises
     service = _service_with(tx, source_db)
 
-    with pytest.raises(Exception):
+    # Named, not blind: a bare `Exception` here also passed if the fixture wiring
+    # broke before the write was ever attempted, which is the one outcome that
+    # would make the FAILED-status assertions below meaningless.
+    with pytest.raises(GenerationFencingError):
         await service.sync(
             GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, applySchema=True),
             actor_id="test",

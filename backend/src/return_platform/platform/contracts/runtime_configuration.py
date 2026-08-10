@@ -11,6 +11,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol, runtime_checkable
 
+from return_platform.platform.contracts.epoch import RuntimeEpoch
+
 
 @runtime_checkable
 class RuntimeConfigurationView(Protocol):
@@ -28,9 +30,6 @@ class RuntimeConfigurationView(Protocol):
 
     def section(self, key: str) -> Mapping[str, object]:
         """Raw configuration for one module, from this release only."""
-
-
-from return_platform.platform.contracts.epoch import RuntimeEpoch
 
 
 @runtime_checkable

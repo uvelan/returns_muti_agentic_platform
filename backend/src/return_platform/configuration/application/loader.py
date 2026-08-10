@@ -146,7 +146,12 @@ class ConfigurationLoader:
         try:
             status = ReleaseStatus(status_raw)
         except ValueError:
-            raise ValueError(f"Manifest status {status_raw!r} is not a valid ReleaseStatus")
+            # `from None`, not `from exc`: the enum's own message says the same thing
+            # ("'FOO' is not a valid ReleaseStatus"), so chaining adds a frame that
+            # repeats the one above it.
+            raise ValueError(
+                f"Manifest status {status_raw!r} is not a valid ReleaseStatus"
+            ) from None
 
         modules_raw = raw.get("modules", {})
         if not isinstance(modules_raw, dict):
@@ -276,8 +281,6 @@ class ConfigurationLoader:
 
         class _DuplicateDetector(yaml.SafeLoader):
             pass
-
-        original_construct = yaml.SafeLoader.construct_mapping
 
         def _construct_mapping(loader: yaml.SafeLoader, node: yaml.MappingNode) -> dict:  # type: ignore[override]
             loader.flatten_mapping(node)

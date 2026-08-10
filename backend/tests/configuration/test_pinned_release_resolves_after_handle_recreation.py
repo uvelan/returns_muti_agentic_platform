@@ -37,3 +37,9 @@ async def test_pinned_release_resolves_after_handle_recreation():
     assert view.release_id == "r1"
     assert view.checksum == "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
     assert "r1" in handle2._views
+
+    # `handle1` was constructed but never asserted on, so nothing here established
+    # that the recreated handle resolved from the *store*. Caches are per-instance:
+    # handle1 stays empty, which is what makes this a recreation test rather than a
+    # cache-hit test.
+    assert "r1" not in handle1._views
