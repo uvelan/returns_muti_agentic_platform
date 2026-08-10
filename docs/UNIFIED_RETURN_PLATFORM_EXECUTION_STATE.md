@@ -1,18 +1,19 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `060fcd6` (Wave E complete)
-Slice: **Wave E / Phases 17–21** — the four-domain frontend
-Status: **Wave C complete. Wave D's completion condition met**, with four phase-level items
-still open — see "Wave D: what remains" below. **Wave E is complete** (all five phases,
-read-only — see the Wave E section). Wave F is blocked on E.
+Last pushed green commit: `bc1baf7` (D4 slice 2 — canonical `/artifacts` and `/evidence`)
+Slice: **Wave D4 — the write consolidation**, two slices landed
+Status: **Wave C complete. Wave D's completion condition met**, with items still open — see
+"Wave D: what remains" below. **Wave E is complete** (all five phases, read-only — see the
+Wave E section). Wave F is blocked on E's cutover, not on backend work.
 
-Suite: **1963 passed, 2 skipped, 0 failed** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
+Suite: **1999 passed, 2 skipped, 0 failed** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
 mypy baseline: **47 errors / 16 files**, unchanged across every commit in this branch.
+Contract: **211 paths**; drift check passes on consecutive runs; frontend `tsc -b` clean.
 
 "Green" now means the **full** gate. `scripts/linux/03_run_backend_quality.sh` runs
-`ruff check .` and `ruff format --check .` from `backend/`, and both pass across all 735
-files as of `6a5d942`. Every prior entry in this ledger reported green on the *changed-files*
+`ruff check .` and `ruff format --check .` from `backend/`, and both pass across all 739
+files as of `bc1baf7`. Every prior entry in this ledger reported green on the *changed-files*
 gate (`scripts/dev/run_changed_gate.py`), which is a narrower claim; read older entries with
 that in mind. Wave G/H's "full static integrity" (Phase 29) is now a much smaller job than
 this ledger previously implied — what is left there is mypy's 47, not ruff's 246.
@@ -1919,8 +1920,14 @@ connector regression test.
 ## Wave D: what remains
 
 Wave D's *completion condition* — "backend exposes the four canonical API domains and all
-are generated into OpenAPI" — is met, and nothing in D still blocks Wave E. Four
-phase-level items remain open. In rough order of blast radius:
+are generated into OpenAPI" — is met, and nothing in D still blocks Wave E.
+
+**Two D4 slices have landed since this list was written** (`5fdc17f`, `bc1baf7`): the
+production-event authorization consolidation and the `/artifacts` + `/evidence` naming.
+Both are described in their own sections below. Item 2 has shrunk accordingly, and one of
+the three duplicates it named turned out not to exist.
+
+In rough order of blast radius:
 
 1. **D3's mutation surface — blocked on a decision, not on effort.** There are two
    configuration release lifecycles over two stores. `ReleaseService` (Mongo:
@@ -1930,17 +1937,16 @@ phase-level items remain open. In rough order of blast radius:
    lifecycle inline with no checksum recompute. Adding canonical mutation endpoints would
    make it three lifecycles or silently bless one. Deciding which is authoritative changes
    what happens on every configuration promotion; it is a data migration, not a refactor.
-2. **D4's write consolidation across nine routers.** Three share `/api/v1/returns`, so the
-   owning module is not derivable from the path. There is a genuine duplicate pair
-   (`GET /{session_id}/artifacts` vs `GET /{session_id}/production-artifacts`), overlapping
-   stage actions between `production_workflow.py` and `physical_operations.py`, and an
-   associate flow driving the same session by another route. Phase 16 says resolve
-   duplicates *before* deleting, and every duplicate is on the write side — publishing a
-   canonical write surface first would add a tenth way to mutate a return rather than
-   replace nine. `test_the_number_of_return_routers_has_not_grown` keeps this from running
-   backwards meanwhile.
-3. **D4's remaining read domains.** Only session, list and timeline are canonical. Support,
-   fulfillment, warehouse, artifacts and outbox events have no canonical read path yet.
+2. **D4's write consolidation — what is left of it.** Two of the three items this entry
+   originally named are closed. Still open: the overlapping stage actions between
+   `production_workflow.py` and `physical_operations.py`, and the associate flow that
+   drives the same session by another route. Phase 16 says resolve duplicates *before*
+   deleting, so the canonical surface stays read-only until they are;
+   `test_the_number_of_return_routers_has_not_grown` keeps the count from running backwards
+   meanwhile.
+3. **D4's remaining read domains.** Session, list, timeline, artifacts and evidence are
+   canonical. Support, fulfillment, warehouse and outbox events have no canonical read path
+   yet.
 4. **D3's remaining read domains.** Only runtime and releases are canonical. Sources,
    integrations, business config, modules, security and audit live under Data Console
    routers or do not exist; each is its own slice.
@@ -1955,7 +1961,131 @@ phase-level items remain open. In rough order of blast radius:
    `StructuredOutputInvoker.invoke` share one path (route pool, config, guards, breakers,
    limiters) and differ only in response contract. That is prose, not a test.
 
-Items 1 and 2 are the substantive ones. 3–7 are bounded and independent of each other.
+Item 1 is the substantive one. 2–7 are bounded and independent of each other.
+
+## Wave D4, slice 2 — `/artifacts` and `/evidence`, and the name that caused the confusion
+
+Status: DONE (`bc1baf7`). This closes the "duplicate artifact pair", by establishing that
+there was never one.
+
+### The correction
+
+Two earlier entries in this ledger, and `canonical_returns.py`'s own docstring, recorded
+`GET /{id}/artifacts` and `GET /{id}/production-artifacts` as "a genuine duplicate pair"
+and placed the duplicates "on the write side". Neither part held:
+
+* `/artifacts` returns the document-artifact list.
+* `/production-artifacts` returns the return's **entire evidence record** — eleven
+  collections plus the embedded session and timeline — of which document artifacts are one
+  field.
+
+They shared a word, not an implementation, and both are reads. The endpoint is named after
+one field of its own payload, which is how the two stayed mistaken for competing
+implementations long enough to be written down as a duplicate and carried forward through
+three ledger entries without anyone opening both files.
+
+### What shipped
+
+`GET /api/returns/{id}/artifacts` and `GET /api/returns/{id}/evidence`. The second is typed
+as `ReturnEvidence` rather than the legacy opaque `dict[str, Any]`, so the contract names
+the collections. Entries stay `dict[str, Any]` on purpose: they are projections of
+documents owned by the physical-operations and integration modules, and modelling them here
+would put eleven schemas in a domain that does not own them.
+
+**`/evidence` is deliberately narrower than the endpoint it supersedes.** The legacy one
+also embedded the session and the first 1,000 timeline events. Both have canonical
+endpoints of their own, so carrying them forward would have made this a third way to read a
+session and a second way to read a timeline — more surface, described as consolidation.
+
+Both superseded reads now carry `deprecated=True` with the replacing path in the summary,
+so the generated contract and the frontend's types say what to move to. The legacy paths
+keep working: `production-artifacts` has one consumer (`frontend/src/api/operations.ts`),
+and `/artifacts` has none — its name was simply being shadowed.
+
+**This sets up the first actual reduction.** Wave F deleting `return_artifacts.py` — a
+single-route module, now fully superseded — takes the return-domain router count from nine
+to eight.
+
+**Verification.** 14 tests. The read tests use a stub repository and assert *which*
+accessors each endpoint calls: every collection returns the same shape, so a handler wiring
+two fields to one accessor would otherwise produce a well-formed response with silently
+duplicated data. Also asserted: no `_id` escapes, and a sub-resource 404s for a missing
+session having read nothing. Contract **211 paths**, drift clean on consecutive runs,
+frontend `tsc -b` clean. Suite **1999 passed, 2 skipped**. mypy 47/16.
+
+## Wave D4, slice 1 — one authorization table for production return events
+
+Status: DONE (`5fdc17f`). The real write-side duplicate, found while looking for the one
+above.
+
+### Four routers record production workflow transitions; one checked authorization
+
+`ProductionWorkflowCoordinator.record_event` has seven call sites.
+`api/production_workflow.py` gated it with `_authorize_event`, a per-event-type role table.
+`physical_operations`, `return_support` and `warehouse_placement` reach it as a *side
+effect* of a different action and never consulted that table — they relied on their own
+route-level role dependency happening to be a subset of it.
+
+| Route | Role dependency | Events it can emit | Subset held? |
+|---|---|---|---|
+| `POST /returns/{id}/pickup-actions` | logistics | `CARRIER_BOOKING_CONFIRMED`, `PHYSICAL_HANDOFF_CONFIRMED` | yes |
+| `POST /warehouse/returns/{id}/bay-assignment` | warehouse | `WAREHOUSE_PROCESSING_COMPLETED` | yes (exact) |
+| `POST /associate-returns/conversations/{id}/details` | associate | `DISCOVERY_CONFIRMED`, `RETURN_DETAILS_CONFIRMED`, `SUPPORT_REQUEST_CREATED` | yes |
+| `POST /return-support/work-items/{id}/actions` | support | + `BOL_TENDERED` | **no** |
+
+The three that held, held by coincidence. Nothing connected `require_logistics_roles` in
+one module to the `CARRIER_BOOKING_CONFIRMED` entry in another, so narrowing the table
+would have silently left the implicit path open.
+
+The fourth did not hold. `return_support.apply_action` emits `BOL_TENDERED` when a support
+user records LTL/BOL shipping instructions, and the table listed only logistics roles for
+it. A `return_support` user was refused that transition on
+`POST /production-returns/{id}/events` and allowed it via the support action — same
+transition, two answers.
+
+### The decision, and why
+
+Resolved in favour of the support path (owner's call, offered against the alternatives of
+refusing it or recording the asymmetry as intentional). Evidence for this reading: the
+emission labels itself `sourceSystem="OMC_OR_SUPPORT_READBACK"`, naming support as an
+intended source, and `_validate_transition` already requires `shipping_instructions_issued`
+first — so it is a follow-on to something support legitimately did, not an independent
+logistics act. Refusing it would have broken a workflow that works today.
+
+### What shipped
+
+* The table moved to `operations/production_event_authorization.py`, keyed on the
+  `security.roles` constants rather than string literals. A typo in a literal reads as "no
+  role may do this" — fails closed, invisible until someone is refused for no reason.
+* `record_event` takes a **required** `actor_roles` and enforces the table itself, so
+  authorization is a property of recording the event rather than of remembering to check
+  first. Required, not defaulted: the caller who forgets is the caller who most needs it.
+* All four routers authorize *before* resolving dependencies or mutating. Two of them
+  mutated first, so a late 403 would have left a partial write. `return_support` authorizes
+  its whole emission set up front, because one action can produce two events.
+* `production_events_for_support_action` puts the "does this tender a BOL?" condition next
+  to the support domain, and the router's emission branch reads that same result — one
+  condition, not two copies.
+* The dependency simulator and its workflow bridge pass a named `PLATFORM_SERVICE_ROLES`,
+  so `grep` enumerates every place the platform acts as itself rather than for a human.
+
+**A latent bug fixed on the way.** An event type missing from the table raised `KeyError` —
+a 500, not a 403. It fails closed in effect but reports a forgotten table entry as a server
+fault, indistinguishable to the caller from a role problem. Now typed, with an
+exhaustiveness test that makes the branch unreachable in a shipped build.
+
+**Verification.** 26 tests. Both the unit sweep and the HTTP-level test were confirmed
+against a reverted `BOL_TENDERED` entry — they fail naming the exact escape, so they catch
+the original defect rather than merely describing it. The HTTP tests need no datastore: 403
+means refused before anything was resolved, 503 means the caller cleared every gate. Suite
+**1989 passed, 2 skipped**. mypy 47/16.
+
+**One thing deliberately not tested.** After the consolidation, no HTTP request can be
+refused *by the event check* on those three routes — every role their dependencies admit is
+one the table permits, which is the invariant. Cross-lane callers are refused by the route
+dependency, which runs first. Contriving an HTTP 403 out of the event check would mean
+breaking the invariant to observe it, so those cases assert the outcome without asserting
+which layer refuses.
 
 ## `GET /api/session` — Wave E is now unblocked on the backend
 
@@ -2291,14 +2421,20 @@ rather than inherit an implementation word.
 
 **Three of them share `/api/v1/returns`** — `returns.py`, `physical_operations.py` and
 `return_artifacts.py` — so the module owning a legacy path is not derivable from the path.
-There is also a genuine duplicate pair: `GET /{session_id}/artifacts` in
+~~There is also a genuine duplicate pair: `GET /{session_id}/artifacts` in
 `physical_operations.py` and `GET /{session_id}/production-artifacts` in
-`return_artifacts.py`.
+`return_artifacts.py`.~~ **Wrong — corrected in D4 slice 2 (`bc1baf7`), see that section.**
+Those two share a word, not an implementation: one is the document-artifact list, the other
+is the whole evidence record of which document artifacts are one of eleven collections.
+Both are reads. This claim was written without opening both files and was then carried
+forward through two more entries.
 
 Phase 16's instruction is "resolve duplicate current implementations **before** deleting
-anything", and every duplicate is on the *write* side. Publishing a canonical write surface
-first would have added a tenth way to mutate a return rather than replacing nine, so the
-canonical surface is read-only until they are reconciled. A test enforces that, and another
+anything". ~~and every duplicate is on the *write* side~~ — also wrong, for the same
+reason; the genuine write-side duplicate was the production-event authorization split,
+found later and closed in D4 slice 1. Publishing a canonical write surface first would have
+added a tenth way to mutate a return rather than replacing nine, so the canonical surface is
+read-only until the remaining duplicates are reconciled. A test enforces that, and another
 enforces "no generic advance" on the canonical surface (the existing test covered only the
 legacy one).
 
@@ -2312,7 +2448,8 @@ router docstring.
 **Verification.** 4 architecture tests. Full suite **1916 passed, 2 skipped, 0 failed**.
 mypy 47/16 across 489 files.
 
-**Still open in D4.** The write consolidation itself: reconciling the two artifact
+**Still open in D4** *(as of this slice; superseded by "Wave D: what remains" above, which
+is the maintained list)*. The write consolidation itself: reconciling the two artifact
 endpoints, the overlapping stage actions between `production_workflow.py` and
 `physical_operations.py`, and the associate flow that drives the same session by another
 route. Then the aggregate's remaining domains — support, fulfillment, warehouse, artifacts,
