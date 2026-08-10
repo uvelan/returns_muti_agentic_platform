@@ -15,6 +15,7 @@ from return_platform.ai_gateway.configuration import (
 from return_platform.configuration.graph_repository import (
     ConfigurationGraphRepository,
     ConfigurationRevisionConflict,
+    transition_allowed,
 )
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 from return_platform.configuration.runtime_activation import RuntimeConfigurationActivator
@@ -340,12 +341,11 @@ async def promote_release_status(
     if release is None:
         raise HTTPException(status_code=404, detail=f"Release {release_id} not found")
 
-    allowed_transitions = {
-        "DRAFT": {"VALIDATED", "ARCHIVED"},
-        "VALIDATED": {"RELEASED", "ARCHIVED"},
-        "SUPERSEDED": {"ARCHIVED"},
-    }
-    if body.status not in allowed_transitions.get(release.status, set()):
+    # Shared table, not a third copy -- see RELEASE_TRANSITIONS. This early check
+    # exists so a refused promotion answers 409 before the domain validation
+    # below does any work; `promote_release` enforces the same rule as the real
+    # boundary.
+    if not transition_allowed(release.status, body.status):
         raise HTTPException(
             status_code=409,
             detail=f"Invalid configuration transition {release.status} -> {body.status}",

@@ -15,6 +15,30 @@ from pydantic import BaseModel, ConfigDict, Field
 
 DEFAULT_CONFIGURATION_SCOPE = "production:global"
 
+#: The configuration release lifecycle, as one table.
+#:
+#: Wave D3. This was written out three times -- both repository implementations
+#: and `data_console/api/configuration.py`'s router, which pre-checks before
+#: calling `promote_release`. Three copies of a state machine is three chances
+#: for a transition to be legal in one place and refused in another, and the
+#: copy that drifts is the one nobody re-reads.
+#:
+#: `RELEASED` is the live state: `get_active_release` resolves it, and
+#: `ConfigurationSnapshotBuilder` refuses to start production without one. There
+#: is deliberately no transition *out* of `RELEASED` here -- a release leaves it
+#: only by being superseded when its successor publishes, which the publish
+#: transaction does atomically rather than as a separate promotion.
+RELEASE_TRANSITIONS: Mapping[str, frozenset[str]] = {
+    "DRAFT": frozenset({"VALIDATED", "ARCHIVED"}),
+    "VALIDATED": frozenset({"RELEASED", "ARCHIVED"}),
+    "SUPERSEDED": frozenset({"ARCHIVED"}),
+}
+
+
+def transition_allowed(current_status: str, target_status: str) -> bool:
+    """Whether `current_status -> target_status` is a legal promotion."""
+    return target_status in RELEASE_TRANSITIONS.get(current_status, frozenset())
+
 
 class ConfigurationRevisionConflict(RuntimeError):
     """Raised when a release publication loses an optimistic-concurrency race."""
@@ -149,12 +173,7 @@ class InMemoryConfigurationGraphRepository:
             if release_id not in self._releases:
                 raise ValueError(f"Release {release_id} not found.")
             current = self._releases[release_id]
-            allowed_transitions = {
-                "DRAFT": {"VALIDATED", "ARCHIVED"},
-                "VALIDATED": {"RELEASED", "ARCHIVED"},
-                "SUPERSEDED": {"ARCHIVED"},
-            }
-            if status not in allowed_transitions.get(current.status, set()):
+            if not transition_allowed(current.status, status):
                 raise ValueError(f"Invalid configuration transition {current.status} -> {status}")
 
             if status == "RELEASED":
@@ -383,12 +402,7 @@ class Neo4jConfigurationGraphRepository:
         rel = await self.get_release(release_id)
         if not rel:
             raise ValueError(f"Release {release_id} not found.")
-        allowed_transitions = {
-            "DRAFT": {"VALIDATED", "ARCHIVED"},
-            "VALIDATED": {"RELEASED", "ARCHIVED"},
-            "SUPERSEDED": {"ARCHIVED"},
-        }
-        if status not in allowed_transitions.get(rel.status, set()):
+        if not transition_allowed(rel.status, status):
             raise ValueError(f"Invalid configuration transition {rel.status} -> {status}")
         parameters: dict[str, Any]
         if status == "RELEASED":
