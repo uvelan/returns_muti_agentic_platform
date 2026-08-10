@@ -2548,6 +2548,39 @@
         "title": "APIResponse[ReleaseManifest]",
         "type": "object"
       },
+      "APIResponse_ReturnEventResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReturnEventResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ReturnEventResult]",
+        "type": "object"
+      },
       "APIResponse_ReturnEvidence_": {
         "additionalProperties": false,
         "properties": {
@@ -12295,6 +12328,64 @@
         "title": "ReturnDetailsRequest",
         "type": "object"
       },
+      "ReturnEventRequest": {
+        "additionalProperties": false,
+        "description": "One evidence-carrying production event.\n\nMirrors the legacy `ProductionEventRequest` field for field. `evidence` is\nrequired and has a minimum length because it is the whole justification for\nthe transition -- the stage-result binding, the audit record and the outbox\nevent all hang off it. `extra=\"forbid\"` so a caller who misspells\n`businessPayload` is told, rather than having their payload dropped.",
+        "properties": {
+          "businessPayload": {
+            "additionalProperties": true,
+            "title": "Businesspayload",
+            "type": "object"
+          },
+          "eventId": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Eventid",
+            "type": "string"
+          },
+          "eventType": {
+            "$ref": "#/components/schemas/ProductionReturnEventType"
+          },
+          "evidenceReference": {
+            "maxLength": 512,
+            "minLength": 3,
+            "title": "Evidencereference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "eventId",
+          "eventType",
+          "evidenceReference"
+        ],
+        "title": "ReturnEventRequest",
+        "type": "object"
+      },
+      "ReturnEventResult": {
+        "additionalProperties": false,
+        "description": "Typed, unlike the legacy handler's `dict[str, object]`.\n\nA caller needs to know where the return ended up, and whether it is now\nterminal -- both of which decide what the next request may be.",
+        "properties": {
+          "cancelled": {
+            "title": "Cancelled",
+            "type": "boolean"
+          },
+          "caseFullyClosed": {
+            "title": "Casefullyclosed",
+            "type": "boolean"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "caseFullyClosed",
+          "cancelled"
+        ],
+        "title": "ReturnEventResult",
+        "type": "object"
+      },
       "ReturnEvidence": {
         "additionalProperties": false,
         "description": "Everything recorded *about* a return that is not the return itself.\n\nTyped rather than the legacy `dict[str, Any]`, so the contract names the\ncollections instead of publishing an opaque object. The entries stay\n`dict[str, Any]`: they are projections of documents whose shape belongs to\nthe physical-operations and integration modules, and inventing a model per\ncollection here would put eleven schemas in the return domain that the\nreturn domain does not own.",
@@ -17157,6 +17248,49 @@
         ]
       }
     },
+    "/api/ai/interceptions/{interception_id}/cancel": {
+      "post": {
+        "description": "Abandon a held request rather than answering it.\n\nThe counterpart to `answer`, and it needs to exist for the same reason:\nwithout it the only way out of a PENDING interception is to answer it or\nwait for `expiresAt`, and an operator who can see the prompt is wrong has no\nway to say so. The caller that is blocked on it fails fast instead of\nholding a workflow open until the expiry sweeps it.\n\nSame conditional-write discipline as `answer` -- filtered on PENDING, so\ncancelling an already-answered interception cannot overwrite the answer.\n\n**`store.cancel` reports nothing, so the outcome is read back.** It returns\nsilently when the record is missing or already terminal, because its other\ncaller is the expiry sweep, for which \"somebody got there first\" is a normal\noutcome and not an error. An operator pressing Cancel needs the opposite:\nbeing told their cancel did nothing because an answer landed first. Checking\nthe state *before* cancelling would be a race; reading it back after reports\nwhat actually happened.\n\nGated on `.act`, not `.read`: this ends somebody's request.",
+        "operationId": "cancel_interception_api_ai_interceptions__interception_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interception_id",
+            "required": true,
+            "schema": {
+              "title": "Interception Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Interception",
+        "tags": [
+          "AI Control Center"
+        ]
+      }
+    },
     "/api/ai/interceptions/{interception_id}/request": {
       "get": {
         "description": "The held prompt, unsealed.\n\nGated on `ai.interception.act` rather than `ai.interception.read`, which is\nthe narrower of the two on purpose. The payload can contain block 5\nUNTRUSTED SOURCE SAMPLE -- rows read out of a customer's database -- which is\nwhy it is sealed at rest at all. You unseal it because you are about to\nanswer it; browsing the queue needs only the read capability.",
@@ -17488,6 +17622,59 @@
           }
         },
         "summary": "Get Release",
+        "tags": [
+          "Configuration"
+        ]
+      }
+    },
+    "/api/config/releases/{release_id}/promote": {
+      "post": {
+        "description": "Move a release along the lifecycle: DRAFT -> VALIDATED -> RELEASED, or ARCHIVED.\n\nDelegates, like the reads do. `promote_release_status` is not a thin wrapper\naround the repository -- it validates all three behaviour domains, verifies\nunexpired runtime-validation receipts, requires `expected_head_revision` to\npublish, and refreshes the process's runtime configuration on RELEASED.\nA canonical reimplementation would be a second lifecycle, which is precisely\nwhat D3 spent its effort deleting.\n\n**The response is re-scrubbed.** The console handler returns the release's\nfull domain payloads, and the canonical `GET /releases/{id}` redacts those on\nthe way out. A promote that answered with the unredacted version of the same\ndocument would make the redaction on the read pointless -- the same operator\ncan call both.",
+        "operationId": "promote_release_api_config_releases__release_id__promote_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromoteReleasePayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Promote Release",
         "tags": [
           "Configuration"
         ]
@@ -18370,6 +18557,64 @@
         "tags": [
           "Returns"
         ]
+      },
+      "post": {
+        "description": "Create a SYSTEM-channel return.\n\nInteractive returns are refused here exactly as on the legacy path: they\nbegin as a conversation, and a return created directly would have no\ndiscovery evidence behind it. The conversation surface is not yet canonical\n(`/support` and `/conversation` are parked), so the refusal names the legacy\npath -- pointing at an endpoint that does not exist would be worse.",
+        "operationId": "create_return_api_returns_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ReturnSessionView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Return",
+        "tags": [
+          "Returns"
+        ]
       }
     },
     "/api/returns/{session_id}": {
@@ -18452,6 +18697,59 @@
           }
         },
         "summary": "Get Artifacts",
+        "tags": [
+          "Returns"
+        ]
+      }
+    },
+    "/api/returns/{session_id}/events": {
+      "post": {
+        "description": "The canonical way to move a return, and the only one.\n\n**This is what replaces `POST /{id}/cancel`.** Cancellation is\n`eventType: CANCELLED` -- not a separate endpoint. The legacy pair were two\nways to cancel that disagreed: `/cancel` wrote `status: CANCELLED` straight\nto Mongo and released the discovery lock but never told the workflow, while\nthe workflow's CANCELLED event updated the durable state and the session\ndocument but left the discovery lock held. Whichever a caller used, one of\nthe two records was wrong. `record_event` now releases the lock itself, so\nthe single canonical path does everything both did.\n\n**It also replaces `POST /{id}/start`.** `record_event` calls\n`ensure_started` first, so a separate start endpoint only exists to create a\nworkflow with no event in it. Callers that want the workflow running send\nthe first event.\n\nNot a generic advance: the caller names an *event that happened* and the\nevidence for it, and the state machine decides which stage that implies.\nAn endpoint taking a target stage would invert that.",
+        "operationId": "record_event_api_returns__session_id__events_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ReturnEventResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Event",
         "tags": [
           "Returns"
         ]

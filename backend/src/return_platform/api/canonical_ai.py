@@ -39,6 +39,7 @@ from return_platform.ai.gateway.models import (
     AIUsageSummaryView,
 )
 from return_platform.ai.gateway.service import AIGatewayService
+from return_platform.ai.interception.records import InterceptionStatus
 from return_platform.ai.interception.store import InterceptionNotPending
 from return_platform.data_console.api.auth import require_read_roles
 from return_platform.operations.repository import (
@@ -283,5 +284,53 @@ async def answer_interception(
             "answeredBy": record.answered_by,
             "answeredAt": record.answered_at.isoformat() if record.answered_at else None,
         },
+        meta=_meta(request),
+    )
+
+
+@router.post("/interceptions/{interception_id}/cancel", response_model=APIResponse[dict[str, Any]])
+async def cancel_interception(
+    interception_id: str,
+    request: Request,
+    _actor_id: str = Depends(require_capability(capabilities.AI_INTERCEPTION_ACT)),
+) -> APIResponse[dict[str, Any]]:
+    """Abandon a held request rather than answering it.
+
+    The counterpart to `answer`, and it needs to exist for the same reason:
+    without it the only way out of a PENDING interception is to answer it or
+    wait for `expiresAt`, and an operator who can see the prompt is wrong has no
+    way to say so. The caller that is blocked on it fails fast instead of
+    holding a workflow open until the expiry sweeps it.
+
+    Same conditional-write discipline as `answer` -- filtered on PENDING, so
+    cancelling an already-answered interception cannot overwrite the answer.
+
+    **`store.cancel` reports nothing, so the outcome is read back.** It returns
+    silently when the record is missing or already terminal, because its other
+    caller is the expiry sweep, for which "somebody got there first" is a normal
+    outcome and not an error. An operator pressing Cancel needs the opposite:
+    being told their cancel did nothing because an answer landed first. Checking
+    the state *before* cancelling would be a race; reading it back after reports
+    what actually happened.
+
+    Gated on `.act`, not `.read`: this ends somebody's request.
+    """
+    store = _require_interception_store(request)
+    await store.cancel(interception_id=interception_id, status=InterceptionStatus.CANCELLED)
+    record = await store.get(interception_id)
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"interception '{interception_id}' does not exist",
+        )
+    if record.status is not InterceptionStatus.CANCELLED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"interception '{interception_id}' is {record.status.value} and was not cancelled"
+            ),
+        )
+    return APIResponse(
+        data={"interceptionId": record.interception_id, "status": record.status.value},
         meta=_meta(request),
     )

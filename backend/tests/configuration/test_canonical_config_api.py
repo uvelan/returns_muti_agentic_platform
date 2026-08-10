@@ -116,15 +116,68 @@ def test_an_empty_string_is_not_treated_as_a_secret() -> None:
 # --- the route surface -------------------------------------------------------
 
 
-def test_the_canonical_router_is_versionless_and_read_only() -> None:
+def test_the_canonical_router_is_versionless() -> None:
     """Versionless matches `/api/graph-schema`: a release, not a URL, pins
-    configuration. Read-only is deliberate -- see the note in router.py about
-    the two competing release lifecycles."""
+    configuration."""
     from return_platform.configuration.api.router import router
 
     assert router.prefix == "/api/config"
-    methods = {method for route in router.routes for method in getattr(route, "methods", set())}
-    assert methods <= {"GET", "HEAD"}, f"canonical config API is read-only for now, found {methods}"
+
+
+def test_promotion_is_the_only_mutation_on_the_canonical_config_surface() -> None:
+    """Replaces `..._is_read_only`, which held while two release lifecycles
+    existed and either could be blessed by a button.
+
+    D3 settled that in favour of the graph, so a mutation surface became
+    buildable -- but only one. Configuration changes through a release moving
+    along its lifecycle; anything else here would be a second way to change what
+    the platform is running.
+    """
+    from return_platform.configuration.api.router import router
+
+    mutations = {
+        (route.path, method)
+        for route in router.routes
+        for method in getattr(route, "methods", set())
+        if method not in {"GET", "HEAD"}
+    }
+    assert mutations == {("/api/config/releases/{release_id}/promote", "POST")}, mutations
+
+
+def test_the_canonical_promotion_delegates_rather_than_reimplementing() -> None:
+    """The console handler validates three behaviour domains, verifies unexpired
+    runtime-validation receipts, requires `expected_head_revision`, and refreshes
+    the process's active configuration. A canonical copy that did four of those
+    five would be a second lifecycle wearing the same name -- which is what D3
+    spent its effort deleting."""
+    import ast
+    from pathlib import Path
+
+    source = (
+        Path(__file__).resolve().parents[1]
+        / ".."
+        / "src"
+        / "return_platform"
+        / "configuration"
+        / "api"
+        / "router.py"
+    ).resolve()
+    tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    handler = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "promote_release"
+    )
+    called = {
+        node.func.id
+        for node in ast.walk(handler)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert "console_promote_release_status" in called
+    # And the response is re-scrubbed: `GET /releases/{id}` redacts the same
+    # domain payloads, so a promote answering with them unredacted would make
+    # that redaction pointless to the same caller.
+    assert "_ok" in called
 
 
 def test_every_canonical_response_goes_through_the_scrub() -> None:

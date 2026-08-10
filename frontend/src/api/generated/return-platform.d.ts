@@ -66,6 +66,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ai/interceptions/{interception_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Interception
+         * @description Abandon a held request rather than answering it.
+         *
+         *     The counterpart to `answer`, and it needs to exist for the same reason:
+         *     without it the only way out of a PENDING interception is to answer it or
+         *     wait for `expiresAt`, and an operator who can see the prompt is wrong has no
+         *     way to say so. The caller that is blocked on it fails fast instead of
+         *     holding a workflow open until the expiry sweeps it.
+         *
+         *     Same conditional-write discipline as `answer` -- filtered on PENDING, so
+         *     cancelling an already-answered interception cannot overwrite the answer.
+         *
+         *     **`store.cancel` reports nothing, so the outcome is read back.** It returns
+         *     silently when the record is missing or already terminal, because its other
+         *     caller is the expiry sweep, for which "somebody got there first" is a normal
+         *     outcome and not an error. An operator pressing Cancel needs the opposite:
+         *     being told their cancel did nothing because an answer landed first. Checking
+         *     the state *before* cancelling would be a race; reading it back after reports
+         *     what actually happened.
+         *
+         *     Gated on `.act`, not `.read`: this ends somebody's request.
+         */
+        post: operations["cancel_interception_api_ai_interceptions__interception_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ai/interceptions/{interception_id}/request": {
         parameters: {
             query?: never;
@@ -244,6 +283,39 @@ export interface paths {
         get: operations["get_release_api_config_releases__release_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config/releases/{release_id}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Promote Release
+         * @description Move a release along the lifecycle: DRAFT -> VALIDATED -> RELEASED, or ARCHIVED.
+         *
+         *     Delegates, like the reads do. `promote_release_status` is not a thin wrapper
+         *     around the repository -- it validates all three behaviour domains, verifies
+         *     unexpired runtime-validation receipts, requires `expected_head_revision` to
+         *     publish, and refreshes the process's runtime configuration on RELEASED.
+         *     A canonical reimplementation would be a second lifecycle, which is precisely
+         *     what D3 spent its effort deleting.
+         *
+         *     **The response is re-scrubbed.** The console handler returns the release's
+         *     full domain payloads, and the canonical `GET /releases/{id}` redacts those on
+         *     the way out. A promote that answered with the unredacted version of the same
+         *     document would make the redaction on the read pointless -- the same operator
+         *     can call both.
+         */
+        post: operations["promote_release_api_config_releases__release_id__promote_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -617,7 +689,17 @@ export interface paths {
         /** List Returns */
         get: operations["list_returns_api_returns_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Return
+         * @description Create a SYSTEM-channel return.
+         *
+         *     Interactive returns are refused here exactly as on the legacy path: they
+         *     begin as a conversation, and a return created directly would have no
+         *     discovery evidence behind it. The conversation surface is not yet canonical
+         *     (`/support` and `/conversation` are parked), so the refusal names the legacy
+         *     path -- pointing at an endpoint that does not exist would be worse.
+         */
+        post: operations["create_return_api_returns_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -659,6 +741,44 @@ export interface paths {
         get: operations["get_artifacts_api_returns__session_id__artifacts_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/returns/{session_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Event
+         * @description The canonical way to move a return, and the only one.
+         *
+         *     **This is what replaces `POST /{id}/cancel`.** Cancellation is
+         *     `eventType: CANCELLED` -- not a separate endpoint. The legacy pair were two
+         *     ways to cancel that disagreed: `/cancel` wrote `status: CANCELLED` straight
+         *     to Mongo and released the discovery lock but never told the workflow, while
+         *     the workflow's CANCELLED event updated the durable state and the session
+         *     document but left the discovery lock held. Whichever a caller used, one of
+         *     the two records was wrong. `record_event` now releases the lock itself, so
+         *     the single canonical path does everything both did.
+         *
+         *     **It also replaces `POST /{id}/start`.** `record_event` calls
+         *     `ensure_started` first, so a separate start endpoint only exists to create a
+         *     workflow with no event in it. Callers that want the workflow running send
+         *     the first event.
+         *
+         *     Not a generic advance: the caller names an *event that happened* and the
+         *     evidence for it, and the state machine decides which stage that implies.
+         *     An endpoint taking a target stage would invert that.
+         */
+        post: operations["record_event_api_returns__session_id__events_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4636,6 +4756,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[ReturnEventResult] */
+        APIResponse_ReturnEventResult_: {
+            data?: components["schemas"]["ReturnEventResult"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[ReturnEvidence] */
         APIResponse_ReturnEvidence_: {
             data?: components["schemas"]["ReturnEvidence"] | null;
@@ -7973,6 +8099,42 @@ export interface components {
             shippingPathExpectation: components["schemas"]["NormalizedReturnMethod"];
         };
         /**
+         * ReturnEventRequest
+         * @description One evidence-carrying production event.
+         *
+         *     Mirrors the legacy `ProductionEventRequest` field for field. `evidence` is
+         *     required and has a minimum length because it is the whole justification for
+         *     the transition -- the stage-result binding, the audit record and the outbox
+         *     event all hang off it. `extra="forbid"` so a caller who misspells
+         *     `businessPayload` is told, rather than having their payload dropped.
+         */
+        ReturnEventRequest: {
+            /** Businesspayload */
+            businessPayload?: {
+                [key: string]: unknown;
+            };
+            /** Eventid */
+            eventId: string;
+            eventType: components["schemas"]["ProductionReturnEventType"];
+            /** Evidencereference */
+            evidenceReference: string;
+        };
+        /**
+         * ReturnEventResult
+         * @description Typed, unlike the legacy handler's `dict[str, object]`.
+         *
+         *     A caller needs to know where the return ended up, and whether it is now
+         *     terminal -- both of which decide what the next request may be.
+         */
+        ReturnEventResult: {
+            /** Cancelled */
+            cancelled: boolean;
+            /** Casefullyclosed */
+            caseFullyClosed: boolean;
+            /** Stage */
+            stage: string;
+        };
+        /**
          * ReturnEvidence
          * @description Everything recorded *about* a return that is not the return itself.
          *
@@ -9832,6 +9994,37 @@ export interface operations {
             };
         };
     };
+    cancel_interception_api_ai_interceptions__interception_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interception_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     read_interception_request_api_ai_interceptions__interception_id__request_get: {
         parameters: {
             query?: never;
@@ -10048,6 +10241,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    promote_release_api_config_releases__release_id__promote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromoteReleasePayload"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -10674,6 +10902,41 @@ export interface operations {
             };
         };
     };
+    create_return_api_returns_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReturnCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ReturnSessionView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_return_api_returns__session_id__get: {
         parameters: {
             query?: never;
@@ -10723,6 +10986,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_list_dict_str__Any___"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_event_api_returns__session_id__events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReturnEventRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ReturnEventResult_"];
                 };
             };
             /** @description Validation Error */

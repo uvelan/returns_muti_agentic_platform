@@ -58,12 +58,27 @@ def _interception(status: InterceptionStatus = InterceptionStatus.PENDING) -> In
 
 
 class _Store:
-    """Only the three methods this surface uses."""
+    """Only the methods this surface uses.
 
-    def __init__(self, *, pending: bool = True, payload: dict[str, Any] | None = None) -> None:
+    `cancel` mirrors the real store's contract exactly, including the part that
+    matters: it returns *silently* when the record is not PENDING rather than
+    raising. A stub that raised would let a handler relying on an exception pass
+    here and be wrong in production.
+    """
+
+    def __init__(
+        self,
+        *,
+        pending: bool = True,
+        payload: dict[str, Any] | None = None,
+        exists: bool = True,
+    ) -> None:
         self._pending = pending
         self._payload = payload if payload is not None else {"prompt": "sealed content"}
+        self._exists = exists
+        self._status = InterceptionStatus.PENDING if pending else InterceptionStatus.ANSWERED
         self.answered_with: tuple[str, str] | None = None
+        self.cancel_calls = 0
 
     async def list_pending(self, *, limit: int = 100) -> list[Interception]:
         del limit
@@ -71,6 +86,11 @@ class _Store:
 
     async def request_payload(self, interception_id: str) -> dict[str, Any] | None:
         return self._payload if interception_id == _ID else None
+
+    async def get(self, interception_id: str) -> Interception | None:
+        if not self._exists or interception_id != _ID:
+            return None
+        return _interception(self._status)
 
     async def answer(
         self, *, interception_id: str, response_text: str, answered_by: str
@@ -81,7 +101,15 @@ class _Store:
             )
         self.answered_with = (response_text, answered_by)
         self._pending = False
+        self._status = InterceptionStatus.ANSWERED
         return _interception(InterceptionStatus.ANSWERED)
+
+    async def cancel(self, *, interception_id: str, status: InterceptionStatus) -> None:
+        self.cancel_calls += 1
+        if not self._exists or not self._pending:
+            return
+        self._pending = False
+        self._status = status
 
 
 def _client(store: object | None, *role_names: str) -> Iterator[TestClient]:
@@ -214,3 +242,64 @@ def test_without_a_store_the_operator_endpoints_are_503_but_the_queue_is_empty()
             ).status_code
             == 503
         )
+        assert client.post(f"/api/ai/interceptions/{_ID}/cancel").status_code == 503
+
+
+# --- cancelling --------------------------------------------------------------
+#
+# The counterpart to answering. Without it the only ways out of PENDING are to
+# answer or to wait for `expiresAt`, so an operator who can see the prompt is
+# wrong has to invent an answer or leave a caller blocked.
+
+
+def test_an_operator_can_cancel_a_pending_interception(
+    admin_store: tuple[TestClient, _Store],
+) -> None:
+    client, store = admin_store
+
+    response = client.post(f"/api/ai/interceptions/{_ID}/cancel")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["data"] == {"interceptionId": _ID, "status": "CANCELLED"}
+    assert store.cancel_calls == 1
+
+
+def test_cancelling_an_already_answered_interception_is_409() -> None:
+    """The case the handler has to work for.
+
+    `store.cancel` returns *silently* when the record is not PENDING -- its other
+    caller is the expiry sweep, for which losing the race is normal. A handler
+    that trusted the absence of an exception would answer 200 here and tell the
+    operator they cancelled something that was in fact answered. The outcome is
+    read back instead.
+    """
+    store = _Store(pending=False)
+    for client in _client(store, r.CONSOLE_ADMIN):
+        response = client.post(f"/api/ai/interceptions/{_ID}/cancel")
+
+    assert response.status_code == 409, response.text
+    assert "ANSWERED" in response.json()["detail"]
+
+
+def test_cancelling_an_unknown_interception_is_404() -> None:
+    store = _Store(exists=False)
+    for client in _client(store, r.CONSOLE_ADMIN):
+        response = client.post("/api/ai/interceptions/nope/cancel")
+
+    assert response.status_code == 404, response.text
+
+
+def test_cancelling_needs_the_act_capability() -> None:
+    """Ending someone's request is an act, not a read."""
+    reader_roles = [
+        role
+        for role in sorted(r.ALL_ROLES)
+        if caps.AI_INTERCEPTION_ACT not in caps.capabilities_for_roles(frozenset({role}))
+    ]
+    assert reader_roles, "every role can act; this test cannot distinguish the capabilities"
+    store = _Store()
+    for client in _client(store, reader_roles[0]):
+        response = client.post(f"/api/ai/interceptions/{_ID}/cancel")
+
+    assert response.status_code == 403, response.text
+    assert store.cancel_calls == 0
