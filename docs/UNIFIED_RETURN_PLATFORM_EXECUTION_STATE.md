@@ -1935,36 +1935,25 @@ authorization check between them — was not on the list at all.
 
 In rough order of blast radius:
 
-1. **D3's mutation surface — blocked on a decision, not on effort.** Two configuration
-   release lifecycles exist, with **different state vocabularies over different
-   databases**. Re-verified against the code, since this ledger's other duplicate claims
-   did not survive checking:
+1. **D3's mutation surface — blocked on a decision.** Full brief, measured against the
+   running system: **[CONFIGURATION_RELEASE_LIFECYCLE_DECISION.md](CONFIGURATION_RELEASE_LIFECYCLE_DECISION.md)**.
+   That document is the maintained version; what follows is only enough to know whether to
+   open it.
 
-   | | Lifecycle A | Lifecycle B |
-   |---|---|---|
-   | Code | `configuration/application/release_service.py` + `activation.py` | `data_console/api/configuration.py::promote_release_status` |
-   | Store | **MongoDB** `platform.configuration_releases` | **Neo4j** via `Neo4jConfigurationGraphRepository` |
-   | States | DRAFT → VALIDATED → APPROVED → ACTIVE → SUPERSEDED | DRAFT → VALIDATED → RELEASED → SUPERSEDED → ARCHIVED |
-   | Integrity | checksum recomputed and compared on both hardened transitions (Slice 3R); `ConfigurationIntegrityError` on mismatch; activation is a pointer CAS with a unique partial index | required behaviour domains present, and `ReturnPlatformConfiguration` parses. **No checksum recompute.** |
-   | Constructed in production | **nowhere** — `ReleaseService` and `ActivationService` are each constructed in exactly one test | `main.py:441` |
-   | Runtime reads from it | no | **yes** — `runtime_loader.py` resolves the active release from Neo4j, and `RELEASED` is the live state |
+   **This entry used to say "two lifecycles over two stores, and choosing is a data
+   migration". Both halves were wrong.** There are four places configuration lives; the one
+   holding production configuration is a YAML file on disk with no lifecycle at all; and
+   neither release lifecycle holds real data — Neo4j has **0** release nodes and Mongo's
+   three are leaked test fixtures (`r1`/`r2`/`r3`, checksums `c1`/`c2`/`c3`). There is
+   almost nothing to migrate. The decision is which lifecycle owns promotion, and it is far
+   cheaper than this ledger has been claiming.
 
-   So the hardened lifecycle is the dead one, and the live one is a table inlined in a
-   router. The vocabularies only overlap on DRAFT, VALIDATED and SUPERSEDED: APPROVED and
-   ACTIVE have no Neo4j counterpart, RELEASED and ARCHIVED have no Mongo counterpart. That
-   is why this is a data migration rather than a refactor — whichever lifecycle wins,
-   existing records in the loser's store carry states the winner cannot express, and
-   deciding the mapping changes what happens on every configuration promotion.
+   The one fact that makes it urgent rather than cosmetic: production runs
+   `allow_baseline_fallback=False`, so with no active Neo4j release **startup raises**.
+   Development falls back to the YAML baseline, which is why zero rows went unnoticed.
 
-   Adding canonical mutation endpoints on top would make it three lifecycles, or silently
-   bless whichever one the new file happened to call. Hence `/api/config` ships read-only.
-
-   **Also found while re-verifying:** the Neo4j `allowed_transitions` table is written out
-   three times — `data_console/api/configuration.py:345` and twice in
-   `configuration/graph_repository.py` (:154 and :388, the in-memory and Neo4j
-   implementations). Whichever lifecycle wins, that wants to become one table. Recorded
-   here rather than fixed, because narrowing the losing lifecycle's rules before the
-   decision is made would prejudge it.
+   Counts are from one developer machine's Docker volumes. Re-measuring against production
+   is step one of any plan, because two of the three arguments depend on it.
 
 2. **D4's write consolidation — CLOSED** (`5fdc17f`, `bc1baf7`, `f7244fd`, `7c700e3`).
    All three Phase 16 duplicates are resolved; see the slice sections below.
