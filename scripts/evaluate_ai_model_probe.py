@@ -86,8 +86,7 @@ def evaluate_provider(name: str, raw: Any) -> dict[str, Any]:
             warnings.append(f"{name}: {model} is rate-limited")
         else:
             failures.append(
-                f"{name}: {model} generationStatus="
-                f"{item.get('generationStatus')!r}"
+                f"{name}: {model} generationStatus={item.get('generationStatus')!r}"
             )
 
     if failures:
@@ -119,20 +118,13 @@ def evaluate(payload: Any) -> dict[str, Any]:
         }
 
     providers = {
-        name: evaluate_provider(name, payload.get(name))
-        for name in REQUIRED_PROVIDERS
+        name: evaluate_provider(name, payload.get(name)) for name in REQUIRED_PROVIDERS
     }
 
     failures = [
-        value
-        for result in providers.values()
-        for value in result["hardFailures"]
+        value for result in providers.values() for value in result["hardFailures"]
     ]
-    warnings = [
-        value
-        for result in providers.values()
-        for value in result["warnings"]
-    ]
+    warnings = [value for result in providers.values() for value in result["warnings"]]
 
     tier_coverage: dict[str, list[dict[str, str]]] = {
         tier: [] for tier in REQUIRED_TIERS
@@ -154,8 +146,7 @@ def evaluate(payload: Any) -> dict[str, Any]:
     if not accepted:
         overall = "FAIL"
     elif any(
-        result["status"] == "DEGRADED_RATE_LIMITED"
-        for result in providers.values()
+        result["status"] == "DEGRADED_RATE_LIMITED" for result in providers.values()
     ):
         overall = "PASS_WITH_WARNING"
     else:

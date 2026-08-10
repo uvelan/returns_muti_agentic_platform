@@ -75,7 +75,9 @@ def _normalize(raw_value: str) -> ParsedValue:
 
 def _parse(path: Path) -> dict[str, ParsedValue]:
     values: dict[str, ParsedValue] = {}
-    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+    for line_number, raw_line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), 1
+    ):
         stripped = raw_line.strip()
         if not stripped or stripped.startswith("#"):
             continue
@@ -95,7 +97,9 @@ def _parse(path: Path) -> dict[str, ParsedValue]:
 def _validate_permissions(path: Path) -> None:
     mode = stat.S_IMODE(path.stat().st_mode)
     if mode & 0o077:
-        raise ValueError(".env must not be accessible by group/other; run chmod 600 .env")
+        raise ValueError(
+            ".env must not be accessible by group/other; run chmod 600 .env"
+        )
 
 
 def _validate_non_placeholder(name: str, value: str) -> None:
@@ -106,7 +110,9 @@ def _validate_non_placeholder(name: str, value: str) -> None:
         raise ValueError(f"{name} still contains a placeholder value")
 
 
-def _parse_json_list(name: str, parsed_value: ParsedValue, *, require_non_empty: bool) -> list[str]:
+def _parse_json_list(
+    name: str, parsed_value: ParsedValue, *, require_non_empty: bool
+) -> list[str]:
     if not parsed_value.single_quoted:
         raise ValueError(f"{name} must wrap its JSON array in single quotes")
     try:

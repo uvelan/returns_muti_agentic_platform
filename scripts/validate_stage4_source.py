@@ -26,6 +26,9 @@ REQUIRED_FRONTEND_ROUTES = {
     "/graph-schema",
     "/ai",
 }
+#: Wave G1 split these into three profiles. `seed-runner` and `temporal-ui` are
+#: `dev-tools` now, and `runtime-configuration-init` moved to the default
+#: profile because it is bootstrap, not an application service.
 REQUIRED_COMPOSE_SERVICES = {
     "sqlserver",
     "sqlserver-init",
@@ -45,7 +48,6 @@ REQUIRED_COMPOSE_SERVICES = {
     "frontend",
 }
 APP_PROFILE_SERVICES = {
-    "seed-runner",
     "backend",
     "return-workflow-worker",
     "return-orchestrator",
@@ -335,18 +337,18 @@ def validate_schema_and_data_console(checks: list[dict[str, Any]]) -> None:
             "writableSql": sorted(writable_sql),
         },
     )
+    # The four `data_console/api/*` routers this used to require were deleted in
+    # Wave F5 at zero consumers, and the package with them. What is left is the
+    # `data_platform` service layer they called, which is still real and still
+    # worth asserting.
     required_files = [
         ROOT / "backend/src/return_platform/data_platform/ai_studio.py",
         ROOT / "backend/src/return_platform/data_platform/graph/schema.py",
         ROOT / "backend/src/return_platform/data_platform/graph/sync_service.py",
-        ROOT / "backend/src/return_platform/data_console/api/schema_catalog.py",
-        ROOT / "backend/src/return_platform/data_console/api/ai_studio.py",
-        ROOT / "backend/src/return_platform/data_console/api/graph_sync.py",
-        ROOT / "backend/src/return_platform/data_console/api/feedback_learning.py",
     ]
     add(
         checks,
-        "data_console_services_present",
+        "data_platform_services_present",
         all(path.exists() for path in required_files),
         [str(path.relative_to(ROOT)) for path in required_files],
     )

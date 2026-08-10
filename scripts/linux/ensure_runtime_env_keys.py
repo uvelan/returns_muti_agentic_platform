@@ -23,12 +23,12 @@ SAFE_OVERRIDES: dict[str, str] = {
 }
 MIGRATABLE_JSON_LISTS = {
     "PLATFORM_AI_ALLOWED_ENDPOINT_HOSTS": (
-        "'[\"generativelanguage.googleapis.com\",\"integrate.api.nvidia.com\","
-        "\"api.openai.com\",\"api.anthropic.com\"]'"
+        '\'["generativelanguage.googleapis.com","integrate.api.nvidia.com",'
+        '"api.openai.com","api.anthropic.com"]\''
     ),
     "PLATFORM_DATA_SOURCE_ALLOWED_HOSTS": (
-        "'[\"mongodb\",\"source-mongodb\",\"sqlserver\",\"neo4j\","
-        "\"localhost\",\"127.0.0.1\",\"::1\"]'"
+        '\'["mongodb","source-mongodb","sqlserver","neo4j",'
+        '"localhost","127.0.0.1","::1"]\''
     ),
 }
 

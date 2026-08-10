@@ -3,9 +3,11 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 cd "$REPO_ROOT"
 docker compose --profile containerized-app config --quiet
-python3 "$LINUX_SCRIPT_DIR/verify_mandatory_routes.py" \
-  "$LINUX_SCRIPT_DIR/mandatory_routes.json" \
-  "$REPO_ROOT/frontend/src/routes.ts"
+# `verify_mandatory_routes.py` and `mandatory_routes.json` were deleted in Wave
+# G3. They asserted seventeen routes in `frontend/src/routes.ts`, a file Wave F4
+# removed along with all seventy-six legacy routes. `validate_stage4_source.py`
+# below now owns the frontend-route assertion, against the four-domain registry,
+# so restating it here would be a second list to keep correct.
 if command -v poetry >/dev/null 2>&1; then
   POETRY=(poetry)
 elif [[ -x "$RUNTIME_ROOT/tooling/bin/poetry" ]]; then

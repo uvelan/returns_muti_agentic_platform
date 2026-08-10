@@ -7,7 +7,7 @@
     "dockerAvailable": false
   },
   "command": "python3.13 scripts/validate_stage4_source.py",
-  "generatedAt": "2026-08-10T09:59:37.386993+00:00",
+  "generatedAt": "2026-08-10T11:14:29.461417+00:00",
   "exitCode": 0,
   "status": "PASSED",
   "checks": [
@@ -150,16 +150,12 @@
       }
     },
     {
-      "name": "data_console_services_present",
+      "name": "data_platform_services_present",
       "status": "PASS",
       "evidence": [
         "backend\\src\\return_platform\\data_platform\\ai_studio.py",
         "backend\\src\\return_platform\\data_platform\\graph\\schema.py",
-        "backend\\src\\return_platform\\data_platform\\graph\\sync_service.py",
-        "backend\\src\\return_platform\\data_console\\api\\schema_catalog.py",
-        "backend\\src\\return_platform\\data_console\\api\\ai_studio.py",
-        "backend\\src\\return_platform\\data_console\\api\\graph_sync.py",
-        "backend\\src\\return_platform\\data_console\\api\\feedback_learning.py"
+        "backend\\src\\return_platform\\data_platform\\graph\\sync_service.py"
       ]
     },
     {
@@ -218,6 +214,7 @@
         "services": [
           "backend",
           "data-job-worker",
+          "diagnostics",
           "frontend",
           "integration-outbox-worker",
           "mongodb",

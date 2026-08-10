@@ -2,9 +2,9 @@
   "stage": "4M",
   "status": "PASSED",
   "validationLevel": "SOURCE_VALIDATED",
-  "operations": 10,
-  "aiRequests": 10,
-  "fallbacks": 10,
+  "operations": 11,
+  "aiRequests": 11,
+  "fallbacks": 11,
   "tokens": 0,
-  "checks": 19
+  "checks": 13
 }

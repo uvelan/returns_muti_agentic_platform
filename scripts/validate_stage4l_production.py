@@ -56,7 +56,9 @@ def _apply(
 def validate() -> dict[str, object]:
     checks: list[str] = []
 
-    loaded = load_return_configuration(BACKEND_ROOT / "config" / "returns" / "production.yaml")
+    loaded = load_return_configuration(
+        BACKEND_ROOT / "config" / "returns" / "production.yaml"
+    )
     configuration = loaded.configuration
     expected_agents = {
         "order_discovery",
@@ -254,7 +256,9 @@ def validate() -> dict[str, object]:
 
     migration_text = "\n".join(
         path.read_text()
-        for path in sorted((REPOSITORY_ROOT / "infra" / "sqlserver" / "init").glob("*.sql"))
+        for path in sorted(
+            (REPOSITORY_ROOT / "infra" / "sqlserver" / "init").glob("*.sql")
+        )
     )
     assert "platform.bay_reservation" in migration_text
     assert "platform.return_policy_version" in migration_text

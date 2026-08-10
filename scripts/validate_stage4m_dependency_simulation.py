@@ -105,26 +105,16 @@ def main() -> None:
         "backend/src/return_platform/dependency_simulation/service.py",
         "backend/src/return_platform/dependency_simulation/ai.py",
         "backend/src/return_platform/api/dependency_simulator.py",
-        "frontend/src/features/dependency-simulator/OverviewPage.tsx",
-        "frontend/src/features/dependency-simulator/OmcPage.tsx",
-        "frontend/src/features/dependency-simulator/ParcelPage.tsx",
-        "frontend/src/features/dependency-simulator/FreightPage.tsx",
-        "frontend/src/features/dependency-simulator/LsiPage.tsx",
-        "frontend/src/features/dependency-simulator/AiMetricsPage.tsx",
         "scripts/run_stage4m_simulated_e2e.sh",
         "docs/plans/STAGE_4M_DEPENDENCY_SIMULATION_IMPLEMENTATION_PLAN.md",
     ]
     for item in required:
         require(item)
-    routes = (ROOT / "frontend/src/routes.ts").read_text()
-    for route in (
-        "/system/dependency-simulator/omc",
-        "/system/dependency-simulator/parcel",
-        "/system/dependency-simulator/freight",
-        "/system/dependency-simulator/lsi",
-        "/system/dependency-simulator/ai-metrics",
-    ):
-        assert route in routes
+    # Six dependency-simulator pages and their five routes were asserted here
+    # until Wave F4 deleted the legacy frontend. The simulator's *backend* is
+    # untouched and still checked above and below -- its configuration, service,
+    # AI adapter, API module, and the production guard. Only the UI is gone, so
+    # only the UI assertions went.
     settings = (
         ROOT / "backend/src/return_platform/configuration/settings.py"
     ).read_text()

@@ -342,7 +342,12 @@ services:
     logging: *default-logging
     mem_limit: 1500m
 
+  # --- dev-tools ------------------------------------------------------------
+  # Started only with `--profile dev-tools`. Nothing in the default or
+  # containerized-app profiles depends on any of these, so a deployment that
+  # never passes the flag runs without them.
   temporal-ui:
+    profiles: ["dev-tools"]
     image: temporalio/ui:${TEMPORAL_UI_VERSION:-2.52.1}
     environment:
       TEMPORAL_ADDRESS: temporal:7233
@@ -357,8 +362,10 @@ services:
     logging: *default-logging
     mem_limit: 512m
 
+  # Bootstrap, not an application service: it seeds the graph configuration the
+  # backend and every worker read at startup, so it belongs in the default
+  # profile alongside the datastores rather than behind the app profile.
   runtime-configuration-init:
-    profiles: ["containerized-app"]
     <<: *backend-base
     command:
       - sh
@@ -380,8 +387,11 @@ services:
         condition: service_completed_successfully
     restart: "no"
 
+  # Test data. Phase 4b decoupled every application service from it, and the
+  # plan's rule -- "application services never depend on seed-runner" -- is
+  # still true: nothing declares it as a dependency.
   seed-runner:
-    profiles: ["containerized-app"]
+    profiles: ["dev-tools"]
     <<: *backend-base
     command: ["python", "/app/scripts/seed_e2e_data.py"]
     depends_on:
@@ -509,6 +519,31 @@ services:
     networks: [platform]
     logging: *default-logging
     mem_limit: 512m
+
+  # A reproducible shell on the platform network, for running the backend test
+  # suite and ad-hoc diagnostics against live infrastructure.
+  #
+  # This exists because the thing it replaces does not: `run_real_infra_suite.sh`
+  # expects a container named `c2-test-runner` that nothing in the repository
+  # creates. Today it is a hand-made `python:3.13-slim` that someone `docker cp`
+  # -ed source into -- which is why syncing it merges rather than replaces, and
+  # why a stale file in it has already produced one false green.
+  #
+  # Built from the backend image so the dependency set matches production
+  # exactly, instead of being pip-installed by hand.
+  #
+  # `run_real_infra_suite.sh` is NOT yet pointed at this. Rewiring the loop this
+  # programme verifies itself with is its own change, deliberately not bundled
+  # into a Compose reorganisation.
+  diagnostics:
+    profiles: ["dev-tools"]
+    <<: *backend-base
+    command: ["sleep", "infinity"]
+    volumes:
+      - ./backend:/workspace_root/backend:ro
+    depends_on:
+      mongodb-rs-init:
+        condition: service_completed_successfully
 
 networks:
   platform:

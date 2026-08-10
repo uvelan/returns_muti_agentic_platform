@@ -14,7 +14,6 @@ import argparse
 import ast
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -26,7 +25,9 @@ _PRODUCTION_PLACEHOLDER_PATTERNS = [
     re.compile(r"\bNotImplementedError\b"),
 ]
 _LINT_SUPPRESSION_PATTERNS = [
-    re.compile(r"#\s*noqa(?!:)"),  # bare noqa (no code) hides everything, not just one rule
+    re.compile(
+        r"#\s*noqa(?!:)"
+    ),  # bare noqa (no code) hides everything, not just one rule
     re.compile(r"#\s*type:\s*ignore(?!\[)"),  # bare type: ignore hides everything
 ]
 _SKIP_TEST_PATTERNS = [
@@ -34,13 +35,22 @@ _SKIP_TEST_PATTERNS = [
     re.compile(r"@pytest\.mark\.xfail"),
 ]
 _SECRET_LOOKING_PATTERNS = [
-    re.compile(r"(?i)(api[_-]?key|secret|password|token)\s*[:=]\s*[\"'][A-Za-z0-9+/=_-]{16,}[\"']"),
+    re.compile(
+        r"(?i)(api[_-]?key|secret|password|token)\s*[:=]\s*[\"'][A-Za-z0-9+/=_-]{16,}[\"']"
+    ),
     re.compile(r"-----BEGIN (RSA |EC )?PRIVATE KEY-----"),
 ]
 
 
 def _run(cmd: list[str]) -> tuple[int, str]:
-    proc = subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace")
+    proc = subprocess.run(
+        cmd,
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
 
 
@@ -62,7 +72,9 @@ def check_remote_divergence() -> list[str]:
     problems: list[str] = []
     code, _ = _run(["git", "fetch", "--prune", "origin"])
     if code != 0:
-        problems.append("remote: 'git fetch --prune origin' failed -- cannot verify divergence")
+        problems.append(
+            "remote: 'git fetch --prune origin' failed -- cannot verify divergence"
+        )
         return problems
     try:
         local_head = _git(["rev-parse", "HEAD"])
@@ -71,7 +83,9 @@ def check_remote_divergence() -> list[str]:
         problems.append(f"remote: {exc}")
         return problems
     if local_head != remote_head:
-        ahead_behind = _git(["rev-list", "--left-right", "--count", f"{local_head}...{remote_head}"])
+        ahead_behind = _git(
+            ["rev-list", "--left-right", "--count", f"{local_head}...{remote_head}"]
+        )
         problems.append(
             f"remote: local HEAD ({local_head[:8]}) differs from origin/{EXPECTED_BRANCH} "
             f"({remote_head[:8]}); ahead/behind: {ahead_behind}"
@@ -120,12 +134,19 @@ def staged_diff_added_lines() -> dict[str, list[str]]:
 def check_production_placeholders(added: dict[str, list[str]]) -> list[str]:
     problems = []
     for path, lines in added.items():
-        if "/tests/" in path or path.startswith("tests/") or path.endswith("_test.py") or "/test_" in path:
+        if (
+            "/tests/" in path
+            or path.startswith("tests/")
+            or path.endswith("_test.py")
+            or "/test_" in path
+        ):
             continue  # placeholders/TODOs in tests are not "deferred correctness" in production code
         for line in lines:
             for pattern in _PRODUCTION_PLACEHOLDER_PATTERNS:
                 if pattern.search(line):
-                    problems.append(f"production placeholder in {path}: {line.strip()[:120]}")
+                    problems.append(
+                        f"production placeholder in {path}: {line.strip()[:120]}"
+                    )
     problems += check_new_stub_function_bodies(added)
     return problems
 
@@ -158,7 +179,9 @@ def check_new_stub_function_bodies(added: dict[str, list[str]]) -> list[str]:
                 continue
             def_line = source.splitlines()[node.lineno - 1].strip()
             if def_line in new_line_texts:
-                problems.append(f"new stub function body (pass-only) in {path}: {node.name}()")
+                problems.append(
+                    f"new stub function body (pass-only) in {path}: {node.name}()"
+                )
     return problems
 
 
@@ -168,7 +191,9 @@ def check_lint_suppressions(added: dict[str, list[str]]) -> list[str]:
         for line in lines:
             for pattern in _LINT_SUPPRESSION_PATTERNS:
                 if pattern.search(line):
-                    problems.append(f"new blanket lint/type suppression in {path}: {line.strip()[:120]}")
+                    problems.append(
+                        f"new blanket lint/type suppression in {path}: {line.strip()[:120]}"
+                    )
     return problems
 
 
@@ -178,7 +203,9 @@ def check_new_test_skips(added: dict[str, list[str]]) -> list[str]:
         for line in lines:
             for pattern in _SKIP_TEST_PATTERNS:
                 if pattern.search(line):
-                    problems.append(f"new skipped/xfail test marker in {path}: {line.strip()[:120]}")
+                    problems.append(
+                        f"new skipped/xfail test marker in {path}: {line.strip()[:120]}"
+                    )
     return problems
 
 
@@ -188,7 +215,9 @@ def check_secret_looking_values(added: dict[str, list[str]]) -> list[str]:
         for line in lines:
             for pattern in _SECRET_LOOKING_PATTERNS:
                 if pattern.search(line):
-                    problems.append(f"secret/key-looking value in {path}: {line.strip()[:60]}...")
+                    problems.append(
+                        f"secret/key-looking value in {path}: {line.strip()[:60]}..."
+                    )
     return problems
 
 
@@ -203,7 +232,9 @@ def check_physical_platform_literals(added: dict[str, list[str]]) -> list[str]:
             continue
         for line in lines:
             if pattern.search(line):
-                problems.append(f"physical 'platform_*' literal outside system_store in {path}: {line.strip()[:120]}")
+                problems.append(
+                    f"physical 'platform_*' literal outside system_store in {path}: {line.strip()[:120]}"
+                )
     return problems
 
 
@@ -214,7 +245,13 @@ def check_cross_module_imports() -> list[str]:
     if not backend.exists():
         return []
     proc = subprocess.run(
-        ["poetry", "run", "pytest", "tests/platform/test_no_module_cross_imports.py", "-q"],
+        [
+            "poetry",
+            "run",
+            "pytest",
+            "tests/platform/test_no_module_cross_imports.py",
+            "-q",
+        ],
         cwd=str(backend),
         capture_output=True,
         text=True,
@@ -222,14 +259,18 @@ def check_cross_module_imports() -> list[str]:
         errors="replace",
     )
     if proc.returncode != 0:
-        return [f"cross-module import violation detected:\n{(proc.stdout + proc.stderr)[-2000:]}"]
+        return [
+            f"cross-module import violation detected:\n{(proc.stdout + proc.stderr)[-2000:]}"
+        ]
     return []
 
 
 def check_execution_ledger_current(current_slice: str) -> list[str]:
     ledger = REPO_ROOT / "docs" / "UNIFIED_RETURN_PLATFORM_EXECUTION_STATE.md"
     if not ledger.exists():
-        return ["execution ledger: docs/UNIFIED_RETURN_PLATFORM_EXECUTION_STATE.md does not exist"]
+        return [
+            "execution ledger: docs/UNIFIED_RETURN_PLATFORM_EXECUTION_STATE.md does not exist"
+        ]
     text = ledger.read_text(encoding="utf-8")
     if current_slice not in text:
         return [f"execution ledger: does not mention current slice '{current_slice}'"]
@@ -238,9 +279,22 @@ def check_execution_ledger_current(current_slice: str) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--scope-prefix", action="append", default=None, help="Expected staged-file path prefix(es); repeatable")
-    parser.add_argument("--slice", default="3R", help="Current slice identifier expected in the execution ledger")
-    parser.add_argument("--skip-cross-module-check", action="store_true", help="Skip the (slower) pytest-based architecture check")
+    parser.add_argument(
+        "--scope-prefix",
+        action="append",
+        default=None,
+        help="Expected staged-file path prefix(es); repeatable",
+    )
+    parser.add_argument(
+        "--slice",
+        default="3R",
+        help="Current slice identifier expected in the execution ledger",
+    )
+    parser.add_argument(
+        "--skip-cross-module-check",
+        action="store_true",
+        help="Skip the (slower) pytest-based architecture check",
+    )
     args = parser.parse_args()
 
     problems: list[str] = []
