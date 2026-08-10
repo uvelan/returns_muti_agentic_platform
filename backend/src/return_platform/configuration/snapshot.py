@@ -11,7 +11,10 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from return_platform.ai_gateway.configuration import AIGatewayConfiguration
-from return_platform.configuration.graph_repository import ConfigurationGraphRepository
+from return_platform.configuration.graph_repository import (
+    ConfigurationGraphRepository,
+    compute_release_checksum,
+)
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 from return_platform.dependency_simulation.configuration import (
     DependencySimulationConfiguration,
@@ -49,11 +52,19 @@ class ConfigurationSnapshotBuilder:
 
     @staticmethod
     def _release_checksum(domain_payloads: dict[str, Any]) -> str:
-        hasher = hashlib.sha256()
-        for domain_key in sorted(domain_payloads):
-            hasher.update(domain_key.encode("utf-8"))
-            hasher.update(json.dumps(domain_payloads[domain_key], sort_keys=True).encode("utf-8"))
-        return hasher.hexdigest()
+        """Delegates to the repositories' helper -- this was a third copy.
+
+        The load-time comparison here is the *stronger* of the platform's two
+        checks: it catches a release tampered with after publication, not only
+        between validation and publication. It was also silently coupled to two
+        other hash implementations by nothing more than all three happening to
+        be written the same way, which is how a change to one of them turns into
+        "production will not start".
+        """
+        return compute_release_checksum(
+            (domain_key, json.dumps(payload, sort_keys=True))
+            for domain_key, payload in domain_payloads.items()
+        )
 
     @staticmethod
     def _baseline_snapshot(

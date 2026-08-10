@@ -6,12 +6,14 @@ import asyncio
 import copy
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from typing import Any, Protocol, cast, runtime_checkable
 
 from neo4j import AsyncDriver
 from pydantic import BaseModel, ConfigDict, Field
+
+from return_platform.configuration.domain.errors import ConfigurationIntegrityError
 
 DEFAULT_CONFIGURATION_SCOPE = "production:global"
 
@@ -38,6 +40,43 @@ RELEASE_TRANSITIONS: Mapping[str, frozenset[str]] = {
 def transition_allowed(current_status: str, target_status: str) -> bool:
     """Whether `current_status -> target_status` is a legal promotion."""
     return target_status in RELEASE_TRANSITIONS.get(current_status, frozenset())
+
+
+def compute_release_checksum(domains: Iterable[tuple[str, str]]) -> str:
+    """SHA-256 over `(domain_key, payload_json)` pairs, in key order.
+
+    One implementation for both repositories. They previously hashed separately
+    and happened to agree -- the in-memory one over `json.dumps(payload,
+    sort_keys=True)`, the Neo4j one over the stored `payload_json`, which is
+    written with `sort_keys=True`. Agreement by coincidence between a fake and
+    the thing it stands in for is exactly what makes a fake stop being useful,
+    and nothing was checking it.
+
+    **Length-delimited, unlike the two implementations this replaces.** They
+    concatenated key and payload directly, so `("ab", "c")` and `("a", "bc")`
+    hashed identically -- an ambiguous encoding, which is a defect in an
+    integrity primitive whether or not the current domain keys can express it.
+    Prefixing each field with its byte length makes the encoding injective.
+
+    This changes the checksum of any given release, which is safe here: the
+    value is only ever compared against one computed by this same function
+    (recorded at VALIDATED, checked at RELEASED). A release validated before
+    this change and published after it fails closed and is recoverable by
+    re-validating.
+    """
+    hasher = hashlib.sha256()
+    for domain_key, payload_json in sorted(domains):
+        for field in (domain_key.encode("utf-8"), payload_json.encode("utf-8")):
+            hasher.update(str(len(field)).encode("ascii"))
+            hasher.update(b":")
+            hasher.update(field)
+    return hasher.hexdigest()
+
+
+#: The status at which a release's contents stop being editable and its checksum
+#: becomes meaningful. `save_draft_domain` refuses to touch anything past DRAFT,
+#: so VALIDATED is the freeze point.
+CHECKSUM_FROZEN_AT = "VALIDATED"
 
 
 class ConfigurationRevisionConflict(RuntimeError):
@@ -186,7 +225,10 @@ class InMemoryConfigurationGraphRepository:
                         f"to {current_revision}"
                     )
 
-            await self._recompute_checksum(release_id)
+            if status == CHECKSUM_FROZEN_AT:
+                await self._recompute_checksum(release_id)
+            elif status == "RELEASED":
+                self._verify_checksum(release_id)
             current = self._releases[release_id]
             updated = current.model_copy(update={"status": status})
 
@@ -203,14 +245,24 @@ class InMemoryConfigurationGraphRepository:
             self._releases[release_id] = updated
             return copy.deepcopy(updated)
 
+    def _current_checksum(self, release_id: str) -> str:
+        return compute_release_checksum(
+            (domain_key, json.dumps(node.payload, sort_keys=True))
+            for (rel_id, domain_key), node in self._domains.items()
+            if rel_id == release_id
+        )
+
+    def _verify_checksum(self, release_id: str) -> None:
+        release = self._releases[release_id]
+        recomputed = self._current_checksum(release_id)
+        if release.checksum_sha256 != recomputed:
+            raise ConfigurationIntegrityError(
+                f"Release {release_id} changed after it was validated: recorded checksum "
+                f"{release.checksum_sha256 or '<unset>'} does not match {recomputed}."
+            )
+
     async def _recompute_checksum(self, release_id: str) -> None:
-        domain_keys = sorted([k[1] for k in self._domains.keys() if k[0] == release_id])
-        hasher = hashlib.sha256()
-        for dk in domain_keys:
-            node = self._domains[(release_id, dk)]
-            hasher.update(dk.encode("utf-8"))
-            hasher.update(json.dumps(node.payload, sort_keys=True).encode("utf-8"))
-        checksum = hasher.hexdigest()
+        checksum = self._current_checksum(release_id)
         old = self._releases[release_id]
         self._releases[release_id] = ConfigurationReleaseNode(
             release_id=old.release_id,
@@ -405,8 +457,10 @@ class Neo4jConfigurationGraphRepository:
         if not transition_allowed(rel.status, status):
             raise ValueError(f"Invalid configuration transition {rel.status} -> {status}")
         parameters: dict[str, Any]
-        if status == "RELEASED":
+        if status == CHECKSUM_FROZEN_AT:
             await self._recompute_checksum(release_id)
+        if status == "RELEASED":
+            await self._verify_checksum(release_id)
             if expected_head_revision is None:
                 raise ValueError("expected_head_revision is required to publish a release")
             query = """
@@ -484,7 +538,7 @@ class Neo4jConfigurationGraphRepository:
             return refreshed
         return self._parse_release_node(record)
 
-    async def _recompute_checksum(self, release_id: str) -> str:
+    async def _current_checksum(self, release_id: str) -> str:
         query = """
         MATCH (r:ConfigurationRelease {release_id: $release_id})-[:HAS_DOMAIN]->(
             d:ConfigurationDomain
@@ -495,16 +549,32 @@ class Neo4jConfigurationGraphRepository:
         async with self._driver.session() as session:
             result = await session.run(query, release_id=release_id)
             records = await result.data()
-            hasher = hashlib.sha256()
-            for rec in records:
-                dk = str(rec.get("domain_key", ""))
-                pj = str(rec.get("payload_json", "{}"))
-                hasher.update(dk.encode("utf-8"))
-                hasher.update(pj.encode("utf-8"))
-            checksum = hasher.hexdigest()
-            update_query = """
-            MATCH (r:ConfigurationRelease {release_id: $release_id})
-            SET r.checksum_sha256 = $checksum
-            """
+        return compute_release_checksum(
+            (str(rec.get("domain_key", "")), str(rec.get("payload_json", "{}"))) for rec in records
+        )
+
+    async def _verify_checksum(self, release_id: str) -> None:
+        """Compare, do not overwrite.
+
+        The recompute below is what makes `checksum_sha256` meaningful at all;
+        without this comparison it is only a stamp, and a domain edited between
+        validation and publication would be blessed rather than caught.
+        """
+        release = await self.get_release(release_id)
+        recorded = release.checksum_sha256 if release is not None else ""
+        recomputed = await self._current_checksum(release_id)
+        if recorded != recomputed:
+            raise ConfigurationIntegrityError(
+                f"Release {release_id} changed after it was validated: recorded checksum "
+                f"{recorded or '<unset>'} does not match {recomputed}."
+            )
+
+    async def _recompute_checksum(self, release_id: str) -> str:
+        checksum = await self._current_checksum(release_id)
+        update_query = """
+        MATCH (r:ConfigurationRelease {release_id: $release_id})
+        SET r.checksum_sha256 = $checksum
+        """
+        async with self._driver.session() as session:
             await session.run(update_query, release_id=release_id, checksum=checksum)
-            return checksum
+        return checksum
