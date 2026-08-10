@@ -7,7 +7,7 @@
     "dockerAvailable": false
   },
   "command": "python3.13 scripts/validate_stage4_source.py",
-  "generatedAt": "2026-07-28T06:42:22.957547+00:00",
+  "generatedAt": "2026-08-10T09:59:37.386993+00:00",
   "exitCode": 0,
   "status": "PASSED",
   "checks": [
@@ -21,27 +21,28 @@
       "status": "PASS",
       "evidence": {
         "missing": [],
-        "routeCount": 76
-      }
-    },
-    {
-      "name": "frontend_routes_live_only",
-      "status": "PASS",
-      "evidence": {
-        "liveCount": 76
-      }
-    },
-    {
-      "name": "associate_first_ui",
-      "status": "PASS",
-      "evidence": {
-        "required": [
-          "OrderDiscoveryCopilot",
-          "OrderContextPanel",
-          "confirmAssociateDiscovery",
-          "submitAssociateReturnDetails",
-          "candidateSetId"
+        "unexpected": [],
+        "routes": [
+          "/ai",
+          "/config",
+          "/graph-schema",
+          "/returns"
         ]
+      }
+    },
+    {
+      "name": "legacy_frontend_is_gone",
+      "status": "PASS",
+      "evidence": {
+        "frontend/src/routes.ts": false,
+        "frontend/src/features": false
+      }
+    },
+    {
+      "name": "shell_has_no_legacy_branch",
+      "status": "PASS",
+      "evidence": {
+        "checked": "frontend/src/App.tsx"
       }
     },
     {
@@ -54,13 +55,16 @@
           "__init__.py",
           "anthropic.py",
           "contracts.py",
-          "factory.py",
+          "durable_interception.py",
           "google.py",
           "http.py",
+          "manual.py",
           "nvidia.py",
           "ollama.py",
           "openai.py",
           "openai_compatible.py",
+          "registry.py",
+          "schema_cleaner.py",
           "simulator.py"
         ]
       }
@@ -219,6 +223,7 @@
           "mongodb",
           "mongodb-rs-init",
           "neo4j",
+          "order-discovery-worker",
           "outbox-publisher",
           "return-orchestrator",
           "return-workflow-worker",

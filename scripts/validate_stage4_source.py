@@ -17,22 +17,14 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "docs/evidence/stage4_e2e_completion/source_validation.json"
 
+#: The four canonical domains. This listed fifteen legacy paths from
+#: `frontend/src/routes.ts` until Wave F4 deleted that file along with the
+#: other 61 routes.
 REQUIRED_FRONTEND_ROUTES = {
-    "/associate/returns",
-    "/customer/returns",
-    "/customer/returns/:sessionId",
-    "/support/returns",
-    "/support/review-queue",
-    "/support/operations",
-    "/ai-gateway/requests",
-    "/ai-gateway/simulator",
-    "/ai-gateway/interceptions",
-    "/system/dependencies",
-    "/seed-data",
-    "/data-console/schema",
-    "/data-console/ai-studio",
-    "/data-console/graph-sync",
-    "/data-console/feedback-learning",
+    "/returns",
+    "/config",
+    "/graph-schema",
+    "/ai",
 }
 REQUIRED_COMPOSE_SERVICES = {
     "sqlserver",
@@ -97,6 +89,9 @@ REQUIRED_MONGO_COLLECTIONS = {
     "feedback_learning_records",
 }
 
+#: One file per provider, plus the shared pieces. `factory.py` became
+#: `registry.py` in the same `ai_gateway/ -> ai/` migration that moved this
+#: whole directory; the check asked for the old name and reported it missing.
 REQUIRED_PROVIDER_FILES = {
     "google.py",
     "nvidia.py",
@@ -104,7 +99,8 @@ REQUIRED_PROVIDER_FILES = {
     "anthropic.py",
     "ollama.py",
     "simulator.py",
-    "factory.py",
+    "manual.py",
+    "registry.py",
     "contracts.py",
     "http.py",
 }
@@ -187,50 +183,59 @@ def compile_python(checks: list[dict[str, Any]]) -> None:
 
 
 def validate_frontend(checks: list[dict[str, Any]]) -> None:
-    route_text = (ROOT / "frontend/src/routes.ts").read_text(encoding="utf-8")
-    routes = set(re.findall(r'path:\s*"([^"]+)"', route_text))
-    missing = sorted(REQUIRED_FRONTEND_ROUTES - routes)
+    """The four-domain shell, after Wave F4.
+
+    Rewritten rather than deleted. It used to assert fifteen legacy routes in
+    `frontend/src/routes.ts` and three Associate-page components, all of which
+    F4 removed -- so this raised `FileNotFoundError` and took
+    `05_run_contract_and_config_checks.sh` down with it. What is worth checking
+    now is the property F4 established: four domains, declared in one registry,
+    with no legacy shell left behind.
+    """
+    registry_text = (ROOT / "frontend/src/domains/registry.ts").read_text(
+        encoding="utf-8"
+    )
+    routes = set(re.findall(r'path:\s*"([^"]+)"', registry_text))
     add(
         checks,
         "required_frontend_routes",
-        not missing,
-        {"missing": missing, "routeCount": len(routes)},
+        routes == REQUIRED_FRONTEND_ROUTES,
+        {
+            "missing": sorted(REQUIRED_FRONTEND_ROUTES - routes),
+            "unexpected": sorted(routes - REQUIRED_FRONTEND_ROUTES),
+            "routes": sorted(routes),
+        },
     )
+    # Equality, not containment: F4's end state is "exactly four user routes",
+    # so a fifth appearing is as much a regression as one going missing.
+    legacy_paths = {
+        "frontend/src/routes.ts": (ROOT / "frontend/src/routes.ts").exists(),
+        "frontend/src/features": (ROOT / "frontend/src/features").exists(),
+    }
     add(
         checks,
-        "frontend_routes_live_only",
-        'capability: "FIXTURE"' not in route_text
-        and 'capability: "BLOCKED"' not in route_text,
-        {"liveCount": route_text.count('capability: "LIVE"')},
+        "legacy_frontend_is_gone",
+        not any(legacy_paths.values()),
+        legacy_paths,
     )
-    assistant_paths = (
-        ROOT / "frontend/src/features/operations/AssociateReturnsPage.tsx",
-        ROOT
-        / "frontend/src/features/operations/order_discovery/OrderDiscoveryCopilot.tsx",
-        ROOT / "frontend/src/features/operations/order_discovery/OrderContextPanel.tsx",
-    )
-    assistant = "\n".join(path.read_text(encoding="utf-8") for path in assistant_paths)
-    required = [
-        "OrderDiscoveryCopilot",
-        "OrderContextPanel",
-        "confirmAssociateDiscovery",
-        "submitAssociateReturnDetails",
-        "candidateSetId",
-    ]
+    app_text = (ROOT / "frontend/src/App.tsx").read_text(encoding="utf-8")
     add(
         checks,
-        "associate_first_ui",
-        all(item in assistant for item in required),
-        {"required": required},
+        "shell_has_no_legacy_branch",
+        "VersionOneApp" not in app_text and 'base="/v1"' not in app_text,
+        {"checked": "frontend/src/App.tsx"},
     )
 
 
 def validate_provider_layout(checks: list[dict[str, Any]]) -> None:
-    provider_dir = ROOT / "backend/src/return_platform/ai_gateway/providers"
+    # Moved in 6ff5162 ("Phase 13 ai_gateway -> canonical ai/ migration"). The
+    # old directory still exists but holds only __init__.py, so this reported
+    # every provider missing rather than failing outright.
+    provider_dir = ROOT / "backend/src/return_platform/ai/providers"
     present = {path.name for path in provider_dir.glob("*.py")}
     missing = sorted(REQUIRED_PROVIDER_FILES - present)
     monolith_absent = not (
-        ROOT / "backend/src/return_platform/ai_gateway/providers.py"
+        ROOT / "backend/src/return_platform/ai/providers.py"
     ).exists()
     provider_source = "\n".join(
         path.read_text(encoding="utf-8") for path in provider_dir.glob("*.py")
@@ -472,9 +477,14 @@ def validate_runtime_boundaries(checks: list[dict[str, Any]]) -> None:
 
 
 def validate_migrations_and_readme(checks: list[dict[str, Any]]) -> None:
-    migration = (ROOT / "infra/sqlserver/init/002_domain_models.sql").read_text(
-        encoding="utf-8"
-    )
+    # Moved out of `infra/sqlserver/init/` in b19570f, when Phase 4 gave the
+    # migrations a runner inside the package. This path was never updated, so
+    # the script has raised FileNotFoundError -- and taken three gate scripts
+    # with it -- since that commit, independently of Wave F.
+    migration = (
+        ROOT
+        / "backend/src/return_platform/configuration/sql_migrations/002_domain_models.sql"
+    ).read_text(encoding="utf-8")
     tables = (
         "dbo.return_items",
         "dbo.return_tracking",
