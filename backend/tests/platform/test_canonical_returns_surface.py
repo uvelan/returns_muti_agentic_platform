@@ -82,6 +82,64 @@ def test_the_canonical_surface_has_no_generic_advance() -> None:
     )
 
 
+def test_the_artifact_and_evidence_reads_are_both_canonical() -> None:
+    """The pair that looked like a duplicate, now separated by name.
+
+    `/artifacts` is the document-artifact list; `/evidence` is the return's whole
+    evidence record, of which document artifacts are one of eleven collections.
+    They shared a word, not an implementation. If either canonical path is
+    dropped, the legacy `production-artifacts` name comes back into use and the
+    confusion with it.
+    """
+    paths = set(_route_paths(_CANONICAL))
+    assert {"/{session_id}/artifacts", "/{session_id}/evidence"} <= paths
+
+
+def test_the_canonical_evidence_read_does_not_re_expose_session_or_timeline() -> None:
+    """The legacy endpoint embedded both. Carrying that forward would make
+    `/evidence` a third way to read a session and a second way to read a
+    timeline -- adding surface while claiming to consolidate it."""
+    from return_platform.api.canonical_returns import ReturnEvidence
+
+    fields = set(ReturnEvidence.model_fields)
+    assert "return" not in fields
+    assert "timeline" not in fields
+    assert "documentArtifacts" in fields
+
+
+def test_the_superseded_legacy_reads_are_marked_deprecated() -> None:
+    """A canonical replacement nobody is told about is not a consolidation.
+
+    Both legacy reads now carry `deprecated=True`, so the generated contract --
+    and therefore the frontend's types -- says which endpoint replaced them
+    before Wave F deletes anything.
+    """
+    for module, route in (
+        ("return_artifacts.py", "/{session_id}/production-artifacts"),
+        ("physical_operations.py", "/{session_id}/artifacts"),
+    ):
+        source = (_SRC / "api" / module).read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=module)
+        deprecated_get_paths = {
+            decorator.args[0].value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+            for decorator in node.decorator_list
+            if isinstance(decorator, ast.Call)
+            and isinstance(decorator.func, ast.Attribute)
+            and decorator.func.attr == "get"
+            and decorator.args
+            and isinstance(decorator.args[0], ast.Constant)
+            and any(
+                keyword.arg == "deprecated"
+                and isinstance(keyword.value, ast.Constant)
+                and keyword.value.value is True
+                for keyword in decorator.keywords
+            )
+        }
+        assert route in deprecated_get_paths, f"{module}{route} is not marked deprecated"
+
+
 def test_the_canonical_surface_is_read_only_while_duplicates_are_unresolved() -> None:
     """The plan says resolve duplicate implementations *before* deleting
     anything. Publishing canonical writes first would add a ninth way to mutate

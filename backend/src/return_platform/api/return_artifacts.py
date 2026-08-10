@@ -1,4 +1,17 @@
-"""Read-only production return item, handling, pickup, and agent evidence APIs."""
+"""Read-only production return item, handling, pickup, and agent evidence APIs.
+
+**Superseded by `GET /api/returns/{session_id}/evidence`.** This module's single
+route is misnamed: "production-artifacts" describes one of the eleven
+collections it returns, not the payload, and the name collided with the
+unrelated `GET /{session_id}/artifacts` on the same prefix -- which is why the
+two looked like a duplicate pair.
+
+The canonical endpoint is narrower: it omits the embedded session and timeline,
+both of which have canonical endpoints of their own. This route keeps its
+combined shape so the one existing consumer (`frontend/src/api/operations.ts`)
+is not broken mid-flight; Wave F migrates it and deletes this module, which
+takes the return-domain router count from nine to eight.
+"""
 
 from __future__ import annotations
 
@@ -28,6 +41,8 @@ def _repository(request: Request) -> OperationalRepository:
 @router.get(
     "/{session_id}/production-artifacts",
     response_model=APIResponse[dict[str, Any]],
+    deprecated=True,
+    summary="Deprecated: use GET /api/returns/{session_id}/evidence",
 )
 async def production_artifacts(
     session_id: str,

@@ -469,6 +469,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/returns/{session_id}/artifacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Artifacts
+         * @description The return's document artifacts.
+         *
+         *     Canonical home for `GET /api/v1/returns/{id}/artifacts`, which has no
+         *     consumer today -- its name was being shadowed by the unrelated
+         *     `production-artifacts` endpoint next to it on the same prefix.
+         */
+        get: operations["get_artifacts_api_returns__session_id__artifacts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/returns/{session_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Evidence
+         * @description Named `evidence`, not `production-artifacts`.
+         *
+         *     The legacy name was the reason `artifacts` and `production-artifacts` looked
+         *     like a duplicate pair worth reconciling. They never were: `artifacts` is the
+         *     document-artifact list, and `production-artifacts` is the return's entire
+         *     evidence record, of which document artifacts are one of eleven collections.
+         *     A shared word, not a shared implementation. The canonical name says what the
+         *     payload is.
+         *
+         *     **Narrower than the legacy endpoint, deliberately.** That one also embedded
+         *     the session and the first thousand timeline events. Both now have canonical
+         *     endpoints of their own, and including them here would make this a third way
+         *     to read a session and a second way to read a timeline -- adding surface
+         *     while claiming to consolidate it. A client that wants all three asks for all
+         *     three; the legacy path keeps its combined shape until Wave F.
+         */
+        get: operations["get_evidence_api_returns__session_id__evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/returns/{session_id}/timeline": {
         parameters: {
             query?: never;
@@ -1387,7 +1445,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Artifacts */
+        /**
+         * Deprecated: use GET /api/returns/{session_id}/artifacts
+         * @deprecated
+         */
         get: operations["list_artifacts_api_v1_returns__session_id__artifacts_get"];
         put?: never;
         /** Register Artifact */
@@ -1473,7 +1534,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Production Artifacts */
+        /**
+         * Deprecated: use GET /api/returns/{session_id}/evidence
+         * @deprecated
+         */
         get: operations["production_artifacts_api_v1_returns__session_id__production_artifacts_get"];
         put?: never;
         post?: never;
@@ -4397,6 +4461,12 @@ export interface components {
         /** APIResponse[ReleaseManifest] */
         APIResponse_ReleaseManifest_: {
             data?: components["schemas"]["ReleaseManifest"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[ReturnEvidence] */
+        APIResponse_ReturnEvidence_: {
+            data?: components["schemas"]["ReturnEvidence"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -7647,6 +7717,63 @@ export interface components {
             returnQuantity: number;
             shippingPathExpectation: components["schemas"]["NormalizedReturnMethod"];
         };
+        /**
+         * ReturnEvidence
+         * @description Everything recorded *about* a return that is not the return itself.
+         *
+         *     Typed rather than the legacy `dict[str, Any]`, so the contract names the
+         *     collections instead of publishing an opaque object. The entries stay
+         *     `dict[str, Any]`: they are projections of documents whose shape belongs to
+         *     the physical-operations and integration modules, and inventing a model per
+         *     collection here would put eleven schemas in the return domain that the
+         *     return domain does not own.
+         */
+        ReturnEvidence: {
+            /** Agentdecisions */
+            agentDecisions?: {
+                [key: string]: unknown;
+            }[];
+            /** Branchstaging */
+            branchStaging?: {
+                [key: string]: unknown;
+            }[];
+            /** Documentartifacts */
+            documentArtifacts?: {
+                [key: string]: unknown;
+            }[];
+            /** Handlingunits */
+            handlingUnits?: {
+                [key: string]: unknown;
+            }[];
+            /** Integrationcommands */
+            integrationCommands?: {
+                [key: string]: unknown;
+            }[];
+            /** Omccommands */
+            omcCommands?: {
+                [key: string]: unknown;
+            }[];
+            /** Pickup */
+            pickup?: {
+                [key: string]: unknown;
+            } | null;
+            /** Returnitems */
+            returnItems?: {
+                [key: string]: unknown;
+            }[];
+            /** Shipmentevents */
+            shipmentEvents?: {
+                [key: string]: unknown;
+            }[];
+            /** Shippinginstructions */
+            shippingInstructions?: {
+                [key: string]: unknown;
+            }[];
+            /** Vendorreturnlinks */
+            vendorReturnLinks?: {
+                [key: string]: unknown;
+            }[];
+        };
         /** ReturnItemInput */
         ReturnItemInput: {
             /**
@@ -10111,6 +10238,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_ReturnSessionView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_artifacts_api_returns__session_id__artifacts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_dict_str__Any___"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_evidence_api_returns__session_id__evidence_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ReturnEvidence_"];
                 };
             };
             /** @description Validation Error */

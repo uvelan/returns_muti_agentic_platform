@@ -2548,6 +2548,39 @@
         "title": "APIResponse[ReleaseManifest]",
         "type": "object"
       },
+      "APIResponse_ReturnEvidence_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReturnEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ReturnEvidence]",
+        "type": "object"
+      },
       "APIResponse_ReturnSessionView_": {
         "additionalProperties": false,
         "properties": {
@@ -12055,6 +12088,106 @@
         "title": "ReturnDetailsRequest",
         "type": "object"
       },
+      "ReturnEvidence": {
+        "additionalProperties": false,
+        "description": "Everything recorded *about* a return that is not the return itself.\n\nTyped rather than the legacy `dict[str, Any]`, so the contract names the\ncollections instead of publishing an opaque object. The entries stay\n`dict[str, Any]`: they are projections of documents whose shape belongs to\nthe physical-operations and integration modules, and inventing a model per\ncollection here would put eleven schemas in the return domain that the\nreturn domain does not own.",
+        "properties": {
+          "agentDecisions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Agentdecisions",
+            "type": "array"
+          },
+          "branchStaging": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Branchstaging",
+            "type": "array"
+          },
+          "documentArtifacts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Documentartifacts",
+            "type": "array"
+          },
+          "handlingUnits": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Handlingunits",
+            "type": "array"
+          },
+          "integrationCommands": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Integrationcommands",
+            "type": "array"
+          },
+          "omcCommands": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Omccommands",
+            "type": "array"
+          },
+          "pickup": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickup"
+          },
+          "returnItems": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Returnitems",
+            "type": "array"
+          },
+          "shipmentEvents": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Shipmentevents",
+            "type": "array"
+          },
+          "shippingInstructions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Shippinginstructions",
+            "type": "array"
+          },
+          "vendorReturnLinks": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Vendorreturnlinks",
+            "type": "array"
+          }
+        },
+        "title": "ReturnEvidence",
+        "type": "object"
+      },
       "ReturnItemInput": {
         "additionalProperties": false,
         "properties": {
@@ -17807,6 +17940,92 @@
         ]
       }
     },
+    "/api/returns/{session_id}/artifacts": {
+      "get": {
+        "description": "The return's document artifacts.\n\nCanonical home for `GET /api/v1/returns/{id}/artifacts`, which has no\nconsumer today -- its name was being shadowed by the unrelated\n`production-artifacts` endpoint next to it on the same prefix.",
+        "operationId": "get_artifacts_api_returns__session_id__artifacts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_dict_str__Any___"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Artifacts",
+        "tags": [
+          "Returns"
+        ]
+      }
+    },
+    "/api/returns/{session_id}/evidence": {
+      "get": {
+        "description": "Named `evidence`, not `production-artifacts`.\n\nThe legacy name was the reason `artifacts` and `production-artifacts` looked\nlike a duplicate pair worth reconciling. They never were: `artifacts` is the\ndocument-artifact list, and `production-artifacts` is the return's entire\nevidence record, of which document artifacts are one of eleven collections.\nA shared word, not a shared implementation. The canonical name says what the\npayload is.\n\n**Narrower than the legacy endpoint, deliberately.** That one also embedded\nthe session and the first thousand timeline events. Both now have canonical\nendpoints of their own, and including them here would make this a third way\nto read a session and a second way to read a timeline -- adding surface\nwhile claiming to consolidate it. A client that wants all three asks for all\nthree; the legacy path keeps its combined shape until Wave F.",
+        "operationId": "get_evidence_api_returns__session_id__evidence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ReturnEvidence_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Evidence",
+        "tags": [
+          "Returns"
+        ]
+      }
+    },
     "/api/returns/{session_id}/timeline": {
       "get": {
         "description": "Named `timeline`, not `events`.\n\nThe legacy path is `/events`, but the aggregate this belongs to calls it a\ntimeline and so does the plan's domain list. The canonical name should match\nthe domain rather than inherit an implementation word; the legacy path keeps\nworking until Wave F.",
@@ -20411,6 +20630,7 @@
     },
     "/api/v1/returns/{session_id}/artifacts": {
       "get": {
+        "deprecated": true,
         "operationId": "list_artifacts_api_v1_returns__session_id__artifacts_get",
         "parameters": [
           {
@@ -20445,7 +20665,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Artifacts",
+        "summary": "Deprecated: use GET /api/returns/{session_id}/artifacts",
         "tags": [
           "Physical Return Operations"
         ]
@@ -20724,6 +20944,7 @@
     },
     "/api/v1/returns/{session_id}/production-artifacts": {
       "get": {
+        "deprecated": true,
         "operationId": "production_artifacts_api_v1_returns__session_id__production_artifacts_get",
         "parameters": [
           {
@@ -20758,7 +20979,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Production Artifacts",
+        "summary": "Deprecated: use GET /api/returns/{session_id}/evidence",
         "tags": [
           "Production Return Evidence"
         ]

@@ -215,6 +215,8 @@ async def register_artifact(
 @router.get(
     "/{session_id}/artifacts",
     response_model=APIResponse[list[dict[str, Any]]],
+    deprecated=True,
+    summary="Deprecated: use GET /api/returns/{session_id}/artifacts",
 )
 async def list_artifacts(
     session_id: str,
