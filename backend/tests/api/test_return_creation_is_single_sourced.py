@@ -113,9 +113,18 @@ def _calls_to(path: Path, attribute: str) -> list[str]:
     ]
 
 
-def test_create_return_has_exactly_the_two_known_callers() -> None:
-    """A third caller is a third way to create a return, which is the thing this
-    phase exists to prevent. Adding one should require justifying it here."""
+def test_create_return_has_exactly_the_three_known_callers() -> None:
+    """A caller not listed here is another way to create a return, which is the
+    thing this phase exists to prevent. Adding one should require justifying it.
+
+    **Three, temporarily.** `api/canonical_returns.py` joined when Wave D4
+    published the canonical write surface. It does not compete with
+    `api/returns.py` -- it *replaces* it, and enforces the same channel
+    partition (held by `test_an_interactive_return_is_refused_here` in
+    `test_canonical_returns_writes.py`, so deleting either guard still fails
+    something). When Wave F deletes the legacy router this drops back to two,
+    and this test failing is how that gets noticed.
+    """
     callers = sorted(
         call for path in sorted(_SRC.rglob("*.py")) for call in _calls_to(path, "create_return")
     )
@@ -124,6 +133,7 @@ def test_create_return_has_exactly_the_two_known_callers() -> None:
     # `repository.py` defines `create_return` but never calls it, so it is
     # correctly absent here -- the AST walk finds call sites, not definitions.
     assert modules == [
+        str(Path("api/canonical_returns.py")),
         str(Path("api/returns.py")),
         str(Path("operations/associate_flow.py")),
     ], f"unexpected create_return callers: {callers}"

@@ -140,13 +140,22 @@ def test_the_superseded_legacy_reads_are_marked_deprecated() -> None:
         assert route in deprecated_get_paths, f"{module}{route} is not marked deprecated"
 
 
-def test_the_canonical_surface_is_read_only_while_duplicates_are_unresolved() -> None:
-    """The plan says resolve duplicate implementations *before* deleting
-    anything. Publishing canonical writes first would add a ninth way to mutate
-    a return rather than replacing eight."""
+#: The canonical write surface, complete. Two routes replace five legacy ones
+#: (`returns.py` create and cancel, `production_workflow.py` start and events).
+_CANONICAL_WRITES = {"", "/{session_id}/events"}
+
+
+def test_the_canonical_write_surface_is_exactly_these_two_routes() -> None:
+    """Replaces `..._is_read_only_while_duplicates_are_unresolved`.
+
+    That test held the line until the duplicates were reconciled, which they now
+    are. What replaces it is not "writes are allowed" -- it is the enumeration,
+    so the surface cannot grow by accident. Consolidation that ends with nine
+    canonical writes instead of nine legacy ones has achieved nothing.
+    """
     tree = ast.parse(_CANONICAL.read_text(encoding="utf-8"), filename=str(_CANONICAL))
-    methods = {
-        decorator.func.attr
+    writes = {
+        decorator.args[0].value
         for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
         for decorator in node.decorator_list
@@ -154,8 +163,80 @@ def test_the_canonical_surface_is_read_only_while_duplicates_are_unresolved() ->
         and isinstance(decorator.func, ast.Attribute)
         and isinstance(decorator.func.value, ast.Name)
         and decorator.func.value.id == "router"
+        and decorator.func.attr != "get"
+        and decorator.args
+        and isinstance(decorator.args[0], ast.Constant)
     }
-    assert methods <= {"get"}, f"canonical returns API is read-only for now, found {methods}"
+    assert writes == _CANONICAL_WRITES, (
+        "the canonical write surface changed; a new way to mutate a return "
+        f"belongs on an existing route or needs justifying here: {writes}"
+    )
+
+
+def test_there_is_no_canonical_cancel_endpoint() -> None:
+    """Cancellation is `POST /{id}/events` with `eventType: CANCELLED`.
+
+    The legacy pair were two ways to cancel that disagreed: `/cancel` wrote the
+    session document and released the discovery lock without telling the
+    workflow; the workflow's CANCELLED event updated durable state and the
+    session document but left the lock held. Porting `/cancel` across would have
+    carried that split onto the canonical surface, which is the one place it
+    must not exist.
+    """
+    paths = _route_paths(_CANONICAL)
+    assert not any("cancel" in path.lower() for path in paths), (
+        f"cancellation is an event, not an endpoint: {paths}"
+    )
+
+
+def test_the_cancelling_path_releases_the_discovery_lock() -> None:
+    """The thing that would have been silently lost.
+
+    `record_event` is now the only cancellation path, and it did not release the
+    discovery lock -- only the legacy endpoint did. Asserted on the coordinator
+    rather than through HTTP because it must hold for *every* caller, including
+    the workflow's own, not just the route this slice added.
+    """
+    source = (_SRC / "operations" / "production_workflow.py").read_text(encoding="utf-8")
+    tree = ast.parse(source, filename="production_workflow.py")
+    record_event = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "record_event"
+    )
+    releases = [
+        node
+        for node in ast.walk(record_event)
+        if isinstance(node, ast.Attribute) and node.attr == "release_discovery_lock"
+    ]
+    assert releases, "record_event must release the discovery lock when a return is cancelled"
+
+
+def test_a_rejected_transition_fails_the_update_not_the_workflow_task() -> None:
+    """Without `failure_exception_types`, the common case was the slow one.
+
+    `apply_production_return_event` raises `ValueError` to reject an event.
+    Temporal's default is to treat that as a workflow *task* failure, which
+    retries forever -- so `execute_update` blocked until the 10-second RPC
+    deadline and the caller got a generic timeout, on every double-click.
+    """
+    source = (_SRC / "workflows" / "production_return_workflow.py").read_text(encoding="utf-8")
+    tree = ast.parse(source, filename="production_return_workflow.py")
+    definition = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef) and node.name == "ProductionReturnWorkflow"
+    )
+    declared = {
+        element.id
+        for decorator in definition.decorator_list
+        if isinstance(decorator, ast.Call)
+        for keyword in decorator.keywords
+        if keyword.arg == "failure_exception_types" and isinstance(keyword.value, ast.List)
+        for element in keyword.value.elts
+        if isinstance(element, ast.Name)
+    }
+    assert "ValueError" in declared
 
 
 def test_the_number_of_return_routers_has_not_grown() -> None:

@@ -24,7 +24,22 @@ __all__ = [
 ]
 
 
-@workflow.defn(name="return-platform-production-return-v2")
+@workflow.defn(
+    name="return-platform-production-return-v2",
+    # `apply_production_return_event` raises `ValueError` to *reject* an event --
+    # an out-of-order transition, or an effect already recorded. Without this,
+    # Temporal treats any non-Failure exception as a workflow **task** failure:
+    # the task retries forever, `execute_update` never returns, and the caller
+    # sits until the 10-second RPC deadline before getting a generic 409. A
+    # rejected transition is the common case for a UI -- a double-click, or a
+    # screen acting on stale state -- so the common case was the slow one.
+    #
+    # Listing `ValueError` makes those rejections fail the *update* instead, so
+    # the caller gets `WorkflowUpdateFailedError` carrying the real reason
+    # immediately. Scoped to `ValueError` deliberately: it is the type the state
+    # machine uses for "I refuse", and nothing else in this workflow raises it.
+    failure_exception_types=[ValueError],
+)
 class ProductionReturnWorkflow:
     """Wait durably for human, OMC, carrier, and warehouse evidence signals."""
 

@@ -8,10 +8,22 @@ nine routers across six prefixes, three of which (`api/returns.py`,
 `/api/v1/returns` — so "which module owns this path" is not answerable from the
 path alone. That fragmentation is what this consolidates.
 
-**Reads first, deliberately.** The plan's own instruction is "resolve duplicate
-current implementations before deleting anything". Publishing a canonical write
-surface before that is done would add a tenth way to mutate a return rather than
-replacing nine. The inventory is in the ledger.
+**Reads first, then writes.** The plan's instruction is "resolve duplicate
+current implementations before deleting anything", so this surface was read-only
+until they were. It no longer is: the write surface is `POST ""` and
+`POST "/{session_id}/events"`, and those two replace five legacy routes --
+create and cancel on `api/returns.py`, start and events on
+`api/production_workflow.py`.
+
+**Two routes, not five, because three of the five should not exist.**
+Cancellation is an event, not an endpoint: the legacy `/cancel` wrote the
+session document and released the discovery lock without telling the workflow,
+while the workflow's own CANCELLED event updated durable state but left the lock
+held, so the two disagreed about what a cancelled return looked like.
+`ProductionWorkflowCoordinator.record_event` now releases the lock, which makes
+the event able to replace the endpoint rather than merely outrank it. And
+`/start` only ever created a workflow with no event in it -- `record_event`
+calls `ensure_started` itself.
 
 **Correction to an earlier claim in this docstring.** It said the duplicates were
 "two artifact endpoints on one prefix", on the write side. Neither part held.
@@ -41,15 +53,61 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
+from temporalio.client import WorkflowUpdateFailedError
+from temporalio.exceptions import ApplicationError
+from temporalio.service import RPCError
 
-from return_platform.data_console.api.auth import require_read_roles
-from return_platform.operations.models import ReturnSessionView, TimelineEvent
+from return_platform.data_console.api.auth import require_read_roles, require_write_roles
+from return_platform.operations.models import (
+    ReturnCreateRequest,
+    ReturnSessionView,
+    TimelineEvent,
+)
+from return_platform.operations.production_event_authorization import (
+    ProductionEventNotPermitted,
+    authorize_production_event,
+)
+from return_platform.operations.production_workflow import resolve_production_coordinator
 from return_platform.operations.repository import resolve_operational_repository
+from return_platform.security.authorization import actor_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
+from return_platform.workflows.production_return_workflow import ProductionReturnEventType
 
 router = APIRouter(prefix="/api/returns", tags=["Returns"])
+
+
+class ReturnEventRequest(BaseModel):
+    """One evidence-carrying production event.
+
+    Mirrors the legacy `ProductionEventRequest` field for field. `evidence` is
+    required and has a minimum length because it is the whole justification for
+    the transition -- the stage-result binding, the audit record and the outbox
+    event all hang off it. `extra="forbid"` so a caller who misspells
+    `businessPayload` is told, rather than having their payload dropped.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    eventId: str = Field(min_length=8, max_length=128)
+    eventType: ProductionReturnEventType
+    evidenceReference: str = Field(min_length=3, max_length=512)
+    businessPayload: dict[str, object] = Field(default_factory=dict)
+
+
+class ReturnEventResult(BaseModel):
+    """Typed, unlike the legacy handler's `dict[str, object]`.
+
+    A caller needs to know where the return ended up, and whether it is now
+    terminal -- both of which decide what the next request may be.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    stage: str
+    caseFullyClosed: bool
+    cancelled: bool
 
 
 class ReturnEvidence(BaseModel):
@@ -222,6 +280,119 @@ async def get_evidence(
                 await repository.list_vendor_return_links(session_id)
             ),
             agentDecisions=_without_mongo_id(await repository.list_agent_decisions(session_id)),
+        ),
+        meta=_meta(request),
+    )
+
+
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=APIResponse[ReturnSessionView])
+async def create_return(
+    request: Request,
+    payload: ReturnCreateRequest,
+    actor_id: str = Depends(require_write_roles),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> APIResponse[ReturnSessionView]:
+    """Create a SYSTEM-channel return.
+
+    Interactive returns are refused here exactly as on the legacy path: they
+    begin as a conversation, and a return created directly would have no
+    discovery evidence behind it. The conversation surface is not yet canonical
+    (`/support` and `/conversation` are parked), so the refusal names the legacy
+    path -- pointing at an endpoint that does not exist would be worse.
+    """
+    if payload.channel != "SYSTEM":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Interactive returns must start through /api/v1/associate-returns/conversations."
+            ),
+        )
+    if idempotency_key is not None:
+        payload = payload.model_copy(update={"idempotencyKey": idempotency_key})
+    repository = resolve_operational_repository(request)
+    return APIResponse(
+        data=await repository.create_return(
+            payload,
+            correlation_id=_meta(request).request_id,
+            actor_id=actor_id,
+        ),
+        meta=_meta(request),
+    )
+
+
+@router.post("/{session_id}/events", response_model=APIResponse[ReturnEventResult])
+async def record_event(
+    request: Request,
+    session_id: str,
+    payload: ReturnEventRequest,
+    actor: str = Depends(require_write_roles),
+) -> APIResponse[ReturnEventResult]:
+    """The canonical way to move a return, and the only one.
+
+    **This is what replaces `POST /{id}/cancel`.** Cancellation is
+    `eventType: CANCELLED` -- not a separate endpoint. The legacy pair were two
+    ways to cancel that disagreed: `/cancel` wrote `status: CANCELLED` straight
+    to Mongo and released the discovery lock but never told the workflow, while
+    the workflow's CANCELLED event updated the durable state and the session
+    document but left the discovery lock held. Whichever a caller used, one of
+    the two records was wrong. `record_event` now releases the lock itself, so
+    the single canonical path does everything both did.
+
+    **It also replaces `POST /{id}/start`.** `record_event` calls
+    `ensure_started` first, so a separate start endpoint only exists to create a
+    workflow with no event in it. Callers that want the workflow running send
+    the first event.
+
+    Not a generic advance: the caller names an *event that happened* and the
+    evidence for it, and the state machine decides which stage that implies.
+    An endpoint taking a target stage would invert that.
+    """
+    # Refused before `ensure_started`, so a caller who may not record the event
+    # does not leave a started workflow behind as the side effect of a 403.
+    try:
+        authorize_production_event(event_type=payload.eventType, actor_roles=actor_roles(request))
+    except ProductionEventNotPermitted as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
+
+    session = await _require_session(request, session_id)
+    coordinator = resolve_production_coordinator(request)
+    try:
+        await coordinator.ensure_started(session, actor_id=actor)
+        state = await coordinator.record_event(
+            session_id,
+            event_id=payload.eventId,
+            event_type=payload.eventType,
+            evidence_reference=payload.evidenceReference,
+            actor_id=actor,
+            actor_roles=actor_roles(request),
+            business_payload=dict(payload.businessPayload),
+        )
+    except ValueError as error:
+        # Raised on this side of the boundary -- a business payload missing a
+        # field the projection needs.
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except WorkflowUpdateFailedError as error:
+        # The state machine refused: out of order, or already recorded. The
+        # legacy handler flattened every one of these to "Production workflow
+        # update failed or is not available", which tells a caller nothing about
+        # whether to fix the request or retry it. The real reason is on the
+        # wrapped `ApplicationError`, exactly as `orchestrator._failure_code`
+        # reads it.
+        cause = error.cause
+        detail = str(cause) if isinstance(cause, ApplicationError) else str(error)
+        raise HTTPException(status_code=409, detail=detail) from error
+    except RPCError as error:
+        # Temporal is unreachable or timed out. Not the caller's fault, and not
+        # a conflict -- the legacy handler reported it as 409, which invites a
+        # client to "fix" a request that was already correct.
+        raise HTTPException(
+            status_code=503, detail="The production workflow service is unavailable."
+        ) from error
+    return APIResponse(
+        data=ReturnEventResult(
+            stage=state.stage.value,
+            caseFullyClosed=state.case_fully_closed,
+            cancelled=state.cancelled,
         ),
         meta=_meta(request),
     )

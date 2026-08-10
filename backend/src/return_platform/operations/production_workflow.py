@@ -6,6 +6,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
+from fastapi import HTTPException, Request
 from temporalio.client import Client
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError
@@ -16,12 +17,16 @@ from return_platform.agents.contracts import (
     FulfillmentFact,
 )
 from return_platform.agents.registry import AgentRegistry
-from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
+from return_platform.configuration.return_configuration import (
+    LoadedReturnConfiguration,
+    ReturnPlatformConfiguration,
+)
 from return_platform.operations.models import ReturnSessionView
 from return_platform.operations.production_event_authorization import (
     authorize_production_event,
 )
 from return_platform.operations.repository import OperationalRepository
+from return_platform.resources import RuntimeResources
 from return_platform.workflows.production_return_workflow import (
     ProductionReturnEvent,
     ProductionReturnEventType,
@@ -33,6 +38,35 @@ from return_platform.workflows.production_return_workflow import (
 
 def production_workflow_id(session_id: str) -> str:
     return f"production-return-{session_id}"
+
+
+def resolve_production_coordinator(request: Request) -> ProductionWorkflowCoordinator:
+    """Build the coordinator from app state, or 503.
+
+    Lives beside the coordinator rather than in a router because two routers now
+    need it -- `api/production_workflow.py` and the canonical `/api/returns`.
+    Each having its own copy is how the two surfaces would drift on which
+    dependencies count as required, and "the canonical endpoint 503s where the
+    legacy one worked" is a difference nobody would look for. Matches the
+    `resolve_operational_repository` convention next door.
+    """
+    resources = getattr(request.app.state, "resources", None)
+    loaded = getattr(request.app.state, "return_configuration", None)
+    if (
+        not isinstance(resources, RuntimeResources)
+        or resources.temporal is None
+        or resources.mongo is None
+        or not isinstance(loaded, LoadedReturnConfiguration)
+    ):
+        raise HTTPException(status_code=503, detail="Production workflow dependencies unavailable.")
+    return ProductionWorkflowCoordinator(
+        temporal=resources.temporal,
+        repository=OperationalRepository(
+            resources.mongo, resources.settings, resources.source_mongo
+        ),
+        configuration=loaded.configuration,
+        task_queue=resources.settings.return_workflow_task_queue,
+    )
 
 
 #: The three events `seed_confirmed_intake` records, in order. Named so callers
@@ -63,6 +97,12 @@ class ProductionWorkflowCoordinator:
         registry = AgentRegistry.build(configuration)
         self._fulfillment_agent = registry.return_fulfillment
         self._feedback_agent = registry.feedback_learning
+
+    @property
+    def repository(self) -> OperationalRepository:
+        """Exposed so a caller that has resolved the coordinator does not build a
+        second `OperationalRepository` beside it just to look up the session."""
+        return self._repository
 
     async def ensure_started(
         self,
@@ -389,6 +429,15 @@ class ProductionWorkflowCoordinator:
         else:
             updates["status"] = "RUNNING"
         await self._repository.update_return(session_id, updates)
+        if state.cancelled:
+            # The legacy `POST /api/v1/returns/{id}/cancel` released this and the
+            # workflow's own CANCELLED event did not, so the two ways to cancel a
+            # return disagreed about whether the discovery lock survived. Wave D4
+            # makes the event the canonical cancellation, which would have made
+            # the leaking one the only one. Released here rather than in the
+            # route so every caller of `record_event` gets it -- the legacy
+            # endpoint, the canonical endpoint, and the workflow's own paths.
+            await self._repository.release_discovery_lock(session_id, reason="CANCELLED")
         await self._repository.append_event(
             session_id,
             event_type=event_type.value,

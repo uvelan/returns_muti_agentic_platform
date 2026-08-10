@@ -7,15 +7,16 @@ from typing import cast
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from return_platform.configuration.return_configuration import LoadedReturnConfiguration
 from return_platform.data_console.api.auth import require_read_roles, require_write_roles
+from return_platform.operations.models import ReturnSessionView
 from return_platform.operations.production_event_authorization import (
     ProductionEventNotPermitted,
     authorize_production_event,
 )
-from return_platform.operations.production_workflow import ProductionWorkflowCoordinator
-from return_platform.operations.repository import OperationalRepository
-from return_platform.resources import RuntimeResources
+from return_platform.operations.production_workflow import (
+    ProductionWorkflowCoordinator,
+    resolve_production_coordinator,
+)
 from return_platform.security.authorization import actor_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 from return_platform.workflows.production_return_workflow import ProductionReturnEventType
@@ -38,34 +39,22 @@ def _meta(request: Request) -> ResponseMeta:
     return ResponseMeta(request_id=cast(str, getattr(request.state, "correlation_id", "unknown")))
 
 
-def _dependencies(
-    request: Request,
-) -> tuple[RuntimeResources, LoadedReturnConfiguration, OperationalRepository]:
-    resources = getattr(request.app.state, "resources", None)
-    loaded = getattr(request.app.state, "return_configuration", None)
-    if (
-        not isinstance(resources, RuntimeResources)
-        or resources.temporal is None
-        or resources.mongo is None
-        or not isinstance(loaded, LoadedReturnConfiguration)
-    ):
-        raise HTTPException(status_code=503, detail="Production workflow dependencies unavailable.")
-    repository = OperationalRepository(resources.mongo, resources.settings, resources.source_mongo)
-    return resources, loaded, repository
+async def _coordinator_and_session(
+    request: Request, session_id: str
+) -> tuple[ProductionWorkflowCoordinator, ReturnSessionView]:
+    """Both routers resolve the coordinator the same way now.
 
-
-def _coordinator(
-    resources: RuntimeResources,
-    loaded: LoadedReturnConfiguration,
-    repository: OperationalRepository,
-) -> ProductionWorkflowCoordinator:
-    assert resources.temporal is not None
-    return ProductionWorkflowCoordinator(
-        temporal=resources.temporal,
-        repository=repository,
-        configuration=loaded.configuration,
-        task_queue=resources.settings.return_workflow_task_queue,
-    )
+    This module had its own `_dependencies`/`_coordinator` pair stating which
+    dependencies count as required. The canonical router needed the same, and
+    two copies of "what counts as available" is how the two surfaces would come
+    to disagree about when the API is up. The shared one lives next to the
+    coordinator, in `operations.production_workflow`.
+    """
+    coordinator = resolve_production_coordinator(request)
+    session = await coordinator.repository.get_return(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Return session not found.")
+    return coordinator, session
 
 
 def _authorize_event(request: Request, event_type: ProductionReturnEventType) -> None:
@@ -97,13 +86,8 @@ async def start_workflow(
     request: Request,
     actor: str = Depends(require_write_roles),
 ) -> APIResponse[dict[str, str]]:
-    resources, loaded, repository = _dependencies(request)
-    session = await repository.get_return(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Return session not found.")
-    workflow_id = await _coordinator(resources, loaded, repository).ensure_started(
-        session, actor_id=actor
-    )
+    coordinator, session = await _coordinator_and_session(request, session_id)
+    workflow_id = await coordinator.ensure_started(session, actor_id=actor)
     return APIResponse(
         data={"workflowId": workflow_id, "status": "STARTED_OR_ALREADY_RUNNING"},
         meta=_meta(request),
@@ -119,11 +103,9 @@ async def workflow_state(
     request: Request,
     _actor: str = Depends(require_read_roles),
 ) -> APIResponse[dict[str, object]]:
-    resources, loaded, repository = _dependencies(request)
-    if await repository.get_return(session_id) is None:
-        raise HTTPException(status_code=404, detail="Return session not found.")
+    coordinator, _session = await _coordinator_and_session(request, session_id)
     try:
-        state = await _coordinator(resources, loaded, repository).query_state(session_id)
+        state = await coordinator.query_state(session_id)
     except Exception as error:
         raise HTTPException(status_code=404, detail="Production workflow not started.") from error
     return APIResponse(
@@ -168,11 +150,7 @@ async def record_workflow_event(
     actor: str = Depends(require_write_roles),
 ) -> APIResponse[dict[str, object]]:
     _authorize_event(request, payload.eventType)
-    resources, loaded, repository = _dependencies(request)
-    session = await repository.get_return(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Return session not found.")
-    coordinator = _coordinator(resources, loaded, repository)
+    coordinator, session = await _coordinator_and_session(request, session_id)
     try:
         await coordinator.ensure_started(session, actor_id=actor)
         state = await coordinator.record_event(
