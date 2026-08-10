@@ -145,6 +145,21 @@ export const aiControlCenterApi = {
       `/api/ai/interceptions/${encodeURIComponent(interceptionId)}/request`,
     ),
 
+  /**
+   * Abandon a held request instead of answering it.
+   *
+   * The counterpart to `answerInterception`, and it exists for the same reason:
+   * without it the only ways out of PENDING are to answer or to wait for
+   * `expiresAt`, so an operator who can see the prompt is wrong has to invent an
+   * answer or leave a caller blocked. Refuses with 409 if an answer landed
+   * first -- the backend reads the outcome back rather than trusting silence.
+   */
+  cancelInterception: (interceptionId: string) =>
+    unwrap<InterceptionAnswerResult>(
+      `/api/ai/interceptions/${encodeURIComponent(interceptionId)}/cancel`,
+      { method: "POST" },
+    ),
+
   answerInterception: (interceptionId: string, responseText: string) =>
     unwrap<InterceptionAnswerResult>(
       `/api/ai/interceptions/${encodeURIComponent(interceptionId)}/answer`,

@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   listInterceptions: vi.fn(),
   readInterceptionRequest: vi.fn(),
   answerInterception: vi.fn(),
+  cancelInterception: vi.fn(),
   can: vi.fn(),
 }));
 
@@ -38,6 +39,7 @@ vi.mock("../../api/aiControlCenter", () => ({
     listInterceptions: mocks.listInterceptions,
     readInterceptionRequest: mocks.readInterceptionRequest,
     answerInterception: mocks.answerInterception,
+    cancelInterception: mocks.cancelInterception,
   },
 }));
 
@@ -78,6 +80,12 @@ describe("AI Control Center interceptions", () => {
       status: "ANSWERED",
       answeredBy: "operator",
       answeredAt: "2026-08-10T10:05:00Z",
+    });
+    mocks.cancelInterception.mockResolvedValue({
+      interceptionId: "int-1",
+      status: "CANCELLED",
+      answeredBy: null,
+      answeredAt: null,
     });
   });
 
@@ -150,6 +158,50 @@ describe("AI Control Center interceptions", () => {
 
     expect(await screen.findByText(/is ANSWERED/)).toBeInTheDocument();
     expect(mocks.answerInterception).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels a held request without answering it", async () => {
+    // Without this the only ways out of PENDING are to answer or to wait for
+    // the expiry, so an operator who can see the prompt is wrong has to invent
+    // an answer or leave a caller blocked.
+    await openInterceptionsTab();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(mocks.cancelInterception).toHaveBeenCalledWith("int-1");
+    });
+    // Cancelling must not unseal the prompt: it needs no reading.
+    expect(mocks.readInterceptionRequest).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a cancel that lost the race", async () => {
+    // `store.cancel` is silent when the record is not PENDING, so the backend
+    // reads the outcome back and 409s. That has to reach the operator: their
+    // cancel did nothing because an answer landed first.
+    mocks.cancelInterception.mockRejectedValue(
+      new Error("interception 'int-1' is ANSWERED and was not cancelled"),
+    );
+    await openInterceptionsTab();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("was not cancelled");
+  });
+
+  it("counts the statuses the backend actually emits", async () => {
+    // These tiles counted CLAIMED and RESPONDED, which `InterceptionStatus`
+    // does not have -- both read zero everywhere, which looks like a quiet
+    // queue rather than a wrong label.
+    await openInterceptionsTab();
+    // The tiles render with the table, so wait for the row rather than for the
+    // fetch merely having been issued.
+    await screen.findByText("int-1");
+
+    expect(screen.getByText("Answered")).toBeInTheDocument();
+    expect(screen.getByText("Cancelled")).toBeInTheDocument();
+    expect(screen.queryByText("Claimed")).toBeNull();
+    expect(screen.queryByText("Responded")).toBeNull();
   });
 
   it("offers no responder without the act capability", async () => {

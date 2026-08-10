@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 
 import {
   aiControlCenterApi,
@@ -281,6 +281,12 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
     enabled: canRead,
   });
   const onOpen = setOpenId;
+  const cancel = useMutation({
+    mutationFn: (interceptionId: string) => aiControlCenterApi.cancelInterception(interceptionId),
+    onSuccess: async () => {
+      await interceptions.refetch();
+    },
+  });
 
   if (!canRead) {
     return (
@@ -301,9 +307,13 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {/* The four statuses `InterceptionStatus` actually has. This counted
+            CLAIMED and RESPONDED, which the backend never emits -- both tiles
+            read zero in every deployment, which is indistinguishable from a
+            quiet queue. */}
         <Stat label="Pending" value={byStatus("PENDING")} />
-        <Stat label="Claimed" value={byStatus("CLAIMED")} />
-        <Stat label="Responded" value={byStatus("RESPONDED")} />
+        <Stat label="Answered" value={byStatus("ANSWERED")} />
+        <Stat label="Cancelled" value={byStatus("CANCELLED")} />
         <Stat label="Expired" value={byStatus("EXPIRED")} />
       </div>
 
@@ -336,15 +346,27 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
                 <td className="p-2">{row.answeredBy ?? "-"}</td>
                 <td className="p-2">
                   {row.status.toUpperCase() === "PENDING" && canAct ? (
-                    <button
-                      type="button"
-                      className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
-                      onClick={() => {
-                        onOpen(row.interceptionId);
-                      }}
-                    >
-                      Respond manually
-                    </button>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
+                        onClick={() => {
+                          onOpen(row.interceptionId);
+                        }}
+                      >
+                        Respond manually
+                      </button>
+                      <button
+                        type="button"
+                        disabled={cancel.isPending}
+                        className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-40"
+                        onClick={() => {
+                          cancel.mutate(row.interceptionId);
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   ) : null}
                 </td>
               </tr>
@@ -366,12 +388,25 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
         />
       ) : null}
 
+      {cancel.error ? (
+        <p role="alert" className="text-sm text-red-700">
+          {cancel.error.message}
+        </p>
+      ) : null}
+
       <p className="text-sm text-slate-500">
-        Claim, Generate Candidate, Replay and Release are not offered:{" "}
-        <code>/api/ai</code> has no route for them. Respond Manually is real and answers
-        through the operator API; answering transitions the interception, and the resume
-        bridge signals the waiting workflow separately, so the queue may show{" "}
-        <code>ANSWERED</code> a moment before the work resumes.
+        Respond Manually and Cancel both go through the operator API. Answering or
+        cancelling transitions the interception, and the resume bridge signals the waiting
+        workflow separately, so the queue may show <code>ANSWERED</code> a moment before
+        the work resumes.
+      </p>
+      <p className="text-sm text-slate-500">
+        Claim, Generate Candidate, Replay and Release are still not offered.{" "}
+        <code>/api/ai</code> has no route for them, and two of the four are hard to justify
+        at all: an interception exists <em>because</em> the model could not be called, so
+        generating a candidate answer with a model contradicts why the request was held.
+        Claim and Release would need a new concept in the store, and the conditional write
+        on answering already makes a second answer fail rather than overwrite the first.
       </p>
     </div>
   );
