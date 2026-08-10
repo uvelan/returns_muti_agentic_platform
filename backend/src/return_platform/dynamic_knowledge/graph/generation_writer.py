@@ -30,8 +30,17 @@ class GenerationWriteTransaction(Protocol):
 _ReadResult = TypeVar("_ReadResult")
 
 
+_WriteResult = TypeVar("_WriteResult")
+
+
 class GenerationSession(Protocol):
-    async def execute_write(self, work: Any, **kwargs: Any) -> Any: ...
+    async def execute_write(
+        self,
+        work: Callable[..., Awaitable[_WriteResult]],
+        /,
+        *args: Any,
+        **kwargs: Any,
+    ) -> _WriteResult: ...
 
     # Positional-only and generic, for the same two reasons as
     # `GraphSession.execute_write` next door: neo4j names the parameter

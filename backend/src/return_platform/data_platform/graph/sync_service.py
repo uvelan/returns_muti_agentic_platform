@@ -44,8 +44,14 @@ from return_platform.dynamic_knowledge.sync.adapters import (
     SourceConnectorRegistry,
 )
 from return_platform.dynamic_knowledge.sync.coordinator import GenericSyncCoordinator
-from return_platform.source_connectors.contracts import SourceCursor
+from return_platform.source_connectors.contracts import (
+    CursorComparison,
+    RawSourcePage,
+    SourceConnectorCapabilities,
+    SourceCursor,
+)
 from return_platform.source_connectors.mongodb import MongoDBSourceScanConnector, SeedPin
+from return_platform.source_connectors.protocols import SourceScanConnector
 from return_platform.source_connectors.sqlserver import (
     SqlServerConnectionSettings,
     SqlServerSourceScanConnector,
@@ -121,16 +127,19 @@ class _CountingConnector:
     orchestration-level bookkeeping, not something the generic connectors need
     to know about themselves."""
 
-    def __init__(self, inner: Any, counts: dict[str, int]) -> None:
+    def __init__(self, inner: SourceScanConnector, counts: dict[str, int]) -> None:
         self._inner = inner
         self._counts = counts
+
+    def capabilities(self) -> SourceConnectorCapabilities:
+        return self._inner.capabilities()
 
     async def capture_high_watermark(self, *, source_asset_id: str) -> SourceCursor:
         return await self._inner.capture_high_watermark(source_asset_id=source_asset_id)
 
     def compare_cursors(
         self, *, source_asset_id: str, left: SourceCursor, right: SourceCursor
-    ) -> Any:
+    ) -> CursorComparison:
         return self._inner.compare_cursors(source_asset_id=source_asset_id, left=left, right=right)
 
     async def scan(
@@ -140,7 +149,7 @@ class _CountingConnector:
         source_asset_id: str,
         after: SourceCursor | None,
         through: SourceCursor,
-    ) -> AsyncIterator[Any]:
+    ) -> AsyncIterator[RawSourcePage]:
         async for page in self._inner.scan(
             schema=schema, source_asset_id=source_asset_id, after=after, through=through
         ):

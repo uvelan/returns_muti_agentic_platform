@@ -47,7 +47,10 @@ class DynamicOrderAgentRuntime:
 
 def resolve_runtime(request: Request) -> DynamicOrderAgentRuntime:
     runtime = getattr(request.app.state, "dynamic_order_agent_runtime", None)
-    if runtime is not None and runtime.__class__.__name__ == "DynamicOrderAgentRuntime":
+    # `isinstance`, not a class-name string. The name check made `runtime` stay
+    # `Any`, so `-> DynamicOrderAgentRuntime` was unverified -- and it would
+    # also accept any unrelated class that happened to share the name.
+    if isinstance(runtime, DynamicOrderAgentRuntime):
         return runtime
 
     status_payload: Any = getattr(

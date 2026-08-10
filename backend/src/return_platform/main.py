@@ -104,6 +104,7 @@ from return_platform.graph_schema_analyzer.persistence import build_system_store
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_support.service import ReturnSupportService
 from return_platform.platform.capabilities.registry import InMemoryCapabilityRegistry
+from return_platform.platform.contracts.epoch import RuntimeEpoch
 from return_platform.platform.contracts.runtime_configuration import RuntimeConfigurationView
 from return_platform.platform.modules.registry import ModuleRegistry
 from return_platform.resources import (
@@ -151,10 +152,10 @@ class _NoModulesYetConfigurationHandle:
     Phase 2's real ConfigurationHandle exists to wire in its place.
     """
 
-    def current(self) -> RuntimeConfigurationView:  # pragma: no cover - never called
+    def current(self, epoch: RuntimeEpoch) -> RuntimeConfigurationView:  # pragma: no cover
         raise NotImplementedError("no modules are registered yet; nothing calls this")
 
-    def pinned(self, release_id: str) -> RuntimeConfigurationView:  # pragma: no cover
+    async def pinned(self, release_id: str) -> RuntimeConfigurationView:  # pragma: no cover
         raise NotImplementedError("no modules are registered yet; nothing calls this")
 
     @property

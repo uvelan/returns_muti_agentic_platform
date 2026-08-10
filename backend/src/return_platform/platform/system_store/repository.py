@@ -37,8 +37,20 @@ class EncryptedStructureRequiresGuardedAccess(RuntimeError):
 
 
 class _StructureLike(Protocol):
-    physical_name: str
-    encrypted: bool
+    """The two fields this repository needs off a structure definition.
+
+    Declared as read-only properties, not bare attributes. A bare annotation in
+    a Protocol means a *settable* variable, which `StructureDefinition` -- a
+    frozen Pydantic model -- cannot satisfy, so the real definitions never
+    matched this protocol. Nothing here assigns to either field, so asking for
+    settability was both wrong and unnecessary.
+    """
+
+    @property
+    def physical_name(self) -> str: ...
+
+    @property
+    def encrypted(self) -> bool: ...
 
 
 class ReadOnlyCollection(Protocol):

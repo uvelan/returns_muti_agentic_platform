@@ -7,22 +7,36 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from return_platform.dynamic_knowledge.graph.generation import GraphGenerationStatus
+from return_platform.dynamic_knowledge.graph.generation import (
+    GraphGenerationStatus,
+    GraphWriteReceipt,
+)
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
     DynamicRecordMutation,
     DynamicSourceRecord,
+    GraphMutationBatch,
     ProjectionReadScope,
 )
 from return_platform.dynamic_knowledge.schema import ActiveSchema, ConnectorType
+from return_platform.source_connectors.protocols import SourceScanConnector
 
 
 class GraphProjector(Protocol):
     async def project(
         self, *, schema: ActiveSchema, mutations: tuple[DynamicRecordMutation, ...]
-    ) -> object: ...
+    ) -> GraphMutationBatch: ...
 
 
 class GraphWriter(Protocol):
+    """Named types, not `object`.
+
+    `batch: object` reads as permissive but is the opposite: a protocol
+    parameter is contravariant, so declaring `object` demands an implementation
+    accepting *anything*, which `Neo4jDynamicGraphWriter.write(batch:
+    GraphMutationBatch)` does not -- it was unsatisfiable, and the `object`
+    return then forced a `type: ignore` on every field read of the receipt.
+    """
+
     async def write(
         self,
         *,
@@ -32,8 +46,8 @@ class GraphWriter(Protocol):
         expected_generation_status: GraphGenerationStatus,
         sync_run_id: str,
         chunk_id: str,
-        batch: object,
-    ) -> object: ...
+        batch: GraphMutationBatch,
+    ) -> GraphWriteReceipt: ...
 
 
 class ProjectorGraphWriter:
@@ -98,25 +112,28 @@ class ProjectorGraphWriter:
             chunk_id=f"chunk-{self._chunk_sequence}",
             batch=batch,
         )
-        return receipt.nodes_written, receipt.relationships_written  # type: ignore[attr-defined]
-
-
-class SourceConnector(Protocol):
-    async def capture_high_watermark(self, *, source_asset_id: str) -> object: ...
+        return receipt.nodes_written, receipt.relationships_written
 
 
 class SourceConnectorRegistry:
     """Dispatches to the one connector instance registered for each connector
     type -- both connectors already serve every source of their own type, so
     there is exactly one Mongo connector and one SQL Server connector per
-    sync run, never one per source."""
+    sync run, never one per source.
+
+    Types the connectors as the canonical `SourceScanConnector` rather than a
+    one-method local protocol. The local one declared only
+    `capture_high_watermark`, which was enough to make this class *look* like a
+    `SourceScanRegistry` while its `resolve` returned something too narrow to
+    be one -- so the coordinator it is built for could not accept it.
+    """
 
     def __init__(
         self,
         *,
         schema: ActiveSchema,
-        mongo_connector: SourceConnector | None = None,
-        sqlserver_connector: SourceConnector | None = None,
+        mongo_connector: SourceScanConnector | None = None,
+        sqlserver_connector: SourceScanConnector | None = None,
     ) -> None:
         self._schema = schema
         self._connectors_by_type = {
@@ -124,7 +141,7 @@ class SourceConnectorRegistry:
             ConnectorType.MSSQL: sqlserver_connector,
         }
 
-    def resolve(self, source_asset_id: str) -> SourceConnector:
+    def resolve(self, source_asset_id: str) -> SourceScanConnector:
         connector_type = self._schema.sources[source_asset_id].connector_type
         connector = self._connectors_by_type.get(connector_type)
         if connector is None:

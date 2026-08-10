@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Any
 
 from pymongo import AsyncMongoClient
@@ -30,7 +31,11 @@ class RuntimeConfigurationViewImpl(ConfigurationView):
 
 
 class RuntimeConfigurationHandleImpl(ConfigurationHandle):
-    def __init__(self, client: AsyncMongoClient[dict[str, object]], load_snapshot_fn) -> None:
+    def __init__(
+        self,
+        client: AsyncMongoClient[dict[str, object]],
+        load_snapshot_fn: Callable[[Any], Any],
+    ) -> None:
         self._client = client
         self._db = client.get_database("platform")
         self._load_snapshot_fn = load_snapshot_fn
