@@ -18,6 +18,9 @@ from return_platform.agents.contracts import (
 from return_platform.agents.registry import AgentRegistry
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 from return_platform.operations.models import ReturnSessionView
+from return_platform.operations.production_event_authorization import (
+    authorize_production_event,
+)
 from return_platform.operations.repository import OperationalRepository
 from return_platform.workflows.production_return_workflow import (
     ProductionReturnEvent,
@@ -30,6 +33,16 @@ from return_platform.workflows.production_return_workflow import (
 
 def production_workflow_id(session_id: str) -> str:
     return f"production-return-{session_id}"
+
+
+#: The three events `seed_confirmed_intake` records, in order. Named so callers
+#: can authorize the whole act up front rather than discovering the third is
+#: refused after the first two have applied.
+SEEDED_INTAKE_EVENTS: tuple[ProductionReturnEventType, ...] = (
+    ProductionReturnEventType.DISCOVERY_CONFIRMED,
+    ProductionReturnEventType.RETURN_DETAILS_CONFIRMED,
+    ProductionReturnEventType.SUPPORT_REQUEST_CREATED,
+)
 
 
 class ProductionWorkflowCoordinator:
@@ -305,9 +318,21 @@ class ProductionWorkflowCoordinator:
         event_type: ProductionReturnEventType,
         evidence_reference: str,
         actor_id: str,
+        actor_roles: frozenset[str],
         actor_type: str = "USER",
         business_payload: dict[str, Any] | None = None,
     ) -> ProductionReturnWorkflowState:
+        """Record one business event against the durable production workflow.
+
+        `actor_roles` is required, not defaulted, because this is the one function
+        every path to a production state transition goes through. Four API
+        routers reach it, and before Wave D4 only one of them checked whether the
+        caller was allowed to cause the transition -- the other three passed
+        through their own route-level role dependency and hoped it was a subset.
+        A default here would restore exactly that: the caller who forgets is the
+        caller who most needs the check.
+        """
+        authorize_production_event(event_type=event_type, actor_roles=actor_roles)
         handle = self._temporal.get_workflow_handle(production_workflow_id(session_id))
         event = ProductionReturnEvent(
             event_id=event_id,
@@ -393,7 +418,16 @@ class ProductionWorkflowCoordinator:
         details_evidence: str,
         support_evidence: str,
         actor_id: str,
+        actor_roles: frozenset[str],
     ) -> ProductionReturnWorkflowState:
+        """Three events as one act, so all three are authorized before any lands.
+
+        Authorizing per-event inside the loop would let the first two apply and
+        the third be refused, leaving the workflow in a state no single caller
+        asked for.
+        """
+        for event_type in SEEDED_INTAKE_EVENTS:
+            authorize_production_event(event_type=event_type, actor_roles=actor_roles)
         await self.ensure_started(session, actor_id=actor_id)
         await self.record_event(
             session.id,
@@ -401,6 +435,7 @@ class ProductionWorkflowCoordinator:
             event_type=ProductionReturnEventType.DISCOVERY_CONFIRMED,
             evidence_reference=discovery_evidence,
             actor_id=actor_id,
+            actor_roles=actor_roles,
         )
         await self.record_event(
             session.id,
@@ -408,6 +443,7 @@ class ProductionWorkflowCoordinator:
             event_type=ProductionReturnEventType.RETURN_DETAILS_CONFIRMED,
             evidence_reference=details_evidence,
             actor_id=actor_id,
+            actor_roles=actor_roles,
         )
         return await self.record_event(
             session.id,
@@ -415,4 +451,5 @@ class ProductionWorkflowCoordinator:
             event_type=ProductionReturnEventType.SUPPORT_REQUEST_CREATED,
             evidence_reference=support_evidence,
             actor_id=actor_id,
+            actor_roles=actor_roles,
         )

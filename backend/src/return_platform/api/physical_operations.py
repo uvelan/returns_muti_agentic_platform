@@ -20,9 +20,14 @@ from return_platform.operations.physical.service import (
     PickupActionRequest,
     PickupCoordinationService,
 )
+from return_platform.operations.production_event_authorization import (
+    ProductionEventNotPermitted,
+    authorize_production_event,
+)
 from return_platform.operations.production_workflow import ProductionWorkflowCoordinator
 from return_platform.operations.repository import ConcurrencyConflictError, OperationalRepository
 from return_platform.resources import RuntimeResources
+from return_platform.security.authorization import actor_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 from return_platform.workflows.production_return_workflow import ProductionReturnEventType
 
@@ -86,25 +91,44 @@ async def apply_pickup_action(
     request: Request,
     actor: str = Depends(require_logistics_roles),
 ) -> APIResponse[dict[str, Any]]:
+    roles = actor_roles(request)
+    #: Which workflow event this action will record, and which field of the
+    #: service result carries its evidence. Derived from the action alone, so the
+    #: authorization below can run *before* the service mutates anything -- a 403
+    #: raised after `apply()` would leave the pickup request updated and the
+    #: workflow un-signalled.
+    event_type_for_action = {
+        PickupAction.CONFIRM_BOOKING: (
+            ProductionReturnEventType.CARRIER_BOOKING_CONFIRMED,
+            "bookingConfirmationReference",
+        ),
+        PickupAction.SCHEDULE: (
+            ProductionReturnEventType.CARRIER_BOOKING_CONFIRMED,
+            "bookingConfirmationReference",
+        ),
+        PickupAction.RECORD_PICKUP: (
+            ProductionReturnEventType.PHYSICAL_HANDOFF_CONFIRMED,
+            "pickupConfirmationReference",
+        ),
+    }.get(payload.action)
+    if event_type_for_action is not None:
+        try:
+            authorize_production_event(event_type=event_type_for_action[0], actor_roles=roles)
+        except ProductionEventNotPermitted as error:
+            raise HTTPException(status_code=403, detail=str(error)) from error
+    # Resolved after the authorization check: a caller who may not cause the
+    # transition should be refused whether or not the datastore happens to be up,
+    # rather than being told 503 first and 403 only once infrastructure recovers.
     resources, loaded, repository = _dependencies(request)
     try:
         result = await PickupCoordinationService(repository, loaded.configuration).apply(
             session_id, payload, actor_id=actor
         )
-        workflow_event = {
-            PickupAction.CONFIRM_BOOKING: (
-                ProductionReturnEventType.CARRIER_BOOKING_CONFIRMED,
-                result.get("bookingConfirmationReference"),
-            ),
-            PickupAction.SCHEDULE: (
-                ProductionReturnEventType.CARRIER_BOOKING_CONFIRMED,
-                result.get("bookingConfirmationReference"),
-            ),
-            PickupAction.RECORD_PICKUP: (
-                ProductionReturnEventType.PHYSICAL_HANDOFF_CONFIRMED,
-                result.get("pickupConfirmationReference"),
-            ),
-        }.get(payload.action)
+        workflow_event = (
+            None
+            if event_type_for_action is None
+            else (event_type_for_action[0], result.get(event_type_for_action[1]))
+        )
         if workflow_event is not None and resources.temporal is not None:
             coordinator = ProductionWorkflowCoordinator(
                 temporal=resources.temporal,
@@ -122,6 +146,7 @@ async def apply_pickup_action(
                 event_type=event_type,
                 evidence_reference=str(evidence),
                 actor_id=actor,
+                actor_roles=roles,
                 business_payload={
                     "sourceSystem": "LOGISTICS_CONFIRMATION",
                     "sourceEventId": (

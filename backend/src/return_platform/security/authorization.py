@@ -33,6 +33,18 @@ def resolve_principal(request: Request) -> Principal:
     return principal  # type: ignore[no-any-return]
 
 
+def actor_roles(request: Request) -> frozenset[str]:
+    """The caller's roles, for a check the route dependency cannot express.
+
+    A `Depends(require_*_roles)` answers "may you call this endpoint" and returns
+    only the subject. Where the *effect* of an endpoint depends on the payload --
+    a support action that may or may not tender a BOL, say -- the handler needs
+    the roles themselves to authorize the effect rather than the entrypoint.
+    Raises 401 for the same reason `resolve_principal` does.
+    """
+    return frozenset(resolve_principal(request).roles)
+
+
 def require_roles(allowed_roles: Collection[str]) -> Callable[[Request], str]:
     def dependency(request: Request) -> str:
         principal = resolve_principal(request)

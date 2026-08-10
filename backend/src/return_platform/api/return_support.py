@@ -13,18 +13,22 @@ from return_platform.data_console.api.auth import (
     require_return_collaboration_roles,
     require_support_roles,
 )
+from return_platform.operations.production_event_authorization import (
+    unauthorized_events_for,
+)
 from return_platform.operations.production_workflow import ProductionWorkflowCoordinator
 from return_platform.operations.repository import ConcurrencyConflictError, OperationalRepository
 from return_platform.operations.return_support.service import (
     CreateSupportMessageRequest,
     CreateSupportWorkItemRequest,
     ReturnSupportService,
-    SupportAction,
     SupportActionRequest,
     SupportMessageView,
     SupportWorkItemView,
+    production_events_for_support_action,
 )
 from return_platform.resources import RuntimeResources
+from return_platform.security.authorization import actor_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 from return_platform.workflows.production_return_workflow import ProductionReturnEventType
 
@@ -162,6 +166,22 @@ async def apply_action(
     request: Request,
     actor: str = Depends(require_support_roles),
 ) -> APIResponse[SupportWorkItemView]:
+    roles = actor_roles(request)
+    #: Every workflow event this action will record, derived from the payload
+    #: alone so the whole set can be authorized before the work item is mutated.
+    #: A 403 raised after `apply_action` would leave the support record advanced
+    #: and the workflow un-signalled.
+    planned_events = production_events_for_support_action(payload)
+    refused = unauthorized_events_for(event_types=planned_events, actor_roles=roles)
+    if refused:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Role cannot record "
+                + ", ".join(event.value for event in refused)
+                + ", which this action would produce."
+            ),
+        )
     try:
         data = await _service(request).apply_action(work_item_id, payload, actor_id=actor)
     except KeyError as error:
@@ -172,17 +192,7 @@ async def apply_action(
         ) from error
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    event_type = {
-        SupportAction.ACKNOWLEDGE: ProductionReturnEventType.SUPPORT_ACKNOWLEDGED,
-        SupportAction.RECORD_RETURN_CREATION: ProductionReturnEventType.OMC_RETURN_CREATED,
-        SupportAction.RECORD_SHIPPING_INSTRUCTIONS: (
-            ProductionReturnEventType.SHIPPING_INSTRUCTIONS_ISSUED
-        ),
-        SupportAction.RECORD_CUSTOMER_RESOLUTION: (
-            ProductionReturnEventType.CUSTOMER_RESOLUTION_COMPLETED
-        ),
-        SupportAction.CANCEL: ProductionReturnEventType.CANCELLED,
-    }.get(payload.action)
+    event_type = planned_events[0] if planned_events else None
     resources = getattr(request.app.state, "resources", None)
     loaded = getattr(request.app.state, "return_configuration", None)
     if (
@@ -222,20 +232,14 @@ async def apply_action(
                     event_type=event_type,
                     evidence_reference=f"SUPPORT_WORK_ITEM:{data.id}:v{data.version}",
                     actor_id=actor,
+                    actor_roles=roles,
                     business_payload=business_payload,
                 )
-                instruction_type = (payload.shippingInstructionType or "").upper()
-                if (
-                    payload.action is SupportAction.RECORD_SHIPPING_INSTRUCTIONS
-                    and instruction_type
-                    in {
-                        "LTL",
-                        "BOL",
-                        "BRANCH_LTL",
-                        "OFFSITE_LTL",
-                        "HEAVY_TRUCK_PICKUP",
-                    }
-                ):
+                # Same `planned_events` the authorization above was computed
+                # from, rather than re-deriving the LTL condition here. Two
+                # copies of "does this action tender a BOL?" is how the check
+                # and the act drift apart.
+                if ProductionReturnEventType.BOL_TENDERED in planned_events:
                     await coordinator.record_event(
                         data.sessionId,
                         event_id=(f"support-action:{data.id}:BOL_TENDERED:{data.version}"),
@@ -246,6 +250,7 @@ async def apply_action(
                             or f"SUPPORT_WORK_ITEM:{data.id}:v{data.version}"
                         ),
                         actor_id=actor,
+                        actor_roles=roles,
                         business_payload={
                             "sourceSystem": "OMC_OR_SUPPORT_READBACK",
                             "sourceEventId": (f"{data.id}:BOL_TENDERED:{data.version}"),

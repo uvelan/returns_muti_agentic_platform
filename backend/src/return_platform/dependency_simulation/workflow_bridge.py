@@ -6,6 +6,7 @@ from typing import Any
 
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
 from return_platform.dependency_simulation.models import SimulationOperationView
+from return_platform.operations.production_event_authorization import PLATFORM_SERVICE_ROLES
 from return_platform.operations.production_workflow import ProductionWorkflowCoordinator
 from return_platform.operations.repository import OperationalRepository
 from return_platform.resources import RuntimeResources
@@ -106,6 +107,8 @@ async def signal_workflow(
         event_type=event_type,
         evidence_reference=f"SIMULATION:{operation.id}",
         actor_id=actor_id,
+        # This bridge *is* the simulated external system; see PLATFORM_SERVICE_ROLES.
+        actor_roles=PLATFORM_SERVICE_ROLES,
         business_payload=payload,
     )
     return event_type.value, "SIGNALLED"

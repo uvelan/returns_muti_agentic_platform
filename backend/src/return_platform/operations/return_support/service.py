@@ -7,7 +7,7 @@ import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Any, cast
+from typing import Any, Final, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 from pymongo import ASCENDING, DESCENDING, AsyncMongoClient, ReturnDocument
@@ -16,6 +16,7 @@ from pymongo.errors import DuplicateKeyError
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 from return_platform.configuration.settings import Settings
 from return_platform.operations.repository import ConcurrencyConflictError, OperationalRepository
+from return_platform.workflows.production_return_workflow import ProductionReturnEventType
 
 
 def _now() -> datetime:
@@ -145,6 +146,52 @@ class SupportActionRequest(SupportModel):
     authoritativeReadbackDigest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     customerResolution: str | None = Field(default=None, min_length=2, max_length=128)
     externalTicketReference: str | None = Field(default=None, max_length=256)
+
+
+#: Shipping instruction types whose issuance also tenders a BOL. Recorded here
+#: rather than inline in the router: the set decides both what the caller is
+#: authorized for and what is actually recorded, and those two must be the same
+#: answer.
+_BOL_TENDERING_INSTRUCTION_TYPES: Final = frozenset(
+    {"LTL", "BOL", "BRANCH_LTL", "OFFSITE_LTL", "HEAVY_TRUCK_PICKUP"}
+)
+
+#: Support actions that record a production workflow event, and which one.
+#: Actions absent from this map are support-queue bookkeeping and touch no
+#: workflow state.
+_PRODUCTION_EVENT_FOR_ACTION: Final[dict[SupportAction, ProductionReturnEventType]] = {
+    SupportAction.ACKNOWLEDGE: ProductionReturnEventType.SUPPORT_ACKNOWLEDGED,
+    SupportAction.RECORD_RETURN_CREATION: ProductionReturnEventType.OMC_RETURN_CREATED,
+    SupportAction.RECORD_SHIPPING_INSTRUCTIONS: (
+        ProductionReturnEventType.SHIPPING_INSTRUCTIONS_ISSUED
+    ),
+    SupportAction.RECORD_CUSTOMER_RESOLUTION: (
+        ProductionReturnEventType.CUSTOMER_RESOLUTION_COMPLETED
+    ),
+    SupportAction.CANCEL: ProductionReturnEventType.CANCELLED,
+}
+
+
+def production_events_for_support_action(
+    request: SupportActionRequest,
+) -> tuple[ProductionReturnEventType, ...]:
+    """Every production workflow event this support action will record.
+
+    In recording order, and derived from the request alone -- no service call,
+    no database read -- so a caller can be authorized for the whole act before
+    anything is mutated. `RECORD_SHIPPING_INSTRUCTIONS` with an LTL/BOL
+    instruction type produces *two* events, which is the case that made
+    per-event authorization inside the handler unsafe.
+    """
+    primary = _PRODUCTION_EVENT_FOR_ACTION.get(request.action)
+    if primary is None:
+        return ()
+    if (
+        request.action is SupportAction.RECORD_SHIPPING_INSTRUCTIONS
+        and (request.shippingInstructionType or "").upper() in _BOL_TENDERING_INSTRUCTION_TYPES
+    ):
+        return (primary, ProductionReturnEventType.BOL_TENDERED)
+    return (primary,)
 
 
 class ReturnSupportService:

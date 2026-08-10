@@ -9,9 +9,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
 from return_platform.data_console.api.auth import require_read_roles, require_write_roles
+from return_platform.operations.production_event_authorization import (
+    ProductionEventNotPermitted,
+    authorize_production_event,
+)
 from return_platform.operations.production_workflow import ProductionWorkflowCoordinator
 from return_platform.operations.repository import OperationalRepository
 from return_platform.resources import RuntimeResources
+from return_platform.security.authorization import actor_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 from return_platform.workflows.production_return_workflow import ProductionReturnEventType
 
@@ -64,87 +69,22 @@ def _coordinator(
 
 
 def _authorize_event(request: Request, event_type: ProductionReturnEventType) -> None:
-    principal = getattr(request.state, "principal", None)
-    roles = frozenset(getattr(principal, "roles", ()))
-    allowed: dict[ProductionReturnEventType, frozenset[str]] = {
-        ProductionReturnEventType.DISCOVERY_CONFIRMED: frozenset(
-            {"console_admin", "return_associate", "return_platform_service"}
-        ),
-        ProductionReturnEventType.RETURN_DETAILS_CONFIRMED: frozenset(
-            {"console_admin", "return_associate", "return_platform_service"}
-        ),
-        ProductionReturnEventType.SUPPORT_REQUEST_CREATED: frozenset(
-            {"console_admin", "return_associate", "return_support", "return_platform_service"}
-        ),
-        ProductionReturnEventType.SUPPORT_ACKNOWLEDGED: frozenset(
-            {"console_admin", "return_support", "return_platform_service"}
-        ),
-        ProductionReturnEventType.OMC_RETURN_CREATED: frozenset(
-            {"console_admin", "return_support", "return_platform_service"}
-        ),
-        ProductionReturnEventType.SHIPPING_INSTRUCTIONS_ISSUED: frozenset(
-            {"console_admin", "return_support", "logistics_coordinator", "return_platform_service"}
-        ),
-        ProductionReturnEventType.BOL_TENDERED: frozenset(
-            {"console_admin", "logistics_coordinator", "return_platform_service"}
-        ),
-        ProductionReturnEventType.CARRIER_BOOKING_CONFIRMED: frozenset(
-            {"console_admin", "logistics_coordinator", "return_platform_service"}
-        ),
-        ProductionReturnEventType.PHYSICAL_HANDOFF_CONFIRMED: frozenset(
-            {
-                "console_admin",
-                "return_associate",
-                "logistics_coordinator",
-                "return_platform_service",
-            }
-        ),
-        ProductionReturnEventType.PHYSICAL_RETURN_NOT_REQUIRED: frozenset(
-            {"console_admin", "return_support", "return_platform_service"}
-        ),
-        ProductionReturnEventType.RECEIPT_CONFIRMED: frozenset(
-            {"console_admin", "warehouse_associate", "return_platform_service"}
-        ),
-        ProductionReturnEventType.LICENSE_PLATE_NOT_REQUIRED: frozenset(
-            {
-                "console_admin",
-                "return_support",
-                "warehouse_associate",
-                "return_platform_service",
-            }
-        ),
-        ProductionReturnEventType.WAREHOUSE_PROCESSING_NOT_REQUIRED: frozenset(
-            {
-                "console_admin",
-                "return_support",
-                "warehouse_associate",
-                "return_platform_service",
-            }
-        ),
-        ProductionReturnEventType.LICENSE_PLATE_ASSIGNED: frozenset(
-            {"console_admin", "warehouse_associate", "return_platform_service"}
-        ),
-        ProductionReturnEventType.CUSTOMER_RESOLUTION_COMPLETED: frozenset(
-            {"console_admin", "return_support", "return_platform_service"}
-        ),
-        ProductionReturnEventType.PRODUCT_DISPOSITION_COMPLETED: frozenset(
-            {"console_admin", "warehouse_associate", "return_platform_service"}
-        ),
-        ProductionReturnEventType.WAREHOUSE_PROCESSING_COMPLETED: frozenset(
-            {"console_admin", "warehouse_associate", "return_platform_service"}
-        ),
-        ProductionReturnEventType.VENDOR_RECOVERY_REQUIRED: frozenset(
-            {"console_admin", "return_support", "warehouse_associate", "return_platform_service"}
-        ),
-        ProductionReturnEventType.VENDOR_RECOVERY_COMPLETED: frozenset(
-            {"console_admin", "return_support", "warehouse_associate", "return_platform_service"}
-        ),
-        ProductionReturnEventType.CANCELLED: frozenset(
-            {"console_admin", "return_associate", "return_support", "return_platform_service"}
-        ),
-    }
-    if not roles.intersection(allowed[event_type]):
-        raise HTTPException(status_code=403, detail="Role cannot record this business event.")
+    """Refuse before `ensure_started`, so a refused call starts no workflow.
+
+    `record_event` enforces the same rule and is the real boundary -- this is an
+    early check, not the only one. It exists because `record_workflow_event`
+    calls `ensure_started` first, and a caller who may not record the event
+    should not leave a started workflow behind as a side effect of being
+    refused.
+
+    The table itself moved to `operations.production_event_authorization` in
+    Wave D4. It used to live here, which is why the three routers that record
+    events *implicitly* never consulted it.
+    """
+    try:
+        authorize_production_event(event_type=event_type, actor_roles=actor_roles(request))
+    except ProductionEventNotPermitted as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
 
 
 @router.post(
@@ -241,6 +181,7 @@ async def record_workflow_event(
             event_type=payload.eventType,
             evidence_reference=payload.evidenceReference,
             actor_id=actor,
+            actor_roles=actor_roles(request),
             business_payload=dict(payload.businessPayload),
         )
     except ValueError as error:

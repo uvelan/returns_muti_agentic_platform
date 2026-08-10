@@ -25,6 +25,7 @@ from return_platform.dependency_simulation.models import (
 from return_platform.dependency_simulation.repository import MongoSimulationRepository
 from return_platform.dependency_simulation.service import DependencySimulationService
 from return_platform.dependency_simulation.workflow_bridge import signal_workflow
+from return_platform.operations.production_event_authorization import PLATFORM_SERVICE_ROLES
 from return_platform.operations.production_workflow import ProductionWorkflowCoordinator
 from return_platform.operations.repository import OperationalRepository
 from return_platform.resources import RuntimeResources
@@ -249,6 +250,9 @@ async def _record_initial_events(
             event_type=event_type,
             evidence_reference=f"SIMULATION:BOOT:{index}",
             actor_id=actor,
+            # The simulator stands in for an external system responding, not for
+            # the operator who pressed the button -- see PLATFORM_SERVICE_ROLES.
+            actor_roles=PLATFORM_SERVICE_ROLES,
             business_payload={"sourceSystem": "DEPENDENCY_SIMULATOR"},
         )
 
@@ -349,6 +353,9 @@ async def run_e2e(
             event_type=event_type,
             evidence_reference=f"SIMULATION:PATH:{payload.scenario}:{suffix}",
             actor_id=actor,
+            # The simulator stands in for an external system responding, not for
+            # the operator who pressed the button -- see PLATFORM_SERVICE_ROLES.
+            actor_roles=PLATFORM_SERVICE_ROLES,
             business_payload={
                 "sourceSystem": "DEPENDENCY_SIMULATOR",
                 "scenario": payload.scenario,

@@ -9,11 +9,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
 from return_platform.data_console.api.auth import require_warehouse_roles
+from return_platform.operations.production_event_authorization import (
+    ProductionEventNotPermitted,
+    authorize_production_event,
+)
 from return_platform.operations.production_workflow import ProductionWorkflowCoordinator
 from return_platform.operations.repository import ConcurrencyConflictError, OperationalRepository
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
 from return_platform.operations.warehouse.service import WarehousePlacementService
 from return_platform.resources import RuntimeResources
+from return_platform.security.authorization import actor_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 from return_platform.workflows.production_return_workflow import ProductionReturnEventType
 
@@ -100,6 +105,19 @@ async def assign_bay(
     request: Request,
     actor: str = Depends(require_warehouse_roles),
 ) -> APIResponse[dict[str, Any]]:
+    roles = actor_roles(request)
+    # Authorized before anything is resolved or mutated: staging the last
+    # handling unit records WAREHOUSE_PROCESSING_COMPLETED, and a 403 raised
+    # after the assignment would leave the bay taken and the workflow
+    # un-signalled. Ahead of `_service` too, so a caller who may not cause the
+    # transition is refused whether or not the datastore is up.
+    try:
+        authorize_production_event(
+            event_type=ProductionReturnEventType.WAREHOUSE_PROCESSING_COMPLETED,
+            actor_roles=roles,
+        )
+    except ProductionEventNotPermitted as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
     resources, loaded, repository, service = _service(request)
     try:
         result = await service.assign(
@@ -130,6 +148,7 @@ async def assign_bay(
                 event_type=ProductionReturnEventType.WAREHOUSE_PROCESSING_COMPLETED,
                 evidence_reference=f"BAY_ASSIGNMENT:{result['assignmentId']}",
                 actor_id=actor,
+                actor_roles=roles,
             )
     except KeyError as error:
         raise HTTPException(status_code=404, detail="Return or handling unit not found.") from error
