@@ -466,7 +466,7 @@ export function CopilotV2Page() {
           <div className="space-y-2">
             {candidateResult.candidates.map((candidate, index) => (
               <CandidateCard
-                key={`${candidateSelectValue(candidate)}-${index}`}
+                key={`${candidateSelectValue(candidate)}-${String(index)}`}
                 candidate={candidate}
                 disabled={chat.isPending}
                 onSelect={selectCandidate}
