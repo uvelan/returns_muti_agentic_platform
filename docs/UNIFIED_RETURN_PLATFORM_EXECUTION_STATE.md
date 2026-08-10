@@ -1,11 +1,11 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `6a5d942` (full static gate clean)
-Slice: **the static gate** — `cb7928f` (mechanical) + `6a5d942` (judgement)
+Last pushed green commit: `060fcd6` (Wave E complete)
+Slice: **Wave E / Phases 17–21** — the four-domain frontend
 Status: **Wave C complete. Wave D's completion condition met**, with four phase-level items
-still open — see "Wave D: what remains" below. Wave E runs in a separate session and is
-unblocked. Wave F is blocked on E.
+still open — see "Wave D: what remains" below. **Wave E is complete** (all five phases,
+read-only — see the Wave E section). Wave F is blocked on E.
 
 Suite: **1963 passed, 2 skipped, 0 failed** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
 mypy baseline: **47 errors / 16 files**, unchanged across every commit in this branch.
@@ -2000,11 +2000,147 @@ also a write role. Selection is now sorted, and the file was re-run under four h
 
 ### What Wave D still owes, and to whom
 
-Nothing to Wave E. E2–E5 can be built against the published contract.
+The published contract is **read-only**, so E2, E3 and E5 shipped without the actions
+their phases specify. Details in the Wave E section; the four unblocking items are listed
+at the end of it.
 
 Open, and independent of E: see **"Wave D: what remains"** above, which is the single
 maintained list. This paragraph used to hold a second copy; two lists of the same open items
 drift, and the copy that drifts is always the one nobody re-reads.
+
+## Wave E / Phases 17–21 — the four-domain frontend
+
+Status: **all five phases built and pushed** (`df2434f`, `31b2500`, `060fcd6`, `a90f6c6`,
+`d258f0d`, plus the E1 backend in `f3112b6`). Every domain route in the shell resolves to a
+real screen. **Every screen is read-only**, and that is the finding below, not a scoping
+choice.
+
+### Correction to "Nothing to Wave E. E2–E5 can be built against the published contract"
+
+The contract is published and E2–E5 were built against it, so the sentence is half right.
+What it misses is that **Wave D published read surfaces and no mutations anywhere**, so
+every action the five phases specify has no route to call:
+
+| Surface | Routes | Mutations |
+|---|---|---|
+| `/api/returns` | list, session, timeline | none |
+| `/api/config` | runtime, releases, releases/{id} | none |
+| `/api/ai` | routes, tasks, metrics, metrics/summary, interceptions | none |
+| `/api/graph-schema` | 13 routes incl. mutations | analyses/drafts only |
+
+`/api/graph-schema` is the exception and is why E4 has real validate/approve controls.
+
+Each screen names its own gap in place rather than faking it, so the missing surface stays
+visible to whoever opens the file:
+
+- **E2** — no structured actions, no decision controls, no approvals, no conversation
+  panel. Wiring them to the legacy routers would add a tenth way to mutate a return, which
+  is exactly what D4 is holding the line against.
+- **E3** — 2 of 9 tabs have a canonical endpoint. No promotion controls: see below.
+- **E5** — no Claim / Respond Manually / Generate Candidate / Replay / Release / Cancel,
+  and no manual response editor. D2's operator API does not exist; an editor whose submit
+  cannot submit is worse than none.
+- **E4** — no graph canvas. See below.
+
+### Phase 17's stated premise was wrong, and following it would have caused the harm it warns about
+
+The plan says "the role model does not exist... **Build it in this phase**". It did exist:
+nine roles and ten role-group dependencies in `data_console/api/auth.py`, enforcing across
+**34 importing modules**. Building a second one would have produced two role vocabularies
+with the *old* one still enforcing — the same shape as the configuration-lifecycle split
+Phase 15 documents.
+
+What genuinely did not exist: a **capability** layer, a canonical home (Data Console is
+retired in Wave F), and the principal endpoint. So the model moved to `security/roles.py`,
+`security/capabilities.py` and `security/authorization.py` with `data_console/api/auth.py`
+left as a re-export shim — the same treatment D1 gave `ai_gateway/`, deletable in Wave F.
+A test asserts the shim's role sets stay identical to the canonical ones, and another
+asserts its `request: Request` annotations survive: FastAPI resolves `Depends(...)` by
+inspecting them, so widening one breaks injection at runtime in all 34 importers while
+still importing and type-checking cleanly. That was caught by writing the test, not by
+review.
+
+`/api/principal` reports subject, roles and capabilities, and deliberately does not report
+the role-to-capability table — publishing it would make the role model part of the frontend
+contract, which is what the capability layer exists to prevent. 401 for an unauthenticated
+caller rather than an empty capability set, because the shell must tell "not signed in"
+from "signed in with nothing granted".
+
+`App.tsx` had to change and the plan was right to flag it: its fallback redirected
+everything outside `/v1` and `/v2/...` into the legacy app, so the four domain routes were
+unreachable. A test pins that the fallback still *would* swallow them, so the new branch
+cannot quietly become dead code.
+
+### The analyzer serializes counts, never the draft shape — E4 has no canvas
+
+`/api/graph-schema` returns `entity_count` and `relationship_count`. `draft.shape.entities`
+exists in the domain model and `api/drafts.py:138-139` reads the counts off it and discards
+the rest. **No route returns the entities and relationships a canvas would draw.** The
+column states that instead of rendering invented structure from two integers. Closing it is
+one backend change: serialize the shape.
+
+Four tabs the required layout names — Properties, Mapping, Indexes, Sync — have no backing
+data on that surface either, and say so.
+
+### E3 has no promotion controls because the D3 decision is still open
+
+Two release lifecycles exist. `ReleaseService` — which recomputes checksums on
+VALIDATED→APPROVED and APPROVED→ACTIVE — is constructed nowhere outside
+`tests/configuration/test_release_lifecycle.py`. Production runs Data Console's hand-rolled
+transition table with no recompute. An Approve or Activate button in the canonical UI would
+silently bless whichever one it happened to call, **on every future promotion**. The
+`/api/config` router's own comment records the same gap.
+
+Redaction stays server-side: `redact_secret_values` scrubs resolved secrets before the
+response is built and leaves `vault://` references legible so an operator can see which
+secret a binding points at. The UI adds no masking of its own — re-masking would hide those
+references and imply the browser is a security boundary it is not.
+
+### Queue visibility in E2 is presentation, and the code says so
+
+`/api/returns` authorizes on read roles alone, so every reader receives every session.
+Hiding a queue would restrict nothing. Queues are shown to anyone who can read, and
+per-action RBAC becomes meaningful when there are actions to gate. Claiming otherwise would
+have been security theatre.
+
+Queue membership is derived from session state rather than stored, so a return moves queue
+the moment its state does; a test pins that a closed return leaves every active queue
+rather than lingering in Support forever.
+
+### Working-tree hazard, recorded because it cost real work
+
+Wave E was built in the shared checkout while another session committed into it. Commit
+`f3112b6` — message "test(lifecycle): drive the generation lifecycle end to end against real
+infra" — **swept the entire E1 backend into itself**: `canonical_principal.py`,
+`security/{roles,capabilities,authorization}.py`, `data_console/api/auth.py` and both test
+files, none of which it names. It is pushed, so amending it now means force-pushing a branch
+another session commits on. This entry is the record of what actually landed there.
+
+Every later Wave E commit staged files **by explicit path**, never `git add -A`, for that
+reason. Two earlier Wave D worktrees were abandoned uncommitted and came within one
+`git clean` of being lost (recorded under D1); the same class of hazard, the same tree.
+
+### Gate receipts
+
+- Frontend: `tsc -b` clean; `eslint --max-warnings=0` clean except one pre-existing error in
+  `features/copilot-v2/CopilotV2Page.tsx:469` (confirmed pre-existing by stashing the change
+  and re-running); `vitest run` **81 passed across 26 files** (from 70/25 at session start);
+  `npm run build` succeeds and `check-bundle` finds no mock artifacts.
+- Backend (E1 only): `pytest tests/security tests/api` 32 passed; `mypy` clean on all 8
+  changed files; **194 passed** across the auth-touching suite (`-k "auth or role or api or
+  router or support or warehouse or associate or console"`), which is what proves the shim
+  still carries its 34 importers.
+- OpenAPI: regenerated for `/api/principal` and synced across all four snapshots
+  (`openapi/`, `backend/openapi/`, `frontend/openapi/`, root `openapi.json`);
+  `check_openapi_drift.py` **PASS**.
+
+### What unblocks the rest of Wave E, in dependency order
+
+1. **The D3 lifecycle decision** — which release lifecycle is authoritative. Highest blast
+   radius: it changes behaviour on every configuration promotion.
+2. **D2's operator API** — interception claim/answer/replay/release/cancel.
+3. **D4's write consolidation** — reconcile the nine return routers, then publish writes.
+4. **Serialize the analyzer draft shape** — one backend change, unblocks E4's canvas.
 
 ## Wave D2 / Phase 14, slice 3 — the resume bridge (at-least-once)
 
