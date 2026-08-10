@@ -17151,6 +17151,70 @@
         ]
       }
     },
+    "/api/config/audit": {
+      "get": {
+        "description": "Platform audit records.\n\nMounted under `/api/config` because that is where the plan puts it, and\nbecause the actions it records are overwhelmingly configuration ones --\npromotions, source edits, workspace changes. It is *not* filtered to\nconfiguration, and the path should not be read as promising that; the\nrecords carry their own `action` and `target`.",
+        "operationId": "list_configuration_audit_api_config_audit_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_AuditLog__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Configuration Audit",
+        "tags": [
+          "Configuration"
+        ]
+      }
+    },
+    "/api/config/audit/{audit_id}": {
+      "get": {
+        "operationId": "get_configuration_audit_api_config_audit__audit_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "audit_id",
+            "required": true,
+            "schema": {
+              "title": "Audit Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AuditLog_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Configuration Audit",
+        "tags": [
+          "Configuration"
+        ]
+      }
+    },
     "/api/config/releases": {
       "get": {
         "operationId": "list_releases_api_config_releases_get",
@@ -17255,6 +17319,70 @@
           }
         },
         "summary": "Get Runtime Configuration",
+        "tags": [
+          "Configuration"
+        ]
+      }
+    },
+    "/api/config/sources": {
+      "get": {
+        "description": "Configured data sources and their probed health.\n\nDelegates to the Data Console handler rather than reimplementing the probe\nfan-out: this is a canonical *surface* over one implementation, which is the\nwhole point of the exercise. When Wave F deletes the console router, the\nbody moves here unchanged.",
+        "operationId": "list_configured_sources_api_config_sources_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_SourceItem__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Configured Sources",
+        "tags": [
+          "Configuration"
+        ]
+      }
+    },
+    "/api/config/sources/{source_id}": {
+      "get": {
+        "operationId": "get_configured_source_api_config_sources__source_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SourceDetail_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Configured Source",
         "tags": [
           "Configuration"
         ]

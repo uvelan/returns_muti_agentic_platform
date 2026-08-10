@@ -26,10 +26,16 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from return_platform.configuration.api.secrets import redact_secret_values
+from return_platform.data_console.api.audit import AuditLog
+from return_platform.data_console.api.audit import get_audit_log as console_get_audit_log
+from return_platform.data_console.api.audit import list_audit_logs as console_list_audit_logs
 from return_platform.data_console.api.auth import require_read_roles
 from return_platform.data_console.api.configuration import (
     resolve_configuration_repository,
 )
+from return_platform.data_console.api.sources import SourceDetail, SourceItem
+from return_platform.data_console.api.sources import get_source as console_get_source
+from return_platform.data_console.api.sources import get_sources as console_get_sources
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 router = APIRouter(prefix="/api/config", tags=["Configuration"])
@@ -116,3 +122,77 @@ async def get_release(
 # about which promotions belong on a versionless canonical API versus the Data
 # Console's operator surface, and that is scope rather than risk.
 # Tracked in the ledger as D3's blocking item.
+
+
+# --- sources and audit ------------------------------------------------------
+#
+# The plan lists six configuration domains for this surface: sources,
+# integrations, business config, modules, security and audit. Checked against
+# what actually backs each, only two need an endpoint here:
+#
+#   business config  already served -- `/runtime` returns the whole
+#                    `PinnedConfigurationSnapshot`, whose `configuration` field
+#                    *is* the business configuration.
+#   integrations     already served -- `configuration.integrations` and
+#                    `configuration.runtime_integrations`, in the same payload.
+#   modules          `_kernel_module_registry` is empty by design ("no module is
+#                    registered yet"), so an endpoint would return `[]` forever.
+#                    A shell that always answers nothing is worse than an
+#                    honest absence; the manifest's module list is reachable
+#                    through `/releases/{id}`'s domain payloads.
+#   security         not configuration. The role model is code
+#                    (`security/roles.py`) and a caller's own grants are on
+#                    `/api/principal`. Publishing the whole role-to-capability
+#                    table would let a UI reimplement authorization locally,
+#                    which the capability layer exists to prevent.
+#   sources          real, and below.
+#   audit            real, and below.
+
+
+@router.get("/sources", response_model=APIResponse[list[SourceItem]])
+async def list_configured_sources(
+    request: Request,
+    _user_id: str = Depends(require_read_roles),
+) -> APIResponse[Any]:
+    """Configured data sources and their probed health.
+
+    Delegates to the Data Console handler rather than reimplementing the probe
+    fan-out: this is a canonical *surface* over one implementation, which is the
+    whole point of the exercise. When Wave F deletes the console router, the
+    body moves here unchanged.
+    """
+    return await console_get_sources(request, _user_id)
+
+
+@router.get("/sources/{source_id}", response_model=APIResponse[SourceDetail])
+async def get_configured_source(
+    source_id: str,
+    request: Request,
+    _user_id: str = Depends(require_read_roles),
+) -> APIResponse[Any]:
+    return await console_get_source(source_id, request, _user_id)
+
+
+@router.get("/audit", response_model=APIResponse[list[AuditLog]])
+async def list_configuration_audit(
+    request: Request,
+    _user_id: str = Depends(require_read_roles),
+) -> APIResponse[Any]:
+    """Platform audit records.
+
+    Mounted under `/api/config` because that is where the plan puts it, and
+    because the actions it records are overwhelmingly configuration ones --
+    promotions, source edits, workspace changes. It is *not* filtered to
+    configuration, and the path should not be read as promising that; the
+    records carry their own `action` and `target`.
+    """
+    return await console_list_audit_logs(request, _user_id)
+
+
+@router.get("/audit/{audit_id}", response_model=APIResponse[AuditLog])
+async def get_configuration_audit(
+    audit_id: str,
+    request: Request,
+    _user_id: str = Depends(require_read_roles),
+) -> APIResponse[Any]:
+    return await console_get_audit_log(request, audit_id, _user_id)

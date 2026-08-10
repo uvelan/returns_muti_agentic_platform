@@ -173,6 +173,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/config/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Configuration Audit
+         * @description Platform audit records.
+         *
+         *     Mounted under `/api/config` because that is where the plan puts it, and
+         *     because the actions it records are overwhelmingly configuration ones --
+         *     promotions, source edits, workspace changes. It is *not* filtered to
+         *     configuration, and the path should not be read as promising that; the
+         *     records carry their own `action` and `target`.
+         */
+        get: operations["list_configuration_audit_api_config_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config/audit/{audit_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Configuration Audit */
+        get: operations["get_configuration_audit_api_config_audit__audit_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/config/releases": {
         parameters: {
             query?: never;
@@ -223,6 +266,48 @@ export interface paths {
          *     configuration nothing is running.
          */
         get: operations["get_runtime_configuration_api_config_runtime_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Configured Sources
+         * @description Configured data sources and their probed health.
+         *
+         *     Delegates to the Data Console handler rather than reimplementing the probe
+         *     fan-out: this is a canonical *surface* over one implementation, which is the
+         *     whole point of the exercise. When Wave F deletes the console router, the
+         *     body moves here unchanged.
+         */
+        get: operations["list_configured_sources_api_config_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Configured Source */
+        get: operations["get_configured_source_api_config_sources__source_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -9763,6 +9848,57 @@ export interface operations {
             };
         };
     };
+    list_configuration_audit_api_config_audit_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_AuditLog__"];
+                };
+            };
+        };
+    };
+    get_configuration_audit_api_config_audit__audit_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                audit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AuditLog_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_releases_api_config_releases_get: {
         parameters: {
             query?: {
@@ -9841,6 +9977,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+        };
+    };
+    list_configured_sources_api_config_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_SourceItem__"];
+                };
+            };
+        };
+    };
+    get_configured_source_api_config_sources__source_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_SourceDetail_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
