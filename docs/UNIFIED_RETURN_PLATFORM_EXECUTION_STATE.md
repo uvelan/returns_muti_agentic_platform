@@ -1,21 +1,21 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `f3112b6` (Wave C end-to-end composition run)
-Slice: **`GET /api/session` — the last thing Wave D owed Wave E**
-Status: slices 1-6 DONE. **Wave C is complete** apart from one owed end-to-end composition
-run — see the Wave C real-infra gate table below — see the C4 sections below for what remains.
+Last pushed green commit: `6a5d942` (full static gate clean)
+Slice: **the static gate** — `cb7928f` (mechanical) + `6a5d942` (judgement)
+Status: **Wave C complete. Wave D's completion condition met**, with four phase-level items
+still open — see "Wave D: what remains" below. Wave E runs in a separate session and is
+unblocked. Wave F is blocked on E.
 
-Suite: **1918 passed, 2 skipped, 0 failed** via `bash scripts/dev/run_real_infra_suite.sh`.
+Suite: **1963 passed, 2 skipped, 0 failed** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
 mypy baseline: **47 errors / 16 files**, unchanged across every commit in this branch.
 
-Caveat on "green": the *full* static gate does not pass. `scripts/linux/03_run_backend_quality.sh`
-runs `ruff check .` from `backend/`, which reports **246 lint errors and 90 unformatted
-files** under the pinned ruff 0.15.21 — all in older Phase-2 `configuration/` and
-`bootstrap/reconciler.py` code, none from recent slices. Recent slices have reported green
-on the strength of the *changed-files* gate (`scripts/dev/run_changed_gate.py`), which is a
-narrower claim than the wording above previously implied. Paying it down is Wave G/H
-(Phase 29, full static integrity).
+"Green" now means the **full** gate. `scripts/linux/03_run_backend_quality.sh` runs
+`ruff check .` and `ruff format --check .` from `backend/`, and both pass across all 735
+files as of `6a5d942`. Every prior entry in this ledger reported green on the *changed-files*
+gate (`scripts/dev/run_changed_gate.py`), which is a narrower claim; read older entries with
+that in mind. Wave G/H's "full static integrity" (Phase 29) is now a much smaller job than
+this ledger previously implied — what is left there is mypy's 47, not ruff's 246.
 
 ## Phase 7 / Wave C2, Commit 1 — Foundations
 
@@ -1848,6 +1848,115 @@ Still owed, in rough priority order:
 `NVIDIA_API_KEY`/`GOOGLE_API_KEY` item is also resolved: see the correction above; the keys
 were never actually required.
 
+## The static gate passes, and one real bug was hiding behind a blind assertion
+
+Status: DONE. `ruff check .` and `ruff format --check .` both pass across all 735 backend
+files for the first time in this branch's recorded history. Two commits: `cb7928f`
+(mechanical) and `6a5d942` (judgement).
+
+### Why this mattered more than lint usually does
+
+The header of this ledger carried a caveat for eleven slices: every "green" reported here
+was the *changed-files* gate, not the one CI runs. A gate nobody can run and believe is not
+a gate. `scripts/linux/03_run_backend_quality.sh` reported **246 errors and 86 unformatted
+files**, all pre-existing, concentrated in Phase-2 `configuration/` code — enough noise that
+a genuine new finding would have been invisible in it.
+
+**`cb7928f` — mechanical, committed on its own so the churn stays reviewable.** 244
+auto-fixes, 77 files reformatted. Mostly modernisation the tree had drifted from
+(`typing.Optional`/`typing.List` → PEP 604/585, import ordering) plus eleven unused imports,
+each checked individually first — none were `__init__` re-exports, which ruff would have
+removed silently.
+
+**`6a5d942` — the 21 that needed judgement.** Three `raise ... from`, two RUF005 unpackings,
+a dead `original_construct` assignment, a mid-file import, a raw-string `match=` pattern,
+unused unpacked variables. And two `B017` blind `pytest.raises(Exception)` assertions, one of
+which was covering a real defect.
+
+### The defect: a well-formed cursor whose value is the string "None"
+
+`test_sync_records_failure_status_when_a_write_raises` **never reached a write.** Its
+customer fixture omitted `updatedAt` — the configured incremental cursor field — so the run
+died in `capture_high_watermark`, and `pytest.raises(Exception)` swallowed the difference.
+The test asserted a FAILED run status for a failure with nothing to do with the fence it
+claimed to exercise. It had been passing that way for as long as it has existed.
+
+Underneath it: for a non-empty collection whose newest document has no cursor value,
+`_encode_field_value(None)` returns the *string* `"None"`, which is a perfectly well-formed
+`SourceCursor`. Nothing rejects it. The run continues and dies much later in
+`_field_datetime_bounds` with a bare `ValueError: Invalid isoformat string: 'None'` that
+names neither the source nor the field.
+
+`capture_high_watermark` now fails closed where it can still name both. **Deliberately not
+defaulted:** substituting `now()` silently skips every record, and the epoch silently
+rescans the collection. This is the same family as the string-cursor finding from the Wave C
+end-to-end run — where seeding a cursor field as an ISO string made `scan` return zero rows
+while `capture_high_watermark` reported a plausible watermark, producing a silent empty
+build. Both are cursor values that are *shaped* right and *mean* nothing.
+
+The other `B017`: `test_runtime_snapshot_is_final_immutable_output` now asserts pydantic's
+`frozen_instance` error. The blind form would have gone green if `PlatformConfig(...)` itself
+started raising — e.g. on gaining a required field — leaving immutability untested while
+the test still passed.
+
+`test_pinned_release_resolves_after_handle_recreation` constructed a `handle1` it never
+touched. It now asserts handle1's cache stays empty, which is what makes it a recreation
+test rather than a cache-hit test.
+
+### A verification hazard worth knowing about
+
+This clone's fetch refspec was pinned to a single unrelated branch
+(`+refs/heads/feat/v2-order-discovery-integration:...`), so `git fetch origin` never
+refreshed `origin/refactor/unified-return-platform`. That ref sat at `31b2500` while the
+remote was at `6a5d942`, and `git log origin/<branch>` reported stale data indefinitely —
+the mechanism behind the branch-state surprise recorded earlier in this ledger. Restored to
+`+refs/heads/*:refs/remotes/origin/*`; local, remote-tracking and remote now agree.
+
+**Verification.** ruff check + format clean (735 files). mypy **47/16**, unchanged. Full
+real-infra suite **1963 passed, 2 skipped** — one more than the previous run, from the new
+connector regression test.
+
+## Wave D: what remains
+
+Wave D's *completion condition* — "backend exposes the four canonical API domains and all
+are generated into OpenAPI" — is met, and nothing in D still blocks Wave E. Four
+phase-level items remain open. In rough order of blast radius:
+
+1. **D3's mutation surface — blocked on a decision, not on effort.** There are two
+   configuration release lifecycles over two stores. `ReleaseService` (Mongo:
+   DRAFT→VALIDATED→APPROVED→ACTIVE, checksum-verified on both hardened transitions) is
+   constructed in exactly one place in the repository — a test. What production runs is
+   `data_console/api/configuration.py`'s `promote_release_status`, which hand-rolls the
+   lifecycle inline with no checksum recompute. Adding canonical mutation endpoints would
+   make it three lifecycles or silently bless one. Deciding which is authoritative changes
+   what happens on every configuration promotion; it is a data migration, not a refactor.
+2. **D4's write consolidation across nine routers.** Three share `/api/v1/returns`, so the
+   owning module is not derivable from the path. There is a genuine duplicate pair
+   (`GET /{session_id}/artifacts` vs `GET /{session_id}/production-artifacts`), overlapping
+   stage actions between `production_workflow.py` and `physical_operations.py`, and an
+   associate flow driving the same session by another route. Phase 16 says resolve
+   duplicates *before* deleting, and every duplicate is on the write side — publishing a
+   canonical write surface first would add a tenth way to mutate a return rather than
+   replace nine. `test_the_number_of_return_routers_has_not_grown` keeps this from running
+   backwards meanwhile.
+3. **D4's remaining read domains.** Only session, list and timeline are canonical. Support,
+   fulfillment, warehouse, artifacts and outbox events have no canonical read path yet.
+4. **D3's remaining read domains.** Only runtime and releases are canonical. Sources,
+   integrations, business config, modules, security and audit live under Data Console
+   routers or do not exist; each is its own slice.
+5. **D2's API-process route wiring.** `main.py` builds its route pool at ~577, before the
+   analyzer's `bootstrap_system_store` at ~626, so MANUAL in the API process still resolves
+   to the filesystem `ManualFileProvider`. The worker process is correctly wired. Fixing it
+   means reordering a deliberately degrade-safe startup sequence.
+6. **D2's operator console.** `/api/ai/interceptions` (identity and status) and the store's
+   `request_payload` are the two halves; nothing joins them into a surface an operator can
+   answer a held request from.
+7. **D1's untested claim.** The `ai/README.md` argues that `AIGatewayService.evaluate` and
+   `StructuredOutputInvoker.invoke` share one path (route pool, config, guards, breakers,
+   limiters) and differ only in response contract. That is prose, not a test.
+
+Items 1 and 2 are the substantive ones. 3–7 are bounded and independent of each other.
+
 ## `GET /api/session` — Wave E is now unblocked on the backend
 
 Status: DONE.
@@ -1893,9 +2002,9 @@ also a write role. Selection is now sorted, and the file was re-run under four h
 
 Nothing to Wave E. E2–E5 can be built against the published contract.
 
-Open, and independent of E: D3's mutation surface (blocked on the two-store configuration
-lifecycle decision), D4's write consolidation across nine routers, D2's API-process route
-wiring and operator console, and D1's untested "evaluate and invoke share one path" claim.
+Open, and independent of E: see **"Wave D: what remains"** above, which is the single
+maintained list. This paragraph used to hold a second copy; two lists of the same open items
+drift, and the copy that drifts is always the one nobody re-reads.
 
 ## Wave D2 / Phase 14, slice 3 — the resume bridge (at-least-once)
 
