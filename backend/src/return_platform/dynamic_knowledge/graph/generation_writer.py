@@ -7,7 +7,8 @@ dynamic_knowledge/lifecycle/. Cypher generation lives in write_compiler.py
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from collections.abc import Awaitable, Callable
+from typing import Any, Protocol, TypeVar
 
 from return_platform.dynamic_knowledge.graph.generation import GraphGenerationStatus
 from return_platform.dynamic_knowledge.graph.write_compiler import (
@@ -26,10 +27,23 @@ class GenerationWriteTransaction(Protocol):
     async def run(self, query: str, parameters: dict[str, Any]) -> Any: ...
 
 
+_ReadResult = TypeVar("_ReadResult")
+
+
 class GenerationSession(Protocol):
     async def execute_write(self, work: Any, **kwargs: Any) -> Any: ...
 
-    async def execute_read(self, work: Any, **kwargs: Any) -> Any: ...
+    # Positional-only and generic, for the same two reasons as
+    # `GraphSession.execute_write` next door: neo4j names the parameter
+    # `transaction_function`, and an `Any` return made every declared return
+    # type on the callers below an unchecked assertion.
+    async def execute_read(
+        self,
+        work: Callable[..., Awaitable[_ReadResult]],
+        /,
+        *args: Any,
+        **kwargs: Any,
+    ) -> _ReadResult: ...
 
     async def __aenter__(self) -> GenerationSession: ...
 

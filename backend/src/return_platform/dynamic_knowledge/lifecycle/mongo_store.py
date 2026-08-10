@@ -87,7 +87,10 @@ class MongoActiveRuntimeSnapshotStore:
         result = await self._collection.replace_one(
             {"_id": snapshot_name, "activation_version": expected_activation_version}, payload
         )
-        return result.matched_count == 1
+        # `bool(...)`, not the bare comparison: `replace_one` is untyped here,
+        # so `matched_count` is `Any` and the comparison is `Any` too -- the
+        # declared `-> bool` was asserting something mypy could not see.
+        return bool(result.matched_count == 1)
 
 
 class MongoRebuildLeaseStore:

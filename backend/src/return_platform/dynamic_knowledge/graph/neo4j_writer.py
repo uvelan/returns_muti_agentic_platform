@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 
 from return_platform.dynamic_knowledge.graph.generation import (
     GraphGenerationStatus,
@@ -78,8 +79,33 @@ class GraphWriteTransaction(Protocol):
     async def run(self, query: str, parameters: dict[str, Any]) -> Any: ...
 
 
+_WorkResult = TypeVar("_WorkResult")
+
+
 class GraphSession(Protocol):
-    async def execute_write(self, work: Any, **kwargs: Any) -> Any: ...
+    """Structural view of `neo4j.AsyncSession`.
+
+    Two details make this actually match the driver, and neither is cosmetic --
+    without them every `Neo4jDynamicGraphWriter(driver, ...)` call was an
+    `arg-type` error and every `execute_write` result was `Any`, so the declared
+    return types on the three write methods below were unchecked assertions.
+
+    The work parameter is **positional-only**. Protocol conformance compares
+    parameter *names* for anything that could be passed by keyword, and the
+    driver calls it `transaction_function` while this called it `work`.
+
+    `execute_write` is **generic** in the work function's result. Typing it
+    `-> Any` meant `return await session.execute_write(_write_chunk, ...)`
+    satisfied any declared return type at all.
+    """
+
+    async def execute_write(
+        self,
+        work: Callable[..., Awaitable[_WorkResult]],
+        /,
+        *args: Any,
+        **kwargs: Any,
+    ) -> _WorkResult: ...
 
     async def __aenter__(self) -> GraphSession: ...
 
@@ -87,6 +113,10 @@ class GraphSession(Protocol):
 
 
 class GraphDriver(Protocol):
+    # Keyword-only and narrow on purpose. `**config: Any` looks more permissive
+    # but is strictly worse: it demands an implementation accepting *arbitrary*
+    # keywords, and neo4j's stub declares an explicit keyword set, so it does
+    # not match. This asks for the one keyword actually passed.
     def session(self, *, database: str | None = None) -> GraphSession: ...
 
 

@@ -282,7 +282,7 @@ class ConfigurationLoader:
         class _DuplicateDetector(yaml.SafeLoader):
             pass
 
-        def _construct_mapping(loader: yaml.SafeLoader, node: yaml.MappingNode) -> dict:  # type: ignore[override]
+        def _construct_mapping(loader: yaml.SafeLoader, node: yaml.MappingNode) -> dict[str, Any]:
             loader.flatten_mapping(node)
             pairs = loader.construct_pairs(node)
             keys_seen: set[str] = set()

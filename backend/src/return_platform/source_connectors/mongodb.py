@@ -188,6 +188,12 @@ class MongoDBSourceScanConnector:
                 f"cannot compare cursors of different types: {left.cursor_type!r} "
                 f"vs {right.cursor_type!r}"
             )
+        # Annotated up front. Without it both names are inferred `ObjectId` from
+        # the first branch, so the datetime branch is an error -- and the two
+        # branches are only ever compared against their own kind, which the
+        # cursor_type equality above already guarantees.
+        left_value: ObjectId | datetime
+        right_value: ObjectId | datetime
         if left.cursor_type == _OBJECT_ID:
             left_value, right_value = ObjectId(left.encoded_value), ObjectId(right.encoded_value)
         elif left.cursor_type == _FIELD_DATETIME:
@@ -332,9 +338,11 @@ def _dotted_get(document: Mapping[str, Any], dotted_path: str) -> Any:
 
 def _encode_field_value(value: Any) -> str:
     if isinstance(value, datetime):
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=UTC)
-        return value.isoformat()
+        # Bound to a new name rather than reassigning the parameter: `value` is
+        # `Any`, so writing back to it discards the `isinstance` narrowing and
+        # `.isoformat()` returns `Any` again.
+        moment = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+        return moment.isoformat()
     return str(value)
 
 
