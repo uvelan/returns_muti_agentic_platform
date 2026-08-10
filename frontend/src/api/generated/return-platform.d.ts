@@ -535,6 +535,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/graph-schema/drafts/{draft_id}/shape": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Draft Shape
+         * @description The draft's entities and relationships.
+         *
+         *     **Separate from `GET /drafts/{id}` on purpose.** That view carries
+         *     `entity_count` and `relationship_count`, which are O(1) and are what a list
+         *     of drafts needs. The shape is unbounded -- a real source can produce a large
+         *     schema -- and putting it inline would make every draft listing pay for a
+         *     payload only the canvas reads.
+         *
+         *     Until this existed the analyzer serialised counts and nothing else, so a
+         *     consumer could learn that a draft had seven entities and never learn what
+         *     they were. E4's canvas is what that blocked.
+         */
+        get: operations["get_draft_shape_api_graph_schema_drafts__draft_id__shape_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/graph-schema/drafts/{draft_id}/validate": {
         parameters: {
             query?: never;
@@ -6353,6 +6383,29 @@ export interface components {
             fromVersion?: string | null;
         };
         /**
+         * DraftShapeView
+         * @description The schema itself -- what a canvas draws.
+         *
+         *     **Typed here, not in the domain.** `GraphSchemaShape` is deliberately plain
+         *     `Mapping[str, Any]`: it is the *result* of applying typed mutation commands,
+         *     never an editing surface, and its own docstring says so. Typing it at the
+         *     domain would add a second place every command has to satisfy. Typing it at
+         *     the boundary gives the contract real field names without touching that
+         *     decision.
+         */
+        DraftShapeView: {
+            /** Entities */
+            entities: {
+                [key: string]: components["schemas"]["EntityShapeView"];
+            };
+            /** Graph Constraints */
+            graph_constraints: components["schemas"]["GraphConstraintShapeView"][];
+            /** Graph Indexes */
+            graph_indexes: components["schemas"]["GraphIndexShapeView"][];
+            /** Relationships */
+            relationships: components["schemas"]["RelationshipShapeView"][];
+        };
+        /**
          * DraftStatus
          * @enum {string}
          */
@@ -6374,6 +6427,23 @@ export interface components {
             validation_result_id: string | null;
             /** Version */
             version: number;
+        };
+        /** EntityShapeView */
+        EntityShapeView: {
+            /** Identifier Properties */
+            identifier_properties: string[];
+            /** Label */
+            label: string;
+            /** Ownership */
+            ownership: string;
+            /** Properties */
+            properties: {
+                [key: string]: components["schemas"]["PropertyShapeView"];
+            };
+            /** Source Dataset */
+            source_dataset: string;
+            /** Sync Mode */
+            sync_mode: string;
         };
         /** EvidenceReference */
         EvidenceReference: {
@@ -6609,6 +6679,17 @@ export interface components {
             /** Violations */
             violations: string[];
         };
+        /** GraphConstraintShapeView */
+        GraphConstraintShapeView: {
+            /** Label */
+            label: string;
+            /** Property Name */
+            property_name: string;
+            /** Required */
+            required: boolean;
+            /** Unique */
+            unique: boolean;
+        };
         /**
          * GraphExpansionLimit
          * @description Metadata about graph expansion limits.
@@ -6622,6 +6703,13 @@ export interface components {
             maxNodes: number;
             /** Maxrelationships */
             maxRelationships: number;
+        };
+        /** GraphIndexShapeView */
+        GraphIndexShapeView: {
+            /** Label */
+            label: string;
+            /** Properties */
+            properties: string[];
         };
         /**
          * GraphNode
@@ -7509,6 +7597,15 @@ export interface components {
              */
             status: "VALIDATED" | "RELEASED" | "ARCHIVED";
         };
+        /** PropertyShapeView */
+        PropertyShapeView: {
+            /** Source Field */
+            source_field: string;
+            /** Transformation */
+            transformation: string;
+            /** Type */
+            type: string;
+        };
         /**
          * PropertyType
          * @enum {string}
@@ -7577,6 +7674,17 @@ export interface components {
             };
             /** Idempotencykey */
             idempotencyKey?: string | null;
+        };
+        /** RelationshipShapeView */
+        RelationshipShapeView: {
+            /** Cardinality */
+            cardinality: string;
+            /** From Label */
+            from_label: string;
+            /** Relationship Type */
+            relationship_type: string;
+            /** To Label */
+            to_label: string;
         };
         /** ReleaseCreate */
         ReleaseCreate: {
@@ -10439,6 +10547,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SchemaDiff"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_draft_shape_api_graph_schema_drafts__draft_id__shape_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftShapeView"];
                 };
             };
             /** @description Validation Error */

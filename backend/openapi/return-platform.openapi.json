@@ -8091,6 +8091,48 @@
         "title": "DraftCreate",
         "type": "object"
       },
+      "DraftShapeView": {
+        "additionalProperties": false,
+        "description": "The schema itself -- what a canvas draws.\n\n**Typed here, not in the domain.** `GraphSchemaShape` is deliberately plain\n`Mapping[str, Any]`: it is the *result* of applying typed mutation commands,\nnever an editing surface, and its own docstring says so. Typing it at the\ndomain would add a second place every command has to satisfy. Typing it at\nthe boundary gives the contract real field names without touching that\ndecision.",
+        "properties": {
+          "entities": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EntityShapeView"
+            },
+            "title": "Entities",
+            "type": "object"
+          },
+          "graph_constraints": {
+            "items": {
+              "$ref": "#/components/schemas/GraphConstraintShapeView"
+            },
+            "title": "Graph Constraints",
+            "type": "array"
+          },
+          "graph_indexes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphIndexShapeView"
+            },
+            "title": "Graph Indexes",
+            "type": "array"
+          },
+          "relationships": {
+            "items": {
+              "$ref": "#/components/schemas/RelationshipShapeView"
+            },
+            "title": "Relationships",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entities",
+          "relationships",
+          "graph_indexes",
+          "graph_constraints"
+        ],
+        "title": "DraftShapeView",
+        "type": "object"
+      },
       "DraftStatus": {
         "enum": [
           "DRAFT",
@@ -8153,6 +8195,51 @@
           "relationship_count"
         ],
         "title": "DraftView",
+        "type": "object"
+      },
+      "EntityShapeView": {
+        "additionalProperties": false,
+        "properties": {
+          "identifier_properties": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Identifier Properties",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "ownership": {
+            "title": "Ownership",
+            "type": "string"
+          },
+          "properties": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PropertyShapeView"
+            },
+            "title": "Properties",
+            "type": "object"
+          },
+          "source_dataset": {
+            "title": "Source Dataset",
+            "type": "string"
+          },
+          "sync_mode": {
+            "title": "Sync Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "source_dataset",
+          "properties",
+          "identifier_properties",
+          "ownership",
+          "sync_mode"
+        ],
+        "title": "EntityShapeView",
         "type": "object"
       },
       "EvidenceReference": {
@@ -8792,6 +8879,35 @@
         "title": "GovernanceSummary",
         "type": "object"
       },
+      "GraphConstraintShapeView": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          },
+          "unique": {
+            "title": "Unique",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "label",
+          "property_name",
+          "unique",
+          "required"
+        ],
+        "title": "GraphConstraintShapeView",
+        "type": "object"
+      },
       "GraphExpansionLimit": {
         "additionalProperties": false,
         "description": "Metadata about graph expansion limits.",
@@ -8820,6 +8936,28 @@
           "expansionLimit"
         ],
         "title": "GraphExpansionLimit",
+        "type": "object"
+      },
+      "GraphIndexShapeView": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "properties": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Properties",
+            "type": "array"
+          }
+        },
+        "required": [
+          "label",
+          "properties"
+        ],
+        "title": "GraphIndexShapeView",
         "type": "object"
       },
       "GraphNode": {
@@ -11183,6 +11321,30 @@
         "title": "PromoteReleasePayload",
         "type": "object"
       },
+      "PropertyShapeView": {
+        "additionalProperties": false,
+        "properties": {
+          "source_field": {
+            "title": "Source Field",
+            "type": "string"
+          },
+          "transformation": {
+            "title": "Transformation",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "source_field",
+          "transformation"
+        ],
+        "title": "PropertyShapeView",
+        "type": "object"
+      },
       "PropertyType": {
         "enum": [
           "STRING",
@@ -11366,6 +11528,35 @@
           "data"
         ],
         "title": "RecordPayload",
+        "type": "object"
+      },
+      "RelationshipShapeView": {
+        "additionalProperties": false,
+        "properties": {
+          "cardinality": {
+            "title": "Cardinality",
+            "type": "string"
+          },
+          "from_label": {
+            "title": "From Label",
+            "type": "string"
+          },
+          "relationship_type": {
+            "title": "Relationship Type",
+            "type": "string"
+          },
+          "to_label": {
+            "title": "To Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "relationship_type",
+          "from_label",
+          "to_label",
+          "cardinality"
+        ],
+        "title": "RelationshipShapeView",
         "type": "object"
       },
       "ReleaseCreate": {
@@ -18008,6 +18199,49 @@
           }
         },
         "summary": "Get Revision Diff",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-schema/drafts/{draft_id}/shape": {
+      "get": {
+        "description": "The draft's entities and relationships.\n\n**Separate from `GET /drafts/{id}` on purpose.** That view carries\n`entity_count` and `relationship_count`, which are O(1) and are what a list\nof drafts needs. The shape is unbounded -- a real source can produce a large\nschema -- and putting it inline would make every draft listing pay for a\npayload only the canvas reads.\n\nUntil this existed the analyzer serialised counts and nothing else, so a\nconsumer could learn that a draft had seven entities and never learn what\nthey were. E4's canvas is what that blocked.",
+        "operationId": "get_draft_shape_api_graph_schema_drafts__draft_id__shape_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftShapeView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Draft Shape",
         "tags": [
           "Graph Schema Analyzer"
         ]

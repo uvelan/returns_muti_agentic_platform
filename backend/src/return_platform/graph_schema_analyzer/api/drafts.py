@@ -8,7 +8,7 @@ typed mutations" is the parser.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -92,6 +92,69 @@ class DraftView(BaseModel):
     relationship_count: int
 
 
+class PropertyShapeView(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    type: str
+    source_field: str
+    transformation: str
+
+
+class EntityShapeView(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    label: str
+    source_dataset: str
+    properties: Mapping[str, PropertyShapeView]
+    identifier_properties: tuple[str, ...]
+    ownership: str
+    sync_mode: str
+
+
+class RelationshipShapeView(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    relationship_type: str
+    from_label: str
+    to_label: str
+    cardinality: str
+
+
+class GraphIndexShapeView(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    label: str
+    properties: tuple[str, ...]
+
+
+class GraphConstraintShapeView(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    label: str
+    property_name: str
+    unique: bool
+    required: bool
+
+
+class DraftShapeView(BaseModel):
+    """The schema itself -- what a canvas draws.
+
+    **Typed here, not in the domain.** `GraphSchemaShape` is deliberately plain
+    `Mapping[str, Any]`: it is the *result* of applying typed mutation commands,
+    never an editing surface, and its own docstring says so. Typing it at the
+    domain would add a second place every command has to satisfy. Typing it at
+    the boundary gives the contract real field names without touching that
+    decision.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    entities: Mapping[str, EntityShapeView]
+    relationships: tuple[RelationshipShapeView, ...]
+    graph_indexes: tuple[GraphIndexShapeView, ...]
+    graph_constraints: tuple[GraphConstraintShapeView, ...]
+
+
 class RevisionView(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -138,6 +201,22 @@ def _draft_view(draft: object) -> DraftView:
         entity_count=len(draft.shape.entities),
         relationship_count=len(draft.shape.relationships),
     )
+
+
+def _draft_shape_view(draft: object) -> DraftShapeView:
+    """Validate the plain shape into the published models.
+
+    Deliberately `model_validate` rather than field-by-field copying: the shape
+    is untyped `Mapping[str, Any]`, so a mutation command that started writing a
+    differently-named key would otherwise serialise as a silently missing field.
+    `extra="forbid"` on each view turns that into a 500 the first time it
+    happens, which is loud, findable, and far better than a canvas that quietly
+    stops drawing an attribute.
+    """
+    from return_platform.graph_schema_analyzer.domain.schema_draft import GraphSchemaDraft
+
+    assert isinstance(draft, GraphSchemaDraft)
+    return DraftShapeView.model_validate(draft.shape.model_dump(mode="json"))
 
 
 def _service(persistence: PersistencePort, target: GraphTargetPort) -> DraftService:
@@ -205,6 +284,27 @@ async def get_draft(draft_id: str, persistence: _Persistence) -> DraftView:
         return _draft_view(await persistence.load_draft(draft_id))
     except UnknownAnalysis as exc:
         raise _not_found("draft", draft_id) from exc
+
+
+@router.get("/drafts/{draft_id}/shape", response_model=DraftShapeView)
+async def get_draft_shape(draft_id: str, persistence: _Persistence) -> DraftShapeView:
+    """The draft's entities and relationships.
+
+    **Separate from `GET /drafts/{id}` on purpose.** That view carries
+    `entity_count` and `relationship_count`, which are O(1) and are what a list
+    of drafts needs. The shape is unbounded -- a real source can produce a large
+    schema -- and putting it inline would make every draft listing pay for a
+    payload only the canvas reads.
+
+    Until this existed the analyzer serialised counts and nothing else, so a
+    consumer could learn that a draft had seven entities and never learn what
+    they were. E4's canvas is what that blocked.
+    """
+    try:
+        draft = await persistence.load_draft(draft_id)
+    except UnknownAnalysis as exc:
+        raise _not_found("draft", draft_id) from exc
+    return _draft_shape_view(draft)
 
 
 @router.get("/drafts/{draft_id}/revisions", response_model=list[RevisionView])
