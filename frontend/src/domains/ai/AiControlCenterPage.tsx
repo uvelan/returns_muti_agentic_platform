@@ -11,12 +11,11 @@ import { useCapabilities } from "../../hooks/capabilityContext";
 /**
  * The AI Control Center (Phase 21).
  *
- * **Read-only, because the backend is.** `/api/ai` exposes five GET routes and
- * no mutations. The plan's interception actions -- Claim, Respond Manually,
- * Generate Candidate, Replay Same/Alternate Route, Release, Cancel -- have no
- * route to call: D2's operator API is still open. They are named as
- * unavailable rather than rendered as buttons that would 404, and the manual
- * response editor is not built for the same reason.
+ * **Respond Manually now works.** D2 landed two operator routes -- unseal a held
+ * request, and answer it -- so the manual response editor is real. Claim,
+ * Generate Candidate, Replay Same/Alternate Route and Release still have no
+ * route and are still named as unavailable rather than rendered as buttons that
+ * would 404.
  *
  * **Never expose hidden chain-of-thought.** Nothing here renders model
  * reasoning text, and there is none to render: an attempt carries a
@@ -44,8 +43,7 @@ const UNBACKED: Partial<Record<Tab, string>> = {
   Safety:
     "Per-request safety status appears under Requests. A dedicated safety surface (guard configuration, rejection history) has no endpoint on /api/ai.",
   Configuration:
-    "AI configuration is served by /api/config, which is read-only until the release-lifecycle decision in Wave D3 is settled.",
-  Audit: "No audit endpoint exists on /api/ai.",
+    "AI configuration is served by /api/config. Wave D3 settled the release-lifecycle question -- the graph lifecycle is authoritative -- but no mutation surface is built on it yet, so this stays read-only for a different reason than it used to.",
 };
 
 export function AiControlCenterPage() {
@@ -274,11 +272,15 @@ function Field({ label, value, mono }: { label: string; value: string; mono?: bo
 }
 
 function InterceptionsTab({ canRead }: { canRead: boolean }) {
+  const { can } = useCapabilities();
+  const canAct = can("ai.interception.act");
+  const [openId, setOpenId] = useState<string | null>(null);
   const interceptions = useQuery({
     queryKey: ["ai", "interceptions"],
     queryFn: aiControlCenterApi.listInterceptions,
     enabled: canRead,
   });
+  const onOpen = setOpenId;
 
   if (!canRead) {
     return (
@@ -294,7 +296,7 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
 
   const rows: readonly InterceptionRow[] = interceptions.data ?? [];
   const byStatus = (status: string) =>
-    rows.filter((row) => (row.status ?? "").toUpperCase() === status).length;
+    rows.filter((row) => row.status.toUpperCase() === status).length;
 
   return (
     <div className="flex flex-col gap-4">
@@ -312,36 +314,64 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
               <th className="p-2">Interception</th>
               <th className="p-2">Status</th>
               <th className="p-2">Task</th>
-              <th className="p-2">Claimed by</th>
-              <th className="p-2">Origin</th>
+              <th className="p-2">Expires</th>
+              <th className="p-2">Answered by</th>
+              <th className="p-2" />
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="p-3 text-slate-600">No interceptions.</td>
+                <td colSpan={6} className="p-3 text-slate-600">No interceptions.</td>
               </tr>
             ) : null}
-            {rows.map((row, index) => (
-              <tr key={row.interception_id ?? String(index)} className="border-t border-slate-200">
-                <td className="p-2 font-mono text-xs">{row.interception_id ?? "-"}</td>
-                <td className="p-2">{row.status ?? "-"}</td>
-                <td className="p-2">{row.task_id ?? "-"}</td>
-                <td className="p-2">{row.claimed_by ?? "-"}</td>
-                {/* A human answer must never read as a model's. The backend
-                    records MANUAL / manual-human-v1; this shows it verbatim. */}
-                <td className="p-2">{row.response_origin ?? "-"}</td>
+            {rows.map((row) => (
+              <tr key={row.interceptionId} className="border-t border-slate-200">
+                <td className="p-2 font-mono text-xs">{row.interceptionId}</td>
+                <td className="p-2">{row.status}</td>
+                <td className="p-2">{row.taskId}</td>
+                <td className="p-2">{row.expiresAt}</td>
+                {/* A human answer must never read as a model's. `answeredBy` is
+                    the operator's own subject, recorded by the backend. */}
+                <td className="p-2">{row.answeredBy ?? "-"}</td>
+                <td className="p-2">
+                  {row.status.toUpperCase() === "PENDING" && canAct ? (
+                    <button
+                      type="button"
+                      className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
+                      onClick={() => {
+                        onOpen(row.interceptionId);
+                      }}
+                    >
+                      Respond manually
+                    </button>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
+      {openId !== null ? (
+        <ManualResponder
+          interceptionId={openId}
+          onClose={() => {
+            setOpenId(null);
+          }}
+          onAnswered={() => {
+            setOpenId(null);
+            void interceptions.refetch();
+          }}
+        />
+      ) : null}
+
       <p className="text-sm text-slate-500">
-        Claim, Respond Manually, Generate Candidate, Replay, Release and Cancel are not
-        offered: <code>/api/ai</code> exposes no mutation route for interceptions. The
-        operator API is Wave D2&apos;s remaining work; until it lands, answering happens
-        through <code>scripts/manual_llm_responder.py</code>.
+        Claim, Generate Candidate, Replay and Release are not offered:{" "}
+        <code>/api/ai</code> has no route for them. Respond Manually is real and answers
+        through the operator API; answering transitions the interception, and the resume
+        bridge signals the waiting workflow separately, so the queue may show{" "}
+        <code>ANSWERED</code> a moment before the work resumes.
       </p>
     </div>
   );
@@ -430,5 +460,103 @@ function RoutesTab() {
         </table>
       </div>
     </div>
+  );
+}
+
+
+/**
+ * Unseal one held request and answer it.
+ *
+ * The prompt is fetched only when this opens, never with the queue: it is
+ * sealed at rest because it can carry rows read out of a customer's database,
+ * and decrypting every pending prompt to render a list would defeat that.
+ *
+ * Submitting is disabled while the request is still loading. Answering a prompt
+ * you have not seen is exactly the failure a manual path exists to prevent, and
+ * the backend cannot tell the difference.
+ */
+function ManualResponder({
+  interceptionId,
+  onClose,
+  onAnswered,
+}: {
+  interceptionId: string;
+  onClose: () => void;
+  onAnswered: () => void;
+}) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const request = useQuery({
+    queryKey: ["ai", "interception", interceptionId, "request"],
+    queryFn: () => aiControlCenterApi.readInterceptionRequest(interceptionId),
+  });
+
+  const submit = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await aiControlCenterApi.answerInterception(interceptionId, text);
+      onAnswered();
+    } catch (caught) {
+      // A 409 means somebody else answered first. Surfaced verbatim rather than
+      // retried: two operators answering one prompt is a real situation, and
+      // the second one needs to know their text was not recorded.
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-3 rounded-lg border border-slate-300 bg-white p-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold">
+          Respond to <code className="font-mono text-xs">{interceptionId}</code>
+        </h3>
+        <button type="button" className="text-xs text-slate-500 hover:underline" onClick={onClose}>
+          Close
+        </button>
+      </div>
+
+      {request.isLoading ? <p className="text-sm text-slate-500">Unsealing request...</p> : null}
+      {request.error ? (
+        <p className="text-sm text-red-700">{request.error.message}</p>
+      ) : null}
+      {request.data ? (
+        <pre className="max-h-64 overflow-auto rounded bg-slate-50 p-3 text-xs">
+          {JSON.stringify(request.data, null, 2)}
+        </pre>
+      ) : null}
+
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="font-medium">Your answer</span>
+        <textarea
+          className="min-h-24 rounded border border-slate-300 p-2 text-sm"
+          value={text}
+          onChange={(event) => {
+            setText(event.target.value);
+          }}
+          placeholder="Answer as the model would have, in the shape the task expects."
+        />
+      </label>
+
+      {error ? <p className="text-sm text-red-700">{error}</p> : null}
+
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-40"
+          disabled={submitting || text.trim().length === 0 || !request.data}
+          onClick={() => void submit()}
+        >
+          {submitting ? "Submitting..." : "Submit answer"}
+        </button>
+        <span className="text-xs text-slate-500">
+          Recorded as your own subject, never as a model response.
+        </span>
+      </div>
+    </section>
   );
 }

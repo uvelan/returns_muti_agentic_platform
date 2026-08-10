@@ -1,10 +1,9 @@
 /**
  * `/api/ai` -- the AI Control Center (Phase 21).
  *
- * Five read endpoints, no mutations. The plan's interception actions (Claim,
- * Respond Manually, Generate Candidate, Replay, Release, Cancel) have no
- * backend route on this surface yet -- D2's operator API is still open -- so
- * none is called from here.
+ * Five read endpoints plus the two operator routes D2 landed: unsealing a held
+ * request and answering it. Claim, Generate Candidate, Replay and Release still
+ * have no backend route and are still not called from here.
  *
  * Field names are camelCase because the backend contracts are
  * (`ai/gateway/models.py` sets `populate_by_name` on camelCase fields);
@@ -91,22 +90,37 @@ export type AIUsageSummaryView = {
 
 /**
  * The interceptions route is typed `list[dict[str, Any]]` on the backend, so
- * there is no contract to mirror. Only the fields the queue actually renders
- * are declared, all optional -- inventing a stricter shape than the backend
- * guarantees would break the screen the first time a field is absent.
+ * there is no generated contract to mirror -- these are transcribed from the
+ * handler by hand.
+ *
+ * **They were transcribed in snake_case and the backend emits camelCase.** Every
+ * field but `status` therefore rendered as "-", and nothing failed: the fields
+ * were all optional, so a total mismatch looked exactly like an empty queue.
+ * Optionality was chosen so an absent field could not break the screen, and it
+ * hid the mismatch instead. They are required now, all six, so the next
+ * divergence is a type error rather than a blank column.
  */
 export type InterceptionRow = {
-  readonly interception_id?: string;
-  readonly status?: string;
-  readonly task_id?: string;
-  readonly agent_id?: string;
-  readonly created_at?: string;
-  readonly claimed_by?: string;
-  readonly response_origin?: string;
+  readonly interceptionId: string;
+  readonly taskId: string;
+  readonly status: string;
+  readonly createdAt: string;
+  readonly expiresAt: string;
+  readonly answeredBy: string | null;
 };
 
-async function unwrap<T>(path: string): Promise<T> {
-  const response = await apiClient<T>(path);
+/** The unsealed prompt. Shape belongs to whichever task raised the request. */
+export type InterceptionRequest = Readonly<Record<string, unknown>>;
+
+export type InterceptionAnswerResult = {
+  readonly interceptionId: string;
+  readonly status: string;
+  readonly answeredBy: string | null;
+  readonly answeredAt: string | null;
+};
+
+async function unwrap<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await apiClient<T>(path, init);
   if (response.data === undefined || response.data === null) {
     throw new Error(`No data returned from ${path}.`);
   }
@@ -119,4 +133,28 @@ export const aiControlCenterApi = {
   listAttempts: () => unwrap<AIUsageAttemptView[]>("/api/ai/metrics"),
   getSummary: () => unwrap<AIUsageSummaryView>("/api/ai/metrics/summary"),
   listInterceptions: () => unwrap<InterceptionRow[]>("/api/ai/interceptions"),
+
+  /**
+   * The held prompt, unsealed. A separate call from the queue on purpose: it is
+   * sealed at rest because it can carry customer rows, and decrypting every
+   * pending prompt to render a list would defeat that. Needs
+   * `ai.interception.act`, not merely `.read`.
+   */
+  readInterceptionRequest: (interceptionId: string) =>
+    unwrap<InterceptionRequest>(
+      `/api/ai/interceptions/${encodeURIComponent(interceptionId)}/request`,
+    ),
+
+  answerInterception: (interceptionId: string, responseText: string) =>
+    unwrap<InterceptionAnswerResult>(
+      `/api/ai/interceptions/${encodeURIComponent(interceptionId)}/answer`,
+      {
+        method: "POST",
+        // `createHeaders` sets Accept but not Content-Type, so every JSON POST
+        // in this codebase declares its own. Omitting it makes FastAPI reject
+        // the body as a missing field rather than as a bad content type.
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ responseText }),
+      },
+    ),
 };
