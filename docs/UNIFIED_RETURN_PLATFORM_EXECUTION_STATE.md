@@ -1,12 +1,13 @@
 # Execution state
 
 Branch: `refactor/unified-return-platform`
-Last pushed green commit: `10a107b` (D3 — canonical sources and audit reads)
+Last pushed green commit: `1df6133` (E5 — Respond Manually wired to D2's operator API)
 Slice: **Wave D is closed.** Every item across D1–D4 is done bar one parked by the owner
 (`/support` and `/conversation` canonical reads)
-Status: **Waves C, D and E are complete.** D1's untested claim, D2's wiring and operator
-surface, D3's lifecycle decision and remaining reads, and D4's write consolidation are all
-closed — see "Wave D: what remains" below for the one parked item and why. **Wave E is complete** (all five phases, read-only — see the
+Status: **Waves C and D are complete.** **Wave E is built but still mostly read-only** —
+its screens were finished before any mutation surface existed. Two of its four blockers are
+now gone and E5's manual-response flow is wired; the rest waits on canonical writes. See
+the Wave E sections. **Wave E is complete** (all five phases, read-only — see the
 Wave E section). Wave F is blocked on E's cutover, not on backend work.
 
 Suite: **2057 passed, 3 skipped, 0 failed** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
@@ -2446,12 +2447,62 @@ Open, and independent of E: see **"Wave D: what remains"** above, which is the s
 maintained list. This paragraph used to hold a second copy; two lists of the same open items
 drift, and the copy that drifts is always the one nobody re-reads.
 
+## Closing what D2 unblocked in E5 — Respond Manually
+
+Status: DONE (`1df6133`). The first Wave E screen with a working mutation.
+
+D2's operator API landed two routes — unseal a held request, answer it — so the AI Control
+Center's manual-response editor is real rather than named-as-unavailable. Claim, Generate
+Candidate, Replay and Release still have no route and are still declared rather than
+rendered as buttons that would 404.
+
+### A live bug the wiring exposed
+
+`InterceptionRow` was transcribed in **snake_case**; the endpoint emits **camelCase**. Every
+field but `status` rendered as `-`.
+
+Nothing failed, and the reason is worth keeping: the fields were all optional, a choice made
+so an absent field could not break the screen. It hid a *total* mismatch instead — a fully
+broken queue looked identical to an empty one. They are required now, so the next divergence
+is a type error rather than a blank column. Two columns went with the fix: `claimed_by` and
+`response_origin` do not exist on this endpoint; `expiresAt` and `answeredBy` do.
+
+Verified by reverting the fixture to snake_case and watching five tests go red.
+
+### What the screen enforces
+
+The prompt is fetched only when a responder opens, never with the queue — it is sealed at
+rest because it can carry rows read out of a customer's database. The test asserts this by
+*counting calls*, not by inspecting markup: "did not render it" and "did not fetch it" are
+different claims and only the second matters for a sealed payload.
+
+Submit stays disabled until the prompt has loaded. Answering a prompt you have not seen is
+the failure a manual path exists to prevent, and the backend cannot tell the difference. A
+409 — somebody answered first — is surfaced verbatim rather than retried, because the second
+operator needs to know their text was not recorded.
+
+### A stale reason corrected
+
+The Configuration tab said it was read-only "until the release-lifecycle decision in Wave D3
+is settled". That decision *is* settled. It stays read-only for a different reason now — no
+mutation surface is built on `/api/config` — and the tab says so. A stale explanation is
+worse than none: it sends the next reader to solve a problem that is already solved.
+
+**Verification.** Seven tests. `tsc` clean, eslint clean on the touched files (one
+pre-existing error remains in `CopilotV2Page.tsx`, untouched). Frontend suite **88 passed
+across 27 files**. Staged by explicit path, per the convention this frontend adopted after
+an earlier `git add -A` swept in a concurrent session's work.
+
 ## Wave E / Phases 17–21 — the four-domain frontend
 
 Status: **all five phases built and pushed** (`df2434f`, `31b2500`, `060fcd6`, `a90f6c6`,
 `d258f0d`, plus the E1 backend in `f3112b6`). Every domain route in the shell resolves to a
-real screen. **Every screen is read-only**, and that is the finding below, not a scoping
-choice.
+real screen.
+
+**Every screen was read-only, and that was the finding below rather than a scoping choice.**
+Two of the four blockers have since closed, and E5's manual-response flow is wired against
+them (`1df6133`) — see "Closing what D2 unblocked in E5". The rest still waits on canonical
+mutations.
 
 ### Correction to "Nothing to Wave E. E2–E5 can be built against the published contract"
 
@@ -2574,11 +2625,19 @@ reason. Two earlier Wave D worktrees were abandoned uncommitted and came within 
 
 ### What unblocks the rest of Wave E, in dependency order
 
-1. **The D3 lifecycle decision** — which release lifecycle is authoritative. Highest blast
-   radius: it changes behaviour on every configuration promotion.
-2. **D2's operator API** — interception claim/answer/replay/release/cancel.
-3. **D4's write consolidation** — reconcile the nine return routers, then publish writes.
+1. ~~**The D3 lifecycle decision**~~ — **settled** (`870e066`). The graph lifecycle is
+   authoritative. This unblocked nothing on its own: E3 still needs promotion *endpoints*,
+   which do not exist.
+2. ~~**D2's operator API**~~ — **partly built** (`04e5ec3`). Unseal and answer exist and E5
+   uses them. Claim, Generate Candidate, Replay and Release still have no route.
+3. **D4's write consolidation** — the duplicates are reconciled (`5fdc17f`, `bc1baf7`,
+   `f7244fd`, `7c700e3`), so the reason for withholding writes is gone. Publishing them
+   means taking down `test_the_canonical_surface_is_read_only_while_duplicates_are_unresolved`,
+   which was added precisely to stop a write surface appearing before that work was done.
+   **This is the largest remaining step in the programme** and blocks E2 entirely and E3
+   substantially.
 4. **Serialize the analyzer draft shape** — one backend change, unblocks E4's canvas.
+   Untouched, and not re-verified as still being one change.
 
 ## Wave D2 / Phase 14, slice 3 — the resume bridge (at-least-once)
 
