@@ -42,7 +42,6 @@ FORBIDDEN_PREFIXES = (
     "return_platform.graph",
     "return_platform.operations",
     "return_platform.source_connectors",
-    "return_platform.v2",
     "return_platform.validation",
     "return_platform.workflows",
     "return_platform.workers",
