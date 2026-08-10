@@ -1,0 +1,434 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+
+import {
+  aiControlCenterApi,
+  type AIUsageAttemptView,
+  type InterceptionRow,
+} from "../../api/aiControlCenter";
+import { useCapabilities } from "../../hooks/capabilityContext";
+
+/**
+ * The AI Control Center (Phase 21).
+ *
+ * **Read-only, because the backend is.** `/api/ai` exposes five GET routes and
+ * no mutations. The plan's interception actions -- Claim, Respond Manually,
+ * Generate Candidate, Replay Same/Alternate Route, Release, Cancel -- have no
+ * route to call: D2's operator API is still open. They are named as
+ * unavailable rather than rendered as buttons that would 404, and the manual
+ * response editor is not built for the same reason.
+ *
+ * **Never expose hidden chain-of-thought.** Nothing here renders model
+ * reasoning text, and there is none to render: an attempt carries a
+ * `requestDigest`/`responseDigest` rather than bodies, which is the design
+ * working as intended. Trace, task, provider, model, timing, tokens, fallback
+ * and safety status are shown -- structured observability, not private
+ * reasoning.
+ */
+
+const TABS = [
+  "Overview",
+  "Requests",
+  "Interceptions",
+  "Metrics",
+  "Providers & Models",
+  "Routes & Tasks",
+  "Safety",
+  "Configuration",
+  "Audit",
+] as const;
+type Tab = (typeof TABS)[number];
+
+/** Tabs with no backing route on `/api/ai`. Named, not silently dropped. */
+const UNBACKED: Partial<Record<Tab, string>> = {
+  Safety:
+    "Per-request safety status appears under Requests. A dedicated safety surface (guard configuration, rejection history) has no endpoint on /api/ai.",
+  Configuration:
+    "AI configuration is served by /api/config, which is read-only until the release-lifecycle decision in Wave D3 is settled.",
+  Audit: "No audit endpoint exists on /api/ai.",
+};
+
+export function AiControlCenterPage() {
+  const { can } = useCapabilities();
+  const [tab, setTab] = useState<Tab>("Overview");
+
+  if (!can("ai.request.read")) {
+    return <p className="text-sm text-slate-600">You do not have access to the AI Control Center.</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <header>
+        <h1 className="text-2xl font-semibold text-slate-900">AI Control Center</h1>
+        <p className="mt-1 text-sm text-slate-600">
+          Requests, interceptions, metrics, routes, and safety.
+        </p>
+      </header>
+
+      <div role="tablist" aria-label="AI Control Center" className="flex flex-wrap gap-1 border-b border-slate-200">
+        {TABS.map((name) => (
+          <button
+            key={name}
+            role="tab"
+            type="button"
+            aria-selected={tab === name}
+            onClick={() => { setTab(name); }}
+            className={[
+              "px-3 py-2 text-sm font-medium transition",
+              tab === name
+                ? "border-b-2 border-slate-900 text-slate-900"
+                : "text-slate-500 hover:text-slate-800",
+            ].join(" ")}
+          >
+            {name}
+          </button>
+        ))}
+      </div>
+
+      <TabBody tab={tab} canReadInterceptions={can("ai.interception.read")} />
+    </div>
+  );
+}
+
+function TabBody({ tab, canReadInterceptions }: { tab: Tab; canReadInterceptions: boolean }) {
+  const unbacked = UNBACKED[tab];
+  if (unbacked) return <p className="text-sm text-slate-500">{unbacked}</p>;
+
+  switch (tab) {
+    case "Overview":
+    case "Metrics":
+      return <MetricsTab />;
+    case "Requests":
+      return <RequestsTab />;
+    case "Interceptions":
+      return <InterceptionsTab canRead={canReadInterceptions} />;
+    case "Providers & Models":
+    case "Routes & Tasks":
+      return <RoutesTab />;
+    default:
+      return null;
+  }
+}
+
+function Stat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-slate-900">{value}</p>
+    </div>
+  );
+}
+
+function MetricsTab() {
+  const summary = useQuery({
+    queryKey: ["ai", "metrics", "summary"],
+    queryFn: aiControlCenterApi.getSummary,
+  });
+
+  if (summary.isLoading) return <p className="text-sm text-slate-500">Loading...</p>;
+  if (summary.error) return <p className="text-sm text-red-700">{summary.error.message}</p>;
+  if (!summary.data) return null;
+
+  const s = summary.data;
+  const successRate = s.attempts > 0 ? Math.round((s.successes / s.attempts) * 100) : 0;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+        <Stat label="Attempts" value={s.attempts} />
+        <Stat label="Success rate" value={`${String(successRate)}%`} />
+        <Stat label="Failures" value={s.failures} />
+        <Stat label="Fallbacks" value={s.fallbacks} />
+        <Stat label="Blocked by safety" value={s.blockedBySafety} />
+        <Stat label="Total tokens" value={s.totalTokens} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Breakdown title="By provider" data={s.byProvider} />
+        <Breakdown title="By model" data={s.byModel} />
+        <Breakdown title="By task" data={s.byTask} />
+        <Breakdown title="By tier" data={s.byTier} />
+      </div>
+
+      <p className="text-xs text-slate-500">
+        Estimated cost: {(s.estimatedCostMicrousd / 1_000_000).toFixed(4)} USD.
+      </p>
+    </div>
+  );
+}
+
+function Breakdown({ title, data }: { title: string; data: Readonly<Record<string, number>> }) {
+  const rows = Object.entries(data).sort(([, a], [, b]) => b - a);
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-4">
+      <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+      {rows.length === 0 ? (
+        <p className="mt-2 text-sm text-slate-600">No data.</p>
+      ) : (
+        <ul className="mt-2 flex flex-col gap-1">
+          {rows.map(([key, count]) => (
+            <li key={key} className="flex justify-between text-sm">
+              <span className="truncate text-slate-700">{key}</span>
+              <span className="font-medium text-slate-900">{count}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function RequestsTab() {
+  const [selected, setSelected] = useState<AIUsageAttemptView | null>(null);
+  const attempts = useQuery({
+    queryKey: ["ai", "metrics", "attempts"],
+    queryFn: aiControlCenterApi.listAttempts,
+  });
+
+  if (attempts.isLoading) return <p className="text-sm text-slate-500">Loading...</p>;
+  if (attempts.error) return <p className="text-sm text-red-700">{attempts.error.message}</p>;
+
+  const rows = attempts.data ?? [];
+
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_22rem]">
+      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <table className="w-full text-left text-sm">
+          <thead className="text-xs uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="p-2">Task</th>
+              <th className="p-2">Provider</th>
+              <th className="p-2">Model</th>
+              <th className="p-2">Status</th>
+              <th className="p-2">Latency</th>
+              <th className="p-2">Tokens</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="p-3 text-slate-600">No requests recorded.</td>
+              </tr>
+            ) : null}
+            {rows.map((attempt) => (
+              <tr
+                key={attempt.id}
+                onClick={() => { setSelected(attempt); }}
+                className="cursor-pointer border-t border-slate-200 hover:bg-slate-50"
+              >
+                <td className="p-2">{attempt.taskId}</td>
+                <td className="p-2">{attempt.provider ?? "-"}</td>
+                <td className="p-2">{attempt.model ?? "-"}</td>
+                <td className="p-2">
+                  {attempt.status}
+                  {attempt.fallbackUsed ? (
+                    <span className="ml-1 text-xs text-amber-700">fallback</span>
+                  ) : null}
+                </td>
+                <td className="p-2">{attempt.latencyMs} ms</td>
+                <td className="p-2">{attempt.totalTokens}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <aside className="rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-slate-900">Request inspection</h2>
+        {selected === null ? (
+          <p className="mt-2 text-sm text-slate-600">Select a request.</p>
+        ) : (
+          <dl className="mt-3 flex flex-col gap-2 text-sm">
+            <Field label="Trace" value={selected.traceId} mono />
+            <Field label="Attempt" value={String(selected.attemptNumber)} />
+            <Field label="Selection reason" value={selected.selectionReason} />
+            <Field label="Configured tier" value={selected.configuredTier} />
+            <Field label="Selected tier" value={selected.selectedTier ?? "-"} />
+            <Field label="Route" value={selected.routeId ?? "-"} mono />
+            <Field label="Safety" value={selected.safetyStatus} />
+            <Field label="Rate-limit wait" value={`${String(selected.rateLimitWaitMs)} ms`} />
+            <Field label="Input / output tokens" value={`${String(selected.inputTokens)} / ${String(selected.outputTokens)}`} />
+            <Field label="Error" value={selected.errorCode ?? "-"} />
+            <Field label="Request digest" value={selected.requestDigest} mono />
+            <Field label="Response digest" value={selected.responseDigest ?? "-"} mono />
+            <p className="mt-2 text-xs text-slate-500">
+              Digests, not bodies. Prompt and response payloads are deliberately not
+              served by this surface.
+            </p>
+          </dl>
+        )}
+      </aside>
+    </div>
+  );
+}
+
+function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div>
+      <dt className="text-xs uppercase tracking-wide text-slate-500">{label}</dt>
+      <dd className={mono ? "break-all font-mono text-xs text-slate-800" : "text-slate-800"}>
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function InterceptionsTab({ canRead }: { canRead: boolean }) {
+  const interceptions = useQuery({
+    queryKey: ["ai", "interceptions"],
+    queryFn: aiControlCenterApi.listInterceptions,
+    enabled: canRead,
+  });
+
+  if (!canRead) {
+    return (
+      <p className="text-sm text-slate-600">
+        Viewing interceptions requires ai.interception.read.
+      </p>
+    );
+  }
+  if (interceptions.isLoading) return <p className="text-sm text-slate-500">Loading...</p>;
+  if (interceptions.error) {
+    return <p className="text-sm text-red-700">{interceptions.error.message}</p>;
+  }
+
+  const rows: readonly InterceptionRow[] = interceptions.data ?? [];
+  const byStatus = (status: string) =>
+    rows.filter((row) => (row.status ?? "").toUpperCase() === status).length;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Stat label="Pending" value={byStatus("PENDING")} />
+        <Stat label="Claimed" value={byStatus("CLAIMED")} />
+        <Stat label="Responded" value={byStatus("RESPONDED")} />
+        <Stat label="Expired" value={byStatus("EXPIRED")} />
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <table className="w-full text-left text-sm">
+          <thead className="text-xs uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="p-2">Interception</th>
+              <th className="p-2">Status</th>
+              <th className="p-2">Task</th>
+              <th className="p-2">Claimed by</th>
+              <th className="p-2">Origin</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="p-3 text-slate-600">No interceptions.</td>
+              </tr>
+            ) : null}
+            {rows.map((row, index) => (
+              <tr key={row.interception_id ?? String(index)} className="border-t border-slate-200">
+                <td className="p-2 font-mono text-xs">{row.interception_id ?? "-"}</td>
+                <td className="p-2">{row.status ?? "-"}</td>
+                <td className="p-2">{row.task_id ?? "-"}</td>
+                <td className="p-2">{row.claimed_by ?? "-"}</td>
+                {/* A human answer must never read as a model's. The backend
+                    records MANUAL / manual-human-v1; this shows it verbatim. */}
+                <td className="p-2">{row.response_origin ?? "-"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-sm text-slate-500">
+        Claim, Respond Manually, Generate Candidate, Replay, Release and Cancel are not
+        offered: <code>/api/ai</code> exposes no mutation route for interceptions. The
+        operator API is Wave D2&apos;s remaining work; until it lands, answering happens
+        through <code>scripts/manual_llm_responder.py</code>.
+      </p>
+    </div>
+  );
+}
+
+function RoutesTab() {
+  const routes = useQuery({ queryKey: ["ai", "routes"], queryFn: aiControlCenterApi.listRoutes });
+  const tasks = useQuery({ queryKey: ["ai", "tasks"], queryFn: aiControlCenterApi.listTasks });
+
+  if (routes.isLoading || tasks.isLoading) {
+    return <p className="text-sm text-slate-500">Loading...</p>;
+  }
+  const error = routes.error ?? tasks.error;
+  if (error) return <p className="text-sm text-red-700">{error.message}</p>;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <table className="w-full text-left text-sm">
+          <thead className="text-xs uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="p-2">Route</th>
+              <th className="p-2">Provider</th>
+              <th className="p-2">Model</th>
+              <th className="p-2">Tier</th>
+              <th className="p-2">Circuit</th>
+              <th className="p-2">Active</th>
+              <th className="p-2">Req/min</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(routes.data ?? []).map((route) => (
+              <tr key={route.routeId} className="border-t border-slate-200">
+                <td className="p-2 font-mono text-xs">{route.routeId}</td>
+                <td className="p-2">{route.provider}</td>
+                <td className="p-2">{route.model}</td>
+                <td className="p-2">{route.tier}</td>
+                <td className="p-2">
+                  <span
+                    className={
+                      route.circuitState === "CLOSED"
+                        ? "text-emerald-700"
+                        : route.circuitState === "OPEN"
+                          ? "text-red-700"
+                          : "text-amber-700"
+                    }
+                  >
+                    {route.circuitState}
+                  </span>
+                  {!route.configured ? (
+                    <span className="ml-1 text-xs text-slate-500">unconfigured</span>
+                  ) : null}
+                </td>
+                <td className="p-2">{route.activeRequests}</td>
+                <td className="p-2">{route.requestsThisMinute}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <table className="w-full text-left text-sm">
+          <thead className="text-xs uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="p-2">Task</th>
+              <th className="p-2">Tier</th>
+              <th className="p-2">Prompt version</th>
+              <th className="p-2">Fallback</th>
+              <th className="p-2">Escalation</th>
+              <th className="p-2">Allowed providers</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(tasks.data ?? []).map((task) => (
+              <tr key={task.taskId} className="border-t border-slate-200">
+                <td className="p-2 font-mono text-xs">{task.taskId}</td>
+                <td className="p-2">{task.tier}</td>
+                <td className="p-2">{task.promptVersion}</td>
+                <td className="p-2">{task.fallbackStrategy}</td>
+                <td className="p-2">{task.allowTierEscalation ? "yes" : "no"}</td>
+                <td className="p-2">{task.allowedProviders.join(", ")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

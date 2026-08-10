@@ -14,6 +14,9 @@ const DOMAIN_SCREENS: Partial<Record<string, ComponentType>> = {
   "/graph-schema": lazy(() =>
     import("./graph-schema/GraphSchemaPage").then((m) => ({ default: m.GraphSchemaPage })),
   ),
+  "/ai": lazy(() =>
+    import("./ai/AiControlCenterPage").then((m) => ({ default: m.AiControlCenterPage })),
+  ),
 };
 
 /**
