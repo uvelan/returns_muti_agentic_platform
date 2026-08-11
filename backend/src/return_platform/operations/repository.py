@@ -17,6 +17,9 @@ from return_platform.operations.models import (
     AIGatewaySettingsView,
     AIRequestStatus,
     AITraceView,
+    CaseStatus,
+    FactAcquisition,
+    FactChannel,
     ReturnCreateRequest,
     ReturnSessionView,
     ReturnStatus,
@@ -46,6 +49,9 @@ AI_RATE_LIMITS: Final = "ai_gateway_rate_limits"
 AI_ATTEMPTS: Final = "ai_gateway_attempt_metrics"
 WORKER_HEARTBEATS: Final = "worker_heartbeats"
 SEED_METADATA: Final = "seed_metadata"
+CASES: Final = "cases"
+CASE_FACTS: Final = "case_facts"
+RETURN_RECORDS: Final = "return_records"
 RETURN_ITEMS: Final = "operational_return_items"
 HANDLING_UNITS: Final = "handling_units"
 PICKUP_SITES: Final = "pickup_sites"
@@ -104,6 +110,9 @@ class OperationalRepository:
         self.ai_attempts = self._db[AI_ATTEMPTS]
         self.worker_heartbeats = self._db[WORKER_HEARTBEATS]
         self.seed_metadata = self._db[SEED_METADATA]
+        self.cases = self._db[CASES]
+        self.case_facts = self._db[CASE_FACTS]
+        self.return_records = self._db[RETURN_RECORDS]
         self.return_items = self._db[RETURN_ITEMS]
         self.handling_units = self._db[HANDLING_UNITS]
         self.pickup_sites = self._db[PICKUP_SITES]
@@ -159,7 +168,61 @@ class OperationalRepository:
         )
         await self.worker_heartbeats.create_index("expiresAt", expireAfterSeconds=0)
         await self.ai_rate_limits.create_index("expiresAt", expireAfterSeconds=0)
+        await self.cases.create_index("caseId", unique=True)
+        # The associate's case list: equality on the two owner fields, then the
+        # sort field, so it is served from the index rather than sorted in memory.
+        await self.cases.create_index(
+            [("tenantId", ASCENDING), ("principalId", ASCENDING), ("updatedAt", DESCENDING)]
+        )
+        # Both channel pointers are lookup keys, not just stored values: the
+        # whole point of the case is that a support outcome can find its way
+        # back to the associate's conversation without a client-side join.
+        #
+        # Partial rather than sparse on all three. A case is created before it
+        # has a work item or a workflow, and those fields are written as
+        # explicit nulls -- which `sparse` does *not* skip. Sparse omits a
+        # document only when the field is absent, so a second case with a null
+        # pointer collides with the first. The partial filter indexes only
+        # documents where the pointer is really set, which is the rule intended:
+        # one conversation, one work item and one workflow each map to at most
+        # one case.
+        for pointer in ("channelAConversationId", "channelBWorkItemId", "workflowId"):
+            await self.cases.create_index(
+                pointer,
+                unique=True,
+                partialFilterExpression={pointer: {"$type": "string"}},
+            )
+        await self.cases.create_index("sessionId", sparse=True)
+        await self.case_facts.create_index("factId", unique=True)
+        # Serves both the projection (newest per name) and the audit read
+        # (everything about one case, in order).
+        await self.case_facts.create_index(
+            [("caseId", ASCENDING), ("factName", ASCENDING), ("recordedAt", DESCENDING)]
+        )
+        await self.return_records.create_index("returnRecordId", unique=True)
+        await self.return_records.create_index([("caseId", ASCENDING), ("createdAt", ASCENDING)])
+        # Partial, not sparse. A record exists from the moment the case decides
+        # to raise it and gets its RMA later from Support, so several records on
+        # one case legitimately sit with a null reference at once -- and a
+        # *compound* sparse index does not help, because it only omits a
+        # document when every indexed field is missing. `caseId` is always
+        # present, so the document is indexed with a null reference and the
+        # second null collides. The partial filter indexes only records that
+        # actually have an RMA, which is the rule intended: one RMA cannot be
+        # recorded twice against one case.
+        await self.return_records.create_index(
+            [("caseId", ASCENDING), ("returnReference", ASCENDING)],
+            unique=True,
+            partialFilterExpression={"returnReference": {"$type": "string"}},
+        )
         await self.return_items.create_index("returnItemId", unique=True)
+        # Items gained a case and a return-record association: one RMA covers N
+        # items, so the item must say which RMA it belongs to. Sparse while
+        # existing session-scoped items predate both.
+        await self.return_items.create_index(
+            [("caseId", ASCENDING), ("orderLineId", ASCENDING)], sparse=True
+        )
+        await self.return_items.create_index("returnRecordId", sparse=True)
         await self.return_items.create_index(
             [("sessionId", ASCENDING), ("orderLineId", ASCENDING)], unique=True
         )
@@ -600,6 +663,221 @@ class OperationalRepository:
             if exists is None:
                 raise KeyError(return_item_id)
             raise ConcurrencyConflictError(return_item_id)
+        return cast(dict[str, Any], document)
+
+    # ------------------------------------------------------------------
+    # Case aggregate
+    # ------------------------------------------------------------------
+
+    async def create_case(
+        self,
+        *,
+        case_id: str,
+        tenant_id: str,
+        principal_id: str,
+        branch_id: str | None = None,
+        channel_a_conversation_id: str | None = None,
+        confirmed_order_reference: str | None = None,
+        configuration_release_id: str | None = None,
+        graph_generation_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a case, or return the existing one for the same conversation.
+
+        Idempotent on `channelAConversationId` rather than on `caseId`: the
+        caller is a turn that may be retried by Temporal, and two attempts of
+        the same confirmation must produce one case. The unique sparse index is
+        what actually enforces it -- this catches the duplicate and reads back
+        the winner rather than racing a find-then-insert.
+        """
+        now = utc_now()
+        document = {
+            "caseId": case_id,
+            "tenantId": tenant_id,
+            "principalId": principal_id,
+            "branchId": branch_id,
+            "status": CaseStatus.GATHERING_INFO.value,
+            "channelAConversationId": channel_a_conversation_id,
+            "channelBWorkItemId": None,
+            "confirmedOrderReference": confirmed_order_reference,
+            "sessionId": None,
+            "workflowId": None,
+            "configurationReleaseId": configuration_release_id,
+            "graphGenerationId": graph_generation_id,
+            "version": 0,
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        try:
+            await self.cases.insert_one(dict(document))
+        except DuplicateKeyError:
+            existing = None
+            if channel_a_conversation_id is not None:
+                existing = await self.cases.find_one(
+                    {"channelAConversationId": channel_a_conversation_id}
+                )
+            if existing is None:
+                existing = await self.cases.find_one({"caseId": case_id})
+            if existing is None:  # pragma: no cover - duplicate on neither key
+                raise
+            return cast(dict[str, Any], existing)
+        return document
+
+    async def get_case(self, case_id: str) -> dict[str, Any] | None:
+        document = await self.cases.find_one({"caseId": case_id})
+        return cast(dict[str, Any], document) if document is not None else None
+
+    async def get_case_by_conversation(self, conversation_id: str) -> dict[str, Any] | None:
+        """Channel A -> case. What the copilot needs to show a return's state."""
+        document = await self.cases.find_one({"channelAConversationId": conversation_id})
+        return cast(dict[str, Any], document) if document is not None else None
+
+    async def get_case_by_work_item(self, work_item_id: str) -> dict[str, Any] | None:
+        """Channel B -> case. The other half of the link, and the one that makes
+        a support outcome reachable from the associate's conversation."""
+        document = await self.cases.find_one({"channelBWorkItemId": work_item_id})
+        return cast(dict[str, Any], document) if document is not None else None
+
+    async def list_cases_for_principal(
+        self, *, tenant_id: str, principal_id: str, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        cursor = (
+            self.cases.find({"tenantId": tenant_id, "principalId": principal_id})
+            .sort("updatedAt", DESCENDING)
+            .limit(limit)
+        )
+        return [cast(dict[str, Any], document) async for document in cursor]
+
+    async def update_case(
+        self, case_id: str, updates: dict[str, Any], *, expected_version: int
+    ) -> dict[str, Any]:
+        document = await self.cases.find_one_and_update(
+            {"caseId": case_id, "version": expected_version},
+            {"$set": {**updates, "updatedAt": utc_now()}, "$inc": {"version": 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if document is None:
+            if await self.cases.find_one({"caseId": case_id}, {"_id": 1}) is None:
+                raise KeyError(case_id)
+            raise ConcurrencyConflictError(case_id)
+        return cast(dict[str, Any], document)
+
+    async def append_case_fact(
+        self,
+        *,
+        fact_id: str,
+        case_id: str,
+        fact_name: str,
+        value: Any,
+        agent_id: str,
+        channel: FactChannel,
+        acquisition_method: FactAcquisition,
+        turn_id: str | None = None,
+        source_system: str | None = None,
+        source_path: str | None = None,
+        observed_at: datetime | None = None,
+        supersedes_fact_id: str | None = None,
+        correlation_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Record one observation. Never updates an existing one.
+
+        Insert-only by construction: Bay, Support, Fulfillment and Channel A all
+        write concurrently, and an update-in-place would make the last writer
+        win and drop what the others learned. Two writers here both succeed, and
+        `latest_case_facts` decides which is current.
+        """
+        now = utc_now()
+        document = {
+            "factId": fact_id,
+            "caseId": case_id,
+            "factName": fact_name,
+            "value": value,
+            "agentId": agent_id,
+            "channel": channel.value,
+            "turnId": turn_id,
+            "sourceSystem": source_system,
+            "sourcePath": source_path,
+            "acquisitionMethod": acquisition_method.value,
+            "observedAt": observed_at or now,
+            "recordedAt": now,
+            "supersedesFactId": supersedes_fact_id,
+            "correlationId": correlation_id,
+        }
+        await self.case_facts.insert_one(dict(document))
+        return document
+
+    async def list_case_facts(self, case_id: str) -> list[dict[str, Any]]:
+        """The whole log, oldest first. The audit read."""
+        cursor = self.case_facts.find({"caseId": case_id}).sort("recordedAt", ASCENDING)
+        return [cast(dict[str, Any], document) async for document in cursor]
+
+    async def latest_case_facts(self, case_id: str) -> dict[str, dict[str, Any]]:
+        """Current state, projected from the log: newest record per fact name.
+
+        A projection rather than a stored document, so adding a writer cannot
+        clobber a value it did not know about. Ties on `recordedAt` -- two
+        writers inside the same clock tick -- break on `factId`, which is
+        arbitrary but stable, so the projection is at least deterministic.
+        """
+        latest: dict[str, dict[str, Any]] = {}
+        for document in await self.list_case_facts(case_id):
+            name = str(document["factName"])
+            current = latest.get(name)
+            if current is None:
+                latest[name] = document
+                continue
+            if (document["recordedAt"], str(document["factId"])) >= (
+                current["recordedAt"],
+                str(current["factId"]),
+            ):
+                latest[name] = document
+        return latest
+
+    async def create_return_record(
+        self,
+        *,
+        return_record_id: str,
+        case_id: str,
+        return_reference: str | None = None,
+        status: str = "DRAFT",
+        source_system: str | None = None,
+    ) -> dict[str, Any]:
+        now = utc_now()
+        document = {
+            "returnRecordId": return_record_id,
+            "caseId": case_id,
+            "returnReference": return_reference,
+            "status": status,
+            "returnLocation": None,
+            "trackingReference": None,
+            "labelReference": None,
+            "shippingInstructionReference": None,
+            "sourceSystem": source_system,
+            "version": 0,
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        await self.return_records.insert_one(dict(document))
+        return document
+
+    async def list_return_records(self, case_id: str) -> list[dict[str, Any]]:
+        cursor = self.return_records.find({"caseId": case_id}).sort("createdAt", ASCENDING)
+        return [cast(dict[str, Any], document) async for document in cursor]
+
+    async def update_return_record(
+        self, return_record_id: str, updates: dict[str, Any], *, expected_version: int
+    ) -> dict[str, Any]:
+        document = await self.return_records.find_one_and_update(
+            {"returnRecordId": return_record_id, "version": expected_version},
+            {"$set": {**updates, "updatedAt": utc_now()}, "$inc": {"version": 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if document is None:
+            exists = await self.return_records.find_one(
+                {"returnRecordId": return_record_id}, {"_id": 1}
+            )
+            if exists is None:
+                raise KeyError(return_record_id)
+            raise ConcurrencyConflictError(return_record_id)
         return cast(dict[str, Any], document)
 
     async def list_handling_units(self, session_id: str) -> list[dict[str, Any]]:

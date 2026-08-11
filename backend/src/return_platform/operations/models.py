@@ -96,6 +96,132 @@ class ReturnCreateRequest(MutableContract):
         return normalized
 
 
+class CaseStatus(StrEnum):
+    """Where a return has got to, as an associate would describe it.
+
+    Deliberately not `ReturnStatus`, which is the *session's* execution status
+    (QUEUED, RUNNING, INTERCEPTION_PENDING). A case outlives any one execution
+    and can sit for days in a state no execution status can express -- the
+    associate is not waiting on a queue, they are waiting on Support.
+    """
+
+    GATHERING_INFO = "GATHERING_INFO"
+    AWAITING_BAY = "AWAITING_BAY"
+    AWAITING_SUPPORT = "AWAITING_SUPPORT"
+    RMA_RECEIVED = "RMA_RECEIVED"
+    IN_TRANSIT = "IN_TRANSIT"
+    CLOSED = "CLOSED"
+    CANCELLED = "CANCELLED"
+
+
+class FactChannel(StrEnum):
+    """Which conversation a fact arrived on, or that no conversation did.
+
+    `SYSTEM` covers facts derived from a source system or computed by an agent
+    without anyone being asked -- a graph lookup, a sync result, a policy
+    decision. Recording that as "channel A" would make provenance a lie.
+    """
+
+    CHANNEL_A = "CHANNEL_A"
+    CHANNEL_B = "CHANNEL_B"
+    SYSTEM = "SYSTEM"
+
+
+class FactAcquisition(StrEnum):
+    """How a fact came to be known -- the part of provenance that decides trust.
+
+    `STATED` is what someone typed and nothing has verified. `OBSERVED` came
+    from a source system. `DERIVED` was computed from other facts. `INFERRED` is
+    a model's suggestion. An agent deciding whether to re-ask needs this: a
+    STATED order number that found nothing is worth re-asking; an OBSERVED one
+    is not.
+    """
+
+    STATED = "STATED"
+    OBSERVED = "OBSERVED"
+    DERIVED = "DERIVED"
+    INFERRED = "INFERRED"
+
+
+class CaseView(MutableContract):
+    """One return, owning every fact about it.
+
+    The two channel pointers are what make Channel B -> Channel A possible at
+    all: today the only link between a support outcome and the associate's
+    conversation is the browser matching an order reference client-side.
+    """
+
+    caseId: str
+    tenantId: str
+    principalId: str
+    branchId: str | None = None
+    status: CaseStatus = CaseStatus.GATHERING_INFO
+    channelAConversationId: str | None = None
+    channelBWorkItemId: str | None = None
+    confirmedOrderReference: str | None = None
+    # The session this case's stage machine runs under, when one has been
+    # started. Distinct from `workflowId`, which is the case's own durable
+    # execution.
+    sessionId: str | None = None
+    workflowId: str | None = None
+    configurationReleaseId: str | None = None
+    graphGenerationId: str | None = None
+    version: int = 0
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class CaseFactView(MutableContract):
+    """One observation about a case, with how it was obtained.
+
+    **Append-only.** Bay, Support, Fulfillment and Channel A all write facts
+    concurrently; a single mutable `facts` sub-document would make the last
+    writer win and silently drop what the others learned. Current state is a
+    projection over this log (`latest_case_facts`), so provenance is never
+    destroyed to record a newer value -- a correction supersedes rather than
+    overwrites.
+    """
+
+    factId: str
+    caseId: str
+    factName: str
+    value: Any = None
+    agentId: str
+    channel: FactChannel
+    turnId: str | None = None
+    sourceSystem: str | None = None
+    # Which of two independent paths delivered this, when more than one can.
+    sourcePath: str | None = None
+    acquisitionMethod: FactAcquisition
+    observedAt: datetime
+    recordedAt: datetime
+    supersedesFactId: str | None = None
+    correlationId: str | None = None
+
+
+class ReturnRecordView(MutableContract):
+    """One RMA, and everything that belongs to that RMA rather than to the case.
+
+    First-class because one RMA covers N items and one case can carry N RMAs:
+    a multi-item return can produce several RMAs with different labels and
+    different return locations, and putting these on the case (one each) or on
+    the item (one per item) can express neither.
+    """
+
+    returnRecordId: str
+    caseId: str
+    returnReference: str | None = None
+    status: str = "DRAFT"
+    returnLocation: str | None = None
+    trackingReference: str | None = None
+    labelReference: str | None = None
+    shippingInstructionReference: str | None = None
+    sourceSystem: str | None = None
+    version: int = 0
+    createdAt: datetime
+    updatedAt: datetime
+
+
 class ReturnSessionView(MutableContract):
     id: str
     correlationId: str
