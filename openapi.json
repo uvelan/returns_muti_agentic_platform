@@ -1202,6 +1202,39 @@
         "title": "APIResponse[AIUsageSummaryView]",
         "type": "object"
       },
+      "APIResponse_AgentTurnResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentTurnResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[AgentTurnResult]",
+        "type": "object"
+      },
       "APIResponse_AssociateConversationView_": {
         "additionalProperties": false,
         "properties": {
@@ -1629,6 +1662,39 @@
           "meta"
         ],
         "title": "APIResponse[ReturnWorkflowAssessment]",
+        "type": "object"
+      },
+      "APIResponse_RuntimeConfig_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[RuntimeConfig]",
         "type": "object"
       },
       "APIResponse_SeedOperationView_": {
@@ -7520,6 +7586,75 @@
         "title": "RevisionView",
         "type": "object"
       },
+      "RuntimeConfig": {
+        "properties": {
+          "apiBasePath": {
+            "const": "/api",
+            "title": "Apibasepath",
+            "type": "string"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/RuntimeConfigCapabilities"
+          },
+          "environment": {
+            "title": "Environment",
+            "type": "string"
+          },
+          "features": {
+            "$ref": "#/components/schemas/RuntimeConfigFeatures"
+          },
+          "releaseId": {
+            "title": "Releaseid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "releaseId",
+          "environment",
+          "apiBasePath",
+          "features",
+          "capabilities"
+        ],
+        "title": "RuntimeConfig",
+        "type": "object"
+      },
+      "RuntimeConfigCapabilities": {
+        "properties": {
+          "availableModelProviders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Availablemodelproviders",
+            "type": "array"
+          },
+          "availableSourceTypes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Availablesourcetypes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "availableSourceTypes",
+          "availableModelProviders"
+        ],
+        "title": "RuntimeConfigCapabilities",
+        "type": "object"
+      },
+      "RuntimeConfigFeatures": {
+        "properties": {
+          "orderDiscoveryCopilot": {
+            "title": "Orderdiscoverycopilot",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "orderDiscoveryCopilot"
+        ],
+        "title": "RuntimeConfigFeatures",
+        "type": "object"
+      },
       "SafetyStatus": {
         "enum": [
           "SAFE",
@@ -11471,6 +11606,28 @@
         ]
       }
     },
+    "/api/runtime-config": {
+      "get": {
+        "description": "Safe, non-secret configuration the shell can read before authenticating.",
+        "operationId": "get_runtime_config_api_runtime_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_RuntimeConfig_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Runtime Config",
+        "tags": [
+          "runtime-config"
+        ]
+      }
+    },
     "/api/session": {
       "get": {
         "description": "The caller's own identity and capabilities.\n\n**No role dependency on purpose.** Guarding this with `require_read_roles`\nwould make it answer 403 for exactly the caller who most needs an answer \u2014\nsomeone signed in with no usable role. Such a caller gets an empty\ncapability list, which the UI can render as \"you have no access\" instead of\na blank screen with a failed request.\n\nA caller with *no principal at all* is a different case: middleware could not\nidentify them, so there is nothing truthful to return and 401 is the honest\nanswer.",
@@ -14040,28 +14197,6 @@
         ]
       }
     },
-    "/api/v1/runtime-config": {
-      "get": {
-        "description": "Retrieve safe runtime configuration for the frontend.",
-        "operationId": "get_runtime_config_api_v1_runtime_config_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/APIResponse_dict_str__object__"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Get Runtime Config",
-        "tags": [
-          "runtime-config"
-        ]
-      }
-    },
     "/api/v1/seed-data": {
       "get": {
         "operationId": "seed_status_api_v1_seed_data_get",
@@ -14623,6 +14758,7 @@
     },
     "/api/v2/order-agent/conversations/{conversation_id}/turns": {
       "post": {
+        "description": "Run one reasoning turn.\n\nReturns the platform `{data, meta}` envelope like every other route. It did\nnot, and was the only route that did not: it returned a bare\n`AgentTurnResult`. The browser client rejects any non-enveloped body\noutright, so a turn that reasoned correctly all the way to an\nevidence-cited answer still surfaced in the UI as \"the server returned an\ninvalid API response envelope\" -- the failure looked like the agent, and was\nthe response shape.",
         "operationId": "process_turn_api_v2_order_agent_conversations__conversation_id__turns_post",
         "parameters": [
           {
@@ -14650,7 +14786,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgentTurnResult"
+                  "$ref": "#/components/schemas/APIResponse_AgentTurnResult_"
                 }
               }
             },

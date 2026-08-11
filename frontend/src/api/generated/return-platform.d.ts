@@ -905,6 +905,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runtime-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Runtime Config
+         * @description Safe, non-secret configuration the shell can read before authenticating.
+         */
+        get: operations["get_runtime_config_api_runtime_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/session": {
         parameters: {
             query?: never;
@@ -1781,26 +1801,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/runtime-config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Runtime Config
-         * @description Retrieve safe runtime configuration for the frontend.
-         */
-        get: operations["get_runtime_config_api_v1_runtime_config_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/seed-data": {
         parameters: {
             query?: never;
@@ -2048,7 +2048,18 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Process Turn */
+        /**
+         * Process Turn
+         * @description Run one reasoning turn.
+         *
+         *     Returns the platform `{data, meta}` envelope like every other route. It did
+         *     not, and was the only route that did not: it returned a bare
+         *     `AgentTurnResult`. The browser client rejects any non-enveloped body
+         *     outright, so a turn that reasoned correctly all the way to an
+         *     evidence-cited answer still surfaced in the UI as "the server returned an
+         *     invalid API response envelope" -- the failure looked like the agent, and was
+         *     the response shape.
+         */
         post: operations["process_turn_api_v2_order_agent_conversations__conversation_id__turns_post"];
         delete?: never;
         options?: never;
@@ -2468,6 +2479,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[AgentTurnResult] */
+        APIResponse_AgentTurnResult_: {
+            data?: components["schemas"]["AgentTurnResult"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[AssociateConversationView] */
         APIResponse_AssociateConversationView_: {
             data?: components["schemas"]["AssociateConversationView"] | null;
@@ -2543,6 +2560,12 @@ export interface components {
         /** APIResponse[ReturnWorkflowAssessment] */
         APIResponse_ReturnWorkflowAssessment_: {
             data?: components["schemas"]["ReturnWorkflowAssessment"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[RuntimeConfig] */
+        APIResponse_RuntimeConfig_: {
+            data?: components["schemas"]["RuntimeConfig"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -4572,6 +4595,32 @@ export interface components {
             revision_id: string;
             /** Sequence */
             sequence: number;
+        };
+        /** RuntimeConfig */
+        RuntimeConfig: {
+            /**
+             * Apibasepath
+             * @constant
+             */
+            apiBasePath: "/api";
+            capabilities: components["schemas"]["RuntimeConfigCapabilities"];
+            /** Environment */
+            environment: string;
+            features: components["schemas"]["RuntimeConfigFeatures"];
+            /** Releaseid */
+            releaseId: string;
+        };
+        /** RuntimeConfigCapabilities */
+        RuntimeConfigCapabilities: {
+            /** Availablemodelproviders */
+            availableModelProviders: string[];
+            /** Availablesourcetypes */
+            availableSourceTypes: string[];
+        };
+        /** RuntimeConfigFeatures */
+        RuntimeConfigFeatures: {
+            /** Orderdiscoverycopilot */
+            orderDiscoveryCopilot: boolean;
         };
         /**
          * SafetyStatus
@@ -6603,6 +6652,26 @@ export interface operations {
             };
         };
     };
+    get_runtime_config_api_runtime_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_RuntimeConfig_"];
+                };
+            };
+        };
+    };
     get_session_api_session_get: {
         parameters: {
             query?: never;
@@ -8396,26 +8465,6 @@ export interface operations {
             };
         };
     };
-    get_runtime_config_api_v1_runtime_config_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["APIResponse_dict_str__object__"];
-                };
-            };
-        };
-    };
     seed_status_api_v1_seed_data_get: {
         parameters: {
             query?: never;
@@ -8845,7 +8894,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AgentTurnResult"];
+                    "application/json": components["schemas"]["APIResponse_AgentTurnResult_"];
                 };
             };
             /** @description Validation Error */

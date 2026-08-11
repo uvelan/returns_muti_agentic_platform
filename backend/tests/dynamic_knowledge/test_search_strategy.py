@@ -303,6 +303,9 @@ def test_combination_anchor_accepts_customer_and_status_together(
 
 
 def test_order_line_now_has_a_strong_anchor(production_schema: ActiveSchema) -> None:
+    # The anchor is the line's real composite key. It used to be a single
+    # synthetic `order_line_key`, which the salesInv documents do not carry --
+    # a line is identified by its branch, its order, and its line number.
     guard_context = _guard_context(production_schema)
     normalized = StrongAnchorGuard().validate(
         guard_context,
@@ -311,12 +314,69 @@ def test_order_line_now_has_a_strong_anchor(production_schema: ActiveSchema) -> 
             strong_anchor_id="exact_order_line",
             anchors=(
                 AnchorValue(
-                    field_id="order_line_key",
+                    field_id="account_id",
                     operator="EXACT",
-                    value="LINE-1",
+                    value="OHVAL",
+                    value_origin="USER_MESSAGE",
+                ),
+                AnchorValue(
+                    field_id="sales_order_number",
+                    operator="EXACT",
+                    value="CW273354",
+                    value_origin="USER_MESSAGE",
+                ),
+                AnchorValue(
+                    field_id="line_number",
+                    operator="EXACT",
+                    value="1",
                     value_origin="USER_MESSAGE",
                 ),
             ),
         ),
     )
-    assert normalized == {"order_line_key": "LINE-1"}
+    assert normalized == {
+        "account_id": "OHVAL",
+        "sales_order_number": "CW273354",
+        "line_number": "1",
+    }
+
+
+def test_no_strong_anchor_is_inert(production_schema: ActiveSchema) -> None:
+    """Every field a strong anchor names must actually permit on-demand sync.
+
+    An anchor whose fields are not `on_demand_sync_anchor` is declared but
+    dead: `StrongAnchorGuard` rejects every request against it, so the
+    escalation path it exists to enable can never run. Nothing else notices --
+    the schema loads, the anchor appears in the config, and the only symptom is
+    a sync that silently never happens.
+
+    Three of the nine anchors were in that state, including both anchors keyed
+    on `account_id`, so this asserts the invariant across the whole schema
+    rather than re-testing each anchor by hand.
+    """
+    inert = [
+        f"{entity_id}.{anchor_id} -> {anchor_field.field_id}"
+        for entity_id, entity in production_schema.entities.items()
+        for anchor_id, anchor in entity.strong_anchors.items()
+        for anchor_field in anchor.fields
+        if not entity.fields[anchor_field.field_id].capabilities.on_demand_sync_anchor
+        or not entity.fields[anchor_field.field_id].permissions.on_demand_sync_by
+    ]
+    assert inert == []
+
+
+def test_fuzzy_match_survives_a_trade_name_suffix() -> None:
+    """The real failure: a misspelt name plus a suffix nobody types.
+
+    "MELGON HEATING & COOLING" scores 0.667 against "melgan heatng" on a plain
+    whole-string ratio -- under the threshold -- while the next best customer in
+    the same probe scores 0.370. The name matched and the untyped tail diluted
+    it, so the one case the fallback exists for was the case it missed.
+    """
+    rows = [
+        {"customer_id": "471565", "customer_name": "MELGON HEATING & COOLING"},
+        {"customer_id": "1379433", "customer_name": "ALLIED GAS"},
+        {"customer_id": "1013086", "customer_name": "THE TANKLESS GUYS"},
+    ]
+    matches = fuzzy_match_customers(("melgan heatng",), rows)
+    assert [row["customer_id"] for row in matches] == ["471565"]

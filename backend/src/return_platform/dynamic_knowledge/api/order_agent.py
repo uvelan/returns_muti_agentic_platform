@@ -21,6 +21,7 @@ from return_platform.dynamic_knowledge.order_agent.contracts import (
     AgentTurnResult,
 )
 from return_platform.security.principal import Principal
+from return_platform.shared.contracts import APIResponse, ResponseMeta
 from return_platform.workflows.order_discovery_workflow import (
     OrderDiscoveryTurnOutcome,
     OrderDiscoveryWorkflow,
@@ -91,13 +92,28 @@ def _order_discovery_workflow_id(conversation_id: str) -> str:
     return f"order-discovery-{conversation_id}"
 
 
-@router.post("/conversations/{conversation_id}/turns", response_model=AgentTurnResult)
+def _meta(request: Request) -> ResponseMeta:
+    correlation_id = getattr(request.state, "correlation_id", "unknown")
+    return ResponseMeta(request_id=correlation_id if isinstance(correlation_id, str) else "unknown")
+
+
+@router.post("/conversations/{conversation_id}/turns", response_model=APIResponse[AgentTurnResult])
 async def process_turn(
     conversation_id: str,
     payload: AgentTurnRequest,
     request: Request,
     runtime: Annotated[DynamicOrderAgentRuntime, Depends(resolve_runtime)],
-) -> AgentTurnResult:
+) -> APIResponse[AgentTurnResult]:
+    """Run one reasoning turn.
+
+    Returns the platform `{data, meta}` envelope like every other route. It did
+    not, and was the only route that did not: it returned a bare
+    `AgentTurnResult`. The browser client rejects any non-enveloped body
+    outright, so a turn that reasoned correctly all the way to an
+    evidence-cited answer still surfaced in the UI as "the server returned an
+    invalid API response envelope" -- the failure looked like the agent, and was
+    the response shape.
+    """
     if payload.conversation_id != conversation_id:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -178,4 +194,7 @@ async def process_turn(
             },
         )
 
-    return AgentTurnResult.model_validate_json(outcome.result.agent_turn_result_json)
+    return APIResponse(
+        data=AgentTurnResult.model_validate_json(outcome.result.agent_turn_result_json),
+        meta=_meta(request),
+    )

@@ -49,10 +49,20 @@ _UNSUPPORTED_INTENT_FIELDS: tuple[str, ...] = (
     "colors",
 )
 
-# order_line.delivered_at style fields only expose range operators (see the
-# active schema): an exact-date match is expressed as a same-day BETWEEN.
+# Date fields only expose range operators (see the active schema): an exact-date
+# match is expressed as a same-day BETWEEN.
+#
+# `order_date`, not `delivered_at`. The schema is now derived from the real
+# salesInv documents and there is no delivery timestamp in them -- the dates
+# that exist are order, commit, invoice and shipped. `delivered_at` was a field
+# of the earlier synthetic schema, so every date-bearing search was being
+# rejected by the schema guard as an unknown field and silently dropped from the
+# plan set: the associate's "it was around the 14th" contributed nothing.
+# `order_date` is also the one an associate is most likely to recall and the
+# only one populated across every order in the dataset. If a genuine delivery
+# timestamp is ever sourced, this is the line that should move to it.
 _DATE_FIELD_ENTITY = "sales_order"
-_DATE_FIELD_ID = "delivered_at"
+_DATE_FIELD_ID = "order_date"
 
 # How many ranked candidates a single search keeps around for pagination
 # ("show next") versus how many are ever shown to the reasoning model or the
@@ -231,16 +241,16 @@ def build_progressive_plans(intent: OrderSearchIntent) -> list[LogicalQueryPlan]
             )
         )
 
-    # 6. Delivery date window: dateFrom/dateTo, a single open bound, or a
-    # same-day match from approximateDate. delivered_at only supports range
-    # operators (GT/GTE/LT/LTE/BETWEEN) in the active schema, never EXACT.
+    # 6. Order date window: dateFrom/dateTo, a single open bound, or a same-day
+    # match from approximateDate. The date field only supports range operators
+    # (GT/GTE/LT/LTE/BETWEEN) in the active schema, never EXACT.
     date_condition = _date_condition(intent)
     if date_condition is not None:
         plans.append(
             LogicalQueryPlan(
                 operation=QueryOperation.SEARCH,
                 start_entity_id=_DATE_FIELD_ENTITY,
-                fields=("sales_order_number", "customer_id", "delivered_at"),
+                fields=("sales_order_number", "customer_id", _DATE_FIELD_ID),
                 filters=(date_condition,),
                 limit=10,
             )
@@ -286,12 +296,47 @@ def build_customer_fuzzy_probe_plan() -> LogicalQueryPlan:
     customer name(s) has already come back empty — see
     :func:`fuzzy_match_customers`.
     """
+    # `account_id`, not `customer_key`. The customer's natural key is
+    # (account_id, customer_id); `customer_key` was a surrogate on the earlier
+    # synthetic schema and does not exist, which made the guard reject this plan
+    # as an unknown result field -- so the misspelling fallback never ran at all.
+    # `candidate_key` identifies a customer row by `customer_id`, so the pair is
+    # what the caller needs to name the branch the match was found in.
     return LogicalQueryPlan(
         operation=QueryOperation.SEARCH,
         start_entity_id="customer",
-        fields=("customer_key", "customer_id", "customer_name"),
+        fields=("account_id", "customer_id", "customer_name"),
         limit=FUZZY_CUSTOMER_PROBE_LIMIT,
     )
+
+
+def _similarity(query: str, candidate: str) -> float:
+    """Whole-string similarity, or the best a window of the query's length gets.
+
+    A plain whole-string ratio punishes the case this fallback exists for.
+    Trade names carry suffixes an associate does not type -- "MELGON HEATING &
+    COOLING" against "melgan heatng" scores 0.667 and falls under the 0.72
+    threshold, even though the next best customer in the same 100-row probe
+    scores 0.370. The distinguishing part matched; the untyped tail diluted it.
+
+    So also slide a window of the query's length across the candidate and keep
+    the best. That recovers the suffix case (0.786 here) without loosening the
+    threshold, which is what keeps 0.370 out. Bounded work: the probe reads at
+    most `FUZZY_CUSTOMER_PROBE_LIMIT` rows and names are short.
+
+    Windows only, never the reverse. Scoring a short query against every
+    substring of a long name would match "smith" into "smithson plumbing" and
+    a dozen others; requiring the *query* to be covered keeps the comparison
+    anchored to what the associate actually typed.
+    """
+    whole = difflib.SequenceMatcher(None, query, candidate).ratio()
+    if len(candidate) <= len(query):
+        return whole
+    windows = (
+        difflib.SequenceMatcher(None, query, candidate[offset : offset + len(query)]).ratio()
+        for offset in range(len(candidate) - len(query) + 1)
+    )
+    return max(whole, max(windows, default=0.0))
 
 
 def fuzzy_match_customers(
@@ -314,11 +359,7 @@ def fuzzy_match_customers(
             continue
         normalized_candidate = normalize_string(candidate_name)
         best_ratio = max(
-            (
-                difflib.SequenceMatcher(None, normalize_string(name), normalized_candidate).ratio()
-                for name in names
-                if name
-            ),
+            (_similarity(normalize_string(name), normalized_candidate) for name in names if name),
             default=0.0,
         )
         if best_ratio >= threshold:

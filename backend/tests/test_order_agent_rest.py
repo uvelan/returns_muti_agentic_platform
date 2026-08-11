@@ -127,7 +127,10 @@ def test_order_agent_scenarios(scenario_id: int, message: str, test_settings):
                 extra={"scenario_id": scenario_id, "status_code": response.status_code},
             )
         assert response.status_code in (200, 201)
-        data = response.json()
+        # The route returns the platform `{data, meta}` envelope, like every
+        # other route. Reading `response.json()` directly used to work only
+        # because this one was the exception.
+        data = response.json()["data"]
         assert "response" in data
         # At least some model execution happened
         assert data["model_provider"] is not None

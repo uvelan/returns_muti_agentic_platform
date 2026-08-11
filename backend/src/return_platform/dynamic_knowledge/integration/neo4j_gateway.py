@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from neo4j import READ_ACCESS, AsyncDriver
+from neo4j.spatial import Point
+from neo4j.time import Date, DateTime, Duration, Time
 
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
@@ -13,6 +16,39 @@ _PROHIBITED = re.compile(
     r"\b(CREATE|MERGE|SET|DELETE|DETACH|DROP|REMOVE|LOAD\s+CSV|CALL|GRANT|DENY|REVOKE)\b",
     re.IGNORECASE,
 )
+
+
+def _json_safe(value: Any) -> Any:
+    """Translate driver-native values into plain JSON at the read boundary.
+
+    The driver returns its own types for temporal, duration, and spatial
+    properties -- `neo4j.time.DateTime`, not `datetime`. Every consumer of a
+    result row treats it as plain JSON: the evidence checksum canonicalizes it,
+    the reasoning context serializes it into the prompt, and the API response
+    encodes it. All three raise `TypeError: Object of type DateTime is not JSON
+    serializable`, so any plan selecting a date field failed outright rather
+    than degrading -- an order search on `sales_order` returns `order_date`, so
+    this was most of them.
+
+    Converting here rather than in the canonicalizer is the point. `sha256_digest`
+    is a generic function with no business knowing what a graph driver is, and
+    teaching it about `neo4j.time` would leave the same types loose in the prompt
+    and the HTTP response. Driver types belong to the adapter and stop at its
+    edge; ISO-8601 is what the rest of the system already expects a date to be.
+    """
+    if isinstance(value, (Date, Time, DateTime, Duration)):
+        return value.iso_format()
+    if isinstance(value, Point):
+        # A tuple subclass, so it would otherwise serialize as a bare array and
+        # silently lose the coordinate reference system that gives it meaning.
+        return {"srid": value.srid, "coordinates": list(value)}
+    if isinstance(value, (bytes, bytearray)):
+        return value.hex()
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, str):
+        return [_json_safe(item) for item in value]
+    return value
 
 
 class Neo4jKnowledgeGateway:
@@ -84,5 +120,5 @@ class Neo4jKnowledgeGateway:
             database=database, default_access_mode=READ_ACCESS
         ) as session:
             result = await session.run(normalized, parameters)
-            rows = [dict(record) async for record in result]
+            rows = [_json_safe(dict(record)) async for record in result]
         return {"rows": rows, "count": len(rows)}
