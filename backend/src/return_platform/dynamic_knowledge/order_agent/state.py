@@ -9,6 +9,16 @@ from pydantic import BaseModel, ConfigDict
 
 from return_platform.dynamic_knowledge.fingerprint import sha256_digest
 
+#: How many prior messages travel with a conversation.
+#:
+#: Bounded on purpose. The transcript rides in every checkpoint write and every
+#: prompt, so an unbounded one grows the reasoning payload without limit and
+#: eventually trips the gateway's input cap mid-conversation -- a failure that
+#: would appear only in long sessions, which are exactly the ones where the
+#: history matters most. Twelve covers the clarify-and-narrow exchanges this
+#: agent actually has.
+TRANSCRIPT_LIMIT = 12
+
 
 class CandidateSet(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -115,6 +125,17 @@ class OrderAgentGraphState(TypedDict, total=False):
     # `user_message` (already checkpointed above): a model-generated question and
     # the associate's own reply. Bounded by the policy's max_clarifications.
     clarification_exchanges: tuple[dict[str, str], ...]
+    # What was actually said on earlier turns, oldest first: {"role", "text"}
+    # where role is "associate" or "agent".
+    #
+    # Without it the agent saw only the current message and the previous
+    # search's cache, so it could not tell a first mention from a repeat, knew
+    # nothing of what it had already asked, and would happily ask again. Same
+    # sensitivity argument as `clarification_exchanges` above: it is the
+    # associate's own words and the agent's own replies, both already
+    # checkpointed in other fields. Bounded by TRANSCRIPT_LIMIT so neither the
+    # checkpoint nor the prompt grows with conversation length.
+    transcript: tuple[dict[str, str], ...]
 
     # Current in-flight model action.
     action: dict[str, Any] | None
@@ -150,6 +171,7 @@ ORDER_DISCOVERY_CHECKPOINT_ALLOWLIST: frozenset[str] = frozenset(
         "evidence_refs",
         "order_search_cache",
         "clarification_exchanges",
+        "transcript",
         "action",
         "last_provider",
         "last_model",

@@ -163,6 +163,7 @@ async def _build_context(deps: GraphDependencies, state: dict[str, Any]) -> Agen
     order_search_cache = state.get("order_search_cache")
     return AgentTurnContext(
         clarification_exchanges=state.get("clarification_exchanges", ()),
+        transcript=tuple(state.get("transcript", ())),
         conversation_id=state["conversation_id"],
         client_turn_id=state["client_turn_id"],
         user_message=state["user_message"],

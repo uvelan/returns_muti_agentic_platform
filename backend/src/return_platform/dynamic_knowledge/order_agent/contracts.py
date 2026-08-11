@@ -125,6 +125,11 @@ class AgentTurnContext(BaseModel):
     # answered (see graph_nodes.make_clarify_node) -- without this the resumed
     # `decide` would re-ask the same question, having no record it was answered.
     clarification_exchanges: tuple[dict[str, str], ...] = ()
+    # What was said on earlier turns, oldest first: {"role", "text"} where role
+    # is "associate" or "agent". `clarification_exchanges` above covers only the
+    # pauses inside the current turn; this is the conversation itself, and
+    # without it the agent re-asks across turns what it already knows.
+    transcript: tuple[dict[str, str], ...] = ()
 
 
 class AgentTurnResult(BaseModel):

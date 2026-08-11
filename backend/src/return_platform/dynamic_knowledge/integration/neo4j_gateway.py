@@ -88,6 +88,31 @@ class Neo4jKnowledgeGateway:
                 if relationship.source_entity_id in policy.allowed_entity_ids
                 and relationship.target_entity_id in policy.allowed_entity_ids
             },
+            # The anchors a REQUEST_ON_DEMAND_SYNC may be built on.
+            #
+            # Without these the escalation is unreachable however well the
+            # prompt describes it: the action needs a `strong_anchor_id` and the
+            # exact fields that anchor requires, and the model had no way to
+            # learn either. Only anchors that permit on-demand sync are listed,
+            # because an anchor that does not is not an option the model has.
+            "strongAnchors": {
+                anchor_id: {
+                    "entity": entity_id,
+                    "fields": [
+                        {
+                            "field": anchor_field.field_id,
+                            "operators": sorted(anchor_field.allowed_operators),
+                            "required": anchor_field.required,
+                        }
+                        for anchor_field in anchor.fields
+                    ],
+                    "minimumFieldsPresent": anchor.minimum_fields_present,
+                    "maximumExpectedMatches": anchor.maximum_expected_matches,
+                }
+                for entity_id in sorted(policy.allowed_entity_ids)
+                for anchor_id, anchor in schema.entities[entity_id].strong_anchors.items()
+                if anchor.on_demand_sync_allowed
+            },
             "capabilities": sorted(policy.allowed_business_capabilities),
         }
 

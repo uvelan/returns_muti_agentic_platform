@@ -48,7 +48,10 @@ from return_platform.dynamic_knowledge.order_agent.graph_nodes import (
     ReasoningModelGateway,
     TurnRuntimeContext,
 )
-from return_platform.dynamic_knowledge.order_agent.state import OrderAgentGraphState
+from return_platform.dynamic_knowledge.order_agent.state import (
+    TRANSCRIPT_LIMIT,
+    OrderAgentGraphState,
+)
 from return_platform.dynamic_knowledge.schema import ActiveSchema, GenerationBinding
 from return_platform.platform.reasoning.checkpoint import SystemStoreCheckpointSaver
 from return_platform.platform.reasoning.retention import (
@@ -94,6 +97,51 @@ class ConversationStore(Protocol):
 
 class GraphStateProvider(Protocol):
     async def active_generation(self, schema: ActiveSchema) -> str: ...
+
+
+def _stored_transcript(conversation_state: dict[str, Any]) -> tuple[dict[str, str], ...]:
+    """The transcript held on the conversation record, narrowed to its contract.
+
+    Values on the record are `object`: it is persisted JSON that a previous
+    release, a migration, or a hand-edit could have left in any shape. Anything
+    that is not a role/text pair of strings is dropped rather than trusted,
+    because a malformed entry here would reach the reasoning prompt.
+    """
+    stored = conversation_state.get("transcript")
+    if not isinstance(stored, list):
+        return ()
+    return tuple(
+        {"role": str(entry["role"]), "text": str(entry["text"])}
+        for entry in stored
+        if isinstance(entry, dict) and "role" in entry and "text" in entry
+    )
+
+
+def _extended_transcript(
+    conversation_state: dict[str, Any],
+    *,
+    user_message: str,
+    response: StructuredAgentResponse | None,
+) -> list[dict[str, str]]:
+    """This turn appended to what was said before, oldest first and bounded.
+
+    The agent used to see only the current message plus the previous search's
+    cache, so it could not tell a first mention from a repeat and would re-ask
+    a question it had already asked. Only the response's own statement text is
+    carried -- never evidence rows, which are rehydrated from the evidence store
+    and must not be duplicated into conversation history.
+
+    A turn that produced no response (a pause awaiting a clarification answer)
+    still records what the associate said: the question the agent asked is
+    already carried in `clarification_exchanges`.
+    """
+    transcript: list[dict[str, str]] = list(_stored_transcript(conversation_state))
+    transcript.append({"role": "associate", "text": user_message})
+    if response is not None:
+        agent_text = " ".join(statement.text for statement in response.statements).strip()
+        if agent_text:
+            transcript.append({"role": "agent", "text": agent_text})
+    return transcript[-TRANSCRIPT_LIMIT:]
 
 
 def _cache_for_generation(
@@ -344,6 +392,7 @@ class DynamicOrderAgentCoordinator:
             "replans_used": 0,
             "targeted_syncs_used": 0,
             "clarification_exchanges": (),
+            "transcript": _stored_transcript(conversation_state),
             "final_response": None,
         }
 
@@ -431,6 +480,9 @@ class DynamicOrderAgentCoordinator:
                 conversation_state={
                     **conversation_state,
                     "orderSearchCache": final_state.get("order_search_cache"),
+                    "transcript": _extended_transcript(
+                        conversation_state, user_message=request.message, response=None
+                    ),
                 },
             )
 
@@ -450,6 +502,9 @@ class DynamicOrderAgentCoordinator:
         new_conversation_state = {
             **conversation_state,
             "orderSearchCache": final_state.get("order_search_cache"),
+            "transcript": _extended_transcript(
+                conversation_state, user_message=request.message, response=response
+            ),
         }
         provisional = AgentTurnResult(
             conversation_id=request.conversation_id,
