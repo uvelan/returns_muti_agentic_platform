@@ -1,78 +1,61 @@
 #!/usr/bin/env bash
 # The canonical real-infra test invocation.
 #
-# For eight commits the suite was reported as "99 pre-existing errors, accepted
-# baseline". None of them were code defects -- every one was this invocation
-# being wrong in two ways:
+# Runs the suite in the `diagnostics` service, which Compose builds from
+# `backend/Dockerfile` (target `test`) and which bind-mounts the working tree
+# read-only at /workspace_root/backend.
 #
-#   95 errors  tests/conftest.py's `test_settings` fixture requires
-#              NVIDIA_API_KEY/GOOGLE_API_KEY (rotated out by commit fbfcf05 and
-#              never replaced). It only reads them to populate Settings fields;
-#              nothing in the affected tests makes a provider call, so any
-#              non-empty placeholder satisfies them. Real credentials are NOT
-#              needed -- and if you want to exercise a real reasoning turn, use
-#              the MANUAL provider (see tests/test_manual_provider_reasoning_e2e.py),
-#              which needs no key at all.
+# It used to target `c2-test-runner`: a container nothing in this repository
+# created, kept in sync by `docker cp`. `docker cp` MERGES into the destination
+# and never removes files that are absent from the source, and the container
+# was shared with any other session working the same repo -- so a file left
+# behind by one session once produced a "green" run for code that was not in
+# the tree. There is no sync step here at all now, and nothing to go stale.
 #
-#    4 errors  .env's PLATFORM_SQLSERVER_PORT is the *host* published port
-#              (14330). Inside the compose network SQL Server listens on 1433,
-#              so a container-side run must override it.
-#
-# With both fixed the suite is green. Placeholders are passed as process env,
-# never written to .env -- they are fake values and must not become config.
+# For eight commits before that, the suite was reported as "99 pre-existing
+# errors, accepted baseline". None were code defects; every one was this
+# invocation being wrong in two ways (missing placeholder AI keys, and the host
+# SQL Server port used in-network). Both are now fixed in the service
+# definition rather than passed here, so a plain `docker compose exec` into the
+# container reproduces exactly what this script runs.
 #
 # Usage:  bash scripts/dev/run_real_infra_suite.sh [extra pytest args]
 set -euo pipefail
 
-CONTAINER="${REAL_INFRA_CONTAINER:-c2-test-runner}"
-REPO_BACKEND="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-REPO_ROOT="$(cd "${REPO_BACKEND}/.." && pwd)"
+SERVICE="${REAL_INFRA_SERVICE:-diagnostics}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+COMPOSE=(docker compose --profile dev-tools)
 
-# Neo4j-backed tests authenticate with GRAPH_PASSWORD -- the same variable
-# compose.yaml uses for NEO4J_AUTH. It is deliberately NOT defaulted anywhere:
-# a wrong guess trips Neo4j's authentication rate limiter, which then fails
-# every Neo4j test in the run and needs a container restart to clear. Sourced
-# from the repo .env so the value stays in one place and never lands in a
-# script or a container image.
-if [[ -z "${GRAPH_PASSWORD:-}" && -f "${REPO_ROOT}/.env" ]]; then
-  GRAPH_PASSWORD="$(grep -E '^GRAPH_PASSWORD=' "${REPO_ROOT}/.env" | head -1 | cut -d= -f2-)"
-fi
-: "${GRAPH_PASSWORD:?set GRAPH_PASSWORD (or provide it in the repo .env) before running}"
+cd "${REPO_ROOT}"
 
-# Wipe before syncing. `docker cp` MERGES into the destination -- it never
-# removes files that exist there but not in the source -- and this container is
-# shared with any other session working the same repo. A merge-sync once
-# produced a "green" run that was executing a mixture of two sessions' code.
-echo "==> wiping and re-syncing ${CONTAINER} from ${REPO_BACKEND}"
-docker exec "${CONTAINER}" bash -lc \
-  'rm -rf /workspace_root/backend/src /workspace_root/backend/tests /workspace_root/backend/config'
-docker cp "${REPO_BACKEND}/src" "${CONTAINER}:/workspace_root/backend/"
-docker cp "${REPO_BACKEND}/tests" "${CONTAINER}:/workspace_root/backend/"
-docker cp "${REPO_BACKEND}/config" "${CONTAINER}:/workspace_root/backend/"
-# Host-compiled bytecode carries Windows-baked co_filename metadata that
-# produces baffling path errors when reused under Linux.
-docker exec "${CONTAINER}" bash -lc \
-  'find /workspace_root/backend -name __pycache__ -exec rm -rf {} + 2>/dev/null || true'
+# `--wait` blocks on the datastore health conditions the service declares, so a
+# suite run cannot start against a half-up stack and report infrastructure
+# timing as test failures. Idempotent: a no-op when everything is already up.
+echo "==> ensuring ${SERVICE} and its dependencies are up"
+"${COMPOSE[@]}" up -d --wait "${SERVICE}"
 
 # Excluded, and why:
 #   test_order_agent_rest.py        40 scenarios that each need a real model
 #                                   response; use the MANUAL provider by hand.
 #   test_ai_model_probe_evaluator   \
-#   gate_tools/                      | need repo_root/scripts/, which this
-#   test_runtime_env_key_sync.py    /  backend-only container copy omits.
+#   gate_tools/                      | need repo_root/scripts/, which the
+#   test_runtime_env_key_sync.py    /  backend-only bind mount omits.
+#
+# `-p no:cacheprovider`: the mount is read-only, and .pytest_cache is the one
+# thing pytest writes to rootdir. Nothing else needs to write there, which is
+# the point of mounting it read-only.
+# `MSYS_NO_PATHCONV=1`: under Git Bash on Windows, MSYS rewrites any argument
+# that looks like an absolute POSIX path into a Windows one before the process
+# sees it, so `/opt/venv/bin/python` reached Docker as
+# `C:/Program Files/Git/opt/venv/bin/python` and the exec failed with a
+# "no such file or directory" that looks like a broken image rather than a
+# mangled argument. The paths here are inside the container and must be passed
+# through untouched. No effect on Linux or macOS, where the variable is unread.
 echo "==> running suite"
-docker exec \
-  -e PLATFORM_TEST_MONGO_HOST=mongodb \
-  -e PLATFORM_TEST_NEO4J_HOST=neo4j \
-  -e PLATFORM_TEST_SQLSERVER_HOST=sqlserver \
-  -e PLATFORM_SQLSERVER_PORT=1433 \
-  -e PLATFORM_TEST_TEMPORAL_TARGET=temporal:7233 \
-  -e GRAPH_PASSWORD="${GRAPH_PASSWORD}" \
-  -e NVIDIA_API_KEY=placeholder-not-a-real-key \
-  -e GOOGLE_API_KEY=placeholder-not-a-real-key \
-  "${CONTAINER}" bash -lc "cd /workspace_root/backend && /opt/venv/bin/python -m pytest tests/ \
-    --ignore=tests/test_order_agent_rest.py \
-    --ignore=tests/test_ai_model_probe_evaluator.py \
-    --ignore=tests/gate_tools \
-    --ignore=tests/test_runtime_env_key_sync.py \
-    -q $*"
+MSYS_NO_PATHCONV=1 "${COMPOSE[@]}" exec -T "${SERVICE}" /opt/venv/bin/python -m pytest tests/ \
+  -p no:cacheprovider \
+  --ignore=tests/test_order_agent_rest.py \
+  --ignore=tests/test_ai_model_probe_evaluator.py \
+  --ignore=tests/gate_tools \
+  --ignore=tests/test_runtime_env_key_sync.py \
+  -q "$@"

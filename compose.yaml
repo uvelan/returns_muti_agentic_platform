@@ -520,30 +520,72 @@ services:
     logging: *default-logging
     mem_limit: 512m
 
-  # A reproducible shell on the platform network, for running the backend test
-  # suite and ad-hoc diagnostics against live infrastructure.
+  # The real-infra test runner, and a shell on the platform network for ad-hoc
+  # diagnostics. `run_real_infra_suite.sh` targets this.
   #
-  # This exists because the thing it replaces does not: `run_real_infra_suite.sh`
-  # expects a container named `c2-test-runner` that nothing in the repository
-  # creates. Today it is a hand-made `python:3.13-slim` that someone `docker cp`
-  # -ed source into -- which is why syncing it merges rather than replaces, and
-  # why a stale file in it has already produced one false green.
+  # It replaces a container that nothing in this repository created: a hand-made
+  # `python:3.13-slim` named `c2-test-runner` that source was `docker cp`-ed
+  # into. `docker cp` merges rather than replaces, so a file left behind by one
+  # session produced a green run for code that was not in the tree. The bind
+  # mount below cannot do that -- it *is* the tree.
   #
-  # Built from the backend image so the dependency set matches production
-  # exactly, instead of being pip-installed by hand.
+  # Read-only on purpose. A test that writes into the source tree is a test that
+  # can pollute the next run, and `PYTHONDONTWRITEBYTECODE` in the image means
+  # there is no legitimate writer left. `tmp_path` and `/tmp` are unaffected.
   #
-  # `run_real_infra_suite.sh` is NOT yet pointed at this. Rewiring the loop this
-  # programme verifies itself with is its own change, deliberately not bundled
-  # into a Compose reorganisation.
+  # Not `*backend-base`: that anchor's config paths point into `/app/config`,
+  # which exists in the runtime image and not in this one, and its Vault
+  # sentinels are for a server this container never starts. The suite's own
+  # conftest resolves configuration relative to the working tree.
   diagnostics:
     profiles: ["dev-tools"]
-    <<: *backend-base
+    image: return-platform-backend-test:local
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: test
     command: ["sleep", "infinity"]
+    working_dir: /workspace_root/backend
+    environment:
+      # In-network addresses. The repo `.env` carries *host* published ports
+      # (SQL Server on 14330, for one), which is what four suite errors were
+      # for eight commits before anyone read them.
+      PLATFORM_TEST_MONGO_HOST: mongodb
+      PLATFORM_TEST_NEO4J_HOST: neo4j
+      PLATFORM_TEST_SQLSERVER_HOST: sqlserver
+      PLATFORM_SQLSERVER_PORT: 1433
+      PLATFORM_TEST_TEMPORAL_TARGET: temporal:7233
+      # Not defaulted anywhere on purpose: a wrong guess trips Neo4j's auth rate
+      # limiter, which then fails every Neo4j test until the container restarts.
+      GRAPH_PASSWORD: ${GRAPH_PASSWORD:?set GRAPH_PASSWORD in the repo .env}
+      # `tests/conftest.py`'s `test_settings` fixture only reads these to
+      # populate Settings fields; nothing under test makes a provider call. Real
+      # credentials are not needed and must not be put here. To exercise a real
+      # reasoning turn, use the MANUAL provider, which needs no key at all.
+      NVIDIA_API_KEY: placeholder-not-a-real-key
+      GOOGLE_API_KEY: placeholder-not-a-real-key
     volumes:
       - ./backend:/workspace_root/backend:ro
+      # `tests/conftest.py::pytest_configure` hard-fails if the repository .env
+      # is absent, so without this the suite could not start in this container
+      # at all -- it aborted with an INTERNALERROR before collecting a test.
+      # Mounting it does not reintroduce the host-port problem the environment
+      # block above solves: `load_dotenv(override=False)` leaves an
+      # already-exported variable alone, so these in-network addresses still win.
+      - ./.env:/workspace_root/.env:ro
+    networks: [platform]
+    logging: *default-logging
     depends_on:
       mongodb-rs-init:
         condition: service_completed_successfully
+      neo4j:
+        condition: service_healthy
+      sqlserver-init:
+        condition: service_completed_successfully
+      temporal:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
 
 networks:
   platform:

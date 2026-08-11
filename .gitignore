@@ -27,6 +27,9 @@ frontend/test-results/
 frontend/playwright-report/
 backend_results.txt
 docker_compose_logs.txt
+# Running a service from the repository root (uvicorn, the discovery worker)
+# redirects here, so without this every dev session shows a dirty tree.
+*.log
 playwright_results.txt
 linux_kit_validation/
 
