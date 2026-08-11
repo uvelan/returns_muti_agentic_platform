@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any, Protocol
+
+from pydantic import BaseModel, ConfigDict
 
 from return_platform.dynamic_knowledge.fingerprint import sha256_digest
 from return_platform.dynamic_knowledge.order_agent.contracts import (
@@ -11,8 +14,33 @@ from return_platform.dynamic_knowledge.order_agent.contracts import (
 )
 
 
+class ConversationSummary(BaseModel):
+    """One row of the copilot's history list.
+
+    `title` is the associate's opening message rather than a generated label:
+    it is what they will recognise, it needs no model call, and it cannot drift
+    from what the conversation was actually about.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    conversationId: str
+    title: str
+    messageCount: int
+    updatedAt: datetime | None
+
+
+class ConversationTranscript(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    conversationId: str
+    conversationVersion: int
+    messages: tuple[dict[str, str], ...]
+
+
 class AtomicConversationDocumentStore(Protocol):
     async def read(self, conversation_id: str) -> dict[str, Any] | None: ...
+    async def list_recent(self, *, limit: int = 30) -> list[dict[str, Any]]: ...
     async def compare_and_set(
         self,
         *,
@@ -60,6 +88,36 @@ class AtomicConversationRepository:
         state["_pendingTurnDigest"] = digest
         return int(document["version"]), state, None
 
+    async def list_recent(self, *, limit: int = 30) -> list[ConversationSummary]:
+        """The history list. Conversations with nothing said in them are skipped:
+        a turn that failed before the associate's message was recorded leaves a
+        record with no transcript, and a blank row is not history."""
+        summaries: list[ConversationSummary] = []
+        for document in await self._store.list_recent(limit=limit):
+            transcript = _transcript_of(document)
+            if not transcript:
+                continue
+            updated = document.get("updatedAt")
+            summaries.append(
+                ConversationSummary(
+                    conversationId=str(document["_id"]),
+                    title=transcript[0]["text"],
+                    messageCount=len(transcript),
+                    updatedAt=updated if isinstance(updated, datetime) else None,
+                )
+            )
+        return summaries
+
+    async def read_transcript(self, conversation_id: str) -> ConversationTranscript | None:
+        document = await self._store.read(conversation_id)
+        if document is None:
+            return None
+        return ConversationTranscript(
+            conversationId=conversation_id,
+            conversationVersion=int(document.get("version", 0)),
+            messages=_transcript_of(document),
+        )
+
     async def commit_turn(
         self,
         *,
@@ -99,6 +157,10 @@ class AtomicConversationRepository:
             "turns": turns,
             "state": state_to_persist,
             "lastResponse": result.response.model_dump(mode="json"),
+            # The store indexes `updatedAt` and nothing was setting it, so the
+            # index sorted on a field that did not exist and "most recent
+            # conversations" could not be answered at all.
+            "updatedAt": datetime.now(UTC),
         }
         committed = await self._store.compare_and_set(
             conversation_id=request.conversation_id,
@@ -108,3 +170,15 @@ class AtomicConversationRepository:
         if not committed:
             raise ValueError("CONVERSATION_VERSION_CONFLICT")
         return result.model_copy(update={"conversation_version": expected_version + 1})
+
+
+def _transcript_of(document: dict[str, Any]) -> tuple[dict[str, str], ...]:
+    state = document.get("state")
+    stored = state.get("transcript") if isinstance(state, dict) else None
+    if not isinstance(stored, list):
+        return ()
+    return tuple(
+        {"role": str(entry["role"]), "text": str(entry["text"])}
+        for entry in stored
+        if isinstance(entry, dict) and "role" in entry and "text" in entry
+    )

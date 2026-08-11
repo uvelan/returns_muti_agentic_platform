@@ -1334,6 +1334,39 @@
         "title": "APIResponse[BayAssessment]",
         "type": "object"
       },
+      "APIResponse_ConversationTranscript_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversationTranscript"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ConversationTranscript]",
+        "type": "object"
+      },
       "APIResponse_DependencySimulationSummary_": {
         "additionalProperties": false,
         "properties": {
@@ -2327,6 +2360,43 @@
           "meta"
         ],
         "title": "APIResponse[list[AuditLog]]",
+        "type": "object"
+      },
+      "APIResponse_list_ConversationSummary__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ConversationSummary"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[list[ConversationSummary]]",
         "type": "object"
       },
       "APIResponse_list_OutboxView__": {
@@ -4357,6 +4427,74 @@
           "createdAt"
         ],
         "title": "ConversationMessage",
+        "type": "object"
+      },
+      "ConversationSummary": {
+        "additionalProperties": false,
+        "description": "One row of the copilot's history list.\n\n`title` is the associate's opening message rather than a generated label:\nit is what they will recognise, it needs no model call, and it cannot drift\nfrom what the conversation was actually about.",
+        "properties": {
+          "conversationId": {
+            "title": "Conversationid",
+            "type": "string"
+          },
+          "messageCount": {
+            "title": "Messagecount",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updatedat"
+          }
+        },
+        "required": [
+          "conversationId",
+          "title",
+          "messageCount",
+          "updatedAt"
+        ],
+        "title": "ConversationSummary",
+        "type": "object"
+      },
+      "ConversationTranscript": {
+        "additionalProperties": false,
+        "properties": {
+          "conversationId": {
+            "title": "Conversationid",
+            "type": "string"
+          },
+          "conversationVersion": {
+            "title": "Conversationversion",
+            "type": "integer"
+          },
+          "messages": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Messages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "conversationId",
+          "conversationVersion",
+          "messages"
+        ],
+        "title": "ConversationTranscript",
         "type": "object"
       },
       "CreateAnalysisRequest": {
@@ -14753,6 +14891,95 @@
         "summary": "Recommend Bay",
         "tags": [
           "Warehouse Placement"
+        ]
+      }
+    },
+    "/api/v2/order-agent/conversations": {
+      "get": {
+        "description": "Recent conversations, newest first: the copilot's history list.\n\nSummaries only. The full turn results stay where they are -- rendering a\nlist of titles must not pull every statement and evidence row of every\nconversation across the wire.",
+        "operationId": "list_conversations_api_v2_order_agent_conversations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_ConversationSummary__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Conversations",
+        "tags": [
+          "Order Agent"
+        ]
+      }
+    },
+    "/api/v2/order-agent/conversations/{conversation_id}/transcript": {
+      "get": {
+        "description": "What was said, so reopening a conversation shows it rather than a blank\npane. Same bounded transcript the agent itself reasons over.",
+        "operationId": "read_conversation_transcript_api_v2_order_agent_conversations__conversation_id__transcript_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ConversationTranscript_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Conversation Transcript",
+        "tags": [
+          "Order Agent"
         ]
       }
     },

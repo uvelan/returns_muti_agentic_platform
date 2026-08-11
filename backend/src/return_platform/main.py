@@ -96,8 +96,14 @@ from return_platform.dynamic_knowledge.api.order_agent import DynamicOrderAgentR
 from return_platform.dynamic_knowledge.api.order_agent import (
     router as dynamic_order_agent_router,
 )
+from return_platform.dynamic_knowledge.integration.mongo_store import (
+    MongoAtomicConversationStore,
+)
 from return_platform.dynamic_knowledge.integration.runtime_factory import (
     dynamic_order_agent_enabled,
+)
+from return_platform.dynamic_knowledge.order_agent.conversation_repository import (
+    AtomicConversationRepository,
 )
 from return_platform.graph_schema_analyzer.api import router as graph_schema_analyzer_router
 from return_platform.graph_schema_analyzer.persistence import build_system_store_persistence
@@ -597,6 +603,15 @@ async def lifespan(
                     temporal_client=temporal_client,
                     task_queue=settings.order_discovery_workflow_task_queue,
                 )
+                # Reading conversation history is a plain query against the
+                # same record the worker commits, so it belongs here rather
+                # than behind a Temporal round trip: the API process has the
+                # Mongo client already, and a history list must still render
+                # when the workflow host is down.
+                if resources.mongo is not None:
+                    app.state.order_agent_conversations = AtomicConversationRepository(
+                        MongoAtomicConversationStore(resources.mongo, settings.mongo_database)
+                    )
                 app.state.dynamic_order_agent_status = {
                     "enabled": True,
                     "state": "READY",

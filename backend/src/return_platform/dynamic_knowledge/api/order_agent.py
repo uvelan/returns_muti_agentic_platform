@@ -12,13 +12,18 @@ from __future__ import annotations
 
 from typing import Annotated, Any, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from temporalio.client import Client
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from return_platform.dynamic_knowledge.order_agent.contracts import (
     AgentTurnRequest,
     AgentTurnResult,
+)
+from return_platform.dynamic_knowledge.order_agent.conversation_repository import (
+    AtomicConversationRepository,
+    ConversationSummary,
+    ConversationTranscript,
 )
 from return_platform.security.principal import Principal
 from return_platform.shared.contracts import APIResponse, ResponseMeta
@@ -90,6 +95,67 @@ def resolve_runtime(request: Request) -> DynamicOrderAgentRuntime:
 
 def _order_discovery_workflow_id(conversation_id: str) -> str:
     return f"order-discovery-{conversation_id}"
+
+
+def _conversations(request: Request) -> AtomicConversationRepository:
+    """The conversation reader, or a clear 503.
+
+    Deliberately not routed through Temporal. Reading history is a query
+    against the record the worker already committed, and a history list that
+    goes blank because the workflow host is down would be reporting the wrong
+    outage.
+    """
+    repository = getattr(request.app.state, "order_agent_conversations", None)
+    if isinstance(repository, AtomicConversationRepository):
+        return repository
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={
+            "code": "ORDER_AGENT_CONVERSATIONS_UNAVAILABLE",
+            "message": "Conversation history is not available in this process.",
+            "retryable": True,
+        },
+    )
+
+
+@router.get("/conversations", response_model=APIResponse[list[ConversationSummary]])
+async def list_conversations(
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=100)] = 30,
+) -> APIResponse[list[ConversationSummary]]:
+    """Recent conversations, newest first: the copilot's history list.
+
+    Summaries only. The full turn results stay where they are -- rendering a
+    list of titles must not pull every statement and evidence row of every
+    conversation across the wire.
+    """
+    return APIResponse(
+        data=await _conversations(request).list_recent(limit=limit),
+        meta=_meta(request),
+    )
+
+
+@router.get(
+    "/conversations/{conversation_id}/transcript",
+    response_model=APIResponse[ConversationTranscript],
+)
+async def read_conversation_transcript(
+    conversation_id: str,
+    request: Request,
+) -> APIResponse[ConversationTranscript]:
+    """What was said, so reopening a conversation shows it rather than a blank
+    pane. Same bounded transcript the agent itself reasons over."""
+    transcript = await _conversations(request).read_transcript(conversation_id)
+    if transcript is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "CONVERSATION_NOT_FOUND",
+                "message": f"Conversation {conversation_id} does not exist.",
+                "retryable": False,
+            },
+        )
+    return APIResponse(data=transcript, meta=_meta(request))
 
 
 def _meta(request: Request) -> ResponseMeta:

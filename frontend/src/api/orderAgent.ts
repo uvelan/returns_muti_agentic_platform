@@ -57,6 +57,21 @@ export type AgentTurnResult = {
   model_name: string;
 };
 
+/** One row of the history list. Summary only -- turn bodies are not fetched. */
+export type ConversationSummary = {
+  conversationId: string;
+  /** The associate's opening message: what they will recognise it by. */
+  title: string;
+  messageCount: number;
+  updatedAt: string | null;
+};
+
+export type ConversationTranscript = {
+  conversationId: string;
+  conversationVersion: number;
+  messages: { role: "associate" | "agent"; text: string }[];
+};
+
 export type SendTurnInput = {
   conversationId: string;
   /** Optimistic concurrency. The backend rejects a turn built on a stale view. */
@@ -91,6 +106,23 @@ export const orderAgentApi = {
     );
     if (!response.data) {
       throw new Error("The agent returned no result.");
+    }
+    return response.data;
+  },
+
+  /** Recent conversations, newest first. */
+  async listConversations(): Promise<ConversationSummary[]> {
+    const response = await apiClient<ConversationSummary[]>("/api/v2/order-agent/conversations");
+    return response.data ?? [];
+  },
+
+  /** What was said in one conversation, so reopening it is not a blank pane. */
+  async readTranscript(conversationId: string): Promise<ConversationTranscript> {
+    const response = await apiClient<ConversationTranscript>(
+      `/api/v2/order-agent/conversations/${encodeURIComponent(conversationId)}/transcript`,
+    );
+    if (!response.data) {
+      throw new Error("The conversation could not be read.");
     }
     return response.data;
   },

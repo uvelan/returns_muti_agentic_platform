@@ -37,6 +37,31 @@ class MongoAtomicConversationStore:
         document = await self._collection.find_one({"_id": conversation_id})
         return dict(document) if document is not None else None
 
+    async def list_recent(self, *, limit: int = 30) -> list[dict[str, Any]]:
+        """Recent conversations, newest first, for the copilot's history list.
+
+        Projects the summary fields only. `turns` holds a full AgentTurnResult
+        per turn -- every statement and every evidence row -- and loading all of
+        that to render a list of titles would move megabytes to display a few
+        lines. The transcript's first message is the title, so `state.transcript`
+        is the one nested field worth fetching.
+        """
+        cursor = (
+            self._collection.find(
+                {},
+                {
+                    "_id": 1,
+                    "version": 1,
+                    "updatedAt": 1,
+                    "graphGenerationId": 1,
+                    "state.transcript": 1,
+                },
+            )
+            .sort("updatedAt", -1)
+            .limit(limit)
+        )
+        return [dict(document) async for document in cursor]
+
     async def compare_and_set(
         self,
         *,

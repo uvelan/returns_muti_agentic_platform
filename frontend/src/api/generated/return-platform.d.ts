@@ -2039,6 +2039,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/order-agent/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conversations
+         * @description Recent conversations, newest first: the copilot's history list.
+         *
+         *     Summaries only. The full turn results stay where they are -- rendering a
+         *     list of titles must not pull every statement and evidence row of every
+         *     conversation across the wire.
+         */
+        get: operations["list_conversations_api_v2_order_agent_conversations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/order-agent/conversations/{conversation_id}/transcript": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Conversation Transcript
+         * @description What was said, so reopening a conversation shows it rather than a blank
+         *     pane. Same bounded transcript the agent itself reasons over.
+         */
+        get: operations["read_conversation_transcript_api_v2_order_agent_conversations__conversation_id__transcript_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/order-agent/conversations/{conversation_id}/turns": {
         parameters: {
             query?: never;
@@ -2503,6 +2548,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[ConversationTranscript] */
+        APIResponse_ConversationTranscript_: {
+            data?: components["schemas"]["ConversationTranscript"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[DependencySimulationSummary] */
         APIResponse_DependencySimulationSummary_: {
             data?: components["schemas"]["DependencySimulationSummary"] | null;
@@ -2695,6 +2746,13 @@ export interface components {
         APIResponse_list_AuditLog__: {
             /** Data */
             data?: components["schemas"]["AuditLog"][] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[list[ConversationSummary]] */
+        APIResponse_list_ConversationSummary__: {
+            /** Data */
+            data?: components["schemas"]["ConversationSummary"][] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -3417,6 +3475,35 @@ export interface components {
             id: string;
             /** Role */
             role: string;
+        };
+        /**
+         * ConversationSummary
+         * @description One row of the copilot's history list.
+         *
+         *     `title` is the associate's opening message rather than a generated label:
+         *     it is what they will recognise, it needs no model call, and it cannot drift
+         *     from what the conversation was actually about.
+         */
+        ConversationSummary: {
+            /** Conversationid */
+            conversationId: string;
+            /** Messagecount */
+            messageCount: number;
+            /** Title */
+            title: string;
+            /** Updatedat */
+            updatedAt: string | null;
+        };
+        /** ConversationTranscript */
+        ConversationTranscript: {
+            /** Conversationid */
+            conversationId: string;
+            /** Conversationversion */
+            conversationVersion: number;
+            /** Messages */
+            messages: {
+                [key: string]: string;
+            }[];
         };
         /** CreateAnalysisRequest */
         CreateAnalysisRequest: {
@@ -8860,6 +8947,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_conversations_api_v2_order_agent_conversations_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_ConversationSummary__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_conversation_transcript_api_v2_order_agent_conversations__conversation_id__transcript_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ConversationTranscript_"];
                 };
             };
             /** @description Validation Error */
