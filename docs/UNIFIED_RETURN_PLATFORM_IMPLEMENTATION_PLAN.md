@@ -134,13 +134,13 @@ resilience, and bootstrap/restart campaign runs once, after all functionality an
 accumulating broken code: tests for deleted code are deleted in the same commit, and architecture tests are
 added in the phase that creates the module they guard.
 
-**D8. uv is the single package manager; `uv.lock` is the single lockfile.** [affects P4, P25, P27]
-Three resolution paths exist today and none share a lock: `backend/Dockerfile:13` runs `pip wheel .` against
-`pyproject.toml` with **no lock at all**, the bash host scripts use `poetry install --sync` against
-`poetry.lock`, and the PowerShell host scripts prefer `uv sync --frozen` against `uv.lock`. The container is
-therefore not reproducible against either lock. `pyproject.toml` already uses PEP 621 `[project]` with
-`==`-pinned dependencies, which uv consumes directly. `poetry.lock` and `[tool.poetry]` are deleted only after
-Dockerfile, host scripts, and CI all build green from `uv.lock`. Full detail in design §5.2a.
+**D8. Poetry is the single package manager; `poetry.lock` is the single lockfile.** [affects P4, P25, P27]
+This reverses D8-as-originally-written, which named uv. That version was implemented in Phase 4c and has
+since been undone: `uv.lock`, the `ghcr.io/astral-sh/uv` Dockerfile stage, the PEP 735
+`[dependency-groups]` table, and every uv branch in the host scripts are gone. The problem was never uv's
+speed — it was that each consumer ended up with a uv branch *and* a Poetry branch reading *different*
+lockfiles, plus a hardcoded `pip install pytest==… ruff==…` fallback as a third declaration of the dev
+toolchain. Nothing checked that the three agreed. Full detail in design §5.2a.
 
 **D9. Configuration activation propagates through a reconciler, or refuses and says so.** [affects P2, P15]
 A release going ACTIVE is not the same as a running replica adopting it. Modules implement the epoch-keyed
@@ -244,12 +244,12 @@ Every phase ends with all applicable checks green before commit.
 
 **Backend — always**
 ```bash
-cd backend && uv run ruff format --check . && uv run ruff check . && uv run mypy src && uv run python -m compileall -q src
+cd backend && poetry run ruff format --check . && poetry run ruff check . && poetry run mypy src && poetry run python -m compileall -q src
 ```
 
 **Import validation — always** (catches the dangling-import class of breakage that lint misses)
 ```bash
-cd backend && uv run python -c "import return_platform.main"
+cd backend && poetry run python -c "import return_platform.main"
 ```
 
 **Frontend** — any phase touching `frontend/`
@@ -259,8 +259,8 @@ cd frontend && npm run lint && npm run typecheck && npm run build
 
 **Contracts** — any phase changing a router, request model, or response model
 ```bash
-cd backend && uv run python scripts/export_openapi.py
-cd .. && uv run python scripts/check_openapi_drift.py
+cd backend && poetry run python scripts/export_openapi.py
+cd .. && poetry run python scripts/check_openapi_drift.py
 ```
 Regenerated `openapi.json`, `backend/openapi/`, `frontend/openapi/`, and affected
 `frontend/src/contracts/*.ts` are committed **in the same commit** as the code change.
@@ -383,7 +383,7 @@ situation requires one.
    only; no assessment, no proof reports.
 3. Add a temporary migration section to `README.md`: consolidation source branch, source commit, consolidation
    branch, target application architecture.
-4. Optionally record a baseline test result (`uv run pytest -q`, `npx vitest run`) in the inventory file.
+4. Optionally record a baseline test result (`poetry run pytest -q`, `npx vitest run`) in the inventory file.
    **This is the only full suite run permitted before Phase 30** (D7) — it exists as the reference the Phase 30
    campaign is compared against, not as a gate to re-run. Skip it if the suite is already known-green at the
    baseline commit.
@@ -982,21 +982,21 @@ confirm `platform.bay_configuration` / `bay_reservation` / `bay_assignment` land
 `runtime-configuration-init`, `mongodb-rs-init`, `sqlserver-init`, `neo4j`, `temporal`, `valkey` as
 appropriate. `seed-runner` itself stays for now — Phase 25 moves it to the `dev-tools` profile.
 
-**4c. Three dependency resolution paths, none sharing a lock (D8).** `backend/Dockerfile:13` runs
-`pip wheel .` from `pyproject.toml` with **no lockfile at all** — the container is not reproducible against
-either lock. Bash host scripts use `poetry install --sync` (`poetry.lock`); PowerShell host scripts prefer
-`uv sync --frozen` (`uv.lock`). Migrate all consumers to uv:
+**4c. Three dependency resolution paths, none sharing a lock (D8).** DONE, then reversed. It was first
+carried out with uv; the container, both bootstrap scripts and the phase gates were migrated to `uv.lock`.
+That left every consumer with a uv branch and a Poetry branch reading *different* lockfiles, so the
+duplication D8 set out to remove had simply changed shape. It has since been redone with Poetry as the one
+tool:
 
 | Consumer | Target |
 |---|---|
-| `backend/Dockerfile` | `uv sync --frozen --no-dev` against a copied `uv.lock` |
-| `scripts/bootstrap_host.{sh,ps1}` | `uv sync --frozen --all-groups` |
-| `scripts/run_*_host.{sh,ps1}` | `uv run …` |
-| phase gates | `uv run ruff` / `uv run mypy` / `uv run python -m compileall` |
+| `backend/Dockerfile` | `poetry export --only main` → `pip wheel -r requirements.txt` |
+| `scripts/bootstrap_host.{sh,ps1}` | `poetry sync` |
+| `scripts/run_*_host.{sh,ps1}` | project `.venv` if present, else `poetry run …` |
+| phase gates | `poetry run ruff` / `poetry run mypy` / `poetry run python -m compileall` |
 
-`poetry.lock` and the `[tool.poetry]` block stay until a container build **and** a host bootstrap both succeed
-from `uv.lock`; they are deleted in Phase 27. This is the one case where keeping the duplicate temporarily is
-correct.
+`uv.lock`, the uv Dockerfile stage and the `[dependency-groups]` table are deleted; `poetry.lock` is the only
+lockfile. Nothing is left for Phase 27 to remove here.
 
 **Normal startup must not** reseed business data, rebuild the graph, perform live AI provider validation,
 recreate valid collections, or reset configuration. Audit the lifespan in `main.py` for each of these and fix
@@ -1122,7 +1122,7 @@ extension/replacement. Each states explicitly: *This agent does not directly inv
 and 9–11 consume what this phase builds.
 
 **Dependencies.** Add `langgraph` and `langgraph-checkpoint` to `backend/pyproject.toml`, resolved through
-`uv.lock` (D8 — no second dependency manager; pin the version at implementation time). **Do not add**
+`poetry.lock` (D8 — no second dependency manager; pin the version at implementation time). **Do not add**
 `langchain-openai`, `langchain-anthropic`, `langchain-google-genai`, or any other provider integration
 package — a LangGraph node calling a provider directly would create a second AI routing path bypassing
 failover, rate limits, circuit breakers, interception, replay, safety, and metrics (D11.6). Their absence is
@@ -2245,9 +2245,9 @@ generation, lint/type/build helpers, `scripts/check_openapi_drift.py`.
 handoff scripts, obsolete duplicate bootstrap scripts, and the ~20 `scripts/*stage4*` files
 (`run_stage4m_*`, `run_stage4n_*`, `validate_stage4*`, `start_stage4m_simulation.sh`, `emit_stage_gate.py`).
 
-**Complete the uv migration (D8).** Delete `poetry.lock` and the `[tool.poetry]` block from
-`backend/pyproject.toml` — but only after verifying a container build and a host bootstrap both succeed from
-`uv.lock` alone. If either still needs poetry, the Phase 4 migration is incomplete and this deletion waits.
+**Dependency-manager unification (D8).** Nothing left to do: D8 was reversed to Poetry and `uv.lock`,
+the uv Dockerfile stage and `[dependency-groups]` are already deleted. `poetry.lock` and `[tool.poetry]`
+stay — they are the single lockfile and the dev-group declaration, not leftovers.
 
 **Root-level debris — no disposition in the draft plan.** `fix_eslint.py`, `fix_imports.py`, `README-back.md`,
 `PACKAGE_MANIFEST.md`, `linux_kit/`, `.tmp/`, `.runtime/`, `backend/validation_output_new.txt`,
@@ -2510,7 +2510,7 @@ built on.
 | R16 | On-demand sync writes to a different generation than the query | One `GenerationHandle` per operation, threaded explicitly | 12 |
 | R17 | Lost interception → permanently stuck workflow | Embedded resume command; at-least-once worker; idempotent signal | 14 |
 | R18 | Credentials or customer data persisted in AI/analyzer records | Mandatory redactor; encrypted structures with TTL; IDs not snapshots | 3, 9, 14 |
-| R19 | Container not reproducible against any lockfile | Single uv lock across Docker, host scripts, CI | 4, 27 |
+| R19 | Container not reproducible against any lockfile | Single `poetry.lock` across Docker, host scripts, CI | 4, 27 |
 | R20 | LangGraph becomes a second platform orchestrator | D11 boundary; no LangGraph type in any public signature; `test_langgraph_not_in_public_api.py`, `test_no_cross_agent_subgraphs.py` | 5A, 7, 10 |
 | R21 | A reasoning node bypasses the AI Gateway | Provider integration packages excluded at the dependency level; `test_no_langchain_provider_packages.py`, `test_nodes_do_not_construct_ai_providers.py` | 5A |
 | R22 | Resumed node repeats a side effect (LangGraph re-runs nodes from their start) | Action receipts keyed on `reasoning_run_id + node_name + logical_action_id` | 5A, 7 |

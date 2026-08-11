@@ -20,8 +20,14 @@ FORBIDDEN_PACKAGE_PREFIXES = (
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_uv_lock_has_no_langchain_provider_packages() -> None:
-    lock_text = (BACKEND_ROOT / "uv.lock").read_text(encoding="utf-8").lower()
+def test_the_lockfile_has_no_langchain_provider_packages() -> None:
+    """`poetry.lock` is the lockfile; there is no longer a second one.
+
+    Scanning the lock rather than the declared dependencies is the point: a
+    provider package can arrive transitively, which is exactly the arrival this
+    forbids and the one `pyproject.toml` cannot show.
+    """
+    lock_text = (BACKEND_ROOT / "poetry.lock").read_text(encoding="utf-8").lower()
     violations = [
         prefix for prefix in FORBIDDEN_PACKAGE_PREFIXES if f'name = "{prefix}"' in lock_text
     ]

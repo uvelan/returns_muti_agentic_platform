@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Pinned so a host bootstrap and a container build use the same Poetry; keep in
+# step with POETRY_VERSION in backend/Dockerfile.
+POETRY_VERSION=2.4.1
 command -v python3.13 >/dev/null || { echo "Python 3.13 is required" >&2; exit 1; }
 command -v node >/dev/null || { echo "Node.js 24 is required" >&2; exit 1; }
 command -v npm >/dev/null || { echo "npm 11 is required" >&2; exit 1; }
@@ -19,22 +22,27 @@ python3.13 "$ROOT/scripts/linux/ensure_runtime_env_keys.py" --env-file "$ROOT/.e
 python3.13 "$ROOT/scripts/linux/ensure_local_infrastructure_secrets.py"
 python3.13 "$ROOT/scripts/linux/ensure_local_replica_key.py"
 cd "$ROOT/backend"
-if command -v uv >/dev/null; then
-  UV_CACHE="$ROOT/.tmp/uv-cache"
-  mkdir -p "$UV_CACHE"
-  # [dependency-groups].dev in backend/pyproject.toml covers pytest/ruff/mypy/etc.,
-  # so --all-groups alone resolves the full dev toolchain from uv.lock.
-  uv sync --project "$ROOT/backend" --all-groups --frozen --cache-dir "$UV_CACHE"
-elif command -v poetry >/dev/null; then
-  poetry env use python3.13
-  poetry install --sync
+# Poetry is the only packaging tool, and `poetry.lock` the only lockfile. If
+# Poetry is missing we install it rather than falling back to a hand-written
+# `pip install pytest==... ruff==...` line: that line was a second declaration
+# of the dev toolchain, and nothing kept it in step with the lockfile.
+if command -v poetry >/dev/null; then
+  POETRY=poetry
 else
-  python3.13 -m venv .venv
-  .venv/bin/python -m pip install --upgrade pip
-  .venv/bin/python -m pip install -e .
-  .venv/bin/python -m pip install \
-    pytest==9.1.1 pytest-asyncio==1.4.0 pytest-cov==7.1.0 \
-    ruff==0.15.21 mypy==2.3.0 'types-pyyaml>=6.0.12.20260518'
+  # Its own venv rather than `pip install --user`: most 3.13 distributions mark
+  # the system environment externally managed (PEP 668) and refuse the latter.
+  if [[ ! -x "$ROOT/.tmp/poetry/bin/poetry" ]]; then
+    python3.13 -m venv "$ROOT/.tmp/poetry"
+    "$ROOT/.tmp/poetry/bin/python" -m pip install --quiet --upgrade pip
+    "$ROOT/.tmp/poetry/bin/python" -m pip install --quiet "poetry==$POETRY_VERSION"
+  fi
+  POETRY="$ROOT/.tmp/poetry/bin/poetry"
 fi
+"$POETRY" env use python3.13
+# `poetry sync`, not `poetry install --sync`: the flag is deprecated in
+# Poetry 2.x. Sync rather than install so a dependency removed from the
+# lockfile is removed from the environment too -- an install-only environment
+# keeps stale packages that mask a missing declaration.
+"$POETRY" sync
 cd "$ROOT/frontend"
 npm ci

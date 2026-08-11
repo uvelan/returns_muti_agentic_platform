@@ -1,5 +1,8 @@
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+# Pinned so a host bootstrap and a container build use the same Poetry; keep in
+# step with POETRY_VERSION in backend/Dockerfile.
+$PoetryVersion = "2.4.1"
 $python = Get-Command python3.13 -ErrorAction SilentlyContinue
 if (-not $python) {
   $venvPython = Join-Path $Root "backend\.venv\Scripts\python.exe"
@@ -30,32 +33,34 @@ if ($LASTEXITCODE -ne 0) { throw "Infrastructure secret preparation failed." }
 if ($LASTEXITCODE -ne 0) { throw "MongoDB replica key preparation failed." }
 Push-Location (Join-Path $Root "backend")
 try {
-  if (Get-Command uv -ErrorAction SilentlyContinue) {
-    $uvCache = Join-Path $Root ".tmp\uv-cache"
-    New-Item -ItemType Directory -Path $uvCache -Force | Out-Null
-    # [dependency-groups].dev in backend/pyproject.toml covers pytest/ruff/mypy/etc.,
-    # so --all-groups alone resolves the full dev toolchain from uv.lock.
-    uv sync --project (Join-Path $Root "backend") --all-groups --frozen --cache-dir $uvCache
-    if ($LASTEXITCODE -ne 0) { throw "Backend dependency synchronization failed." }
-  } elseif (Get-Command poetry -ErrorAction SilentlyContinue) {
-    poetry env use $python.Source
-    if ($LASTEXITCODE -ne 0) { throw "Poetry could not select Python 3.13." }
-    poetry install --sync
-    if ($LASTEXITCODE -ne 0) { throw "Backend dependency synchronization failed." }
+  # Poetry is the only packaging tool, and poetry.lock the only lockfile. When
+  # Poetry is missing we install it rather than falling back to a hand-written
+  # `pip install pytest==... ruff==...` line: that line was a second declaration
+  # of the dev toolchain, and nothing kept it in step with the lockfile.
+  if (Get-Command poetry -ErrorAction SilentlyContinue) {
+    $poetry = "poetry"
   } else {
-    if (-not (Test-Path ".venv\Scripts\python.exe")) {
-      & $python.Source -m venv .venv
-      if ($LASTEXITCODE -ne 0) { throw "Backend virtual environment creation failed." }
+    # Its own venv rather than a user-site install, so nothing is added to the
+    # Python that runs the platform.
+    $poetryHome = Join-Path $Root ".tmp\poetry"
+    if (-not (Test-Path (Join-Path $poetryHome "Scripts\poetry.exe"))) {
+      & $python.Source -m venv $poetryHome
+      if ($LASTEXITCODE -ne 0) { throw "Poetry virtual environment creation failed." }
+      & (Join-Path $poetryHome "Scripts\python.exe") -m pip install --quiet --upgrade pip
+      if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed." }
+      & (Join-Path $poetryHome "Scripts\python.exe") -m pip install --quiet "poetry==$PoetryVersion"
+      if ($LASTEXITCODE -ne 0) { throw "Poetry installation failed." }
     }
-    & .\.venv\Scripts\python.exe -m ensurepip --upgrade
-    if ($LASTEXITCODE -ne 0) { throw "pip bootstrap failed." }
-    & .\.venv\Scripts\python.exe -m pip install --upgrade pip
-    if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed." }
-    & .\.venv\Scripts\python.exe -m pip install -e .
-    if ($LASTEXITCODE -ne 0) { throw "Backend dependency installation failed." }
-    & .\.venv\Scripts\python.exe -m pip install pytest==9.1.1 pytest-asyncio==1.4.0 pytest-cov==7.1.0 ruff==0.15.21 mypy==2.3.0 "types-pyyaml>=6.0.12.20260518"
-    if ($LASTEXITCODE -ne 0) { throw "Backend development dependency installation failed." }
+    $poetry = (Join-Path $poetryHome "Scripts\poetry.exe")
   }
+  & $poetry env use $python.Source
+  if ($LASTEXITCODE -ne 0) { throw "Poetry could not select Python 3.13." }
+  # `poetry sync`, not `poetry install --sync`: the flag is deprecated in Poetry
+  # 2.x. Sync rather than install so a dependency removed from the lockfile is
+  # removed from the environment too -- an install-only environment keeps stale
+  # packages that mask a missing declaration.
+  & $poetry sync
+  if ($LASTEXITCODE -ne 0) { throw "Backend dependency synchronization failed." }
 } finally { Pop-Location }
 Push-Location (Join-Path $Root "frontend")
 try {

@@ -38,6 +38,11 @@ include = [
     { path = "src/return_platform/configuration/sql_migrations/*.sql", format = ["sdist", "wheel"] }
 ]
 
+# The dev toolchain. Poetry is the only packaging tool here: `poetry.lock`
+# is the single lockfile, and the Dockerfile exports from it rather than
+# re-resolving. A parallel `[dependency-groups]` table existed while a move
+# to uv was in progress and was removed with it -- two dependency lists that
+# a comment asks you to hand-sync will drift, and nothing was checking.
 [tool.poetry.group.dev.dependencies]
 pytest = "9.1.1"
 pytest-asyncio = "1.4.0"
@@ -45,21 +50,6 @@ ruff = "0.15.21"
 mypy = "2.3.0"
 types-pyyaml = "^6.0.12.20260518"
 pytest-cov = ">=7.1,<8.0"
-
-# PEP 735 dependency group -- the uv-readable equivalent of
-# [tool.poetry.group.dev.dependencies] above. uv sync --all-groups reads this table
-# directly; Poetry does not read [dependency-groups], hence both exist during the
-# migration. Keep the two lists in sync; this group's versions are the source of truth
-# once `poetry.lock`/[tool.poetry] are removed.
-[dependency-groups]
-dev = [
-    "pytest==9.1.1",
-    "pytest-asyncio==1.4.0",
-    "ruff==0.15.21",
-    "mypy==2.3.0",
-    "types-pyyaml>=6.0.12.20260518",
-    "pytest-cov>=7.1,<8.0",
-]
 
 [build-system]
 requires = ["poetry-core"]

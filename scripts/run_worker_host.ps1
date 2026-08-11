@@ -14,8 +14,6 @@ try {
   if ($Worker -eq "integration-outbox") {
     if (Test-Path -LiteralPath ".\.venv\Scripts\python.exe") {
       & .\.venv\Scripts\python.exe -m return_platform.workers.integration_outbox
-    } elseif (Get-Command uv -ErrorAction SilentlyContinue) {
-      uv run python -m return_platform.workers.integration_outbox
     } elseif (Get-Command poetry -ErrorAction SilentlyContinue) {
       poetry run python -m return_platform.workers.integration_outbox
     } else {
@@ -23,8 +21,6 @@ try {
     }
   } elseif (Test-Path -LiteralPath ".\.venv\Scripts\python.exe") {
     & .\.venv\Scripts\python.exe (Join-Path "scripts" $Scripts[$Worker])
-  } elseif (Get-Command uv -ErrorAction SilentlyContinue) {
-    uv run python (Join-Path "scripts" $Scripts[$Worker])
   } elseif (Get-Command poetry -ErrorAction SilentlyContinue) {
     poetry run python (Join-Path "scripts" $Scripts[$Worker])
   } else {

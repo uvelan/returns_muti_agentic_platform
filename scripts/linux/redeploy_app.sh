@@ -60,16 +60,16 @@ fi
 if [[ "$install_dependencies" == true ]]; then
   echo "Synchronizing locked backend dependencies..."
   cd "$REPO_ROOT/backend"
-  if command -v uv >/dev/null 2>&1; then
-    # [dependency-groups].dev in backend/pyproject.toml covers pytest/ruff/mypy/etc.,
-    # so --all-groups alone resolves the full dev toolchain from uv.lock.
-    uv sync --project "$REPO_ROOT/backend" --all-groups --frozen
-  elif command -v poetry >/dev/null 2>&1; then
-    poetry install --sync --no-interaction
+  # `poetry sync`, not `poetry install --sync`: the flag is deprecated in
+  # Poetry 2.x. Sync so a dependency dropped from the lockfile leaves the
+  # environment as well -- a redeploy that only ever adds is how a removed
+  # package keeps working locally and fails in a fresh container.
+  if command -v poetry >/dev/null 2>&1; then
+    poetry sync --no-interaction
   elif [[ -x "$RUNTIME_ROOT/tooling/bin/poetry" ]]; then
-    "$RUNTIME_ROOT/tooling/bin/poetry" install --sync --no-interaction
+    "$RUNTIME_ROOT/tooling/bin/poetry" sync --no-interaction
   else
-    echo "uv or Poetry is required to install backend dependencies." >&2
+    echo "Poetry is required to install backend dependencies." >&2
     exit 2
   fi
 

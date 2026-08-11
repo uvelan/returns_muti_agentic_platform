@@ -276,7 +276,6 @@ def _lockfile_digest() -> str:
     hasher = hashlib.sha256()
     for name in (
         "backend/poetry.lock",
-        "backend/uv.lock",
         "frontend/package-lock.json",
     ):
         path = REPO_ROOT / name

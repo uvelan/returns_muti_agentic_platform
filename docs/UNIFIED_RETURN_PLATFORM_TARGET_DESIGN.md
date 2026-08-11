@@ -85,10 +85,9 @@ must not require touching Temporal, the AI Gateway, any other agent, or any prod
 
 ```
 backend/
-├── Dockerfile                       uv sync --frozen (see §5.2a)
-├── pyproject.toml                   PEP 621 [project]; [tool.poetry] removed after migration
-├── uv.lock                          the single lockfile
-│   (poetry.lock deleted once Dockerfile + host scripts + CI all consume uv.lock)
+├── Dockerfile                       poetry export → pip wheel (see §5.2a)
+├── pyproject.toml                   PEP 621 [project] + [tool.poetry] dev group
+├── poetry.lock                      the single lockfile (uv.lock deleted)
 ├── config/                          → §4
 ├── docs/
 ├── openapi/
@@ -884,29 +883,31 @@ Removed: `data-job-worker`. Consolidated: `integration-outbox-worker` into `outb
 
 ### 5.2a Dependency locking — one manager, one lock
 
-**Current state is three resolution paths, none of them shared:**
+**Decision: Poetry, single `poetry.lock`.** This reverses the earlier decision in favour of uv
+(D8), which had been carried out and is now undone; `uv.lock`, the `ghcr.io/astral-sh/uv` Dockerfile
+stage, the PEP 735 `[dependency-groups]` table, and every uv branch in the host scripts are deleted.
 
-| Path | Resolves via | Lock consumed |
-|---|---|---|
-| `backend/Dockerfile:13` | `python -m pip wheel .` | **none** — resolves fresh from `pyproject.toml` |
-| `scripts/bootstrap_host.sh:22-24`, `run_backend_host.sh:33` | `poetry install --sync` | `poetry.lock` |
-| `scripts/bootstrap_host.ps1:36`, `run_all_host.ps1:14` | `uv sync --frozen` (poetry fallback) | `uv.lock` |
-
-The container is the worst case: it is not reproducible against either lock.
-
-**Decision: uv, single `uv.lock`.** `pyproject.toml` already uses PEP 621 `[project]` with `==`-pinned
-dependencies, which uv consumes directly, and the PowerShell scripts already prefer uv.
+The reversal was not about uv the tool. Every consumer had grown a *two-branch* shape — uv first,
+Poetry second — so nothing proved which branch a given machine took, and the two branches read
+different lockfiles. The two locks then had to be kept in step by hand, and the fallback branches
+carried a third declaration of the dev toolchain as a hardcoded
+`pip install pytest==... ruff==...` line. Three declarations, no check that they agree. Choosing one
+tool is worth more here than choosing the faster one.
 
 | Consumer | Target |
 |---|---|
-| `backend/Dockerfile` | `uv sync --frozen --no-dev` against a copied `uv.lock` |
-| `scripts/bootstrap_host.{sh,ps1}` | `uv sync --frozen --all-groups` |
-| `scripts/run_*_host.{sh,ps1}` | `uv run …` |
-| CI / phase gates | `uv run ruff`, `uv run mypy`, `uv run pytest` |
+| `backend/Dockerfile` | `poetry export --only main` → `pip wheel -r requirements.txt` (builder), `poetry install --with dev --no-root` (test stage) |
+| `scripts/bootstrap_host.{sh,ps1}` | `poetry sync` (Poetry installed into `.tmp/poetry` when absent) |
+| `scripts/run_*_host.{sh,ps1}` | project `.venv` if present, else `poetry run …` |
+| CI / phase gates | `poetry run ruff`, `poetry run mypy`, `poetry run pytest` |
 
-`poetry.lock` and the `[tool.poetry]` block in `pyproject.toml` are deleted **only after** all four consumers
-are migrated and a container build plus a host bootstrap both succeed from `uv.lock`. Until then both files
-stay and the migration is incomplete — this is the one place where keeping the duplicate is correct.
+Two details the migration had to discover: `poetry export` ships as a plugin in Poetry 2.x
+(`poetry-plugin-export`) rather than a built-in, and `poetry install --sync` is deprecated in favour
+of `poetry sync`. Both are pinned in the Dockerfile and in `bootstrap_host.{sh,ps1}` at the same
+Poetry version, so the container and a host bootstrap resolve identically.
+
+The runtime image still installs from wheels with `--no-index`, so it carries neither Poetry nor a
+compiler and never reaches the network.
 
 ### 5.3 `scripts/` and `backend/scripts/`
 ```
@@ -2411,7 +2412,7 @@ to know nothing about it.
 signatures are unchanged. No graph, state dict, `CompiledGraph`, or checkpointer appears in any public type.
 
 **Dependencies.** `langgraph` and `langgraph-checkpoint` go into `backend/pyproject.toml`, resolved through
-`uv.lock` (D8 — no second dependency manager). Provider integration packages —
+`poetry.lock` (D8 — no second dependency manager). Provider integration packages —
 `langchain-openai`, `langchain-anthropic`, `langchain-google-genai`, and any equivalent — **must not** be
 added; their absence is asserted at the dependency level, not just in code (§14.12).
 

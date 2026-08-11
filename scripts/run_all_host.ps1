@@ -10,10 +10,6 @@ try {
     & .\.venv\Scripts\python.exe (Join-Path $Root "scripts\vault\bootstrap_local_vault.py")
     & .\.venv\Scripts\python.exe (Join-Path "scripts" "apply_neo4j_migrations.py")
     & .\.venv\Scripts\python.exe (Join-Path "scripts" "bootstrap_graph_configuration.py")
-  } elseif (Get-Command uv -ErrorAction SilentlyContinue) {
-    uv run python (Join-Path $Root "scripts\vault\bootstrap_local_vault.py")
-    uv run python (Join-Path "scripts" "apply_neo4j_migrations.py")
-    uv run python (Join-Path "scripts" "bootstrap_graph_configuration.py")
   } elseif (Get-Command poetry -ErrorAction SilentlyContinue) {
     poetry run python (Join-Path $Root "scripts\vault\bootstrap_local_vault.py")
     poetry run python (Join-Path "scripts" "apply_neo4j_migrations.py")

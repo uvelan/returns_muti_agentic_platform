@@ -388,12 +388,11 @@ Status: DONE (see git history for `65106ce`; superseded as "current slice" by Ph
 
 ## Verified current facts
 
-- `uv run` is unsafe for gates in this repo today: `pyproject.toml` uses Poetry-style
-  dependency groups (`[tool.poetry.group.dev.dependencies]`) that `uv sync` does not
-  read; a prior `uv sync --all-groups` uninstalled pytest/ruff/mypy. Both `uv.lock` and
-  `poetry.lock` exist. Dependency-manager unification is Phase 4's job, not done yet.
-  **Gates in this slice use Poetry** (`poetry run ...`), matching every gate run so far
-  this session.
+- ~~`uv run` is unsafe for gates in this repo today…~~ **Superseded.** Phase 4c unified on
+  uv, and that has since been reversed: Poetry is the only package manager and
+  `poetry.lock` the only lockfile. `uv.lock`, the uv Dockerfile stage and
+  `[dependency-groups]` are deleted. Gates are `poetry run …` — which they always were in
+  practice. See "D8 reversed" at the end of this ledger.
 - Mongo-dependent tests must run from a runtime that resolves the compose network's
   service hostnames (`mongodb:27017`), not by rewriting the replica set's advertised
   host to `127.0.0.1` (a prior session did this; it was reverted — replica set host is
@@ -4096,3 +4095,46 @@ coordinator, the `ReturnPlatformConfiguration` ↔ `RuntimeSnapshot` configurati
 bridge, mapping `orchestrator.py`'s real per-stage business logic onto agents, the 4-way
 source-config schema reconciliation, and the `LogicalTargetedReadPlan` AND/OR condition-tree
 redesign v2's full query shape would need.
+
+## D8 reversed — Poetry is the single package manager
+
+Phase 4c unified dependency resolution on uv. That is now undone. Deleted: `backend/uv.lock`,
+the `FROM ghcr.io/astral-sh/uv:0.11.28` stage in `backend/Dockerfile`, the PEP 735
+`[dependency-groups]` table in `backend/pyproject.toml`, and every uv branch in
+`bootstrap_host.{sh,ps1}`, `run_{all,backend,worker}_host.ps1`,
+`scripts/linux/02_reconstruct_environment.sh` and `scripts/linux/redeploy_app.sh`.
+`poetry.lock` is the only lockfile. Design §5.2a and plan D8/4c/P27 are rewritten to match.
+
+**What prompted it** was a build failure — `COPY --from=uv /uv …` returning 403 — but that
+turned out to be a stale BuildKit cache entry holding an expired SAS token, not a uv problem;
+`docker pull` then rebuild fixed it. The reversal stands on its own reasoning.
+
+**The actual defect in 4c** was not the tool. It was that every consumer ended up with *two*
+branches — uv first, Poetry second — reading *two different lockfiles*, with a hardcoded
+`pip install pytest==9.1.1 ruff==0.15.21 …` line underneath as a third declaration of the dev
+toolchain. Nothing verified that the three agreed, and nothing recorded which branch a given
+machine actually took. 4c set out to remove exactly that duplication and reproduced it in a
+new shape. One tool, one lock, no fallback branch is worth more than a faster resolver.
+
+The bootstrap scripts no longer carry the hardcoded dev list at all: if Poetry is absent they
+install it (pinned to the Dockerfile's `POETRY_VERSION=2.4.1`) into `.tmp/poetry`, its own
+venv rather than a user-site install, and run `poetry sync`.
+
+**Two things this cost, worth knowing before anyone repeats it.** `poetry export` is a plugin
+in Poetry 2.x (`poetry-plugin-export`), not a built-in — installing Poetry alone leaves the
+Dockerfile failing at the export line. And `poetry install --sync` is deprecated in favour of
+`poetry sync`; the old spelling still runs but warns.
+
+`[dependency-groups]` was documented in `pyproject.toml` as unread by Poetry. That was wrong
+by the time it was written: removing the table changed `poetry check --lock`'s content hash,
+which is only possible if Poetry was reading it. So for some period both that table and
+`[tool.poetry.group.dev.dependencies]` were live, with a comment asking a human to keep them
+in sync. Relocking after the removal produced **no change at all** — same 73 packages, same
+versions — so nothing was actually resolving differently; the exposure was latent.
+
+**Verified:** `docker build --target test backend` green from the Poetry Dockerfile;
+`poetry check --lock` "All set!"; all `*.sh` pass `bash -n`; all four `*.ps1` parse clean via
+`System.Management.Automation.Language.Parser`; `git grep` finds no `uv` reference left in
+`scripts/`, the Dockerfile, or any Python file. Historical evidence files under
+`docs/evidence/` and `docs/execution-context/` keep their uv references — they are records of
+what was run at the time, not instructions.
