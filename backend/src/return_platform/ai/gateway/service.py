@@ -11,6 +11,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from return_platform.ai.gateway.redaction import redact_payload
 from return_platform.ai.providers import ProviderError, ProviderRequest
 from return_platform.ai.routing.routes import AIRoute, build_routes
 from return_platform.ai.routing.selection import AIRoutePool
@@ -505,7 +506,12 @@ class AIGatewayService:
                         route.provider.generate(
                             ProviderRequest(
                                 prompt,
-                                payload,
+                                # `_redact_and_validate` already rejected a
+                                # sensitive *top-level key*. This catches the
+                                # same policy applied to values nested inside
+                                # containers and inside JSON-encoded strings,
+                                # which that check cannot see.
+                                redact_payload(payload),
                                 max_output_tokens=task.maximumOutputTokens,
                                 temperature=0.0,
                             )

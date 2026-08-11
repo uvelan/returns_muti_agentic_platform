@@ -31,6 +31,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from return_platform.ai.gateway.redaction import redact_payload
 from return_platform.ai.providers import ProviderError, ProviderRequest
 from return_platform.ai.providers.schema_cleaner import clean_gemini_schema
 from return_platform.ai.routing.routes import AIRoute
@@ -280,7 +281,13 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
                         route.provider.generate(
                             ProviderRequest(
                                 system_prompt=full_prompt,
-                                user_payload=dict(payload),
+                                # Redacted here, at the last point before the
+                                # request leaves the platform. This path had no
+                                # redaction of any kind -- not even the gateway's
+                                # top-level key scan -- and it is the one the
+                                # Order Agent uses, so every graph row it had
+                                # retrieved travelled inside `contextJson`.
+                                user_payload=redact_payload(dict(payload)),
                                 max_output_tokens=self._task.maximumOutputTokens,
                                 temperature=0.0,
                                 response_schema=self._response_model.model_json_schema(),
