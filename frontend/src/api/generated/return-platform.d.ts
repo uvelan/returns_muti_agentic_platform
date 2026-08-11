@@ -4,6 +4,48 @@
  */
 
 export interface paths {
+    "/api/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Agents */
+        get: operations["list_agents_api_agents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{manifest_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Agent Configuration */
+        get: operations["get_agent_configuration_api_agents__manifest_id__get"];
+        /**
+         * Update Agent Configuration
+         * @description Replace one agent's document.
+         *
+         *     A rejected document comes back as 422 carrying the loader's own reason. The
+         *     editor needs to know *why* it was refused -- "invalid configuration" gives
+         *     an operator nothing to correct, and the loader's message names the field.
+         */
+        put: operations["update_agent_configuration_api_agents__manifest_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ai/interceptions": {
         parameters: {
             query?: never;
@@ -1169,7 +1211,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Start Chat */
+        /**
+         * Start Chat
+         * @deprecated
+         */
         post: operations["start_chat_api_v1_associate_returns_chat_post"];
         delete?: never;
         options?: never;
@@ -1184,10 +1229,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Conversations */
+        /**
+         * List Conversations
+         * @deprecated
+         */
         get: operations["list_conversations_api_v1_associate_returns_conversations_get"];
         put?: never;
-        /** Start Conversation */
+        /**
+         * Start Conversation
+         * @deprecated
+         */
         post: operations["start_conversation_api_v1_associate_returns_conversations_post"];
         delete?: never;
         options?: never;
@@ -1202,7 +1253,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Conversation */
+        /**
+         * Get Conversation
+         * @deprecated
+         */
         get: operations["get_conversation_api_v1_associate_returns_conversations__conversation_id__get"];
         put?: never;
         post?: never;
@@ -1221,7 +1275,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Continue Chat */
+        /**
+         * Continue Chat
+         * @deprecated
+         */
         post: operations["continue_chat_api_v1_associate_returns_conversations__conversation_id__chat_post"];
         delete?: never;
         options?: never;
@@ -1238,7 +1295,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Confirm Discovery */
+        /**
+         * Confirm Discovery
+         * @deprecated
+         */
         post: operations["confirm_discovery_api_v1_associate_returns_conversations__conversation_id__confirm_post"];
         delete?: never;
         options?: never;
@@ -1255,7 +1315,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit Return Details */
+        /**
+         * Submit Return Details
+         * @deprecated
+         */
         post: operations["submit_return_details_api_v1_associate_returns_conversations__conversation_id__details_post"];
         delete?: never;
         options?: never;
@@ -1272,7 +1335,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Continue Conversation */
+        /**
+         * Continue Conversation
+         * @deprecated
+         */
         post: operations["continue_conversation_api_v1_associate_returns_conversations__conversation_id__messages_post"];
         delete?: never;
         options?: never;
@@ -1477,7 +1543,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Assess Bay */
+        /**
+         * Assess Bay
+         * @deprecated
+         */
         post: operations["assess_bay_api_v1_return_agents_bay_assignment_assess_post"];
         delete?: never;
         options?: never;
@@ -1492,7 +1561,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Configuration */
+        /**
+         * Configuration
+         * @deprecated
+         */
         get: operations["configuration_api_v1_return_agents_configuration_get"];
         put?: never;
         post?: never;
@@ -1511,7 +1583,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Assess Feedback */
+        /**
+         * Assess Feedback
+         * @deprecated
+         */
         post: operations["assess_feedback_api_v1_return_agents_feedback_assess_post"];
         delete?: never;
         options?: never;
@@ -1528,7 +1603,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Assess Fulfillment */
+        /**
+         * Assess Fulfillment
+         * @deprecated
+         */
         post: operations["assess_fulfillment_api_v1_return_agents_fulfillment_assess_post"];
         delete?: never;
         options?: never;
@@ -1545,7 +1623,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Assess Discovery */
+        /**
+         * Assess Discovery
+         * @deprecated
+         */
         post: operations["assess_discovery_api_v1_return_agents_order_discovery_assess_post"];
         delete?: never;
         options?: never;
@@ -1562,7 +1643,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Assess Return Workflow */
+        /**
+         * Assess Return Workflow
+         * @deprecated
+         */
         post: operations["assess_return_workflow_api_v1_return_agents_return_workflow_assess_post"];
         delete?: never;
         options?: never;
@@ -2524,6 +2608,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[AgentConfigurationView] */
+        APIResponse_AgentConfigurationView_: {
+            data?: components["schemas"]["AgentConfigurationView"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[AgentTurnResult] */
         APIResponse_AgentTurnResult_: {
             data?: components["schemas"]["AgentTurnResult"] | null;
@@ -2735,6 +2825,13 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[list[AgentSummary]] */
+        APIResponse_list_AgentSummary__: {
+            /** Data */
+            data?: components["schemas"]["AgentSummary"][] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[list[AssociateConversationView]] */
         APIResponse_list_AssociateConversationView__: {
             /** Data */
@@ -2936,6 +3033,26 @@ export interface components {
             /** To Label */
             to_label: string;
         };
+        /** AgentConfigurationUpdate */
+        AgentConfigurationUpdate: {
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+        };
+        /** AgentConfigurationView */
+        AgentConfigurationView: {
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+            /** Manifestid */
+            manifestId: string;
+            /** Moduleid */
+            moduleId: string;
+            /** Path */
+            path: string;
+        };
         /** AgentDecisionView */
         AgentDecisionView: {
             /** Agent */
@@ -2971,6 +3088,21 @@ export interface components {
          * @enum {string}
          */
         AgentExecutionMode: "DETERMINISTIC" | "AI_ASSISTED";
+        /** AgentSummary */
+        AgentSummary: {
+            /** Configurationversion */
+            configurationVersion: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Manifestid */
+            manifestId: string;
+            /** Moduleid */
+            moduleId: string;
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+        };
         /** AgentTurnRequest */
         AgentTurnRequest: {
             /** Agent Id */
@@ -5517,6 +5649,92 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_agents_api_agents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_AgentSummary__"];
+                };
+            };
+        };
+    };
+    get_agent_configuration_api_agents__manifest_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                manifest_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AgentConfigurationView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_agent_configuration_api_agents__manifest_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                manifest_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentConfigurationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AgentConfigurationView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_interceptions_api_ai_interceptions_get: {
         parameters: {
             query?: never;

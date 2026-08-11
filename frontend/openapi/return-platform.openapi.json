@@ -1202,6 +1202,39 @@
         "title": "APIResponse[AIUsageSummaryView]",
         "type": "object"
       },
+      "APIResponse_AgentConfigurationView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentConfigurationView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[AgentConfigurationView]",
+        "type": "object"
+      },
       "APIResponse_AgentTurnResult_": {
         "additionalProperties": false,
         "properties": {
@@ -2288,6 +2321,43 @@
         "title": "APIResponse[list[AIUsageAttemptView]]",
         "type": "object"
       },
+      "APIResponse_list_AgentSummary__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AgentSummary"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[list[AgentSummary]]",
+        "type": "object"
+      },
       "APIResponse_list_AssociateConversationView__": {
         "additionalProperties": false,
         "properties": {
@@ -2971,6 +3041,51 @@
         "title": "AddRelationship",
         "type": "object"
       },
+      "AgentConfigurationUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "document": {
+            "additionalProperties": true,
+            "title": "Document",
+            "type": "object"
+          }
+        },
+        "required": [
+          "document"
+        ],
+        "title": "AgentConfigurationUpdate",
+        "type": "object"
+      },
+      "AgentConfigurationView": {
+        "additionalProperties": false,
+        "properties": {
+          "document": {
+            "additionalProperties": true,
+            "title": "Document",
+            "type": "object"
+          },
+          "manifestId": {
+            "title": "Manifestid",
+            "type": "string"
+          },
+          "moduleId": {
+            "title": "Moduleid",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "manifestId",
+          "moduleId",
+          "path",
+          "document"
+        ],
+        "title": "AgentConfigurationView",
+        "type": "object"
+      },
       "AgentDecisionView": {
         "additionalProperties": false,
         "properties": {
@@ -3050,6 +3165,45 @@
         ],
         "title": "AgentExecutionMode",
         "type": "string"
+      },
+      "AgentSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "configurationVersion": {
+            "title": "Configurationversion",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "manifestId": {
+            "title": "Manifestid",
+            "type": "string"
+          },
+          "moduleId": {
+            "title": "Moduleid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "manifestId",
+          "moduleId",
+          "name",
+          "enabled",
+          "status",
+          "configurationVersion"
+        ],
+        "title": "AgentSummary",
+        "type": "object"
       },
       "AgentTurnRequest": {
         "additionalProperties": false,
@@ -9967,6 +10121,120 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/agents": {
+      "get": {
+        "operationId": "list_agents_api_agents_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_AgentSummary__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Agents",
+        "tags": [
+          "Agents"
+        ]
+      }
+    },
+    "/api/agents/{manifest_id}": {
+      "get": {
+        "operationId": "get_agent_configuration_api_agents__manifest_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "manifest_id",
+            "required": true,
+            "schema": {
+              "title": "Manifest Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AgentConfigurationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent Configuration",
+        "tags": [
+          "Agents"
+        ]
+      },
+      "put": {
+        "description": "Replace one agent's document.\n\nA rejected document comes back as 422 carrying the loader's own reason. The\neditor needs to know *why* it was refused -- \"invalid configuration\" gives\nan operator nothing to correct, and the loader's message names the field.",
+        "operationId": "update_agent_configuration_api_agents__manifest_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "manifest_id",
+            "required": true,
+            "schema": {
+              "title": "Manifest Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentConfigurationUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AgentConfigurationView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Agent Configuration",
+        "tags": [
+          "Agents"
+        ]
+      }
+    },
     "/api/ai/interceptions": {
       "get": {
         "description": "Requests currently held waiting on a human.\n\n**Identifiers and status only.** The held prompt is sealed at rest and is\ndeliberately not on this surface: an operator listing the queue does not\nneed to see every pending prompt, and decrypting them all to render a list\nwould defeat sealing them. Whoever actually answers one fetches its payload\nexplicitly through the store.\n\nReturns an empty list rather than 503 when no store is configured. A\ndeployment with no interception store has no pending interceptions, which is\na true answer; failing here would break the AI screen for every environment\nthat never uses the manual path.",
@@ -12319,6 +12587,7 @@
     },
     "/api/v1/associate-returns/chat": {
       "post": {
+        "deprecated": true,
         "operationId": "start_chat_api_v1_associate_returns_chat_post",
         "requestBody": {
           "content": {
@@ -12360,6 +12629,7 @@
     },
     "/api/v1/associate-returns/conversations": {
       "get": {
+        "deprecated": true,
         "operationId": "list_conversations_api_v1_associate_returns_conversations_get",
         "parameters": [
           {
@@ -12403,6 +12673,7 @@
         ]
       },
       "post": {
+        "deprecated": true,
         "operationId": "start_conversation_api_v1_associate_returns_conversations_post",
         "requestBody": {
           "content": {
@@ -12444,6 +12715,7 @@
     },
     "/api/v1/associate-returns/conversations/{conversation_id}": {
       "get": {
+        "deprecated": true,
         "operationId": "get_conversation_api_v1_associate_returns_conversations__conversation_id__get",
         "parameters": [
           {
@@ -12486,6 +12758,7 @@
     },
     "/api/v1/associate-returns/conversations/{conversation_id}/chat": {
       "post": {
+        "deprecated": true,
         "operationId": "continue_chat_api_v1_associate_returns_conversations__conversation_id__chat_post",
         "parameters": [
           {
@@ -12538,6 +12811,7 @@
     },
     "/api/v1/associate-returns/conversations/{conversation_id}/confirm": {
       "post": {
+        "deprecated": true,
         "operationId": "confirm_discovery_api_v1_associate_returns_conversations__conversation_id__confirm_post",
         "parameters": [
           {
@@ -12590,6 +12864,7 @@
     },
     "/api/v1/associate-returns/conversations/{conversation_id}/details": {
       "post": {
+        "deprecated": true,
         "operationId": "submit_return_details_api_v1_associate_returns_conversations__conversation_id__details_post",
         "parameters": [
           {
@@ -12642,6 +12917,7 @@
     },
     "/api/v1/associate-returns/conversations/{conversation_id}/messages": {
       "post": {
+        "deprecated": true,
         "operationId": "continue_conversation_api_v1_associate_returns_conversations__conversation_id__messages_post",
         "parameters": [
           {
@@ -13252,6 +13528,7 @@
     },
     "/api/v1/return-agents/bay-assignment/assess": {
       "post": {
+        "deprecated": true,
         "operationId": "assess_bay_api_v1_return_agents_bay_assignment_assess_post",
         "requestBody": {
           "content": {
@@ -13293,6 +13570,7 @@
     },
     "/api/v1/return-agents/configuration": {
       "get": {
+        "deprecated": true,
         "operationId": "configuration_api_v1_return_agents_configuration_get",
         "responses": {
           "200": {
@@ -13314,6 +13592,7 @@
     },
     "/api/v1/return-agents/feedback/assess": {
       "post": {
+        "deprecated": true,
         "operationId": "assess_feedback_api_v1_return_agents_feedback_assess_post",
         "requestBody": {
           "content": {
@@ -13355,6 +13634,7 @@
     },
     "/api/v1/return-agents/fulfillment/assess": {
       "post": {
+        "deprecated": true,
         "operationId": "assess_fulfillment_api_v1_return_agents_fulfillment_assess_post",
         "requestBody": {
           "content": {
@@ -13396,6 +13676,7 @@
     },
     "/api/v1/return-agents/order-discovery/assess": {
       "post": {
+        "deprecated": true,
         "operationId": "assess_discovery_api_v1_return_agents_order_discovery_assess_post",
         "requestBody": {
           "content": {
@@ -13437,6 +13718,7 @@
     },
     "/api/v1/return-agents/return-workflow/assess": {
       "post": {
+        "deprecated": true,
         "operationId": "assess_return_workflow_api_v1_return_agents_return_workflow_assess_post",
         "requestBody": {
           "content": {

@@ -61,6 +61,7 @@ from return_platform.bootstrap.context import (
 )
 from return_platform.bootstrap.lifespan import module_lifespan
 from return_platform.bootstrap.system_store import bootstrap_system_store
+from return_platform.configuration.api.agents import router as agent_configuration_router
 from return_platform.configuration.api.router import router as canonical_configuration_router
 from return_platform.configuration.application.agent_configuration import (
     AgentConfigurationService,
@@ -1034,6 +1035,12 @@ def create_app(
     fastapi_app.include_router(dynamic_order_agent_router)
     fastapi_app.include_router(graph_schema_analyzer_router)
     fastapi_app.include_router(canonical_configuration_router)
+    # `/api/agents`, not `/api/config/agents` -- see that module's own docstring
+    # for why the two surfaces stay separate. It was written, tested against
+    # mocks and called by the console, and never mounted here: the lifespan sets
+    # `app.state.agent_configuration` (above) but nothing served it, so the
+    # Configuration screen's Agents section was a 404 with a green suite.
+    fastapi_app.include_router(agent_configuration_router)
     fastapi_app.include_router(canonical_returns_router)
     fastapi_app.include_router(canonical_ai_router)
     fastapi_app.include_router(canonical_session_router)
