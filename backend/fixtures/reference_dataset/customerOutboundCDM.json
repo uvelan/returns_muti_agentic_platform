@@ -1,0 +1,292 @@
+{
+ "_id": "MASTER:900781",
+ "customerParties": [
+  {
+   "contactPointId": null,
+   "jgzzFiscalCode": null,
+   "lastUpdateDate": {
+    "$date": "2024-05-05T07:05:18.000Z"
+   },
+   "partyName": "FAIRVIEW HEATING",
+   "partyNumber": "900781",
+   "partyType": null,
+   "partyUsageCode": null,
+   "personFirstName": null,
+   "personLastName": null,
+   "personLastNamePrefix": null,
+   "personMiddleName": null,
+   "personNameSuffix": null,
+   "personSecondLastName": null,
+   "personTitle": null,
+   "preferredContactPersonId": null,
+   "salutation": null,
+   "status": null
+  }
+ ],
+ "expireDate": null,
+ "lastUpdateDate": {
+  "$date": "2024-05-05T07:05:18.000Z"
+ },
+ "notSearchable": "N",
+ "num": null,
+ "party": [
+  {
+   "additionalMcustomerInfo": {
+    "ecreditFlag": null,
+    "frtBumpFlag": null,
+    "knownAnonFlag": null,
+    "lastUpdateDate": {
+     "$date": "2024-05-05T07:05:18.000Z"
+    },
+    "mcustAddrType": "1204 SEVERN DRIVE",
+    "mcustAlpha": "**B2B**",
+    "mcustFax": "555-0169",
+    "mcustGeocode": "REDACTED",
+    "mcustId": "900781",
+    "mcustJobFlag": "N",
+    "mcustJobId": null,
+    "mcustMainId": null,
+    "mcustPhone": "555-0162",
+    "parentId": null,
+    "searchMcustPhone": "555-0197"
+   },
+   "attributeCategory": null,
+   "b2bCustomer": "Y",
+   "bectranCrossRef": null,
+   "customerContactPoints": [
+    {
+     "contactPointId": "MASTER*900781-0000*0",
+     "contactPointPurpose": null,
+     "contactPointType": "PHONE",
+     "cpOrigSystem": null,
+     "cpOrigSystemRef": null,
+     "custAccountId": null,
+     "custAcctSiteId": null,
+     "emailAddress": null,
+     "endDate": null,
+     "lastUpdateDate": {
+      "$date": "2024-05-05T07:05:18.000Z"
+     },
+     "objectId": null,
+     "objectTableName": null,
+     "partyOrigSystem": null,
+     "partyOrigSystemRef": null,
+     "partySiteId": null,
+     "partysiteOrigSystem": null,
+     "partysiteOrigSystemRef": null,
+     "personFirstName": "BRIGHTWATER MECHANICAL",
+     "personLastName": "CLEARBROOK SUPPLY",
+     "personMiddleName": null,
+     "personPreNameAdjunct": null,
+     "phoneAreaCode": "555-0101",
+     "phoneCallingCalendar": null,
+     "phoneCountryCode": null,
+     "phoneExtension": null,
+     "phoneLineType": "555-0172",
+     "phoneNumber": "555-0175",
+     "primaryEmailContactPtId": null,
+     "primaryFlag": null,
+     "primaryPhoneContactPersonId": null,
+     "relaOrigSystem": null,
+     "relaOrigSystemRef": null,
+     "relationshipCode": null,
+     "relationshipId": null,
+     "relationshipType": null,
+     "searchPhoneNumber": "555-0164",
+     "startDate": null,
+     "status": null,
+     "webURL": null
+    },
+    {
+     "contactPointId": "MASTER*900781-0000*1",
+     "contactPointPurpose": null,
+     "contactPointType": "FAX",
+     "cpOrigSystem": null,
+     "cpOrigSystemRef": null,
+     "custAccountId": null,
+     "custAcctSiteId": null,
+     "emailAddress": null,
+     "endDate": null,
+     "lastUpdateDate": {
+      "$date": "2024-05-05T07:05:18.000Z"
+     },
+     "objectId": null,
+     "objectTableName": null,
+     "partyOrigSystem": null,
+     "partyOrigSystemRef": null,
+     "partySiteId": null,
+     "partysiteOrigSystem": null,
+     "partysiteOrigSystemRef": null,
+     "personFirstName": "BRIGHTWATER MECHANICAL",
+     "personLastName": "CLEARBROOK SUPPLY",
+     "personMiddleName": null,
+     "personPreNameAdjunct": null,
+     "phoneAreaCode": "555-0101",
+     "phoneCallingCalendar": null,
+     "phoneCountryCode": null,
+     "phoneExtension": null,
+     "phoneLineType": "555-0187",
+     "phoneNumber": "555-0195",
+     "primaryEmailContactPtId": null,
+     "primaryFlag": null,
+     "primaryPhoneContactPersonId": null,
+     "relaOrigSystem": null,
+     "relaOrigSystemRef": null,
+     "relationshipCode": null,
+     "relationshipId": null,
+     "relationshipType": null,
+     "searchPhoneNumber": "555-0103",
+     "startDate": null,
+     "status": null,
+     "webURL": null
+    }
+   ],
+   "dunsNumberC": null,
+   "effectiveEndDate": null,
+   "effectiveStartDate": null,
+   "jgzzFiscalCode": null,
+   "lastUpdateDate": {
+    "$date": "2021-05-25T21:42:31.000Z"
+   },
+   "nationalAccountIndicator": "N",
+   "natlAcctMgrId": null,
+   "organizationName": "IRONGATE CONTRACTORS",
+   "origSystem": null,
+   "origSystemReference": null,
+   "partyMainCusts": [
+    {
+     "mainCustJobs": [],
+     "mainCusts": "PLYMOUTH*232385",
+     "mainCustsName": "WESTFIELD PLUMBING CO"
+    },
+    {
+     "mainCustJobs": [],
+     "mainCusts": "MINNWW*28634",
+     "mainCustsName": "WESTFIELD PLUMBING CO"
+    },
+    {
+     "mainCustJobs": [],
+     "mainCusts": "MINNWW*28634",
+     "mainCustsName": "WESTFIELD PLUMBING CO"
+    }
+   ],
+   "partyName": "FAIRVIEW HEATING",
+   "partyNumber": "900781",
+   "partySites": [
+    {
+     "customerOrgContacts": [
+      {
+       "contactNumber": null,
+       "customerContactRoles": [
+        {
+         "contactSys": null,
+         "contactSysRef": null,
+         "primaryContactPerRoleType": null,
+         "primaryFlag": null,
+         "roleLevel": null,
+         "roleSys": null,
+         "roleSysRef": null,
+         "roleType": null,
+         "status": null
+        }
+       ],
+       "department": null,
+       "departmentCode": null,
+       "jobTitle": null,
+       "jobTitleCode": null,
+       "lastUpdateDate": null,
+       "orgContactId": null,
+       "partySiteId": null,
+       "relSys": null,
+       "relSysRef": null,
+       "siteSys": null,
+       "siteSysRef": null
+      }
+     ],
+     "endDateActive": null,
+     "identifyingAddressFlag": null,
+     "lastUpdateDate": {
+      "$date": "2024-05-05T07:05:18.000Z"
+     },
+     "locationId": null,
+     "locationOrigSystem": null,
+     "locationOrigSystemRef": null,
+     "mailstop": null,
+     "partyOrigSystem": null,
+     "partyOrigSystemReference": null,
+     "partySiteId": null,
+     "partySiteLanguage": null,
+     "partySiteLocations": [
+      {
+       "address1": "512 QUARRY AVENUE",
+       "address2": null,
+       "address3": null,
+       "address4": null,
+       "addressEffectiveDate": null,
+       "addressExpirationDate": null,
+       "city": "RIVERTON",
+       "country": "REDACTED",
+       "county": null,
+       "dateValidated": null,
+       "description": null,
+       "doNotValidateFlag": null,
+       "lastUpdateDate": {
+        "$date": "2024-05-05T07:05:18.000Z"
+       },
+       "locSys": null,
+       "locSysRef": null,
+       "locationLanguage": null,
+       "postalCode": "75001",
+       "postalPlus4Code": null,
+       "province": null,
+       "salesTaxGeocode": null,
+       "salesTaxInsideCityLimits": null,
+       "shortDescription": null,
+       "state": "TX",
+       "statusFlag": null,
+       "timezoneCode": null,
+       "validatedFlag": null
+      }
+     ],
+     "partySiteName": null,
+     "partySiteNumber": null,
+     "partySiteStatus": null,
+     "partySiteUses": [
+      {
+       "beginDate": null,
+       "endDate": null,
+       "lastUpdateDate": {
+        "$date": "2024-05-05T07:05:18.000Z"
+       },
+       "partyOrigSystem": null,
+       "partyOrigSystemRef": null,
+       "partySiteOrigSystem": null,
+       "partySiteOrigSystemRef": null,
+       "partySiteUseOrigSystem": null,
+       "partySiteUseOrigSystemRef": null,
+       "primaryPerType": null,
+       "siteUseType": "BILL_TO"
+      }
+     ],
+     "partyStatus": null,
+     "relationSourceSystem": null,
+     "relationSrcSystemRer": null,
+     "siteOrigSystem": null,
+     "siteOrigSystemReference": null,
+     "startDateActive": null
+    }
+   ],
+   "partyType": null,
+   "partyUsageCode": null,
+   "pricingColumn": null,
+   "salutation": null,
+   "status": null,
+   "trilCrossRef": null,
+   "trilogieLogon": null
+  }
+ ],
+ "partyId": "900781",
+ "sourceSystem": "Trilogie",
+ "status": null,
+ "type": "PARTY"
+}
