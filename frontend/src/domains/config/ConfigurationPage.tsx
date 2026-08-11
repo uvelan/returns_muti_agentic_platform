@@ -8,6 +8,7 @@ import {
   type PromotionTarget,
 } from "../../api/configuration";
 import { useCapabilities } from "../../hooks/capabilityContext";
+import { AgentsSection } from "./AgentsSection";
 import { type CONFIG_SECTIONS, requireDomain } from "../registry";
 import { useDomainSection } from "../useDomainSection";
 import { JsonView } from "./JsonView";
@@ -94,6 +95,8 @@ function TabBody({ tab, canReadReleases }: { tab: Tab; canReadReleases: boolean 
   switch (tab) {
     case "Overview":
       return <OverviewTab canReadReleases={canReadReleases} />;
+    case "Agents":
+      return <AgentsSection />;
     case "Runtime":
       return <RuntimeTab />;
     case "Releases":

@@ -62,6 +62,9 @@ from return_platform.bootstrap.context import (
 from return_platform.bootstrap.lifespan import module_lifespan
 from return_platform.bootstrap.system_store import bootstrap_system_store
 from return_platform.configuration.api.router import router as canonical_configuration_router
+from return_platform.configuration.application.agent_configuration import (
+    AgentConfigurationService,
+)
 from return_platform.configuration.graph_repository import (
     ConfigurationGraphRepository,
     InMemoryConfigurationGraphRepository,
@@ -76,7 +79,7 @@ from return_platform.configuration.runtime_integrations import (
     apply_graph_runtime_configuration,
     verify_runtime_validation_receipts,
 )
-from return_platform.configuration.settings import Settings
+from return_platform.configuration.settings import BACKEND_ROOT, Settings
 from return_platform.configuration.snapshot import ConfigurationSnapshotBuilder
 from return_platform.data_governance import load_asset_catalog
 from return_platform.data_platform.graph.sync_service import GraphSyncService
@@ -460,6 +463,10 @@ async def lifespan(
             app.state.secret_resolver = secret_resolver
         resources.settings = settings
         app.state.settings = settings
+        # Each agent's own module file, editable through /api/config/agents.
+        # Reads and writes both go through the loader the platform boots from,
+        # so the console cannot accept a document the platform would refuse.
+        app.state.agent_configuration = AgentConfigurationService(BACKEND_ROOT / "config")
 
         await _initialize_mongodb(
             settings,

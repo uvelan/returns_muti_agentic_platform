@@ -71,6 +71,7 @@ function sections(labels: readonly string[]): readonly DomainSection[] {
  */
 export const CONFIG_SECTIONS = [
   "Overview",
+  "Agents",
   "Runtime",
   "Releases",
   "Data Sources",

@@ -21,7 +21,7 @@ been caught under capture, so there is no diagnosis -- only two eliminated hypot
 `_transition_in_progress` is set synchronously, `finally` always clears). It predates
 Wave F. It is unreproduced, not fixed, and the distinction matters.
 
-Suite: **2065 passed, 7 skipped** via `bash backend/scripts/dev/run_real_infra_suite.sh` —
+Suite: **2080 passed, 7 skipped** via `bash backend/scripts/dev/run_real_infra_suite.sh` —
 which, until this session, had never actually run: it failed on MSYS path mangling and then
 on a missing `.env` mount. Both fixed; see the live-walkthrough section below. Every earlier
 "suite green" line in this ledger was measured some other way.
@@ -35,6 +35,62 @@ files as of `870e066`. Every prior entry in this ledger reported green on the *c
 gate (`scripts/dev/run_changed_gate.py`), which is a narrower claim; read older entries with
 that in mind. Wave G/H's "full static integrity" (Phase 29) is now a much smaller job than
 this ledger previously implied — what is left there is mypy's 42, not ruff's 246.
+
+## Per-agent configuration, and an invariant that was right to stop me
+
+Status: DONE (unpushed).
+
+Each agent already had its own module file under `config/agents/`, declared in
+`manifest.yaml`. The separation the operator surface needed existed; nothing
+served it, so the console could neither show an agent's settings nor change
+one. `/api/agents` now lists them, reads one, and replaces one, and the
+Configuration domain gains an **Agents** section with two editors: raw JSON, and
+a form generated from the document that follows its own nesting.
+
+**Neither editor knows the schema, deliberately.** A module's payload differs by
+agent, and a form built from a hardcoded field list would be a second, weaker
+definition of valid -- forbidding fields the platform accepts, accepting ones it
+rejects, and going stale the first time an agent gains a setting. The form is
+generated from the document; validity is the backend's answer, in the backend's
+own words. `AgentConfigurationService` writes the file and reloads it through
+`ConfigurationLoader` -- the loader the platform boots from -- and rolls back if
+it refuses, so an edit the console accepts is one the platform will accept at
+start.
+
+**The architecture test was right and I was wrong.** The routes first went on
+`/api/config`, where `test_promotion_is_the_only_mutation_on_the_canonical_config_surface`
+failed them: *"Configuration changes through a release moving along its
+lifecycle; anything else here would be a second way to change what the platform
+is running."* That invariant is worth more than the convenience of the path, so
+the routes moved to `/api/agents` rather than the test moving.
+
+**The governance gap that move exposes, stated plainly:** an agent edit takes
+effect with no approval step, unlike every other configuration change here.
+Agent modules are files loaded at boot and have never been part of the
+graph-stored release lifecycle, so this is the first way to edit that store
+rather than a second way to edit the other one -- but the right close is to
+bring agent modules into the release lifecycle, not to leave the difference
+unremarked because the path name now hides it.
+
+The second failure, `test_v2_router_exposes_only_dynamic_order_agent_operation`,
+was a bare change-detector enumerating one route with no stated reason. It now
+carries one, and asserts what actually matters: the versioned prefix may hold
+reads of the order agent's own conversation resource, and exactly one write.
+
+Writes are atomic (`os.replace`), because a half-written module file is one the
+loader refuses at next start -- turning a typo in a form field into a service
+that will not boot. YAML is dumped with sequences indented under their key to
+match how these files are already written; PyYAML's default flushes them left,
+which would turn a one-field edit into a whole-file diff and bury the change
+somebody needs to review.
+
+**Verification.** Both editors driven against the live backend: all 8 agents
+listed, the form rendering nested objects, arrays and booleans, JSON mode
+showing the same document. Write path exercised end to end -- a document with a
+mismatched `module_id` refused with 422 and the file unchanged, a real edit
+accepted, then reverted. 9 new frontend tests, 108 frontend total; full backend
+suite **2080 passed, 7 skipped**; ruff, mypy (472 files) and contract drift all
+clean.
 
 ## Reset tooling, and a committable reference dataset
 
