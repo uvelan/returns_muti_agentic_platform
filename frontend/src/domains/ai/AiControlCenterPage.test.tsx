@@ -61,9 +61,23 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
+
+/**
+ * Put the screen on a section.
+ *
+ * Sections moved from local state into the URL when the sidebar took over
+ * navigation, so a test selects one by being at its path rather than by
+ * clicking a tab that no longer exists. `wouter` reads `window.location`, so
+ * pushing history before render is all that is required -- and it exercises
+ * the same deep-link path a bookmark would.
+ */
+function goToSection(domainPath: string, slug: string): void {
+  window.history.pushState(null, "", `${domainPath}/${slug}`);
+}
+
 async function openInterceptionsTab() {
+  goToSection("/ai", "interceptions");
   render(<AiControlCenterPage />, { wrapper });
-  fireEvent.click(screen.getByRole("tab", { name: "Interceptions" }));
   await waitFor(() => {
     expect(mocks.listInterceptions).toHaveBeenCalled();
   });

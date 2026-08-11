@@ -25,10 +25,11 @@ import { normalizeBrowserPath } from "./versioning";
  * now absent rather than superseded. That was the owner's decision, and F4's
  * stated end state ("exactly four user routes") is what it means.
  *
- * **Anything unrecognised goes to `/returns`**, not to a 404. Every legacy
- * bookmark is now an unrecognised path, and the honest thing to do with someone
- * arriving from one is to put them on the platform's front door rather than a
- * dead end that says nothing about where the screens went.
+ * **Anything unrecognised goes to `/`**, not to a 404 and no longer to
+ * `/returns`. Every legacy bookmark is an unrecognised path, and the honest
+ * landing for someone arriving from one is the launcher, which shows every
+ * domain they can reach -- sending them to the copilot answered "where did the
+ * screens go?" with one screen.
  *
  * `DomainApp` is no longer lazy. It was split out when it was one of four
  * possible applications; it is now the only one, so the extra chunk bought a
@@ -49,7 +50,7 @@ export function App() {
               </CapabilityProvider>
             </Suspense>
           ) : (
-            <Redirect to="/returns" replace />
+            <Redirect to="/" replace />
           )}
         </RuntimeConfigProvider>
       </ToastProvider>

@@ -101,33 +101,133 @@ const SESSION = {
 
 export const canonicalHandlers = [
   /**
-   * Still `/api/v1`, and worth noticing.
+   * The shell's bootstrap payload, on the canonical versionless surface since
+   * the `/api/v1` original moved into `bootstrap/`.
    *
-   * `RuntimeConfigProvider` wraps the whole shell and blocks first paint on
-   * this, so without it every canonical screen renders "Configuration Error".
-   * It lived in the Data Console handlers until Wave F4 deleted them, which is
-   * how removing the legacy *frontend* briefly took down the canonical one.
-   *
-   * The endpoint itself is a leftover: the four-domain shell has a hard
-   * dependency on a versioned legacy route. Not F4's to fix -- the backend
-   * router is still mounted and Wave F2 owns it -- but it is the reason this
-   * handler is in the canonical file rather than deleted with its neighbours.
+   * Kept here rather than deleted: it lived in the Data Console handlers until
+   * Wave F4 removed them, which is how deleting the legacy *frontend* briefly
+   * took down the canonical one. The provider no longer blocks first paint, so
+   * a missing handler would now be a silent gap instead of a visible one --
+   * which is a better app and a worse test signal.
    */
-  http.get("/api/v1/runtime-config", async () => {
+  http.get("/api/runtime-config", async () => {
     await delay(50);
     return HttpResponse.json(
       envelope(
         {
           releaseId: "mock-baseline",
           environment: "development",
-          apiBasePath: "/api/v1",
-          features: {},
+          apiBasePath: "/api",
+          features: { orderDiscoveryCopilot: true },
           capabilities: {
-            availableSourceTypes: ["MONGODB", "SQLSERVER", "NEO4J"],
-            availableModelProviders: ["GOOGLE", "NVIDIA"],
+            availableSourceTypes: ["MONGODB", "NEO4J", "SQLSERVER"],
+            availableModelProviders: ["GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC"],
           },
         },
         "runtime-config",
+      ),
+    );
+  }),
+
+  /**
+   * One discovery turn. Scripted, not simulated: the first message asks a
+   * clarifying question, the second returns candidates with evidence, so the
+   * copilot's two reportable pipeline stages are both reachable in mock mode
+   * without a model or a graph.
+   */
+  http.post("/api/v2/order-agent/conversations/:id/turns", async ({ request, params }) => {
+    await delay(600);
+    const body = (await request.json()) as { message: string; expected_conversation_version: number };
+    const version = body.expected_conversation_version + 1;
+    const asked = body.expected_conversation_version > 0;
+    // A third turn narrows to one order, and that order is SESSION's, so the
+    // later milestones have a real return session to report on. Two candidates
+    // on turn two is the ambiguous case and must stay unresolved.
+    const narrowed = body.expected_conversation_version > 1;
+
+    return HttpResponse.json(
+      envelope(
+        {
+          conversation_id: String(params.id),
+          conversation_version: version,
+          client_turn_id: `mock-turn-${String(version)}`,
+          graph_generation_id: "gen-0f3c9a11-mock",
+          model_provider: "MOCK",
+          model_name: "scripted",
+          pending_clarification_thread_id: asked ? null : "thread-mock-1",
+          response: {
+            status: asked ? "RESOLVED" : "NEEDS_INPUT",
+            business_capability: "order_discovery",
+            suggestions: asked ? [] : ["Show next", "Search by SKU instead"],
+            requested_input: asked ? null : "Which branch was the order placed at?",
+            statements: asked
+              ? [
+                  {
+                    statement_id: "s-2",
+                    statement_type: "GRAPH_FACT",
+                    text: "Found 2 orders for ATLAS MECHANICAL SERVICES in CHARLOTTE.",
+                    evidence_refs: ["qe-1"],
+                  },
+                ]
+              : [
+                  {
+                    statement_id: "s-0",
+                    statement_type: "USER_PROVIDED_FACT",
+                    text: body.message,
+                  },
+                  {
+                    statement_id: "s-1",
+                    statement_type: "CLARIFICATION_QUESTION",
+                    text: "Which branch was the order placed at?",
+                  },
+                ],
+          },
+          query_evidence: asked
+            ? [
+                {
+                  query_execution_id: "qe-1",
+                  schema_version: "return-order-v2",
+                  graph_generation_id: "gen-0f3c9a11-mock",
+                  result_checksum: "mock",
+                  result: {
+                    candidates: narrowed
+                      ? [
+                          {
+                            candidate_id: "CHARLOTTE*ORD-88123",
+                            data: {
+                              sales_order_number: SESSION.orderReference,
+                              account_id: "CHARLOTTE",
+                              customer_name: "ATLAS MECHANICAL SERVICES",
+                              order_status: "CALLCSR",
+                            },
+                          },
+                        ]
+                      : [
+                          {
+                            candidate_id: "CHARLOTTE*CQ363350",
+                            data: {
+                              sales_order_number: "CQ363350",
+                              account_id: "CHARLOTTE",
+                              customer_name: "ATLAS MECHANICAL SERVICES",
+                              order_status: "CALLCSR",
+                            },
+                          },
+                          {
+                            candidate_id: "LAKEWOOD*CT275260",
+                            data: {
+                              sales_order_number: "CT275260",
+                              account_id: "LAKEWOOD",
+                              customer_name: "ACED HEATING & COOLING",
+                              order_status: "INVOICED",
+                            },
+                          },
+                        ],
+                  },
+                },
+              ]
+            : [],
+        },
+        "order-agent-turn",
       ),
     );
   }),

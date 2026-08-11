@@ -23,7 +23,7 @@
   html {
     min-width: 320px;
     min-height: 100%;
-    background-color: theme("colors.slate.50");
+    background-color: theme("colors.surface");
   }
 
   body {
@@ -31,7 +31,7 @@
     min-height: 100vh;
     margin: 0;
 
-    @apply bg-slate-50 text-slate-900 antialiased;
+    @apply bg-surface text-on-surface antialiased;
   }
 
   #root {
@@ -39,6 +39,6 @@
   }
 
   ::selection {
-    @apply bg-blue-200 text-slate-900;
+    @apply bg-secondary-container text-on-surface;
   }
 }

@@ -8,6 +8,8 @@ import {
   type PromotionTarget,
 } from "../../api/configuration";
 import { useCapabilities } from "../../hooks/capabilityContext";
+import { type CONFIG_SECTIONS, requireDomain } from "../registry";
+import { useDomainSection } from "../useDomainSection";
 import { JsonView } from "./JsonView";
 
 /**
@@ -40,18 +42,10 @@ import { JsonView } from "./JsonView";
  * boundary would be worse than useless.
  */
 
-const TABS = [
-  "Overview",
-  "Runtime",
-  "Releases",
-  "Data Sources",
-  "Integrations",
-  "Business",
-  "Modules",
-  "Security",
-  "Audit",
-] as const;
-type Tab = (typeof TABS)[number];
+const CONFIG_DOMAIN = requireDomain("/config");
+
+/** Mirrors `CONFIG_DOMAIN.sections`; the registry drives the sidebar, this drives the body. */
+type Tab = (typeof CONFIG_SECTIONS)[number];
 
 /**
  * Tabs with no endpoint of their own, and why -- three of these are *already
@@ -70,7 +64,9 @@ const UNBACKED: Partial<Record<Tab, string>> = {
 
 export function ConfigurationPage() {
   const { can } = useCapabilities();
-  const [tab, setTab] = useState<Tab>("Overview");
+  // The section comes from the URL and the sidebar sets it, so the screen
+  // holds no navigation state of its own.
+  const tab = useDomainSection(CONFIG_DOMAIN) as Tab;
 
   if (!can("config.runtime.read")) {
     return <p className="text-sm text-slate-600">You do not have access to configuration.</p>;
@@ -85,25 +81,6 @@ export function ConfigurationPage() {
         </p>
       </header>
 
-      <div role="tablist" aria-label="Configuration" className="flex flex-wrap gap-1 border-b border-slate-200">
-        {TABS.map((name) => (
-          <button
-            key={name}
-            role="tab"
-            type="button"
-            aria-selected={tab === name}
-            onClick={() => { setTab(name); }}
-            className={[
-              "px-3 py-2 text-sm font-medium transition",
-              tab === name
-                ? "border-b-2 border-slate-900 text-slate-900"
-                : "text-slate-500 hover:text-slate-800",
-            ].join(" ")}
-          >
-            {name}
-          </button>
-        ))}
-      </div>
 
       <TabBody tab={tab} canReadReleases={can("config.release.read")} />
     </div>

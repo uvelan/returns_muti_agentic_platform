@@ -69,11 +69,25 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
+
+/**
+ * Put the screen on a section.
+ *
+ * Sections moved from local state into the URL when the sidebar took over
+ * navigation, so a test selects one by being at its path rather than by
+ * clicking a tab that no longer exists. `wouter` reads `window.location`, so
+ * pushing history before render is all that is required -- and it exercises
+ * the same deep-link path a bookmark would.
+ */
+function goToSection(domainPath: string, slug: string): void {
+  window.history.pushState(null, "", `${domainPath}/${slug}`);
+}
+
 async function openRelease(status: string) {
   mocks.releases.mockResolvedValue([release(status)]);
   mocks.release.mockResolvedValue(release(status));
+  goToSection("/config", "releases");
   render(<ConfigurationPage />, { wrapper });
-  fireEvent.click(screen.getByRole("tab", { name: "Releases" }));
   fireEvent.click(await screen.findByText("rel-1"));
   await screen.findByText("Checksum");
 }
@@ -182,8 +196,8 @@ describe("Configuration tabs D3 backed", () => {
   });
 
   it("reads sources through the canonical route", async () => {
+    goToSection("/config", "data-sources");
     render(<ConfigurationPage />, { wrapper });
-    fireEvent.click(screen.getByRole("tab", { name: "Data Sources" }));
 
     await waitFor(() => {
       expect(mocks.sources).toHaveBeenCalled();
@@ -192,8 +206,8 @@ describe("Configuration tabs D3 backed", () => {
   });
 
   it("reads audit through the canonical route", async () => {
+    goToSection("/config", "audit");
     render(<ConfigurationPage />, { wrapper });
-    fireEvent.click(screen.getByRole("tab", { name: "Audit" }));
 
     await waitFor(() => {
       expect(mocks.audit).toHaveBeenCalled();
@@ -204,8 +218,8 @@ describe("Configuration tabs D3 backed", () => {
   it("says integrations are already served rather than pending", async () => {
     // The distinction matters: "pending" invites someone to build a duplicate
     // endpoint for data the runtime snapshot already carries.
+    goToSection("/config", "integrations");
     render(<ConfigurationPage />, { wrapper });
-    fireEvent.click(screen.getByRole("tab", { name: "Integrations" }));
 
     expect(await screen.findByText(/Already served/)).toBeInTheDocument();
   });

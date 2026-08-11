@@ -15,8 +15,11 @@
     <title>Return Platform Console</title>
   </head>
 
+  <!-- Theme tokens, not Tailwind's default palette. These utilities sit above
+       the `body` rule in index.css, so leaving them as slate here silently
+       overrode the platform surface colour. -->
   <body
-    class="bg-slate-50 text-slate-900 antialiased selection:bg-blue-200"
+    class="bg-surface text-on-surface antialiased selection:bg-secondary-container"
   >
     <noscript>
       JavaScript is required to use the Return Platform Console.

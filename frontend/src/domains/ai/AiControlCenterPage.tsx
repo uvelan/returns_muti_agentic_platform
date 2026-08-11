@@ -7,6 +7,8 @@ import {
   type InterceptionRow,
 } from "../../api/aiControlCenter";
 import { useCapabilities } from "../../hooks/capabilityContext";
+import { type AI_SECTIONS, requireDomain } from "../registry";
+import { useDomainSection } from "../useDomainSection";
 
 /**
  * The AI Control Center (Phase 21).
@@ -25,18 +27,10 @@ import { useCapabilities } from "../../hooks/capabilityContext";
  * reasoning.
  */
 
-const TABS = [
-  "Overview",
-  "Requests",
-  "Interceptions",
-  "Metrics",
-  "Providers & Models",
-  "Routes & Tasks",
-  "Safety",
-  "Configuration",
-  "Audit",
-] as const;
-type Tab = (typeof TABS)[number];
+const AI_DOMAIN = requireDomain("/ai");
+
+/** Mirrors `AI_DOMAIN.sections`; the registry drives the sidebar, this drives the body. */
+type Tab = (typeof AI_SECTIONS)[number];
 
 /** Tabs with no backing route on `/api/ai`. Named, not silently dropped. */
 const UNBACKED: Partial<Record<Tab, string>> = {
@@ -48,7 +42,9 @@ const UNBACKED: Partial<Record<Tab, string>> = {
 
 export function AiControlCenterPage() {
   const { can } = useCapabilities();
-  const [tab, setTab] = useState<Tab>("Overview");
+  // The section comes from the URL and the sidebar sets it, so the screen
+  // holds no navigation state of its own.
+  const tab = useDomainSection(AI_DOMAIN) as Tab;
 
   if (!can("ai.request.read")) {
     return <p className="text-sm text-slate-600">You do not have access to the AI Control Center.</p>;
@@ -63,25 +59,6 @@ export function AiControlCenterPage() {
         </p>
       </header>
 
-      <div role="tablist" aria-label="AI Control Center" className="flex flex-wrap gap-1 border-b border-slate-200">
-        {TABS.map((name) => (
-          <button
-            key={name}
-            role="tab"
-            type="button"
-            aria-selected={tab === name}
-            onClick={() => { setTab(name); }}
-            className={[
-              "px-3 py-2 text-sm font-medium transition",
-              tab === name
-                ? "border-b-2 border-slate-900 text-slate-900"
-                : "text-slate-500 hover:text-slate-800",
-            ].join(" ")}
-          >
-            {name}
-          </button>
-        ))}
-      </div>
 
       <TabBody tab={tab} canReadInterceptions={can("ai.interception.read")} />
     </div>
