@@ -38,15 +38,42 @@ class ConversationTranscript(BaseModel):
     messages: tuple[dict[str, str], ...]
 
 
+class ConversationScope(BaseModel):
+    """Who a conversation belongs to.
+
+    Carried as a value rather than as two loose strings so a call site cannot
+    pass the arguments the wrong way round -- `(principal, tenant)` and
+    `(tenant, principal)` are both two strings and only one is correct.
+
+    Every store method takes one and puts it in the *query filter*. That is the
+    whole of the isolation guarantee: there is no read path that fetches first
+    and checks ownership second.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tenant_id: str
+    principal_id: str
+
+    def filter(self) -> dict[str, str]:
+        """The owner predicate, in stored-document field names."""
+        return {"tenantId": self.tenant_id, "principalId": self.principal_id}
+
+
 class AtomicConversationDocumentStore(Protocol):
-    async def read(self, conversation_id: str) -> dict[str, Any] | None: ...
-    async def list_recent(self, *, limit: int = 30) -> list[dict[str, Any]]: ...
+    async def read(
+        self, conversation_id: str, *, scope: ConversationScope
+    ) -> dict[str, Any] | None: ...
+    async def list_recent(
+        self, *, scope: ConversationScope, limit: int = 30
+    ) -> list[dict[str, Any]]: ...
     async def compare_and_set(
         self,
         *,
         conversation_id: str,
         expected_version: int,
         replacement: dict[str, Any],
+        scope: ConversationScope,
     ) -> bool: ...
 
 
@@ -61,8 +88,9 @@ class AtomicConversationRepository:
         *,
         request: AgentTurnRequest,
         graph_generation_id: str,
+        scope: ConversationScope,
     ) -> tuple[int, dict[str, Any], AgentTurnResult | None]:
-        document = await self._store.read(request.conversation_id)
+        document = await self._store.read(request.conversation_id, scope=scope)
         if document is None:
             document = {
                 "conversationId": request.conversation_id,
@@ -88,12 +116,15 @@ class AtomicConversationRepository:
         state["_pendingTurnDigest"] = digest
         return int(document["version"]), state, None
 
-    async def list_recent(self, *, limit: int = 30) -> list[ConversationSummary]:
-        """The history list. Conversations with nothing said in them are skipped:
-        a turn that failed before the associate's message was recorded leaves a
-        record with no transcript, and a blank row is not history."""
+    async def list_recent(
+        self, *, scope: ConversationScope, limit: int = 30
+    ) -> list[ConversationSummary]:
+        """The history list, scoped to one principal. Conversations with nothing
+        said in them are skipped: a turn that failed before the associate's
+        message was recorded leaves a record with no transcript, and a blank row
+        is not history."""
         summaries: list[ConversationSummary] = []
-        for document in await self._store.list_recent(limit=limit):
+        for document in await self._store.list_recent(scope=scope, limit=limit):
             transcript = _transcript_of(document)
             if not transcript:
                 continue
@@ -108,8 +139,13 @@ class AtomicConversationRepository:
             )
         return summaries
 
-    async def read_transcript(self, conversation_id: str) -> ConversationTranscript | None:
-        document = await self._store.read(conversation_id)
+    async def read_transcript(
+        self, conversation_id: str, *, scope: ConversationScope
+    ) -> ConversationTranscript | None:
+        """None both when the conversation does not exist and when it is not
+        this principal's -- the caller 404s either way, so a probe cannot
+        distinguish "no such conversation" from "not yours"."""
+        document = await self._store.read(conversation_id, scope=scope)
         if document is None:
             return None
         return ConversationTranscript(
@@ -125,8 +161,9 @@ class AtomicConversationRepository:
         expected_version: int,
         result: AgentTurnResult,
         conversation_state: dict[str, Any],
+        scope: ConversationScope,
     ) -> AgentTurnResult:
-        document = await self._store.read(request.conversation_id)
+        document = await self._store.read(request.conversation_id, scope=scope)
         if document is None:
             document = {
                 "conversationId": request.conversation_id,
@@ -166,6 +203,7 @@ class AtomicConversationRepository:
             conversation_id=request.conversation_id,
             expected_version=expected_version,
             replacement=replacement,
+            scope=scope,
         )
         if not committed:
             raise ValueError("CONVERSATION_VERSION_CONFLICT")

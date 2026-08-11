@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from pymongo import DESCENDING, AsyncMongoClient
+from pymongo import ASCENDING, DESCENDING, AsyncMongoClient
 from pymongo.errors import DuplicateKeyError
 
 from return_platform.dynamic_knowledge.graph.generation import LEGACY_GENERATION_ID
@@ -13,6 +13,9 @@ from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
     SyncReceipt,
     SyncReservation,
     SyncStatus,
+)
+from return_platform.dynamic_knowledge.order_agent.conversation_repository import (
+    ConversationScope,
 )
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
@@ -30,25 +33,45 @@ class MongoAtomicConversationStore:
         self._collection = client[database][collection]
 
     async def ensure_indexes(self) -> None:
-        await self._collection.create_index("updatedAt")
+        # Compound and ordered to serve the scoped history query directly:
+        # equality on the two owner fields, then the sort field.
+        await self._collection.create_index(
+            [("tenantId", ASCENDING), ("principalId", ASCENDING), ("updatedAt", DESCENDING)]
+        )
         await self._collection.create_index("graphGenerationId")
 
-    async def read(self, conversation_id: str) -> dict[str, Any] | None:
-        document = await self._collection.find_one({"_id": conversation_id})
+    async def read(
+        self, conversation_id: str, *, scope: ConversationScope
+    ) -> dict[str, Any] | None:
+        """One conversation, or None if it is not this principal's.
+
+        The scope is part of the *filter*, not a check applied to the result.
+        A conversation id is a client-generated UUID that travels in URLs, so
+        "look it up, then compare the owner" is one forgotten comparison away
+        from an IDOR; a query that cannot match another owner's document has no
+        such branch to forget.
+        """
+        document = await self._collection.find_one({"_id": conversation_id, **scope.filter()})
         return dict(document) if document is not None else None
 
-    async def list_recent(self, *, limit: int = 30) -> list[dict[str, Any]]:
-        """Recent conversations, newest first, for the copilot's history list.
+    async def list_recent(
+        self, *, scope: ConversationScope, limit: int = 30
+    ) -> list[dict[str, Any]]:
+        """Recent conversations for one principal, newest first.
 
         Projects the summary fields only. `turns` holds a full AgentTurnResult
         per turn -- every statement and every evidence row -- and loading all of
         that to render a list of titles would move megabytes to display a few
         lines. The transcript's first message is the title, so `state.transcript`
         is the one nested field worth fetching.
+
+        This used to be `find({})`. Transcripts carry customer names, addresses
+        and phone numbers, so an unfiltered history list handed every associate's
+        conversations to every caller.
         """
         cursor = (
             self._collection.find(
-                {},
+                scope.filter(),
                 {
                     "_id": 1,
                     "version": 1,
@@ -68,8 +91,15 @@ class MongoAtomicConversationStore:
         conversation_id: str,
         expected_version: int,
         replacement: dict[str, Any],
+        scope: ConversationScope,
     ) -> bool:
-        candidate = {**replacement, "_id": conversation_id}
+        """Commit a turn, stamping ownership on create and enforcing it on update.
+
+        The owner fields are written here rather than by the caller so a document
+        cannot reach the collection unstamped: an unstamped document matches no
+        scoped filter and would be invisible to the associate who created it.
+        """
+        candidate = {**replacement, "_id": conversation_id, **scope.filter()}
         if expected_version == 0:
             existing = await self._collection.find_one({"_id": conversation_id}, {"version": 1})
             if existing is None:
@@ -78,8 +108,11 @@ class MongoAtomicConversationStore:
                     return True
                 except DuplicateKeyError:
                     return False
+        # The scope is in the filter, so another principal replaying a guessed id
+        # and version matches nothing and is reported as a version conflict
+        # rather than silently overwriting a conversation they cannot read.
         result = await self._collection.replace_one(
-            {"_id": conversation_id, "version": expected_version},
+            {"_id": conversation_id, "version": expected_version, **scope.filter()},
             candidate,
             upsert=False,
         )

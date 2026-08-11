@@ -39,6 +39,9 @@ from return_platform.dynamic_knowledge.order_agent.contracts import (
     AgentTurnRequest,
     AgentTurnResult,
 )
+from return_platform.dynamic_knowledge.order_agent.conversation_repository import (
+    ConversationScope,
+)
 from return_platform.dynamic_knowledge.order_agent.errors import OrderAgentFailure
 from return_platform.dynamic_knowledge.order_agent.graph import build_order_agent_graph
 from return_platform.dynamic_knowledge.order_agent.graph_nodes import (
@@ -83,6 +86,7 @@ class ConversationStore(Protocol):
         *,
         request: AgentTurnRequest,
         graph_generation_id: str,
+        scope: ConversationScope,
     ) -> tuple[int, dict[str, object], AgentTurnResult | None]: ...
 
     async def commit_turn(
@@ -92,7 +96,22 @@ class ConversationStore(Protocol):
         expected_version: int,
         result: AgentTurnResult,
         conversation_state: dict[str, object],
+        scope: ConversationScope,
     ) -> AgentTurnResult: ...
+
+
+def _scope_of(guard_context: GuardContext) -> ConversationScope:
+    """The conversation's owner, taken from the turn's own authenticated identity.
+
+    Deliberately derived here rather than accepted as a parameter: the only
+    identity a turn may act under is the one its `GuardContext` already carries,
+    and a scope passed in alongside it is a second, forgeable answer to the same
+    question.
+    """
+    return ConversationScope(
+        tenant_id=guard_context.principal.tenant_id,
+        principal_id=guard_context.principal.principal_id,
+    )
 
 
 class GraphStateProvider(Protocol):
@@ -340,9 +359,11 @@ class DynamicOrderAgentCoordinator:
 
         `rebound_from` is set when a resumed turn landed on a different
         generation than the one it paused on -- see the resume handling below."""
+        scope = _scope_of(guard_context)
         version, conversation_state, replay = await self._conversations.load_for_turn(
             request=request,
             graph_generation_id=graph_generation_id,
+            scope=scope,
         )
         if replay is not None:
             return replay
@@ -484,6 +505,7 @@ class DynamicOrderAgentCoordinator:
                         conversation_state, user_message=request.message, response=None
                     ),
                 },
+                scope=scope,
             )
 
         await self._retention.mark_terminal(
@@ -521,4 +543,5 @@ class DynamicOrderAgentCoordinator:
             expected_version=version,
             result=provisional,
             conversation_state=new_conversation_state,
+            scope=scope,
         )

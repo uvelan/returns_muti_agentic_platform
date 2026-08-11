@@ -22,6 +22,7 @@ from return_platform.dynamic_knowledge.order_agent.contracts import (
 )
 from return_platform.dynamic_knowledge.order_agent.conversation_repository import (
     AtomicConversationRepository,
+    ConversationScope,
     ConversationSummary,
     ConversationTranscript,
 )
@@ -97,6 +98,21 @@ def _order_discovery_workflow_id(conversation_id: str) -> str:
     return f"order-discovery-{conversation_id}"
 
 
+def _scope(request: Request) -> ConversationScope:
+    """The caller's conversation scope, from the authenticated request only.
+
+    Same two values `submit_turn` builds its `PrincipalContext` from below, so a
+    conversation is read under exactly the identity that wrote it. Nothing here
+    is client-supplied: a scope taken from a header or a query parameter would
+    be an isolation boundary the caller chooses for themselves.
+    """
+    principal = cast(Principal, request.state.principal)
+    return ConversationScope(
+        tenant_id=str(getattr(request.state, "tenant_id", "default")),
+        principal_id=principal.subject,
+    )
+
+
 def _conversations(request: Request) -> AtomicConversationRepository:
     """The conversation reader, or a clear 503.
 
@@ -130,7 +146,7 @@ async def list_conversations(
     conversation across the wire.
     """
     return APIResponse(
-        data=await _conversations(request).list_recent(limit=limit),
+        data=await _conversations(request).list_recent(scope=_scope(request), limit=limit),
         meta=_meta(request),
     )
 
@@ -144,8 +160,15 @@ async def read_conversation_transcript(
     request: Request,
 ) -> APIResponse[ConversationTranscript]:
     """What was said, so reopening a conversation shows it rather than a blank
-    pane. Same bounded transcript the agent itself reasons over."""
-    transcript = await _conversations(request).read_transcript(conversation_id)
+    pane. Same bounded transcript the agent itself reasons over.
+
+    Another principal's conversation is a 404, not a 403: the id is a
+    client-generated UUID, and distinguishing "does not exist" from "exists but
+    is not yours" would turn this endpoint into an existence oracle.
+    """
+    transcript = await _conversations(request).read_transcript(
+        conversation_id, scope=_scope(request)
+    )
     if transcript is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
