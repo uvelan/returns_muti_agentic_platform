@@ -495,8 +495,24 @@ This starts:
 - Neo4j;
 - Valkey;
 - Temporal PostgreSQL;
-- Temporal;
-- Temporal UI.
+- Temporal.
+
+Datastores only — no application image is built. That is worth stating because it
+was not always true: `infra.sh start` used to be a bare `docker compose up -d`,
+which also brought up `runtime-configuration-init`. That container is built from
+`return-platform-backend:local`, so asking for infrastructure built the entire
+backend image first, on a machine whose backend was about to run on the host
+anyway. Behind a TLS-intercepting corporate proxy it did not merely waste time,
+it failed. The script now names its services.
+
+Nothing is skipped: the SQL migrations, Neo4j migrations and graph-configuration
+bootstrap that container ran are all run on the host by
+`scripts/prepare_runtime_configuration.sh`, which every host launcher invokes
+before the backend starts. `full-containerized` still uses the init container,
+because there the host runs none of it.
+
+Temporal UI is behind the `dev-tools` profile and does not start here; use
+`docker compose --profile dev-tools up -d temporal-ui`.
 
 The command also initializes/unseals Vault and stores local infrastructure credentials under the approved production Vault paths. Existing `.env` files are upgraded before validation so older Linux installations receive the required Vault references safely.
 
@@ -598,6 +614,20 @@ Each backend or worker launcher prepares runtime configuration unless `PLATFORM_
 ```bash
 ./scripts/infra.sh full-containerized
 ```
+
+This is the only path that builds the backend image. On a network that terminates
+TLS in the middle, the build fails on `unable to get local issuer certificate` —
+the container trusts nothing your proxy signs, even where your host does. Pass the
+proxy's root certificate:
+
+```bash
+EXTRA_CA_CERTS="$(cat /path/to/corp-root.pem)" ./scripts/infra.sh full-containerized
+```
+
+The same build argument works with `docker build --build-arg EXTRA_CA_CERTS=…`. It
+installs the certificate into the image's trust store and points pip and Poetry at
+it. A root certificate is public by design, so a build argument is the right shape
+for it — the private key is the secret, and that is not this.
 
 The Compose profile performs this order:
 

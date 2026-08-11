@@ -15,7 +15,7 @@ deleted subject, not lost coverage.
 
 **Open, and worth someone's attention:**
 `test_return_workflow_concurrency.py::test_a_second_completion_sees_the_first_ones_state`
-failed **2 of 11** full-suite runs while passing consistently in isolation, and has not
+failed **3 of 13** full-suite runs while passing consistently in isolation, and has not
 been caught under capture, so there is no diagnosis -- only two eliminated hypotheses
 (activity timeout: 10s budget vs a 0.2s stub; mutex hole: the `while` re-check is sound,
 `_transition_in_progress` is set synchronously, `finally` always clears). It predates
@@ -4138,3 +4138,61 @@ versions — so nothing was actually resolving differently; the exposure was lat
 `scripts/`, the Dockerfile, or any Python file. Historical evidence files under
 `docs/evidence/` and `docs/execution-context/` keep their uv references — they are records of
 what was run at the time, not instructions.
+
+## Starting infrastructure no longer builds the backend
+
+`scripts/infra.sh start` was `docker compose up -d --wait` with no service list, so
+it started every default-profile service — including `runtime-configuration-init`,
+which inherits `*backend-base` and is therefore built from
+`return-platform-backend:local`. Asking for datastores built the whole backend
+image first, on machines whose backend runs on the host. Behind a TLS-intercepting
+proxy it did not just waste time: the build died on
+`CERTIFICATE_VERIFY_FAILED: unable to get local issuer certificate`.
+
+**The profile was not the bug and has not been changed.**
+`test_the_default_profile_is_infrastructure_and_bootstrap_only` asserts
+`runtime-configuration-init` sits in the default profile, and its reasoning holds
+for the containerized stack: an app-profile-only bootstrap would leave a
+default-profile stack that cannot serve configuration. `infra.sh start` now names
+its nine services instead.
+
+**The real gap this exposed.** `prepare_runtime_configuration.sh` — the host
+equivalent — ran Vault bootstrap, Neo4j migrations and graph-configuration
+bootstrap, but **not** `apply_sql_migrations.py`. A host-run platform was getting
+its SQL schema only as a side effect of the init container it did not otherwise
+need. That is now an explicit step in `prepare_runtime_configuration.sh`, which is
+what makes leaving the container out safe rather than merely quieter.
+`run_all_host.ps1` had the same omission twice, once per interpreter branch; the
+two branches are now one list.
+
+`test_starting_infrastructure_does_not_build_the_backend_image` reads the service
+list out of `infra.sh` and asserts none of them is buildable or backed by a
+`return-platform-backend*` image, **and** that all three preparation scripts appear
+in `prepare_runtime_configuration.sh` — the equivalence is the justification, so it
+is asserted rather than described. Confirmed to discriminate: adding
+`runtime-configuration-init` back to the list fails it.
+
+**TLS interception, for when the image genuinely is built.** `backend/Dockerfile`
+takes an optional `EXTRA_CA_CERTS` build argument (PEM text), installs it with
+`update-ca-certificates`, and sets `PIP_CERT`/`SSL_CERT_FILE`/`REQUESTS_CA_BUNDLE`
+— `update-ca-certificates` alone is not enough, because pip ships certifi and
+ignores the system store unless pointed at it. Declared once per stage: each stage
+starts from a fresh base and inherits no ARG. `compose.yaml` passes it through as
+`${EXTRA_CA_CERTS:-}`. A build argument rather than a secret mount because it works
+with plain `docker build` and with compose, and a root certificate is public by
+design.
+
+**Verified:** `docker build --target test` green with the argument empty; with a
+throwaway self-signed root passed in, the certificate is present in
+`/etc/ssl/certs/ca-certificates.crt` (confirmed by `crl2pkcs7 | print_certs`) and
+Python loads 151 CAs from that bundle. `bash -n` clean; `docker compose config`
+clean; the six compose-topology tests pass. Infrastructure was **not** started —
+the full reset flow stays paused per the standing instruction.
+
+Canonical suite after this change: **2079 passed, 1 failed, 8 skipped**. The failure
+is `test_a_second_completion_sees_the_first_ones_state`, the known concurrency
+flake -- now **3 of 13** full-suite runs, still passing in isolation (re-run
+immediately after: 2 passed in 8.2s), still undiagnosed. Nothing in this change
+touches return-workflow or Temporal code. The extra skip over the previous run is
+the new compose-topology test, which skips inside the container because
+`compose.yaml` is not copied in; it passes on the host, where the file exists.

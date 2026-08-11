@@ -86,6 +86,12 @@ else
 fi
 
 "${PYTHON[@]}" "$ROOT/scripts/vault/bootstrap_local_vault.py"
+# SQL migrations run here, not only in compose's `runtime-configuration-init`.
+# Until now this was the one preparation step the host path did not do, so a
+# host-run platform got its SQL schema only as a side effect of that init
+# container -- which is a backend *image*, and building it is what made
+# `infra.sh start` build the backend just to start the datastores.
+"${PYTHON[@]}" "$ROOT/scripts/apply_sql_migrations.py"
 "${PYTHON[@]}" "$ROOT/scripts/apply_neo4j_migrations.py"
 
 bootstrap_args=(--if-missing)

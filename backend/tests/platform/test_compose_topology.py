@@ -38,10 +38,59 @@ _SERVICES: dict[str, dict] = (
 )
 
 
+_INFRA_SCRIPT = _COMPOSE.parent / "scripts" / "infra.sh"
+
+
 def _in_profile(name: str) -> set[str]:
     if name == "(default)":
         return {n for n, s in _SERVICES.items() if not s.get("profiles")}
     return {n for n, s in _SERVICES.items() if name in (s.get("profiles") or [])}
+
+
+def _infra_start_services() -> set[str]:
+    """The service list `infra.sh start` brings up, read out of the script."""
+    lines = _INFRA_SCRIPT.read_text(encoding="utf-8").splitlines()
+    start = next(i for i, line in enumerate(lines) if "infrastructure_services=(" in line)
+    end = next(i for i, line in enumerate(lines[start:], start) if line.strip() == ")")
+    return {line.strip() for line in lines[start + 1 : end] if line.strip()}
+
+
+@pytest.mark.skipif(not _INFRA_SCRIPT.is_file(), reason="scripts/infra.sh is not in this container")
+def test_starting_infrastructure_does_not_build_the_backend_image() -> None:
+    """`infra.sh start` must not need an application image to exist.
+
+    `runtime-configuration-init` is correctly in the default profile -- the test
+    below says why -- but it is built from `return-platform-backend:local`, so a
+    bare `docker compose up -d` builds the whole backend image before a single
+    datastore starts. On a machine whose backend runs on the host that is a
+    build for nothing, and it fails outright behind a TLS-intercepting proxy.
+
+    `infra.sh start` therefore names its services. Nothing is lost by the
+    omission: `prepare_runtime_configuration.sh` runs the same SQL migrations,
+    Neo4j migrations and graph-configuration bootstrap on the host -- which is
+    asserted directly, because that equivalence is the whole justification.
+    """
+    requested = _infra_start_services()
+    # PyYAML resolves `<<` merge keys, so a service inheriting `*backend-base`
+    # carries its `build` and `image` here exactly as Compose would see them.
+    buildable = {n for n, s in _SERVICES.items() if s.get("build")}
+    image_backed = {
+        n
+        for n, s in _SERVICES.items()
+        if str(s.get("image", "")).startswith("return-platform-backend")
+    }
+    assert not (requested & (buildable | image_backed))
+    assert requested <= _in_profile("(default)")
+
+    prepare = (_COMPOSE.parent / "scripts" / "prepare_runtime_configuration.sh").read_text(
+        encoding="utf-8"
+    )
+    for script in (
+        "apply_sql_migrations.py",
+        "apply_neo4j_migrations.py",
+        "bootstrap_graph_configuration.py",
+    ):
+        assert script in prepare, f"{script} runs only in the init container, not on the host"
 
 
 def test_the_default_profile_is_infrastructure_and_bootstrap_only() -> None:

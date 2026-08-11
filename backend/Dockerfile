@@ -1,4 +1,19 @@
+# An extra root CA, as PEM text, for networks that terminate TLS in the middle.
+# Without it every package download in this file fails with
+# `CERTIFICATE_VERIFY_FAILED: unable to get local issuer certificate` -- the
+# container trusts nothing the corporate proxy signs, even where the host does.
+#
+#   docker build --build-arg EXTRA_CA_CERTS="$(cat corp-root.pem)" backend
+#   EXTRA_CA_CERTS="$(cat corp-root.pem)" docker compose build backend
+#
+# A build arg rather than a secret mount, because it works with plain
+# `docker build` and with compose, and a root CA certificate is public by
+# design -- it is the private key that is secret, and that is not this.
+# Empty by default: on an unintercepted network nothing changes.
+ARG EXTRA_CA_CERTS=""
+
 FROM python:3.13-slim AS builder
+ARG EXTRA_CA_CERTS
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -6,8 +21,19 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     POETRY_NO_INTERACTION=1
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential freetds-dev \
+    && apt-get install -y --no-install-recommends build-essential freetds-dev ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# `update-ca-certificates` alone is not enough: pip ships its own trust store
+# (certifi) and ignores the system one unless pointed at it, which is why
+# PIP_CERT is set too. SSL_CERT_FILE covers Poetry's own HTTP client.
+RUN if [ -n "${EXTRA_CA_CERTS}" ]; then \
+      printf '%s\n' "${EXTRA_CA_CERTS}" > /usr/local/share/ca-certificates/extra-ca.crt \
+      && update-ca-certificates; \
+    fi
+ENV PIP_CERT=/etc/ssl/certs/ca-certificates.crt \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
 # `poetry-plugin-export` alongside Poetry: `poetry export` ships as a plugin in
 # Poetry 2.x rather than a built-in, so installing Poetry alone leaves the
@@ -36,6 +62,7 @@ RUN poetry export --without-hashes --only main -f requirements.txt -o requiremen
 # file left behind by one session once produced a green run for code that was
 # not in the tree. A bind mount cannot do that -- it is the tree, exactly.
 FROM python:3.13-slim AS test
+ARG EXTRA_CA_CERTS
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -47,8 +74,18 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/workspace_root/backend/src
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential freetds-dev libsybdb5 \
+    && apt-get install -y --no-install-recommends build-essential freetds-dev libsybdb5 ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# See the ARG at the top of this file. Repeated because each stage starts from a
+# fresh base and inherits nothing from the one before it.
+RUN if [ -n "${EXTRA_CA_CERTS}" ]; then \
+      printf '%s\n' "${EXTRA_CA_CERTS}" > /usr/local/share/ca-certificates/extra-ca.crt \
+      && update-ca-certificates; \
+    fi
+ENV PIP_CERT=/etc/ssl/certs/ca-certificates.crt \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
 RUN python -m pip install "poetry==${POETRY_VERSION}"
 

@@ -117,6 +117,11 @@ x-backend-base: &backend-base
   build:
     context: ./backend
     dockerfile: Dockerfile
+    args:
+      # Set EXTRA_CA_CERTS to a PEM root certificate when the network terminates
+      # TLS in the middle; otherwise every package download in the build fails
+      # on `unable to get local issuer certificate`. Empty is the normal case.
+      EXTRA_CA_CERTS: ${EXTRA_CA_CERTS:-}
   environment: *platform-environment
   restart: unless-stopped
   init: true

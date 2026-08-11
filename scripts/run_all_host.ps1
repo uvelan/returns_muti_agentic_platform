@@ -6,16 +6,26 @@ Write-Host "Preparing runtime configuration..." -ForegroundColor Cyan
 Push-Location (Join-Path $Root "backend")
 try {
   $env:PYTHONPATH = (Join-Path $Root "backend\src")
+  # One list, run through whichever interpreter is available. It used to be
+  # written out once per branch, and the branches had already drifted -- this
+  # is the sequence `prepare_runtime_configuration.sh` runs on Linux, including
+  # the SQL migrations that neither branch had.
+  $preparation = @(
+    (Join-Path $Root "scripts\vault\bootstrap_local_vault.py"),
+    (Join-Path "scripts" "apply_sql_migrations.py"),
+    (Join-Path "scripts" "apply_neo4j_migrations.py"),
+    (Join-Path "scripts" "bootstrap_graph_configuration.py")
+  )
   if (Test-Path -LiteralPath ".\.venv\Scripts\python.exe") {
-    & .\.venv\Scripts\python.exe (Join-Path $Root "scripts\vault\bootstrap_local_vault.py")
-    & .\.venv\Scripts\python.exe (Join-Path "scripts" "apply_neo4j_migrations.py")
-    & .\.venv\Scripts\python.exe (Join-Path "scripts" "bootstrap_graph_configuration.py")
+    $run = { param($script) & .\.venv\Scripts\python.exe $script }
   } elseif (Get-Command poetry -ErrorAction SilentlyContinue) {
-    poetry run python (Join-Path $Root "scripts\vault\bootstrap_local_vault.py")
-    poetry run python (Join-Path "scripts" "apply_neo4j_migrations.py")
-    poetry run python (Join-Path "scripts" "bootstrap_graph_configuration.py")
+    $run = { param($script) poetry run python $script }
   } else {
     throw "No backend Python environment is available."
+  }
+  foreach ($script in $preparation) {
+    & $run $script
+    if ($LASTEXITCODE -ne 0) { throw "Runtime preparation failed: $script" }
   }
 } finally { Pop-Location }
 
