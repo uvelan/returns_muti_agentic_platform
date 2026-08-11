@@ -681,6 +681,48 @@ class Settings(BaseSettings):
     def resolved_ollama_standard_models(self) -> tuple[str, ...]:
         return self.ollama_standard_models or ((self.ollama_model,) if self.ollama_model else ())
 
+    def _reject_inline_ai_credentials(self) -> None:
+        """Outside development and test, provider keys must be Vault references.
+
+        `PLATFORM_*_API_KEYS` holds the key *value*; `PLATFORM_*_API_KEY_REFERENCES`
+        holds a `vault://` pointer the platform resolves at startup. Both are
+        accepted, which is how live Google and NVIDIA keys came to sit in a
+        plaintext `.env` -- duplicated into `backend/.env`, mounted read-only
+        into the test-runner container, and (for keys of the same providers)
+        committed to a fixture and removed again in `fbfcf05`, which puts them
+        in git history permanently.
+
+        The six infrastructure secrets already use the reference mechanism
+        exclusively. This makes the AI credentials match, and it fails at
+        construction rather than at first use, so a misconfigured deployment
+        cannot start and quietly serve traffic on an inline key.
+
+        Development and test are exempt on purpose: a contributor with no Vault
+        should be able to run the stack, and every non-production path already
+        degrades when Vault is unavailable. The exemption is what keeps this
+        from being routed around with `PLATFORM_ENVIRONMENT=production` on a
+        laptop.
+        """
+        if self.environment in {"development", "test"}:
+            return
+        inline = [
+            name
+            for name, values in (
+                ("PLATFORM_GOOGLE_API_KEYS", self.google_api_keys),
+                ("PLATFORM_NVIDIA_API_KEYS", self.nvidia_api_keys),
+                ("PLATFORM_OPENAI_API_KEYS", self.openai_api_keys),
+                ("PLATFORM_ANTHROPIC_API_KEYS", self.anthropic_api_keys),
+            )
+            if values
+        ]
+        if inline:
+            # Names only. The whole point is that the value must not be handled.
+            raise ValueError(
+                "AI provider credentials must be supplied as Vault references "
+                f"outside development and test; remove {', '.join(sorted(inline))} "
+                "and populate the matching *_API_KEY_REFERENCES instead."
+            )
+
     @model_validator(mode="after")
     def validate_relationships(self) -> Self:
         if self.dependency_connect_timeout_seconds < self.probe_timeout_seconds:
@@ -691,6 +733,7 @@ class Settings(BaseSettings):
             raise ValueError("SIMULATOR cannot be configured in production.")
         if self.environment == "production" and "MANUAL" in self.ai_provider_order.split(","):
             raise ValueError("MANUAL cannot be configured in production.")
+        self._reject_inline_ai_credentials()
         dependency_modes = {
             self.omc_dependency_mode,
             self.parcel_dependency_mode,
