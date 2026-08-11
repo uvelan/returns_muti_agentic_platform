@@ -1,5 +1,18 @@
 """Interim dynamic_knowledge ActiveSchema for sync_service.py's current domain.
 
+FROZEN -- superseded by the configured descriptor at
+``config/dynamic_knowledge/active-schema.return-order.yaml``.
+
+``sync_service.py`` stopped calling this and now loads the configured schema, so
+the only remaining callers are this module's own tests. It is a *second* source
+binding written in Python -- four collection names and the database name
+``return_source`` as literals -- which is precisely the coupling the source
+binding work removes.
+
+**Do not import this from production code.**
+``tests/test_frozen_modules_gain_no_new_callers.py`` enforces that.
+
+
 This is a bridge, not the destination: it matches sync_service.py's CURRENT
 (uncorrected) source field paths and identity choices closely enough to
 unify sync_service.py onto the generic extractor -> projector -> writer

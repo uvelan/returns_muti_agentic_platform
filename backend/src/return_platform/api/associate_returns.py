@@ -1,4 +1,14 @@
-"""Associate-first conversational return intake APIs."""
+"""Associate-first conversational return intake APIs.
+
+FROZEN -- superseded by ``/api/v2/order-agent`` (``dynamic_knowledge.api.order_agent``).
+
+The HTTP surface of :mod:`return_platform.operations.associate_flow`; see that
+module's header for why. Still mounted, so an unknown consumer is not broken
+without warning, and marked deprecated in the generated contract.
+
+**Do not add routes here.** New discovery behaviour belongs on the canonical
+agent. ``tests/test_frozen_modules_gain_no_new_callers.py`` enforces this.
+"""
 
 from __future__ import annotations
 
@@ -30,7 +40,14 @@ from return_platform.security.authorization import (
 )
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
-router = APIRouter(prefix="/api/v1/associate-returns", tags=["Associate Returns"])
+router = APIRouter(
+    prefix="/api/v1/associate-returns",
+    tags=["Associate Returns"],
+    # Still mounted so an unknown consumer is not broken without warning; marked
+    # here so the generated contract says so to anyone reading it before writing
+    # a new caller.
+    deprecated=True,
+)
 
 
 def _meta(request: Request) -> ResponseMeta:

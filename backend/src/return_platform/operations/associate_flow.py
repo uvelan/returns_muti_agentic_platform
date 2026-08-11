@@ -1,4 +1,21 @@
-"""Associate-first conversational discovery, confirmation lock, and return handoff."""
+"""Associate-first conversational discovery, confirmation lock, and return handoff.
+
+FROZEN -- superseded by ``dynamic_knowledge.order_agent`` (the LangGraph Order
+Discovery agent behind ``/api/v2/order-agent``), which is what the console calls.
+
+Two complete Order Discovery implementations exist. This is the one no shipped
+screen reaches: the audit's cross-reference of ``frontend/src/api/*.ts`` against
+the served contract found no caller for ``/api/v1/associate-returns/*``. It also
+holds 19 of the 24 hardcoded user-facing question strings in the backend, which
+the canonical agent does not need because its clarifications are model-authored.
+
+**Do not extend this module, and do not import it from retained code.**
+``tests/test_frozen_modules_gain_no_new_callers.py`` enforces both. It is frozen
+rather than deleted because "no caller in the frontend or a cross-service search"
+is not the same as "no caller anywhere" -- an undocumented external consumer
+would falsify it. Removal follows consumer analysis and the functional cutover
+gate, not this note.
+"""
 
 from __future__ import annotations
 

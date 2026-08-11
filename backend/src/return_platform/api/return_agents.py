@@ -1,4 +1,15 @@
-"""Production return-agent assessment and configuration inspection APIs."""
+"""Production return-agent assessment and configuration inspection APIs.
+
+FROZEN -- the agent runtime these expose is superseded.
+
+``/api/v1/return-agents/*`` exposes :class:`~return_platform.agents.registry.AgentRegistry`'s
+six deterministic, non-LLM assessment classes. No shipped screen calls it. The
+canonical runtime is the LangGraph agent behind ``/api/v2/order-agent`` for
+discovery, and the durable Temporal workflows for the rest.
+
+**Do not add routes here.** ``tests/test_frozen_modules_gain_no_new_callers.py``
+enforces this.
+"""
 
 from __future__ import annotations
 
@@ -26,7 +37,12 @@ from return_platform.resources import RuntimeResources
 from return_platform.security.authorization import require_read_roles, require_write_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
-router = APIRouter(prefix="/api/v1/return-agents", tags=["Return Agents"])
+router = APIRouter(
+    prefix="/api/v1/return-agents",
+    tags=["Return Agents"],
+    # See the module docstring: frozen, still mounted, deprecated in the contract.
+    deprecated=True,
+)
 
 
 def _meta(request: Request) -> ResponseMeta:

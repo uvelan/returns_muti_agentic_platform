@@ -1,4 +1,20 @@
-"""Evidence-bound Order Discovery Agent."""
+"""Evidence-bound Order Discovery Agent.
+
+FROZEN -- superseded by ``dynamic_knowledge.order_agent``.
+
+Reached only through the frozen ``/api/v1/return-agents/order-discovery/assess``.
+Two things here contradict the target explicitly:
+
+* ``_source()`` implements a hardcoded order-source rule -- a regex plus four
+  literal string sets. Order-source identification is *deliberately deferred*;
+  a stub is acceptable and a hardcoded rule is not.
+* ``assess()`` builds its clarifying question in code
+  (``f"Could you provide the {item.label}?"``), taking only the noun from
+  configuration. The canonical agent's clarifications are model-authored.
+
+**Do not extend.** ``tests/test_frozen_modules_gain_no_new_callers.py`` enforces
+that retained code gains no new import of this module.
+"""
 
 from __future__ import annotations
 
