@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from return_platform.ai.providers.contracts import (
     ProviderError,
@@ -29,18 +30,37 @@ class OpenAIResponsesProvider(HTTPProvider):
     async def generate(self, request: ProviderRequest) -> ProviderResponse:
         if not self.configured or self._api_key is None:
             raise ProviderError("AUTH_FAILED")
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "instructions": request.system_prompt,
+            "input": json.dumps(request.user_payload),
+            "store": False,
+            "temperature": request.temperature,
+        }
+        # Both fields used to be dropped on the floor here, so a task declaring a
+        # 4096-token budget and a strict AgentAction schema got neither -- the
+        # response came back unconstrained and, past the model's own default cap,
+        # truncated. `max_output_tokens` and `text.format` are the Responses API's
+        # names for what `max_tokens` and `response_format` are on chat/completions.
+        if request.max_output_tokens is not None:
+            payload["max_output_tokens"] = request.max_output_tokens
+        if request.response_schema is not None:
+            payload["text"] = {
+                "format": {
+                    "type": "json_schema",
+                    "name": "agent_action",
+                    "schema": request.response_schema,
+                    "strict": True,
+                }
+            }
+
         data = await self._post(
             f"{self._base_url}/responses",
             headers={
                 "Authorization": f"Bearer {self._api_key}",
                 "Content-Type": "application/json",
             },
-            payload={
-                "model": self.model,
-                "instructions": request.system_prompt,
-                "input": json.dumps(request.user_payload),
-                "store": False,
-            },
+            payload=payload,
         )
         text = data.get("output_text")
         if not isinstance(text, str) or not text.strip():
