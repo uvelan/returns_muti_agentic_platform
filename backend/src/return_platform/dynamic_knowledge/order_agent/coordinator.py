@@ -45,6 +45,7 @@ from return_platform.dynamic_knowledge.order_agent.conversation_repository impor
 from return_platform.dynamic_knowledge.order_agent.errors import OrderAgentFailure
 from return_platform.dynamic_knowledge.order_agent.graph import build_order_agent_graph
 from return_platform.dynamic_knowledge.order_agent.graph_nodes import (
+    CaseStore,
     EvidenceStore,
     GraphDependencies,
     KnowledgeGateway,
@@ -220,6 +221,7 @@ class DynamicOrderAgentCoordinator:
         generation_lease_store: GenerationLeaseStore | None = None,
         owner_instance_id: str = "order-agent",
         active_snapshot_store: ActiveRuntimeSnapshotStore | None = None,
+        case_store: CaseStore | None = None,
     ) -> None:
         self._schema = schema
         self._conversations = conversation_store
@@ -255,6 +257,7 @@ class DynamicOrderAgentCoordinator:
             response_safety_guard=response_safety_guard or ResponseSafetyGuard(),
             on_demand_sync=on_demand_sync,
             compiler=cypher_compiler or CypherCompiler(),
+            case_store=case_store,
         )
         checkpointer = SystemStoreCheckpointSaver(system_store, envelope_encryptor)
         self._graph = build_order_agent_graph(deps, checkpointer=checkpointer)
@@ -493,6 +496,7 @@ class DynamicOrderAgentCoordinator:
                 model_provider=final_state["last_provider"],
                 model_name=final_state["last_model"],
                 pending_clarification_thread_id=thread_id,
+                case_id=final_state.get("case_id"),
             )
             return await self._conversations.commit_turn(
                 request=request,
@@ -537,6 +541,7 @@ class DynamicOrderAgentCoordinator:
             query_evidence=evidence,
             model_provider=final_state["last_provider"],
             model_name=final_state["last_model"],
+            case_id=final_state.get("case_id"),
         )
         return await self._conversations.commit_turn(
             request=request,

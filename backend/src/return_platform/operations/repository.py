@@ -186,12 +186,27 @@ class OperationalRepository:
         # documents where the pointer is really set, which is the rule intended:
         # one conversation, one work item and one workflow each map to at most
         # one case.
-        for pointer in ("channelAConversationId", "channelBWorkItemId", "workflowId"):
+        for pointer in ("channelBWorkItemId", "workflowId"):
             await self.cases.create_index(
                 pointer,
                 unique=True,
                 partialFilterExpression={pointer: {"$type": "string"}},
             )
+        # Not unique. One conversation confirming two *different* orders is two
+        # returns, and the confirmation key below is what actually bounds
+        # duplication. `get_case_by_conversation` therefore returns the most
+        # recent rather than assuming there is only one.
+        await self.cases.create_index(
+            [("channelAConversationId", ASCENDING), ("createdAt", DESCENDING)], sparse=True
+        )
+        # The real idempotency boundary: tenant | conversation | order | lines.
+        # A retried confirmation turn resolves to the existing case; a different
+        # order or a different line set is a different intent and gets its own.
+        await self.cases.create_index(
+            "confirmationKey",
+            unique=True,
+            partialFilterExpression={"confirmationKey": {"$type": "string"}},
+        )
         await self.cases.create_index("sessionId", sparse=True)
         await self.case_facts.create_index("factId", unique=True)
         # Serves both the projection (newest per name) and the audit read
@@ -680,14 +695,19 @@ class OperationalRepository:
         confirmed_order_reference: str | None = None,
         configuration_release_id: str | None = None,
         graph_generation_id: str | None = None,
+        confirmation_key: str | None = None,
     ) -> dict[str, Any]:
-        """Create a case, or return the existing one for the same conversation.
+        """Create a case, or return the existing one for the same confirmation.
 
-        Idempotent on `channelAConversationId` rather than on `caseId`: the
-        caller is a turn that may be retried by Temporal, and two attempts of
-        the same confirmation must produce one case. The unique sparse index is
-        what actually enforces it -- this catches the duplicate and reads back
-        the winner rather than racing a find-then-insert.
+        Idempotent on `confirmationKey` rather than on `caseId`: the caller is a
+        turn Temporal may retry, and two attempts of the same confirmation must
+        produce one case. The unique partial index is what enforces it -- this
+        catches the duplicate and reads back the winner rather than racing a
+        find-then-insert.
+
+        Not keyed on the conversation: one conversation confirming two different
+        orders is two returns, and collapsing them would silently discard the
+        second.
         """
         now = utc_now()
         document = {
@@ -699,6 +719,7 @@ class OperationalRepository:
             "channelAConversationId": channel_a_conversation_id,
             "channelBWorkItemId": None,
             "confirmedOrderReference": confirmed_order_reference,
+            "confirmationKey": confirmation_key,
             "sessionId": None,
             "workflowId": None,
             "configurationReleaseId": configuration_release_id,
@@ -711,10 +732,8 @@ class OperationalRepository:
             await self.cases.insert_one(dict(document))
         except DuplicateKeyError:
             existing = None
-            if channel_a_conversation_id is not None:
-                existing = await self.cases.find_one(
-                    {"channelAConversationId": channel_a_conversation_id}
-                )
+            if confirmation_key is not None:
+                existing = await self.cases.find_one({"confirmationKey": confirmation_key})
             if existing is None:
                 existing = await self.cases.find_one({"caseId": case_id})
             if existing is None:  # pragma: no cover - duplicate on neither key
@@ -726,9 +745,19 @@ class OperationalRepository:
         document = await self.cases.find_one({"caseId": case_id})
         return cast(dict[str, Any], document) if document is not None else None
 
+    async def find_case_by_confirmation(self, confirmation_key: str) -> dict[str, Any] | None:
+        document = await self.cases.find_one({"confirmationKey": confirmation_key})
+        return cast(dict[str, Any], document) if document is not None else None
+
     async def get_case_by_conversation(self, conversation_id: str) -> dict[str, Any] | None:
-        """Channel A -> case. What the copilot needs to show a return's state."""
-        document = await self.cases.find_one({"channelAConversationId": conversation_id})
+        """Channel A -> case. What the copilot needs to show a return's state.
+
+        Most recent first: a conversation that confirmed two different orders
+        has two cases, and the one the associate is working on is the latest.
+        """
+        document = await self.cases.find_one(
+            {"channelAConversationId": conversation_id}, sort=[("createdAt", DESCENDING)]
+        )
         return cast(dict[str, Any], document) if document is not None else None
 
     async def get_case_by_work_item(self, work_item_id: str) -> dict[str, Any] | None:

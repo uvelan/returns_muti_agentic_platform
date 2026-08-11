@@ -16,6 +16,7 @@ from return_platform.dynamic_knowledge.order_agent.graph_nodes import (
     GraphDependencies,
     TurnRuntimeContext,
     make_clarify_node,
+    make_confirm_order_node,
     make_decide_node,
     make_get_schema_node,
     make_graph_query_node,
@@ -44,6 +45,7 @@ _AFTER_VALIDATE_ACTION_TARGETS: dict[Hashable, str] = {
     "clarify": "clarify",
     "replan": "replan",
     "respond": "respond",
+    "confirm_order": "confirm_order",
 }
 _AFTER_CORRECTABLE_NODE_TARGETS: dict[Hashable, str] = {"decide": "decide", **_AFTER_ACTION_TARGETS}
 
@@ -91,6 +93,7 @@ def build_order_agent_graph(
     graph.add_node("request_on_demand_sync", make_request_on_demand_sync_node(deps))
     graph.add_node("clarify", make_clarify_node(deps))
     graph.add_node("replan", make_replan_node())
+    graph.add_node("confirm_order", make_confirm_order_node(deps))
     graph.add_node("respond", make_respond_node(deps))
 
     graph.set_entry_point("decide")
@@ -108,6 +111,12 @@ def build_order_agent_graph(
     )
     graph.add_conditional_edges("clarify", _route_after_clarify, _AFTER_CLARIFY_TARGETS)
     graph.add_edge("replan", "decide")
+    # Back to `decide`, not to END. Confirming commits the case; the associate
+    # is still owed a sentence saying so, and only the model writes those.
+    # A correction re-routes exactly as a fresh decide() would.
+    graph.add_conditional_edges(
+        "confirm_order", route_after_correctable_node, _AFTER_CORRECTABLE_NODE_TARGETS
+    )
     graph.add_conditional_edges("respond", _route_after_terminal_node, _AFTER_TERMINAL_NODE_TARGETS)
     # out_of_scope always raises OrderAgentFailure before returning -- this edge
     # is structural only, never actually traversed.

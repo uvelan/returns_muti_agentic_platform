@@ -23,6 +23,12 @@ class ActionType(StrEnum):
     CLARIFY = "CLARIFY"
     REPLAN = "REPLAN"
     RESPOND = "RESPOND"
+    # The transition from "an order was found" to "a return is being raised".
+    # Discovery could previously only search and answer, so nothing turned a
+    # conversation into a case -- the console inferred resolution from a
+    # candidate list of length one and there was no durable record that the
+    # associate had actually confirmed anything.
+    CONFIRM_ORDER = "CONFIRM_ORDER"
     OUT_OF_SCOPE = "OUT_OF_SCOPE"
 
 
@@ -49,6 +55,47 @@ class OrderSearchIntent(BaseModel):
     wantsMoreResults: bool = False
 
 
+class OrderConfirmation(BaseModel):
+    """What the associate confirmed they are raising a return against.
+
+    The order reference and the line set are both carried, and both are part of
+    the idempotency key, because "this order" and "these lines of this order"
+    are different confirmations: a partial return of two lines is not the same
+    intent as a full return of five, and a retry of the first must not be
+    mistaken for the second.
+
+    `candidate_set_id` and `candidate_id` are what tie the confirmation to a
+    search the agent actually ran. Without them a model could confirm an order
+    it invented; with them the existing `CandidateSet.validate_selection` binds
+    the choice to this conversation, this principal, this tenant and this graph
+    generation, and refuses an expired set.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    candidate_set_id: str = Field(min_length=1)
+    candidate_id: str = Field(min_length=1)
+    order_reference: str = Field(min_length=1, max_length=128)
+    # Empty means the whole order. Stated rather than implied so the
+    # idempotency key is stable either way.
+    order_line_references: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_line_references(self) -> OrderConfirmation:
+        if len(set(self.order_line_references)) != len(self.order_line_references):
+            raise ValueError("order_line_references must not repeat a line")
+        return self
+
+    def idempotency_key(self, *, tenant_id: str, conversation_id: str) -> str:
+        """Stable across retries, distinct across intents.
+
+        Lines are sorted so the model listing them in a different order on a
+        retry does not read as a different confirmation.
+        """
+        lines = ",".join(sorted(self.order_line_references))
+        return f"{tenant_id}|{conversation_id}|{self.order_reference}|{lines}"
+
+
 class AgentAction(BaseModel):
     """Only action shape accepted from the reasoning model."""
 
@@ -64,6 +111,7 @@ class AgentAction(BaseModel):
     response: StructuredAgentResponse | None = None
     search_intent: OrderSearchIntent | None = None
     selected_candidate_id: str | None = None
+    order_confirmation: OrderConfirmation | None = None
 
     @model_validator(mode="after")
     def validate_action_payload(self) -> AgentAction:
@@ -78,6 +126,7 @@ class AgentAction(BaseModel):
             ActionType.REPLAN: True,
             ActionType.OUT_OF_SCOPE: True,
             ActionType.GET_SCHEMA: bool(self.schema_entity_ids),
+            ActionType.CONFIRM_ORDER: self.order_confirmation is not None,
         }
         if not requirements[self.action_type]:
             raise ValueError(f"missing payload for action type {self.action_type.value}")
@@ -145,6 +194,11 @@ class AgentTurnResult(BaseModel):
     # Deliberately not sensitive -- it is composed from the conversation_id and
     # client_turn_id the caller itself supplied (see ReasoningThreadIdFactory).
     pending_clarification_thread_id: str | None = None
+    # Set once this conversation has confirmed an order and a case exists. The
+    # console needs it to stop inferring "an order was found" from a candidate
+    # list of length one, and it is the handle everything downstream of
+    # discovery hangs off.
+    case_id: str | None = None
     query_evidence: tuple[QueryEvidence, ...]
     model_provider: str
     model_name: str

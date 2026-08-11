@@ -54,6 +54,7 @@ from return_platform.dynamic_knowledge.order_agent.contracts import (
     AgentAction,
     AgentTurnContext,
     ModelInvocationResult,
+    OrderConfirmation,
     OrderSearchIntent,
 )
 from return_platform.dynamic_knowledge.order_agent.errors import OrderAgentFailure
@@ -119,6 +120,40 @@ class EvidenceStore(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class ConfirmedCase:
+    """The case a confirmation resolved to, and whether it already existed.
+
+    `already_existed` is not decoration: it is how a retried turn is
+    distinguished from a first confirmation in the log, and it is what a caller
+    would branch on before doing anything a second time.
+    """
+
+    case_id: str
+    already_existed: bool
+
+
+class CaseStore(Protocol):
+    """Creating a case is the agent's only *write* outside its own conversation.
+
+    Narrow on purpose. The agent may bring a case into existence and learn its
+    id; it may not read other cases, list them, or change one. Anything wider
+    would put the whole return domain inside the reasoning loop's reach.
+    """
+
+    async def confirm_case(
+        self,
+        *,
+        tenant_id: str,
+        principal_id: str,
+        branch_ids: tuple[str, ...],
+        conversation_id: str,
+        confirmation: OrderConfirmation,
+        configuration_release_id: str,
+        graph_generation_id: str,
+    ) -> ConfirmedCase: ...
+
+
+@dataclass(frozen=True, slots=True)
 class TurnRuntimeContext:
     """Per-invocation data that must never be checkpointed. Passed via
     LangGraph's Runtime.context, never through OrderAgentGraphState."""
@@ -142,6 +177,10 @@ class GraphDependencies:
     response_safety_guard: ResponseSafetyGuard
     on_demand_sync: OnDemandSyncCoordinator | None
     compiler: CypherCompiler
+    # Optional for the same reason `on_demand_sync` is: a process without a
+    # platform Mongo client can still search and answer. CONFIRM_ORDER fails
+    # loudly rather than silently no-op'ing when it is absent.
+    case_store: CaseStore | None = None
 
 
 async def _rehydrate_evidence(
@@ -257,6 +296,7 @@ def route_after_validate_action(state: dict[str, Any]) -> str:
         ActionType.CLARIFY.value: "clarify",
         ActionType.REPLAN.value: "replan",
         ActionType.RESPOND.value: "respond",
+        ActionType.CONFIRM_ORDER.value: "confirm_order",
     }
     return dispatch[state["action"]["action_type"]]
 
@@ -865,6 +905,102 @@ def make_clarify_node(deps: GraphDependencies) -> Any:
     return clarify
 
 
+def make_confirm_order_node(deps: GraphDependencies) -> Any:
+    async def confirm_order(
+        state: dict[str, Any], runtime: Runtime[TurnRuntimeContext]
+    ) -> dict[str, Any]:
+        """Turn a searched-for order into a durable case.
+
+        This is the transition the platform did not have. Discovery could search
+        and answer; nothing recorded that the associate had *chosen*, so every
+        step after it was unreachable and the console inferred resolution from a
+        candidate list of length one.
+
+        Two things make the confirmation trustworthy rather than a claim:
+
+        * The selection is validated against the live `CandidateSet` -- the same
+          guard `graph_query` uses -- so a model cannot confirm an order it did
+          not find, one belonging to a different conversation or principal, or
+          one from an expired or superseded graph generation.
+        * The case store is idempotent on
+          `tenant | conversation | order | line-set`, so a Temporal retry of the
+          same turn, or two confirmations racing, yield one case.
+
+        Starting the case's durable workflow is deliberately *not* here:
+        `ReturnCaseWorkflow` does not exist yet, and a node that pretended to
+        start one would be the stub this plan forbids. The case is durable now;
+        the workflow binds to it when it lands.
+        """
+        guard_context = runtime.context.guard_context
+        if deps.case_store is None:
+            raise OrderAgentFailure(
+                "ORDER_AGENT_CASE_STORE_UNAVAILABLE",
+                "Return cases cannot be created in this process.",
+                retryable=True,
+            )
+        action = AgentAction.model_validate(state["action"])
+        confirmation = action.order_confirmation
+        if confirmation is None:
+            raise AssertionError("validated CONFIRM_ORDER action lacks order_confirmation")
+
+        cache = state.get("order_search_cache")
+        candidate_set_dict = (cache or {}).get("candidateSet")
+        correction_attempts = state.get("correction_attempts", 0)
+        policy = guard_context.agent_policy
+        try:
+            if candidate_set_dict is None:
+                raise ValueError("no candidate set is active for this conversation")
+            candidate_set = CandidateSet.model_validate(candidate_set_dict)
+            if candidate_set.candidate_set_id != confirmation.candidate_set_id:
+                raise ValueError("candidate_set_id does not match the active candidate set")
+            candidate_set.validate_selection(
+                candidate_id=confirmation.candidate_id,
+                conversation_id=state["conversation_id"],
+                principal_id=guard_context.principal.principal_id,
+                tenant_id=guard_context.principal.tenant_id,
+                graph_generation_id=state["graph_generation_id"],
+                now=_now(),
+            )
+        except ValueError as error:
+            return await _correct_or_raise_action(
+                deps,
+                state=state,
+                action=action,
+                exc=GuardRejected("ORDER_AGENT_INVALID_CANDIDATE_SELECTION", str(error)),
+                correction_attempts=correction_attempts,
+                max_correction_attempts=policy.max_correction_attempts,
+            )
+
+        case = await deps.case_store.confirm_case(
+            tenant_id=guard_context.principal.tenant_id,
+            principal_id=guard_context.principal.principal_id,
+            branch_ids=tuple(sorted(guard_context.principal.branch_ids)),
+            conversation_id=state["conversation_id"],
+            confirmation=confirmation,
+            configuration_release_id=state["configuration_release_id"],
+            graph_generation_id=state["graph_generation_id"],
+        )
+        logger.info(
+            "order_agent_order_confirmed",
+            extra={
+                "conversation_id": state["conversation_id"],
+                "client_turn_id": state["client_turn_id"],
+                "case_id": case.case_id,
+                "already_existed": case.already_existed,
+            },
+        )
+        return {
+            "case_id": case.case_id,
+            # Back to `decide` rather than ending the turn: the associate has
+            # confirmed, and the agent still owes them a sentence saying so.
+            # Ending here would commit the case and return silence.
+            "action": None,
+            "_corrected": False,
+        }
+
+    return confirm_order
+
+
 def make_replan_node() -> Any:
     async def replan(state: dict[str, Any], runtime: Runtime[TurnRuntimeContext]) -> dict[str, Any]:
         policy = runtime.context.guard_context.agent_policy
@@ -954,14 +1090,18 @@ NODE_NAMES: tuple[str, ...] = (
     "clarify",
     "replan",
     "respond",
+    "confirm_order",
 )
 
 __all__ = [
     "END",
     "NODE_NAMES",
+    "CaseStore",
+    "ConfirmedCase",
     "GraphDependencies",
     "TurnRuntimeContext",
     "make_clarify_node",
+    "make_confirm_order_node",
     "make_decide_node",
     "make_get_schema_node",
     "make_graph_query_node",

@@ -3255,6 +3255,17 @@
       "AgentTurnResult": {
         "additionalProperties": false,
         "properties": {
+          "case_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Id"
+          },
           "client_turn_id": {
             "title": "Client Turn Id",
             "type": "string"
@@ -15224,7 +15235,7 @@
     },
     "/api/v2/order-agent/conversations/{conversation_id}/transcript": {
       "get": {
-        "description": "What was said, so reopening a conversation shows it rather than a blank\npane. Same bounded transcript the agent itself reasons over.",
+        "description": "What was said, so reopening a conversation shows it rather than a blank\npane. Same bounded transcript the agent itself reasons over.\n\nAnother principal's conversation is a 404, not a 403: the id is a\nclient-generated UUID, and distinguishing \"does not exist\" from \"exists but\nis not yours\" would turn this endpoint into an existence oracle.",
         "operationId": "read_conversation_transcript_api_v2_order_agent_conversations__conversation_id__transcript_get",
         "parameters": [
           {

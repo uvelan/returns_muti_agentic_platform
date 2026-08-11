@@ -2158,6 +2158,10 @@ export interface paths {
          * Read Conversation Transcript
          * @description What was said, so reopening a conversation shows it rather than a blank
          *     pane. Same bounded transcript the agent itself reasons over.
+         *
+         *     Another principal's conversation is a 404, not a 403: the id is a
+         *     client-generated UUID, and distinguishing "does not exist" from "exists but
+         *     is not yours" would turn this endpoint into an existence oracle.
          */
         get: operations["read_conversation_transcript_api_v2_order_agent_conversations__conversation_id__transcript_get"];
         put?: never;
@@ -3122,6 +3126,8 @@ export interface components {
         };
         /** AgentTurnResult */
         AgentTurnResult: {
+            /** Case Id */
+            case_id?: string | null;
             /** Client Turn Id */
             client_turn_id: string;
             /** Conversation Id */

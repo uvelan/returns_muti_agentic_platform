@@ -283,20 +283,60 @@ async def test_a_case_is_reachable_from_both_channels(
     assert from_b["channelAConversationId"] == conversation_id
 
 
-async def test_creating_a_case_twice_for_one_conversation_yields_one_case(
+async def test_repeating_a_confirmation_key_yields_one_case(
     repository: OperationalRepository, principal: str
 ) -> None:
-    """A confirmation turn can be retried by Temporal. It must not fork the case."""
-    conversation_id = str(uuid.uuid4())
+    """A confirmation turn can be retried by Temporal. It must not fork the case.
 
-    first = await _case(repository, principal, channel_a_conversation_id=conversation_id)
-    second = await _case(repository, principal, channel_a_conversation_id=conversation_id)
+    Keyed on the confirmation, not on the conversation. This assertion used to
+    be the other way round, and CONFIRM_ORDER moved the boundary deliberately:
+    see the sibling test below.
+    """
+    conversation_id = str(uuid.uuid4())
+    key = f"{TENANT}|{conversation_id}|CW273354|L1,L2"
+
+    first = await _case(
+        repository, principal, channel_a_conversation_id=conversation_id, confirmation_key=key
+    )
+    second = await _case(
+        repository, principal, channel_a_conversation_id=conversation_id, confirmation_key=key
+    )
 
     assert first["caseId"] == second["caseId"]
     assert (
         len(await repository.list_cases_for_principal(tenant_id=TENANT, principal_id=principal))
         == 1
     )
+
+
+async def test_one_conversation_may_hold_two_cases_for_two_orders(
+    repository: OperationalRepository, principal: str
+) -> None:
+    """Two orders confirmed in one conversation are two returns.
+
+    The conversation pointer is therefore a lookup key, not a uniqueness
+    constraint -- making it unique would silently discard the second return.
+    """
+    conversation_id = str(uuid.uuid4())
+
+    first = await _case(
+        repository,
+        principal,
+        channel_a_conversation_id=conversation_id,
+        confirmation_key=f"{TENANT}|{conversation_id}|CW111111|",
+    )
+    second = await _case(
+        repository,
+        principal,
+        channel_a_conversation_id=conversation_id,
+        confirmation_key=f"{TENANT}|{conversation_id}|CW222222|",
+    )
+
+    assert first["caseId"] != second["caseId"]
+    # The conversation lookup answers with the most recent of the two.
+    latest = await repository.get_case_by_conversation(conversation_id)
+    assert latest is not None
+    assert latest["caseId"] == second["caseId"]
 
 
 async def test_a_case_survives_and_round_trips_through_its_contract(

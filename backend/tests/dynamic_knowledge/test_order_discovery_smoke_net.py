@@ -25,6 +25,7 @@ nothing to pin.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -59,14 +60,17 @@ from return_platform.dynamic_knowledge.order_agent.contracts import (
     AgentAction,
     AgentTurnContext,
     ModelInvocationResult,
+    OrderConfirmation,
     OrderSearchIntent,
 )
 from return_platform.dynamic_knowledge.order_agent.errors import OrderAgentFailure
 from return_platform.dynamic_knowledge.order_agent.graph import build_order_agent_graph
 from return_platform.dynamic_knowledge.order_agent.graph_nodes import (
+    ConfirmedCase,
     GraphDependencies,
     TurnRuntimeContext,
 )
+from return_platform.dynamic_knowledge.order_agent.state import CandidateSet
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
 pytestmark = pytest.mark.asyncio
@@ -163,11 +167,90 @@ class MemoryEvidence:
         return tuple(self.stored[i] for i in query_execution_ids if i in self.stored)
 
 
+CANDIDATE_SET_ID = "cs-smoke"
+CANDIDATE_ID = "cand-1"
+ORDER_REFERENCE = "CW273354"
+
+
+class RecordingCaseStore:
+    """Idempotent on the confirmation key, like the real adapter.
+
+    Modelling the idempotency here rather than always returning a fresh id is
+    what makes the retry test meaningful: a store that forgot would let a
+    broken node pass.
+    """
+
+    def __init__(self) -> None:
+        self.confirmations: list[str] = []
+        self.issued: list[str] = []
+        self._by_key: dict[str, str] = {}
+
+    async def confirm_case(
+        self,
+        *,
+        tenant_id: str,
+        principal_id: str,
+        branch_ids: tuple[str, ...],
+        conversation_id: str,
+        confirmation: OrderConfirmation,
+        configuration_release_id: str,
+        graph_generation_id: str,
+    ) -> ConfirmedCase:
+        del principal_id, branch_ids, configuration_release_id, graph_generation_id
+        key = confirmation.idempotency_key(tenant_id=tenant_id, conversation_id=conversation_id)
+        self.confirmations.append(key)
+        existing = self._by_key.get(key)
+        if existing is not None:
+            return ConfirmedCase(case_id=existing, already_existed=True)
+        case_id = f"case-{len(self._by_key) + 1}"
+        self._by_key[key] = case_id
+        self.issued.append(case_id)
+        return ConfirmedCase(case_id=case_id, already_existed=False)
+
+
+def _candidate_set_cache() -> dict[str, Any]:
+    """A live candidate set, as `order_search` would have left it.
+
+    Built through `CandidateSet.create` rather than hand-rolled so the checksum
+    and binding fields are the real ones -- `validate_selection` checks them,
+    and a hand-built dict would be testing the test.
+    """
+    candidate_set = CandidateSet.create(
+        candidate_set_id=CANDIDATE_SET_ID,
+        conversation_id="conv-smoke",
+        turn_id="turn-1",
+        principal_id="associate-1",
+        tenant_id="tenant-a",
+        schema_version="2026.08.04",
+        graph_generation_id="gen-smoke",
+        query_execution_id="qe-1",
+        candidate_ids=(CANDIDATE_ID,),
+        created_at=datetime.now(UTC),
+        expires_at=datetime.now(UTC) + timedelta(minutes=30),
+    )
+    return {"candidateSet": candidate_set.model_dump(mode="json")}
+
+
+def _confirm(candidate_id: str = CANDIDATE_ID) -> AgentAction:
+    return AgentAction(
+        business_capability="return-context-collection",
+        action_type=ActionType.CONFIRM_ORDER,
+        decision_summary="The associate confirmed this order.",
+        order_confirmation=OrderConfirmation(
+            candidate_set_id=CANDIDATE_SET_ID,
+            candidate_id=candidate_id,
+            order_reference=ORDER_REFERENCE,
+            order_line_references=("L1", "L2"),
+        ),
+    )
+
+
 def _dependencies(
     schema: ActiveSchema,
     model: ScriptedModel,
     knowledge: RecordingKnowledge,
     evidence: MemoryEvidence,
+    case_store: RecordingCaseStore | None = None,
 ) -> GraphDependencies:
     """Real guards and the real compiler -- the point of the exercise."""
     return GraphDependencies(
@@ -183,6 +266,7 @@ def _dependencies(
         response_safety_guard=ResponseSafetyGuard(),
         on_demand_sync=None,
         compiler=CypherCompiler(),
+        case_store=case_store,
     )
 
 
@@ -219,12 +303,20 @@ async def _run(
     message: str,
     actions: list[AgentAction],
     rows: list[dict[str, Any]] | None = None,
+    case_store: RecordingCaseStore | None = None,
+    seed_candidate_set: bool = False,
 ) -> tuple[dict[str, Any], ScriptedModel, RecordingKnowledge]:
     model = ScriptedModel(actions)
     knowledge = RecordingKnowledge(rows if rows is not None else [])
-    graph = build_order_agent_graph(_dependencies(schema, model, knowledge, MemoryEvidence()))
+    graph = build_order_agent_graph(
+        _dependencies(schema, model, knowledge, MemoryEvidence(), case_store=case_store)
+    )
+    state = _state(schema, message)
+    if seed_candidate_set:
+        # A confirmation is only meaningful against a search that happened.
+        state["order_search_cache"] = _candidate_set_cache()
     final = await graph.ainvoke(
-        _state(schema, message),
+        state,
         context=TurnRuntimeContext(guard_context=_guard_context(schema)),
         config={"recursion_limit": 64},
     )
@@ -490,6 +582,94 @@ async def test_the_turn_context_carries_transcript_and_schema_to_the_model(
     assert first.user_message == "order CW273354"
     assert first.compact_schema, "the model must be told what it may search"
     assert first.graph_generation_id == "gen-smoke"
+
+
+async def test_confirming_an_order_creates_a_case_and_returns_its_id(
+    schema: ActiveSchema,
+) -> None:
+    """The transition the platform did not have.
+
+    Discovery could search and answer; nothing recorded that the associate had
+    chosen, so every step after it was unreachable.
+    """
+    # Confirms against the seeded candidate set rather than running a search
+    # first: `order_search` mints its own set with a fresh uuid, so a scenario
+    # that searched *then* confirmed a fixed id would be rejected -- correctly,
+    # and for a reason that has nothing to do with what this test is about.
+    store = RecordingCaseStore()
+    final, model, _ = await _run(
+        schema,
+        "yes, that one",
+        [_confirm(), _respond("Raising the return now.")],
+        case_store=store,
+        seed_candidate_set=True,
+    )
+
+    assert model.dispatched == [ActionType.CONFIRM_ORDER, ActionType.RESPOND]
+    assert final["case_id"] == store.issued[0]
+    assert len(store.confirmations) == 1
+    # Back to `decide` after confirming, not straight to END: the associate is
+    # owed a sentence, and only the model writes those.
+    assert final["final_response"] is not None
+
+
+async def test_two_identical_confirmations_produce_one_case(schema: ActiveSchema) -> None:
+    """A Temporal retry of the same turn must not fork the case."""
+    store = RecordingCaseStore()
+    for _ in range(2):
+        await _run(
+            schema,
+            "yes, that one",
+            [_confirm(), _respond()],
+            case_store=store,
+            seed_candidate_set=True,
+        )
+
+    assert len(store.confirmations) == 2, "both turns reached the store"
+    assert len(set(store.issued)) == 1, "and both resolved to one case"
+
+
+async def test_a_confirmation_for_a_candidate_that_was_never_offered_is_refused(
+    schema: ActiveSchema,
+) -> None:
+    """A model cannot confirm an order it did not find.
+
+    The selection is validated against the live `CandidateSet` -- the same
+    guard `graph_query` uses -- so an invented candidate id is rejected before
+    any case exists.
+    """
+    store = RecordingCaseStore()
+    model = ScriptedModel([_confirm(candidate_id="never-offered")])
+    graph = build_order_agent_graph(
+        _dependencies(schema, model, RecordingKnowledge([]), MemoryEvidence(), case_store=store)
+    )
+
+    with pytest.raises((OrderAgentFailure, AssertionError)):
+        await graph.ainvoke(
+            {**_state(schema, "confirm"), "order_search_cache": _candidate_set_cache()},
+            context=TurnRuntimeContext(guard_context=_guard_context(schema)),
+            config={"recursion_limit": 24},
+        )
+    assert not store.confirmations, "no case may be created from an unverified selection"
+
+
+async def test_confirmation_fails_loudly_when_no_case_store_is_configured(
+    schema: ActiveSchema,
+) -> None:
+    """A process without a platform client can still search. It must not
+    silently accept a confirmation it cannot record."""
+    model = ScriptedModel([_confirm()])
+    graph = build_order_agent_graph(
+        _dependencies(schema, model, RecordingKnowledge([]), MemoryEvidence(), case_store=None)
+    )
+
+    with pytest.raises(OrderAgentFailure) as raised:
+        await graph.ainvoke(
+            {**_state(schema, "confirm"), "order_search_cache": _candidate_set_cache()},
+            context=TurnRuntimeContext(guard_context=_guard_context(schema)),
+            config={"recursion_limit": 24},
+        )
+    assert raised.value.code == "ORDER_AGENT_CASE_STORE_UNAVAILABLE"
 
 
 async def test_the_reasoning_step_budget_is_enforced(schema: ActiveSchema) -> None:

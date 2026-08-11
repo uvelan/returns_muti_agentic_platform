@@ -159,6 +159,9 @@ class CaseView(MutableContract):
     channelAConversationId: str | None = None
     channelBWorkItemId: str | None = None
     confirmedOrderReference: str | None = None
+    # tenant | conversation | order | line-set. The idempotency boundary for
+    # confirmation, and the reason a retried turn cannot fork the case.
+    confirmationKey: str | None = None
     # The session this case's stage machine runs under, when one has been
     # started. Distinct from `workflowId`, which is the case's own durable
     # execution.

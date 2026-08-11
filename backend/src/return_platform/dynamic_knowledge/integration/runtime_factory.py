@@ -22,6 +22,7 @@ from return_platform.dynamic_knowledge.config_loader import load_active_schema
 from return_platform.dynamic_knowledge.graph.generation_writer import Neo4jGenerationWriter
 from return_platform.dynamic_knowledge.graph.neo4j_writer import Neo4jDynamicGraphWriter
 from return_platform.dynamic_knowledge.graph.projector import GenericGraphProjector
+from return_platform.dynamic_knowledge.integration.case_store import RepositoryCaseStore
 from return_platform.dynamic_knowledge.integration.model_gateway import (
     RoutePoolReasoningModelGateway,
 )
@@ -59,6 +60,7 @@ from return_platform.dynamic_knowledge.order_agent.conversation_repository impor
     AtomicConversationRepository,
 )
 from return_platform.dynamic_knowledge.order_agent.coordinator import DynamicOrderAgentCoordinator
+from return_platform.operations.repository import OperationalRepository
 from return_platform.platform.reasoning.evidence_store import QueryEvidenceStore
 from return_platform.platform.secrets.envelope import EnvelopeEncryptor
 from return_platform.platform.system_store.repository import SystemStore
@@ -180,6 +182,11 @@ async def build_dynamic_order_agent_runtime(
         mongo_client=platform_mongo,
         generation_lease_store=generation_lease_store,
         owner_instance_id=owner_instance_id,
+        # CONFIRM_ORDER's one write outside the conversation. The repository is
+        # constructed here rather than passed in because this factory already
+        # owns the platform Mongo client, and the agent must not be handed the
+        # repository itself -- only the one-method port over it.
+        case_store=RepositoryCaseStore(OperationalRepository(platform_mongo, settings)),
         active_snapshot_store=active_snapshot_store,
     )
     return coordinator

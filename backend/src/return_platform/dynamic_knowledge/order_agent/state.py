@@ -151,6 +151,13 @@ class OrderAgentGraphState(TypedDict, total=False):
     replans_used: int
     targeted_syncs_used: int
 
+    # The case this conversation confirmed an order against, once it has. Set
+    # by `confirm_order` and carried for the rest of the turn so `respond` and
+    # the committed AgentTurnResult can both see it. An id, not the case -- the
+    # durable record lives in the case store and must not be duplicated into a
+    # checkpoint that could then disagree with it.
+    case_id: str | None
+
     # Terminal payload.
     final_response: dict[str, Any] | None
 
@@ -182,6 +189,10 @@ ORDER_DISCOVERY_CHECKPOINT_ALLOWLIST: frozenset[str] = frozenset(
         "clarifications_used",
         "replans_used",
         "targeted_syncs_used",
+        # Safe to checkpoint: an opaque identifier the platform issued, with no
+        # business data in it. Resuming a paused clarification must not forget
+        # that the order was already confirmed.
+        "case_id",
         "final_response",
     }
 )
