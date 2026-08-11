@@ -1,11 +1,21 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Bot, CircleCheck, CircleDashed, Loader2, Send, Tag } from "lucide-react";
+import {
+  Bot,
+  CircleCheck,
+  CircleDashed,
+  History,
+  Plus,
+  Send,
+  ShieldCheck,
+  Tag,
+} from "lucide-react";
 
 import {
   newConversationId,
   orderAgentApi,
   type AgentTurnResult,
+  type ConversationSummary,
   type ResponseStatement,
 } from "../../api/orderAgent";
 import { returnsApi, type ReturnSessionView } from "../../api/returnsDomain";
@@ -37,7 +47,12 @@ import { useCapabilities } from "../../hooks/capabilityContext";
 
 type ChatMessage =
   | { role: "associate"; id: string; text: string }
-  | { role: "agent"; id: string; statements: ResponseStatement[]; status: string };
+  | { role: "agent"; id: string; statements: ResponseStatement[]; status: string }
+  // Replayed from a stored transcript. The record keeps role and text, not the
+  // typed statements, so a reopened conversation renders as plain speech --
+  // which is honest: the provenance markers below mean "this turn cited
+  // evidence", and a replay cannot vouch for that.
+  | { role: "restored"; id: string; author: "associate" | "agent"; text: string };
 
 /**
  * The return's milestones, in order, each owned by one agent.
@@ -210,15 +225,58 @@ function resolvedOrderReference(candidates: readonly Record<string, unknown>[]):
 
 export function ReturnCopilotPage() {
   const { can } = useCapabilities();
-  const [conversationId] = useState(newConversationId);
+  // Settable, not fixed at mount. A `useState(newConversationId)` with no
+  // setter meant one conversation per page load and no way to start another --
+  // an associate finishing one return had to reload the browser to begin the
+  // next, and the agent, whose memory is scoped to the conversation, would
+  // otherwise carry the last customer into this one.
+  const [conversationId, setConversationId] = useState(newConversationId);
   const [history, setHistory] = useState<readonly ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
+  const [showHistory, setShowHistory] = useState(false);
   const [turn, setTurn] = useState<AgentTurnResult | null>(null);
   // Held across turns, not derived from the latest one: see `turnCandidates`.
   const [candidates, setCandidates] = useState<readonly Record<string, unknown>[]>([]);
   // The backend rejects a turn built on a stale view, so the version from the
   // last result is what the next request must carry.
   const versionRef = useRef(0);
+
+  const conversations = useQuery({
+    queryKey: ["order-agent", "conversations"],
+    queryFn: () => orderAgentApi.listConversations(),
+    enabled: can("returns.session.read"),
+  });
+
+  function startNewReturn() {
+    setConversationId(newConversationId());
+    setHistory([]);
+    setTurn(null);
+    setCandidates([]);
+    setDraft("");
+    // Back to 0: a new conversation has no committed version, and carrying the
+    // previous one's would be rejected as stale on the very first turn.
+    versionRef.current = 0;
+  }
+
+  const open = useMutation({
+    mutationFn: (id: string) => orderAgentApi.readTranscript(id),
+    onSuccess: (transcript) => {
+      setConversationId(transcript.conversationId);
+      setHistory(
+        transcript.messages.map((message, index) => ({
+          role: "restored" as const,
+          id: `${transcript.conversationId}-${String(index)}`,
+          author: message.role,
+          text: message.text,
+        })),
+      );
+      setTurn(null);
+      setCandidates([]);
+      // Continue where it left off rather than at 0, or the next turn is
+      // rejected as built on a stale view of a conversation that has history.
+      versionRef.current = transcript.conversationVersion;
+    },
+  });
 
   const send = useMutation({
     mutationFn: (message: string) =>
@@ -286,6 +344,14 @@ export function ReturnCopilotPage() {
         isPending={send.isPending}
         error={send.error}
         suggestions={turn?.response.suggestions ?? []}
+        conversations={conversations.data ?? []}
+        historyError={conversations.error}
+        historyLoading={conversations.isPending}
+        conversationId={conversationId}
+        showHistory={showHistory}
+        onToggleHistory={() => { setShowHistory((open) => !open); }}
+        onNewReturn={startNewReturn}
+        onOpen={(id) => { setShowHistory(false); open.mutate(id); }}
       />
       <ProgressPane context={{ turn, candidates, session }} anchors={anchors(history)} />
       <ContextPane turn={turn} rows={candidates} />
@@ -312,6 +378,14 @@ function ChatPane({
   isPending,
   error,
   suggestions,
+  conversations,
+  historyError,
+  historyLoading,
+  conversationId,
+  showHistory,
+  onToggleHistory,
+  onNewReturn,
+  onOpen,
 }: {
   history: readonly ChatMessage[];
   draft: string;
@@ -320,42 +394,129 @@ function ChatPane({
   isPending: boolean;
   error: Error | null;
   suggestions: readonly string[];
+  conversations: readonly ConversationSummary[];
+  historyError: Error | null;
+  historyLoading: boolean;
+  conversationId: string;
+  showHistory: boolean;
+  onToggleHistory: () => void;
+  onNewReturn: () => void;
+  onOpen: (conversationId: string) => void;
 }) {
   return (
     <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest">
       <header className="flex items-center gap-3 border-b border-outline-variant px-4 py-3">
-        <span className="flex size-8 items-center justify-center rounded bg-secondary-container text-primary">
+        <span className="flex size-9 items-center justify-center rounded-full bg-secondary-container text-primary">
           <Bot size={18} />
         </span>
-        <span>
+        <span className="min-w-0 flex-1">
           <span className="block text-sm font-semibold text-on-surface">Discovery Agent</span>
           <span className="flex items-center gap-1.5 text-xs text-outline">
             <span
               aria-hidden="true"
-              className={`size-1.5 rounded-full ${isPending ? "bg-tertiary" : "bg-primary"}`}
+              className={`size-1.5 rounded-full ${isPending ? "animate-pulse bg-tertiary" : "bg-primary"}`}
             />
-            {isPending ? "Thinking..." : "Ready"}
+            {isPending ? "Thinking..." : "Ready to help"}
           </span>
         </span>
+
+        <button
+          type="button"
+          onClick={onNewReturn}
+          className="flex items-center gap-1.5 rounded-full border border-outline-variant px-3 py-1.5 text-xs font-medium text-on-surface-variant transition hover:border-primary hover:text-primary"
+        >
+          <Plus size={14} />
+          New return
+        </button>
+        <button
+          type="button"
+          aria-label="Previous returns"
+          aria-expanded={showHistory}
+          onClick={onToggleHistory}
+          className={`flex size-8 items-center justify-center rounded-full border transition ${
+            showHistory
+              ? "border-primary text-primary"
+              : "border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary"
+          }`}
+        >
+          <History size={15} />
+        </button>
       </header>
+
+      {showHistory ? (
+        <div className="border-b border-outline-variant bg-surface-container-low">
+          <p className="px-4 pt-3 text-[11px] font-medium uppercase tracking-wide text-outline">
+            Previous returns
+          </p>
+          {/*
+            Three states, not two. `data ?? []` collapses "the request failed"
+            into "you have no history", which is a comfortable lie: the
+            associate is told their previous returns do not exist when the
+            truth is that we could not ask.
+          */}
+          {historyError !== null ? (
+            <p role="alert" className="px-4 py-3 text-sm text-error">
+              {historyError.message}
+            </p>
+          ) : historyLoading ? (
+            <p className="px-4 py-3 text-sm text-on-surface-variant">Loading...</p>
+          ) : conversations.length === 0 ? (
+            <p className="px-4 py-3 text-sm text-on-surface-variant">
+              Nothing yet. Conversations appear here once you have started one.
+            </p>
+          ) : (
+            <ul className="max-h-56 overflow-y-auto py-1">
+              {conversations.map((conversation) => (
+                <li key={conversation.conversationId}>
+                  <button
+                    type="button"
+                    onClick={() => { onOpen(conversation.conversationId); }}
+                    className={`flex w-full flex-col gap-0.5 px-4 py-2 text-left transition hover:bg-surface-container ${
+                      conversation.conversationId === conversationId ? "bg-surface-container" : ""
+                    }`}
+                  >
+                    <span className="truncate text-sm text-on-surface">{conversation.title}</span>
+                    <span className="text-[11px] text-outline">
+                      {conversation.messageCount} message
+                      {conversation.messageCount === 1 ? "" : "s"}
+                      {conversation.updatedAt === null
+                        ? ""
+                        : ` -- ${new Date(conversation.updatedAt).toLocaleString()}`}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
 
       <div className="flex-1 overflow-y-auto p-4">
         <ol className="flex flex-col gap-5">
-          <li className="flex gap-3">
-            <AgentAvatar />
-            <p className="rounded-lg rounded-tl-none border border-outline-variant bg-surface-container-low p-3 text-sm text-on-surface">
-              I can help you find an order to start a return. Give me whatever you have -- an
-              order number, the customer&apos;s name, a SKU, roughly when it was delivered.
-            </p>
-          </li>
-          {history.map((message) =>
-            message.role === "associate" ? (
-              <li key={message.id} className="flex justify-end">
-                <p className="max-w-[85%] rounded-lg rounded-tr-none bg-primary p-3 text-sm text-on-primary">
-                  {message.text}
-                </p>
-              </li>
-            ) : (
+          {history.length === 0 ? (
+            <li className="flex gap-3">
+              <AgentAvatar />
+              <p className="max-w-[85%] rounded-2xl rounded-tl-sm border border-outline-variant bg-surface-container-low px-3.5 py-2.5 text-sm leading-relaxed text-on-surface">
+                Hi -- let&apos;s find that order. Tell me whatever the customer gave you: an order
+                number, their name, the product, roughly when it arrived. Anything is a start.
+              </p>
+            </li>
+          ) : null}
+          {history.map((message) => {
+            if (message.role === "associate") return <Said key={message.id} text={message.text} />;
+            if (message.role === "restored") {
+              return message.author === "associate" ? (
+                <Said key={message.id} text={message.text} />
+              ) : (
+                <li key={message.id} className="flex gap-3">
+                  <AgentAvatar />
+                  <p className="max-w-[85%] rounded-2xl rounded-tl-sm border border-outline-variant bg-surface-container-low px-3.5 py-2.5 text-sm leading-relaxed text-on-surface">
+                    {message.text}
+                  </p>
+                </li>
+              );
+            }
+            return (
               <li key={message.id} className="flex gap-3">
                 <AgentAvatar />
                 <div className="flex min-w-0 flex-col gap-2">
@@ -364,14 +525,9 @@ function ChatPane({
                   ))}
                 </div>
               </li>
-            ),
-          )}
-          {isPending ? (
-            <li className="flex items-center gap-2 text-sm text-primary">
-              <Loader2 size={16} className="animate-spin" />
-              Searching...
-            </li>
-          ) : null}
+            );
+          })}
+          {isPending ? <Typing /> : null}
           {error ? (
             // Verbatim. The backend distinguishes a clarification budget from a
             // stale version from an unavailable model, and flattening those
@@ -449,20 +605,74 @@ function AgentAvatar() {
  */
 function Statement({ statement }: { statement: ResponseStatement }) {
   const isQuestion = statement.statement_type === "CLARIFICATION_QUESTION";
+  const isEvidenced = statement.statement_type === "GRAPH_FACT";
   return (
     <div
       className={[
-        "rounded-lg rounded-tl-none border p-3 text-sm",
+        "max-w-[85%] rounded-2xl rounded-tl-sm border px-3.5 py-2.5 text-sm leading-relaxed",
         isQuestion
           ? "border-primary/40 bg-secondary-container text-on-surface"
           : "border-outline-variant bg-surface-container-low text-on-surface",
       ].join(" ")}
     >
-      <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-outline">
-        {statement.statement_type.replace(/_/g, " ")}
-      </span>
       {statement.text}
+      {/*
+        Provenance as a quiet mark, not a banner.
+        Every bubble used to be stamped with an uppercase GRAPH FACT /
+        CLARIFICATION QUESTION header, which is the single thing that made this
+        read like a machine filing a report rather than a colleague talking. The
+        distinction still matters -- a GRAPH_FACT is traceable to query evidence
+        and a REASONED_SUGGESTION is the model's inference -- so it stays, as a
+        small marked line rather than a label shouted over the sentence. A
+        question needs no label at all: it ends in a question mark.
+      */}
+      {isEvidenced ? (
+        <span className="mt-1.5 flex items-center gap-1 text-[11px] text-outline">
+          <ShieldCheck size={11} aria-hidden="true" />
+          From order records
+        </span>
+      ) : null}
+      {statement.statement_type === "REASONED_SUGGESTION" ? (
+        <span className="mt-1.5 block text-[11px] italic text-outline">Suggestion</span>
+      ) : null}
     </div>
+  );
+}
+
+/** The associate's own message. */
+function Said({ text }: { text: string }) {
+  return (
+    <li className="flex justify-end">
+      <p className="max-w-[85%] rounded-2xl rounded-tr-sm bg-primary px-3.5 py-2.5 text-sm leading-relaxed text-on-primary">
+        {text}
+      </p>
+    </li>
+  );
+}
+
+/**
+ * Three drifting dots while the agent works.
+ *
+ * A spinner labelled "Searching..." states what the machine is doing. This is
+ * the convention every person already reads as "they are replying", and a turn
+ * here can take a while -- the wait is the part of the conversation most likely
+ * to feel like talking to nothing.
+ */
+function Typing() {
+  return (
+    <li className="flex gap-3" aria-live="polite" aria-label="The agent is replying">
+      <AgentAvatar />
+      <span className="flex items-center gap-1 rounded-2xl rounded-tl-sm border border-outline-variant bg-surface-container-low px-3.5 py-3">
+        {[0, 150, 300].map((delay) => (
+          <span
+            key={delay}
+            aria-hidden="true"
+            className="size-1.5 animate-bounce rounded-full bg-outline"
+            style={{ animationDelay: `${String(delay)}ms` }}
+          />
+        ))}
+      </span>
+    </li>
   );
 }
 

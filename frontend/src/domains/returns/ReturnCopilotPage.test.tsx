@@ -18,12 +18,24 @@ import { ReturnCopilotPage } from "./ReturnCopilotPage";
 
 type ActualModule = typeof ActualModuleNamespace;
 
-const mocks = vi.hoisted(() => ({ sendTurn: vi.fn(), can: vi.fn() }));
+// Incrementing, so "New return" can be observed to mint a *different* id.
+let conversationCounter = 0;
+
+const mocks = vi.hoisted(() => ({
+  sendTurn: vi.fn(),
+  listConversations: vi.fn(),
+  readTranscript: vi.fn(),
+  can: vi.fn(),
+}));
 
 vi.mock("../../api/orderAgent", async (importOriginal) => ({
   ...(await importOriginal<ActualModule>()),
-  orderAgentApi: { sendTurn: mocks.sendTurn },
-  newConversationId: () => "disc-test",
+  orderAgentApi: {
+    sendTurn: mocks.sendTurn,
+    listConversations: mocks.listConversations,
+    readTranscript: mocks.readTranscript,
+  },
+  newConversationId: () => `disc-${String(conversationCounter++)}`,
 }));
 
 vi.mock("../../hooks/capabilityContext", () => ({
@@ -52,6 +64,9 @@ function turn(overrides: Partial<AgentTurnResult> = {}): AgentTurnResult {
 beforeEach(() => {
   mocks.can.mockReturnValue(true);
   mocks.sendTurn.mockReset();
+  mocks.listConversations.mockReset().mockResolvedValue([]);
+  mocks.readTranscript.mockReset();
+  conversationCounter = 0;
 });
 
 describe("the discovery copilot", () => {
@@ -60,7 +75,7 @@ describe("the discovery copilot", () => {
     // prompt is what stops the operations screen drifting back in.
     render(<ReturnCopilotPage />, { wrapper });
     expect(screen.getByLabelText("Message the discovery agent")).toBeInTheDocument();
-    expect(screen.getByText(/I can help you find an order/)).toBeInTheDocument();
+    expect(screen.getByText(/let's find that order/)).toBeInTheDocument();
   });
 
   it("refuses the domain without the read capability", () => {
@@ -74,10 +89,13 @@ describe("the discovery copilot", () => {
     expect(screen.getByText(/Matches and their evidence appear here/)).toBeInTheDocument();
   });
 
-  it("labels each statement by the kind of claim it is", async () => {
-    // A GRAPH_FACT is traceable to evidence and a REASONED_SUGGESTION is the
-    // model's inference. Rendering them identically hides how much to trust a
-    // line, which is the whole point of the statement contract.
+  it("marks an evidenced claim without shouting a label over every line", async () => {
+    // A GRAPH_FACT is traceable to query evidence and a REASONED_SUGGESTION is
+    // the model's inference, so the distinction has to survive -- but it used
+    // to be an uppercase banner stamped on every bubble, which is the single
+    // thing that made the screen read as a machine filing a report. The mark
+    // stays; the shouting does not. A question needs no label: it ends in a
+    // question mark.
     mocks.sendTurn.mockResolvedValue(
       turn({
         response: {
@@ -93,8 +111,32 @@ describe("the discovery copilot", () => {
     const { container } = render(<ReturnCopilotPage />, { wrapper });
     fire(container, "Atlas Mechanical");
 
-    expect(await screen.findByText("USER PROVIDED FACT")).toBeInTheDocument();
-    expect(screen.getByText("CLARIFICATION QUESTION")).toBeInTheDocument();
+    expect(await screen.findByText("Which branch?")).toBeInTheDocument();
+    // Appears as the associate's own message, as the fact the agent recorded
+    // back, and in the progress pane's anchor list -- all three belong.
+    expect(screen.getAllByText("Atlas Mechanical").length).toBeGreaterThan(0);
+    expect(screen.queryByText("CLARIFICATION QUESTION")).not.toBeInTheDocument();
+    expect(screen.queryByText("USER PROVIDED FACT")).not.toBeInTheDocument();
+  });
+
+  it("says which claims came from the order records", async () => {
+    mocks.sendTurn.mockResolvedValue(
+      turn({
+        response: {
+          status: "RESOLVED",
+          business_capability: "order_discovery",
+          statements: [
+            { statement_id: "g", statement_type: "GRAPH_FACT", text: "Order CW273354." },
+            { statement_id: "s", statement_type: "REASONED_SUGGESTION", text: "Probably that one." },
+          ],
+        },
+      }),
+    );
+    const { container } = render(<ReturnCopilotPage />, { wrapper });
+    fire(container, "melgon");
+
+    expect(await screen.findByText("From order records")).toBeInTheDocument();
+    expect(screen.getByText("Suggestion")).toBeInTheDocument();
   });
 
   it("does not advance past identification while the agent is still asking", async () => {
@@ -113,7 +155,7 @@ describe("the discovery copilot", () => {
     const { container } = render(<ReturnCopilotPage />, { wrapper });
     fire(container, "Atlas");
 
-    await screen.findByText("CLARIFICATION QUESTION");
+    await screen.findByText("Which branch?");
     expect(screen.getByText(/has not matched an order yet/)).toBeInTheDocument();
   });
 
@@ -231,6 +273,112 @@ describe("the discovery copilot", () => {
     await waitFor(() => {
       expect(screen.queryByText("CQ363350")).not.toBeInTheDocument();
     });
+  });
+
+
+  it("starts a fresh conversation, and does not carry the last one into it", async () => {
+    // The agent's memory is scoped to the conversation, so a new return must
+    // mint a new id -- reusing it would let the previous customer's details
+    // inform this customer's search. There used to be no way to do this at all
+    // short of reloading the browser.
+    mocks.sendTurn.mockResolvedValue(turn({ conversation_version: 4 }));
+    const { container } = render(<ReturnCopilotPage />, { wrapper });
+
+    fire(container, "melgon heating");
+    await waitFor(() => {
+      expect(mocks.sendTurn).toHaveBeenCalledTimes(1);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "New return" }));
+    fire(container, "someone else");
+    await waitFor(() => {
+      expect(mocks.sendTurn).toHaveBeenCalledTimes(2);
+    });
+
+    const sent = mocks.sendTurn.mock.calls.map(([input]) => input as SendTurnInput);
+    expect(sent[0].conversationId).not.toBe(sent[1].conversationId);
+    // And back to 0: a new conversation has no committed version, so carrying
+    // the previous one's would be rejected as stale on the first turn.
+    expect(sent[1].expectedConversationVersion).toBe(0);
+  });
+
+  it("clears the screen when a new return starts", async () => {
+    mocks.sendTurn.mockResolvedValue(
+      turn({
+        response: {
+          status: "RESOLVED",
+          business_capability: "order_discovery",
+          statements: [{ statement_id: "g", statement_type: "GRAPH_FACT", text: "Order CW1." }],
+        },
+      }),
+    );
+    const { container } = render(<ReturnCopilotPage />, { wrapper });
+    fire(container, "melgon");
+    expect(await screen.findByText("Order CW1.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "New return" }));
+    expect(screen.queryByText("Order CW1.")).not.toBeInTheDocument();
+    expect(screen.getByText(/let's find that order/)).toBeInTheDocument();
+  });
+
+  it("lists previous returns and reopens one", async () => {
+    mocks.listConversations.mockResolvedValue([
+      {
+        conversationId: "disc-old",
+        title: "melgon heating draft motor",
+        messageCount: 4,
+        updatedAt: "2026-08-11T10:00:00Z",
+      },
+    ]);
+    mocks.readTranscript.mockResolvedValue({
+      conversationId: "disc-old",
+      conversationVersion: 3,
+      messages: [
+        { role: "associate", text: "melgon heating draft motor" },
+        { role: "agent", text: "Order CW273354." },
+      ],
+    });
+    render(<ReturnCopilotPage />, { wrapper });
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous returns" }));
+    fireEvent.click(await screen.findByText("melgon heating draft motor"));
+
+    // Replayed as plain speech: the record keeps role and text, not the typed
+    // statements, so a reopened turn cannot claim it cited evidence.
+    expect(await screen.findByText("Order CW273354.")).toBeInTheDocument();
+    expect(screen.queryByText("From order records")).not.toBeInTheDocument();
+  });
+
+  it("continues a reopened conversation at its own version", async () => {
+    // Not 0. The conversation already has committed turns, and a turn built on
+    // version 0 is rejected as a stale view.
+    mocks.listConversations.mockResolvedValue([
+      { conversationId: "disc-old", title: "earlier", messageCount: 2, updatedAt: null },
+    ]);
+    mocks.readTranscript.mockResolvedValue({
+      conversationId: "disc-old",
+      conversationVersion: 7,
+      messages: [{ role: "associate", text: "earlier" }],
+    });
+    mocks.sendTurn.mockResolvedValue(turn({ conversation_version: 8 }));
+    const { container } = render(<ReturnCopilotPage />, { wrapper });
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous returns" }));
+    fireEvent.click(await screen.findByText("earlier"));
+    await screen.findByText("earlier");
+
+    fire(container, "and the price?");
+    await waitFor(() => {
+      expect(mocks.sendTurn).toHaveBeenCalledTimes(1);
+    });
+    const [input] = mocks.sendTurn.mock.calls[0] as [SendTurnInput];
+    expect(input.conversationId).toBe("disc-old");
+    expect(input.expectedConversationVersion).toBe(7);
+  });
+
+  it("says so plainly when there is no history yet", async () => {
+    render(<ReturnCopilotPage />, { wrapper });
+    fireEvent.click(screen.getByRole("button", { name: "Previous returns" }));
+    expect(await screen.findByText(/Nothing yet/)).toBeInTheDocument();
   });
 
   it("carries the version forward so the next turn is not rejected as stale", async () => {
