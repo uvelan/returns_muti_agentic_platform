@@ -123,9 +123,12 @@ graph explorer, inventory, workspaces, scenarios, jobs, imports and exports, AI
 studio, graph sync -- and the system tooling had no canonical equivalent and are
 absent rather than superseded. That was a deliberate decision, not an oversight.
 
-Two `/api/v1` paths remain in use by the four-domain shell: `/api/principal` is
-canonical, and `/api/v1/runtime-config` is a versioned legacy route the shell
-cannot boot without. The latter is a known leftover.
+The shell reads only the canonical versionless surface. `/api/runtime-config`
+was the last exception -- a versioned route the shell could not boot without --
+and it now lives in `bootstrap/` where the target design places it.
+`frontend/src/api/noVersionedPaths.test.ts` asserts the absence, because
+describing this leftover in a README is exactly what let it survive three
+deletion waves.
 
 ### Order Discovery API endpoints
 

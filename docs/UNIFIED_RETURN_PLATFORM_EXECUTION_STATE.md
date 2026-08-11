@@ -21,7 +21,10 @@ been caught under capture, so there is no diagnosis -- only two eliminated hypot
 `_transition_in_progress` is set synchronously, `finally` always clears). It predates
 Wave F. It is unreproduced, not fixed, and the distinction matters.
 
-Suite: **2049 passed, 8 skipped** via `bash backend/scripts/dev/run_real_infra_suite.sh`.
+Suite: **2059 passed, 7 skipped** via `bash backend/scripts/dev/run_real_infra_suite.sh` —
+which, until this session, had never actually run: it failed on MSYS path mangling and then
+on a missing `.env` mount. Both fixed; see the live-walkthrough section below. Every earlier
+"suite green" line in this ledger was measured some other way.
 Frontend: eslint clean, `tsc -b` clean, 65 unit tests, 6 Playwright e2e.
 Backend static: ruff check + format clean; **mypy clean**; `import return_platform.main` ok.
 Contract: **107 paths**; drift PASS in verify mode at an unchanged hash.
@@ -32,6 +35,193 @@ files as of `870e066`. Every prior entry in this ledger reported green on the *c
 gate (`scripts/dev/run_changed_gate.py`), which is a narrower claim; read older entries with
 that in mind. Wave G/H's "full static integrity" (Phase 29) is now a much smaller job than
 this ledger previously implied — what is left there is mypy's 42, not ruff's 246.
+
+## Live copilot walkthrough — three defects the tests could not have found
+
+Status: DONE (unpushed). Driven end to end in a browser against the reloaded 100-order
+dataset, with the MANUAL provider holding each reasoning request so a human authored the
+`AgentAction` a model would have produced. Every defect below was found by *running* the
+thing; each had passing tests either side of it.
+
+**1. Neo4j temporal values never survived the read boundary.**
+`Neo4jKnowledgeGateway.execute` returned `dict(record)` straight from the driver, so a
+property typed `DATETIME` arrived as `neo4j.time.DateTime`, not `datetime`. Three separate
+consumers treat a result row as plain JSON — `sha256_digest` canonicalizes it for the
+evidence checksum, the reasoning context serializes it into the prompt, the API response
+encodes it — and all three raise `TypeError: Object of type DateTime is not JSON
+serializable`. An `ORDER_SEARCH` on `sales_order` selects `order_date`, so this was most
+searches, and it failed the whole turn rather than degrading.
+
+Fixed at the adapter, in `_json_safe`, not in the canonicalizer. `sha256_digest` is a
+generic function with no business knowing what a graph driver is; teaching it about
+`neo4j.time` would also have left the same types loose in the prompt and the HTTP body.
+Driver types belong to the adapter and stop at its edge. Temporal and `Duration` values
+become `iso_format()`, `Point` keeps its SRID rather than degrading to a bare array, bytes
+become hex.
+
+*Not fixed, and deliberately:* `graph_repository.py` reads configuration nodes via
+`result.data()` and `generation_writer.py`/`neo4j_writer.py` via `dict(record)`. Those are
+lifecycle and count reads, not user-data property reads, and none is on this path — but
+they have the same exposure if a temporal property is ever selected through them.
+
+**2. The Order Agent route was the only route without the `{data, meta}` envelope.**
+It returned a bare `AgentTurnResult`; `frontend/src/api/client.ts` rejects any
+non-enveloped body outright. So a turn that reasoned correctly all the way to an
+evidence-cited answer — 200, complete, four resolved citations — surfaced in the UI as
+"the server returned an invalid API response envelope." The failure read as the agent and
+was the response shape. `orderAgent.ts` already did `response.data`: the client was written
+to the convention, and the route had simply never adopted it. Now
+`APIResponse[AgentTurnResult]`; `tests/test_order_agent_rest.py` reads `["data"]`; all four
+OpenAPI snapshots re-exported (the exporter writes **one** path per invocation, which is
+why running it once leaves the other three drifted) and the drift check is back to PASS.
+
+**3. The identified order was derived per-turn, so a follow-up question erased it.**
+`candidateRows(turn)` read only the latest turn's evidence. Asking "and has it shipped"
+runs a `GRAPH_QUERY` whose evidence carries `rows` and no `candidates`, so the context pane
+reset to "the agent has not matched an order yet" and the progress rail walked *backwards*
+off **Orders identified** — the associate had lost nothing, only asked a question. The
+identified candidate set belongs to the conversation, not to one turn. `turnCandidates` now
+returns `null` for "this turn did not search" as distinct from `[]` for "this turn searched
+and found nothing", and the page keeps the last real answer. Both halves are tested: the
+follow-up keeps the match, an empty later search clears it.
+
+**On the walkthrough itself.** The MANUAL provider resolves to
+`DurableInterceptionProvider` in any process holding a SystemStore, so held requests land
+in `platform_ai_interceptions` (sealed) and **not** in `.manual_llm/` — worth knowing
+before hunting for files that will never appear. `/api/ai/interceptions` lists them,
+`/{id}/request` unseals one, `/{id}/answer` takes `{"responseText"}` only; `answeredBy`
+comes from the capability check, and sending it is a 422. Two turns ran green: a partial
+name plus a partial product description resolved to MELGON HEATING & COOLING and order
+CW273354 (IND DRFT MTR ASSY, qty 1), then a follow-up returned its status and shipping
+method. `HallucinationGuard` verified every citation, including numeric path segments as
+decimal strings (`["rows","0","order_date"]`).
+
+Frontend: eslint clean, `tsc --noEmit` clean, **93 tests passing** across 14 files.
+Contract drift: PASS. Backend `ruff`/`mypy` clean on the changed files.
+
+### And four more, from running the test suite against the rewritten schema
+
+The schema rewrite that mapped the entities onto the real salesInv documents left the
+search strategy pointing at fields of the *previous*, synthetic schema. Nothing crashed:
+`SchemaQueryGuard` rejects an unknown field, `order_search` logs
+`order_search_plan_rejected` at DEBUG and moves to the next plan. So whole search
+strategies were silently absent, and the only symptom was a search that found less than it
+should have.
+
+- **`_DATE_FIELD_ID` was `delivered_at`, which does not exist.** The real documents carry
+  order, commit, invoice and shipped dates; there is no delivery timestamp. Every
+  date-bearing search — the associate's "it was around the 14th", which the design lists as
+  a primary discovery signal — was dropped. Now `order_date`: the only date populated on
+  every order and the one an associate is most likely to recall. **This is a judgement
+  call**: if a genuine delivery timestamp is ever sourced, that constant is where it goes.
+- **The misspelling fallback selected `customer_key`**, a surrogate of the old schema. The
+  probe plan was rejected outright, so fuzzy customer matching — explicitly asked for —
+  never ran at all. Now `account_id`, `customer_id`, `customer_name`; `candidate_key`
+  already identifies a customer row by `customer_id`.
+- **`order_date` and `ordered_quantity` had no `searchable_by`.** In the rewrite
+  `searchable: false` was set to mean "not free-text", but the guard reads it as "may not
+  appear in any filter". Both are signals progressive search is built around.
+- **Three of the nine strong anchors were inert**, including the combination anchor
+  `probable_order_by_customer_and_status`, which the rewrite dropped entirely. That anchor
+  *is* the "strong combination of fields" escalation: two weak signals together
+  (customer + status) authorise a targeted on-demand sync when neither alone would. The
+  other two, `exact_customer_in_account` and `exact_order_in_account`, existed but named an
+  `account_id` that was not flagged `on_demand_sync_anchor` — declared, and dead.
+
+The last of those had no detector, so `test_no_strong_anchor_is_inert` now asserts the
+invariant across the whole schema rather than anchor by anchor: a declared anchor whose
+fields do not permit on-demand sync is a config defect that loads cleanly and shows up only
+as a sync that never happens.
+
+`tests/dynamic_knowledge/test_search_strategy.py`: **22 passed** (was 20, with 5 failing).
+`test_order_line_now_has_a_strong_anchor` was rewritten to the line's real composite key
+(branch + order + line number) rather than the removed synthetic `order_line_key`.
+
+### The misspelling fallback ran, and still found nothing
+
+With the probe plan repaired, a live turn for "melgan heatng" reached the fuzzy matcher and
+returned **zero** candidates. `MELGON HEATING & COOLING` scores 0.667 on a whole-string
+`difflib` ratio, under the 0.72 threshold — while the next best customer in the same 100-row
+probe scores 0.370. The name matched; the untyped tail diluted it. Trade names carry
+suffixes an associate never types ("& COOLING", "INC", "SERVICES"), which is precisely the
+population this fallback exists to serve, so a whole-string ratio was the wrong measure.
+
+`_similarity` now also slides a window of the query's length across the candidate and keeps
+the best (0.786 here), leaving the threshold alone — the threshold is what keeps 0.370 out,
+and lowering it instead would have admitted noise. Windows only, never the reverse: scoring
+a short query against every substring of a long name would match "smith" into "smithson
+plumbing" and a dozen more, so the comparison stays anchored to what the associate typed.
+
+Verified live: the same message now returns MELGON HEATING & COOLING (OHVAL) *and* KOSEL AC
+& HEATING INC (DALLAS), both tagged `customer_name_fuzzy` — two genuinely similar names, so
+the agent hedged the spelling and asked which of the two by name, exactly as the prompt
+requires of a fuzzy match. The existing rejection tests still pass unchanged.
+
+### The canonical real-infra runner had never actually run
+
+`backend/scripts/dev/run_real_infra_suite.sh` failed at two layers on Windows, and both were
+invisible until someone ran it:
+
+- Under Git Bash, MSYS rewrites any argument that looks like an absolute POSIX path, so
+  `/opt/venv/bin/python` reached Docker as `C:/Program Files/Git/opt/venv/bin/python` and the
+  exec failed with a "no such file or directory" that reads like a broken image rather than a
+  mangled argument. `MSYS_NO_PATHCONV=1` on the exec; no effect on Linux or macOS.
+- Past that, `tests/conftest.py::pytest_configure` hard-fails without the repository `.env`,
+  and the `diagnostics` service mounted only `./backend`. The suite aborted with an
+  INTERNALERROR before collecting a single test. The service now also mounts `./.env`
+  read-only, which does not reintroduce the host-port problem its `environment:` block
+  solves: `load_dotenv(override=False)` leaves already-exported variables alone.
+
+Running it then produced six failures, all in the seed generator, and four more real
+defects behind them.
+
+### The seed generator, once the suite could see it
+
+**The guard could not read a nested record.** `validate_proposal` iterated
+`record.items()` and compared top-level keys against a map of dotted registry names, so
+once records were properly nested every field of every record was reported as an unknown
+field and `WritePlanner.build_plan` refused the whole proposal — the production write path,
+not just a test. `_declared_paths` now addresses a record by the paths the registry names,
+stopping descent at a declared field so `customer.address` stays one leaf, and all three
+checks (unknown field, required field, natural key) share that one view. Flat records still
+validate identically; the guard simply no longer has an opinion about document shape.
+
+**The synthetic-identity policy had quietly stopped applying.** The dispatch tested
+`field.name == "email"` / `"phoneNumber"` / `"customerName"` — field names of the earlier
+flat schema. The one phone field is now
+`salesHdr.salesHdrData.shipping.shipTo.address.shipToPhone`, so nothing matched and it fell
+through to the generic fallback, writing the literal string `"Deterministic <path>
+<seed>-<index>"` where a phone number belongs. Dispatch is on `field.generator` now: that
+is the declared intent, and it does not move when a path does.
+
+**Two joins that could never form.** The CDM mints its customer id inside `party[]`, and
+the resolver is fed only from *string* field values — so it was never published, salesInv
+minted its own, and the documented bridge
+(`party[].custAccts[].additionalCustomerInfo[].customerId` → `custId`) joined nothing.
+Separately, `_sales_lines` took `masterProductId` from `master_product_reference`
+(`fopt.mstrProdId`, a composite of id and warehouse) while `line_references_product` matches
+it against `product.product_id`, whose physical path is `_id`. Every CustomerParty and every
+Product would have been an orphan, from seed data that reads as entirely plausible. This is
+the same class as the `_nest_dotted_keys` defect and the mismatched relationship match
+fields before it: the seed looked right and joined to nothing.
+
+**Nineteen generators the registry declared were not supported by the AI Studio.**
+`_value` raises on an unimplemented name, so those assets could not be generated through
+that path at all. All nineteen are implemented against the Ferguson vocabularies the seed
+generator already uses (`_LITERAL_GENERATORS`), including `customer_addresses` and
+`cdm_parties` with the nesting their joins depend on. `SUPPORTED_GENERATORS` is synced in
+both directions, since the invariant the test asserts is exact agreement — three names the
+studio still claimed and nothing declares are drift too.
+
+Tests were corrected where they encoded the old flat shape, not where they were right:
+`record_paths.at` / `leaf_paths` read a document by registry path, and the relationship test
+now asserts the joins the active schema actually declares rather than the ones the flat seed
+happened to satisfy.
+
+**Full canonical suite: 2059 passed, 7 skipped, 0 failed** (4m11s), via
+`bash backend/scripts/dev/run_real_infra_suite.sh` — the first time that script has run to
+completion. `ruff check` and `ruff format --check` clean across `data_platform`; mypy clean
+on every changed module.
 
 ## Phase 7 / Wave C2, Commit 1 — Foundations
 
