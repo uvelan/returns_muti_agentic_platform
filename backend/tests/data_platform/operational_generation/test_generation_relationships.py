@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from record_paths import at, leaf_paths
 
 from return_platform.data_platform.operational_generation import (
     CollisionPolicy,
@@ -65,12 +66,27 @@ async def test_generation_relationships_valid(
     order = records["source.mongodb.sales_inv"].values
     shipment = records["source.mongodb.shipment_info"].values
     product = records["source.mongodb.product_search"].values
-    assert order["salesHdr.salesHdrData.custId"] == customer["customerId"]
-    assert shipment["shipmentInfoEventData.trilOrdNum"] == order["salesHdrEventData.orderId"]
-    assert order["salesLines"][0]["lineData"]["productId"] == product["productId"]
+    # Read by registry path, not by top-level key: these records are nested,
+    # which is the shape the active schema's `physical_path` mappings read.
+    #
+    # The customer join is the documented CDM bridge --
+    # party[].custAccts[].additionalCustomerInfo[].customerId is what salesInv
+    # copies into custId. There is no top-level `customerId` on the CDM
+    # document, and asserting one only ever passed against the old flat seed.
+    cdm_customer_id = at(customer, "party")[0]["custAccts"][0]["additionalCustomerInfo"][0][
+        "customerId"
+    ]
+    assert at(order, "salesHdr.salesHdrData.custId") == cdm_customer_id
+    assert at(shipment, "shipmentInfoEventData.trilOrdNum") == at(
+        order, "salesHdrEventData.orderId"
+    )
+    # The join the graph actually makes: `line_references_product` matches
+    # order_line.master_product_id (lineData.masterProductId) against
+    # product.product_id, whose physical path is `_id`.
+    assert at(order, "salesLines")[0]["lineData"]["masterProductId"] == at(product, "_id")
 
     for rec in proposal.records:
-        for k, v in rec.values.items():
+        for k, v in leaf_paths(rec.values):
             if (
                 ("date" in k.lower() or "time" in k.lower())
                 and isinstance(v, str)

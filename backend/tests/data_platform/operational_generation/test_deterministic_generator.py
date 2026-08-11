@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from record_paths import leaf_paths
 
 from return_platform.data_platform.operational_generation import (
     CollisionPolicy,
@@ -128,9 +129,14 @@ async def test_all_generated_fields_exist_in_schema(
     asset_schema = registry.asset(asset.asset_id)
     field_names = {f.name for f in asset_schema.fields}
 
+    # Every *path* the record carries must be declared, not every top-level
+    # key. A generated document is nested, so its top-level keys are the first
+    # segment of a dotted registry name and would never match one.
     for record in proposal.records:
-        for k in record.values.keys():
-            assert k in field_names
+        for path, _ in leaf_paths(record.values):
+            assert any(path == name or path.startswith(f"{name}.") for name in field_names), (
+                f"undeclared path {path!r}"
+            )
 
 
 @pytest.mark.asyncio

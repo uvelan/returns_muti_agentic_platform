@@ -13,86 +13,169 @@ assets:
     type: string
     required: true
     key: true
-    description: ' Id'
+    description: ACCOUNT*ORDERNUMBER.
     generator: sales_invoice_id
+  - name: salesHdrEventData.accountId
+    type: string
+    required: true
+    key: false
+    description: Branch account.
+    generator: branch_reference
   - name: salesHdrEventData.orderId
     type: string
     required: true
     key: false
-    description: Saleshdreventdata.Orderid
+    description: Order number.
     generator: order_reference
-  - name: salesHdr.salesHdrData.custId
+  - name: salesHdrEventData.docType
     type: string
     required: true
     key: false
-    description: Saleshdr.Saleshdrdata.Custid
-    generator: customer_reference
-  - name: salesHdr.salesHdrData.custName
+    description: headerLines for order documents; header for the invoice variant.
+    generator: sales_doc_type
+  - name: salesHdrEventData.orderStatus
     type: string
     required: true
     key: false
-    description: Saleshdr.Saleshdrdata.Custname
-    generator: person_name
+    description: Order status.
+    generator: order_status
+  - name: salesHdrEventData.salesType
+    type: string
+    required: true
+    key: false
+    description: CASH or INV.
+    generator: sales_type
   - name: salesHdrEventData.srcErp
     type: string
     required: true
     key: false
-    description: Saleshdreventdata.Srcerp
+    description: Source ERP.
     generator: erp_code
   - name: salesHdrEventData.srcSysCode
     type: string
     required: true
     key: false
-    description: Saleshdreventdata.Srcsyscode
+    description: Originating channel code.
     generator: source_code
-  - name: salesHdrEventData.orderStatus
-    type: string
-    required: true
-    key: false
-    description: Saleshdreventdata.Orderstatus
-    generator: order_status
   - name: salesHdrEventData.sellWhseId
     type: string
     required: true
     key: false
-    description: Saleshdreventdata.Sellwhseid
+    description: Selling warehouse.
     generator: warehouse_reference
   - name: salesHdrEventData.shipFromWhseId
     type: string
     required: true
     key: false
-    description: Saleshdreventdata.Shipfromwhseid
+    description: Shipping warehouse.
     generator: warehouse_reference
-  - name: salesHdr.shipping.shipViaCode
+  - name: salesHdr.salesHdrData.custId
+    type: string
+    required: true
+    key: false
+    description: Branch customer number.
+    generator: customer_reference
+  - name: salesHdr.salesHdrData.custName
+    type: string
+    required: true
+    key: false
+    description: Customer name.
+    generator: person_name
+  - name: salesHdr.salesHdrData.custPONumber
     type: string
     required: false
     key: false
-    description: Saleshdr.Shipping.Shipviacode
+    description: Customer PO number.
+    generator: customer_po_number
+  - name: salesHdr.salesHdrData.jobName
+    type: string
+    required: false
+    key: false
+    description: Job reference.
+    generator: job_name
+  - name: salesHdr.salesHdrData.orderDate
+    type: datetime
+    required: true
+    key: false
+    description: Order date.
+    generator: past_datetime
+  - name: salesHdr.salesHdrData.invoiceDate
+    type: datetime
+    required: true
+    key: false
+    description: Invoice date.
+    generator: past_datetime
+  - name: salesHdr.salesHdrData.shipping.shipViaCode
+    type: string
+    required: true
+    key: false
+    description: Ship-via code.
     generator: ship_via_code
-  - name: salesHdr.shipping.shipViaDesc
+  - name: salesHdr.salesHdrData.shipping.shipViaDesc
+    type: string
+    required: true
+    key: false
+    description: Ship-via description.
+    generator: ship_via_description
+  - name: salesHdr.salesHdrData.shipping.shipDate
+    type: datetime
+    required: false
+    key: false
+    description: Ship date.
+    generator: past_datetime
+  - name: salesHdr.salesHdrData.shipping.commitDate
+    type: datetime
+    required: true
+    key: false
+    description: Committed delivery date.
+    generator: past_datetime
+  - name: salesHdr.salesHdrData.shipping.shipTo.address.shipToName
+    type: string
+    required: true
+    key: false
+    description: Ship-to name.
+    generator: person_name
+  - name: salesHdr.salesHdrData.shipping.shipTo.address.shipToPhone
     type: string
     required: false
     key: false
-    description: Saleshdr.Shipping.Shipviadesc
-    generator: ship_via_description
+    description: Ship-to phone.
+    generator: phone
+  - name: salesHdr.salesHdrData.shipping.shipTo.address.city
+    type: string
+    required: true
+    key: false
+    description: Ship-to city.
+    generator: city
+  - name: salesHdr.salesHdrData.shipping.shipTo.address.state
+    type: string
+    required: true
+    key: false
+    description: Ship-to state.
+    generator: state
+  - name: salesHdr.salesHdrData.shipping.shipTo.address.zipCode
+    type: string
+    required: true
+    key: false
+    description: Ship-to postal code.
+    generator: postal_code
+  - name: customer.address
+    type: array
+    required: true
+    key: false
+    description: 'Embedded contact rows: one postal address repeated per contact point.'
+    generator: customer_addresses
   - name: salesLines
     type: array
     required: true
     key: false
-    description: Saleslines
+    description: Order lines.
     generator: sales_lines
-    items: sales_line
-  - name: deliveredAt
+  - name: salesHdrEventMeta.lastUpdateTs
     type: datetime
     required: true
     key: false
-    description: Deliveredat
-    generator: past_datetime
-  - name: updatedAt
-    type: datetime
-    required: true
-    key: false
-    description: Updatedat
+    description: Source change timestamp.
     generator: recent_datetime
   owner: SOURCE
   authoritative_system: SOURCE_ERP
@@ -122,50 +205,37 @@ assets:
     type: string
     required: true
     key: true
-    description: ' Id'
+    description: MASTER:partyId.
     generator: customer_document_id
   - name: partyId
     type: string
     required: true
     key: false
-    description: Partyid
+    description: Master party id.
     generator: party_id
-  - name: customerId
+  - name: type
     type: string
     required: true
     key: false
-    description: Customerid
-    generator: customer_reference
-  - name: customerName
+    description: PARTY and related discriminators.
+    generator: party_type
+  - name: sourceSystem
     type: string
     required: true
     key: false
-    description: Customername
-    generator: person_name
-  - name: phoneNumber
-    type: string
-    required: false
-    key: false
-    description: Phonenumber
-    generator: phone
-  - name: email
-    type: string
-    required: false
-    key: false
-    description: Email
-    generator: email
-  - name: custAccts
+    description: Originating system.
+    generator: erp_code
+  - name: party
     type: array
     required: true
     key: false
-    description: Custaccts
-    generator: customer_accounts
-    items: customer_account
-  - name: updatedAt
+    description: Party records carrying name, contact points and customer accounts.
+    generator: cdm_parties
+  - name: lastUpdateDate
     type: datetime
     required: true
     key: false
-    description: Updatedat
+    description: Source change timestamp.
     generator: recent_datetime
   owner: SOURCE
   authoritative_system: SOURCE_ERP
@@ -254,43 +324,91 @@ assets:
     type: string
     required: true
     key: true
-    description: ' Id'
+    description: Catalog product id.
     generator: product_document_id
-  - name: productId
+  - name: mpData.integLocProductId
     type: string
     required: true
     key: false
-    description: Productid
+    description: Location product id.
     generator: product_reference
-  - name: sku
+  - name: mpData.webDisplayName
     type: string
     required: true
     key: false
-    description: Sku
-    generator: sku
-  - name: masterProductId
+    description: Customer-facing product name -- the searchable one.
+    generator: web_display_name
+  - name: masterProduct.productDesc
     type: string
     required: true
     key: false
-    description: Masterproductid
-    generator: master_product_reference
-  - name: productDescription
-    type: string
-    required: true
-    key: false
-    description: Productdescription
+    description: Abbreviated ERP description.
     generator: product_description
-  - name: productType
+  - name: masterProduct.prodLongDesc
     type: string
     required: true
     key: false
-    description: Producttype
-    generator: product_type
-  - name: updatedAt
+    description: Expanded ERP description.
+    generator: product_long_description
+  - name: masterProduct.vendorProdCode
+    type: string
+    required: true
+    key: false
+    description: Vendor product code used as the SKU.
+    generator: sku
+  - name: masterProduct.vendorName
+    type: string
+    required: true
+    key: false
+    description: Supplier.
+    generator: vendor_name
+  - name: masterProduct.brandType
+    type: string
+    required: true
+    key: false
+    description: Own Brand or otherwise.
+    generator: brand_type
+  - name: masterProduct.upcCode
+    type: string
+    required: true
+    key: false
+    description: Barcode.
+    generator: upc_code
+  - name: masterProduct.uom
+    type: string
+    required: true
+    key: false
+    description: EA, BOX, CASE.
+    generator: unit_of_measure
+  - name: masterProduct.uomDesc
+    type: string
+    required: true
+    key: false
+    description: Readable UOM.
+    generator: unit_of_measure_description
+  - name: masterProduct.deptCodeDesc
+    type: string
+    required: true
+    key: false
+    description: Department.
+    generator: department_description
+  - name: fld.baseModelNumber
+    type: string
+    required: true
+    key: false
+    description: Model number.
+    generator: base_model_number
+  - name: fopt.mstrProdId
+    type: string
+    required: true
+    key: false
+    description: product*vendor composite id.
+    generator: master_product_reference
+  - name: eventMeta.lastUpdateTS
     type: datetime
     required: true
     key: false
-    description: Updatedat
+    description: Source change timestamp.
     generator: recent_datetime
   owner: SOURCE
   authoritative_system: SOURCE_ERP
@@ -313,8 +431,7 @@ assets:
   ownership: SOURCE_SYSTEM
   authoritative: true
   writable_in_sandbox: true
-  description: Transitional customer fixtures retained for compatibility with existing
-    sandbox flows.
+  description: Transitional customer fixtures retained for compatibility with existing sandbox flows.
   fields:
   - name: _id
     type: string
@@ -372,8 +489,7 @@ assets:
   ownership: SOURCE_SYSTEM
   authoritative: true
   writable_in_sandbox: true
-  description: Transitional product fixtures retained for compatibility with existing
-    sandbox flows.
+  description: Transitional product fixtures retained for compatibility with existing sandbox flows.
   fields:
   - name: _id
     type: string
@@ -431,8 +547,7 @@ assets:
   ownership: SOURCE_SYSTEM
   authoritative: true
   writable_in_sandbox: true
-  description: Transitional order fixtures retained as a bounded sandbox fallback;
-    salesInv is primary.
+  description: Transitional order fixtures retained as a bounded sandbox fallback; salesInv is primary.
   fields:
   - name: _id
     type: string
@@ -1562,8 +1677,7 @@ assets:
   ownership: PLATFORM_OWNED
   authoritative: true
   writable_in_sandbox: false
-  description: Transactional Temporal workflow aggregate and immutable stage-context
-    bindings.
+  description: Transactional Temporal workflow aggregate and immutable stage-context bindings.
   fields:
   - name: _id
     type: string
@@ -2983,8 +3097,7 @@ assets:
   ownership: PLATFORM_OWNED
   authoritative: true
   writable_in_sandbox: false
-  description: Authoritative-system shipping instruction projections per handling
-    unit.
+  description: Authoritative-system shipping instruction projections per handling unit.
   fields:
   - name: _id
     type: string
@@ -3075,8 +3188,7 @@ assets:
   ownership: PLATFORM_OWNED
   authoritative: true
   writable_in_sandbox: false
-  description: Idempotency, dispatch, and authoritative readback evidence for OMC
-    commands.
+  description: Idempotency, dispatch, and authoritative readback evidence for OMC commands.
   fields:
   - name: _id
     type: string
@@ -3211,8 +3323,7 @@ assets:
   ownership: PLATFORM_OWNED
   authoritative: false
   writable_in_sandbox: false
-  description: Lease-based transactional outbox for ticket, OMC, carrier, and notification
-    commands.
+  description: Lease-based transactional outbox for ticket, OMC, carrier, and notification commands.
   fields:
   - name: _id
     type: string

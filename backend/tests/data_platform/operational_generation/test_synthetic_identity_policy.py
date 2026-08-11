@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from record_paths import at
 
 from return_platform.data_platform.operational_generation import (
     CollisionPolicy,
@@ -37,11 +38,19 @@ def generator(registry: SchemaRegistry, guard: HallucinationGuard) -> Operationa
 async def test_synthetic_email_policy(
     generator: OperationalGenerator, registry: SchemaRegistry
 ) -> None:
+    """Emails live inside `customer.address[]`, not in a field called `email`.
+
+    The registry now mirrors the real salesInv documents, where an account's
+    several email addresses are rows of one embedded array -- which is why
+    `contact_point` is declared `distinct`. Looking for a top-level `email`
+    field found no asset at all and the test died on `StopIteration`, reporting
+    nothing about the policy it exists to protect.
+    """
     asset = next(
         a
         for a in registry.assets
         if a.generated_data_policy == "ENABLED"
-        and any(f.name == "email" for f in a.fields)
+        and any(f.generator == "customer_addresses" for f in a.fields)
         and a.write_policy != "DENIED"
     )
 
@@ -58,9 +67,15 @@ async def test_synthetic_email_policy(
     )
 
     proposal = await generator.generate_proposal(req)
-    email = proposal.records[0].values.get("email")
-    assert isinstance(email, str) and email.startswith("generated+")
-    assert isinstance(email, str) and email.endswith("@example.invalid")
+    field = next(f for f in asset.fields if f.generator == "customer_addresses")
+    addresses = at(proposal.records[0].values, field.name)
+    emails = [row["email"] for row in addresses if "email" in row]
+
+    assert emails, "customer.address[] carried no contact rows to check"
+    for email in emails:
+        assert isinstance(email, str)
+        assert email.startswith("generated+")
+        assert email.endswith("@example.invalid")
 
 
 @pytest.mark.asyncio
@@ -71,7 +86,7 @@ async def test_synthetic_phone_policy(
         a
         for a in registry.assets
         if a.generated_data_policy == "ENABLED"
-        and any(f.name == "phoneNumber" for f in a.fields)
+        and any(f.generator == "phone" for f in a.fields)
         and a.write_policy != "DENIED"
     )
 
@@ -88,7 +103,11 @@ async def test_synthetic_phone_policy(
     )
 
     proposal = await generator.generate_proposal(req)
-    phone = proposal.records[0].values.get("phoneNumber")
+    # By generator, not by field name: the real path is
+    # salesHdr.salesHdrData.shipping.shipTo.address.shipToPhone, and what the
+    # policy is about is the value a `phone` generator may produce.
+    field = next(f for f in asset.fields if f.generator == "phone")
+    phone = at(proposal.records[0].values, field.name)
     assert isinstance(phone, str) and phone.startswith("555-01")
 
 

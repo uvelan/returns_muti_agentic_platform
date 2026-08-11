@@ -22,8 +22,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from pymongo import AsyncMongoClient
 
 from return_platform.configuration.settings import Settings
-from return_platform.data_platform.graph.interim_active_schema import build_interim_active_schema
 from return_platform.data_platform.schema_registry import SchemaRegistry
+from return_platform.dynamic_knowledge.config_loader import load_active_schema
 from return_platform.dynamic_knowledge.graph.constraints import required_node_constraints
 from return_platform.dynamic_knowledge.graph.generation import (
     LEGACY_GENERATION_ID,
@@ -179,12 +179,16 @@ class GraphSyncService:
         self._source_db = source_client[settings.source_mongo_database]
         self._driver = driver
         self._runs = self._platform_db["graph_sync_runs"]
-        self._schema = build_interim_active_schema(
-            configuration_release_id="sync-service-interim-v1",
-            configuration_checksum=hashlib.sha256(b"sync-service-interim-v1").hexdigest(),
-            approved_by="system",
-            approved_at=datetime(2026, 1, 1, tzinfo=UTC),
-        )
+        # The configured schema, not a second one built in code.
+        #
+        # This used to call `build_interim_active_schema`, whose own docstring
+        # called itself "a bridge, not the destination" and named the cutover
+        # to the field-path-corrected Ferguson schema as a later step. That
+        # schema now exists in `config/dynamic_knowledge/`, verified against
+        # real source documents, and the order agent already reads it -- so
+        # keeping a second, divergent copy here meant the graph was built from
+        # different field paths than the agent queries it with.
+        self._schema = load_active_schema(settings.dynamic_knowledge_schema_path)
         self._writer = Neo4jDynamicGraphWriter(driver, database=settings.neo4j_database)
         self._projector = GenericGraphProjector()
 

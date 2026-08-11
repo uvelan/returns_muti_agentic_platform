@@ -74,26 +74,31 @@ SUPPORTED_GENERATORS = frozenset(
         "agent_name",
         "associate_reference",
         "audit_operation",
+        "base_model_number",
         "bay_assignment_status",
         "bay_name",
         "bay_reference",
         "bay_type",
         "branch_reference",
+        "brand_type",
         "carrier_code",
         "category",
+        "cdm_parties",
+        "city",
         "clarification",
         "confidence",
         "configuration_version",
         "correlation_id",
-        "customer_accounts",
+        "customer_addresses",
         "customer_document_id",
+        "customer_po_number",
         "customer_reference",
         "customer_tier",
         "decision",
         "decision_explanation",
         "decision_type",
+        "department_description",
         "eligibility_stage",
-        "email",
         "empty_array",
         "entity_type",
         "erp_code",
@@ -102,6 +107,7 @@ SUPPORTED_GENERATORS = frozenset(
         "false",
         "fulfillment_reference",
         "fulfillment_status",
+        "job_name",
         "legacy_items",
         "master_product_reference",
         "model_name",
@@ -113,14 +119,16 @@ SUPPORTED_GENERATORS = frozenset(
         "package_capacity",
         "package_count",
         "party_id",
+        "party_type",
         "past_datetime",
         "person_name",
         "phone",
+        "postal_code",
         "priority",
         "product_description",
         "product_document_id",
+        "product_long_description",
         "product_reference",
-        "product_type",
         "product_types_json",
         "provider_name",
         "quantity",
@@ -135,8 +143,10 @@ SUPPORTED_GENERATORS = frozenset(
         "return_window_days",
         "review_status",
         "running_status",
+        "sales_doc_type",
         "sales_invoice_id",
         "sales_lines",
+        "sales_type",
         "scenario_id",
         "schema_version",
         "seed_version",
@@ -149,6 +159,7 @@ SUPPORTED_GENERATORS = frozenset(
         "shipping_paths_json",
         "sku",
         "source_code",
+        "state",
         "success_status",
         "support_ticket_status",
         "ticket_reference",
@@ -156,8 +167,13 @@ SUPPORTED_GENERATORS = frozenset(
         "tracking_status",
         "tracking_type",
         "true",
+        "unit_of_measure",
+        "unit_of_measure_description",
+        "upc_code",
         "uuid",
+        "vendor_name",
         "warehouse_reference",
+        "web_display_name",
         "workflow_stage",
         "zero",
     }
@@ -404,6 +420,29 @@ def _value(generator: str | None, context: ScenarioContext, rng: random.Random) 
         "external_ticket_reference": f"SUPPORT-{context.ticket_reference}",
         "bay_reference": context.bay_reference,
         "associate_reference": "associate-demo",
+        # Vocabularies from the real Ferguson documents, matching
+        # `operational_generation.generator._LITERAL_GENERATORS` so the two
+        # generation paths do not disagree about what a valid value looks like.
+        "sales_doc_type": "headerLines",
+        "sales_type": "INV",
+        "party_type": "PARTY",
+        "brand_type": "National Brand",
+        "unit_of_measure": "EA",
+        "unit_of_measure_description": "EACH",
+        # Descriptive and identifying fields the source carries per record.
+        # Derived from the scenario context rather than fixed, so records in one
+        # run stay distinguishable from each other.
+        "base_model_number": f"MODEL-{context.sku}",
+        "upc_code": f"7818{context.index:08d}",
+        "vendor_name": "SANDBOX SUPPLY CO",
+        "web_display_name": context.product_description.title(),
+        "product_long_description": f"{context.product_description.title()} (sandbox record)",
+        "department_description": "PLUMBING",
+        "customer_po_number": f"PO-{context.order_reference}",
+        "job_name": f"JOB-{context.customer_reference}",
+        "city": "CHARLOTTE",
+        "state": "NC",
+        "postal_code": "28202",
         "erp_code": "OMC",
         "source_code": "SANDBOX",
         "order_status": "DELIVERED",
@@ -479,6 +518,45 @@ def _value(generator: str | None, context: ScenarioContext, rng: random.Random) 
         ]
     if generator == "customer_accounts":
         return [{"accountNumber": context.customer_reference, "status": "ACTIVE"}]
+    if generator == "customer_addresses":
+        # `customer.address[]` on the order, which the active schema explodes
+        # into contact_point rows. One entry per contact, each repeating the
+        # same postal address -- the shape the real documents have.
+        return [
+            {
+                "addressType": "SHIPPING",
+                "street": "100 Sandbox Way",
+                "city": "CHARLOTTE",
+                "state": "NC",
+                "zipCode": "28202",
+                "emailAddress": context.email,
+                "phoneNumber": context.phone,
+            }
+        ]
+    if generator == "cdm_parties":
+        # `party[]` on customerOutboundCDM. The nesting is load-bearing: the
+        # documented bridge back to salesInv is
+        # party[].custAccts[].additionalCustomerInfo[].customerId, so a flatter
+        # approximation would join to nothing.
+        return [
+            {
+                "partyNumber": context.party_id,
+                "partyName": context.customer_name,
+                "organizationName": context.customer_name,
+                "custAccts": [
+                    {
+                        "accountName": context.customer_name,
+                        "additionalCustomerInfo": [
+                            {
+                                "customerId": context.customer_reference,
+                                "custBranchId": context.branch_reference,
+                                "shipToPhone": context.phone,
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
     if generator == "legacy_items":
         return [
             {

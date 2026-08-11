@@ -22,6 +22,43 @@ class ExistenceResolver(Protocol):
     def exists(self, field_path: str, value: Any) -> bool: ...
 
 
+def _declared_paths(record: dict[str, Any], field_map: dict[str, SchemaField]) -> dict[str, Any]:
+    """Address a record by the dotted paths the registry actually names.
+
+    Registry field names are paths (`salesHdr.salesHdrData.custId`), but records
+    are real documents with real nesting -- the seed generator builds them that
+    way precisely so they match what the source system emits. Reading
+    `record.items()` compared a top-level key like `salesHdrEventData` against a
+    map of full paths and found nothing, so every field of every generated
+    record was reported as unknown and `WritePlanner.build_plan` refused the
+    whole proposal.
+
+    Descent stops as soon as the accumulated path names a declared field, which
+    is what keeps `customer.address` -- a declared field whose value is an array
+    of objects -- a single leaf rather than something to walk into. Lists are
+    never descended for the same reason: an array is a value here, not a level.
+
+    Flat input still works: a record whose keys are already full dotted paths
+    hits the declared-field check on the first step. Both shapes validate
+    identically, which is the point -- the guard should not have an opinion
+    about document shape, only about whether the paths exist.
+    """
+    flattened: dict[str, Any] = {}
+
+    def walk(node: Any, prefix: str) -> None:
+        if prefix and (prefix in field_map or not isinstance(node, dict)):
+            flattened[prefix] = node
+            return
+        if not isinstance(node, dict):
+            flattened[prefix] = node
+            return
+        for key, value in node.items():
+            walk(value, f"{prefix}.{key}" if prefix else str(key))
+
+    walk(record, "")
+    return flattened
+
+
 def validate_proposal(
     registry: SchemaRegistry,
     proposal: OperationProposal,
@@ -100,7 +137,12 @@ def validate_proposal(
             )
             continue
 
-        for key, value in record.items():
+        # One view of the record, addressed the way the registry names things,
+        # shared by all three checks below. Computing it per-check would let
+        # them disagree about whether a field is present.
+        paths = _declared_paths(record, field_map)
+
+        for key, value in paths.items():
             if key not in field_map:
                 findings.append(
                     GuardFinding(
@@ -159,7 +201,7 @@ def validate_proposal(
                     )
 
         for field in asset.fields:
-            if field.required and field.name not in record:
+            if field.required and field.name not in paths:
                 findings.append(
                     GuardFinding(
                         code=FindingCode.MISSING_REQUIRED_FIELD,
@@ -172,7 +214,7 @@ def validate_proposal(
                 )
 
         if asset.natural_keys:
-            key_tuple = tuple(record.get(k) for k in asset.natural_keys)
+            key_tuple = tuple(paths.get(k) for k in asset.natural_keys)
             if all(k is not None for k in key_tuple):
                 if key_tuple in natural_keys_seen:
                     findings.append(
