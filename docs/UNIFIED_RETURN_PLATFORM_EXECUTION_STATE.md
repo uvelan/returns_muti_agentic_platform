@@ -21,7 +21,7 @@ been caught under capture, so there is no diagnosis -- only two eliminated hypot
 `_transition_in_progress` is set synchronously, `finally` always clears). It predates
 Wave F. It is unreproduced, not fixed, and the distinction matters.
 
-Suite: **2059 passed, 7 skipped** via `bash backend/scripts/dev/run_real_infra_suite.sh` —
+Suite: **2065 passed, 7 skipped** via `bash backend/scripts/dev/run_real_infra_suite.sh` —
 which, until this session, had never actually run: it failed on MSYS path mangling and then
 on a missing `.env` mount. Both fixed; see the live-walkthrough section below. Every earlier
 "suite green" line in this ledger was measured some other way.
@@ -35,6 +35,85 @@ files as of `870e066`. Every prior entry in this ledger reported green on the *c
 gate (`scripts/dev/run_changed_gate.py`), which is a narrower claim; read older entries with
 that in mind. Wave G/H's "full static integrity" (Phase 29) is now a much smaller job than
 this ledger previously implied — what is left there is mypy's 42, not ruff's 246.
+
+## Reset tooling, and a committable reference dataset
+
+Status: DONE (unpushed). The reset pieces existed; the sequence did not, and two
+steps in it did not exist at all.
+
+**Nothing loaded the new data, and nothing built the graph.**
+`07_seed_and_validate_data.sh` seeds the old synthetic manifest. The scripts that
+produced the working copilot -- wipe, load 100 real orders, derive products and
+customer parties from them, then run `GraphSyncService` -- were written in a
+scratchpad and never committed. No script in the repository called
+`GraphSyncService` at all, so a fresh environment left Neo4j empty and the
+copilot searched a graph with no nodes: a truthful "no orders found" that reads
+as a broken agent. Now `backend/scripts/load_reference_dataset.py`,
+`backend/scripts/build_knowledge_graph.py`, and `scripts/linux/reset_all.sh`
+chaining the six steps in the one order that works.
+
+**A third gap the sequence exposed:** step two's `docker compose down --volumes`
+takes the Vault volume with it and nothing puts it back, so every later step
+fails on `Required Vault secret is unavailable` -- pointing at secrets
+management rather than at the reset that removed them. `reset_all.sh` seeds
+Vault between infrastructure and load.
+
+**And a fourth, found by running the loader from `backend/`:**
+`PLATFORM_VAULT_TOKEN_FILE` in `.env` is a *relative* path, so Vault resolution
+silently depends on the working directory. Both scripts now anchor themselves to
+the repository root rather than making that the caller's problem.
+
+### De-identifying the dataset: the proof found four leaks the denylist missed
+
+The extract is production data -- customer and staff names, street addresses,
+phone numbers, and further down cheque account numbers, driver licence numbers,
+card-holder addresses and payment tokens. It is committed **scrubbed**, with the
+document structure preserved exactly, because the active schema reads through it
+by physical path and a flatter approximation extracts nothing.
+
+`deidentify_reference_dataset.py` matches keys by pattern, which over four
+hundred field names is a losing game on its own. What makes it trustworthy is
+the proof that follows: every value the source held under a sensitive key is
+searched for in the output, and a survivor fails the run. It caught, in order:
+
+- `custPONumber` and `jobName` holding the customer's **site address** -- free
+  text fields that no name-shaped pattern covers.
+- `pickedEmpId` holding `"AUSTIN WILSON"`, and `relManualHold` audit strings with
+  an employee's name embedded mid-string. Employees are people too; a scrub
+  aimed only at customers leaves half the record.
+- `drvLicNum` and `tagInfo` each holding a **phone number** -- and `drvLicNum`
+  was missed by a pattern that already contained `licen`.
+
+The last of those is why contact details are now matched by *shape* as well as
+by key, across every value the key list decided to keep. Chasing key names one
+at a time was the wrong shape of fix.
+
+Two rounds of the proof's own false positives were worth fixing rather than
+suppressing: a value that also appears under a non-sensitive key (a product
+description reachable from a name-shaped field) proves nothing by being present,
+and a value drawn from a six-item vocabulary can land on itself, which means the
+scrubber ran rather than skipped. Output is byte-reproducible -- the first
+version used Python's per-process-salted `hash()`, which would have made every
+regeneration an enormous meaningless diff.
+
+`backend/tests/test_reference_dataset.py` (7 tests) holds the committed file to
+both properties it exists for: no real contact details, and all three
+collections still join.
+
+**Verification.** Load and graph build run clean end to end: 100 orders, 482
+products, 97 customer parties, 572 lines; `COMPLETED`, 1756 nodes, 2641
+relationships, 8 constraints. Graph queried directly afterwards: PLACED_ORDER
+100, HAS_ORDER_LINE 572, REFERENCES_PRODUCT 507, HAS_CONTACT 298, HAS_ACCOUNT 97.
+Full canonical suite **2065 passed, 7 skipped**; ruff and mypy clean on all three
+new scripts.
+
+**The concurrency flake has a second face.** This run,
+`test_return_workflow_concurrency.py::test_concurrent_stage_completions_are_serialised`
+failed under full-suite load and then passed 3/3 in isolation -- the same
+signature as `test_a_second_completion_sees_the_first_ones_state`, in the same
+file, still undiagnosed. Nothing in this slice touches the return workflow. It
+remains unreproduced and unfixed, and it is now known to affect more than one
+test in that file.
 
 ## Live copilot walkthrough — three defects the tests could not have found
 

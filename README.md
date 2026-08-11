@@ -301,6 +301,44 @@ The AI Studio provides a deterministic Operational Generation engine to seed syn
 - **Graph Synchronization**: Records written to source systems (MongoDB/SQL Server) are securely synchronized to the Neo4j graph, matching the exact path used by production integration events. Generated data is fully discoverable by the production Copilot.
 - **Data Policies**: AI Studio evaluates strict read/write policies. Data is not generated for assets marked with `DENIED` write policies. Generation gracefully falls back to deterministic values if AI is unavailable.
 
+### Reference dataset, and resetting everything
+
+`./scripts/linux/reset_all.sh` takes the environment from any state to a running
+platform with fresh data. It stops the host, resets and starts infrastructure,
+re-seeds Vault (step two destroys its volume, and nothing else puts it back),
+loads the reference dataset, starts the host, and **builds the knowledge graph**.
+That last step had no script at all before: loading the source collections
+leaves Neo4j empty, so the copilot searches a graph with no nodes and truthfully
+reports finding nothing, which reads as a broken agent rather than a missing
+build.
+
+The three steps are also runnable on their own:
+
+```bash
+python backend/scripts/load_reference_dataset.py   # wipes, then loads
+python backend/scripts/build_knowledge_graph.py    # source -> Neo4j
+```
+
+`backend/fixtures/reference_dataset/` holds 100 real Ferguson orders with the
+identities removed. Their **structure is exact** -- the active schema reads
+through it by physical path, and a flatter approximation extracts nothing --
+and the business vocabulary is real: order numbers, dates, statuses, warehouse
+codes, product descriptions, SKUs, quantities and prices. Names, addresses,
+contact details, and every payment or identity field are synthetic.
+
+`backend/scripts/deidentify_reference_dataset.py` regenerates it from the raw
+extract. It is a key-name denylist *plus a proof*: after scrubbing, it searches
+the output for every value the source held under a sensitive key and fails the
+run on a survivor. The proof is what makes the denylist trustworthy -- it caught
+four real leaks a 400-key pattern list had missed, including `custPONumber`
+holding a site address, `pickedEmpId` holding a person's name, and `drvLicNum`
+holding a phone number despite the pattern already containing `licen`. Contact
+details are now also matched by *shape*, so a field nobody classified still
+cannot carry a routable number out. Output is byte-reproducible.
+
+`backend/tests/test_reference_dataset.py` holds the committed file to both
+properties: no real contact details, and all three collections still join.
+
 ### Deterministic E2E seed
 
 The cross-store E2E seed is configured in
