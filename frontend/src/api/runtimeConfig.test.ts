@@ -2,17 +2,16 @@ import { expect, it, vi } from "vitest";
 
 import { fetchRuntimeConfig } from "./runtimeConfig";
 
-it("loads runtime configuration through the browser API proxy", async () => {
+it("loads runtime configuration from the canonical versionless path", async () => {
   const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
     new Response(
       JSON.stringify({
         data: {
           releaseId: "release-test",
           environment: "development",
-          apiBasePath: "/api/v1",
+          apiBasePath: "/api",
           features: {
             orderDiscoveryCopilot: true,
-            aiStudioOperationalGeneration: true,
           },
           capabilities: {
             availableSourceTypes: ["MONGODB"],
@@ -42,5 +41,7 @@ it("loads runtime configuration through the browser API proxy", async () => {
   await expect(fetchRuntimeConfig()).resolves.toMatchObject({
     releaseId: "release-test",
   });
-  expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/v1/runtime-config");
+  // The point of the assertion: no `/v1`. This was the shell's last hard
+  // dependency on a versioned route.
+  expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/runtime-config");
 });

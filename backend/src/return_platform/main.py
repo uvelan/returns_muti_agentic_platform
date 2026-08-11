@@ -41,7 +41,6 @@ from return_platform.api.return_agents import router as return_agents_router
 from return_platform.api.return_artifacts import router as return_artifacts_router
 from return_platform.api.return_support import router as return_support_router
 from return_platform.api.returns import router as returns_router
-from return_platform.api.runtime_config import router as runtime_config_router
 from return_platform.api.seed import router as seed_router
 from return_platform.api.support import router as support_router
 from return_platform.api.warehouse_placement import router as warehouse_placement_router
@@ -54,6 +53,7 @@ from return_platform.bootstrap.adapters.analyzer_graph_target_adapter import (
 from return_platform.bootstrap.adapters.analyzer_source_adapter import (
     build_mongo_source_discovery_adapter,
 )
+from return_platform.bootstrap.api import router as runtime_config_router
 from return_platform.bootstrap.context import (
     RuntimeContext,
     StaticCorrelationContext,

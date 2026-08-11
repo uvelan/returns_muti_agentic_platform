@@ -32,7 +32,11 @@ from return_platform.validation.gates import SecretValidationGate, ValidationRec
 
 _RECEIPT_COLLECTION = "configuration_validation_receipts"
 _VALIDATION_RUN_COLLECTION = "ai_validation_runs"
-_HOSTED_PROVIDERS = ("GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC")
+#: The hosted providers bootstrap will validate credentials for. Public
+#: because `/api/runtime-config` advertises the same set to the shell, and
+#: a second copy of the tuple over there could drift from the one that is
+#: actually enforced below.
+HOSTED_AI_PROVIDERS = ("GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC")
 _MAX_BOOTSTRAP_CREDENTIALS_PER_PROVIDER = 100
 
 
@@ -377,7 +381,7 @@ async def build_configured_runtime_configuration(
         configured_order,
         start=1,
     ):
-        if provider not in _HOSTED_PROVIDERS:
+        if provider not in HOSTED_AI_PROVIDERS:
             continue
 
         models = _model_bindings(
@@ -500,7 +504,7 @@ async def build_bootstrap_runtime_configuration(
             configured_order,
             start=1,
         ):
-            if provider not in _HOSTED_PROVIDERS:
+            if provider not in HOSTED_AI_PROVIDERS:
                 continue
 
             models = _model_bindings(

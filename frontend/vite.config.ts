@@ -58,11 +58,13 @@ export default defineConfig(({ mode, command }) => {
       port: 5173,
       strictPort: true,
       proxy: {
-        "/api/v2": {
-          target: backendTarget,
-          changeOrigin: true,
-        },
-        "/api/v1": {
+        // One `/api` prefix, not one entry per version. The canonical Wave D
+        // surfaces are versionless (`/api/principal`, `/api/returns`,
+        // `/api/config`, `/api/ai`, `/api/graph-schema`), so the previous
+        // `/api/v1` + `/api/v2` pair silently failed to forward every one of
+        // them -- the dev server answered its SPA fallback and each screen saw
+        // HTML where it expected JSON. This covers the versioned paths too.
+        "/api": {
           target: backendTarget,
           changeOrigin: true,
         },
