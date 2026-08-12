@@ -1565,6 +1565,39 @@
         "title": "APIResponse[FulfillmentAssessment]",
         "type": "object"
       },
+      "APIResponse_MigrationPlan_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MigrationPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[MigrationPlan]",
+        "type": "object"
+      },
       "APIResponse_PrincipalView_": {
         "additionalProperties": false,
         "properties": {
@@ -1596,6 +1629,39 @@
           "meta"
         ],
         "title": "APIResponse[PrincipalView]",
+        "type": "object"
+      },
+      "APIResponse_ReleaseListView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReleaseListView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ReleaseListView]",
         "type": "object"
       },
       "APIResponse_ReturnEventResult_": {
@@ -1926,6 +1992,39 @@
           "meta"
         ],
         "title": "APIResponse[SimulationOperationView]",
+        "type": "object"
+      },
+      "APIResponse_SourceBindingView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceBindingView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[SourceBindingView]",
         "type": "object"
       },
       "APIResponse_SourceDetail_": {
@@ -2687,6 +2786,43 @@
         "title": "APIResponse[list[SimulationOperationView]]",
         "type": "object"
       },
+      "APIResponse_list_SourceBindingView__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SourceBindingView"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[list[SourceBindingView]]",
+        "type": "object"
+      },
       "APIResponse_list_SourceItem__": {
         "additionalProperties": false,
         "properties": {
@@ -3070,6 +3206,7 @@
       },
       "AddRelationship": {
         "additionalProperties": false,
+        "description": "An edge, and how the two entities are matched to draw it.\n\nThe join was implicit until the compiler needed it: an edge type and two\nlabels say a relationship exists, not which property of one equals which\nproperty of the other, and a projection cannot be built from the former.\nLeft unset it falls back to the other entity's identifier found by name --\nthe ordinary foreign-key shape -- which the compiler checks rather than\nassumes.",
         "properties": {
           "cardinality": {
             "$ref": "#/components/schemas/Cardinality"
@@ -3078,6 +3215,15 @@
             "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
             "title": "From Label",
             "type": "string"
+          },
+          "from_properties": {
+            "default": [],
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+              "type": "string"
+            },
+            "title": "From Properties",
+            "type": "array"
           },
           "kind": {
             "const": "AddRelationship",
@@ -3100,6 +3246,15 @@
             "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
             "title": "To Label",
             "type": "string"
+          },
+          "to_properties": {
+            "default": [],
+            "items": {
+              "pattern": "^[A-Za-z][A-Za-z0-9_]{0,63}$",
+              "type": "string"
+            },
+            "title": "To Properties",
+            "type": "array"
           }
         },
         "required": [
@@ -5710,6 +5865,36 @@
         "title": "DraftView",
         "type": "object"
       },
+      "DriftKind": {
+        "enum": [
+          "DATASET_ADDED",
+          "DATASET_REMOVED",
+          "FIELD_ADDED",
+          "FIELD_REMOVED",
+          "FIELD_TYPE_CHANGED"
+        ],
+        "title": "DriftKind",
+        "type": "string"
+      },
+      "ElementChange": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "element": {
+            "title": "Element",
+            "type": "string"
+          }
+        },
+        "required": [
+          "element",
+          "detail"
+        ],
+        "title": "ElementChange",
+        "type": "object"
+      },
       "EntityShapeView": {
         "additionalProperties": false,
         "properties": {
@@ -6076,6 +6261,49 @@
         "title": "GraphIndexShapeView",
         "type": "object"
       },
+      "GraphObject": {
+        "additionalProperties": false,
+        "description": "One constraint or index, in the form both families can be compared in.",
+        "properties": {
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/GraphObjectKind"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "properties": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Properties",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "properties"
+        ],
+        "title": "GraphObject",
+        "type": "object"
+      },
+      "GraphObjectKind": {
+        "description": "Where a constraint or index came from.\n\nKept on the object because the two families are provisioned by different\nowners: the derived ones follow identity and are recomputed from the schema,\nwhile the declared ones are what an analyst asked for in a draft. An operator\nreading a plan needs to know which of those a line is.",
+        "enum": [
+          "NODE_KEY_CONSTRAINT",
+          "RELATIONSHIP_MATCH_INDEX",
+          "DECLARED_CONSTRAINT",
+          "DECLARED_INDEX"
+        ],
+        "title": "GraphObjectKind",
+        "type": "string"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -6130,6 +6358,118 @@
         ],
         "title": "InventoryTotals",
         "type": "object"
+      },
+      "MigrationPlan": {
+        "additionalProperties": false,
+        "description": "What activating `to_release_id` does to the graph.\n\n`from_release_id` is None when nothing is active yet, which is the state\nevery installation starts in and is always a FULL_REBUILD -- there is no\ngraph to migrate, only one to build.",
+        "properties": {
+          "from_release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Release Id"
+          },
+          "node_labels_added": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Node Labels Added",
+            "type": "array"
+          },
+          "node_labels_changed": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ElementChange"
+            },
+            "title": "Node Labels Changed",
+            "type": "array"
+          },
+          "node_labels_removed": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Node Labels Removed",
+            "type": "array"
+          },
+          "objects_to_create": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/GraphObject"
+            },
+            "title": "Objects To Create",
+            "type": "array"
+          },
+          "objects_to_drop": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/GraphObject"
+            },
+            "title": "Objects To Drop",
+            "type": "array"
+          },
+          "rebuild_reasons": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Rebuild Reasons",
+            "type": "array"
+          },
+          "relationships_added": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Relationships Added",
+            "type": "array"
+          },
+          "relationships_changed": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ElementChange"
+            },
+            "title": "Relationships Changed",
+            "type": "array"
+          },
+          "relationships_removed": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Relationships Removed",
+            "type": "array"
+          },
+          "strategy": {
+            "$ref": "#/components/schemas/MigrationStrategy"
+          },
+          "to_release_id": {
+            "title": "To Release Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_release_id",
+          "to_release_id",
+          "strategy"
+        ],
+        "title": "MigrationPlan",
+        "type": "object"
+      },
+      "MigrationStrategy": {
+        "enum": [
+          "NO_CHANGE",
+          "INCREMENTAL",
+          "FULL_REBUILD"
+        ],
+        "title": "MigrationStrategy",
+        "type": "string"
       },
       "ModelTier": {
         "enum": [
@@ -6852,6 +7192,194 @@
         "title": "PropertyType",
         "type": "string"
       },
+      "ProposedChange": {
+        "additionalProperties": false,
+        "description": "One thing that drifted, and what to do about it.\n\n`mutations` is empty exactly when no command can express the fix without\nguessing. That is a first-class outcome, not a failure -- see the module\ndocstring.",
+        "properties": {
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "drift": {
+            "$ref": "#/components/schemas/DriftKind"
+          },
+          "element": {
+            "title": "Element",
+            "type": "string"
+          },
+          "mutations": {
+            "default": [],
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "AddEntity": "#/components/schemas/AddEntity",
+                  "AddGraphConstraint": "#/components/schemas/AddGraphConstraint",
+                  "AddGraphIndex": "#/components/schemas/AddGraphIndex",
+                  "AddProperty": "#/components/schemas/AddProperty",
+                  "AddRelationship": "#/components/schemas/AddRelationship",
+                  "ChangeCardinality": "#/components/schemas/ChangeCardinality",
+                  "ChangeIdentifier": "#/components/schemas/ChangeIdentifier",
+                  "ChangeOwnershipPolicy": "#/components/schemas/ChangeOwnershipPolicy",
+                  "ChangeSourceMapping": "#/components/schemas/ChangeSourceMapping",
+                  "ChangeSyncRule": "#/components/schemas/ChangeSyncRule",
+                  "ChangeTransformation": "#/components/schemas/ChangeTransformation",
+                  "RemoveEntity": "#/components/schemas/RemoveEntity",
+                  "RemoveGraphConstraint": "#/components/schemas/RemoveGraphConstraint",
+                  "RemoveGraphIndex": "#/components/schemas/RemoveGraphIndex",
+                  "RemoveProperty": "#/components/schemas/RemoveProperty",
+                  "RemoveRelationship": "#/components/schemas/RemoveRelationship",
+                  "RenameEntity": "#/components/schemas/RenameEntity"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/AddEntity"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveEntity"
+                },
+                {
+                  "$ref": "#/components/schemas/RenameEntity"
+                },
+                {
+                  "$ref": "#/components/schemas/AddProperty"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveProperty"
+                },
+                {
+                  "$ref": "#/components/schemas/ChangeIdentifier"
+                },
+                {
+                  "$ref": "#/components/schemas/AddRelationship"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveRelationship"
+                },
+                {
+                  "$ref": "#/components/schemas/ChangeCardinality"
+                },
+                {
+                  "$ref": "#/components/schemas/ChangeSourceMapping"
+                },
+                {
+                  "$ref": "#/components/schemas/ChangeTransformation"
+                },
+                {
+                  "$ref": "#/components/schemas/AddGraphIndex"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveGraphIndex"
+                },
+                {
+                  "$ref": "#/components/schemas/AddGraphConstraint"
+                },
+                {
+                  "$ref": "#/components/schemas/RemoveGraphConstraint"
+                },
+                {
+                  "$ref": "#/components/schemas/ChangeOwnershipPolicy"
+                },
+                {
+                  "$ref": "#/components/schemas/ChangeSyncRule"
+                }
+              ]
+            },
+            "title": "Mutations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "drift",
+          "dataset",
+          "element",
+          "detail"
+        ],
+        "title": "ProposedChange",
+        "type": "object"
+      },
+      "ProposedRebinding": {
+        "additionalProperties": false,
+        "description": "A dataset whose *shape* is unchanged and whose *location* is not.\n\nCarries no mutation on purpose. Nothing in the schema says where a dataset\nlives -- that has been a binding since W2.2 -- so the act this asks for is a\nrebinding through `/api/source-bindings`, and there is no command that could\nexpress it even if it were wanted.",
+        "properties": {
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "from_source_id": {
+            "title": "From Source Id",
+            "type": "string"
+          },
+          "to_dataset": {
+            "title": "To Dataset",
+            "type": "string"
+          },
+          "to_source_id": {
+            "title": "To Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataset",
+          "from_source_id",
+          "to_source_id",
+          "to_dataset",
+          "detail"
+        ],
+        "title": "ProposedRebinding",
+        "type": "object"
+      },
+      "PublishRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "activate": {
+            "default": false,
+            "title": "Activate",
+            "type": "boolean"
+          }
+        },
+        "title": "PublishRequest",
+        "type": "object"
+      },
+      "PublishedReleaseView": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "configurationReleaseId": {
+            "title": "Configurationreleaseid",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "required": [
+          "configurationReleaseId",
+          "accepted"
+        ],
+        "title": "PublishedReleaseView",
+        "type": "object"
+      },
       "QueryEvidence": {
         "additionalProperties": false,
         "properties": {
@@ -6929,6 +7457,94 @@
         "title": "RankedDiscoveryCandidate",
         "type": "object"
       },
+      "ReanalysisProposal": {
+        "additionalProperties": false,
+        "description": "The whole answer to \"the source moved on; now what\".\n\n`diff` is the draft-side view: the same `SchemaDiff` a revision produces,\ncomputed by applying the proposed batch to a copy of the draft. So an\nanalyst reads a re-analysis in exactly the vocabulary they read history in,\nand the proposal is proven applicable before it is offered.",
+        "properties": {
+          "changes": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ProposedChange"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "diff": {
+            "$ref": "#/components/schemas/SchemaDiff"
+          },
+          "draft_id": {
+            "title": "Draft Id",
+            "type": "string"
+          },
+          "from_content_hash": {
+            "title": "From Content Hash",
+            "type": "string"
+          },
+          "rebindings": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ProposedRebinding"
+            },
+            "title": "Rebindings",
+            "type": "array"
+          },
+          "to_content_hash": {
+            "title": "To Content Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "draft_id",
+          "from_content_hash",
+          "to_content_hash",
+          "diff"
+        ],
+        "title": "ReanalysisProposal",
+        "type": "object"
+      },
+      "RebindRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "connectionRef": {
+            "title": "Connectionref",
+            "type": "string"
+          },
+          "connectorType": {
+            "title": "Connectortype",
+            "type": "string"
+          },
+          "incrementalCursorField": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incrementalcursorfield"
+          },
+          "objectRef": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Objectref",
+            "type": "object"
+          },
+          "sourceAssetId": {
+            "title": "Sourceassetid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceAssetId",
+          "connectorType",
+          "connectionRef",
+          "objectRef"
+        ],
+        "title": "RebindRequest",
+        "type": "object"
+      },
       "RelationshipShapeView": {
         "additionalProperties": false,
         "properties": {
@@ -6956,6 +7572,87 @@
           "cardinality"
         ],
         "title": "RelationshipShapeView",
+        "type": "object"
+      },
+      "ReleaseListView": {
+        "additionalProperties": false,
+        "properties": {
+          "activeReleaseId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activereleaseid"
+          },
+          "releases": {
+            "items": {
+              "$ref": "#/components/schemas/ReleaseRowView"
+            },
+            "title": "Releases",
+            "type": "array"
+          }
+        },
+        "required": [
+          "releases",
+          "activeReleaseId"
+        ],
+        "title": "ReleaseListView",
+        "type": "object"
+      },
+      "ReleaseRowView": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "configurationChecksum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configurationchecksum"
+          },
+          "configurationReleaseId": {
+            "title": "Configurationreleaseid",
+            "type": "string"
+          },
+          "publishedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publishedat"
+          },
+          "publishedBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publishedby"
+          }
+        },
+        "required": [
+          "configurationReleaseId",
+          "active"
+        ],
+        "title": "ReleaseRowView",
         "type": "object"
       },
       "RemoveEntity": {
@@ -7775,6 +8472,114 @@
           "reasonCode"
         ],
         "title": "ReturnItemInput",
+        "type": "object"
+      },
+      "ReturnOutcomeRecord": {
+        "additionalProperties": false,
+        "description": "One RMA as Support is issuing it.",
+        "properties": {
+          "labelReference": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labelreference"
+          },
+          "orderLineReferences": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Orderlinereferences",
+            "type": "array"
+          },
+          "returnLocation": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnlocation"
+          },
+          "returnReference": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Returnreference",
+            "type": "string"
+          },
+          "shippingInstructionReference": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippinginstructionreference"
+          },
+          "trackingReference": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trackingreference"
+          }
+        },
+        "required": [
+          "returnReference"
+        ],
+        "title": "ReturnOutcomeRecord",
+        "type": "object"
+      },
+      "ReturnOutcomeRequest": {
+        "additionalProperties": false,
+        "description": "What Support is sending back to the case.\n\nA *list* of records, because one reply can issue several RMAs with\ndifferent labels going to different places -- the shape the case model was\nchanged to carry, and the one a single set of fields cannot express.",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "records": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReturnOutcomeRecord"
+            },
+            "maxItems": 100,
+            "title": "Records",
+            "type": "array"
+          },
+          "rejected": {
+            "default": false,
+            "title": "Rejected",
+            "type": "boolean"
+          }
+        },
+        "title": "ReturnOutcomeRequest",
         "type": "object"
       },
       "ReturnRecordView": {
@@ -9645,6 +10450,59 @@
         "title": "SourceAssetSummary",
         "type": "object"
       },
+      "SourceBindingView": {
+        "additionalProperties": false,
+        "properties": {
+          "connectionRef": {
+            "title": "Connectionref",
+            "type": "string"
+          },
+          "connectorType": {
+            "title": "Connectortype",
+            "type": "string"
+          },
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "incrementalCursorField": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incrementalcursorfield"
+          },
+          "objectRef": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Objectref",
+            "type": "object"
+          },
+          "overridden": {
+            "title": "Overridden",
+            "type": "boolean"
+          },
+          "sourceAssetId": {
+            "title": "Sourceassetid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataset",
+          "sourceAssetId",
+          "connectorType",
+          "connectionRef",
+          "objectRef",
+          "overridden"
+        ],
+        "title": "SourceBindingView",
+        "type": "object"
+      },
       "SourceDetail": {
         "additionalProperties": false,
         "properties": {
@@ -11213,8 +12071,29 @@
     },
     "/api/cases": {
       "get": {
-        "description": "The caller's own cases, newest first.\n\nScoped by tenant and principal in the query, for the same reason the\nconversation history is: a case carries the customer's order and whatever\nthe associate typed about them, and \"list every case\" is not a read anyone\nshould be able to make by accident.",
+        "description": "The caller's own cases, newest first.\n\nScoped by tenant and principal in the query, for the same reason the\nconversation history is: a case carries the customer's order and whatever\nthe associate typed about them, and \"list every case\" is not a read anyone\nshould be able to make by accident.\n\n`conversationId` narrows to one case rather than being a second endpoint.\nIt is what makes resuming a conversation restore the return with it: the\ncopilot learns the case id from the turn that confirmed, and after a reload\nthere is no such turn to learn it from.",
         "operationId": "list_cases_api_cases_get",
+        "parameters": [
+          {
+            "description": "Only the case this Channel A conversation raised, if it raised one.",
+            "in": "query",
+            "name": "conversationId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the case this Channel A conversation raised, if it raised one.",
+              "title": "Conversationid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -11225,6 +12104,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "List Cases",
@@ -11235,7 +12124,7 @@
     },
     "/api/cases/{case_id}": {
       "get": {
-        "description": "One case, with each RMA carrying the items it covers.",
+        "description": "One case, with each RMA carrying the items it covers.\n\nSomeone else's case is reported as absent, not as forbidden. A 403 on a\nguessed id confirms the id, and the list above is deliberately scoped so\nthat no caller learns of a case that is not theirs.",
         "operationId": "get_case_api_cases__case_id__get",
         "parameters": [
           {
@@ -12093,6 +12982,102 @@
         ]
       }
     },
+    "/api/graph-schema/drafts/{draft_id}/publish": {
+      "post": {
+        "description": "Turn an approved draft into the schema the platform runs.\n\nThe step that closes the analyzer's loop. Until this existed a draft could\nbe discovered, edited, validated and approved, and the runtime went on\nreading a file from the repository -- so an approval changed a document and\nnothing else.\n\nAPPROVED only. A validated draft is a shape someone might accept; a\npublished release is one the platform will reason over, and the human act\nin between is the whole reason the state machine has three states.\n\nA shape that cannot compile comes back `accepted=false` with the element\nnamed, not as a 500: which entity was ambiguous is the only useful thing to\nsay, and the analyst is the one who can fix it.",
+        "operationId": "publish_draft_api_graph_schema_drafts__draft_id__publish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishedReleaseView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Draft",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-schema/drafts/{draft_id}/reanalysis": {
+      "post": {
+        "description": "Re-read the sources and say what the draft would have to change.\n\n**Proposes; never applies.** The commands come back typed, and the analyst\naccepts them by sending them to `POST /drafts/{id}/mutations` -- the same\npath a hand-written change takes, which is why there is no second one here.\nRejecting is simply not sending them.\n\n**The evidence is refreshed; the design is not.** A new snapshot is captured\nand the analysis is re-grounded on it, because from now on \"does this draft\nmatch the source\" has to be answered against what the source actually looks\nlike -- validation should start failing on the drift, not keep passing\nagainst a reading from last month. The draft's shape is untouched.\n\n**Metadata only.** Drift is a question about shape, so nothing here reads a\nsample row, and no sample-retention decision is made or needed.\n\nA run that finds nothing writes nothing: two captures of the same shape have\nthe same content address, and storing a second copy of a snapshot under a\nnew id would grow the collection with every poll.",
+        "operationId": "reanalyze_draft_api_graph_schema_drafts__draft_id__reanalysis_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReanalysisProposal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reanalyze Draft",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
     "/api/graph-schema/drafts/{draft_id}/revisions": {
       "get": {
         "operationId": "list_revisions_api_graph_schema_drafts__draft_id__revisions_get",
@@ -12772,6 +13757,114 @@
         ]
       }
     },
+    "/api/schema-releases": {
+      "get": {
+        "description": "Every published release, newest first, and which one is live.",
+        "operationId": "list_releases_api_schema_releases_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ReleaseListView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Releases",
+        "tags": [
+          "Graph Schema Releases"
+        ]
+      }
+    },
+    "/api/schema-releases/{release_id}/activate": {
+      "post": {
+        "description": "Make a release live, and record the migration it commits the graph to.\n\nReturns the plan rather than an acknowledgement. Whether a rebuild is now\nowed is the consequence of the act, and an operator who has to go and ask\nsomewhere else will not.",
+        "operationId": "activate_release_api_schema_releases__release_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_MigrationPlan_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activate Release",
+        "tags": [
+          "Graph Schema Releases"
+        ]
+      }
+    },
+    "/api/schema-releases/{release_id}/migration-plan": {
+      "get": {
+        "description": "What activating this release would do, computed against what is live now.\n\nA preview, recomputed on every call rather than served from the recorded\nplan: the active pointer moves, and a plan for a pair that is no longer the\npair you are in is a confidently wrong answer.",
+        "operationId": "get_migration_plan_api_schema_releases__release_id__migration_plan_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "title": "Release Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_MigrationPlan_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Migration Plan",
+        "tags": [
+          "Graph Schema Releases"
+        ]
+      }
+    },
     "/api/session": {
       "get": {
         "description": "The caller's own identity and capabilities.\n\n**No role dependency on purpose.** Guarding this with `require_read_roles`\nwould make it answer 403 for exactly the caller who most needs an answer \u2014\nsomeone signed in with no usable role. Such a caller gets an empty\ncapability list, which the UI can render as \"you have no access\" instead of\na blank screen with a failed request.\n\nA caller with *no principal at all* is a different case: middleware could not\nidentify them, so there is nothing truthful to return and 401 is the honest\nanswer.",
@@ -12791,6 +13884,122 @@
         "summary": "Get Session",
         "tags": [
           "Session"
+        ]
+      }
+    },
+    "/api/source-bindings": {
+      "get": {
+        "description": "Every dataset the platform can resolve, and where each one points.",
+        "operationId": "list_bindings_api_source_bindings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_SourceBindingView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Bindings",
+        "tags": [
+          "Source Bindings"
+        ]
+      }
+    },
+    "/api/source-bindings/{dataset}": {
+      "delete": {
+        "description": "Return a dataset to whatever the configured schema says.",
+        "operationId": "clear_override_api_source_bindings__dataset__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "title": "Dataset",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__bool__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Clear Override",
+        "tags": [
+          "Source Bindings"
+        ]
+      },
+      "put": {
+        "description": "Point a dataset somewhere else.\n\nValidated as a real `SourceAssetDefinition` before it is stored, so a\nmalformed connection is refused here rather than at the next publish --\nwhere it would surface as a compilation failure that reads like a schema\nproblem.",
+        "operationId": "rebind_api_source_bindings__dataset__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset",
+            "required": true,
+            "schema": {
+              "title": "Dataset",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RebindRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SourceBindingView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rebind",
+        "tags": [
+          "Source Bindings"
         ]
       }
     },
@@ -14777,6 +15986,59 @@
           }
         },
         "summary": "Add Message",
+        "tags": [
+          "Returns Support"
+        ]
+      }
+    },
+    "/api/v1/return-support/work-items/{work_item_id}/return-outcome": {
+      "post": {
+        "description": "Send Support's answer to the case that asked for it.\n\nThis is the step that made Channel B -> Channel A possible. The work item\nknows its case, the case knows its workflow, and the workflow is waiting on\na durable timer for exactly this signal -- so the outcome reaches the\nassociate's original conversation instead of the browser trying to match an\norder reference across two collections.\n\nA signal, not a write. `ReturnCaseWorkflow` owns what happens next: it\nrecords the return records, moves the case status and stops the reminder\ncadence, and it does so once however many times Support presses send --\nduplicate responses are ignored by the workflow, not deduplicated here.",
+        "operationId": "submit_return_outcome_api_v1_return_support_work_items__work_item_id__return_outcome_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "work_item_id",
+            "required": true,
+            "schema": {
+              "title": "Work Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnOutcomeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__str__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Return Outcome",
         "tags": [
           "Returns Support"
         ]
