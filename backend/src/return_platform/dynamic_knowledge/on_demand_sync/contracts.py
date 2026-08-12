@@ -41,6 +41,7 @@ __all__ = [
     "RawSourcePage",
     "SourceConnectorCapabilities",
     "SourceCursor",
+    "SyncOrigin",
     "SyncReceipt",
     "SyncReservation",
     "SyncStatus",
@@ -145,3 +146,28 @@ class SyncReservation(BaseModel):
     acquired: bool
     sync_request_id: str
     existing_receipt: SyncReceipt | None = None
+
+
+class SyncOrigin(BaseModel):
+    """Which agent turn asked for a targeted sync, and what it asked about.
+
+    An on-demand sync is the one kind of source read a human never started, so
+    the run ledger has to be able to say who did. Without this an operator
+    reading the ledger sees a sync appear from nowhere between two scheduled
+    ones and has no way to connect it to the conversation that caused it.
+
+    **Anchor field ids, never anchor values.** The anchor is an order number or
+    a customer identifier. A run list an operator browses, exports and keeps is
+    not a place to accumulate those; the request digest already ties a run to
+    its receipt, and "sales_order by exact_order_key" is the whole of what
+    someone debugging a sync needs to know.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    agent_id: str
+    conversation_id: str
+    client_turn_id: str
+    entity_id: str
+    strong_anchor_id: str
+    anchor_field_ids: tuple[str, ...]

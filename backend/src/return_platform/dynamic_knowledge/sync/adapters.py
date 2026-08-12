@@ -19,6 +19,7 @@ from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
 )
 from return_platform.dynamic_knowledge.schema import ActiveSchema, ConnectorType
 from return_platform.source_connectors.protocols import SourceScanConnector
+from return_platform.source_connectors.registry import SourceConnectorsByType
 
 
 class GraphProjector(Protocol):
@@ -115,35 +116,24 @@ class ProjectorGraphWriter:
         return receipt.nodes_written, receipt.relationships_written
 
 
-class SourceConnectorRegistry:
-    """Dispatches to the one connector instance registered for each connector
-    type -- both connectors already serve every source of their own type, so
-    there is exactly one Mongo connector and one SQL Server connector per
-    sync run, never one per source.
+def scan_connector_registry(
+    *,
+    schema: ActiveSchema,
+    mongo_connector: SourceScanConnector | None = None,
+    sqlserver_connector: SourceScanConnector | None = None,
+) -> SourceConnectorsByType[SourceScanConnector]:
+    """The scan half of the one connector-type dispatch.
 
-    Types the connectors as the canonical `SourceScanConnector` rather than a
-    one-method local protocol. The local one declared only
-    `capture_high_watermark`, which was enough to make this class *look* like a
-    `SourceScanRegistry` while its `resolve` returned something too narrow to
-    be one -- so the coordinator it is built for could not accept it.
+    This used to be a `SourceConnectorRegistry` class here and a near-identical
+    `OnDemandConnectorRegistry` in `integration/on_demand_sync_adapters.py`, each
+    with its own hand-written MONGODB/MSSQL branch. Both are now
+    `SourceConnectorsByType`; only the connector protocol differs, so a new
+    source type is registered once instead of twice.
     """
-
-    def __init__(
-        self,
-        *,
-        schema: ActiveSchema,
-        mongo_connector: SourceScanConnector | None = None,
-        sqlserver_connector: SourceScanConnector | None = None,
-    ) -> None:
-        self._schema = schema
-        self._connectors_by_type = {
+    return SourceConnectorsByType(
+        sources=schema.sources,
+        connectors={
             ConnectorType.MONGODB: mongo_connector,
             ConnectorType.MSSQL: sqlserver_connector,
-        }
-
-    def resolve(self, source_asset_id: str) -> SourceScanConnector:
-        connector_type = self._schema.sources[source_asset_id].connector_type
-        connector = self._connectors_by_type.get(connector_type)
-        if connector is None:
-            raise ValueError(f"no connector registered for connector_type {connector_type!r}")
-        return connector
+        },
+    )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import AbstractAsyncContextManager, nullcontext
 from typing import Protocol
 from uuid import uuid4
@@ -11,6 +12,7 @@ from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
     DynamicRecordMutation,
     GraphMutationBatch,
     ProjectionReadScope,
+    SyncOrigin,
     SyncReceipt,
     SyncReservation,
     SyncStatus,
@@ -27,7 +29,10 @@ __all__ = [
     "OnDemandSyncCoordinator",
     "OnDemandSyncStore",
     "TargetedSourceConnector",
+    "TargetedSyncRunLedger",
 ]
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class DynamicGraphProjector(Protocol):
@@ -62,6 +67,30 @@ class OnDemandSyncStore(Protocol):
     async def complete(self, receipt: SyncReceipt) -> None: ...
 
 
+class TargetedSyncRunLedger(Protocol):
+    """Where a targeted sync becomes visible to an operator.
+
+    Separate from `OnDemandSyncStore`, which is idempotency: that store is keyed
+    by request digest and answers "has this exact request already run", which
+    means a repeated request writes nothing new and leaves no trace of having
+    been asked. The ledger answers a different question -- "what syncs has this
+    platform run" -- and it is the *same* ledger the scheduled sync writes to, so
+    an operator sees one history rather than one per mechanism.
+
+    Idempotent on `receipt.sync_request_id`: `synchronize` calls this once when
+    the run starts and once when it ends.
+    """
+
+    async def record(
+        self,
+        *,
+        schema: ActiveSchema,
+        source_asset_id: str,
+        receipt: SyncReceipt,
+        origin: SyncOrigin | None,
+    ) -> None: ...
+
+
 class OnDemandSyncCoordinator:
     """Execute one targeted source read per canonical request digest."""
 
@@ -74,6 +103,7 @@ class OnDemandSyncCoordinator:
         writer: DynamicGraphWriter,
         store: OnDemandSyncStore,
         generation_handles: GenerationHandleProvider | None = None,
+        run_ledger: TargetedSyncRunLedger | None = None,
     ) -> None:
         self._connectors = connectors
         self._extractor = extractor
@@ -83,6 +113,9 @@ class OnDemandSyncCoordinator:
         # Optional so existing construction sites keep working unreserved, which
         # is the behaviour that shipped before write reservations existed.
         self._generation_handles = generation_handles
+        # Optional for the same reason, and because a process with no platform
+        # Mongo client can still sync -- it just cannot be watched.
+        self._run_ledger = run_ledger
 
     async def synchronize(
         self,
@@ -91,6 +124,7 @@ class OnDemandSyncCoordinator:
         graph_generation_id: str,
         request_digest: str,
         plan: LogicalTargetedReadPlan,
+        origin: SyncOrigin | None = None,
     ) -> SyncReceipt:
         if schema.runtime_mode is not RuntimeMode.CONNECTED_SYNC:
             raise RuntimeError("ON_DEMAND_SYNC_SOURCE_UNAVAILABLE")
@@ -113,6 +147,7 @@ class OnDemandSyncCoordinator:
             graph_generation_id=graph_generation_id,
         )
         await self._store.complete(running)
+        await self._record(schema, plan.source_asset_id, running, origin)
         try:
             # Reserved before the source read, not just around the graph write.
             # Reserving only around the write leaves a window: retirement could
@@ -127,6 +162,7 @@ class OnDemandSyncCoordinator:
                     request_digest=request_digest,
                     plan=plan,
                     sync_request_id=reservation.sync_request_id,
+                    origin=origin,
                 )
         except Exception as exc:
             failed = SyncReceipt(
@@ -138,7 +174,36 @@ class OnDemandSyncCoordinator:
                 error_code=type(exc).__name__,
             )
             await self._store.complete(failed)
+            await self._record(schema, plan.source_asset_id, failed, origin)
             raise
+
+    async def _record(
+        self,
+        schema: ActiveSchema,
+        source_asset_id: str,
+        receipt: SyncReceipt,
+        origin: SyncOrigin | None,
+    ) -> None:
+        """Publish the run, and never fail the sync over it.
+
+        A ledger outage makes a sync invisible. Letting it also make the sync
+        *fail* would turn an observability problem into an associate seeing "I
+        could not reach the source system" about a source that answered.
+        """
+        if self._run_ledger is None:
+            return
+        try:
+            await self._run_ledger.record(
+                schema=schema,
+                source_asset_id=source_asset_id,
+                receipt=receipt,
+                origin=origin,
+            )
+        except Exception:
+            _LOGGER.exception(
+                "Could not record targeted sync run %s; the sync itself is unaffected",
+                receipt.sync_request_id,
+            )
 
     def _write_reservation(self, graph_generation_id: str) -> AbstractAsyncContextManager[object]:
         if self._generation_handles is None:
@@ -153,6 +218,7 @@ class OnDemandSyncCoordinator:
         request_digest: str,
         plan: LogicalTargetedReadPlan,
         sync_request_id: str,
+        origin: SyncOrigin | None,
     ) -> SyncReceipt:
         """The sync itself, with the write reservation already held.
 
@@ -191,4 +257,5 @@ class OnDemandSyncCoordinator:
             relationships_written=relationships_written,
         )
         await self._store.complete(succeeded)
+        await self._record(schema, plan.source_asset_id, succeeded, origin)
         return succeeded

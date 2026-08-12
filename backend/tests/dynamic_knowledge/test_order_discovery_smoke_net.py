@@ -6,12 +6,19 @@ it. This is the net that has to hold while that happens.
 
 **What is real here.** The production descriptor
 (`config/dynamic_knowledge/active-schema.return-order.yaml`), the real
-`CypherCompiler`, and all six real guards. Only two things are substituted: the
-model, which is scripted so a scenario is deterministic, and the graph
+`CypherCompiler`, and all six real guards. Only infrastructure is substituted:
+the model, which is scripted so a scenario is deterministic, and graph
 execution, which returns fixed rows. Everything between them -- routing,
 capability validation, schema validation, query safety, plan compilation,
 budget enforcement, evidence recording, hallucination validation -- is the
 shipped code.
+
+The on-demand-sync scenarios at the end substitute two more things at the same
+infrastructure edge: the source connector and the graph writer. Between them
+runs the real `OnDemandSyncCoordinator`, the real targeted-read planner, the
+real source-read compiler, the real extractor and the real projector -- which
+is the point, because the defect this covers lived in exactly that stretch and
+was invisible from either end.
 
 **What is asserted.** The sequence of `ActionType`s the graph dispatched, the
 `LogicalQueryPlan` that reached the compiler, the guard verdict, and the
@@ -32,6 +39,7 @@ from typing import Any
 import pytest
 
 from return_platform.dynamic_knowledge.config_loader import load_active_schema
+from return_platform.dynamic_knowledge.graph.projector import GenericGraphProjector
 from return_platform.dynamic_knowledge.knowledge.cypher_compiler import CypherCompiler
 from return_platform.dynamic_knowledge.knowledge.evidence import (
     QueryEvidence,
@@ -40,6 +48,7 @@ from return_platform.dynamic_knowledge.knowledge.evidence import (
     StructuredAgentResponse,
 )
 from return_platform.dynamic_knowledge.knowledge.guards import (
+    AnchorValue,
     CapabilityGuard,
     GuardContext,
     HallucinationGuard,
@@ -49,11 +58,20 @@ from return_platform.dynamic_knowledge.knowledge.guards import (
     ResponseSafetyGuard,
     SchemaQueryGuard,
     StrongAnchorGuard,
+    StrongAnchorRequest,
 )
 from return_platform.dynamic_knowledge.knowledge.query_plan import (
     LogicalQueryPlan,
     QueryCondition,
     QueryOperation,
+)
+from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
+    SyncReceipt,
+    SyncReservation,
+)
+from return_platform.dynamic_knowledge.on_demand_sync.coordinator import OnDemandSyncCoordinator
+from return_platform.dynamic_knowledge.on_demand_sync.extraction import (
+    GenericSourceRecordExtractor,
 )
 from return_platform.dynamic_knowledge.order_agent.contracts import (
     ActionType,
@@ -72,6 +90,8 @@ from return_platform.dynamic_knowledge.order_agent.graph_nodes import (
 )
 from return_platform.dynamic_knowledge.order_agent.state import CandidateSet
 from return_platform.dynamic_knowledge.schema import ActiveSchema
+from return_platform.source_connectors.compilation import compile_source_read
+from return_platform.source_connectors.contracts import RawSourceDocument, RawSourcePage
 
 pytestmark = pytest.mark.asyncio
 
@@ -170,6 +190,51 @@ class MemoryEvidence:
 CANDIDATE_SET_ID = "cs-smoke"
 CANDIDATE_ID = "cand-1"
 ORDER_REFERENCE = "CW273354"
+ACCOUNT_ID = "CHARLOTTE"
+ORDER_KEY = f"{ACCOUNT_ID}*{ORDER_REFERENCE}"
+
+#: One salesInv header, as the schema maps it. Only the fields the on-demand
+#: scenarios below actually assert on, plus the `docType` discriminator that
+#: `sales_order`'s `where` selector tests -- omitting that is exactly how the
+#: order used to be fetched and thrown away.
+SALES_INV_DOCUMENT: dict[str, Any] = {
+    "_id": ORDER_KEY,
+    "salesHdrEventMeta": {"lastUpdateTs": "2026-08-04T09:00:00Z"},
+    "salesHdrEventData": {
+        "accountId": ACCOUNT_ID,
+        "orderId": ORDER_REFERENCE,
+        "docType": "headerLines",
+        "orderStatus": "OPEN",
+    },
+    "salesHdr": {"salesHdrData": {"custId": "C-1", "custName": "Jane Doe"}},
+    "salesLines": [
+        {
+            "salesLnsEventData": {"lineNumber": "1", "lineType": "PRODUCT"},
+            "lineData": {"altCode1": "FAU-1234", "productDesc": "Chrome faucet", "orderQty": 2},
+        }
+    ],
+}
+
+
+def _projected(document: Any, paths: tuple[tuple[str, ...], ...]) -> Any:
+    """The document as a projected read returns it. Array-aware, because the
+    paths that matter address fields inside `salesLines[]`."""
+    if isinstance(document, list):
+        return [_projected(element, paths) for element in document]
+    kept: dict[str, Any] = {}
+    for path in paths:
+        head, *rest = path
+        if not isinstance(document, dict) or head not in document:
+            continue
+        if not rest:
+            kept[head] = document[head]
+            continue
+        nested = _projected(
+            document[head], tuple(tail for first, *tail in paths if first == head and tail)
+        )
+        if nested not in ({}, []):
+            kept[head] = nested
+    return kept
 
 
 class RecordingCaseStore:
@@ -251,12 +316,95 @@ def _confirm(candidate_id: str = CANDIDATE_ID) -> AgentAction:
     )
 
 
+class ProjectingSource:
+    """The one salesInv document, returned through the projection it was asked for.
+
+    Substituted at the same boundary as the model and graph execution -- the
+    infrastructure edge -- so everything between the agent's decision and the
+    graph write is the shipped code: the planner, the source-read compiler, the
+    extractor and the projector.
+
+    Honouring the projection is what makes this worth having. A source double
+    that returned the whole document regardless would have reported the same
+    success while the shipped projection was discarding the order.
+    """
+
+    def __init__(self) -> None:
+        self.reads = 0
+
+    async def targeted_read(self, *, schema: ActiveSchema, plan: Any) -> RawSourcePage:
+        self.reads += 1
+        compiled = compile_source_read(schema, plan)
+        return RawSourcePage(
+            documents=(
+                RawSourceDocument(
+                    operation="UPSERT",
+                    document=_projected(SALES_INV_DOCUMENT, compiled.projected_physical_paths),
+                    source_identity=ORDER_KEY,
+                ),
+            ),
+            observed_at=datetime.now(UTC),
+        )
+
+
+class OneSource:
+    def __init__(self, source: ProjectingSource) -> None:
+        self._source = source
+
+    def resolve(self, source_asset_id: str) -> ProjectingSource:
+        return self._source
+
+
+class CountingGraphWriter:
+    """Stands in for Neo4j and counts what it was asked to write."""
+
+    def __init__(self) -> None:
+        self.node_labels: list[str] = []
+
+    async def write(
+        self, *, schema: ActiveSchema, graph_generation_id: str, batch: Any
+    ) -> tuple[int, int]:
+        self.node_labels.extend(
+            schema.graph.nodes[mutation.projection_id].label for mutation in batch.node_mutations
+        )
+        return len(batch.node_mutations), len(batch.relationship_mutations)
+
+
+class FreshSyncStore:
+    """Every request digest is new. Idempotency has its own tests; reusing a
+    receipt here would silently skip the source read these scenarios are about."""
+
+    async def reserve(
+        self,
+        *,
+        request_digest: str,
+        proposed_request_id: str,
+        schema_version: str,
+        graph_generation_id: str,
+    ) -> SyncReservation:
+        return SyncReservation(acquired=True, sync_request_id=proposed_request_id)
+
+    async def complete(self, receipt: SyncReceipt) -> None:
+        return None
+
+
+def _sync_coordinator(source: ProjectingSource, writer: CountingGraphWriter) -> Any:
+    return OnDemandSyncCoordinator(
+        connectors=OneSource(source),
+        extractor=GenericSourceRecordExtractor(),
+        projector=GenericGraphProjector(),
+        writer=writer,
+        store=FreshSyncStore(),
+    )
+
+
 def _dependencies(
     schema: ActiveSchema,
     model: ScriptedModel,
     knowledge: RecordingKnowledge,
     evidence: MemoryEvidence,
     case_store: RecordingCaseStore | None = None,
+    on_demand_sync: Any = None,
 ) -> GraphDependencies:
     """Real guards and the real compiler -- the point of the exercise."""
     return GraphDependencies(
@@ -270,7 +418,7 @@ def _dependencies(
         strong_anchor_guard=StrongAnchorGuard(),
         hallucination_guard=HallucinationGuard(),
         response_safety_guard=ResponseSafetyGuard(),
-        on_demand_sync=None,
+        on_demand_sync=on_demand_sync,
         compiler=CypherCompiler(),
         case_store=case_store,
     )
@@ -311,11 +459,19 @@ async def _run(
     rows: list[dict[str, Any]] | None = None,
     case_store: RecordingCaseStore | None = None,
     seed_candidate_set: bool = False,
+    on_demand_sync: Any = None,
 ) -> tuple[dict[str, Any], ScriptedModel, RecordingKnowledge]:
     model = ScriptedModel(actions)
     knowledge = RecordingKnowledge(rows if rows is not None else [])
     graph = build_order_agent_graph(
-        _dependencies(schema, model, knowledge, MemoryEvidence(), case_store=case_store)
+        _dependencies(
+            schema,
+            model,
+            knowledge,
+            MemoryEvidence(),
+            case_store=case_store,
+            on_demand_sync=on_demand_sync,
+        )
     )
     state = _state(schema, message)
     if seed_candidate_set:
@@ -369,6 +525,51 @@ def _graph_query(plan: LogicalQueryPlan) -> AgentAction:
         action_type=ActionType.GRAPH_QUERY,
         decision_summary="Read the graph directly.",
         query_plan=plan,
+    )
+
+
+def _order_lookup_plan() -> LogicalQueryPlan:
+    """The plan the agent re-runs once the record has been pulled in."""
+    return LogicalQueryPlan(
+        operation=QueryOperation.SEARCH,
+        start_entity_id="sales_order",
+        fields=("order_key",),
+        filters=(
+            QueryCondition(
+                entity_id="sales_order",
+                field_id="order_key",
+                operator="EXACT",
+                value=ORDER_KEY,
+            ),
+        ),
+    )
+
+
+def _request_sync() -> AgentAction:
+    """The escalation: the graph does not have it, so go to the source.
+
+    `exact_order_key` is a configured strong anchor with `on_demand_sync_allowed`,
+    and `order_key` carries `on_demand_sync_anchor` -- both real
+    `StrongAnchorGuard` checks, and both are the reason this action is
+    expressible at all.
+    """
+    return AgentAction(
+        business_capability=CAPABILITY,
+        action_type=ActionType.REQUEST_ON_DEMAND_SYNC,
+        decision_summary="The graph has no such order; fetch it from the source.",
+        strong_anchor_request=StrongAnchorRequest(
+            entity_id="sales_order",
+            strong_anchor_id="exact_order_key",
+            anchors=(
+                AnchorValue(
+                    field_id="order_key",
+                    operator="EXACT",
+                    value=ORDER_KEY,
+                    value_origin="USER_MESSAGE",
+                ),
+            ),
+        ),
+        original_query_plan=_order_lookup_plan(),
     )
 
 
@@ -726,6 +927,146 @@ async def test_confirmation_fails_loudly_when_no_case_store_is_configured(
             config={"recursion_limit": 24},
         )
     assert raised.value.code == "ORDER_AGENT_CASE_STORE_UNAVAILABLE"
+
+
+# ---------------------------------------------------------------------------
+# On-demand synchronization: the escalation when the graph is behind the source
+# ---------------------------------------------------------------------------
+
+
+async def test_a_strong_anchor_reaches_the_source_and_the_plan_is_retried(
+    schema: ActiveSchema,
+) -> None:
+    """The whole escalation, end to end, with only the source and graph faked.
+
+    An order placed minutes ago is not in the projection yet. The agent holds an
+    order key, escalates, and the record is pulled and written -- and then the
+    *original* plan runs again, because a sync that does not lead back to an
+    answer has not helped anybody.
+    """
+    source, writer = ProjectingSource(), CountingGraphWriter()
+    _, model, knowledge = await _run(
+        schema,
+        f"order {ORDER_REFERENCE}, placed this morning",
+        [_request_sync(), _respond("Found it after checking the source.")],
+        on_demand_sync=_sync_coordinator(source, writer),
+    )
+
+    assert model.dispatched == [ActionType.REQUEST_ON_DEMAND_SYNC, ActionType.RESPOND]
+    assert source.reads == 1, "the escalation must actually read the source"
+    # The failure this whole path was rebuilt around: the source answered and
+    # the projection threw the answer away, so the sync succeeded having written
+    # nothing and the agent retried against an unchanged graph.
+    assert "SalesOrder" in writer.node_labels
+    assert "OrderLine" in writer.node_labels
+    assert [plan.start_entity_id for plan in knowledge.plans] == ["sales_order"]
+    assert knowledge.plans[0] == _order_lookup_plan()
+
+
+async def test_the_targeted_sync_budget_is_enforced(schema: ActiveSchema) -> None:
+    """A model that keeps escalating is stopped by policy, not by the source.
+
+    `max_targeted_syncs_per_turn` is 3 in the shipped policy. Each sync is a
+    live read of a production system, so the budget is the only thing between a
+    confused turn and an unbounded fan-out of source queries.
+    """
+    policy = schema.agent_policies[AGENT_ID]
+    source, writer = ProjectingSource(), CountingGraphWriter()
+    model = ScriptedModel([_request_sync() for _ in range(policy.max_targeted_syncs_per_turn + 2)])
+    graph = build_order_agent_graph(
+        _dependencies(
+            schema,
+            model,
+            RecordingKnowledge([]),
+            MemoryEvidence(),
+            on_demand_sync=_sync_coordinator(source, writer),
+        )
+    )
+
+    with pytest.raises(OrderAgentFailure) as raised:
+        await graph.ainvoke(
+            _state(schema, "keep checking the source"),
+            context=TurnRuntimeContext(guard_context=_guard_context(schema)),
+            config={"recursion_limit": 64},
+        )
+
+    assert raised.value.code == "ORDER_AGENT_SYNC_BUDGET_EXCEEDED"
+    assert source.reads == policy.max_targeted_syncs_per_turn
+
+
+async def test_an_anchor_the_schema_does_not_enable_never_reaches_the_source(
+    schema: ActiveSchema,
+) -> None:
+    """The guard, not the connector, decides what may be fetched.
+
+    `shipment` declares a perfectly well-formed `exact_tracking` anchor with
+    `on_demand_sync_allowed: true` and is nonetheless `source_access:
+    SEED_ONLY` -- shipmentInfo has no verified source contract. So a request
+    that looks entirely legitimate must still be refused, and refused *before*
+    the read: a rejection that arrived after the source had been queried would
+    not be a rejection of anything.
+    """
+    source, writer = ProjectingSource(), CountingGraphWriter()
+    forbidden = AgentAction(
+        business_capability=CAPABILITY,
+        action_type=ActionType.REQUEST_ON_DEMAND_SYNC,
+        decision_summary="Try the seed-only entity.",
+        strong_anchor_request=StrongAnchorRequest(
+            entity_id="shipment",
+            strong_anchor_id="exact_tracking",
+            anchors=(
+                AnchorValue(
+                    field_id="tracking_number",
+                    operator="EXACT",
+                    value="1Z999",
+                    value_origin="USER_MESSAGE",
+                ),
+            ),
+        ),
+        original_query_plan=_order_lookup_plan(),
+    )
+    model = ScriptedModel([forbidden])
+    graph = build_order_agent_graph(
+        _dependencies(
+            schema,
+            model,
+            RecordingKnowledge([]),
+            MemoryEvidence(),
+            on_demand_sync=_sync_coordinator(source, writer),
+        )
+    )
+
+    with pytest.raises((OrderAgentFailure, AssertionError)):
+        await graph.ainvoke(
+            _state(schema, "where is that shipment"),
+            context=TurnRuntimeContext(guard_context=_guard_context(schema)),
+            config={"recursion_limit": 24},
+        )
+    assert source.reads == 0
+    assert writer.node_labels == []
+
+
+async def test_a_process_without_a_source_connection_refuses_rather_than_pretends(
+    schema: ActiveSchema,
+) -> None:
+    """No coordinator means no source. Say so; do not answer as if one was checked.
+
+    The prompt tells the model to report that it "checked the source system
+    directly" after a sync. A turn that silently skipped the sync would make
+    that sentence a lie told to an associate on a call.
+    """
+    model = ScriptedModel([_request_sync()])
+    graph = build_order_agent_graph(
+        _dependencies(schema, model, RecordingKnowledge([]), MemoryEvidence(), on_demand_sync=None)
+    )
+
+    with pytest.raises(OrderAgentFailure) as raised:
+        await graph.ainvoke(
+            _state(schema, f"order {ORDER_REFERENCE}"),
+            context=TurnRuntimeContext(guard_context=_guard_context(schema)),
+            config={"recursion_limit": 24},
+        )
+    assert raised.value.code == "ON_DEMAND_SYNC_SOURCE_UNAVAILABLE"
 
 
 async def test_the_reasoning_step_budget_is_enforced(schema: ActiveSchema) -> None:

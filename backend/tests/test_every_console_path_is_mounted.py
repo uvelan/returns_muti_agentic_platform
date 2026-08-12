@@ -61,6 +61,9 @@ CONSOLE_PATHS: tuple[str, ...] = (
     "/api/ai/interceptions/{interception_id}/request",
     "/api/ai/interceptions/{interception_id}/answer",
     "/api/ai/interceptions/{interception_id}/cancel",
+    # Source Sync (S6)
+    "/api/graph-sync/runs",
+    "/api/graph-sync/runs/{run_id}",
     # Graph Schema Analyzer
     "/api/graph-schema/analyses",
     "/api/graph-schema/analyses/{analysis_id}",

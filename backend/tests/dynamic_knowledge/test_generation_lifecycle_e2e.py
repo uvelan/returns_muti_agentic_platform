@@ -24,7 +24,7 @@ that no unit test can prove together:
   the one the snapshot points at.
 
 Assembly deliberately mirrors `data_platform/graph/sync_service.py`'s production
-recipe (`SourceConnectorRegistry` → `ProjectorGraphWriter` →
+recipe (`scan_connector_registry` → `ProjectorGraphWriter` →
 `GenericSyncCoordinator`). A test that assembled the pipeline differently could
 pass while production's wiring was broken, which would make it worse than no
 test.
@@ -71,7 +71,7 @@ from return_platform.dynamic_knowledge.on_demand_sync.extraction import (
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 from return_platform.dynamic_knowledge.sync.adapters import (
     ProjectorGraphWriter,
-    SourceConnectorRegistry,
+    scan_connector_registry,
 )
 from return_platform.dynamic_knowledge.sync.coordinator import GenericSyncCoordinator
 from return_platform.source_connectors.mongodb import MongoDBSourceScanConnector
@@ -166,7 +166,7 @@ class _Harness:
         """Assembled exactly as `GraphSyncService` assembles it in production."""
         graph_writer = Neo4jDynamicGraphWriter(self.neo4j)
         return GenericSyncCoordinator(
-            connectors=SourceConnectorRegistry(
+            connectors=scan_connector_registry(
                 schema=self.schema,
                 mongo_connector=MongoDBSourceScanConnector(
                     self.mongo[self.source_database], schema=self.schema

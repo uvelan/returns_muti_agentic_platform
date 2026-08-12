@@ -62,6 +62,51 @@ function envelope<T>(data: T, requestId: string) {
   };
 }
 
+const SYNC_RUN_FULL = {
+  id: "sync-mock-full",
+  mode: "FULL",
+  status: "COMPLETED",
+  schemaVersion: "2026.08.04",
+  sourceCounts: { source_sales: 1240, source_products: 380 },
+  nodeWrites: 3120,
+  relationshipWrites: 2740,
+  constraintsApplied: ["uq_salesorder_account_id_sales_order_number"],
+  configurationDigest: "7c9d67a64d2b2372",
+  errorCode: null,
+  startedBy: "mock-operator",
+  startedAt: "2026-08-11T06:00:00Z",
+  completedAt: "2026-08-11T06:04:12Z",
+  graphGenerationId: null,
+  requestDigest: null,
+  requestedBy: null,
+};
+
+const SYNC_RUN_ON_DEMAND = {
+  id: "sync-mock-ondemand",
+  mode: "ON_DEMAND",
+  status: "COMPLETED",
+  schemaVersion: "2026.08.04",
+  sourceCounts: { source_sales: 1 },
+  nodeWrites: 5,
+  relationshipWrites: 4,
+  constraintsApplied: [],
+  configurationDigest: "7c9d67a64d2b2372",
+  errorCode: null,
+  startedBy: "order-discovery-agent",
+  startedAt: "2026-08-11T09:41:02Z",
+  completedAt: "2026-08-11T09:41:03Z",
+  graphGenerationId: "legacy-live",
+  requestDigest: "0f3a91c4",
+  requestedBy: {
+    agentId: "order-discovery-agent",
+    conversationId: "conv-mock-1",
+    clientTurnId: "turn-4",
+    entityId: "sales_order",
+    strongAnchorId: "exact_order_key",
+    anchorFieldIds: ["order_key"],
+  },
+};
+
 const SESSION = {
   id: "ret-mock-1",
   correlationId: "corr-mock-1",
@@ -413,6 +458,33 @@ export const canonicalHandlers = [
         "audit",
       ),
     );
+  }),
+
+  // --- source sync (S6) ------------------------------------------------------
+  //
+  // Both kinds of run, because the whole point of the screen is that they share
+  // one history: a scheduled sweep and a single record an agent pulled in
+  // mid-conversation. A fixture with only the first would render a screen that
+  // looks finished and hides half of what it is for.
+
+  http.get("/api/graph-sync/runs", async ({ request }) => {
+    await delay(80);
+    const mode = new URL(request.url).searchParams.get("mode");
+    const runs = [SYNC_RUN_ON_DEMAND, SYNC_RUN_FULL].filter(
+      (run) => mode === null || run.mode === mode,
+    );
+    return HttpResponse.json(envelope(runs, "sync-runs"));
+  }),
+  http.get("/api/graph-sync/runs/:runId", async ({ params }) => {
+    await delay(80);
+    const run = params.runId === SYNC_RUN_FULL.id ? SYNC_RUN_FULL : SYNC_RUN_ON_DEMAND;
+    return HttpResponse.json(envelope(run, "sync-run"));
+  }),
+  http.post("/api/graph-sync/runs", async () => {
+    // Slow on purpose: the real endpoint awaits the sync, and a mock that
+    // answered instantly would hide the pending state the screen renders.
+    await delay(1200);
+    return HttpResponse.json(envelope(SYNC_RUN_FULL, "sync-run-started"));
   }),
 
   // --- graph schema ----------------------------------------------------------

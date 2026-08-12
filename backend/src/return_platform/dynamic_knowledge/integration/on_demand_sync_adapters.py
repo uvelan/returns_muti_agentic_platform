@@ -18,56 +18,32 @@ from return_platform.dynamic_knowledge.on_demand_sync.contracts import GraphMuta
 from return_platform.dynamic_knowledge.schema import ActiveSchema, ConnectorType
 from return_platform.source_connectors.mongodb import MongoDBSourceScanConnector
 from return_platform.source_connectors.protocols import TargetedSourceConnector
+from return_platform.source_connectors.registry import SourceConnectorsByType
 from return_platform.source_connectors.sqlserver import SqlServerSourceScanConnector
 
 
-class UnavailableOnDemandConnector(RuntimeError):
-    """No on-demand-sync connector is configured for a source's connector_type."""
+def targeted_connector_registry(
+    *,
+    schema: ActiveSchema,
+    mongo: MongoDBSourceScanConnector | None,
+    sqlserver: SqlServerSourceScanConnector | None,
+) -> SourceConnectorsByType[TargetedSourceConnector]:
+    """The targeted-read half of the one connector-type dispatch.
 
+    This was `OnDemandConnectorRegistry`, a hand-written MONGODB/MSSQL branch
+    duplicating the one in `sync.adapters` -- so a source type reachable by a
+    scheduled sync could still be unreachable on demand, and nothing said so
+    until an agent turn hit it. Both now build `SourceConnectorsByType`.
 
-class OnDemandConnectorRegistry:
-    """Dispatches by a source asset's configured connector_type to one
-    dedicated, long-lived targeted-read connector instance per type.
-
-    Deliberately separate instances from any full-sync pipeline's connectors
-    (e.g. data_platform.graph.sync_service's) -- on-demand sync and full sync
-    are started/stopped by different subsystems with different lifecycles,
-    even though `targeted_read()` itself is stateless with respect to
-    page_size/seed_pins/max_records_per_source, so sharing would have been
-    safe too.
+    The connector *instances* stay separate from any full-sync pipeline's:
+    on-demand sync and full sync are started and stopped by different
+    subsystems, even though `targeted_read()` is stateless with respect to
+    page_size/seed_pins/max_records_per_source, so sharing would have been safe.
     """
-
-    def __init__(
-        self,
-        *,
-        schema: ActiveSchema,
-        mongo: MongoDBSourceScanConnector | None,
-        sqlserver: SqlServerSourceScanConnector | None,
-    ) -> None:
-        self._schema = schema
-        self._mongo = mongo
-        self._sqlserver = sqlserver
-
-    def resolve(self, source_asset_id: str) -> TargetedSourceConnector:
-        source = self._schema.sources[source_asset_id]
-        if source.connector_type is ConnectorType.MONGODB:
-            if self._mongo is None:
-                raise UnavailableOnDemandConnector(
-                    f"source {source_asset_id!r} is MONGODB but no on-demand Mongo "
-                    "connector was configured"
-                )
-            return self._mongo
-        if source.connector_type is ConnectorType.MSSQL:
-            if self._sqlserver is None:
-                raise UnavailableOnDemandConnector(
-                    f"source {source_asset_id!r} is MSSQL but no on-demand SQL Server "
-                    "connector was configured"
-                )
-            return self._sqlserver
-        raise UnavailableOnDemandConnector(
-            f"no on-demand-sync connector exists for connector_type "
-            f"{source.connector_type.value!r} (source {source_asset_id!r})"
-        )
+    return SourceConnectorsByType(
+        sources=schema.sources,
+        connectors={ConnectorType.MONGODB: mongo, ConnectorType.MSSQL: sqlserver},
+    )
 
 
 class NoGenerationMarker(RuntimeError):

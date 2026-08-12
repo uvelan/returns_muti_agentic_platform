@@ -33,8 +33,8 @@ from return_platform.dynamic_knowledge.integration.mongo_store import (
 )
 from return_platform.dynamic_knowledge.integration.neo4j_gateway import Neo4jKnowledgeGateway
 from return_platform.dynamic_knowledge.integration.on_demand_sync_adapters import (
-    OnDemandConnectorRegistry,
     OnDemandNeo4jGraphWriter,
+    targeted_connector_registry,
 )
 from return_platform.dynamic_knowledge.knowledge.guards import (
     CapabilityGuard,
@@ -54,8 +54,14 @@ from return_platform.dynamic_knowledge.lifecycle.mongo_store import (
     ACTIVE_RUNTIME_SNAPSHOTS_COLLECTION,
     MongoActiveRuntimeSnapshotStore,
 )
-from return_platform.dynamic_knowledge.on_demand_sync.coordinator import OnDemandSyncCoordinator
-from return_platform.dynamic_knowledge.on_demand_sync.extraction import GenericSourceRecordExtractor
+from return_platform.dynamic_knowledge.on_demand_sync.coordinator import (
+    OnDemandSyncCoordinator,
+    TargetedSyncRunLedger,
+)
+from return_platform.dynamic_knowledge.on_demand_sync.extraction import (
+    GenericSourceRecordExtractor,
+    contact_digest_secrets,
+)
 from return_platform.dynamic_knowledge.order_agent.conversation_repository import (
     AtomicConversationRepository,
 )
@@ -88,6 +94,7 @@ async def build_dynamic_order_agent_runtime(
     route_pool: AIRoutePool,
     system_store: SystemStore,
     reasoning_encryptor: EnvelopeEncryptor,
+    targeted_sync_runs: TargetedSyncRunLedger | None = None,
 ) -> DynamicOrderAgentCoordinator:
     # The published release if the analyzer has activated one, else the file.
     # This is the line that makes approving a schema in the console change what
@@ -125,7 +132,7 @@ async def build_dynamic_order_agent_runtime(
 
     on_demand_sync_store = MongoOnDemandSyncStore(platform_mongo, settings.mongo_database)
     await on_demand_sync_store.ensure_indexes()
-    on_demand_connectors = OnDemandConnectorRegistry(
+    on_demand_connectors = targeted_connector_registry(
         schema=schema,
         mongo=MongoDBSourceScanConnector(
             source_mongo[settings.source_mongo_database], schema=schema
@@ -144,13 +151,26 @@ async def build_dynamic_order_agent_runtime(
     )
     on_demand_sync = OnDemandSyncCoordinator(
         connectors=on_demand_connectors,
-        extractor=GenericSourceRecordExtractor(),
+        # The same resolved secrets the scheduled sync extracts with. Handing an
+        # empty map here would make a derived field that needs one raise mid-turn
+        # for a document the scheduled pipeline projects without complaint --
+        # two extraction behaviours from one extractor, decided by which caller
+        # built it.
+        extractor=GenericSourceRecordExtractor(
+            resolved_secrets=contact_digest_secrets(
+                schema, hmac_key=settings.contact_lookup_hmac_key.get_secret_value()
+            )
+        ),
         projector=GenericGraphProjector(),
         writer=OnDemandNeo4jGraphWriter(
             Neo4jDynamicGraphWriter(neo4j_driver, database=settings.neo4j_database),
             Neo4jGenerationWriter(neo4j_driver, database=settings.neo4j_database),
         ),
         store=on_demand_sync_store,
+        # The one run ledger the sync control screen reads. Supplied by the
+        # composition root rather than built here: it writes a `data_platform`
+        # collection, and `dynamic_knowledge` does not depend on that package.
+        run_ledger=targeted_sync_runs,
         # Shares the coordinator's lease store, so a read lease and the write
         # reservation taken inside that same turn are counted against one
         # generation document and one drain.

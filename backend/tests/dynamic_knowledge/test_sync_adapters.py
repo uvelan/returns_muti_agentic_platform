@@ -17,8 +17,9 @@ from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 from return_platform.dynamic_knowledge.sync.adapters import (
     ProjectorGraphWriter,
-    SourceConnectorRegistry,
+    scan_connector_registry,
 )
+from return_platform.source_connectors.registry import UnreachableSource
 
 
 class FakeProjector:
@@ -185,7 +186,7 @@ def test_registry_dispatches_by_connector_type(active_schema: ActiveSchema) -> N
     schema = ActiveSchema.model_validate(raw)
     mongo = object()
     sqlserver = object()
-    registry = SourceConnectorRegistry(
+    registry = scan_connector_registry(
         schema=schema, mongo_connector=mongo, sqlserver_connector=sqlserver
     )
     assert registry.resolve("source_a") is mongo  # source_a is MONGODB in the shared fixture
@@ -193,6 +194,6 @@ def test_registry_dispatches_by_connector_type(active_schema: ActiveSchema) -> N
 
 
 def test_registry_raises_for_an_unregistered_connector_type(active_schema: ActiveSchema) -> None:
-    registry = SourceConnectorRegistry(schema=active_schema, mongo_connector=object())
-    with pytest.raises(ValueError, match="no connector registered"):
+    registry = scan_connector_registry(schema=active_schema, mongo_connector=object())
+    with pytest.raises(UnreachableSource, match="no connector of that type is configured"):
         registry.resolve("source_b")
