@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict
 
 from return_platform.operations.models import CaseFactView, CaseView, ReturnRecordView
@@ -86,6 +86,16 @@ def _stored(document: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in document.items() if key != "_id"}
 
 
+def _belongs_to(case: dict[str, Any], *, tenant_id: str, principal_id: str) -> bool:
+    """Whose case this is.
+
+    Both, not either: a principal id repeated in a second tenant would
+    otherwise read across the boundary, which is the failure the conversation
+    store was already fixed for.
+    """
+    return case.get("tenantId") == tenant_id and case.get("principalId") == principal_id
+
+
 def _item(document: dict[str, Any]) -> CaseReturnItem:
     return CaseReturnItem(
         returnItemId=str(document["returnItemId"]),
@@ -101,6 +111,11 @@ def _item(document: dict[str, Any]) -> CaseReturnItem:
 @router.get("", response_model=APIResponse[list[CaseSummary]])
 async def list_cases(
     request: Request,
+    conversationId: str | None = Query(  # noqa: N803 - the wire name, not a Python one
+        default=None,
+        max_length=200,
+        description="Only the case this Channel A conversation raised, if it raised one.",
+    ),
     _actor_id: str = Depends(require_read_roles),
 ) -> APIResponse[list[CaseSummary]]:
     """The caller's own cases, newest first.
@@ -109,13 +124,25 @@ async def list_cases(
     conversation history is: a case carries the customer's order and whatever
     the associate typed about them, and "list every case" is not a read anyone
     should be able to make by accident.
+
+    `conversationId` narrows to one case rather than being a second endpoint.
+    It is what makes resuming a conversation restore the return with it: the
+    copilot learns the case id from the turn that confirmed, and after a reload
+    there is no such turn to learn it from.
     """
     repository = resolve_operational_repository(request)
     principal = cast(Principal, request.state.principal)
-    cases = await repository.list_cases_for_principal(
-        tenant_id=str(getattr(request.state, "tenant_id", "default")),
-        principal_id=principal.subject,
-    )
+    tenant_id = str(getattr(request.state, "tenant_id", "default"))
+    if conversationId is not None:
+        found = await repository.get_case_by_conversation(
+            conversationId, tenant_id=tenant_id, principal_id=principal.subject
+        )
+        cases = [] if found is None else [found]
+    else:
+        cases = await repository.list_cases_for_principal(
+            tenant_id=tenant_id,
+            principal_id=principal.subject,
+        )
     summaries = [
         CaseSummary(
             caseId=str(case["caseId"]),
@@ -136,10 +163,20 @@ async def get_case(
     request: Request,
     _actor_id: str = Depends(require_read_roles),
 ) -> APIResponse[CaseDetail]:
-    """One case, with each RMA carrying the items it covers."""
+    """One case, with each RMA carrying the items it covers.
+
+    Someone else's case is reported as absent, not as forbidden. A 403 on a
+    guessed id confirms the id, and the list above is deliberately scoped so
+    that no caller learns of a case that is not theirs.
+    """
     repository = resolve_operational_repository(request)
+    principal = cast(Principal, request.state.principal)
     case = await repository.get_case(case_id)
-    if case is None:
+    if case is None or not _belongs_to(
+        case,
+        tenant_id=str(getattr(request.state, "tenant_id", "default")),
+        principal_id=principal.subject,
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={

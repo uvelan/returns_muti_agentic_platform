@@ -85,8 +85,17 @@ export type CaseDetail = {
 };
 
 export const casesApi = {
-  async list(): Promise<CaseSummary[]> {
-    const response = await apiClient<CaseSummary[]>("/api/cases");
+  /**
+   * The caller's own cases, newest first.
+   *
+   * `conversationId` narrows to the one that conversation raised. That is how
+   * a resumed conversation gets its return back: the case id arrives on the
+   * turn that confirmed, and a reopened conversation has no such turn.
+   */
+  async list(conversationId?: string): Promise<CaseSummary[]> {
+    const query =
+      conversationId === undefined ? "" : `?conversationId=${encodeURIComponent(conversationId)}`;
+    const response = await apiClient<CaseSummary[]>(`/api/cases${query}`);
     return response.data ?? [];
   },
 

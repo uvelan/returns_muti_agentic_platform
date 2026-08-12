@@ -759,15 +759,28 @@ class OperationalRepository:
         document = await self.cases.find_one({"confirmationKey": confirmation_key})
         return cast(dict[str, Any], document) if document is not None else None
 
-    async def get_case_by_conversation(self, conversation_id: str) -> dict[str, Any] | None:
+    async def get_case_by_conversation(
+        self,
+        conversation_id: str,
+        *,
+        tenant_id: str | None = None,
+        principal_id: str | None = None,
+    ) -> dict[str, Any] | None:
         """Channel A -> case. What the copilot needs to show a return's state.
 
         Most recent first: a conversation that confirmed two different orders
         has two cases, and the one the associate is working on is the latest.
+
+        Scope belongs in the filter, not in a check afterwards. A conversation
+        id is guessable, and a caller that reads the document first has already
+        read someone else's case by the time it decides not to return it.
         """
-        document = await self.cases.find_one(
-            {"channelAConversationId": conversation_id}, sort=[("createdAt", DESCENDING)]
-        )
+        query: dict[str, Any] = {"channelAConversationId": conversation_id}
+        if tenant_id is not None:
+            query["tenantId"] = tenant_id
+        if principal_id is not None:
+            query["principalId"] = principal_id
+        document = await self.cases.find_one(query, sort=[("createdAt", DESCENDING)])
         return cast(dict[str, Any], document) if document is not None else None
 
     async def get_case_by_work_item(self, work_item_id: str) -> dict[str, Any] | None:

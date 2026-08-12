@@ -283,6 +283,36 @@ async def test_a_case_is_reachable_from_both_channels(
     assert from_b["channelAConversationId"] == conversation_id
 
 
+async def test_the_conversation_lookup_can_be_scoped_to_its_owner(
+    repository: OperationalRepository, principal: str
+) -> None:
+    """Scope in the filter, not in a check afterwards.
+
+    A conversation id is guessable, and the copilot's resume path hands one
+    straight to this method. A caller that read the document first and rejected
+    it second would already have someone else's case in memory -- and one
+    forgetful `if` away from returning it.
+    """
+    conversation_id = f"conv-{uuid.uuid4().hex[:8]}"
+    case = await _case(repository, principal, channel_a_conversation_id=conversation_id)
+
+    mine = await repository.get_case_by_conversation(
+        conversation_id, tenant_id=TENANT, principal_id=principal
+    )
+    other_principal = await repository.get_case_by_conversation(
+        conversation_id, tenant_id=TENANT, principal_id="someone-else"
+    )
+    other_tenant = await repository.get_case_by_conversation(
+        conversation_id, tenant_id="tenant-b", principal_id=principal
+    )
+
+    assert mine is not None and mine["caseId"] == case["caseId"]
+    assert other_principal is None
+    # Both halves of the scope, not either: a principal id repeated in a second
+    # tenant would otherwise read across the boundary.
+    assert other_tenant is None
+
+
 async def test_repeating_a_confirmation_key_yields_one_case(
     repository: OperationalRepository, principal: str
 ) -> None:

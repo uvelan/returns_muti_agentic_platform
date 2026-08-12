@@ -18,7 +18,7 @@ import {
   type ConversationSummary,
   type ResponseStatement,
 } from "../../api/orderAgent";
-import { casesApi, type CaseReturnRecord } from "../../api/cases";
+import { casesApi, type CaseReturnRecord, type CaseSummary } from "../../api/cases";
 import { returnsApi, type ReturnSessionView } from "../../api/returnsDomain";
 import { useCapabilities } from "../../hooks/capabilityContext";
 
@@ -236,6 +236,10 @@ export function ReturnCopilotPage() {
   const [draft, setDraft] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const [turn, setTurn] = useState<AgentTurnResult | null>(null);
+  // The case a *reopened* conversation already had. A live turn's `case_id`
+  // wins over it, so confirming a second order in a resumed conversation moves
+  // the panel to the new case rather than leaving it on the old one.
+  const [resumedCaseId, setResumedCaseId] = useState<string | null>(null);
   // Held across turns, not derived from the latest one: see `turnCandidates`.
   const [candidates, setCandidates] = useState<readonly Record<string, unknown>[]>([]);
   // The backend rejects a turn built on a stale view, so the version from the
@@ -248,20 +252,48 @@ export function ReturnCopilotPage() {
     enabled: can("returns.session.read"),
   });
 
+  // The associate's own open returns, as returns rather than as chats.
+  //
+  // A conversation list answers "what did I talk about"; this answers "what
+  // have I got outstanding", which is the question someone picking the work
+  // back up is actually asking. Each row knows its Channel A conversation, so
+  // opening one is the same resume path as opening the chat.
+  const cases = useQuery({
+    queryKey: ["cases", "list"],
+    queryFn: () => casesApi.list(),
+    enabled: can("returns.session.read"),
+  });
+
   function startNewReturn() {
     setConversationId(newConversationId());
     setHistory([]);
     setTurn(null);
     setCandidates([]);
+    setResumedCaseId(null);
     setDraft("");
     // Back to 0: a new conversation has no committed version, and carrying the
     // previous one's would be rejected as stale on the very first turn.
     versionRef.current = 0;
   }
 
+  /**
+   * Reopen a conversation *and* the return it raised.
+   *
+   * Both, in one action. The case id arrives on the turn that confirmed the
+   * order, so a conversation reopened from history had none until the
+   * associate sent another message -- the RMA panel came back blank on a
+   * return that already had one, and the only way to see it was to type
+   * something. The lookup is by conversation, scoped server-side to the
+   * caller.
+   */
   const open = useMutation({
-    mutationFn: (id: string) => orderAgentApi.readTranscript(id),
-    onSuccess: (transcript) => {
+    mutationFn: async (id: string) => ({
+      transcript: await orderAgentApi.readTranscript(id),
+      // A conversation that never confirmed an order has no case, and that is
+      // an answer, not a failure.
+      raisedCase: (await casesApi.list(id)).at(0) ?? null,
+    }),
+    onSuccess: ({ transcript, raisedCase }) => {
       setConversationId(transcript.conversationId);
       setHistory(
         transcript.messages.map((message, index) => ({
@@ -273,6 +305,7 @@ export function ReturnCopilotPage() {
       );
       setTurn(null);
       setCandidates([]);
+      setResumedCaseId(raisedCase === null ? null : raisedCase.caseId);
       // Continue where it left off rather than at 0, or the next turn is
       // rejected as built on a stale view of a conversation that has history.
       versionRef.current = transcript.conversationVersion;
@@ -316,7 +349,7 @@ export function ReturnCopilotPage() {
   // candidate -- so two open orders sharing a reference showed the wrong one,
   // and closing the tab lost the link entirely. `case_id` comes back on the
   // turn that confirmed, so there is nothing left to guess.
-  const caseId = turn?.case_id ?? null;
+  const caseId = turn?.case_id ?? resumedCaseId;
   const caseDetail = useQuery({
     queryKey: ["cases", caseId],
     // `skipToken` rather than `enabled`, so the null case is narrowed by the
@@ -371,6 +404,8 @@ export function ReturnCopilotPage() {
         error={send.error}
         suggestions={turn?.response.suggestions ?? []}
         conversations={conversations.data ?? []}
+        openCases={cases.data ?? []}
+        caseId={caseId}
         historyError={conversations.error}
         historyLoading={conversations.isPending}
         conversationId={conversationId}
@@ -409,6 +444,8 @@ function ChatPane({
   error,
   suggestions,
   conversations,
+  openCases,
+  caseId,
   historyError,
   historyLoading,
   conversationId,
@@ -425,6 +462,8 @@ function ChatPane({
   error: Error | null;
   suggestions: readonly string[];
   conversations: readonly ConversationSummary[];
+  openCases: readonly CaseSummary[];
+  caseId: string | null;
   historyError: Error | null;
   historyLoading: boolean;
   conversationId: string;
@@ -475,6 +514,54 @@ function ChatPane({
 
       {showHistory ? (
         <div className="border-b border-outline-variant bg-surface-container-low">
+          {/*
+            Open returns first, then the chats. Someone reopening the panel is
+            far more often picking up outstanding work than re-reading a
+            conversation, and a case row carries what they need to recognise it
+            -- the order and how many RMAs it has -- which a chat title does
+            not.
+          */}
+          {openCases.length === 0 ? null : (
+            <>
+              <p className="px-4 pt-3 text-[11px] font-medium uppercase tracking-wide text-outline">
+                Open returns
+              </p>
+              <ul className="max-h-40 overflow-y-auto py-1">
+                {openCases.map((openCase) => (
+                  <li key={openCase.caseId}>
+                    <button
+                      type="button"
+                      // A case with no Channel A conversation cannot be
+                      // resumed as a chat -- it was raised by another channel
+                      // -- so the row reads rather than pretending to open.
+                      disabled={openCase.channelAConversationId === null}
+                      onClick={() => {
+                        if (openCase.channelAConversationId !== null) {
+                          onOpen(openCase.channelAConversationId);
+                        }
+                      }}
+                      className={`flex w-full flex-col gap-0.5 px-4 py-2 text-left transition enabled:hover:bg-surface-container disabled:cursor-default ${
+                        openCase.caseId === caseId ? "bg-surface-container" : ""
+                      }`}
+                    >
+                      <span className="truncate text-sm text-on-surface">
+                        {openCase.confirmedOrderReference ?? "Order not yet confirmed"}
+                      </span>
+                      <span className="text-[11px] text-outline">
+                        {openCase.status.toLowerCase().replace(/_/g, " ")}
+                        {openCase.returnRecordCount === 0
+                          ? ""
+                          : ` -- ${String(openCase.returnRecordCount)} RMA${
+                              openCase.returnRecordCount === 1 ? "" : "s"
+                            }`}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
           <p className="px-4 pt-3 text-[11px] font-medium uppercase tracking-wide text-outline">
             Previous returns
           </p>

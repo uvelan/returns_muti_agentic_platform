@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   readTranscript: vi.fn(),
   can: vi.fn(),
   readCase: vi.fn(),
+  listCases: vi.fn(),
 }));
 
 vi.mock("../../api/orderAgent", async (importOriginal) => ({
@@ -40,7 +41,7 @@ vi.mock("../../api/orderAgent", async (importOriginal) => ({
 }));
 
 vi.mock("../../api/cases", () => ({
-  casesApi: { read: mocks.readCase, list: vi.fn() },
+  casesApi: { read: mocks.readCase, list: mocks.listCases },
 }));
 
 vi.mock("../../hooks/capabilityContext", () => ({
@@ -72,6 +73,9 @@ beforeEach(() => {
   mocks.listConversations.mockReset().mockResolvedValue([]);
   mocks.readTranscript.mockReset();
   mocks.readCase.mockReset();
+  // Resuming a conversation asks whether it raised a case. Most conversations
+  // did not, and that answer is an empty list -- not an absent one.
+  mocks.listCases.mockReset().mockResolvedValue([]);
   conversationCounter = 0;
 });
 
@@ -576,5 +580,140 @@ describe("the RMA panel", () => {
     // No case id on the turn means no case fetch: the copilot no longer infers
     // a return from a candidate list of length one.
     expect(mocks.readCase).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Resuming a return, not just a chat.
+ *
+ * The case id only ever arrived on the turn that confirmed the order, so a
+ * conversation reopened from history -- or after a reload -- came back with an
+ * empty RMA panel on a return that already had one, and the only way to get it
+ * back was to type another message.
+ */
+describe("resuming a return", () => {
+  const OPEN_CASE = {
+    caseId: "case-9",
+    status: "AWAITING_SUPPORT",
+    confirmedOrderReference: "CW273354",
+    channelAConversationId: "disc-old",
+    returnRecordCount: 2,
+    updatedAt: "2026-08-12T00:00:00Z",
+  };
+
+  function withHistory() {
+    mocks.listConversations.mockResolvedValue([
+      { conversationId: "disc-old", title: "earlier", messageCount: 2, updatedAt: null },
+    ]);
+    mocks.readTranscript.mockResolvedValue({
+      conversationId: "disc-old",
+      conversationVersion: 7,
+      messages: [{ role: "associate", text: "earlier" }],
+    });
+  }
+
+  it("reads the case a reopened conversation already raised", async () => {
+    withHistory();
+    mocks.listCases.mockResolvedValue([OPEN_CASE]);
+    render(<ReturnCopilotPage />, { wrapper });
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous returns" }));
+    fireEvent.click(await screen.findByText("earlier"));
+
+    // Scoped to the conversation, not "list everything and search here": the
+    // browser-side join is the defect this whole path replaced.
+    await waitFor(() => { expect(mocks.listCases).toHaveBeenCalledWith("disc-old"); });
+    await waitFor(() => { expect(mocks.readCase).toHaveBeenCalledWith("case-9"); });
+  });
+
+  it("does not invent a case for a conversation that never confirmed one", async () => {
+    withHistory();
+    mocks.listCases.mockResolvedValue([]);
+    render(<ReturnCopilotPage />, { wrapper });
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous returns" }));
+    fireEvent.click(await screen.findByText("earlier"));
+
+    await waitFor(() => { expect(mocks.listCases).toHaveBeenCalledWith("disc-old"); });
+    expect(mocks.readCase).not.toHaveBeenCalled();
+  });
+
+  it("lists the associate's open returns by order, not by chat title", async () => {
+    withHistory();
+    mocks.listCases.mockResolvedValue([OPEN_CASE]);
+    render(<ReturnCopilotPage />, { wrapper });
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous returns" }));
+
+    // The order reference and the RMA count are what identify outstanding
+    // work; "earlier" is what the conversation happened to be called.
+    expect(await screen.findByText("CW273354")).toBeInTheDocument();
+    expect(screen.getByText(/2 RMAs/)).toBeInTheDocument();
+  });
+
+  it("opens a return through its own conversation", async () => {
+    withHistory();
+    mocks.listCases.mockResolvedValue([OPEN_CASE]);
+    render(<ReturnCopilotPage />, { wrapper });
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous returns" }));
+    fireEvent.click(await screen.findByText("CW273354"));
+
+    // Not a new chat about an existing return: the same Channel A thread the
+    // case has always pointed at.
+    await waitFor(() => { expect(mocks.readTranscript).toHaveBeenCalledWith("disc-old"); });
+  });
+
+  it("drops the resumed case when the associate starts a new return", async () => {
+    withHistory();
+    mocks.listCases.mockResolvedValue([OPEN_CASE]);
+    mocks.readCase.mockResolvedValue({
+      case: {
+        caseId: "case-9",
+        tenantId: "tenant-a",
+        principalId: "tester",
+        branchId: null,
+        status: "AWAITING_SUPPORT",
+        channelAConversationId: "disc-old",
+        channelBWorkItemId: null,
+        confirmedOrderReference: "CW273354",
+        createdAt: "2026-08-12T00:00:00Z",
+        updatedAt: "2026-08-12T00:00:00Z",
+      },
+      returnRecords: [
+        {
+          record: {
+            returnRecordId: "rr-1",
+            caseId: "case-9",
+            returnReference: "RMA-RESUMED",
+            status: "ISSUED",
+            returnLocation: null,
+            trackingReference: null,
+            labelReference: null,
+            shippingInstructionReference: null,
+            sourceSystem: "RETURN_SUPPORT",
+            version: 0,
+            createdAt: "2026-08-12T00:00:00Z",
+            updatedAt: "2026-08-12T00:00:00Z",
+          },
+          items: [],
+        },
+      ],
+      unassignedItems: [],
+      facts: [],
+    });
+    render(<ReturnCopilotPage />, { wrapper });
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous returns" }));
+    fireEvent.click(await screen.findByText("earlier"));
+    // The RMA is back without the associate typing anything: that is the whole
+    // point of resuming the case alongside the conversation.
+    expect(await screen.findByText("RMA-RESUMED")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /New return/ }));
+
+    // And it does not follow them into the next return, for the same reason
+    // the conversation id is minted afresh.
+    await waitFor(() => { expect(screen.queryByText("RMA-RESUMED")).toBeNull(); });
   });
 });
