@@ -25,6 +25,7 @@ from return_platform.ai.providers.manual import ManualFileProvider
 from return_platform.ai.providers.nvidia import NvidiaProvider
 from return_platform.ai.providers.ollama import OllamaProvider
 from return_platform.ai.providers.openai import OpenAIResponsesProvider
+from return_platform.ai.providers.replay import ReplayProvider, ReplayStore
 from return_platform.ai.providers.simulator import SimulatorProvider
 from return_platform.ai.routing.tasks import ModelTier
 from return_platform.configuration.settings import Settings
@@ -85,6 +86,26 @@ def _provider(
     if provider_name == "MANUAL":
         return _manual_provider(settings, interception_store)
     raise ValueError(f"Unsupported AI provider: {provider_name}")
+
+
+def _with_replay(
+    adapter: AIProvider, settings: Settings, replay_store: ReplayStore | None
+) -> AIProvider:
+    """Wrap a provider so an identical request is answered from a recording.
+
+    Applied to every provider rather than to a chosen one: a suite is only
+    reproducible if *nothing* in it reaches a network, and a single unwrapped
+    route is enough to make a run cost money and drift from the last one.
+
+    A configured mode with no store is a no-op rather than an error. The store
+    is a platform-Mongo dependency, and refusing to build routes without one
+    would make `ai_replay_mode` unusable in exactly the bare-process cases it
+    is most wanted in.
+    """
+    mode = settings.ai_replay_mode.upper()
+    if mode == "OFF" or replay_store is None:
+        return adapter
+    return ReplayProvider(adapter, replay_store, strict=mode == "STRICT")
 
 
 def _manual_provider(
@@ -181,7 +202,10 @@ def _validated_route_bindings(
 
 
 def build_routes(
-    settings: Settings, *, interception_store: InterceptionStore | None = None
+    settings: Settings,
+    *,
+    interception_store: InterceptionStore | None = None,
+    replay_store: ReplayStore | None = None,
 ) -> tuple[AIRoute, ...]:
     provider_order = tuple(p.strip() for p in settings.ai_provider_order.split(","))
     logger.debug("ai_route_build_started", extra={"provider_order": provider_order})
@@ -215,6 +239,7 @@ def build_routes(
                         model=model,
                         interception_store=interception_store,
                     )
+                    adapter = _with_replay(adapter, settings, replay_store)
                     route_id = f"{provider_name.lower()}/{model}/{credential_id}"
                     routes.append(
                         AIRoute(

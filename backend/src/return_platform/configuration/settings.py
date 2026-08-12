@@ -156,6 +156,16 @@ class Settings(BaseSettings):
     # before the first one arrives, and "it depends what the process
     # constructed" is not an answer they can act on.
     ai_manual_handoff: str = Field(default="AUTO", pattern=r"^(AUTO|UI|FILE)$")
+    # Answer from a recording where one exists.
+    #
+    #     -- every call goes to the provider.
+    #  -- a recorded answer is returned when the identical request has
+    #             been seen before; a miss makes the real call and records it,
+    #             so the corpus builds itself from ordinary runs.
+    #  -- a miss is an error. For proving a suite reached no provider
+    #             at all, which is the only way a token-free evaluation run is
+    #             actually token-free rather than mostly so.
+    ai_replay_mode: str = Field(default="OFF", pattern=r"^(OFF|REPLAY|STRICT)$")
     ai_validated_route_bindings: tuple[str, ...] = ()
     ai_validation_interval_hours: int = Field(default=24, ge=1, le=168)
     # Upper bounds allow room for the dev-only MANUAL provider, where a human
