@@ -19,6 +19,11 @@ import {
   type ResponseStatement,
 } from "../../api/orderAgent";
 import { casesApi, type CaseReturnRecord, type CaseSummary } from "../../api/cases";
+import {
+  returnHistoryApi,
+  type ReturnHistory,
+  type ReturnHistoryCase,
+} from "../../api/returnHistory";
 import { returnsApi, type ReturnSessionView } from "../../api/returnsDomain";
 import { useCapabilities } from "../../hooks/capabilityContext";
 
@@ -224,6 +229,46 @@ function resolvedOrderReference(candidates: readonly Record<string, unknown>[]):
   return typeof value === "string" ? value : null;
 }
 
+/** A graph row's string value, or null for anything blank or non-textual. */
+function rowText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
+/**
+ * What to ask the return-history endpoint about, from the resolved candidate.
+ *
+ * Prefers the customer over the order, because the question worth answering is
+ * the wider one: an associate weighing a return wants to know whether this
+ * customer has sent things back before, not only whether *this* order has. The
+ * order anchor is the fallback for a row that carries no customer.
+ *
+ * Both halves of the customer key or neither: an ERP customer number is unique
+ * within a branch account and not across them, so an account-less lookup would
+ * answer about a different customer with the same number in another branch.
+ */
+type ReturnHistoryAnchor =
+  | { kind: "customer"; accountId: string; customerId: string }
+  | { kind: "order"; orderReference: string };
+
+function returnHistoryAnchor(
+  candidates: readonly Record<string, unknown>[],
+): ReturnHistoryAnchor | null {
+  // Exactly one candidate, for the same reason `resolvedOrderReference` insists
+  // on it: a ranked list of three has not resolved anybody, and showing one of
+  // their return histories would be showing a stranger's.
+  if (candidates.length !== 1) return null;
+  const row = candidates[0];
+  const accountId = rowText(row.account_id);
+  const customerId = rowText(row.customer_id);
+  if (accountId !== null && customerId !== null) {
+    return { kind: "customer", accountId, customerId };
+  }
+  const orderReference = rowText(row.sales_order_number);
+  return orderReference === null ? null : { kind: "order", orderReference };
+}
+
 export function ReturnCopilotPage() {
   const { can } = useCapabilities();
   // Settable, not fixed at mount. A `useState(newConversationId)` with no
@@ -378,6 +423,24 @@ export function ReturnCopilotPage() {
   const session =
     (sessions.data ?? []).find((candidate) => candidate.orderReference === confirmedOrder) ?? null;
 
+  // What the graph knows about earlier returns, once one candidate is resolved.
+  //
+  // Not the same read as `caseDetail`. That one is *this* return, addressed by
+  // the case id the confirming turn handed back. This is every return against
+  // the customer or the order, including ones raised by another associate in a
+  // conversation this one has never seen -- which is the whole reason the case,
+  // RMA, item and handling-unit entities were projected into the graph.
+  const historyAnchor = returnHistoryAnchor(candidates);
+  const returnHistory = useQuery({
+    queryKey: ["return-history", historyAnchor],
+    queryFn:
+      historyAnchor === null
+        ? skipToken
+        : historyAnchor.kind === "customer"
+          ? () => returnHistoryApi.byCustomer(historyAnchor.accountId, historyAnchor.customerId)
+          : () => returnHistoryApi.byOrder(historyAnchor.orderReference),
+  });
+
   if (!can("returns.session.read")) {
     return <p className="text-sm text-on-surface-variant">You do not have access to returns.</p>;
   }
@@ -419,7 +482,13 @@ export function ReturnCopilotPage() {
         anchors={anchors(history)}
         returnRecords={caseDetail.data?.returnRecords ?? []}
       />
-      <ContextPane turn={turn} rows={candidates} />
+      <ContextPane
+        turn={turn}
+        rows={candidates}
+        returnHistory={returnHistory.data ?? null}
+        returnHistoryPending={historyAnchor !== null && returnHistory.isPending}
+        returnHistoryError={returnHistory.error}
+      />
     </div>
   );
 }
@@ -955,9 +1024,15 @@ function ProgressPane({
 function ContextPane({
   turn,
   rows,
+  returnHistory,
+  returnHistoryPending,
+  returnHistoryError,
 }: {
   turn: AgentTurnResult | null;
   rows: readonly Record<string, unknown>[];
+  returnHistory: ReturnHistory | null;
+  returnHistoryPending: boolean;
+  returnHistoryError: Error | null;
 }) {
   if (turn === null || rows.length === 0) {
     return (
@@ -1000,8 +1075,138 @@ function ContextPane({
             ))}
           </tbody>
         </table>
+
+        <ReturnHistoryPanel
+          history={returnHistory}
+          pending={returnHistoryPending}
+          error={returnHistoryError}
+        />
       </div>
     </Pane>
+  );
+}
+
+/**
+ * Earlier returns, from the graph.
+ *
+ * Deliberately says "No earlier returns" rather than rendering nothing when the
+ * answer is empty. Absence is the useful answer half the time -- an associate
+ * deciding whether this is a serial returner needs to be told that it is not,
+ * and a panel that vanishes is indistinguishable from one that failed to load.
+ *
+ * Only rendered once a single candidate is resolved, so `history === null` with
+ * `pending === false` means "nothing has been asked yet", not "nothing found".
+ */
+function ReturnHistoryPanel({
+  history,
+  pending,
+  error,
+}: {
+  history: ReturnHistory | null;
+  pending: boolean;
+  error: Error | null;
+}) {
+  if (error !== null) {
+    return (
+      <section className="mt-3 border-t border-outline-variant pt-3">
+        <h3 className="px-2 text-xs font-semibold text-on-surface">Return history</h3>
+        <p className="px-2 pt-1 text-xs text-error">
+          Earlier returns could not be read. {error.message}
+        </p>
+      </section>
+    );
+  }
+  if (pending) {
+    return (
+      <section className="mt-3 border-t border-outline-variant pt-3">
+        <h3 className="px-2 text-xs font-semibold text-on-surface">Return history</h3>
+        <p className="px-2 pt-1 text-xs text-outline">Checking earlier returns...</p>
+      </section>
+    );
+  }
+  if (history === null) return null;
+
+  return (
+    <section className="mt-3 border-t border-outline-variant pt-3">
+      <h3 className="px-2 text-xs font-semibold text-on-surface">
+        Return history ({String(history.cases.length)})
+      </h3>
+      {history.cases.length === 0 ? (
+        <p className="px-2 pt-1 text-xs text-outline">
+          No earlier returns
+          {history.customerId === null ? " against this order." : " for this customer."}
+        </p>
+      ) : (
+        <div className="mt-2 flex flex-col gap-2 px-2 pb-2">
+          {history.cases.map((entry) => (
+            <ReturnHistoryCaseCard key={entry.caseId} entry={entry} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ReturnHistoryCaseCard({ entry }: { entry: ReturnHistoryCase }) {
+  return (
+    <article className="rounded border border-outline-variant bg-surface-container-low p-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="truncate text-xs font-semibold text-on-surface">
+          {entry.confirmedOrderReference ?? "Order not recorded"}
+        </span>
+        <span className="shrink-0 text-[11px] text-outline">{entry.status ?? "-"}</span>
+      </div>
+      {entry.createdAt === null ? null : (
+        <p className="text-[11px] text-outline">Raised {entry.createdAt}</p>
+      )}
+
+      {entry.returnRecords.map((record) => (
+        <div key={record.returnRecordId} className="mt-1.5 border-l-2 border-outline-variant pl-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="truncate text-[11px] font-medium text-on-surface">
+              {record.returnReference ?? "RMA pending"}
+            </span>
+            <span className="shrink-0 text-[11px] text-outline">{record.status ?? "-"}</span>
+          </div>
+          {record.returnLocation === null ? null : (
+            <p className="truncate text-[11px] text-outline" title={record.returnLocation}>
+              Return to {record.returnLocation}
+            </p>
+          )}
+          {record.items.length > 0 ? (
+            // Which lines this RMA covers. One RMA covers many items, so a bare
+            // count would not tell the associate whether the line in front of
+            // them is already on a return somebody else raised.
+            <p className="truncate text-[11px] text-outline">
+              Covers{" "}
+              {record.items
+                .map((item) => item.orderLineReference ?? item.returnItemId)
+                .join(", ")}
+            </p>
+          ) : null}
+        </div>
+      ))}
+
+      {entry.unassignedItems.length > 0 ? (
+        <p className="mt-1 text-[11px] text-outline">
+          {String(entry.unassignedItems.length)} line
+          {entry.unassignedItems.length === 1 ? "" : "s"} not yet on an RMA
+        </p>
+      ) : null}
+
+      {entry.placements.map((placement) => (
+        <p
+          key={placement.handlingUnitId}
+          className="mt-1 truncate text-[11px] text-outline"
+          title={placement.handlingUnitId}
+        >
+          {/* Where the parcel is, not where it was told to go. */}
+          {[placement.physicalStatus, placement.warehouseId, placement.bayId]
+            .filter((part): part is string => part !== null && part !== "")
+            .join(" - ") || "Placement unknown"}
+        </p>
+      ))}
+    </article>
   );
 }
 

@@ -48,6 +48,15 @@ CONSOLE_PATHS: tuple[str, ...] = (
     "/api/returns/{session_id}/support",
     "/api/returns/{session_id}/conversation",
     "/api/returns/{session_id}/events",
+    # The case read surface. Called from `frontend/src/api/cases.ts` since the
+    # copilot stopped joining an order reference in the browser, and missing
+    # from this list until the return-history read was added beside it.
+    "/api/cases",
+    "/api/cases/{case_id}",
+    # Returns against an order or a customer, read from the graph rather than
+    # from one case document -- the copilot's "has this customer returned this
+    # before" panel.
+    "/api/return-history",
     # Order Discovery
     "/api/v2/order-agent/conversations",
     "/api/v2/order-agent/conversations/{conversation_id}/turns",

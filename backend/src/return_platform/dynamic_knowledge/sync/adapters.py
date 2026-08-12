@@ -5,6 +5,7 @@ right connector per source without any business-specific branching.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Protocol
 
 from return_platform.dynamic_knowledge.graph.generation import (
@@ -121,14 +122,17 @@ def scan_connector_registry(
     schema: ActiveSchema,
     mongo_connector: SourceScanConnector | None = None,
     sqlserver_connector: SourceScanConnector | None = None,
+    overrides: Mapping[str, SourceScanConnector] | None = None,
 ) -> SourceConnectorsByType[SourceScanConnector]:
     """The scan half of the one connector-type dispatch.
 
-    This used to be a `SourceConnectorRegistry` class here and a near-identical
-    `OnDemandConnectorRegistry` in `integration/on_demand_sync_adapters.py`, each
-    with its own hand-written MONGODB/MSSQL branch. Both are now
-    `SourceConnectorsByType`; only the connector protocol differs, so a new
-    source type is registered once instead of twice.
+    `overrides` answers per source rather than per type, because a connector
+    type does not identify a *store*: two MongoDB sources can live in different
+    databases -- the upstream Ferguson collections and the platform's own
+    operational store -- and a connector is bound to one at construction.
+    Without it the platform-store sources resolve to the upstream connector and
+    scan collections that are not there, which reads as an empty projection
+    rather than as a misconfiguration.
     """
     return SourceConnectorsByType(
         sources=schema.sources,
@@ -136,4 +140,5 @@ def scan_connector_registry(
             ConnectorType.MONGODB: mongo_connector,
             ConnectorType.MSSQL: sqlserver_connector,
         },
+        overrides=overrides,
     )

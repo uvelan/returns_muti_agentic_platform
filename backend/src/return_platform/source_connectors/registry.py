@@ -52,8 +52,18 @@ class SourceConnectorsByType[ConnectorT]:
         *,
         sources: Mapping[str, SourceAssetDefinition],
         connectors: Mapping[ConnectorType, ConnectorT | None],
+        overrides: Mapping[str, ConnectorT] | None = None,
     ) -> None:
         self._sources = dict(sources)
+        # A connector type does not identify a *store*. A schema may name two
+        # MongoDB sources in different databases -- the upstream Ferguson
+        # collections and the platform's own operational store are the case
+        # that forced this -- and a connector is bound to one database at
+        # construction. Without a per-source answer the second store's sources
+        # resolve to the first store's connector and scan collections that are
+        # not there, which reads as an empty projection rather than as a
+        # misconfiguration.
+        self._overrides = dict(overrides or {})
         # `None` entries are dropped here rather than at resolve time so that
         # "configured but unavailable" and "never supported" produce the same
         # message: from the caller's side they are the same outage.
@@ -64,6 +74,9 @@ class SourceConnectorsByType[ConnectorT]:
         }
 
     def resolve(self, source_asset_id: str) -> ConnectorT:
+        override = self._overrides.get(source_asset_id)
+        if override is not None:
+            return override
         source = self._sources.get(source_asset_id)
         if source is None:
             raise UnreachableSource(

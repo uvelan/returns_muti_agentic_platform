@@ -503,6 +503,10 @@ class GraphSyncService:
             for source_id, source in self._schema.sources.items()
             if source.connector_type == ConnectorType.MONGODB
         )
+        platform_mongo_source_ids = self.platform_store_source_ids(
+            self._schema, mongo_source_ids, self._platform_db.name
+        )
+        upstream_mongo_source_ids = mongo_source_ids - platform_mongo_source_ids
         sql_source_ids = frozenset(
             source_id
             for source_id, source in self._schema.sources.items()
@@ -516,7 +520,12 @@ class GraphSyncService:
         if not participating:
             return 0, 0
 
-        seed_pins = self._build_seed_pins(mongo_source_ids, seed_version, seed_digest)
+        # Only the upstream store. A seed generation is something the seeder
+        # writes into the Ferguson source collections; the platform's own
+        # operational documents carry no seedVersion/seedDigest, so pinning them
+        # would filter every case, RMA and item out of a seeded run and leave
+        # the return side of the graph silently empty.
+        seed_pins = self._build_seed_pins(upstream_mongo_source_ids, seed_version, seed_digest)
 
         mongo_connector = _CountingConnector(
             MongoDBSourceScanConnector(
@@ -524,6 +533,18 @@ class GraphSyncService:
                 schema=self._schema,
                 page_size=self._settings.graph_sync_batch_size,
                 seed_pins=seed_pins,
+                max_records_per_source=limit,
+            ),
+            source_counts,
+        )
+        # A second connector, not a second pipeline: the return side lives in the
+        # platform's own database, and a connector is bound to one database for
+        # its lifetime (see MongoDBSourceScanConnector's class docstring).
+        platform_mongo_connector = _CountingConnector(
+            MongoDBSourceScanConnector(
+                self._platform_db,
+                schema=self._schema,
+                page_size=self._settings.graph_sync_batch_size,
                 max_records_per_source=limit,
             ),
             source_counts,
@@ -549,6 +570,9 @@ class GraphSyncService:
             schema=self._schema,
             mongo_connector=mongo_connector,
             sqlserver_connector=sqlserver_connector,
+            overrides={
+                source_id: platform_mongo_connector for source_id in platform_mongo_source_ids
+            },
         )
         extractor = GenericSourceRecordExtractor(
             resolved_secrets=contact_digest_secrets(
@@ -579,14 +603,40 @@ class GraphSyncService:
         )
 
     @staticmethod
+    def platform_store_source_ids(
+        schema: ActiveSchema, mongo_source_ids: frozenset[str], platform_database: str
+    ) -> frozenset[str]:
+        """Which Mongo sources name the platform's own database rather than upstream.
+
+        `object_ref.database` was decorative until now -- the connector takes the
+        database it is constructed with and ignores what the source declares --
+        so a source pointing at the platform store was read from the upstream one
+        and found nothing. Honouring it here is what makes the return-side
+        entities (cases, RMAs, items, handling units) reachable at all.
+
+        Anything that is not an exact match keeps the previous behaviour and goes
+        to the upstream connector. That is deliberately not an error: the four
+        Ferguson sources declare a database name that only equals
+        `source_mongo_database` by default, and an operator who renamed it should
+        not have their sync start failing.
+        """
+
+        return frozenset(
+            source_id
+            for source_id in mongo_source_ids
+            if schema.sources[source_id].object_ref.get("database") == platform_database
+        )
+
+    @staticmethod
     def _build_seed_pins(
         mongo_source_ids: frozenset[str], seed_version: str | None, seed_digest: str | None
     ) -> dict[str, SeedPin] | None:
-        """Every Mongo source gets the same pin -- one seed generation covers the
-        whole seed run, never a per-source mix. The actual fail-closed digest
+        """Every source given here gets the same pin -- one seed generation covers
+        the whole seed run, never a per-source mix. The actual fail-closed digest
         check and exhaustive (unlimited) read happen inside
         MongoDBSourceScanConnector.scan(); this only decides whether a pin
-        applies at all and to which sources."""
+        applies at all and to which sources. The caller passes the upstream Mongo
+        sources only; see the call site for why the platform store is excluded."""
 
         if seed_version is None or seed_digest is None:
             return None
