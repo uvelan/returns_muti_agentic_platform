@@ -512,3 +512,92 @@ def test_the_search_signature_moves_when_a_contact_detail_changes() -> None:
     assert search_intent_signature(
         OrderSearchIntent(phones=("2145550142",))
     ) != search_intent_signature(OrderSearchIntent(phones=("2145550143",)))
+
+
+# ---------------------------------------------------------------------------
+# Ranking the contact signals
+#
+# Every row a plan returns became a candidate at the base score, so a contact
+# matched on a ZIP shared by a thousand customers ranked level with one matched
+# on the exact email the associate read out.
+# ---------------------------------------------------------------------------
+
+
+def _ranked(intent: OrderSearchIntent, rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    result = rank_search_results(intent, [{"rows": rows, "count": len(rows)}])
+    return list(result["candidates"])
+
+
+def test_an_exact_email_outranks_a_shared_location() -> None:
+    """An email identifies one customer; a city narrows to a thousand."""
+    intent = OrderSearchIntent(emails=("dana@example.com",), cities=("Dallas",))
+    ranked = _ranked(
+        intent,
+        [
+            {"customer_id": "C-CITY", "city": "Dallas"},
+            {"customer_id": "C-EMAIL", "email": "dana@example.com"},
+        ],
+    )
+
+    assert [candidate["candidate_id"] for candidate in ranked] == ["C-EMAIL", "C-CITY"]
+    assert "email_exact" in ranked[0]["matches"]
+
+
+def test_a_phone_matches_across_punctuation() -> None:
+    """ "(214) 555-0142" and a stored "2145550142" are the same number.
+
+    Scoring them as a miss is how the right customer ends up below the wrong
+    one, on the signal the associate was specifically asked for.
+    """
+    ranked = _ranked(
+        OrderSearchIntent(phones=("(214) 555-0142",)),
+        [{"customer_id": "C1", "phone_number": "2145550142"}],
+    )
+
+    assert "phone_exact" in ranked[0]["matches"]
+
+
+def test_a_country_code_is_a_probable_match_not_an_exact_one() -> None:
+    """ "+1 214..." contains the number but is not literally it.
+
+    Claiming exactness here would let a different national number that happens
+    to end in the same digits present as certain.
+    """
+    ranked = _ranked(
+        OrderSearchIntent(phones=("2145550142",)),
+        [{"customer_id": "C1", "phone_number": "+1 214-555-0142"}],
+    )
+
+    assert ranked[0]["matches"] == ["phone_contains"]
+
+
+def test_a_date_window_match_is_scored_again() -> None:
+    """The branch scored `delivered_at`, which the schema no longer has.
+
+    Every date-window search since the schema was rebuilt from real documents
+    narrowed the plan set and then contributed nothing to the ranking.
+    """
+    ranked = _ranked(
+        OrderSearchIntent(dateFrom="2026-08-01", dateTo="2026-08-31"),
+        [{"sales_order_number": "SO-1", "order_date": "2026-08-14"}],
+    )
+
+    assert "order_date_in_range" in ranked[0]["matches"]
+
+
+def test_a_state_barely_moves_the_ranking() -> None:
+    """It narrows a result set; it does not identify anybody.
+
+    A state that outranked a name would reorder a search around the least
+    specific thing the associate said.
+    """
+    intent = OrderSearchIntent(states=("TX",), customerNames=("Acme",))
+    ranked = _ranked(
+        intent,
+        [
+            {"customer_id": "C-STATE", "state": "TX"},
+            {"customer_id": "C-NAME", "customer_name": "Acme Plumbing"},
+        ],
+    )
+
+    assert [candidate["candidate_id"] for candidate in ranked] == ["C-NAME", "C-STATE"]

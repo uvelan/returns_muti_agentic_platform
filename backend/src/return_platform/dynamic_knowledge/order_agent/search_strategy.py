@@ -639,11 +639,68 @@ def rank_search_results(
                         score += 0.1
                         candidate["matches"].append("ordered_quantity_exact")
 
-            if "delivered_at" in row and (
+            # The contact anchors, weighted the way the clarification policy
+            # ranks them: an exact email is the strongest customer signal after
+            # an order number, and without a bump here a contact matched on a
+            # ZIP shared by a thousand customers ranked level with one matched
+            # on the address the associate read out.
+            if "email" in row:
+                norm_email = normalize_string(str(row["email"]))
+                for intent_email in intent.emails:
+                    norm_intent = normalize_string(intent_email)
+                    if norm_intent == norm_email:
+                        score += 0.45
+                        candidate["matches"].append("email_exact")
+                    elif norm_intent and norm_intent in norm_email:
+                        score += 0.2
+                        candidate["matches"].append("email_contains")
+
+            for phone_field in ("phone_number", "ship_to_phone"):
+                if phone_field not in row:
+                    continue
+                row_digits = _digits_of(str(row[phone_field]))
+                for intent_phone in intent.phones:
+                    intent_digits = _digits_of(intent_phone)
+                    # Compared as digits on both sides. A stored "2145550142"
+                    # and a spoken "(214) 555-0142" are the same number, and
+                    # scoring them as a miss is how the right customer ends up
+                    # below the wrong one.
+                    if intent_digits and intent_digits == row_digits:
+                        score += 0.4
+                        candidate["matches"].append("phone_exact")
+                    elif intent_digits and row_digits and intent_digits in row_digits:
+                        score += 0.2
+                        candidate["matches"].append("phone_contains")
+
+            # Where the customer is, or where the order went. Weaker on
+            # purpose: a city or a state is shared by many customers, so it
+            # narrows a result set rather than identifying anyone, and it must
+            # not outrank a name or a contact detail.
+            for value, row_fields, weight in (
+                (intent.streetAddresses, ("address_line1",), 0.3),
+                (intent.cities, ("city", "ship_to_city"), 0.15),
+                (intent.states, ("state", "ship_to_state"), 0.05),
+                (intent.postalCodes, ("postal_code", "ship_to_postal_code"), 0.2),
+            ):
+                for row_field in row_fields:
+                    if row_field not in row:
+                        continue
+                    norm_row = normalize_string(str(row[row_field]))
+                    for wanted in value:
+                        if normalize_string(wanted) and normalize_string(wanted) in norm_row:
+                            score += weight
+                            candidate["matches"].append(f"{row_field}_match")
+
+            # `order_date`, not `delivered_at`. The schema lost `delivered_at`
+            # when it was rebuilt from the real salesInv documents, so this
+            # branch scored nothing for years of date-window searches: an
+            # associate's "around the 14th" narrowed the plan set and then
+            # contributed no rank at all.
+            if _DATE_FIELD_ID in row and (
                 intent.dateFrom or intent.dateTo or intent.approximateDate
             ):
                 score += 0.2
-                candidate["matches"].append("delivered_at_in_range")
+                candidate["matches"].append("order_date_in_range")
 
             candidate["score"] = min(1.0, candidate["score"] + score)
 
