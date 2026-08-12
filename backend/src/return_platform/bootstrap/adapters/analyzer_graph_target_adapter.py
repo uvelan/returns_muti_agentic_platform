@@ -40,6 +40,8 @@ from return_platform.dynamic_knowledge.release_store import (
     ReleaseAlreadyPublished,
     SchemaReleaseStore,
 )
+from return_platform.dynamic_knowledge.source_binding_store import SourceBindingStore
+from return_platform.dynamic_knowledge.source_bindings import catalogue_from
 from return_platform.graph_schema_analyzer.ports.graph_target_port import (
     BuildHandle,
     GraphTargetPort,
@@ -68,6 +70,7 @@ class Neo4jGraphTargetAdapter:
         *,
         releases: SchemaReleaseStore | None = None,
         baseline_path: Path | None = None,
+        bindings: SourceBindingStore | None = None,
     ) -> None:
         self._driver = driver
         # Optional so the adapter still binds where publishing has no store to
@@ -76,6 +79,10 @@ class Neo4jGraphTargetAdapter:
         # useful on their own.
         self._releases = releases
         self._baseline_path = baseline_path
+        # Read at publish time, not held: a rebinding made between two
+        # publishes must reach the second one, and a catalogue captured in the
+        # constructor would compile against whatever was true at startup.
+        self._bindings = bindings
 
     async def compile_schema(self, *, draft: Mapping[str, Any]) -> Sequence[str]:
         """Turn a validated shape into graph-side DDL. Never executes it."""
@@ -138,6 +145,8 @@ class Neo4jGraphTargetAdapter:
         if self._releases is None or self._baseline_path is None:
             raise RuntimeError("no release store is configured, so a schema cannot be published")
 
+        baseline = load_active_schema(self._baseline_path)
+        overrides = () if self._bindings is None else tuple(await self._bindings.list())
         now = datetime.now(UTC)
         # The release id carries the draft it came from and the moment it was
         # cut. Derived rather than random so a release can be traced back to an
@@ -147,7 +156,8 @@ class Neo4jGraphTargetAdapter:
         try:
             release = compile_active_schema(
                 draft,
-                baseline=load_active_schema(self._baseline_path),
+                baseline=baseline,
+                bindings=catalogue_from(baseline, overrides),
                 configuration_release_id=release_id,
                 schema_version=release_id,
                 approved_by=approver,
@@ -235,6 +245,9 @@ def build_neo4j_graph_target_adapter(
     *,
     releases: SchemaReleaseStore | None = None,
     baseline_path: Path | None = None,
+    bindings: SourceBindingStore | None = None,
 ) -> GraphTargetPort:
     """Typed factory; the annotation is what proves conformance to mypy."""
-    return Neo4jGraphTargetAdapter(driver, releases=releases, baseline_path=baseline_path)
+    return Neo4jGraphTargetAdapter(
+        driver, releases=releases, baseline_path=baseline_path, bindings=bindings
+    )

@@ -24,7 +24,12 @@ from return_platform.bootstrap.adapters.analyzer_release_compiler import (
 )
 from return_platform.configuration.settings import DEFAULT_DYNAMIC_KNOWLEDGE_SCHEMA_PATH
 from return_platform.dynamic_knowledge.config_loader import load_active_schema
-from return_platform.dynamic_knowledge.schema import ActiveSchema, RelationshipCardinality
+from return_platform.dynamic_knowledge.schema import (
+    ActiveSchema,
+    RelationshipCardinality,
+    SourceAssetDefinition,
+)
+from return_platform.dynamic_knowledge.source_bindings import SourceBinding, catalogue_from
 from return_platform.graph_schema_analyzer.domain.schema_draft import GraphSchemaShape
 
 APPROVED_AT = datetime(2026, 8, 12, tzinfo=UTC)
@@ -270,3 +275,55 @@ def test_the_checksum_covers_the_release_and_is_stable(baseline: ActiveSchema) -
     # approved release from an edited one.
     edited = first.model_copy(update={"schema_version": "v3"})
     assert release_checksum(edited) != first.configuration_checksum
+
+
+def test_a_rebinding_changes_where_a_release_reads_from(baseline: ActiveSchema) -> None:
+    """The point of separating shape from binding.
+
+    The same approved shape, compiled against a rebound dataset, reads from
+    somewhere else. Nothing about the graph changed -- no entity, no property,
+    no relationship -- which is what makes an infrastructure move an
+    infrastructure change rather than a schema approval.
+    """
+    orders = _dataset_of(baseline, next(iter(baseline.entities)))
+    original = baseline.sources[orders]
+    restored = SourceAssetDefinition(
+        source_asset_id="restored_orders",
+        connector_type=original.connector_type,
+        connection_ref="vault://data-sources/restored-mongodb",
+        object_ref={"database": "restore_2026", "name": "salesInv"},
+        incremental_cursor_field=original.incremental_cursor_field,
+    )
+    shape = _shape(baseline)
+
+    release = compile_active_schema(
+        shape.model_dump(mode="json"),
+        baseline=baseline,
+        bindings=catalogue_from(baseline, [SourceBinding(dataset=orders, asset=restored)]),
+        configuration_release_id="release_rebound_1",
+        schema_version="v2",
+        approved_by="analyst-1",
+        approved_at=APPROVED_AT,
+    )
+
+    assert release.entities["Order"].source_asset_id == "restored_orders"
+    assert release.sources["restored_orders"].connection_ref == (
+        "vault://data-sources/restored-mongodb"
+    )
+    # And the shape is untouched: same entities, same projections, same joins.
+    unbound = _compile(shape, baseline)
+    assert set(release.entities) == set(unbound.entities)
+    assert release.graph.nodes == unbound.graph.nodes
+    assert release.graph.relationships == unbound.graph.relationships
+
+
+def test_an_unbound_dataset_names_what_is_bound(baseline: ActiveSchema) -> None:
+    """The refusal has to be actionable.
+
+    "No binding for X" leaves the analyst guessing what to type; listing what
+    the catalogue does know turns it into a correction.
+    """
+    shape = _shape(baseline)
+    entities = {"Order": _entity("nowhere_at_all", {"orderId": "orderId"}, ["orderId"])}
+    with pytest.raises(ReleaseCompilationError, match="known:"):
+        _compile(shape.model_copy(update={"entities": entities, "relationships": ()}), baseline)

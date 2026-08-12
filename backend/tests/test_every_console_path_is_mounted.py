@@ -25,6 +25,8 @@ from return_platform.main import create_app
 # Paths the console calls, from `frontend/src/api/*.ts`. Templated segments are
 # written the way FastAPI declares them.
 CONSOLE_PATHS: tuple[str, ...] = (
+    "/api/source-bindings",
+    "/api/source-bindings/{dataset}",
     "/api/runtime-config",
     "/api/principal",
     # Configuration domain

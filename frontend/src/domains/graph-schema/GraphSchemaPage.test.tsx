@@ -33,6 +33,9 @@ const mocks = vi.hoisted(() => ({
   validateDraft: vi.fn(),
   approveDraft: vi.fn(),
   publishDraft: vi.fn(),
+  listBindings: vi.fn(),
+  rebind: vi.fn(),
+  clearBinding: vi.fn(),
   can: vi.fn(),
 }));
 
@@ -52,6 +55,14 @@ vi.mock("../../api/graphSchema", () => ({
     approveDraft: mocks.approveDraft,
     publishDraft: mocks.publishDraft,
     applyMutations: vi.fn(),
+  },
+}));
+
+vi.mock("../../api/sourceBindings", () => ({
+  sourceBindingsApi: {
+    list: mocks.listBindings,
+    rebind: mocks.rebind,
+    clear: mocks.clearBinding,
   },
 }));
 
@@ -297,5 +308,95 @@ describe("publishing a release", () => {
     // The element that was wrong, verbatim: it is the only part the analyst
     // can act on, and "publish failed" would send them back to the audit log.
     expect(await screen.findByText(/no identifier properties/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Where a dataset points, on the surface where someone asks.
+ *
+ * The panel's job is to make "configured" and "deliberately changed"
+ * distinguishable, and to be honest that a rebinding does not move what is
+ * already running.
+ */
+describe("source bindings", () => {
+  const CONFIGURED = {
+    dataset: "source_sales",
+    sourceAssetId: "source_sales",
+    connectorType: "MONGODB",
+    connectionRef: "vault://data-sources/source-mongodb",
+    objectRef: { database: "return_source", name: "salesInv" },
+    incrementalCursorField: "source_updated_at",
+    overridden: false,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.can.mockReturnValue(true);
+    mocks.listAnalyses.mockResolvedValue([ANALYSIS]);
+    mocks.getDraft.mockResolvedValue({
+      draft_id: "d1",
+      status: "DRAFT",
+      current_revision: 3,
+      entity_count: 1,
+      relationship_count: 1,
+    });
+    mocks.getDraftShape.mockResolvedValue(SHAPE);
+    mocks.listRevisions.mockResolvedValue([]);
+    mocks.listClarifications.mockResolvedValue([]);
+    mocks.listBindings.mockResolvedValue([CONFIGURED]);
+    mocks.rebind.mockResolvedValue(undefined);
+    mocks.clearBinding.mockResolvedValue(undefined);
+  });
+
+  async function openSources() {
+    await openAnalysis();
+    fireEvent.click(screen.getByRole("tab", { name: "Sources" }));
+    await screen.findByText("source_sales");
+  }
+
+  it("says a change lands at the next publish, not now", async () => {
+    // A rebinding that silently re-pointed a running release would make the
+    // approval on it meaningless, so the panel does not imply it did.
+    await openSources();
+
+    expect(screen.getByText(/next publish/i)).toBeInTheDocument();
+  });
+
+  it("does not mark a configured binding as rebound", async () => {
+    await openSources();
+
+    expect(screen.queryByText("rebound")).toBeNull();
+    // And there is nothing to reset when nothing was changed.
+    expect(screen.queryByRole("button", { name: /Follow configuration/ })).toBeNull();
+  });
+
+  it("moves only the connection, keeping what the dataset points at", async () => {
+    await openSources();
+    fireEvent.click(screen.getByRole("button", { name: "Rebind" }));
+    fireEvent.change(screen.getByLabelText("Connection for source_sales"), {
+      target: { value: "vault://data-sources/restored" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Rebind" }));
+
+    await waitFor(() => { expect(mocks.rebind).toHaveBeenCalledTimes(1); });
+    expect(mocks.rebind).toHaveBeenCalledWith("source_sales", {
+      sourceAssetId: "source_sales",
+      connectorType: "MONGODB",
+      // Unchanged: pointing at a different object is pointing at different
+      // data, which belongs with a schema change.
+      objectRef: { database: "return_source", name: "salesInv" },
+      connectionRef: "vault://data-sources/restored",
+      incrementalCursorField: "source_updated_at",
+    });
+  });
+
+  it("offers a way back to configuration once something is rebound", async () => {
+    mocks.listBindings.mockResolvedValue([{ ...CONFIGURED, overridden: true }]);
+    await openSources();
+
+    expect(screen.getByText("rebound")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Follow configuration" }));
+
+    await waitFor(() => { expect(mocks.clearBinding).toHaveBeenCalledWith("source_sales"); });
   });
 });

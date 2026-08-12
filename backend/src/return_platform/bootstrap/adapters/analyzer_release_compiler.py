@@ -19,13 +19,14 @@ itself rather than a third representation. The draft's `GraphSchemaShape` is the
 read. One is edited, one is executed, and this function is the only thing that
 knows both.
 
-**What the draft does not carry comes from a baseline release.** Connector type,
-connection reference and object reference per source; agent policies; the graph
-database name; prompt, policy and compiler versions. None of those are graph
-shape, and inventing analyzer surfaces for them would put configuration in two
-places (see the split in W2.2). Anything the baseline cannot answer is an error
-here, never a default: a compiled release that guessed at a connection would
-fail at sync time, a long way from the person who could have said.
+**What the draft does not carry comes from two places, not one.** Where each
+dataset lives comes from the *source binding catalogue*, which is separately
+editable precisely because infrastructure moves on a different clock from the
+graph's shape. Everything else that is configuration rather than shape -- agent
+policies, the graph database name, prompt, policy and compiler versions --
+comes from a baseline release. Neither is guessed: a dataset the catalogue
+cannot resolve is an error here, because a release that picked a plausible
+neighbouring source would sync real data from the wrong place.
 
 Refusal is the design. Every uncertainty -- an entity with no identifier, a
 relationship whose join cannot be resolved, a source the baseline has never
@@ -52,6 +53,10 @@ from return_platform.dynamic_knowledge.schema import (
     RelationshipCardinality,
     RelationshipProjection,
     SourceAssetDefinition,
+)
+from return_platform.dynamic_knowledge.source_bindings import (
+    SourceBindingCatalogue,
+    catalogue_from,
 )
 
 __all__ = ["ReleaseCompilationError", "compile_active_schema", "release_checksum"]
@@ -86,6 +91,7 @@ def compile_active_schema(
     shape: Mapping[str, Any],
     *,
     baseline: ActiveSchema,
+    bindings: SourceBindingCatalogue | None = None,
     configuration_release_id: str,
     schema_version: str,
     approved_by: str,
@@ -97,7 +103,13 @@ def compile_active_schema(
     shape. It is read, never merged: an entity the draft dropped is gone from
     the release, because a compiler that kept the baseline's version of it would
     make removal impossible and the approved shape a suggestion.
+
+    `bindings` resolves dataset names to source assets. Omitted, it falls back
+    to what the baseline itself reaches -- the state of an installation that
+    has never rebound anything -- so the argument is a widening, not a new
+    requirement.
     """
+    catalogue = catalogue_from(baseline) if bindings is None else bindings
     shape_entities: Mapping[str, Mapping[str, Any]] = shape.get("entities") or {}
     shape_relationships: Sequence[Mapping[str, Any]] = shape.get("relationships") or ()
     if not shape_entities:
@@ -108,7 +120,7 @@ def compile_active_schema(
     used_sources: dict[str, SourceAssetDefinition] = {}
 
     for label, entity in sorted(shape_entities.items()):
-        definition, source = _entity(label, entity, baseline=baseline)
+        definition, source = _entity(label, entity, bindings=catalogue)
         entities[label] = definition
         used_sources[definition.source_asset_id] = source
         identifiers = tuple(str(name) for name in entity.get("identifier_properties") or ())
@@ -179,10 +191,10 @@ def release_checksum(schema: ActiveSchema) -> str:
 
 
 def _entity(
-    label: str, entity: Mapping[str, Any], *, baseline: ActiveSchema
+    label: str, entity: Mapping[str, Any], *, bindings: SourceBindingCatalogue
 ) -> tuple[EntityDefinition, SourceAssetDefinition]:
     dataset = str(entity.get("source_dataset") or "")
-    source = _source(dataset, baseline=baseline)
+    source = _source(dataset, bindings=bindings)
 
     properties: Mapping[str, Mapping[str, Any]] = entity.get("properties") or {}
     if not properties:
@@ -244,31 +256,24 @@ def _field(label: str, name: str, spec: Mapping[str, Any]) -> FieldDefinition:
     )
 
 
-def _source(dataset: str, *, baseline: ActiveSchema) -> SourceAssetDefinition:
-    """The connection behind a dataset name, from the baseline release.
+def _source(dataset: str, *, bindings: SourceBindingCatalogue) -> SourceAssetDefinition:
+    """The source asset behind a dataset name.
 
-    Matched on the source asset id first and on the object reference second, so
-    a draft naming `orders` finds the asset whose object_ref points at
-    `orders` even when the asset is called something else.
+    One lookup, through the catalogue, which already layers deliberate
+    rebindings over what configuration reaches. The compiler used to do this
+    matching itself against the baseline, which meant a draft could only ever
+    name a source the shipped file already had -- and rebinding one was a
+    schema edit.
     """
     if not dataset:
         raise ReleaseCompilationError("an entity has no source dataset")
-    identifier = _as_identifier(dataset)
-    direct = baseline.sources.get(identifier)
-    if direct is not None:
-        return direct
-    for source in baseline.sources.values():
-        if dataset in source.object_ref.values():
-            return source
-    raise ReleaseCompilationError(
-        f"no configured source connection for dataset {dataset!r}; "
-        "the draft can name it but only configuration can say how to reach it"
-    )
-
-
-def _as_identifier(dataset: str) -> str:
-    """`schema.table` and `order-lines` are legal source names, not identifiers."""
-    return dataset.replace(".", "_").replace("-", "_")
+    resolved = bindings.resolve(dataset)
+    if resolved is None:
+        raise ReleaseCompilationError(
+            f"no source binding for dataset {dataset!r}; the draft can name it but only "
+            f"a binding says how to reach it (known: {', '.join(bindings.datasets()) or 'none'})"
+        )
+    return resolved
 
 
 def _relationship(

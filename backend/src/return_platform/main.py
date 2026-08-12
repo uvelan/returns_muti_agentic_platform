@@ -43,6 +43,7 @@ from return_platform.api.return_artifacts import router as return_artifacts_rout
 from return_platform.api.return_support import router as return_support_router
 from return_platform.api.returns import router as returns_router
 from return_platform.api.seed import router as seed_router
+from return_platform.api.source_bindings import router as source_bindings_router
 from return_platform.api.support import router as support_router
 from return_platform.api.warehouse_placement import router as warehouse_placement_router
 from return_platform.bootstrap.adapters.analyzer_ai_adapter import (
@@ -111,6 +112,7 @@ from return_platform.dynamic_knowledge.order_agent.conversation_repository impor
     AtomicConversationRepository,
 )
 from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore
+from return_platform.dynamic_knowledge.source_binding_store import SourceBindingStore
 from return_platform.graph_schema_analyzer.api import router as graph_schema_analyzer_router
 from return_platform.graph_schema_analyzer.persistence import build_system_store_persistence
 from return_platform.operations.repository import OperationalRepository
@@ -666,6 +668,11 @@ async def lifespan(
                         else SchemaReleaseStore(resources.mongo, settings.mongo_database)
                     ),
                     baseline_path=settings.dynamic_knowledge_schema_path,
+                    bindings=(
+                        None
+                        if resources.mongo is None
+                        else SourceBindingStore(resources.mongo, settings.mongo_database)
+                    ),
                 )
             # Reasoning needs no dependency of its own beyond the shared
             # route pool, but an empty pool means no provider credential is
@@ -1055,6 +1062,7 @@ def create_app(
     fastapi_app.include_router(agent_configuration_router)
     fastapi_app.include_router(canonical_returns_router)
     fastapi_app.include_router(cases_router)
+    fastapi_app.include_router(source_bindings_router)
     fastapi_app.include_router(canonical_ai_router)
     fastapi_app.include_router(canonical_session_router)
     fastapi_app.include_router(canonical_principal_router)
