@@ -54,6 +54,7 @@ def create_return_workflow_worker(
             case_activities.open_support_work_item,
             case_activities.send_support_reminder,
             case_activities.record_support_outcome,
+            case_activities.synchronize_return_records,
         )
     return Worker(
         client,

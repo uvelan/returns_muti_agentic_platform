@@ -40,6 +40,7 @@ from return_platform.workflows.return_case_workflow import (
     SendSupportReminderInput,
     SupportResponseNotice,
     SupportReturnRecord,
+    SynchronizeReturnRecordsInput,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -59,8 +60,11 @@ class _Probe:
         self.reminder_keys: list[str] = []
         self.work_item_keys: list[str] = []
         self.outcomes: list[RecordSupportOutcomeInput] = []
+        self.syncs: list[SynchronizeReturnRecordsInput] = []
         self.statuses: list[str] = []
         self.bay_should_fail = False
+        self.sync_should_fail = False
+        self.graph_generation_id = "gen-under-test"
 
     @activity.defn(name="record_case_status")
     async def record_case_status(self, request: RecordCaseStatusInput) -> None:
@@ -96,6 +100,14 @@ class _Probe:
         self._record("record_support_outcome")
         self.outcomes.append(request)
 
+    @activity.defn(name="synchronize_return_records")
+    async def synchronize_return_records(self, request: SynchronizeReturnRecordsInput) -> str:
+        self._record("synchronize_return_records")
+        self.syncs.append(request)
+        if self.sync_should_fail:
+            raise RuntimeError("the graph refused the write")
+        return self.graph_generation_id
+
     def _record(self, name: str) -> None:
         self.calls.append(name)
         self._reached.setdefault(name, asyncio.Event()).set()
@@ -123,6 +135,7 @@ class _Probe:
             self.open_support_work_item,
             self.send_support_reminder,
             self.record_support_outcome,
+            self.synchronize_return_records,
         )
 
 
@@ -336,6 +349,107 @@ async def test_a_duplicate_support_response_does_not_issue_a_second_set_of_rmas(
 
     assert outcome.return_references == ("RMA-1",)
     assert len(probe.outcomes) == 1
+
+
+async def test_the_rma_reaches_the_graph_before_the_case_reports_it_received() -> None:
+    """W2.5. The RMA is written to Mongo and then to the graph, in that order.
+
+    The agent answering the associate's next turn reads the graph. Reporting
+    `RMA_RECEIVED` before the record is projected would make "Support answered"
+    true on the case and false everywhere an associate can see it.
+
+    The sync is record-scoped: the ids are the ones `record_support_outcome`
+    was given, not a request to re-sync the collection.
+    """
+    client = await Client.connect(_TEMPORAL_TARGET)
+    probe = _Probe()
+    queue, handle = await _start(client, probe, _case_input())
+
+    async with Worker(
+        client, task_queue=queue, workflows=(ReturnCaseWorkflow,), activities=probe.all()
+    ):
+        await probe.reached("open_support_work_item")
+        await handle.signal(
+            ReturnCaseWorkflow.support_response,
+            SupportResponseNotice(
+                work_item_id="wi-1",
+                records=(
+                    SupportReturnRecord(return_reference="RMA-1"),
+                    SupportReturnRecord(return_reference="RMA-2"),
+                ),
+            ),
+        )
+        outcome = await handle.result()
+
+    assert outcome.status == "RMA_RECEIVED"
+    assert outcome.graph_generation_id == "gen-under-test"
+    assert probe.calls.index("record_support_outcome") < probe.calls.index(
+        "synchronize_return_records"
+    )
+    assert len(probe.syncs) == 1
+    # Exactly the records just committed, and each one's id -- not a collection
+    # scope, and not a re-derivation of what the store happens to hold by now.
+    assert probe.syncs[0].return_record_ids == probe.outcomes[0].return_record_ids
+    assert len(probe.syncs[0].return_record_ids) == 2
+
+
+async def test_a_graph_sync_failure_parks_the_case_loudly() -> None:
+    """Return Workflow is `blocking`, so this failure is not stepped over.
+
+    The RMA exists in the platform store and in no graph any agent reads. A case
+    reported `RMA_RECEIVED` in that state would have Order Discovery telling the
+    associate on their next turn that no return exists -- worse than a parked
+    case somebody can see and retry.
+    """
+    client = await Client.connect(_TEMPORAL_TARGET)
+    probe = _Probe()
+    probe.sync_should_fail = True
+    queue, handle = await _start(client, probe, _case_input())
+
+    async with Worker(
+        client, task_queue=queue, workflows=(ReturnCaseWorkflow,), activities=probe.all()
+    ):
+        await probe.reached("open_support_work_item")
+        await handle.signal(
+            ReturnCaseWorkflow.support_response,
+            SupportResponseNotice(
+                work_item_id="wi-1", records=(SupportReturnRecord(return_reference="RMA-1"),)
+            ),
+        )
+        outcome = await handle.result()
+
+    assert outcome.parked_reason == "RETURN_GRAPH_SYNC_FAILED"
+    assert outcome.graph_generation_id is None
+    # Not RMA_RECEIVED: the platform cannot claim a state whose evidence an
+    # associate would be shown from the graph.
+    assert outcome.status != "RMA_RECEIVED"
+    assert "RETURN_GRAPH_SYNC_FAILED" in probe.statuses or outcome.status == "AWAITING_SUPPORT"
+
+
+async def test_a_rejected_return_needs_no_graph_sync() -> None:
+    """Support declining issues no RMA, so there is nothing to project.
+
+    Syncing an empty record set would fail loudly for no reason and park a case
+    that reached a legitimate terminal state.
+    """
+    client = await Client.connect(_TEMPORAL_TARGET)
+    probe = _Probe()
+    queue, handle = await _start(client, probe, _case_input())
+
+    async with Worker(
+        client, task_queue=queue, workflows=(ReturnCaseWorkflow,), activities=probe.all()
+    ):
+        await probe.reached("open_support_work_item")
+        await handle.signal(
+            ReturnCaseWorkflow.support_response,
+            SupportResponseNotice(
+                work_item_id="wi-1", records=(), rejected=True, reason="outside the return window"
+            ),
+        )
+        outcome = await handle.result()
+
+    assert outcome.status == "CLOSED"
+    assert "synchronize_return_records" not in probe.calls
 
 
 async def test_cancelling_stops_the_case_without_asking_support() -> None:

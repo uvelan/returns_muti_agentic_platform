@@ -14,7 +14,8 @@ idempotency key generated inside would be new each time -- which for
 from __future__ import annotations
 
 import logging
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Protocol
 
 from temporalio import activity
 
@@ -27,9 +28,10 @@ from return_platform.workflows.return_case_workflow import (
     RecordSupportOutcomeInput,
     RequestBayAssignmentInput,
     SendSupportReminderInput,
+    SynchronizeReturnRecordsInput,
 )
 
-__all__ = ["ReturnCaseActivities"]
+__all__ = ["ReturnCaseActivities", "ReturnRecordGraphSyncPort", "ReturnRecordSyncOutcome"]
 
 logger = logging.getLogger("return_platform.workflows.return_case_activities")
 
@@ -46,6 +48,30 @@ class SupportDraftPort:
         raise NotImplementedError
 
 
+@dataclass(frozen=True, slots=True)
+class ReturnRecordSyncOutcome:
+    """What a record-scoped sync commits, as the activity needs to see it."""
+
+    graph_generation_id: str
+    synchronized_record_ids: tuple[str, ...]
+    nodes_written: int
+
+
+class ReturnRecordGraphSyncPort(Protocol):
+    """The one method the case workflow needs from the targeted-sync stack.
+
+    Structural, so `workflows` neither imports `dynamic_knowledge` nor learns
+    what a generation lease is; the adapter is
+    `dynamic_knowledge/integration/return_record_sync.py`. It must raise rather
+    than return on failure -- this activity is `blocking`, and a port that
+    reported partial success would put the decision in the wrong place.
+    """
+
+    async def synchronize_records(
+        self, *, case_id: str, return_record_ids: tuple[str, ...]
+    ) -> ReturnRecordSyncOutcome: ...
+
+
 class ReturnCaseActivities:
     """Narrow injected surface: one repository, one support service, one drafter."""
 
@@ -55,10 +81,12 @@ class ReturnCaseActivities:
         repository: OperationalRepository,
         support_service: Any,
         drafter: SupportDraftPort | None = None,
+        graph_sync: ReturnRecordGraphSyncPort | None = None,
     ) -> None:
         self._repository = repository
         self._support = support_service
         self._drafter = drafter
+        self._graph_sync = graph_sync
 
     @activity.defn(name="record_case_status")
     async def record_case_status(self, request: RecordCaseStatusInput) -> None:
@@ -241,3 +269,56 @@ class ReturnCaseActivities:
                             expected_version=int(item.get("version", 0)),
                         )
                         break
+
+    @activity.defn(name="synchronize_return_records")
+    async def synchronize_return_records(self, request: SynchronizeReturnRecordsInput) -> str:
+        """Project the committed records into the graph, then say which generation.
+
+        Returns *after* the write commits, never before: the port's contract is
+        that a successful return is a post-commit fact, because generation-fenced
+        writes mean an agent turn landing mid-write reads a case whose RMAs are
+        half there. The workflow records the returned generation, so "the sync
+        finished" and "which graph the associate will be answered from" are the
+        same statement rather than two hopeful ones.
+
+        Raises when no port is configured. A worker that registers this activity
+        without one would silently skip the step for every case, which is the
+        shape of the bug W2.5 exists to close -- and unlike the drafter, there is
+        no honest fallback: nothing else puts a return into the graph before the
+        next turn.
+        """
+        if self._graph_sync is None:
+            raise RuntimeError(
+                "synchronize_return_records was registered without a graph sync port; "
+                "the return records for case "
+                f"{request.case_id} would exist in the store and not in the graph"
+            )
+        outcome = await self._graph_sync.synchronize_records(
+            case_id=request.case_id,
+            return_record_ids=request.return_record_ids,
+        )
+        # A fact rather than a case column: which generation answered a case is
+        # provenance, and `case_facts` is where provenance that must survive a
+        # later correction lives. `fact_id` is derived from the case and the
+        # generation, so an activity retry after a partial failure rewrites the
+        # same fact instead of appending a second one.
+        await self._repository.append_case_fact(
+            fact_id=f"return-graph-generation-{request.case_id}-{outcome.graph_generation_id}",
+            case_id=request.case_id,
+            fact_name="return_graph_generation_id",
+            value=outcome.graph_generation_id,
+            agent_id="return-workflow-agent",
+            channel=FactChannel.SYSTEM,
+            acquisition_method=FactAcquisition.DERIVED,
+            source_path="RETURN_RECORD_ON_DEMAND_SYNC",
+        )
+        logger.info(
+            "return_records_synchronized",
+            extra={
+                "case_id": request.case_id,
+                "graph_generation_id": outcome.graph_generation_id,
+                "record_count": len(outcome.synchronized_record_ids),
+                "nodes_written": outcome.nodes_written,
+            },
+        )
+        return outcome.graph_generation_id

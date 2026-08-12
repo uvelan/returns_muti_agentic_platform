@@ -10,6 +10,7 @@ connector-resolution and write sides needed new code.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from uuid import uuid4
 
 from return_platform.dynamic_knowledge.graph.generation_writer import Neo4jGenerationWriter
@@ -27,6 +28,7 @@ def targeted_connector_registry(
     schema: ActiveSchema,
     mongo: MongoDBSourceScanConnector | None,
     sqlserver: SqlServerSourceScanConnector | None,
+    overrides: Mapping[str, TargetedSourceConnector] | None = None,
 ) -> SourceConnectorsByType[TargetedSourceConnector]:
     """The targeted-read half of the one connector-type dispatch.
 
@@ -34,6 +36,15 @@ def targeted_connector_registry(
     duplicating the one in `sync.adapters` -- so a source type reachable by a
     scheduled sync could still be unreachable on demand, and nothing said so
     until an agent turn hit it. Both now build `SourceConnectorsByType`.
+
+    `overrides` mirrors `scan_connector_registry`'s and exists for the same
+    reason: a connector type does not identify a *store*, and the platform's own
+    operational collections are MongoDB sources in a different database from the
+    upstream Ferguson ones. Without it a targeted read of a return record
+    resolves to the upstream connector, finds no such collection, and reports
+    SUCCEEDED having written nothing. The scan half gained this first; a
+    targeted read that could not reach what a scheduled sync can is the same
+    asymmetry this function was written to remove.
 
     The connector *instances* stay separate from any full-sync pipeline's:
     on-demand sync and full sync are started and stopped by different
@@ -43,6 +54,7 @@ def targeted_connector_registry(
     return SourceConnectorsByType(
         sources=schema.sources,
         connectors={ConnectorType.MONGODB: mongo, ConnectorType.MSSQL: sqlserver},
+        overrides=overrides,
     )
 
 

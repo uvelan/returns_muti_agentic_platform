@@ -33,8 +33,8 @@ policy, timings · W1.8 case list and resume.
 | W2.2 Split shape from source binding | **partial** — binding catalogue, store and API shipped; `DOMAIN_SOURCE_COLLECTIONS` still has 3 references in `operations/repository.py`, so the Validation clause (rename `salesInv → salesInvV2` through configuration only) would fail |
 | W2.3 Re-analysis and migration | done — three-way diff, proposals as typed mutations, migration plan recorded before the pointer moves |
 | W2.4 Return and warehouse entities | **partial** — return entities added, but **by hand-editing the descriptor**, which the step forbids; **no warehouse or bay entity exists**. Blocked on the MSSQL analyzer connector (W4.5), as the step's own Failure condition predicts |
-| W2.5 Return on-demand sync | **not started** — nothing in `return_case_activities.py` requests a record-scoped sync |
-| W2.6 Fulfillment on-demand sync | **not started** — the mechanism works and was fixed (see below), but `agents/fulfillment.py` and `workflows/fulfillment_tracking.py` still do not call it |
+| W2.5 Return on-demand sync | **done** — `ReturnCaseWorkflow` runs a record-scoped `synchronize_return_records` activity after the return record commits, blocking, parking the case as `RETURN_GRAPH_SYNC_FAILED` on failure. Proven against real Mongo and Neo4j: a committed record is queryable through the compiler afterwards, and the pre-fix upstream connector routing is shown writing nothing |
+| W2.6 Fulfillment on-demand sync | **partial** — the code is done and `IN_TRANSIT` now requires an observed shipment, but the Validation clause does not hold on the shipped descriptor; see below |
 | W2.7 Warehouse and bay on-demand sync | **not started** — blocked on W2.4's warehouse entity |
 | W2.8 Sync control (S6) and incremental sync | **partial** — S6 ships with run list, filters, detail and manual trigger; `incremental_sync` not confirmed implemented against the cursor contract |
 
@@ -49,6 +49,33 @@ array. The order the sync was requested for was the one entity never projected; 
 
 Projection is now derived from every mapped field of every entity bound to the source, plus the
 paths its selectors test.
+
+### W2.6 is `partial`, and the reason is configuration rather than code
+
+`shipment` ships as `source_access: SEED_ONLY` with `source_contract_status: UNVERIFIED`,
+because **no `shipmentInfo` sample has ever been supplied** — its physical paths are carried over
+from the original schema unchecked, and the source store holds no such collection
+(`return_source` has `customerOutboundCDM`, `salesInv`, `lkpSearchProduct` and nothing else).
+`EntitySourceAccess`'s own matrix forbids on-demand sync at that level, and `ActiveSchema`
+refuses to validate an `UNVERIFIED` entity declaring `CONNECTED_SYNC`.
+
+So the fulfillment path **skips the targeted sync and records `SOURCE_ACCESS_SEED_ONLY`**, then
+reads the graph anyway — a scheduled sync may have projected the shipment. The step's Validation
+clause ("a tracking number not previously in the graph is synced on demand and then read from the
+graph") is proven in `test_fulfillment_shipment_sync_real_infra.py` only with the entity promoted
+in the test, which that module states in its docstring rather than hiding.
+
+**To close it:** verify `shipmentInfoEventData.{trkNum,trilOrdNum,carrierCode,shipmentId,
+currentStatus,srcSystem,shippedAt}` against a genuine `shipmentInfo` document, flip the entity to
+`VERIFIED` / `CONNECTED_SYNC`, and add shipments to `scripts/generate_seed_data.py` (it names
+`shipmentInfo` in `config/seed/generation.yaml` and emits nothing for it). No code changes.
+
+The defect the step exists to fix **is** closed regardless: `IN_TRANSIT` is no longer inferred
+from a reference existing. Absent an observed shipment the state is `AWAITING_HANDOFF`, and
+`evidence_references` distinguishes `SHIPMENT_OBSERVED` / `SHIPMENT_ABSENT` /
+`SHIPMENT_UNAVAILABLE`. `_bind_fulfillment_tracking` used to *require* `tracking_reference is
+None` for `AWAITING_HANDOFF`, which made "we have a number" and "it is moving" the same statement
+by construction; that clause is relaxed.
 
 ## Gate A — not run
 
@@ -82,7 +109,31 @@ Not scheduled, and it came at the cost of Wave 2's tail. Recorded so the ledger 
   simulator: recorded answers replayed, a miss calling the real provider and recording it. This
   makes W5.2's evaluation suite affordable to run repeatedly.
 - **Seed data generator** (`scripts/generate_seed_data.py`) driven by
-  `config/seed/generation.yaml`. Written and committed, **never executed**.
+  `config/seed/generation.yaml`. Written and committed, **never executed**. It also emits nothing
+  for `shipmentInfo` despite naming the collection, which is one of the two reasons W2.6 is
+  `partial`.
+
+## Found while landing W2.5 and W2.6
+
+- **`ReturnCaseWorkflow` was registered in no deployed process.**
+  `create_return_workflow_worker` takes its activities optionally and
+  `scripts/run_return_workflow_worker.py` never supplied them, so a case could be started and
+  would then stall on its first activity. W1.4's own Validation was met by a test harness. The
+  script now builds `ReturnCaseActivities` with the real support service and the graph-sync port.
+- **Four tests were already red at `83321ed`**, verified by stashing and re-running, so they are
+  not attributable to Wave 2's tail:
+  `test_order_discovery_smoke_net.py::test_declared_address_and_colour_anchors_produce_no_plan`,
+  `::test_phone_and_email_cannot_be_expressed_as_search_anchors`,
+  `test_search_strategy.py::test_unsupported_signals_do_not_silently_disappear` — all three are
+  tripwires the identification-signals work above closed and did not update, and two of them are
+  **inside the W0.7 smoke net**, which execution rule 5 requires green at every wave gate — and
+  `test_source_connector_routing.py::test_a_type_with_no_connector_is_refused_rather_than_defaulted`,
+  which matches on a message `UnreachableSource` no longer emits.
+- **`scripts/run_data_job_worker.py` fails `ruff check`** (I001, unsorted imports) at `83321ed`.
+- **Host-side Mongo needs `directConnection=true`.** The single-node replica set advertises its
+  container hostname, so topology discovery from the host resolves a name that does not exist and
+  every operation times out — which is why the `*_real_infra` modules error on the host. The two
+  new real-infra modules use a direct connection and therefore run in both places.
 
 ## Verification: first full run
 
