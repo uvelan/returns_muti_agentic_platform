@@ -140,6 +140,22 @@ class Settings(BaseSettings):
     on_demand_sync_receipt_ttl_seconds: int = Field(default=900, ge=60, le=86_400)
 
     ai_provider_order: str = "GOOGLE,NVIDIA,SIMULATOR"
+    # Where a MANUAL handoff waits for its human, and how the answer comes back.
+    #
+    # `UI`   -- the durable interception store, answered through the AI Control
+    #           Center. Survives a restart, visible to every replica, records who
+    #           answered.
+    # `FILE` -- JSON under `.manual_llm/` relative to the process CWD, answered
+    #           by `scripts/manual_llm_responder.py`. No durability and no audit,
+    #           but it needs nothing but a filesystem, which is what makes it
+    #           right for a bare `pytest` or a script with no platform Mongo.
+    # `AUTO` -- UI when this process has an interception store, FILE otherwise.
+    #
+    # Explicit rather than inferred from whichever wiring happened to be
+    # present: an operator answering prompts needs to know *where* to answer
+    # before the first one arrives, and "it depends what the process
+    # constructed" is not an answer they can act on.
+    ai_manual_handoff: str = Field(default="AUTO", pattern=r"^(AUTO|UI|FILE)$")
     ai_validated_route_bindings: tuple[str, ...] = ()
     ai_validation_interval_hours: int = Field(default=24, ge=1, le=168)
     # Upper bounds allow room for the dev-only MANUAL provider, where a human

@@ -190,7 +190,16 @@ class RuntimeConfigurationActivator:
                     )
             route_pool = None
             if activated_settings is not None and loaded_ai_gateway is not None:
-                next_routes = build_routes(activated_settings)
+                # The store the process was started with, carried into the
+                # rebuild. Without it a live configuration change silently
+                # rebuilt MANUAL as the filesystem provider, so an operator
+                # watching the AI Control Center for a prompt would wait for one
+                # that had been written to a file on disk instead -- the same
+                # handoff, moved out from under them by an unrelated release.
+                next_routes = build_routes(
+                    activated_settings,
+                    interception_store=getattr(self._app_state, "ai_interception_store", None),
+                )
                 current_route_pool = getattr(
                     self._app_state,
                     "ai_gateway_route_pool",

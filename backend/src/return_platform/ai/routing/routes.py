@@ -83,15 +83,35 @@ def _provider(
     if provider_name == "SIMULATOR":
         return SimulatorProvider(settings)
     if provider_name == "MANUAL":
-        # The durable store is preferred whenever the caller has one. Falling
-        # back to the filesystem rather than refusing keeps MANUAL usable in a
-        # bare `pytest` or a script with no platform Mongo, which is most of
-        # what MANUAL is for -- but any process that has a SystemStore gets the
-        # durable path without opting in.
-        if interception_store is not None:
-            return DurableInterceptionProvider(settings, interception_store)
-        return ManualFileProvider(settings)
+        return _manual_provider(settings, interception_store)
     raise ValueError(f"Unsupported AI provider: {provider_name}")
+
+
+def _manual_provider(
+    settings: Settings, interception_store: InterceptionStore | None
+) -> AIProvider:
+    """Where a MANUAL handoff waits, per `ai_manual_handoff`.
+
+    `UI` is refused rather than silently downgraded when no interception store
+    is wired: an operator watching the AI Control Center for a prompt that is
+    actually sitting in a file on someone's disk would wait forever, and a
+    silent fallback is exactly how that happens. `AUTO` keeps the old
+    behaviour -- durable when the process has a store, filesystem otherwise --
+    for the bare `pytest` and scripting cases MANUAL mostly exists for.
+    """
+    choice = settings.ai_manual_handoff.upper()
+    if choice == "FILE":
+        return ManualFileProvider(settings)
+    if choice == "UI":
+        if interception_store is None:
+            raise ValueError(
+                "ai_manual_handoff=UI needs an interception store, and this process has none; "
+                "use AUTO to fall back to the filesystem, or FILE to ask for it explicitly"
+            )
+        return DurableInterceptionProvider(settings, interception_store)
+    if interception_store is not None:
+        return DurableInterceptionProvider(settings, interception_store)
+    return ManualFileProvider(settings)
 
 
 def _provider_credentials(settings: Settings, provider_name: str) -> tuple[SecretStr | None, ...]:

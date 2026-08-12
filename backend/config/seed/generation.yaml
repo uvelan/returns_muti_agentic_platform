@@ -1,0 +1,54 @@
+# Volumes and knobs for `scripts/generate_seed_data.py`.
+#
+# Everything the generator varies lives here, so changing the size of the
+# corpus never means editing code.
+
+# Fixed so two runs produce the same corpus. Change it to get a different one;
+# a run is reproducible from this number alone.
+seed: 20260812
+
+counts:
+  customers: 1000
+  products: 10000
+  orders: 10000
+  warehouses: 100
+
+# Lines per order, inclusive. An order with no lines cannot be returned, so the
+# floor is 1 rather than 0.
+lines_per_order:
+  minimum: 1
+  maximum: 8
+
+# How many of an order's lines carry a shipment. The rest are still open, which
+# is the state most returns are raised against.
+shipped_fraction: 0.7
+
+order_dates:
+  # Inclusive ISO dates. Orders are spread uniformly across the window, which
+  # keeps date-window searches meaningful at every point in it.
+  earliest: "2025-01-01"
+  latest: "2026-08-01"
+
+# Emails are derived from the generated name, so the domain pool is the only
+# free choice. Deliberately obvious throwaway domains: this corpus must never
+# be mistaken for real customer data.
+email_domains:
+  - example.com
+  - example.net
+  - mail.example.org
+
+# Written to `return_source`. Names match what the active schema's source
+# assets declare in `object_ref.name`; changing one here without changing the
+# schema produces a collection nothing reads.
+collections:
+  orders: salesInv
+  customers: customerOutboundCDM
+  products: lkpSearchProduct
+  shipments: shipmentInfo
+  # Provisional -- see the note in the generator's docstring and in
+  # docs/SEED_DATA_GENERATION.md. No warehouse source exists in the schema yet.
+  warehouses: warehouseMaster
+
+# Replace the target collections rather than adding to them. False appends,
+# which is how a "10,000 order" corpus quietly becomes 20,000 on the second run.
+replace: true
