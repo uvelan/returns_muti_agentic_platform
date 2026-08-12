@@ -5,6 +5,8 @@ agents:
   order_analysis:
     name: "Order Analysis Agent"
     version: "2.0"
+    # Advisory analysis; a failure must not stop a return.
+    failure_policy: best_effort
     enabled: true
     ai_assisted: true
     human_confirmation_required: true
@@ -18,6 +20,8 @@ agents:
   order_discovery:
     name: "Order Discovery Agent"
     version: "2.0"
+    # Nothing downstream can start without a confirmed order.
+    failure_policy: blocking
     enabled: true
     ai_assisted: true
     human_confirmation_required: true
@@ -33,6 +37,8 @@ agents:
   return_workflow:
     name: "Return Workflow Agent"
     version: "2.0"
+    # Owns the case; its failure is the case failing.
+    failure_policy: blocking
     enabled: true
     ai_assisted: true
     human_confirmation_required: true
@@ -48,6 +54,8 @@ agents:
   return_fulfillment:
     name: "Return Fulfillment Agent"
     version: "2.0"
+    # Tracking is observation; the return is already in motion.
+    failure_policy: best_effort
     enabled: true
     ai_assisted: false
     human_confirmation_required: false
@@ -62,6 +70,8 @@ agents:
   bay_assignment:
     name: "Bay Assignment Agent"
     version: "2.0"
+    # A suggestion. No bay means proceed without one, never stall.
+    failure_policy: best_effort
     enabled: true
     ai_assisted: false
     human_confirmation_required: true
@@ -76,6 +86,8 @@ agents:
   feedback_learning:
     name: "Feedback Learning Agent"
     version: "2.0"
+    # Learning from an outcome cannot change the outcome.
+    failure_policy: best_effort
     enabled: true
     ai_assisted: true
     human_confirmation_required: true
@@ -552,6 +564,25 @@ bay:
   eligible_statuses:
     - WAREHOUSE_RECEIVED
     - INSPECTION_COMPLETE
+
+# How long a case waits and how often it chases. Every value is editable
+# through a configuration release; a running workflow keeps the values it
+# started with, so changes apply to new cases rather than moving a deadline
+# under a return already waiting on it.
+return_case:
+  # Bay is advisory and sits in front of every return, so this is dead time on
+  # the critical path before the Support handoff can begin. Deliberately short.
+  bay_wait_seconds: 120
+  # Business hours, not wall clock -- eight hours over a weekend is a different
+  # instant entirely. `business_calendar_id` names the calendar that decides.
+  support_response_wait_seconds: 28800
+  reminder_interval_seconds: 7200
+  max_reminders: 3
+  # A reminder cap with no terminal branch leaves the case sitting forever with
+  # nobody told.
+  on_reminders_exhausted: PARK_FOR_OPERATIONS
+  business_calendar_id: default
+  timezone: UTC
 
 
 integrations:

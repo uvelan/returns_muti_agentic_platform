@@ -449,15 +449,30 @@ def _bind_bay_assignment(result: BayAssignmentActivityResult) -> StageContextBin
             and result.warehouse_reference is None
             and result.bay_reference is None
         )
+        # Bay assignment is concurrent with the rest of the return, not
+        # downstream of it. ASSIGNED used to be legal only alongside IN_TRANSIT
+        # fulfillment, which made the bay wait for a shipment that does not
+        # exist yet -- the inverse of the intended ordering, and the reason an
+        # unavailable bay could stall a return. Both live fulfillment states now
+        # admit either assignment outcome; what stays invariant is that ASSIGNED
+        # names a warehouse and a bay, and PENDING names neither.
         or (
-            result.fulfillment_status is FulfillmentTrackingStatus.AWAITING_HANDOFF
+            result.fulfillment_status
+            in {
+                FulfillmentTrackingStatus.AWAITING_HANDOFF,
+                FulfillmentTrackingStatus.IN_TRANSIT,
+            }
             and result.status is BayAssignmentStatus.PENDING
             and _valid_identifier(result.return_reference)
             and result.warehouse_reference is None
             and result.bay_reference is None
         )
         or (
-            result.fulfillment_status is FulfillmentTrackingStatus.IN_TRANSIT
+            result.fulfillment_status
+            in {
+                FulfillmentTrackingStatus.AWAITING_HANDOFF,
+                FulfillmentTrackingStatus.IN_TRANSIT,
+            }
             and result.status is BayAssignmentStatus.ASSIGNED
             and _valid_identifier(result.return_reference)
             and _valid_identifier(result.warehouse_reference)

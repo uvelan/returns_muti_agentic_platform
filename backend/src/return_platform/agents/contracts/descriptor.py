@@ -8,7 +8,7 @@ fields but no implementation_id, no enabled flag, no resolution to an executable
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
@@ -29,6 +29,11 @@ class AgentDescriptor(BaseModel):
     policy_ref: NonBlank | None = None
     ai_route_ref: NonBlank | None = None
     enabled: bool = True
+    # `blocking` parks the case and waits for recovery; `best_effort` records
+    # the failure and lets the return continue. Order Discovery and Return
+    # Workflow are blocking; Bay, Fulfillment and Feedback are not. Until this
+    # existed the policy was documented and unenforceable.
+    failure_policy: Literal["blocking", "best_effort"] = "blocking"
     timeout_seconds: float = Field(default=30.0, gt=0.0)
     retry_max_attempts: int = Field(default=3, ge=1)
     max_concurrency: int = Field(default=10, ge=1)
@@ -46,6 +51,7 @@ class AgentDescriptor(BaseModel):
             policy_ref=config.policy_ref,
             ai_route_ref=config.ai_route_ref,
             enabled=config.enabled,
+            failure_policy=config.failure_policy,
             timeout_seconds=config.timeout_seconds,
             retry_max_attempts=config.retry_max_attempts,
             max_concurrency=config.max_concurrency,

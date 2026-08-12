@@ -29,6 +29,11 @@ class AgentConfiguration(StrictConfigModel):
     prompt_ref: NonBlank | None = None
     policy_ref: NonBlank | None = None
     ai_route_ref: NonBlank | None = None
+    # Whether the case parks when this agent fails, or carries on without it.
+    # Declared per agent rather than inferred from the stage, because the same
+    # stage can be required for one deployment and advisory for another --
+    # a branch with no warehouse has no bay to assign.
+    failure_policy: Literal["blocking", "best_effort"] = "blocking"
     timeout_seconds: float = Field(default=30.0, gt=0.0)
     retry_max_attempts: int = Field(default=3, ge=1)
     max_concurrency: int = Field(default=10, ge=1)
@@ -278,6 +283,33 @@ class BayConfiguration(StrictConfigModel):
     require_physical_receipt: bool
     allow_prearrival_reservation: bool
     eligible_statuses: tuple[NonBlank, ...] = Field(min_length=1)
+
+
+class ReturnCaseTimingConfiguration(StrictConfigModel):
+    """How long the case waits, and how often it chases.
+
+    Defaults, not constants: every field is editable through a configuration
+    release. A workflow reads them once at start and keeps them for its own
+    lifetime -- an in-flight return must not have its deadline moved underneath
+    it -- so a change applies to new cases.
+
+    Support durations are business-calendar durations. Eight hours means eight
+    *working* hours, which over a weekend is a different wall-clock instant
+    entirely; `business_calendar_id` names the calendar that decides.
+    """
+
+    # Bay is advisory and sits in front of every return, so this is dead time
+    # on the critical path. Short on purpose; measure before raising it.
+    bay_wait_seconds: int = Field(default=120, ge=0, le=86_400)
+    support_response_wait_seconds: int = Field(default=28_800, ge=60)
+    reminder_interval_seconds: int = Field(default=7_200, ge=60)
+    max_reminders: int = Field(default=3, ge=0, le=50)
+    # What happens when the reminders run out. Without this the case sits
+    # forever with nobody told, which is the failure mode a reminder cap
+    # creates if it has no terminal branch.
+    on_reminders_exhausted: Literal["PARK_FOR_OPERATIONS", "ESCALATE"] = "PARK_FOR_OPERATIONS"
+    business_calendar_id: NonBlank = "default"
+    timezone: NonBlank = "UTC"
 
 
 class IntegrationTopicConfiguration(StrictConfigModel):
@@ -545,6 +577,12 @@ class ReturnPlatformConfiguration(StrictConfigModel):
     support: SupportConfiguration
     omc: OmcConfiguration
     bay: BayConfiguration
+    # Defaulted so an existing release without the block still loads: the
+    # values are the documented defaults, and a deployment that wants others
+    # states them.
+    return_case: ReturnCaseTimingConfiguration = Field(
+        default_factory=ReturnCaseTimingConfiguration
+    )
     integrations: IntegrationConfiguration
     extensions: ExtensionConfiguration
     runtime_integrations: RuntimeIntegrationsConfiguration = Field(

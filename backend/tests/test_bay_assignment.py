@@ -130,3 +130,41 @@ def test_binding_rejects_assigned_state_without_bay() -> None:
                 _AT,
             ),
         )
+
+
+def test_a_bay_may_be_assigned_before_the_shipment_moves() -> None:
+    """Bay assignment is concurrent with the return, not downstream of it.
+
+    ASSIGNED used to be legal only alongside IN_TRANSIT fulfillment, so the bay
+    had to wait for a shipment that does not exist yet -- the inverse of the
+    intended ordering, and the reason an unavailable bay could stall a return.
+    """
+    result = build_bay_assignment_result(
+        fulfillment=_fulfillment(FulfillmentTrackingStatus.AWAITING_HANDOFF),
+        warehouse_reference="WAREHOUSE-1",
+        bay_reference="BAY-1",
+        configuration_version="return-v1",
+        observed_at=_AT,
+    )
+
+    assert result.status is BayAssignmentStatus.ASSIGNED
+    # Still bindable: the widening did not weaken the stage-result contract.
+    bind_stage_activity_result(WorkflowStage.BAY_ASSIGNMENT, result)
+
+
+def test_no_bay_found_is_a_state_not_a_failure() -> None:
+    """Bay is best-effort. `orchestrator._handle` calls this inline, so raising
+    here failed the whole return over an advisory step."""
+    for status in (
+        FulfillmentTrackingStatus.AWAITING_HANDOFF,
+        FulfillmentTrackingStatus.IN_TRANSIT,
+    ):
+        result = build_bay_assignment_result(
+            fulfillment=_fulfillment(status),
+            warehouse_reference=None,
+            bay_reference=None,
+            configuration_version="return-v1",
+            observed_at=_AT,
+        )
+        assert result.status is BayAssignmentStatus.PENDING
+        bind_stage_activity_result(WorkflowStage.BAY_ASSIGNMENT, result)

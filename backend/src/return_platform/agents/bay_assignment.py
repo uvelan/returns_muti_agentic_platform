@@ -12,6 +12,27 @@ from return_platform.agents.contracts.descriptor import AgentDescriptor
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 
 
+def _confidence_millionths(scored: list[tuple[int, str]], required_capacity: int) -> int:
+    """How clear the winning bay was, in millionths.
+
+    Zero when nothing is eligible -- there is no recommendation to be confident
+    about. Certain when exactly one bay qualifies, because no other candidate
+    could have been preferred. Otherwise the margin between the winner's spare
+    capacity and the runner-up's, scaled by what the return actually needs: a
+    two-pallet edge means a great deal for a two-pallet return and very little
+    for a fifty-pallet one.
+    """
+    if not scored:
+        return 0
+    if len(scored) == 1:
+        return 1_000_000
+    margin = scored[1][0] - scored[0][0]
+    # `scored` holds spare capacity after the return, ascending, so the winner
+    # is the tightest fit and the margin is how much slacker the next one is.
+    scale = max(1, required_capacity)
+    return 500_000 + min(500_000, round(500_000 * min(margin, scale) / scale))
+
+
 class BayAssignmentAgent:
     """This agent does not directly invoke another agent."""
 
@@ -77,6 +98,16 @@ class BayAssignmentAgent:
             scored.append((bay.capacityAvailable - request.requiredCapacity, bay.bayId))
         scored.sort(key=lambda item: (item[0], item[1]))
         recommended = scored[0][1] if scored else None
+        # Confidence from the margin over the runner-up, not a literal.
+        #
+        # This was `950_000 if recommended else 800_000` -- two constants
+        # labelled "confidence" that said nothing about the decision and could
+        # not be wrong, which makes them worse than no confidence at all. The
+        # real signal is how clear the winner was: a bay with far more headroom
+        # than the next candidate is a confident pick, two near-identical bays
+        # are a coin toss, and a sole candidate is certain because there was
+        # nothing to weigh it against.
+        confidence = _confidence_millionths(scored, request.requiredCapacity)
         return BayAssessment(
             recommendedBayId=recommended,
             eligibleBayIds=tuple(eligible),
@@ -91,7 +122,7 @@ class BayAssignmentAgent:
                     "The recommendation is advisory; atomic capacity reservation "
                     "remains deterministic."
                 ),
-                confidenceMillionths=950_000 if recommended else 800_000,
+                confidenceMillionths=confidence,
                 evidenceReferences=(f"PHYSICAL_STATUS:{request.physicalStatus}",),
             ),
         )

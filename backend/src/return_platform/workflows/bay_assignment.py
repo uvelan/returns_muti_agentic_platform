@@ -32,18 +32,25 @@ def build_bay_assignment_result(
             payload_digest=fulfillment.payload_digest,
         )
     )
-    if fulfillment_result.status is FulfillmentTrackingStatus.IN_TRANSIT:
-        if warehouse_reference is None or bay_reference is None:
-            raise ValueError("In-transit fulfillment requires warehouse and bay references.")
+    # Bay is `best_effort`. It used to raise on all three of these, and
+    # `orchestrator._handle` calls this inline -- so an unavailable bay failed
+    # the return, which is the exact inverse of the policy. A bay that cannot be
+    # assigned yet is a state, not an error, and the case carries on without it.
+    #
+    # The three cases are still distinguished, because "not yet" and "never"
+    # mean different things to an operator looking at a parked return.
+    if warehouse_reference is not None and bay_reference is not None:
+        # A bay was found. This no longer requires IN_TRANSIT fulfillment:
+        # assignment starts on order confirmation and runs alongside the rest
+        # of the return, so the shipment usually does not exist yet.
         status = BayAssignmentStatus.ASSIGNED
-    elif fulfillment_result.status is FulfillmentTrackingStatus.AWAITING_HANDOFF:
-        if warehouse_reference is not None or bay_reference is not None:
-            raise ValueError("Awaiting handoff cannot claim a bay assignment.")
-        status = BayAssignmentStatus.PENDING
-    else:
-        if warehouse_reference is not None or bay_reference is not None:
-            raise ValueError("Inactive fulfillment cannot claim a bay assignment.")
+    elif fulfillment_result.status is FulfillmentTrackingStatus.NOT_APPLICABLE:
+        # Nothing is coming back physically, so no bay will ever be needed.
         status = BayAssignmentStatus.NOT_APPLICABLE
+    else:
+        # Sought and not found, or not sought yet. Either way the return
+        # proceeds and the bay may be filled in later.
+        status = BayAssignmentStatus.PENDING
     result = BayAssignmentActivityResult(
         schema_version="bay-assignment-v1",
         fulfillment_status=fulfillment_result.status,
