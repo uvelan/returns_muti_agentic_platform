@@ -11,6 +11,7 @@ describe("the domain registry", () => {
       "/operations",
       "/returns",
       "/support",
+      "/sync",
     ]);
   });
 

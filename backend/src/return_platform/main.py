@@ -35,6 +35,7 @@ from return_platform.api.dependency_probes import (
     probe_valkey,
 )
 from return_platform.api.dependency_simulator import router as dependency_simulator_router
+from return_platform.api.graph_sync import router as graph_sync_router
 from return_platform.api.integration_outbox import router as integration_outbox_router
 from return_platform.api.physical_operations import router as physical_operations_router
 from return_platform.api.production_workflow import router as production_workflow_router
@@ -488,15 +489,20 @@ async def lifespan(
             and resources.source_mongo is not None
             and resources.neo4j is not None
         ):
-            configure_graph_sync(
-                GraphSyncService(
-                    platform_client=resources.mongo,
-                    source_client=resources.source_mongo,
-                    driver=resources.neo4j,
-                    settings=settings,
-                    registry=schema_registry,
-                )
+            graph_sync = GraphSyncService(
+                platform_client=resources.mongo,
+                source_client=resources.source_mongo,
+                driver=resources.neo4j,
+                settings=settings,
+                registry=schema_registry,
             )
+            configure_graph_sync(graph_sync)
+            # The same instance the operational-generation adapter holds, so the
+            # sync screen steers what the platform actually runs rather than a
+            # second service with its own schema snapshot. Without the run
+            # indexes the list query is a collection scan on every page load.
+            await graph_sync.ensure_indexes()
+            app.state.graph_sync = graph_sync
         await _initialize_valkey(
             settings,
             resources,
@@ -1063,6 +1069,8 @@ def create_app(
     fastapi_app.include_router(canonical_returns_router)
     fastapi_app.include_router(cases_router)
     fastapi_app.include_router(source_bindings_router)
+    # The sync ledger's first reader since Wave F1 unmounted the Data Console.
+    fastapi_app.include_router(graph_sync_router)
     fastapi_app.include_router(canonical_ai_router)
     fastapi_app.include_router(canonical_session_router)
     fastapi_app.include_router(canonical_principal_router)

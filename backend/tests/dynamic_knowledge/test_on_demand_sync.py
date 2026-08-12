@@ -139,7 +139,17 @@ async def test_identical_targeted_sync_reuses_successful_receipt(
     assert connector.calls == 1
 
 
-def test_targeted_mongo_read_projects_only_required_fields(active_schema: ActiveSchema) -> None:
+def test_a_targeted_mongo_read_is_anchored_and_bounded(active_schema: ActiveSchema) -> None:
+    """The filter is the anchor and the read is limited -- never a source-wide scan.
+
+    This used to be named for projecting "only required fields", meaning the
+    anchoring entity's own node fields. That narrowing was the defect: the
+    document a targeted read returns is extracted by every entity bound to the
+    source, so the projection is now computed from the source asset (see
+    `source_connectors.compilation.source_projection_paths`). What has not
+    changed, and is what this test is actually about, is that the read is
+    anchored and bounded.
+    """
     plan = build_targeted_read_plan(
         schema=active_schema,
         entity_id="entity_a",

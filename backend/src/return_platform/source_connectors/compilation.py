@@ -22,6 +22,7 @@ from return_platform.dynamic_knowledge.schema import (
     ActiveSchema,
     ConnectorType,
     EntityDefinition,
+    PathOrigin,
     validate_graph_identifier,
 )
 from return_platform.source_connectors.contracts import LogicalTargetedReadPlan
@@ -56,12 +57,91 @@ def _physical_path(entity: EntityDefinition, field_id: str) -> tuple[str, ...]:
     return path
 
 
+def _projected_candidates(
+    record_path: tuple[str, ...], origin: PathOrigin, path: tuple[str, ...]
+) -> tuple[tuple[str, ...], ...]:
+    """Where in the raw document a field's value could be read from.
+
+    `physical_path` is relative to the field's `path_origin`, not to the
+    document, so an exploded child's own paths only exist under the entity's
+    `record_path`. A projection built from `physical_path` alone selects
+    `lineNumber` at the top level -- a key no salesInv document has -- and the
+    child is silently never extracted.
+
+    PARENT_RECORD is the one origin the schema cannot resolve on its own: it is
+    the map one list level above the exploded record, which is the root when the
+    record_path crossed one list and an intermediate element when it crossed
+    more, and how many it crossed depends on the document. Every level it could
+    have been is projected. All of them are paths configuration named, so
+    over-projecting here cannot surface a field nobody approved.
+    """
+    if origin is PathOrigin.ROOT_DOCUMENT:
+        return (path,)
+    if origin is PathOrigin.CURRENT_RECORD:
+        return ((*record_path, *path),)
+    depths = range(len(record_path)) if record_path else range(1)
+    return tuple((*record_path[:depth], *path) for depth in depths)
+
+
+def source_projection_paths(
+    schema: ActiveSchema, source_asset_id: str
+) -> tuple[tuple[str, ...], ...]:
+    """Every physical path extraction reads out of one document of this source.
+
+    **A targeted read is projected before it is extracted, and extraction runs
+    every entity bound to the source over whatever document it is handed.**
+    Projecting only the anchoring entity's own mapped fields therefore hands
+    extraction a document that cannot satisfy the rules it is about to apply.
+    That was not theoretical: `sales_order` restricts itself with
+    `where: salesHdrEventData.docType == headerLines`, which is nobody's mapped
+    field, so an on-demand read anchored on an order number fetched the right
+    salesInv document, stripped the discriminator out of it, failed the `where`,
+    and discarded the order -- reporting SUCCEEDED with the order's own node
+    never written. The order's lines went the same way, for the same reason.
+
+    So the projection is a property of the *source asset*, not of one entity:
+    every mapped field of every entity backed by it, every `where` selector
+    those entities test, and nothing else. A derived field contributes nothing;
+    it has no source path and is computed from siblings already projected.
+
+    Paths that are prefixes of other selected paths are dropped -- MongoDB
+    rejects a projection naming both `a` and `a.b`.
+    """
+    paths: set[tuple[str, ...]] = set()
+    for entity in schema.entities.values():
+        if entity.source_asset_id != source_asset_id:
+            continue
+        record_path = entity.record_path if entity.explode else ()
+        for field in entity.fields.values():
+            if field.physical_path is None:
+                continue
+            paths.update(_projected_candidates(record_path, field.path_origin, field.physical_path))
+        for selector in entity.where:
+            # Current-record relative: `_passes_where` tests the exploded record,
+            # not the root.
+            paths.update(
+                _projected_candidates(
+                    record_path, PathOrigin.CURRENT_RECORD, selector.physical_path
+                )
+            )
+    return tuple(
+        sorted(
+            path
+            for path in paths
+            if not any(len(other) > len(path) and other[: len(path)] == path for other in paths)
+        )
+    )
+
+
 def compile_source_read(schema: ActiveSchema, plan: LogicalTargetedReadPlan) -> CompiledSourceRead:
     source = schema.sources[plan.source_asset_id]
     entity = schema.entities[plan.entity_id]
-    projected_paths = tuple(
-        _physical_path(entity, field_id) for field_id in plan.required_field_ids
-    )
+    # The whole source document as configuration describes it, not just the
+    # anchoring entity's slice of it -- see `source_projection_paths`. The plan's
+    # `required_field_ids` still names what the *caller* asked for, and the
+    # Neo4j branch below returns exactly those, because a Neo4j source read
+    # yields rows keyed by field id rather than a document to extract from.
+    projected_paths = source_projection_paths(schema, plan.source_asset_id)
     if source.connector_type is ConnectorType.MONGODB:
         predicates: list[dict[str, Any]] = []
         parameters: dict[str, Any] = {}
@@ -183,6 +263,11 @@ def compile_source_read(schema: ActiveSchema, plan: LogicalTargetedReadPlan) -> 
             connector_type=source.connector_type,
             statement=statement,
             parameters=parameters,
-            projected_physical_paths=projected_paths,
+            # The RETURN clause above, not the source-wide projection: this
+            # branch returns rows keyed by the requested field ids, so those are
+            # what it read.
+            projected_physical_paths=tuple(
+                _physical_path(entity, field_id) for field_id in plan.required_field_ids
+            ),
         )
     raise AssertionError("unreachable connector type")

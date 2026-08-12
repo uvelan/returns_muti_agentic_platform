@@ -35,8 +35,16 @@ from return_platform.dynamic_knowledge.graph.generation import (
 from return_platform.dynamic_knowledge.graph.neo4j_writer import Neo4jDynamicGraphWriter
 from return_platform.dynamic_knowledge.graph.projector import GenericGraphProjector
 from return_platform.dynamic_knowledge.graph.write_compiler import compile_node_writes
-from return_platform.dynamic_knowledge.on_demand_sync.contracts import GraphNodeMutation
-from return_platform.dynamic_knowledge.on_demand_sync.extraction import GenericSourceRecordExtractor
+from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
+    GraphNodeMutation,
+    SyncOrigin,
+    SyncReceipt,
+    SyncStatus,
+)
+from return_platform.dynamic_knowledge.on_demand_sync.extraction import (
+    GenericSourceRecordExtractor,
+    contact_digest_secrets,
+)
 from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore
 from return_platform.dynamic_knowledge.schema import (
     ActiveSchema,
@@ -45,7 +53,7 @@ from return_platform.dynamic_knowledge.schema import (
 )
 from return_platform.dynamic_knowledge.sync.adapters import (
     ProjectorGraphWriter,
-    SourceConnectorRegistry,
+    scan_connector_registry,
 )
 from return_platform.dynamic_knowledge.sync.coordinator import GenericSyncCoordinator
 from return_platform.source_connectors.contracts import (
@@ -63,7 +71,6 @@ from return_platform.source_connectors.sqlserver import (
 
 _LEGACY_GENERATION_ID = LEGACY_GENERATION_ID
 _LEGACY_FENCING_TOKEN = 1
-_CONTACT_KEY_REFERENCE = "vault://return-platform/contact-lookup#hmac_key"
 
 
 class GraphSyncScope(StrEnum):
@@ -82,6 +89,21 @@ class GraphSyncRequest(GraphSyncModel):
     applySchema: bool = True
 
 
+class SyncRunRequester(GraphSyncModel):
+    """The agent turn a targeted run was performed for. Absent on a scheduled run.
+
+    Anchor *field ids*, not anchor values -- see `SyncOrigin` for why a run list
+    is not somewhere to accumulate order numbers.
+    """
+
+    agentId: str
+    conversationId: str
+    clientTurnId: str
+    entityId: str
+    strongAnchorId: str
+    anchorFieldIds: list[str]
+
+
 class GraphSyncRunView(GraphSyncModel):
     id: str
     mode: str
@@ -96,10 +118,125 @@ class GraphSyncRunView(GraphSyncModel):
     startedBy: str
     startedAt: datetime
     completedAt: datetime | None = None
+    # Populated for ON_DEMAND runs only. A scheduled run writes into the one
+    # legacy generation and has no requesting turn, so both stay null there
+    # rather than being invented.
+    graphGenerationId: str | None = None
+    requestDigest: str | None = None
+    requestedBy: SyncRunRequester | None = None
+
+
+GRAPH_SYNC_RUNS_COLLECTION = "graph_sync_runs"
 
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def sync_run_view(document: dict[str, Any]) -> GraphSyncRunView:
+    """One `graph_sync_runs` document as the console reads it.
+
+    Module-level rather than a method because two writers now share this
+    collection -- the scheduled `GraphSyncService.sync` below and
+    `MongoTargetedSyncRunLedger`, which records what an agent turn pulled from a
+    source on demand. One ledger, deliberately: before this the two ran in
+    separate books and only the scheduled one had a reader, so a targeted sync
+    was invisible to everyone including the person debugging why the graph
+    changed.
+    """
+    return GraphSyncRunView.model_validate(
+        {
+            "id": str(document["_id"]),
+            "mode": document["mode"],
+            "status": document["status"],
+            "schemaVersion": document["schemaVersion"],
+            "sourceCounts": document.get("sourceCounts", {}),
+            "nodeWrites": document.get("nodeWrites", 0),
+            "relationshipWrites": document.get("relationshipWrites", 0),
+            "constraintsApplied": document.get("constraintsApplied", []),
+            "configurationDigest": document["configurationDigest"],
+            "errorCode": document.get("errorCode"),
+            "startedBy": document["startedBy"],
+            "startedAt": document["startedAt"],
+            "completedAt": document.get("completedAt"),
+            "graphGenerationId": document.get("graphGenerationId"),
+            "requestDigest": document.get("requestDigest"),
+            "requestedBy": document.get("requestedBy"),
+        }
+    )
+
+
+class MongoTargetedSyncRunLedger:
+    """Publishes an agent's targeted sync into the platform's one run ledger.
+
+    Satisfies `on_demand_sync.coordinator.TargetedSyncRunLedger`. Lives here,
+    beside `GraphSyncService`, because this module owns `graph_sync_runs` and
+    `dynamic_knowledge` deliberately does not import `data_platform` -- the
+    coordinator is handed the port, and the composition root
+    (`scripts/run_order_discovery_worker.py`) supplies this adapter.
+
+    Upserts on the sync request id: `synchronize` records a run twice, once
+    RUNNING and once terminal, and `startedAt` must survive the second write.
+    """
+
+    def __init__(
+        self,
+        client: AsyncMongoClient[dict[str, object]],
+        database: str,
+    ) -> None:
+        self._runs = client[database][GRAPH_SYNC_RUNS_COLLECTION]
+
+    async def record(
+        self,
+        *,
+        schema: ActiveSchema,
+        source_asset_id: str,
+        receipt: SyncReceipt,
+        origin: SyncOrigin | None,
+    ) -> None:
+        now = _now()
+        terminal = receipt.status in {SyncStatus.SUCCEEDED, SyncStatus.FAILED}
+        update: dict[str, Any] = {
+            "mode": "ON_DEMAND",
+            # The ledger's vocabulary, not the receipt's: an operator comparing a
+            # targeted run against a scheduled one should not have to know that
+            # one says SUCCEEDED and the other COMPLETED.
+            "status": "COMPLETED" if receipt.status is SyncStatus.SUCCEEDED else receipt.status,
+            "schemaVersion": receipt.schema_version,
+            "sourceCounts": {source_asset_id: receipt.source_rows_read},
+            "nodeWrites": receipt.nodes_written,
+            "relationshipWrites": receipt.relationships_written,
+            # A targeted read never applies constraints; it writes into a
+            # generation a rebuild already prepared.
+            "constraintsApplied": [],
+            "configurationDigest": hashlib.sha256(
+                schema.configuration_checksum.encode()
+            ).hexdigest(),
+            "errorCode": receipt.error_code,
+            "graphGenerationId": receipt.graph_generation_id,
+            "requestDigest": receipt.request_digest,
+            "completedAt": now if terminal else None,
+        }
+        if origin is not None:
+            update["requestedBy"] = {
+                "agentId": origin.agent_id,
+                "conversationId": origin.conversation_id,
+                "clientTurnId": origin.client_turn_id,
+                "entityId": origin.entity_id,
+                "strongAnchorId": origin.strong_anchor_id,
+                "anchorFieldIds": list(origin.anchor_field_ids),
+            }
+        await self._runs.update_one(
+            {"_id": receipt.sync_request_id},
+            {
+                "$set": update,
+                "$setOnInsert": {
+                    "startedAt": now,
+                    "startedBy": origin.agent_id if origin is not None else "on-demand-sync",
+                },
+            },
+            upsert=True,
+        )
 
 
 def _text(value: Any) -> str | None:
@@ -182,7 +319,7 @@ class GraphSyncService:
         self._platform_db = platform_client[settings.mongo_database]
         self._source_db = source_client[settings.source_mongo_database]
         self._driver = driver
-        self._runs = self._platform_db["graph_sync_runs"]
+        self._runs = self._platform_db[GRAPH_SYNC_RUNS_COLLECTION]
         # The configured schema, not a second one built in code.
         #
         # This used to call `build_interim_active_schema`, whose own docstring
@@ -213,6 +350,9 @@ class GraphSyncService:
         await self._releases.ensure_indexes()
         await self._runs.create_index([("startedAt", -1)])
         await self._runs.create_index("status")
+        # The ledger now holds both scheduled and on-demand runs, and the first
+        # thing an operator does with a mixed list is filter it to one kind.
+        await self._runs.create_index("mode")
 
     async def remove_source_mongodb_records(
         self, records: Sequence[tuple[str, Mapping[str, object]]]
@@ -260,30 +400,17 @@ class GraphSyncService:
 
     @staticmethod
     def _view(document: dict[str, Any]) -> GraphSyncRunView:
-        return GraphSyncRunView.model_validate(
-            {
-                "id": str(document["_id"]),
-                "mode": document["mode"],
-                "status": document["status"],
-                "schemaVersion": document["schemaVersion"],
-                "sourceCounts": document.get("sourceCounts", {}),
-                "nodeWrites": document.get("nodeWrites", 0),
-                "relationshipWrites": document.get("relationshipWrites", 0),
-                "constraintsApplied": document.get("constraintsApplied", []),
-                "configurationDigest": document["configurationDigest"],
-                "errorCode": document.get("errorCode"),
-                "startedBy": document["startedBy"],
-                "startedAt": document["startedAt"],
-                "completedAt": document.get("completedAt"),
-            }
-        )
+        return sync_run_view(document)
 
     def _configuration_digest(self) -> str:
         encoded = self._schema.configuration_checksum.encode()
         return hashlib.sha256(encoded).hexdigest()
 
-    async def list_runs(self, limit: int = 100) -> list[GraphSyncRunView]:
-        documents = await self._runs.find({}).sort("startedAt", -1).limit(limit).to_list()
+    async def list_runs(
+        self, limit: int = 100, *, mode: str | None = None
+    ) -> list[GraphSyncRunView]:
+        query: dict[str, Any] = {} if mode is None else {"mode": mode}
+        documents = await self._runs.find(query).sort("startedAt", -1).limit(limit).to_list()
         return [self._view(document) for document in documents]
 
     async def get_run(self, run_id: str) -> GraphSyncRunView | None:
@@ -418,15 +545,17 @@ class GraphSyncService:
             ),
             source_counts,
         )
-        connectors = SourceConnectorRegistry(
+        connectors = scan_connector_registry(
             schema=self._schema,
             mongo_connector=mongo_connector,
             sqlserver_connector=sqlserver_connector,
         )
-        resolved_secrets = {
-            _CONTACT_KEY_REFERENCE: self._settings.contact_lookup_hmac_key.get_secret_value()
-        }
-        extractor = GenericSourceRecordExtractor(resolved_secrets=resolved_secrets)
+        extractor = GenericSourceRecordExtractor(
+            resolved_secrets=contact_digest_secrets(
+                self._schema,
+                hmac_key=self._settings.contact_lookup_hmac_key.get_secret_value(),
+            )
+        )
         projector_writer = ProjectorGraphWriter(
             projector=self._projector,
             writer=self._writer,

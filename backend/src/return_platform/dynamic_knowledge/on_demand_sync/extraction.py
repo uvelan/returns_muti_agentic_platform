@@ -28,6 +28,27 @@ from return_platform.dynamic_knowledge.schema import (
 from return_platform.security.contact_evidence import contact_lookup_digest
 
 
+def contact_digest_secrets(schema: ActiveSchema, *, hmac_key: str) -> dict[str, str]:
+    """Every CONTACT_LOOKUP_DIGEST key reference the schema names, resolved.
+
+    Read out of the schema rather than written as a literal at each call site,
+    because there were two call sites and only one of them had the key: the
+    scheduled sync passed it, the on-demand sync passed nothing, and the same
+    extractor would therefore refuse a document on an agent turn that it
+    projects happily on a schedule -- for a field neither of them mentions.
+    Adding a keyed derivation is a schema edit; it must not also be a code edit
+    in however many places happen to build an extractor.
+    """
+    return {
+        field.derive.key_reference: hmac_key
+        for entity in schema.entities.values()
+        for field in entity.fields.values()
+        if field.derive is not None
+        and field.derive.operation is DeriveOperation.CONTACT_LOOKUP_DIGEST
+        and field.derive.key_reference is not None
+    }
+
+
 class SourceRecordExtractor(Protocol):
     def extract(
         self,

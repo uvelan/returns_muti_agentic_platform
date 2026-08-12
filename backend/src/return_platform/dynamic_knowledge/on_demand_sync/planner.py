@@ -21,7 +21,17 @@ def build_targeted_read_plan(
     maximum_rows: int = 100,
     maximum_dependency_records: int = 500,
 ) -> LogicalTargetedReadPlan:
-    """Select only graph-mapped and anchor fields; never issue source-wide reads."""
+    """One entity's record, reached by its anchors; never a source-wide read.
+
+    `required_field_ids` is what the *caller* wants back -- the anchoring
+    entity's own graph-mapped and anchor fields. It is deliberately no longer
+    what a document-shaped connector projects: extraction runs every entity
+    bound to the source over the document a targeted read returns, so the
+    projection is a property of the source asset and is computed by
+    `source_connectors.compilation.source_projection_paths`. Narrowing the
+    document to one entity's fields is how an anchored read of an order used to
+    come back and then throw the order away.
+    """
 
     entity = schema.entities[entity_id]
     node = schema.entity_node(entity_id)

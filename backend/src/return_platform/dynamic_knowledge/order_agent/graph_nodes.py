@@ -47,6 +47,7 @@ from return_platform.dynamic_knowledge.knowledge.guards import (
     SchemaQueryGuard,
     StrongAnchorGuard,
 )
+from return_platform.dynamic_knowledge.on_demand_sync.contracts import SyncOrigin
 from return_platform.dynamic_knowledge.on_demand_sync.coordinator import OnDemandSyncCoordinator
 from return_platform.dynamic_knowledge.on_demand_sync.planner import build_targeted_read_plan
 from return_platform.dynamic_knowledge.order_agent.contracts import (
@@ -817,11 +818,37 @@ def make_request_on_demand_sync_node(deps: GraphDependencies) -> Any:
             graph_generation_id=state["graph_generation_id"],
             mapping_version=deps.schema.compiler_version,
         )
-        await deps.on_demand_sync.synchronize(
+        receipt = await deps.on_demand_sync.synchronize(
             schema=deps.schema,
             graph_generation_id=state["graph_generation_id"],
             request_digest=digest,
             plan=source_plan,
+            # What the sync control screen shows an operator: a run that no human
+            # started, attributed to the turn that needed it.
+            origin=SyncOrigin(
+                agent_id=state["agent_id"],
+                conversation_id=state["conversation_id"],
+                client_turn_id=state["client_turn_id"],
+                entity_id=anchor_request.entity_id,
+                strong_anchor_id=anchor_request.strong_anchor_id,
+                anchor_field_ids=tuple(sorted(normalized_values)),
+            ),
+        )
+        logger.info(
+            "order_agent_on_demand_sync_completed",
+            extra={
+                "conversation_id": state["conversation_id"],
+                "client_turn_id": state["client_turn_id"],
+                "sync_request_id": receipt.sync_request_id,
+                "source_asset_id": source_plan.source_asset_id,
+                "status": receipt.status.value,
+                # The number that says whether the escalation actually helped.
+                # A SUCCEEDED sync that wrote nothing is the failure mode this
+                # whole path was rebuilt around: the source answered and the
+                # projection threw the answer away.
+                "nodes_written": receipt.nodes_written,
+                "source_rows_read": receipt.source_rows_read,
+            },
         )
         compiled = deps.compiler.compile_read(deps.schema, original_query)
         raw_result = await deps.knowledge_gateway.execute(

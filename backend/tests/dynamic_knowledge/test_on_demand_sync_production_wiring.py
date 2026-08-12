@@ -24,8 +24,8 @@ from return_platform.dynamic_knowledge.graph.projector import GenericGraphProjec
 from return_platform.dynamic_knowledge.integration.mongo_store import MongoOnDemandSyncStore
 from return_platform.dynamic_knowledge.integration.on_demand_sync_adapters import (
     NoGenerationMarker,
-    OnDemandConnectorRegistry,
     OnDemandNeo4jGraphWriter,
+    targeted_connector_registry,
 )
 from return_platform.dynamic_knowledge.on_demand_sync.coordinator import OnDemandSyncCoordinator
 from return_platform.dynamic_knowledge.on_demand_sync.extraction import (
@@ -86,7 +86,7 @@ class _Harness:
         )
 
     def build_coordinator(self) -> OnDemandSyncCoordinator:
-        connectors = OnDemandConnectorRegistry(
+        connectors = targeted_connector_registry(
             schema=self.schema,
             mongo=MongoDBSourceScanConnector(
                 self.mongo_client[self.source_database_name], schema=self.schema

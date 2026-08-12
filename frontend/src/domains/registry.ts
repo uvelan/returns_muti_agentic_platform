@@ -1,4 +1,4 @@
-import { Activity, Bot, Headset, Network, RotateCcw, Settings } from "lucide-react";
+import { Activity, Bot, Headset, Network, RefreshCw, RotateCcw, Settings } from "lucide-react";
 
 import type { Capability } from "../api/principal";
 
@@ -159,9 +159,24 @@ export const DOMAINS: readonly DomainDefinition[] = [
     sections: sections(AI_SECTIONS),
   },
   {
+    path: "/sync",
+    name: "Source Sync",
+    description: "Sync runs, what each one read, and what it wrote to the graph.",
+    purpose: "Check the graph is current, and rebuild it from the sources when it is not.",
+    icon: RefreshCw,
+    // Its own capability, and it already existed. `config.source.read` is the
+    // right question -- "may this person see how the platform reads its
+    // sources" -- so this domain does not join the two that had to borrow one.
+    requires: "config.source.read",
+    screenPhase: 22,
+    // One workspace: a run history and the run it opens. The mode filter
+    // narrows a list rather than switching what the screen is.
+    sections: [],
+  },
+  {
     path: "/operations",
     name: "Operations",
-    description: "Return queues and timelines; sync, generations and workers to come.",
+    description: "Return queues and timelines; generations and workers to come.",
     purpose: "Work the return queues, and see whether the platform is healthy.",
     icon: Activity,
     // No `operations.*` capability exists yet. Gated on the runtime read
@@ -170,9 +185,10 @@ export const DOMAINS: readonly DomainDefinition[] = [
     // as work-in-progress. It gets its own capability when the API lands.
     requires: "config.runtime.read",
     screenPhase: 22,
-    // The returns-operations half is backed and built. The platform-health
-    // half -- sync runs, graph generations, workers, outbox -- has no API, so
-    // the badge stays until it does.
+    // The returns-operations half is backed and built. What is left of the
+    // platform-health half -- graph generations, workers, outbox -- has no API,
+    // so the badge stays until it does. Sync runs left this list when they got
+    // one; they are the `/sync` domain above.
     status: "NO BACKEND YET",
     sections: [],
   },

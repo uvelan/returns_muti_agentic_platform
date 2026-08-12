@@ -34,6 +34,9 @@ const DOMAIN_SCREENS: Partial<Record<string, ComponentType>> = {
       default: m.ReturnsOperationsPage,
     })),
   ),
+  "/sync": lazy(() =>
+    import("./sync/SyncControlPage").then((m) => ({ default: m.SyncControlPage })),
+  ),
 };
 
 /**
