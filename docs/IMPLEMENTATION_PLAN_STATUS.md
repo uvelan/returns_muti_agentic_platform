@@ -90,28 +90,31 @@ Run 2026-08-12 in the diagnostics container: **2,392 passed, 56 failed, 10 skipp
 (47 min). Waves 0-2, the three merged worktrees, the index migrations and the sync-projection
 change all hold against real infrastructure.
 
-**The 56 failures are an environment artefact, not code.** All are
-, all the same assertion:
+**The 56 failures are an environment artefact, not code.** All are in
+`tests/test_order_agent_rest.py`, all the same assertion:
 
+```
+ConnectionRefusedError: [Errno 111] Connect call failed ('::1', 7687, 0, 0)
+  -> dependency_initialization_failed -> 503 -> assert 503 in (200, 201)
+```
 
+`::1` port 7687 is Neo4j on IPv6 loopback. Those tests construct their own `Settings()`, which
+reads the mounted repository-root `.env` — and that file was rewritten to literal `localhost`
+values when Vault was disabled. The Vault placeholders it replaced were host-agnostic; the
+literals are not, and inside the container they are wrong. `docker exec -e` overrides do not
+help: they reach the process environment, and `Settings()` re-reads the file underneath them.
 
- is Neo4j on IPv6 loopback. Those tests construct their own , which reads
-the mounted repository-root  -- and that file was rewritten to literal  values
-when Vault was disabled. The Vault placeholders it replaced were host-agnostic; the literals are
-not, and inside the container they are wrong.  overrides do not help: they reach
-the process environment, and  re-reads the file underneath them.
+**Fix:** give the container its own `.env` carrying in-network values — `mongodb:27017`,
+`bolt://neo4j:7687`, `temporal:7233`, `valkey`, `sqlserver` — rather than passing hostnames as
+`-e` flags. Then re-run `tests/test_order_agent_rest.py`.
 
-**Fix:** give the container a  carrying in-network values -- ,
-, , ,  -- rather than passing hostnames as
- flags. Then re-run .
+Two hypotheses were wrong before this one: that `PLATFORM_AI_PROVIDER_ORDER=MANUAL` starved the
+scenarios, and that dropping the synthetic `orders`/`products`/`customers` collections removed
+their fixture data. Both were inferred from where the failures clustered instead of from reading
+one assertion — which is what execution rule 3 exists to prevent.
 
-Two hypotheses were wrong before this one: that  starved the
-scenarios, and that dropping the synthetic // collections removed
-their fixture data. Both were inferred from where failures clustered instead of from reading one
-assertion -- which is what execution rule 3 exists to prevent.
-
-**Still open:** 4 errors in 
-(SQL Server is up; likely a missing table or driver in that container). And  is
+**Still open:** 4 errors in `tests/source_connectors/test_sqlserver_connector_docker.py`
+(SQL Server is up; likely a missing table or driver in that container). And `ai_replay_mode` is
 worth enabling for the next full run so it records itself and later runs cost nothing.
 
 **Also note:** piping a container run through `tail` loses the entire output if the connection
