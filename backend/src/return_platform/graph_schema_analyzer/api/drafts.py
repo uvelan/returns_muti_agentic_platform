@@ -16,11 +16,16 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from return_platform.graph_schema_analyzer.api.analyses import _actor, resolve_persistence
+from return_platform.graph_schema_analyzer.application.discovery_service import DiscoveryService
 from return_platform.graph_schema_analyzer.application.draft_service import (
     DraftService,
     NoSnapshotToValidateAgainst,
 )
 from return_platform.graph_schema_analyzer.application.mutation_service import MutationRejected
+from return_platform.graph_schema_analyzer.application.reanalysis_service import (
+    ReanalysisProposal,
+    propose_reanalysis,
+)
 from return_platform.graph_schema_analyzer.application.validation_service import ValidationService
 from return_platform.graph_schema_analyzer.domain.errors import (
     ConcurrentModification,
@@ -28,6 +33,7 @@ from return_platform.graph_schema_analyzer.domain.errors import (
     UnknownAnalysis,
 )
 from return_platform.graph_schema_analyzer.domain.mutation import MutationCommand
+from return_platform.graph_schema_analyzer.domain.sampling_policy import SamplingPolicy
 from return_platform.graph_schema_analyzer.domain.schema_draft import DraftStatus
 from return_platform.graph_schema_analyzer.domain.schema_revision import SchemaDiff, diff_shapes
 from return_platform.graph_schema_analyzer.domain.validation_result import (
@@ -35,6 +41,7 @@ from return_platform.graph_schema_analyzer.domain.validation_result import (
     ValidationCheck,
 )
 from return_platform.graph_schema_analyzer.ports.graph_target_port import GraphTargetPort
+from return_platform.graph_schema_analyzer.ports.source_port import SourceDiscoveryPort
 from return_platform.graph_schema_analyzer.ports.system_store_port import PersistencePort
 
 router = APIRouter(prefix="/api/graph-schema", tags=["Graph Schema Analyzer"])
@@ -65,6 +72,31 @@ def resolve_graph_target(request: Request) -> GraphTargetPort:
 
 
 _GraphTarget = Annotated[GraphTargetPort, Depends(resolve_graph_target)]
+
+
+def resolve_source_discovery(request: Request) -> SourceDiscoveryPort:
+    """The source discovery port, attached at startup.
+
+    503 rather than a proposal built from no new evidence: a re-analysis that
+    could not read the source would report "nothing drifted", which is the one
+    answer that must never be guessed.
+    """
+    sources = getattr(request.app.state, "graph_schema_analyzer_source_discovery", None)
+    if not isinstance(sources, SourceDiscoveryPort):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "SOURCE_DISCOVERY_UNAVAILABLE",
+                "message": (
+                    "Source discovery is not available, so the sources cannot be re-read. "
+                    "Re-analysis is refused rather than reporting no drift it did not look for."
+                ),
+            },
+        )
+    return sources
+
+
+_Sources = Annotated[SourceDiscoveryPort, Depends(resolve_source_discovery)]
 
 
 class ApplyMutationsRequest(BaseModel):
@@ -367,6 +399,88 @@ async def get_revision_diff(draft_id: str, sequence: int, persistence: _Persiste
         after.model_dump(mode="json"),
         from_sequence=max(sequence - 1, 0),
         to_sequence=sequence,
+    )
+
+
+@router.post("/drafts/{draft_id}/reanalysis", response_model=ReanalysisProposal)
+async def reanalyze_draft(
+    draft_id: str, persistence: _Persistence, sources: _Sources
+) -> ReanalysisProposal:
+    """Re-read the sources and say what the draft would have to change.
+
+    **Proposes; never applies.** The commands come back typed, and the analyst
+    accepts them by sending them to `POST /drafts/{id}/mutations` -- the same
+    path a hand-written change takes, which is why there is no second one here.
+    Rejecting is simply not sending them.
+
+    **The evidence is refreshed; the design is not.** A new snapshot is captured
+    and the analysis is re-grounded on it, because from now on "does this draft
+    match the source" has to be answered against what the source actually looks
+    like -- validation should start failing on the drift, not keep passing
+    against a reading from last month. The draft's shape is untouched.
+
+    **Metadata only.** Drift is a question about shape, so nothing here reads a
+    sample row, and no sample-retention decision is made or needed.
+
+    A run that finds nothing writes nothing: two captures of the same shape have
+    the same content address, and storing a second copy of a snapshot under a
+    new id would grow the collection with every poll.
+    """
+    try:
+        draft = await persistence.load_draft(draft_id)
+        session = await persistence.load_session(draft.analysis_id)
+    except UnknownAnalysis as exc:
+        raise _not_found("draft", draft_id) from exc
+    if session.snapshot_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "NO_SNAPSHOT",
+                "message": (
+                    f"analysis {draft.analysis_id} has captured no source snapshot, so there "
+                    "is nothing to re-analyse against; run discovery first."
+                ),
+            },
+        )
+    before = await persistence.load_snapshot(session.snapshot_id)
+
+    now = datetime.now(UTC)
+    try:
+        outcome = await DiscoveryService(sources).discover(
+            analysis_id=draft.analysis_id,
+            # Metadata-only, deliberately, and not the policy the first
+            # discovery ran under: re-reading to compare shapes never needs a
+            # row, so a re-analysis cannot become a way to sample a source the
+            # original analysis was not permitted to sample.
+            policies=[SamplingPolicy.metadata_only(ref) for ref in session.source_refs],
+            captured_at=now,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "SOURCE_NOT_DISCOVERABLE", "message": str(exc)},
+        ) from exc
+
+    after = outcome.snapshot
+    if not before.describes_same_shape_as(after):
+        await persistence.save_snapshot(after)
+        try:
+            await persistence.save_session(
+                session.with_snapshot(after.snapshot_id, occurred_at=now),
+                expected_version=session.version,
+            )
+        except ConcurrentModification as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "CONCURRENT_MODIFICATION", "message": str(exc)},
+            ) from exc
+
+    return propose_reanalysis(
+        draft_id=draft_id,
+        shape=draft.shape,
+        before=before,
+        after=after,
+        from_sequence=draft.current_revision,
     )
 
 

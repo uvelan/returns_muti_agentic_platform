@@ -269,6 +269,11 @@ export interface paths {
          *     conversation history is: a case carries the customer's order and whatever
          *     the associate typed about them, and "list every case" is not a read anyone
          *     should be able to make by accident.
+         *
+         *     `conversationId` narrows to one case rather than being a second endpoint.
+         *     It is what makes resuming a conversation restore the return with it: the
+         *     copilot learns the case id from the turn that confirmed, and after a reload
+         *     there is no such turn to learn it from.
          */
         get: operations["list_cases_api_cases_get"];
         put?: never;
@@ -289,6 +294,10 @@ export interface paths {
         /**
          * Get Case
          * @description One case, with each RMA carrying the items it covers.
+         *
+         *     Someone else's case is reported as absent, not as forbidden. A 403 on a
+         *     guessed id confirms the id, and the list above is deliberately scoped so
+         *     that no caller learns of a case that is not theirs.
          */
         get: operations["get_case_api_cases__case_id__get"];
         put?: never;
@@ -647,6 +656,77 @@ export interface paths {
          * @description Typed commands only -- the request model is the enforcement point.
          */
         post: operations["apply_draft_mutations_api_graph_schema_drafts__draft_id__mutations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-schema/drafts/{draft_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Draft
+         * @description Turn an approved draft into the schema the platform runs.
+         *
+         *     The step that closes the analyzer's loop. Until this existed a draft could
+         *     be discovered, edited, validated and approved, and the runtime went on
+         *     reading a file from the repository -- so an approval changed a document and
+         *     nothing else.
+         *
+         *     APPROVED only. A validated draft is a shape someone might accept; a
+         *     published release is one the platform will reason over, and the human act
+         *     in between is the whole reason the state machine has three states.
+         *
+         *     A shape that cannot compile comes back `accepted=false` with the element
+         *     named, not as a 500: which entity was ambiguous is the only useful thing to
+         *     say, and the analyst is the one who can fix it.
+         */
+        post: operations["publish_draft_api_graph_schema_drafts__draft_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-schema/drafts/{draft_id}/reanalysis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reanalyze Draft
+         * @description Re-read the sources and say what the draft would have to change.
+         *
+         *     **Proposes; never applies.** The commands come back typed, and the analyst
+         *     accepts them by sending them to `POST /drafts/{id}/mutations` -- the same
+         *     path a hand-written change takes, which is why there is no second one here.
+         *     Rejecting is simply not sending them.
+         *
+         *     **The evidence is refreshed; the design is not.** A new snapshot is captured
+         *     and the analysis is re-grounded on it, because from now on "does this draft
+         *     match the source" has to be answered against what the source actually looks
+         *     like -- validation should start failing on the drift, not keep passing
+         *     against a reading from last month. The draft's shape is untouched.
+         *
+         *     **Metadata only.** Drift is a question about shape, so nothing here reads a
+         *     sample row, and no sample-retention decision is made or needed.
+         *
+         *     A run that finds nothing writes nothing: two captures of the same shape have
+         *     the same content address, and storing a second copy of a snapshot under a
+         *     new id would grow the collection with every poll.
+         */
+        post: operations["reanalyze_draft_api_graph_schema_drafts__draft_id__reanalysis_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1012,6 +1092,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/schema-releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Releases
+         * @description Every published release, newest first, and which one is live.
+         */
+        get: operations["list_releases_api_schema_releases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schema-releases/{release_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate Release
+         * @description Make a release live, and record the migration it commits the graph to.
+         *
+         *     Returns the plan rather than an acknowledgement. Whether a rebuild is now
+         *     owed is the consequence of the act, and an operator who has to go and ask
+         *     somewhere else will not.
+         */
+        post: operations["activate_release_api_schema_releases__release_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schema-releases/{release_id}/migration-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Migration Plan
+         * @description What activating this release would do, computed against what is live now.
+         *
+         *     A preview, recomputed on every call rather than served from the recorded
+         *     plan: the active pointer moves, and a plan for a pair that is no longer the
+         *     pair you are in is a confidently wrong answer.
+         */
+        get: operations["get_migration_plan_api_schema_releases__release_id__migration_plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/session": {
         parameters: {
             query?: never;
@@ -1037,6 +1185,55 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/source-bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Bindings
+         * @description Every dataset the platform can resolve, and where each one points.
+         */
+        get: operations["list_bindings_api_source_bindings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/source-bindings/{dataset}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rebind
+         * @description Point a dataset somewhere else.
+         *
+         *     Validated as a real `SourceAssetDefinition` before it is stored, so a
+         *     malformed connection is refused here rather than at the next publish --
+         *     where it would surface as a compilation failure that reads like a schema
+         *     problem.
+         */
+        put: operations["rebind_api_source_bindings__dataset__put"];
+        post?: never;
+        /**
+         * Clear Override
+         * @description Return a dataset to whatever the configured schema says.
+         */
+        delete: operations["clear_override_api_source_bindings__dataset__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1763,6 +1960,37 @@ export interface paths {
         put?: never;
         /** Add Message */
         post: operations["add_message_api_v1_return_support_work_items__work_item_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/return-support/work-items/{work_item_id}/return-outcome": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Return Outcome
+         * @description Send Support's answer to the case that asked for it.
+         *
+         *     This is the step that made Channel B -> Channel A possible. The work item
+         *     knows its case, the case knows its workflow, and the workflow is waiting on
+         *     a durable timer for exactly this signal -- so the outcome reaches the
+         *     associate's original conversation instead of the browser trying to match an
+         *     order reference across two collections.
+         *
+         *     A signal, not a write. `ReturnCaseWorkflow` owns what happens next: it
+         *     records the return records, moves the case status and stops the reminder
+         *     cadence, and it does so once however many times Support presses send --
+         *     duplicate responses are ignored by the workflow, not deduplicated here.
+         */
+        post: operations["submit_return_outcome_api_v1_return_support_work_items__work_item_id__return_outcome_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2723,9 +2951,21 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[MigrationPlan] */
+        APIResponse_MigrationPlan_: {
+            data?: components["schemas"]["MigrationPlan"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[PrincipalView] */
         APIResponse_PrincipalView_: {
             data?: components["schemas"]["PrincipalView"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[ReleaseListView] */
+        APIResponse_ReleaseListView_: {
+            data?: components["schemas"]["ReleaseListView"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -2786,6 +3026,12 @@ export interface components {
         /** APIResponse[SimulationOperationView] */
         APIResponse_SimulationOperationView_: {
             data?: components["schemas"]["SimulationOperationView"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[SourceBindingView] */
+        APIResponse_SourceBindingView_: {
+            data?: components["schemas"]["SourceBindingView"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -2943,6 +3189,13 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[list[SourceBindingView]] */
+        APIResponse_list_SourceBindingView__: {
+            /** Data */
+            data?: components["schemas"]["SourceBindingView"][] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[list[SourceItem]] */
         APIResponse_list_SourceItem__: {
             /** Data */
@@ -3075,11 +3328,26 @@ export interface components {
             /** Source Field */
             source_field: string;
         };
-        /** AddRelationship */
+        /**
+         * AddRelationship
+         * @description An edge, and how the two entities are matched to draw it.
+         *
+         *     The join was implicit until the compiler needed it: an edge type and two
+         *     labels say a relationship exists, not which property of one equals which
+         *     property of the other, and a projection cannot be built from the former.
+         *     Left unset it falls back to the other entity's identifier found by name --
+         *     the ordinary foreign-key shape -- which the compiler checks rather than
+         *     assumes.
+         */
         AddRelationship: {
             cardinality: components["schemas"]["Cardinality"];
             /** From Label */
             from_label: string;
+            /**
+             * From Properties
+             * @default []
+             */
+            from_properties: string[];
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -3094,6 +3362,11 @@ export interface components {
             relationship_type: string;
             /** To Label */
             to_label: string;
+            /**
+             * To Properties
+             * @default []
+             */
+            to_properties: string[];
         };
         /** AgentConfigurationUpdate */
         AgentConfigurationUpdate: {
@@ -4072,6 +4345,18 @@ export interface components {
             /** Version */
             version: number;
         };
+        /**
+         * DriftKind
+         * @enum {string}
+         */
+        DriftKind: "DATASET_ADDED" | "DATASET_REMOVED" | "FIELD_ADDED" | "FIELD_REMOVED" | "FIELD_TYPE_CHANGED";
+        /** ElementChange */
+        ElementChange: {
+            /** Detail */
+            detail: string;
+            /** Element */
+            element: string;
+        };
         /** EntityShapeView */
         EntityShapeView: {
             /** Identifier Properties */
@@ -4210,6 +4495,33 @@ export interface components {
             /** Properties */
             properties: string[];
         };
+        /**
+         * GraphObject
+         * @description One constraint or index, in the form both families can be compared in.
+         */
+        GraphObject: {
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            kind: components["schemas"]["GraphObjectKind"];
+            /** Label */
+            label: string;
+            /** Properties */
+            properties: string[];
+        };
+        /**
+         * GraphObjectKind
+         * @description Where a constraint or index came from.
+         *
+         *     Kept on the object because the two families are provisioned by different
+         *     owners: the derived ones follow identity and are recomputed from the schema,
+         *     while the declared ones are what an analyst asked for in a draft. An operator
+         *     reading a plan needs to know which of those a line is.
+         * @enum {string}
+         */
+        GraphObjectKind: "NODE_KEY_CONSTRAINT" | "RELATIONSHIP_MATCH_INDEX" | "DECLARED_CONSTRAINT" | "DECLARED_INDEX";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -4227,6 +4539,71 @@ export interface components {
             /** Records */
             records: number | null;
         };
+        /**
+         * MigrationPlan
+         * @description What activating `to_release_id` does to the graph.
+         *
+         *     `from_release_id` is None when nothing is active yet, which is the state
+         *     every installation starts in and is always a FULL_REBUILD -- there is no
+         *     graph to migrate, only one to build.
+         */
+        MigrationPlan: {
+            /** From Release Id */
+            from_release_id: string | null;
+            /**
+             * Node Labels Added
+             * @default []
+             */
+            node_labels_added: string[];
+            /**
+             * Node Labels Changed
+             * @default []
+             */
+            node_labels_changed: components["schemas"]["ElementChange"][];
+            /**
+             * Node Labels Removed
+             * @default []
+             */
+            node_labels_removed: string[];
+            /**
+             * Objects To Create
+             * @default []
+             */
+            objects_to_create: components["schemas"]["GraphObject"][];
+            /**
+             * Objects To Drop
+             * @default []
+             */
+            objects_to_drop: components["schemas"]["GraphObject"][];
+            /**
+             * Rebuild Reasons
+             * @default []
+             */
+            rebuild_reasons: string[];
+            /**
+             * Relationships Added
+             * @default []
+             */
+            relationships_added: string[];
+            /**
+             * Relationships Changed
+             * @default []
+             */
+            relationships_changed: components["schemas"]["ElementChange"][];
+            /**
+             * Relationships Removed
+             * @default []
+             */
+            relationships_removed: string[];
+            strategy: components["schemas"]["MigrationStrategy"];
+            /** To Release Id */
+            to_release_id: string;
+        };
+        /**
+         * MigrationStrategy
+         * @enum {string}
+         */
+        MigrationStrategy: "NO_CHANGE" | "INCREMENTAL" | "FULL_REBUILD";
         /**
          * ModelTier
          * @enum {string}
@@ -4455,6 +4832,66 @@ export interface components {
          * @enum {string}
          */
         PropertyType: "STRING" | "INTEGER" | "FLOAT" | "BOOLEAN" | "DATE" | "DATETIME";
+        /**
+         * ProposedChange
+         * @description One thing that drifted, and what to do about it.
+         *
+         *     `mutations` is empty exactly when no command can express the fix without
+         *     guessing. That is a first-class outcome, not a failure -- see the module
+         *     docstring.
+         */
+        ProposedChange: {
+            /** Dataset */
+            dataset: string;
+            /** Detail */
+            detail: string;
+            drift: components["schemas"]["DriftKind"];
+            /** Element */
+            element: string;
+            /**
+             * Mutations
+             * @default []
+             */
+            mutations: (components["schemas"]["AddEntity"] | components["schemas"]["RemoveEntity"] | components["schemas"]["RenameEntity"] | components["schemas"]["AddProperty"] | components["schemas"]["RemoveProperty"] | components["schemas"]["ChangeIdentifier"] | components["schemas"]["AddRelationship"] | components["schemas"]["RemoveRelationship"] | components["schemas"]["ChangeCardinality"] | components["schemas"]["ChangeSourceMapping"] | components["schemas"]["ChangeTransformation"] | components["schemas"]["AddGraphIndex"] | components["schemas"]["RemoveGraphIndex"] | components["schemas"]["AddGraphConstraint"] | components["schemas"]["RemoveGraphConstraint"] | components["schemas"]["ChangeOwnershipPolicy"] | components["schemas"]["ChangeSyncRule"])[];
+        };
+        /**
+         * ProposedRebinding
+         * @description A dataset whose *shape* is unchanged and whose *location* is not.
+         *
+         *     Carries no mutation on purpose. Nothing in the schema says where a dataset
+         *     lives -- that has been a binding since W2.2 -- so the act this asks for is a
+         *     rebinding through `/api/source-bindings`, and there is no command that could
+         *     express it even if it were wanted.
+         */
+        ProposedRebinding: {
+            /** Dataset */
+            dataset: string;
+            /** Detail */
+            detail: string;
+            /** From Source Id */
+            from_source_id: string;
+            /** To Dataset */
+            to_dataset: string;
+            /** To Source Id */
+            to_source_id: string;
+        };
+        /** PublishRequest */
+        PublishRequest: {
+            /**
+             * Activate
+             * @default false
+             */
+            activate: boolean;
+        };
+        /** PublishedReleaseView */
+        PublishedReleaseView: {
+            /** Accepted */
+            accepted: boolean;
+            /** Configurationreleaseid */
+            configurationReleaseId: string;
+            /** Detail */
+            detail?: string | null;
+        };
         /** QueryEvidence */
         QueryEvidence: {
             /** Compiled Query Checksum */
@@ -4483,6 +4920,49 @@ export interface components {
             /** Scoremillionths */
             scoreMillionths: number;
         };
+        /**
+         * ReanalysisProposal
+         * @description The whole answer to "the source moved on; now what".
+         *
+         *     `diff` is the draft-side view: the same `SchemaDiff` a revision produces,
+         *     computed by applying the proposed batch to a copy of the draft. So an
+         *     analyst reads a re-analysis in exactly the vocabulary they read history in,
+         *     and the proposal is proven applicable before it is offered.
+         */
+        ReanalysisProposal: {
+            /**
+             * Changes
+             * @default []
+             */
+            changes: components["schemas"]["ProposedChange"][];
+            diff: components["schemas"]["SchemaDiff"];
+            /** Draft Id */
+            draft_id: string;
+            /** From Content Hash */
+            from_content_hash: string;
+            /**
+             * Rebindings
+             * @default []
+             */
+            rebindings: components["schemas"]["ProposedRebinding"][];
+            /** To Content Hash */
+            to_content_hash: string;
+        };
+        /** RebindRequest */
+        RebindRequest: {
+            /** Connectionref */
+            connectionRef: string;
+            /** Connectortype */
+            connectorType: string;
+            /** Incrementalcursorfield */
+            incrementalCursorField?: string | null;
+            /** Objectref */
+            objectRef: {
+                [key: string]: string;
+            };
+            /** Sourceassetid */
+            sourceAssetId: string;
+        };
         /** RelationshipShapeView */
         RelationshipShapeView: {
             /** Cardinality */
@@ -4493,6 +4973,26 @@ export interface components {
             relationship_type: string;
             /** To Label */
             to_label: string;
+        };
+        /** ReleaseListView */
+        ReleaseListView: {
+            /** Activereleaseid */
+            activeReleaseId: string | null;
+            /** Releases */
+            releases: components["schemas"]["ReleaseRowView"][];
+        };
+        /** ReleaseRowView */
+        ReleaseRowView: {
+            /** Active */
+            active: boolean;
+            /** Configurationchecksum */
+            configurationChecksum?: string | null;
+            /** Configurationreleaseid */
+            configurationReleaseId: string;
+            /** Publishedat */
+            publishedAt?: string | null;
+            /** Publishedby */
+            publishedBy?: string | null;
         };
         /** RemoveEntity */
         RemoveEntity: {
@@ -4843,6 +5343,49 @@ export interface components {
             requestedQuantity: number;
             /** Shippedquantity */
             shippedQuantity?: number | null;
+        };
+        /**
+         * ReturnOutcomeRecord
+         * @description One RMA as Support is issuing it.
+         */
+        ReturnOutcomeRecord: {
+            /** Labelreference */
+            labelReference?: string | null;
+            /**
+             * Orderlinereferences
+             * @default []
+             */
+            orderLineReferences: string[];
+            /** Returnlocation */
+            returnLocation?: string | null;
+            /** Returnreference */
+            returnReference: string;
+            /** Shippinginstructionreference */
+            shippingInstructionReference?: string | null;
+            /** Trackingreference */
+            trackingReference?: string | null;
+        };
+        /**
+         * ReturnOutcomeRequest
+         * @description What Support is sending back to the case.
+         *
+         *     A *list* of records, because one reply can issue several RMAs with
+         *     different labels going to different places -- the shape the case model was
+         *     changed to carry, and the one a single set of fields cannot express.
+         */
+        ReturnOutcomeRequest: {
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Records
+             * @default []
+             */
+            records: components["schemas"]["ReturnOutcomeRecord"][];
+            /**
+             * Rejected
+             * @default false
+             */
+            rejected: boolean;
         };
         /**
          * ReturnRecordView
@@ -5578,6 +6121,25 @@ export interface components {
             /** Writableinsandbox */
             writableInSandbox: boolean;
         };
+        /** SourceBindingView */
+        SourceBindingView: {
+            /** Connectionref */
+            connectionRef: string;
+            /** Connectortype */
+            connectorType: string;
+            /** Dataset */
+            dataset: string;
+            /** Incrementalcursorfield */
+            incrementalCursorField?: string | null;
+            /** Objectref */
+            objectRef: {
+                [key: string]: string;
+            };
+            /** Overridden */
+            overridden: boolean;
+            /** Sourceassetid */
+            sourceAssetId: string;
+        };
         /** SourceDetail */
         SourceDetail: {
             /** Assets */
@@ -6249,7 +6811,10 @@ export interface operations {
     };
     list_cases_api_cases_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Only the case this Channel A conversation raised, if it raised one. */
+                conversationId?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -6263,6 +6828,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_list_CaseSummary__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -6874,6 +7448,72 @@ export interface operations {
             };
         };
     };
+    publish_draft_api_graph_schema_drafts__draft_id__publish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublishedReleaseView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reanalyze_draft_api_graph_schema_drafts__draft_id__reanalysis_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReanalysisProposal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_revisions_api_graph_schema_drafts__draft_id__revisions_get: {
         parameters: {
             query?: never;
@@ -7330,6 +7970,88 @@ export interface operations {
             };
         };
     };
+    list_releases_api_schema_releases_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ReleaseListView_"];
+                };
+            };
+        };
+    };
+    activate_release_api_schema_releases__release_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_MigrationPlan_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_migration_plan_api_schema_releases__release_id__migration_plan_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_MigrationPlan_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_session_api_session_get: {
         parameters: {
             query?: never;
@@ -7346,6 +8068,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+        };
+    };
+    list_bindings_api_source_bindings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_SourceBindingView__"];
+                };
+            };
+        };
+    };
+    rebind_api_source_bindings__dataset__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RebindRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_SourceBindingView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_override_api_source_bindings__dataset__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__bool__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -8745,6 +9553,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_dict_str__object__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_return_outcome_api_v1_return_support_work_items__work_item_id__return_outcome_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                work_item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReturnOutcomeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__str__"];
                 };
             };
             /** @description Validation Error */

@@ -4,8 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   graphSchemaApi,
   type AnalysisSessionView,
+  type ProposedChangeView,
+  type ReanalysisProposalView,
   type ValidationFindingView,
 } from "../../api/graphSchema";
+import { schemaReleasesApi, type MigrationPlan } from "../../api/schemaReleases";
 import { sourceBindingsApi, type SourceBinding } from "../../api/sourceBindings";
 import { useCapabilities } from "../../hooks/capabilityContext";
 
@@ -36,6 +39,8 @@ import { useCapabilities } from "../../hooks/capabilityContext";
 
 const TABS = [
   "Validation",
+  "Drift",
+  "Releases",
   "Versions",
   "Properties",
   "Mapping",
@@ -59,14 +64,15 @@ const SHAPE_STALE_TIME_MS = 30_000;
 /**
  * Tabs the analyzer API has no data for. Named, not silently omitted.
  *
- * Three of the four are gone: Properties, Mapping and Indexes are all fields on
- * the draft shape, which `GET /drafts/{id}/shape` now serializes. Sync remains,
- * and remains honest -- build and activation are generation-lifecycle
- * operations that belong to a different surface, not analyzer data that has not
- * been wired.
+ * Only Sync is left, and it is narrower than it was: activating a *schema
+ * release* is now the Releases tab, because that is a decision about which
+ * schema the platform reasons over. What remains outside this surface is the
+ * *generation* lifecycle -- build, fence, drain, retire -- which the analyzer
+ * delegates and never performs.
  */
 const UNBACKED_TABS: Partial<Record<Tab, string>> = {
-  Sync: "Generation build, activation and sync are lifecycle operations outside this surface.",
+  Sync: "Generation build, drain and retirement are lifecycle operations outside this surface. "
+    + "Activating a schema release is on the Releases tab.",
 };
 
 export function GraphSchemaPage() {
@@ -128,6 +134,7 @@ export function GraphSchemaPage() {
             tab={tab}
             draftId={selected?.draft_id ?? null}
             canApprove={can("graph_schema.draft.write")}
+            canActivate={can("graph_schema.generation.activate")}
             onChanged={() => {
               void queryClient.invalidateQueries({ queryKey: ["graph-schema"] });
             }}
@@ -454,16 +461,24 @@ function DetailTab({
   tab,
   draftId,
   canApprove,
+  canActivate,
   onChanged,
 }: {
   tab: Tab;
   draftId: string | null;
   canApprove: boolean;
+  canActivate: boolean;
   onChanged: () => void;
 }) {
   const unbacked = UNBACKED_TABS[tab];
   if (unbacked) {
     return <p className="text-sm text-slate-500">{unbacked}</p>;
+  }
+  // Releases are the platform's, not one analysis's: which schema is live is a
+  // fact about the runtime, and it has to be readable before anyone has picked
+  // a draft to look at.
+  if (tab === "Releases") {
+    return <ReleasesTab canActivate={canActivate} />;
   }
   if (draftId === null) {
     return <p className="text-sm text-slate-600">Select an analysis with a draft.</p>;
@@ -471,6 +486,8 @@ function DetailTab({
   switch (tab) {
     case "Validation":
       return <ValidationTab draftId={draftId} canApprove={canApprove} onChanged={onChanged} />;
+    case "Drift":
+      return <DriftTab draftId={draftId} canApply={canApprove} onChanged={onChanged} />;
     case "Sources":
       return <SourcesTab canRebind={canApprove} />;
     case "Versions":
@@ -478,6 +495,443 @@ function DetailTab({
     default:
       return <ShapeTab draftId={draftId} tab={tab} />;
   }
+}
+
+/**
+ * Re-run discovery, and read what the source did while nobody was looking.
+ *
+ * **Every proposal is a button, never an effect.** Running a re-analysis
+ * changes no draft; each proposed change is applied only when someone clicks
+ * it, and the click goes through the ordinary mutations endpoint so the
+ * revision history records it the same way it records a hand-written edit.
+ *
+ * **Accepting one change does not commit to the rest.** Each group is
+ * self-contained -- an entity with its properties, or one property's
+ * remove-then-add retype -- so the batches are independently applicable and the
+ * screen can offer them one at a time honestly.
+ *
+ * A change with no commands is shown as a question rather than hidden. It is
+ * where the analyzer declined to guess, which is exactly the part a human is
+ * needed for.
+ */
+function DriftTab({
+  draftId,
+  canApply,
+  onChanged,
+}: {
+  draftId: string;
+  canApply: boolean;
+  onChanged: () => void;
+}) {
+  const [proposal, setProposal] = useState<ReanalysisProposalView | null>(null);
+  const [accepted, setAccepted] = useState<readonly string[]>([]);
+
+  const reanalyze = useMutation({
+    mutationFn: () => graphSchemaApi.reanalyzeDraft(draftId),
+    onSuccess: (data) => {
+      setProposal(data);
+      setAccepted([]);
+      // The analysis re-grounded on a new snapshot, so anything showing the
+      // old one is stale even though no draft changed.
+      onChanged();
+    },
+  });
+
+  const apply = useMutation({
+    mutationFn: ({ change }: { change: ProposedChangeView; key: string }) =>
+      graphSchemaApi.applyMutations(draftId, change.mutations),
+    onSuccess: (_data, variables) => {
+      setAccepted((prior) => [...prior, variables.key]);
+      onChanged();
+    },
+  });
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={() => { reanalyze.mutate(); }}
+          disabled={reanalyze.isPending}
+          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-800 disabled:opacity-50"
+        >
+          Re-analyse sources
+        </button>
+        <p className="text-xs text-slate-500">
+          Reads metadata only, proposes changes, and applies none of them.
+        </p>
+      </div>
+
+      {reanalyze.error ? (
+        <p className="mt-3 text-sm text-red-700">{reanalyze.error.message}</p>
+      ) : null}
+      {apply.error ? <p className="mt-3 text-sm text-red-700">{apply.error.message}</p> : null}
+
+      {proposal === null ? null : proposal.changes.length === 0
+        && proposal.rebindings.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-700">
+            The sources look the same as when this draft was designed
+            {/* Two captures of the same shape share a content address, which is
+                the actual reason there is nothing to show. */}
+            <span className="block text-xs text-slate-500">
+              content hash {proposal.to_content_hash.slice(0, 12)} is unchanged.
+            </span>
+          </p>
+        ) : (
+          <div className="mt-4 flex flex-col gap-4">
+            {proposal.rebindings.length > 0 ? (
+              <section>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Moved, not changed
+                </h3>
+                <ul className="mt-2 flex flex-col gap-2">
+                  {proposal.rebindings.map((rebinding) => (
+                    <li
+                      key={rebinding.dataset}
+                      className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm"
+                    >
+                      <p className="font-medium text-slate-900">
+                        {rebinding.dataset}
+                        {" -> "}
+                        {rebinding.to_dataset}
+                        <span className="ml-2 font-normal text-slate-600">
+                          ({rebinding.from_source_id} to {rebinding.to_source_id})
+                        </span>
+                      </p>
+                      <p className="mt-1 text-slate-700">{rebinding.detail}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Fix this on the Sources tab. Nothing in the graph&apos;s shape changes.
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {proposal.changes.length > 0 ? (
+              <section>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Proposed changes
+                </h3>
+                <ul className="mt-2 flex flex-col gap-2">
+                  {proposal.changes.map((change, index) => {
+                    const key = `${change.drift}-${change.element}-${String(index)}`;
+                    const isAccepted = accepted.includes(key);
+                    return (
+                      <li key={key} className="rounded-md border border-slate-200 p-3 text-sm">
+                        <p className="flex flex-wrap items-baseline gap-2">
+                          <span className="font-mono text-xs text-slate-500">{change.drift}</span>
+                          <span className="font-medium text-slate-900">{change.element}</span>
+                          <span className="text-xs text-slate-500">in {change.dataset}</span>
+                        </p>
+                        <p className="mt-1 text-slate-700">{change.detail}</p>
+                        {change.mutations.length === 0 ? (
+                          <p className="mt-2 text-xs font-medium text-amber-800">
+                            Needs your decision -- no command can express this without guessing.
+                          </p>
+                        ) : (
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-xs text-slate-500">
+                              {change.mutations.map((command) => command.kind).join(", ")}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={!canApply || isAccepted || apply.isPending}
+                              onClick={() => { apply.mutate({ change, key }); }}
+                              className="rounded-md bg-slate-900 px-3 py-1 text-xs font-medium text-white disabled:bg-slate-300"
+                            >
+                              {isAccepted ? "Applied" : "Accept"}
+                            </button>
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ) : null}
+
+            {proposal.diff.entries.length > 0 ? (
+              <section>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  If every proposal is accepted
+                </h3>
+                <ul className="mt-2 flex flex-col gap-1 text-sm">
+                  {proposal.diff.entries.map((entry) => (
+                    <li key={`${entry.change_type}-${entry.element}`}>
+                      <span className="font-mono text-xs text-slate-500">{entry.change_type}</span>{" "}
+                      <span className="font-medium text-slate-900">{entry.element}</span>
+                      <span className="text-slate-600"> -- {entry.detail}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+          </div>
+        )}
+
+      {!canApply ? (
+        <p className="mt-3 text-xs text-slate-500">
+          You have read access only; accepting a change requires graph_schema.draft.write.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Which schema the platform runs, and what moving to another one costs.
+ *
+ * **The plan comes before the button.** Selecting a release fetches a preview
+ * that writes nothing, so an operator can read what activation would do --
+ * added and removed labels, the constraints that would be created or dropped,
+ * and whether the graph can absorb it incrementally -- without half-performing
+ * it. Activation then records that same plan and returns it.
+ *
+ * A FULL_REBUILD is stated with its reasons, because a rebuild verdict without
+ * a why is not something anyone can act on.
+ */
+function ReleasesTab({ canActivate }: { canActivate: boolean }) {
+  const client = useQueryClient();
+  const [selected, setSelected] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<MigrationPlan | null>(null);
+
+  const releases = useQuery({
+    queryKey: ["schema-releases"],
+    queryFn: () => schemaReleasesApi.list(),
+  });
+
+  const plan = useQuery({
+    queryKey: ["schema-releases", "plan", selected],
+    queryFn: () => schemaReleasesApi.migrationPlan(selected ?? ""),
+    enabled: selected !== null,
+  });
+
+  const activate = useMutation({
+    mutationFn: (releaseId: string) => schemaReleasesApi.activate(releaseId),
+    onSuccess: async (data) => {
+      setOutcome(data);
+      await client.invalidateQueries({ queryKey: ["schema-releases"] });
+    },
+  });
+
+  if (releases.error) return <p className="text-sm text-red-700">{releases.error.message}</p>;
+  if (releases.isPending) return <p className="text-sm text-slate-600">Loading...</p>;
+  if (releases.data.releases.length === 0) {
+    return (
+      <p className="text-sm text-slate-600">
+        Nothing has been published yet, so the platform is running the schema file shipped with
+        it. Publishing an approved draft cuts the first release.
+      </p>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[20rem_1fr]">
+      <ul className="flex flex-col gap-1">
+        {releases.data.releases.map((release) => (
+          <li key={release.configurationReleaseId}>
+            <button
+              type="button"
+              onClick={() => {
+                setSelected(release.configurationReleaseId);
+                setOutcome(null);
+              }}
+              aria-current={selected === release.configurationReleaseId ? "true" : undefined}
+              className={[
+                "w-full rounded-md px-3 py-2 text-left text-sm transition",
+                selected === release.configurationReleaseId
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-700 hover:bg-slate-100",
+              ].join(" ")}
+            >
+              <span className="block truncate font-medium">
+                {release.configurationReleaseId}
+              </span>
+              <span className="block truncate text-xs opacity-80">
+                {release.active ? "live" : "published"}
+                {release.publishedBy !== null ? ` - ${release.publishedBy}` : ""}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <div>
+        {selected === null ? (
+          <p className="text-sm text-slate-600">
+            Select a release to see what activating it would do to the graph.
+          </p>
+        ) : plan.isPending ? (
+          <p className="text-sm text-slate-600">Planning...</p>
+        ) : plan.error ? (
+          <p className="text-sm text-red-700">{plan.error.message}</p>
+        ) : (
+          <MigrationPlanPanel
+            // The plan activation actually recorded wins over the preview: they
+            // agree today, and if the active pointer moved under us they would
+            // not, so showing the returned one is showing what happened.
+            plan={outcome ?? plan.data}
+            activated={outcome !== null}
+            isActive={releases.data.activeReleaseId === selected}
+            canActivate={canActivate}
+            isPending={activate.isPending}
+            error={activate.error}
+            onActivate={() => { activate.mutate(selected); }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+const STRATEGY_TONE: Record<MigrationPlan["strategy"], string> = {
+  NO_CHANGE: "bg-slate-100 text-slate-800",
+  INCREMENTAL: "bg-emerald-100 text-emerald-900",
+  FULL_REBUILD: "bg-amber-100 text-amber-900",
+};
+
+function MigrationPlanPanel({
+  plan,
+  activated,
+  isActive,
+  canActivate,
+  isPending,
+  error,
+  onActivate,
+}: {
+  plan: MigrationPlan;
+  activated: boolean;
+  isActive: boolean;
+  canActivate: boolean;
+  isPending: boolean;
+  error: Error | null;
+  onActivate: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <span
+          className={`rounded-full px-3 py-1 text-xs font-semibold ${STRATEGY_TONE[plan.strategy]}`}
+        >
+          {plan.strategy}
+        </span>
+        <span className="text-sm text-slate-600">
+          {plan.from_release_id ?? "nothing active"} to {plan.to_release_id}
+        </span>
+        <button
+          type="button"
+          onClick={onActivate}
+          disabled={!canActivate || isActive || isPending}
+          className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+        >
+          {isActive ? "Live" : "Activate"}
+        </button>
+      </div>
+
+      {error ? <p className="text-sm text-red-700">{error.message}</p> : null}
+      {activated ? (
+        <p className="text-sm font-medium text-slate-900">
+          Activated. This plan is recorded against the release.
+        </p>
+      ) : null}
+      {!canActivate ? (
+        <p className="text-xs text-slate-500">
+          You can read this plan; activating requires graph_schema.generation.activate.
+        </p>
+      ) : null}
+
+      {plan.rebuild_reasons.length > 0 ? (
+        <section>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Why a full rebuild
+          </h3>
+          <ul className="mt-2 list-disc pl-5 text-sm text-slate-700">
+            {plan.rebuild_reasons.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      <ElementList title="Node labels added" items={plan.node_labels_added} />
+      <ElementList title="Node labels removed" items={plan.node_labels_removed} />
+      <ChangeList title="Node labels changed" items={plan.node_labels_changed} />
+      <ElementList title="Relationships added" items={plan.relationships_added} />
+      <ElementList title="Relationships removed" items={plan.relationships_removed} />
+      <ChangeList title="Relationships changed" items={plan.relationships_changed} />
+      <ObjectList title="Constraints and indexes to create" items={plan.objects_to_create} />
+      <ObjectList title="Constraints and indexes to drop" items={plan.objects_to_drop} />
+    </div>
+  );
+}
+
+function ElementList({ title, items }: { title: string; items: readonly string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <section>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</h3>
+      <ul className="mt-1 flex flex-col gap-0.5 text-sm text-slate-800">
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ChangeList({
+  title,
+  items,
+}: {
+  title: string;
+  items: readonly { readonly element: string; readonly detail: string }[];
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</h3>
+      <ul className="mt-1 flex flex-col gap-1 text-sm">
+        {items.map((item) => (
+          <li key={item.element}>
+            <span className="font-medium text-slate-900">{item.element}</span>
+            <span className="block text-slate-600">{item.detail}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ObjectList({
+  title,
+  items,
+}: {
+  title: string;
+  items: readonly {
+    readonly kind: string;
+    readonly label: string;
+    readonly properties: readonly string[];
+    readonly detail: string;
+  }[];
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</h3>
+      <ul className="mt-1 flex flex-col gap-0.5 text-sm">
+        {items.map((item) => (
+          <li key={`${item.kind}-${item.label}-${item.properties.join(",")}-${item.detail}`}>
+            <span className="font-medium text-slate-900">{item.label}</span>
+            <span className="text-slate-600"> ({item.properties.join(", ")})</span>
+            {/* Derived from identity or asked for in a draft: which family a
+                line belongs to decides who owns fixing it. */}
+            <span className="ml-2 font-mono text-xs text-slate-500">{item.kind}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 /**

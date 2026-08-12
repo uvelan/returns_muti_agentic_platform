@@ -147,6 +147,78 @@ export type ValidationResultView = {
   readonly missing_checks: readonly string[];
 };
 
+/**
+ * One typed mutation command, carried opaquely.
+ *
+ * **Deliberately not the seventeen-member union spelled out again in
+ * TypeScript.** The command set is closed and enforced by the backend's
+ * discriminated union with `extra="forbid"`; a second copy here would be a
+ * second vocabulary to keep in step, and the screen never constructs a command
+ * -- it displays `kind` and posts back exactly what it was handed. A field this
+ * file does not know about survives the round trip untouched, which is the
+ * property that matters.
+ */
+export type MutationCommandView = Readonly<Record<string, unknown>> & { readonly kind: string };
+
+export type ChangeType = "ADDED" | "REMOVED" | "MODIFIED";
+
+export type SchemaDiffEntryView = {
+  readonly change_type: ChangeType;
+  readonly element: string;
+  readonly detail: string;
+};
+
+export type SchemaDiffView = {
+  readonly from_sequence: number;
+  readonly to_sequence: number;
+  readonly entries: readonly SchemaDiffEntryView[];
+};
+
+export type DriftKind =
+  | "DATASET_ADDED"
+  | "DATASET_REMOVED"
+  | "FIELD_ADDED"
+  | "FIELD_REMOVED"
+  | "FIELD_TYPE_CHANGED";
+
+/**
+ * One thing that drifted, and the commands that would answer it.
+ *
+ * An empty `mutations` is a first-class outcome, not an error: it means no
+ * command can express the fix without guessing -- a dropped identifier field, a
+ * collection whose name is not a legal label -- and the analyst has to decide.
+ */
+export type ProposedChangeView = {
+  readonly drift: DriftKind;
+  readonly dataset: string;
+  readonly element: string;
+  readonly detail: string;
+  readonly mutations: readonly MutationCommandView[];
+};
+
+/**
+ * A dataset whose shape is unchanged and whose location is not.
+ *
+ * Carries no mutation because nothing in the schema says where a dataset lives.
+ * The act it asks for is a rebinding on the Sources tab.
+ */
+export type ProposedRebindingView = {
+  readonly dataset: string;
+  readonly from_source_id: string;
+  readonly to_source_id: string;
+  readonly to_dataset: string;
+  readonly detail: string;
+};
+
+export type ReanalysisProposalView = {
+  readonly draft_id: string;
+  readonly from_content_hash: string;
+  readonly to_content_hash: string;
+  readonly changes: readonly ProposedChangeView[];
+  readonly rebindings: readonly ProposedRebindingView[];
+  readonly diff: SchemaDiffView;
+};
+
 const BASE = "/api/graph-schema";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -220,6 +292,30 @@ export const graphSchemaApi = {
    */
   getDraftShape: (draftId: string) => request<DraftShapeView>(`/drafts/${draftId}/shape`),
   listRevisions: (draftId: string) => request<RevisionView[]>(`/drafts/${draftId}/revisions`),
+
+  /**
+   * Re-read the sources and ask what the draft would have to change.
+   *
+   * Returns a proposal and writes nothing to the draft. It does refresh the
+   * *evidence*: the analysis re-grounds on the new snapshot, so validation
+   * starts answering against what the source looks like today rather than
+   * against the reading the draft was designed on.
+   */
+  reanalyzeDraft: (draftId: string) =>
+    request<ReanalysisProposalView>(`/drafts/${draftId}/reanalysis`, { method: "POST" }),
+
+  /**
+   * Apply a batch of typed commands as one revision.
+   *
+   * The same call a hand-written edit makes, and the *only* way a proposal is
+   * accepted. A separate "accept re-analysis" endpoint would be a second write
+   * path into a draft, and the revision history would stop being one story.
+   */
+  applyMutations: (draftId: string, mutations: readonly MutationCommandView[]) =>
+    request<DraftView>(`/drafts/${draftId}/mutations`, {
+      method: "POST",
+      body: JSON.stringify({ mutations }),
+    }),
   validateDraft: (draftId: string) =>
     request<ValidationResultView>(`/drafts/${draftId}/validate`, { method: "POST" }),
   approveDraft: (draftId: string, note?: string) =>

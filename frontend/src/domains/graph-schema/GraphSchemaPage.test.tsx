@@ -33,9 +33,14 @@ const mocks = vi.hoisted(() => ({
   validateDraft: vi.fn(),
   approveDraft: vi.fn(),
   publishDraft: vi.fn(),
+  reanalyzeDraft: vi.fn(),
+  applyMutations: vi.fn(),
   listBindings: vi.fn(),
   rebind: vi.fn(),
   clearBinding: vi.fn(),
+  listReleases: vi.fn(),
+  migrationPlan: vi.fn(),
+  activateRelease: vi.fn(),
   can: vi.fn(),
 }));
 
@@ -54,7 +59,8 @@ vi.mock("../../api/graphSchema", () => ({
     validateDraft: mocks.validateDraft,
     approveDraft: mocks.approveDraft,
     publishDraft: mocks.publishDraft,
-    applyMutations: vi.fn(),
+    reanalyzeDraft: mocks.reanalyzeDraft,
+    applyMutations: mocks.applyMutations,
   },
 }));
 
@@ -63,6 +69,14 @@ vi.mock("../../api/sourceBindings", () => ({
     list: mocks.listBindings,
     rebind: mocks.rebind,
     clear: mocks.clearBinding,
+  },
+}));
+
+vi.mock("../../api/schemaReleases", () => ({
+  schemaReleasesApi: {
+    list: mocks.listReleases,
+    migrationPlan: mocks.migrationPlan,
+    activate: mocks.activateRelease,
   },
 }));
 
@@ -398,5 +412,288 @@ describe("source bindings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Follow configuration" }));
 
     await waitFor(() => { expect(mocks.clearBinding).toHaveBeenCalledWith("source_sales"); });
+  });
+});
+
+/**
+ * Re-analysis: what the source did while nobody was looking.
+ *
+ * The property worth defending here is that nothing is applied by running one.
+ * A screen that helpfully accepted the proposal on the analyst's behalf would
+ * be exactly the failure the backend refuses to allow, arriving through the UI
+ * instead.
+ */
+describe("re-analysing a drifted source", () => {
+  const FIELD_ADDED = {
+    drift: "FIELD_ADDED",
+    dataset: "orders",
+    element: "Order.status",
+    detail: "the source gained 'status' (declared 'string')",
+    mutations: [
+      {
+        kind: "AddProperty",
+        label: "Order",
+        property_name: "status",
+        property_type: "STRING",
+        source_field: "orders.status",
+      },
+    ],
+  };
+
+  const NEEDS_A_HUMAN = {
+    drift: "FIELD_REMOVED",
+    dataset: "orders",
+    element: "Order.order_id",
+    detail: "the source no longer has the field Order identifies on.",
+    mutations: [],
+  };
+
+  const PROPOSAL = {
+    draft_id: "d1",
+    from_content_hash: "aaaa1111",
+    to_content_hash: "bbbb2222",
+    changes: [FIELD_ADDED],
+    rebindings: [],
+    diff: {
+      from_sequence: 3,
+      to_sequence: 4,
+      entries: [{ change_type: "MODIFIED", element: "Order", detail: "properties added: status" }],
+    },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.can.mockReturnValue(true);
+    mocks.listAnalyses.mockResolvedValue([ANALYSIS]);
+    mocks.getDraft.mockResolvedValue({
+      draft_id: "d1",
+      status: "DRAFT",
+      current_revision: 3,
+      entity_count: 1,
+      relationship_count: 1,
+    });
+    mocks.getDraftShape.mockResolvedValue(SHAPE);
+    mocks.listRevisions.mockResolvedValue([]);
+    mocks.listClarifications.mockResolvedValue([]);
+    mocks.reanalyzeDraft.mockResolvedValue(PROPOSAL);
+    mocks.applyMutations.mockResolvedValue({ draft_id: "d1", current_revision: 4 });
+  });
+
+  async function reanalyse() {
+    await openAnalysis();
+    fireEvent.click(screen.getByRole("tab", { name: "Drift" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Re-analyse sources" }));
+    await waitFor(() => { expect(mocks.reanalyzeDraft).toHaveBeenCalledWith("d1"); });
+  }
+
+  it("proposes without applying anything", async () => {
+    await reanalyse();
+
+    expect(await screen.findByText(/Order\.status/)).toBeInTheDocument();
+    // The one assertion this whole feature exists for.
+    expect(mocks.applyMutations).not.toHaveBeenCalled();
+  });
+
+  it("accepts a change through the ordinary mutations call", async () => {
+    // Not a bespoke "accept re-analysis" endpoint: a second write path into a
+    // draft would make the revision history stop being one story.
+    await reanalyse();
+    fireEvent.click(await screen.findByRole("button", { name: "Accept" }));
+
+    await waitFor(() => {
+      expect(mocks.applyMutations).toHaveBeenCalledWith("d1", FIELD_ADDED.mutations);
+    });
+  });
+
+  it("shows a change no command can express as a question, not a button", async () => {
+    // Where the analyzer declined to guess is exactly the part a human is for,
+    // so it must not be hidden and must not be clickable.
+    mocks.reanalyzeDraft.mockResolvedValue({ ...PROPOSAL, changes: [NEEDS_A_HUMAN] });
+    await reanalyse();
+
+    expect(await screen.findByText(/Needs your decision/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Accept" })).toBeNull();
+  });
+
+  it("sends a moved dataset to the Sources tab instead of proposing a reshaping", async () => {
+    // Where salesInv lives is a binding. Reshaping a graph because a database
+    // was restored is the failure that distinction exists to prevent.
+    mocks.reanalyzeDraft.mockResolvedValue({
+      ...PROPOSAL,
+      changes: [],
+      rebindings: [
+        {
+          dataset: "orders",
+          from_source_id: "mongo_main",
+          to_source_id: "restored",
+          to_dataset: "orders_v2",
+          detail: "the same fields now come from 'restored'",
+        },
+      ],
+      diff: { from_sequence: 3, to_sequence: 4, entries: [] },
+    });
+    await reanalyse();
+
+    expect(await screen.findByText(/Moved, not changed/)).toBeInTheDocument();
+    expect(screen.getByText(/Sources tab/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Accept" })).toBeNull();
+  });
+
+  it("says a source that did not move did not move", async () => {
+    mocks.reanalyzeDraft.mockResolvedValue({
+      ...PROPOSAL,
+      to_content_hash: PROPOSAL.from_content_hash,
+      changes: [],
+      rebindings: [],
+      diff: { from_sequence: 3, to_sequence: 4, entries: [] },
+    });
+    await reanalyse();
+
+    expect(await screen.findByText(/look the same as when this draft was designed/))
+      .toBeInTheDocument();
+  });
+
+  it("does not offer to accept anything on read-only access", async () => {
+    mocks.can.mockReturnValue(false);
+    await reanalyse();
+
+    expect(await screen.findByRole("button", { name: "Accept" })).toBeDisabled();
+  });
+});
+
+/**
+ * Releases: which schema the platform runs, and what changing it costs.
+ *
+ * Activation used to be a pointer flip with nothing to read first. These hold
+ * the order that fixes it -- the plan is fetched and shown before the button
+ * does anything -- and that a rebuild is never asserted without its reasons.
+ */
+describe("schema releases and migration plans", () => {
+  const RELEASES = {
+    activeReleaseId: "release_one",
+    releases: [
+      {
+        configurationReleaseId: "release_one",
+        configurationChecksum: "a".repeat(64),
+        publishedBy: "analyst-1",
+        publishedAt: "2026-08-12T00:00:00Z",
+        active: true,
+      },
+      {
+        configurationReleaseId: "release_two",
+        configurationChecksum: "b".repeat(64),
+        publishedBy: "analyst-1",
+        publishedAt: "2026-08-12T01:00:00Z",
+        active: false,
+      },
+    ],
+  };
+
+  const REBUILD_PLAN = {
+    from_release_id: "release_one",
+    to_release_id: "release_two",
+    strategy: "FULL_REBUILD",
+    node_labels_added: [],
+    node_labels_removed: ["Customer"],
+    node_labels_changed: [
+      { element: "Order", detail: "identity changes from ['order_id'] to ['salesInvId']" },
+    ],
+    relationships_added: [],
+    relationships_removed: [],
+    relationships_changed: [],
+    objects_to_create: [
+      {
+        kind: "NODE_KEY_CONSTRAINT",
+        label: "Order",
+        properties: ["graph_generation_id", "salesInvId"],
+        detail: "unique",
+      },
+    ],
+    objects_to_drop: [],
+    rebuild_reasons: ["Order: identity changes, so a merge would insert a second node"],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.can.mockReturnValue(true);
+    mocks.listAnalyses.mockResolvedValue([ANALYSIS]);
+    mocks.getDraft.mockResolvedValue({
+      draft_id: "d1",
+      status: "DRAFT",
+      current_revision: 3,
+      entity_count: 1,
+      relationship_count: 1,
+    });
+    mocks.getDraftShape.mockResolvedValue(SHAPE);
+    mocks.listRevisions.mockResolvedValue([]);
+    mocks.listClarifications.mockResolvedValue([]);
+    mocks.listReleases.mockResolvedValue(RELEASES);
+    mocks.migrationPlan.mockResolvedValue(REBUILD_PLAN);
+    mocks.activateRelease.mockResolvedValue(REBUILD_PLAN);
+  });
+
+  async function openReleases() {
+    render(<GraphSchemaPage />, { wrapper });
+    fireEvent.click(await screen.findByRole("tab", { name: "Releases" }));
+    return screen.findByRole("button", { name: /release_two/ });
+  }
+
+  it("is readable before an analysis is selected", async () => {
+    // Which schema is live is a fact about the runtime, not about one draft.
+    await openReleases();
+
+    expect(screen.getByRole("button", { name: /release_one/ })).toBeInTheDocument();
+  });
+
+  it("plans before it activates", async () => {
+    const target = await openReleases();
+    fireEvent.click(target);
+
+    await waitFor(() => { expect(mocks.migrationPlan).toHaveBeenCalledWith("release_two"); });
+    expect(mocks.activateRelease).not.toHaveBeenCalled();
+  });
+
+  it("states a rebuild with the reason for it", async () => {
+    // A rebuild verdict without a why is not something anyone can act on.
+    const target = await openReleases();
+    fireEvent.click(target);
+
+    expect(await screen.findByText("FULL_REBUILD")).toBeInTheDocument();
+    expect(screen.getByText(/insert a second node/)).toBeInTheDocument();
+    expect(screen.getByText("Customer")).toBeInTheDocument();
+  });
+
+  it("activates only on the button, and reports the plan it recorded", async () => {
+    const target = await openReleases();
+    fireEvent.click(target);
+    fireEvent.click(await screen.findByRole("button", { name: "Activate" }));
+
+    await waitFor(() => { expect(mocks.activateRelease).toHaveBeenCalledWith("release_two"); });
+    expect(await screen.findByText(/recorded against the release/)).toBeInTheDocument();
+  });
+
+  it("does not offer to activate the release that is already live", async () => {
+    await openReleases();
+    fireEvent.click(screen.getByRole("button", { name: /release_one/ }));
+
+    expect(await screen.findByRole("button", { name: "Live" })).toBeDisabled();
+  });
+
+  it("shows the plan but not the button without the activate capability", async () => {
+    mocks.can.mockReturnValue(false);
+    const target = await openReleases();
+    fireEvent.click(target);
+
+    expect(await screen.findByText("FULL_REBUILD")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Activate" })).toBeDisabled();
+  });
+
+  it("says nothing is published rather than showing an empty list", async () => {
+    // Every installation starts here, running the schema file it shipped with.
+    mocks.listReleases.mockResolvedValue({ activeReleaseId: null, releases: [] });
+    render(<GraphSchemaPage />, { wrapper });
+    fireEvent.click(await screen.findByRole("tab", { name: "Releases" }));
+
+    expect(await screen.findByText(/Nothing has been published yet/)).toBeInTheDocument();
   });
 });

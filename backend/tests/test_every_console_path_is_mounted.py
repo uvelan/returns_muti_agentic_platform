@@ -68,6 +68,15 @@ CONSOLE_PATHS: tuple[str, ...] = (
     "/api/graph-schema/drafts/{draft_id}/shape",
     "/api/graph-schema/drafts/{draft_id}/revisions",
     "/api/graph-schema/drafts/{draft_id}/approve",
+    "/api/graph-schema/drafts/{draft_id}/reanalysis",
+    # The Drift tab accepts a proposed re-analysis by posting its commands here
+    # -- the same call a hand-written edit makes, deliberately, so that there is
+    # no second write path into a draft.
+    "/api/graph-schema/drafts/{draft_id}/mutations",
+    # Published graph-schema releases and the migration between two of them.
+    "/api/schema-releases",
+    "/api/schema-releases/{release_id}/migration-plan",
+    "/api/schema-releases/{release_id}/activate",
 )
 
 
