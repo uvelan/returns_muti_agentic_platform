@@ -170,12 +170,18 @@ class Neo4jGraphTargetAdapter:
             await self._releases.publish(release, published_by=approver)
         except ReleaseAlreadyPublished as exc:
             return BuildHandle(generation_id=release_id, accepted=False, detail=str(exc))
-        if activate:
-            await self._releases.activate(release_id)
+        if not activate:
+            return BuildHandle(generation_id=release_id, accepted=True, detail="published")
+        # The migration plan comes back from activation rather than being
+        # computed here: whether the graph now owes a rebuild is the single
+        # most consequential thing about having flipped the pointer, and an
+        # analyst who published and activated in one call would otherwise have
+        # to go and look it up somewhere else to find out.
+        plan = await self._releases.activate(release_id)
         return BuildHandle(
             generation_id=release_id,
             accepted=True,
-            detail="activated" if activate else "published",
+            detail=f"activated; migration is {plan.strategy.value}",
         )
 
 

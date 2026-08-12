@@ -42,6 +42,7 @@ from return_platform.api.return_agents import router as return_agents_router
 from return_platform.api.return_artifacts import router as return_artifacts_router
 from return_platform.api.return_support import router as return_support_router
 from return_platform.api.returns import router as returns_router
+from return_platform.api.schema_releases import router as schema_releases_router
 from return_platform.api.seed import router as seed_router
 from return_platform.api.source_bindings import router as source_bindings_router
 from return_platform.api.support import router as support_router
@@ -1063,6 +1064,7 @@ def create_app(
     fastapi_app.include_router(canonical_returns_router)
     fastapi_app.include_router(cases_router)
     fastapi_app.include_router(source_bindings_router)
+    fastapi_app.include_router(schema_releases_router)
     fastapi_app.include_router(canonical_ai_router)
     fastapi_app.include_router(canonical_session_router)
     fastapi_app.include_router(canonical_principal_router)

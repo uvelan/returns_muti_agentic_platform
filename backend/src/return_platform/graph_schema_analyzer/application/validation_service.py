@@ -38,7 +38,7 @@ from return_platform.graph_schema_analyzer.domain.validation_result import (
 )
 from return_platform.graph_schema_analyzer.ports.graph_target_port import GraphTargetPort
 
-__all__ = ["ValidationService"]
+__all__ = ["ValidationService", "is_compatible_source_type", "property_type_for_source_type"]
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,36 @@ _COMPATIBLE_SOURCE_TYPES: Mapping[PropertyType, frozenset[str]] = {
 _COERCING_TRANSFORMATIONS = frozenset(
     {TransformationKind.PARSE_DATE.value, TransformationKind.PARSE_NUMBER.value}
 )
+
+
+def is_compatible_source_type(property_type: str, declared_source_type: str) -> bool:
+    """Whether a source's declared type may back this property type.
+
+    Exported so re-analysis asks the same question TYPE_COMPATIBILITY asks. A
+    second table would let a re-analysis propose retyping a property validation
+    is perfectly happy with, or leave one alone that it will reject.
+    """
+    try:
+        resolved = PropertyType(property_type)
+    except ValueError:
+        return False
+    return declared_source_type.lower() in _COMPATIBLE_SOURCE_TYPES[resolved]
+
+
+def property_type_for_source_type(declared_source_type: str) -> PropertyType | None:
+    """The property type a source's declared type maps onto, or nothing.
+
+    First match in `PropertyType`'s own declaration order, which is what makes
+    `date` resolve to DATE rather than DATETIME -- both accept it, and the
+    narrower reading is the one that cannot silently widen a stored value.
+    Nothing for a type the authoring vocabulary does not cover (`mixed`,
+    `object`), which callers report rather than guess at.
+    """
+    declared = declared_source_type.lower()
+    for property_type in PropertyType:
+        if declared in _COMPATIBLE_SOURCE_TYPES[property_type]:
+            return property_type
+    return None
 
 
 class ValidationService:
