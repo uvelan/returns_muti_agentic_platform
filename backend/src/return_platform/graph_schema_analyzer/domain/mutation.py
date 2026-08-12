@@ -174,11 +174,23 @@ class ChangeIdentifier(_Command):
 
 
 class AddRelationship(_Command):
+    """An edge, and how the two entities are matched to draw it.
+
+    The join was implicit until the compiler needed it: an edge type and two
+    labels say a relationship exists, not which property of one equals which
+    property of the other, and a projection cannot be built from the former.
+    Left unset it falls back to the other entity's identifier found by name --
+    the ordinary foreign-key shape -- which the compiler checks rather than
+    assumes.
+    """
+
     kind: Literal[MutationKind.ADD_RELATIONSHIP] = MutationKind.ADD_RELATIONSHIP
     relationship_type: Identifier
     from_label: Identifier
     to_label: Identifier
     cardinality: Cardinality
+    from_properties: tuple[Identifier, ...] = ()
+    to_properties: tuple[Identifier, ...] = ()
 
 
 class RemoveRelationship(_Command):

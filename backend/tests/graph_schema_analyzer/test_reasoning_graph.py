@@ -101,6 +101,11 @@ class FakeGraphTarget:
     async def request_build(self, *, schema_id: str, activate: bool) -> BuildHandle:
         raise AssertionError("the reasoning graph must never trigger a build")
 
+    async def publish_release(
+        self, *, draft: Mapping[str, object], draft_id: str, approver: str, activate: bool
+    ) -> object:
+        raise AssertionError("this target must never publish")
+
 
 def _proposal(*, open_questions: tuple[str, ...] = ()) -> SchemaProposal:
     return SchemaProposal(

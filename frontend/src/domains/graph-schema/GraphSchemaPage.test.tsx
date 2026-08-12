@@ -30,6 +30,9 @@ const mocks = vi.hoisted(() => ({
   getDraftShape: vi.fn(),
   listRevisions: vi.fn(),
   listClarifications: vi.fn(),
+  validateDraft: vi.fn(),
+  approveDraft: vi.fn(),
+  publishDraft: vi.fn(),
   can: vi.fn(),
 }));
 
@@ -45,8 +48,9 @@ vi.mock("../../api/graphSchema", () => ({
     getDraft: mocks.getDraft,
     getDraftShape: mocks.getDraftShape,
     listRevisions: mocks.listRevisions,
-    validateDraft: vi.fn(),
-    approveDraft: vi.fn(),
+    validateDraft: mocks.validateDraft,
+    approveDraft: mocks.approveDraft,
+    publishDraft: mocks.publishDraft,
     applyMutations: vi.fn(),
   },
 }));
@@ -214,5 +218,84 @@ describe("Graph schema tabs backed by the shape", () => {
     await waitFor(() => {
       expect(mocks.getDraftShape).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+/**
+ * Publishing: the step that makes an approved schema the one the platform runs.
+ *
+ * Before it existed, approving a draft changed a document and the runtime went
+ * on reading a file from the repository -- so these assert the order of the
+ * gates, not the markup.
+ */
+describe("publishing a release", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.can.mockReturnValue(true);
+    mocks.listAnalyses.mockResolvedValue([ANALYSIS]);
+    mocks.getDraft.mockResolvedValue({
+      draft_id: "d1",
+      status: "DRAFT",
+      current_revision: 3,
+      entity_count: 1,
+      relationship_count: 1,
+    });
+    mocks.getDraftShape.mockResolvedValue(SHAPE);
+    mocks.listRevisions.mockResolvedValue([]);
+    mocks.listClarifications.mockResolvedValue([]);
+    mocks.validateDraft.mockResolvedValue({ passed: true, findings: [] });
+    mocks.approveDraft.mockResolvedValue({ draft_id: "d1", status: "APPROVED" });
+    mocks.publishDraft.mockResolvedValue({
+      configurationReleaseId: "draft_d1_20260812000000",
+      accepted: true,
+      detail: "activated",
+    });
+  });
+
+  async function openValidation() {
+    await openAnalysis();
+    fireEvent.click(screen.getByRole("tab", { name: "Validation" }));
+    await screen.findByRole("button", { name: "Validate" });
+  }
+
+  it("cannot publish before an approval", async () => {
+    await openValidation();
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await waitFor(() => { expect(mocks.validateDraft).toHaveBeenCalled(); });
+
+    // Validated is a shape someone might accept, not one to run. The backend
+    // refuses either way; offering it would invite a 409 that reads as a bug.
+    expect(screen.getByRole("button", { name: "Publish and activate" })).toBeDisabled();
+  });
+
+  it("publishes and activates only when asked to", async () => {
+    await openValidation();
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await waitFor(() => { expect(mocks.validateDraft).toHaveBeenCalled(); });
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() => { expect(mocks.approveDraft).toHaveBeenCalled(); });
+
+    fireEvent.click(screen.getByRole("button", { name: "Publish release" }));
+
+    await waitFor(() => { expect(mocks.publishDraft).toHaveBeenCalledWith("d1", false); });
+  });
+
+  it("reports a refused compilation instead of claiming a release", async () => {
+    mocks.publishDraft.mockResolvedValue({
+      configurationReleaseId: "draft_d1_20260812000000",
+      accepted: false,
+      detail: "entity 'Order' has no identifier properties",
+    });
+    await openValidation();
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await waitFor(() => { expect(mocks.validateDraft).toHaveBeenCalled(); });
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() => { expect(mocks.approveDraft).toHaveBeenCalled(); });
+
+    fireEvent.click(screen.getByRole("button", { name: "Publish and activate" }));
+
+    // The element that was wrong, verbatim: it is the only part the analyst
+    // can act on, and "publish failed" would send them back to the audit log.
+    expect(await screen.findByText(/no identifier properties/)).toBeInTheDocument();
   });
 });

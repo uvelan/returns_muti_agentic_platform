@@ -23,7 +23,10 @@ from pymongo import AsyncMongoClient
 
 from return_platform.configuration.settings import Settings
 from return_platform.data_platform.schema_registry import SchemaRegistry
-from return_platform.dynamic_knowledge.config_loader import load_active_schema
+from return_platform.dynamic_knowledge.config_loader import (
+    load_active_schema,
+    resolve_active_schema,
+)
 from return_platform.dynamic_knowledge.graph.constraints import required_node_constraints
 from return_platform.dynamic_knowledge.graph.generation import (
     LEGACY_GENERATION_ID,
@@ -34,6 +37,7 @@ from return_platform.dynamic_knowledge.graph.projector import GenericGraphProjec
 from return_platform.dynamic_knowledge.graph.write_compiler import compile_node_writes
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import GraphNodeMutation
 from return_platform.dynamic_knowledge.on_demand_sync.extraction import GenericSourceRecordExtractor
+from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore
 from return_platform.dynamic_knowledge.schema import (
     ActiveSchema,
     ConnectorType,
@@ -188,11 +192,25 @@ class GraphSyncService:
         # real source documents, and the order agent already reads it -- so
         # keeping a second, divergent copy here meant the graph was built from
         # different field paths than the agent queries it with.
+        # The file is the starting point, not the last word: `refresh_schema`
+        # replaces it with the published release before every run, so a schema
+        # an analyst activated takes effect on the next sync rather than on the
+        # next deploy. Resolved here synchronously because a constructor cannot
+        # await, and a service that had no schema until its first run would
+        # make every read of `self._schema` optional for no gain.
         self._schema = load_active_schema(settings.dynamic_knowledge_schema_path)
+        self._releases = SchemaReleaseStore(platform_client, settings.mongo_database)
         self._writer = Neo4jDynamicGraphWriter(driver, database=settings.neo4j_database)
         self._projector = GenericGraphProjector()
 
+    async def refresh_schema(self) -> None:
+        """Pick up a release published since this service started."""
+        self._schema = await resolve_active_schema(
+            self._settings.dynamic_knowledge_schema_path, self._releases
+        )
+
     async def ensure_indexes(self) -> None:
+        await self._releases.ensure_indexes()
         await self._runs.create_index([("startedAt", -1)])
         await self._runs.create_index("status")
 
@@ -282,6 +300,10 @@ class GraphSyncService:
     ) -> GraphSyncRunView:
         if (seed_version is None) is not (seed_digest is None):
             raise ValueError("Seed version and digest must be supplied together.")
+        # Before anything is read or written: a run records the schema version
+        # it built under, and picking up a newly activated release halfway
+        # through would make that record a lie.
+        await self.refresh_schema()
         limit = min(request.maxRecordsPerAsset, self._settings.graph_sync_max_records)
         run_id = str(uuid.uuid4())
         now = _now()

@@ -576,6 +576,7 @@ function ValidationTab({
 }) {
   const [result, setResult] = useState<readonly ValidationFindingView[] | null>(null);
   const [passed, setPassed] = useState<boolean | null>(null);
+  const [approved, setApproved] = useState(false);
 
   const validate = useMutation({
     mutationFn: () => graphSchemaApi.validateDraft(draftId),
@@ -588,6 +589,18 @@ function ValidationTab({
 
   const approve = useMutation({
     mutationFn: () => graphSchemaApi.approveDraft(draftId),
+    onSuccess: () => {
+      setApproved(true);
+      onChanged();
+    },
+  });
+
+  // Publishing is what makes an approved schema the one the platform runs.
+  // Separate from approving because they are separate decisions, and because
+  // a shape can be approved and still fail to compile -- which comes back as
+  // `accepted: false` with the element named, not as an error.
+  const publish = useMutation({
+    mutationFn: (activate: boolean) => graphSchemaApi.publishDraft(draftId, activate),
     onSuccess: onChanged,
   });
 
@@ -612,6 +625,25 @@ function ValidationTab({
         >
           Approve
         </button>
+        <button
+          type="button"
+          onClick={() => { publish.mutate(false); }}
+          // Only after an approval in this session. The backend refuses an
+          // unapproved draft either way; offering the button would invite a
+          // 409 that reads like a bug.
+          disabled={!canApprove || !approved || publish.isPending}
+          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-800 disabled:opacity-50"
+        >
+          Publish release
+        </button>
+        <button
+          type="button"
+          onClick={() => { publish.mutate(true); }}
+          disabled={!canApprove || !approved || publish.isPending}
+          className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+        >
+          Publish and activate
+        </button>
       </div>
 
       {validate.error ? (
@@ -619,6 +651,23 @@ function ValidationTab({
       ) : null}
       {approve.error ? (
         <p className="mt-3 text-sm text-red-700">{approve.error.message}</p>
+      ) : null}
+      {publish.error ? (
+        <p className="mt-3 text-sm text-red-700">{publish.error.message}</p>
+      ) : null}
+      {publish.data ? (
+        // A refused compilation is reported as plainly as a successful one:
+        // "published" and "could not be compiled" are both answers, and only
+        // the second tells the analyst what to change.
+        <p
+          className={`mt-3 text-sm ${publish.data.accepted ? "text-slate-900" : "text-red-700"}`}
+        >
+          {publish.data.accepted
+            ? `Released as ${publish.data.configurationReleaseId}${
+                publish.data.detail === "activated" ? " and now live." : "."
+              }`
+            : `Not published: ${publish.data.detail ?? "the shape could not be compiled."}`}
+        </p>
       ) : null}
 
       {passed !== null ? (

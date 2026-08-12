@@ -18,7 +18,7 @@ from pymongo import AsyncMongoClient
 from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
 from return_platform.ai_gateway.routing import AIRoutePool
 from return_platform.configuration.settings import Settings
-from return_platform.dynamic_knowledge.config_loader import load_active_schema
+from return_platform.dynamic_knowledge.config_loader import resolve_active_schema
 from return_platform.dynamic_knowledge.graph.generation_writer import Neo4jGenerationWriter
 from return_platform.dynamic_knowledge.graph.neo4j_writer import Neo4jDynamicGraphWriter
 from return_platform.dynamic_knowledge.graph.projector import GenericGraphProjector
@@ -60,6 +60,7 @@ from return_platform.dynamic_knowledge.order_agent.conversation_repository impor
     AtomicConversationRepository,
 )
 from return_platform.dynamic_knowledge.order_agent.coordinator import DynamicOrderAgentCoordinator
+from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore
 from return_platform.operations.repository import OperationalRepository
 from return_platform.platform.reasoning.evidence_store import QueryEvidenceStore
 from return_platform.platform.secrets.envelope import EnvelopeEncryptor
@@ -88,7 +89,12 @@ async def build_dynamic_order_agent_runtime(
     system_store: SystemStore,
     reasoning_encryptor: EnvelopeEncryptor,
 ) -> DynamicOrderAgentCoordinator:
-    schema = load_active_schema(settings.dynamic_knowledge_schema_path)
+    # The published release if the analyzer has activated one, else the file.
+    # This is the line that makes approving a schema in the console change what
+    # the agent reasons over -- before it, an approved draft went nowhere.
+    releases = SchemaReleaseStore(platform_mongo, settings.mongo_database)
+    await releases.ensure_indexes()
+    schema = await resolve_active_schema(settings.dynamic_knowledge_schema_path, releases)
     conversation_documents = MongoAtomicConversationStore(
         platform_mongo,
         settings.mongo_database,

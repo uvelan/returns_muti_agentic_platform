@@ -23,6 +23,7 @@ from return_platform.graph_schema_analyzer.domain.source_snapshot import (
     SampleClassification,
     SourceSchemaSnapshot,
 )
+from return_platform.graph_schema_analyzer.ports.graph_target_port import BuildHandle
 from return_platform.graph_schema_analyzer.ports.system_store_port import PersistencePort
 from tests.graph_schema_analyzer.test_api_routes import InMemoryPersistence
 
@@ -44,6 +45,16 @@ SNAPSHOT = SourceSchemaSnapshot.create(
 
 
 class PassingTarget:
+    """Structurally a `GraphTargetPort`. Missing a method makes it a 503.
+
+    Deliberately not a mock: `resolve_graph_target` isinstance-checks the
+    runtime protocol, so a stub that drifts from the port fails the routes that
+    use it rather than passing with a method nobody calls.
+    """
+
+    def __init__(self) -> None:
+        self.published: list[tuple[str, str, bool]] = []
+
     async def compile_schema(self, *, draft: Mapping[str, object]) -> Sequence[str]:
         return ()
 
@@ -55,6 +66,12 @@ class PassingTarget:
     async def request_build(self, *, schema_id: str, activate: bool) -> object:
         raise AssertionError("the analyzer API must never trigger a build")
 
+    async def publish_release(
+        self, *, draft: Mapping[str, object], draft_id: str, approver: str, activate: bool
+    ) -> object:
+        self.published.append((draft_id, approver, activate))
+        return BuildHandle(generation_id=f"release_{draft_id}", accepted=True, detail="published")
+
 
 @pytest.fixture
 def persistence() -> InMemoryPersistence:
@@ -62,11 +79,16 @@ def persistence() -> InMemoryPersistence:
 
 
 @pytest.fixture
-def client(persistence: InMemoryPersistence) -> TestClient:
+def target() -> PassingTarget:
+    return PassingTarget()
+
+
+@pytest.fixture
+def client(persistence: InMemoryPersistence, target: PassingTarget) -> TestClient:
     app = FastAPI()
     app.include_router(router)
     app.state.graph_schema_analyzer_persistence = persistence
-    app.state.graph_schema_analyzer_graph_target = PassingTarget()
+    app.state.graph_schema_analyzer_graph_target = target
     return TestClient(app)
 
 
@@ -260,3 +282,66 @@ def test_one_analysis_gets_one_draft(client: TestClient, persistence: InMemoryPe
     second = client.post(f"/api/graph-schema/analyses/{analysis_id}/drafts")
     assert second.status_code == 409
     assert second.json()["detail"]["code"] == "DRAFT_ALREADY_EXISTS"
+
+
+def test_publishing_needs_an_approval_first(
+    client: TestClient, persistence: InMemoryPersistence
+) -> None:
+    """A validated shape is one someone might accept, not one to run.
+
+    The three states exist for the human act in the middle; publishing from
+    VALIDATED would make approval optional and the state machine decorative.
+    """
+    analysis_id = _analysis(client, persistence)
+    draft_id = client.post(f"/api/graph-schema/analyses/{analysis_id}/drafts").json()["draft_id"]
+    _build_order_schema(client, draft_id)
+    client.post(f"/api/graph-schema/drafts/{draft_id}/validate")
+
+    response = client.post(f"/api/graph-schema/drafts/{draft_id}/publish", json={})
+
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["code"] == "NOT_APPROVED"
+
+
+def test_an_approved_draft_publishes_to_the_runtime(
+    client: TestClient, persistence: InMemoryPersistence, target: PassingTarget
+) -> None:
+    """The step that closes the loop.
+
+    Before this the analyzer's approval changed a document and nothing else --
+    the runtime went on reading a file from the repository.
+    """
+    analysis_id = _analysis(client, persistence)
+    draft_id = client.post(f"/api/graph-schema/analyses/{analysis_id}/drafts").json()["draft_id"]
+    _build_order_schema(client, draft_id)
+    client.post(f"/api/graph-schema/drafts/{draft_id}/validate")
+    client.post(f"/api/graph-schema/drafts/{draft_id}/approve", json={})
+
+    response = client.post(f"/api/graph-schema/drafts/{draft_id}/publish", json={"activate": True})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["accepted"] is True
+    # Recorded and made live are separate decisions, and the caller's choice is
+    # what travels -- not a default the adapter picked.
+    assert target.published == [(draft_id, "anonymous", True)]
+
+
+def test_publishing_defaults_to_recorded_not_live(
+    client: TestClient, persistence: InMemoryPersistence, target: PassingTarget
+) -> None:
+    """The safe default. Cutting a release is reviewable; activating one is not."""
+    analysis_id = _analysis(client, persistence)
+    draft_id = client.post(f"/api/graph-schema/analyses/{analysis_id}/drafts").json()["draft_id"]
+    _build_order_schema(client, draft_id)
+    client.post(f"/api/graph-schema/drafts/{draft_id}/validate")
+    client.post(f"/api/graph-schema/drafts/{draft_id}/approve", json={})
+
+    client.post(f"/api/graph-schema/drafts/{draft_id}/publish", json={})
+
+    assert target.published == [(draft_id, "anonymous", False)]
+
+
+def test_publishing_an_unknown_draft_is_a_404(client: TestClient) -> None:
+    response = client.post("/api/graph-schema/drafts/no-such-draft/publish", json={})
+
+    assert response.status_code == 404, response.text

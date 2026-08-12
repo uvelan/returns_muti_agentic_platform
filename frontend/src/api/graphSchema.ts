@@ -176,6 +176,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+/**
+ * The outcome of a publish.
+ *
+ * `accepted: false` is an ordinary answer, not an error: a shape can be
+ * approved and still fail to compile -- an entity with no identifier, a
+ * relationship with no resolvable join -- and `detail` names the element so
+ * the analyst can fix it.
+ */
+export type PublishedReleaseView = {
+  readonly configurationReleaseId: string;
+  readonly accepted: boolean;
+  readonly detail: string | null;
+};
+
 export const graphSchemaApi = {
   listAnalyses: () => request<AnalysisSessionView[]>("/analyses"),
   getAnalysis: (id: string) => request<AnalysisSessionView>(`/analyses/${id}`),
@@ -212,5 +226,18 @@ export const graphSchemaApi = {
     request<DraftView>(`/drafts/${draftId}/approve`, {
       method: "POST",
       body: JSON.stringify({ note: note ?? null }),
+    }),
+
+  /**
+   * Turn an approved draft into the schema the platform runs.
+   *
+   * The step that closes the analyzer's loop: until this existed, approving a
+   * draft changed a document and the runtime went on reading a file from the
+   * repository. `activate` decides whether it goes live now or is only cut.
+   */
+  publishDraft: (draftId: string, activate: boolean) =>
+    request<PublishedReleaseView>(`/drafts/${draftId}/publish`, {
+      method: "POST",
+      body: JSON.stringify({ activate }),
     }),
 };

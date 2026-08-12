@@ -79,6 +79,23 @@ class ApproveRequest(BaseModel):
     note: str | None = Field(default=None, max_length=1000)
 
 
+class PublishRequest(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # Publishing records the release; activating points the runtime at it.
+    # Separate because they are separate decisions -- a schema can be cut and
+    # reviewed before anything starts reasoning over it.
+    activate: bool = False
+
+
+class PublishedReleaseView(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    configurationReleaseId: str
+    accepted: bool
+    detail: str | None = None
+
+
 class DraftView(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -417,6 +434,63 @@ async def approve_draft(
             detail={"code": "CONCURRENT_MODIFICATION", "message": str(exc)},
         ) from exc
     return _draft_view(draft)
+
+
+@router.post("/drafts/{draft_id}/publish", response_model=PublishedReleaseView)
+async def publish_draft(
+    draft_id: str,
+    payload: PublishRequest,
+    request: Request,
+    persistence: _Persistence,
+    target: _GraphTarget,
+) -> PublishedReleaseView:
+    """Turn an approved draft into the schema the platform runs.
+
+    The step that closes the analyzer's loop. Until this existed a draft could
+    be discovered, edited, validated and approved, and the runtime went on
+    reading a file from the repository -- so an approval changed a document and
+    nothing else.
+
+    APPROVED only. A validated draft is a shape someone might accept; a
+    published release is one the platform will reason over, and the human act
+    in between is the whole reason the state machine has three states.
+
+    A shape that cannot compile comes back `accepted=false` with the element
+    named, not as a 500: which entity was ambiguous is the only useful thing to
+    say, and the analyst is the one who can fix it.
+    """
+    try:
+        draft = await persistence.load_draft(draft_id)
+    except UnknownAnalysis as exc:
+        raise _not_found("draft", draft_id) from exc
+    if draft.status is not DraftStatus.APPROVED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "NOT_APPROVED",
+                "message": (
+                    f"draft {draft_id} is {draft.status}; only an APPROVED draft can be "
+                    "published to the runtime."
+                ),
+            },
+        )
+    try:
+        handle = await target.publish_release(
+            draft=draft.shape.model_dump(mode="json"),
+            draft_id=draft_id,
+            approver=_actor(request),
+            activate=payload.activate,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "RELEASE_STORE_UNAVAILABLE", "message": str(exc)},
+        ) from exc
+    return PublishedReleaseView(
+        configurationReleaseId=handle.generation_id,
+        accepted=handle.accepted,
+        detail=handle.detail,
+    )
 
 
 def _not_found(kind: str, identifier: str) -> HTTPException:

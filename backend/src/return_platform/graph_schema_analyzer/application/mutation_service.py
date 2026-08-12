@@ -200,6 +200,19 @@ def _apply_one(  # noqa: C901 - one branch per command is the readable shape her
                     "from_label": command.from_label,
                     "to_label": command.to_label,
                     "cardinality": command.cardinality.value,
+                    # Omitted when unstated rather than written as an empty
+                    # tuple: absent means "use the identifier", and an empty
+                    # join is a mistake the compiler must be able to reject.
+                    **(
+                        {"from_properties": list(command.from_properties)}
+                        if command.from_properties
+                        else {}
+                    ),
+                    **(
+                        {"to_properties": list(command.to_properties)}
+                        if command.to_properties
+                        else {}
+                    ),
                 }
             )
 

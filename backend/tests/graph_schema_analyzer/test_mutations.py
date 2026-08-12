@@ -8,6 +8,7 @@ to execute one.
 from __future__ import annotations
 
 import inspect
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 import pytest
@@ -342,6 +343,11 @@ class PassingTarget:
     async def request_build(self, *, schema_id: str, activate: bool) -> object:
         raise AssertionError("validation must never build")
 
+    async def publish_release(
+        self, *, draft: Mapping[str, object], draft_id: str, approver: str, activate: bool
+    ) -> object:
+        raise AssertionError("this target must never publish")
+
 
 class UnreachableTarget:
     async def compile_schema(self, *, draft: object) -> tuple[str, ...]:
@@ -352,6 +358,11 @@ class UnreachableTarget:
 
     async def request_build(self, *, schema_id: str, activate: bool) -> object:
         raise AssertionError("validation must never build")
+
+    async def publish_release(
+        self, *, draft: Mapping[str, object], draft_id: str, approver: str, activate: bool
+    ) -> object:
+        raise AssertionError("this target must never publish")
 
 
 async def _validate(shape: GraphSchemaShape, target: object = None):

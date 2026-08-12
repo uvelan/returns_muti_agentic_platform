@@ -25,10 +25,21 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from neo4j import AsyncDriver
 
+from return_platform.bootstrap.adapters.analyzer_release_compiler import (
+    ReleaseCompilationError,
+    compile_active_schema,
+)
+from return_platform.dynamic_knowledge.config_loader import load_active_schema
+from return_platform.dynamic_knowledge.release_store import (
+    ReleaseAlreadyPublished,
+    SchemaReleaseStore,
+)
 from return_platform.graph_schema_analyzer.ports.graph_target_port import (
     BuildHandle,
     GraphTargetPort,
@@ -51,8 +62,20 @@ class GraphCompilationError(RuntimeError):
 class Neo4jGraphTargetAdapter:
     """Structurally satisfies `GraphTargetPort`."""
 
-    def __init__(self, driver: AsyncDriver) -> None:
+    def __init__(
+        self,
+        driver: AsyncDriver,
+        *,
+        releases: SchemaReleaseStore | None = None,
+        baseline_path: Path | None = None,
+    ) -> None:
         self._driver = driver
+        # Optional so the adapter still binds where publishing has no store to
+        # write to. `publish_release` refuses in that case rather than the
+        # whole analyzer failing to start: validation and compilation are
+        # useful on their own.
+        self._releases = releases
+        self._baseline_path = baseline_path
 
     async def compile_schema(self, *, draft: Mapping[str, Any]) -> Sequence[str]:
         """Turn a validated shape into graph-side DDL. Never executes it."""
@@ -96,6 +119,53 @@ class Neo4jGraphTargetAdapter:
         raise NotImplementedError(
             "graph generation lifecycle (build/fence/activate/drain/retire) is Wave C4; "
             "the analyzer delegates builds and never performs them."
+        )
+
+    async def publish_release(
+        self,
+        *,
+        draft: Mapping[str, Any],
+        draft_id: str,
+        approver: str,
+        activate: bool,
+    ) -> BuildHandle:
+        """Compile the approved shape into an `ActiveSchema` and store it.
+
+        `accepted=False` with a reason rather than an exception for a shape
+        that cannot compile: the analyst needs to read which element was
+        ambiguous, and a 500 would tell them only that something went wrong.
+        """
+        if self._releases is None or self._baseline_path is None:
+            raise RuntimeError("no release store is configured, so a schema cannot be published")
+
+        now = datetime.now(UTC)
+        # The release id carries the draft it came from and the moment it was
+        # cut. Derived rather than random so a release can be traced back to an
+        # approval without a lookup table, and unique so an immutable store
+        # never has to reject an honest second publish of a changed draft.
+        release_id = f"draft_{draft_id.replace('-', '_')}_{now.strftime('%Y%m%d%H%M%S')}"
+        try:
+            release = compile_active_schema(
+                draft,
+                baseline=load_active_schema(self._baseline_path),
+                configuration_release_id=release_id,
+                schema_version=release_id,
+                approved_by=approver,
+                approved_at=now,
+            )
+        except (ReleaseCompilationError, ValueError) as exc:
+            return BuildHandle(generation_id=release_id, accepted=False, detail=str(exc))
+
+        try:
+            await self._releases.publish(release, published_by=approver)
+        except ReleaseAlreadyPublished as exc:
+            return BuildHandle(generation_id=release_id, accepted=False, detail=str(exc))
+        if activate:
+            await self._releases.activate(release_id)
+        return BuildHandle(
+            generation_id=release_id,
+            accepted=True,
+            detail="activated" if activate else "published",
         )
 
 
@@ -160,6 +230,11 @@ def _element_of(statement: str) -> str:
     return match.group(1) if match else "draft"
 
 
-def build_neo4j_graph_target_adapter(driver: AsyncDriver) -> GraphTargetPort:
+def build_neo4j_graph_target_adapter(
+    driver: AsyncDriver,
+    *,
+    releases: SchemaReleaseStore | None = None,
+    baseline_path: Path | None = None,
+) -> GraphTargetPort:
     """Typed factory; the annotation is what proves conformance to mypy."""
-    return Neo4jGraphTargetAdapter(driver)
+    return Neo4jGraphTargetAdapter(driver, releases=releases, baseline_path=baseline_path)

@@ -40,3 +40,24 @@ class GraphTargetPort(Protocol):
 
     async def request_build(self, *, schema_id: str, activate: bool) -> BuildHandle:
         """Delegate to the graph module's RebuildTrigger."""
+
+    async def publish_release(
+        self,
+        *,
+        draft: Mapping[str, Any],
+        draft_id: str,
+        approver: str,
+        activate: bool,
+    ) -> BuildHandle:
+        """Compile an approved shape into a runtime release and store it.
+
+        The step that was missing: the analyzer could approve a schema and
+        nothing consumed it. Crossing the boundary here rather than importing
+        the runtime keeps the analyzer's independence intact -- the shape goes
+        out as plain data and a release id comes back.
+
+        `activate` decides whether the runtime starts reading it. Publishing
+        without activating is the ordinary path for a change someone wants
+        staged; the two are separate because "recorded" and "live" are
+        different decisions and conflating them makes the second unreviewable.
+        """

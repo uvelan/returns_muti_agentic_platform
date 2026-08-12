@@ -110,6 +110,7 @@ from return_platform.dynamic_knowledge.integration.runtime_factory import (
 from return_platform.dynamic_knowledge.order_agent.conversation_repository import (
     AtomicConversationRepository,
 )
+from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore
 from return_platform.graph_schema_analyzer.api import router as graph_schema_analyzer_router
 from return_platform.graph_schema_analyzer.persistence import build_system_store_persistence
 from return_platform.operations.repository import OperationalRepository
@@ -654,7 +655,17 @@ async def lifespan(
                 )
             if resources.neo4j is not None:
                 app.state.graph_schema_analyzer_graph_target = build_neo4j_graph_target_adapter(
-                    resources.neo4j
+                    resources.neo4j,
+                    # Publishing needs somewhere to write and a baseline to
+                    # inherit the non-graph configuration from. Both absent is
+                    # a valid binding -- validation still works, publishing
+                    # refuses -- so the analyzer starts either way.
+                    releases=(
+                        None
+                        if resources.mongo is None
+                        else SchemaReleaseStore(resources.mongo, settings.mongo_database)
+                    ),
+                    baseline_path=settings.dynamic_knowledge_schema_path,
                 )
             # Reasoning needs no dependency of its own beyond the shared
             # route pool, but an empty pool means no provider credential is
