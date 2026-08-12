@@ -8,17 +8,23 @@ customer be found from partial or combined information (an order number
 those), because each signal is tried on its own and the results are then
 merged and scored by :func:`rank_search_results`.
 
-Not every field on :class:`OrderSearchIntent` currently has a backing field in
-the active knowledge-graph schema. ``streetAddresses``, ``cities``, ``states``,
-``postalCodes``, and ``colors`` are intentionally *not* translated into query
-plans here, because ``backend/config/dynamic_knowledge/active-schema.return-order.yaml``
-does not define a graph property for shipping address or product colour today.
-Silently dropping that signal would look like "no results" to the associate
-with no indication why, so :func:`build_progressive_plans` reports which
-unsupported signals were present via ``unsupported_signals`` instead of
-inventing a query against a field that does not exist. Once the source schema
-is extended with real physical-path mappings for those attributes, add the
-matching passes here alongside the existing ones.
+Not every field on :class:`OrderSearchIntent` has a backing field in the active
+knowledge-graph schema, and where one is missing the signal is *reported* rather
+than dropped: silently ignoring "it was the blue one" looks like "no results" to
+the associate with no indication why. :func:`build_progressive_plans` therefore
+names what it could not use in ``unsupported_signals``.
+
+``colors`` is the only such field left. No entity carries a colour property, and
+matching a colour word against ``product_description`` would put "Blue Ridge
+Faucet" in front of someone who said the tap was blue -- a wrong order presented
+with no sign that the colour had been matched loosely.
+
+Address, city, state, postal code, email and phone were on that list too, and
+were being dropped long after the schema grew real properties for all six. That
+is the worse failure of the two: an associate answering the agent's own
+clarifying question -- the policy in ``config/returns/production.yaml`` ranks
+email at 95 and phone at 90, above every narrowing signal -- contributed nothing
+to the search. They are ordinary passes now.
 """
 
 from __future__ import annotations
@@ -41,13 +47,20 @@ logger = logging.getLogger("return_platform.dynamic_knowledge.order_agent.search
 # Fields the model may extract into OrderSearchIntent that have no backing
 # graph field yet. Kept in one place so this list and the module docstring
 # above stay in sync as the schema evolves.
-_UNSUPPORTED_INTENT_FIELDS: tuple[str, ...] = (
-    "streetAddresses",
-    "cities",
-    "states",
-    "postalCodes",
-    "colors",
-)
+_UNSUPPORTED_INTENT_FIELDS: tuple[str, ...] = ("colors",)
+
+# Where an address or contact detail lives, and how precisely it can be matched.
+#
+# Two homes, deliberately, because they answer different questions: the contact
+# point is where the *customer* is registered, `sales_order` records where this
+# particular order was sent. An associate saying "Dallas" could mean either, and
+# a search that asked only one would miss an order shipped to a job site.
+#
+# The operator per field is the one the schema actually enables -- `state` and
+# `postal_code` are EXACT-only, and asking for CONTAINS on them would be refused
+# by the schema guard, taking the whole pass with it.
+_CONTACT_ENTITY = "contact_point"
+_ORDER_ENTITY = "sales_order"
 
 # Date fields only expose range operators (see the active schema): an exact-date
 # match is expressed as a same-day BETWEEN.
@@ -94,6 +107,8 @@ _SIGNATURE_FIELDS: tuple[str, ...] = (
     "cities",
     "states",
     "postalCodes",
+    "emails",
+    "phones",
     "dateFrom",
     "dateTo",
     "approximateDate",
@@ -121,7 +136,13 @@ def normalize_string(val: str) -> str:
     return re.sub(r"[\s\-]+", "", val.lower())
 
 
-def _unsupported_signals_present(intent: OrderSearchIntent) -> tuple[str, ...]:
+def unsupported_signals(intent: OrderSearchIntent) -> tuple[str, ...]:
+    """Identifying signals this intent carries that no plan can express.
+
+    Public because two docstrings already promised it and nothing defined it:
+    callers were told to check a function that did not exist, and the only way
+    to read the answer was to run a search and inspect the ranked result.
+    """
     return tuple(
         field_name for field_name in _UNSUPPORTED_INTENT_FIELDS if getattr(intent, field_name)
     )
@@ -241,7 +262,119 @@ def build_progressive_plans(intent: OrderSearchIntent) -> list[LogicalQueryPlan]
             )
         )
 
-    # 6. Order date window: dateFrom/dateTo, a single open bound, or a same-day
+    # 6. Contact details the associate was asked for.
+    #
+    # Email and phone are the highest-priority customer anchors in the
+    # clarification policy, so they are tried ahead of the broader narrowing
+    # signals below.
+    for email in dict.fromkeys(intent.emails):
+        plans.append(
+            LogicalQueryPlan(
+                operation=QueryOperation.SEARCH,
+                start_entity_id=_CONTACT_ENTITY,
+                fields=("account_id", "customer_id", "email"),
+                filters=(
+                    QueryCondition(
+                        entity_id=_CONTACT_ENTITY,
+                        field_id="email",
+                        # A complete address is an identifier and matches
+                        # exactly; a fragment is all the associate could read
+                        # off the screen, and CONTAINS is the only way it finds
+                        # anything at all.
+                        operator="EXACT" if "@" in email else "CONTAINS",
+                        value=email,
+                    ),
+                ),
+                limit=5,
+            )
+        )
+
+    # Deduped by what is actually asked, not by what was typed: "(214)
+    # 555-0142" and "2145550142" are the same number, and `dict.fromkeys` only
+    # sees two different strings.
+    asked: set[tuple[str, str, str]] = set()
+    for phone in dict.fromkeys(intent.phones):
+        digits = _digits_of(phone)
+        for value, operator in _phone_attempts(phone, digits):
+            if ("phone_number", value, operator) in asked:
+                continue
+            asked.add(("phone_number", value, operator))
+            plans.append(
+                LogicalQueryPlan(
+                    operation=QueryOperation.SEARCH,
+                    start_entity_id=_CONTACT_ENTITY,
+                    fields=("account_id", "customer_id", "phone_number"),
+                    filters=(
+                        QueryCondition(
+                            entity_id=_CONTACT_ENTITY,
+                            field_id="phone_number",
+                            operator=operator,
+                            value=value,
+                        ),
+                    ),
+                    limit=5,
+                )
+            )
+        if digits and ("ship_to_phone", digits, "EXACT") not in asked:
+            asked.add(("ship_to_phone", digits, "EXACT"))
+            # `ship_to_phone` is EXACT-only, so only the digits form is worth
+            # asking for: a formatted value would have to match character for
+            # character to return anything.
+            plans.append(
+                LogicalQueryPlan(
+                    operation=QueryOperation.SEARCH,
+                    start_entity_id=_ORDER_ENTITY,
+                    fields=("sales_order_number", "customer_id", "ship_to_phone"),
+                    filters=(
+                        QueryCondition(
+                            entity_id=_ORDER_ENTITY,
+                            field_id="ship_to_phone",
+                            operator="EXACT",
+                            value=digits,
+                        ),
+                    ),
+                    limit=5,
+                )
+            )
+
+    # 7. Where the customer is, or where this order went.
+    for value, contact_field, order_field, operator in _location_signals(intent):
+        plans.append(
+            LogicalQueryPlan(
+                operation=QueryOperation.SEARCH,
+                start_entity_id=_CONTACT_ENTITY,
+                fields=("account_id", "customer_id", contact_field),
+                filters=(
+                    QueryCondition(
+                        entity_id=_CONTACT_ENTITY,
+                        field_id=contact_field,
+                        operator=operator,
+                        value=value,
+                    ),
+                ),
+                limit=10,
+            )
+        )
+        if order_field is None:
+            continue
+        plans.append(
+            LogicalQueryPlan(
+                operation=QueryOperation.SEARCH,
+                start_entity_id=_ORDER_ENTITY,
+                fields=("sales_order_number", "customer_id", order_field),
+                filters=(
+                    QueryCondition(
+                        entity_id=_ORDER_ENTITY,
+                        field_id=order_field,
+                        operator=operator,
+                        value=value,
+                    ),
+                ),
+                limit=10,
+            )
+        )
+
+    # 8. Order date window: dateFrom/dateTo, a single open bound, or a same-day
     # match from approximateDate. The date field only supports range operators
     # (GT/GTE/LT/LTE/BETWEEN) in the active schema, never EXACT.
     date_condition = _date_condition(intent)
@@ -256,7 +389,7 @@ def build_progressive_plans(intent: OrderSearchIntent) -> list[LogicalQueryPlan]
             )
         )
 
-    # 7. Fallback free-text search. sales_order_number only supports EXACT
+    # 9. Fallback free-text search. sales_order_number only supports EXACT
     # match in the schema (CONTAINS is not an enabled operator for it), so an
     # unclassified free-text term is searched against product_description
     # instead, which does support CONTAINS and is the more likely match for
@@ -279,7 +412,7 @@ def build_progressive_plans(intent: OrderSearchIntent) -> list[LogicalQueryPlan]
             )
         )
 
-    unsupported = _unsupported_signals_present(intent)
+    unsupported = unsupported_signals(intent)
     if unsupported:
         logger.warning(
             "order_search_unsupported_intent_signals",
@@ -287,6 +420,47 @@ def build_progressive_plans(intent: OrderSearchIntent) -> list[LogicalQueryPlan]
         )
 
     return plans
+
+
+def _digits_of(value: str) -> str:
+    return re.sub(r"[^0-9]+", "", value)
+
+
+def _phone_attempts(raw: str, digits: str) -> tuple[tuple[str, str], ...]:
+    """The forms of a phone number worth asking the graph for.
+
+    The raw value exactly, in case it is stored formatted the way the associate
+    read it out, and the digits as a CONTAINS so a stored form with different
+    punctuation -- or a country code nobody mentioned -- still matches. Deduped,
+    because a number typed plainly would otherwise be searched twice.
+    """
+    attempts: list[tuple[str, str]] = [(raw, "EXACT")]
+    if digits and digits != raw:
+        attempts.append((digits, "CONTAINS"))
+    return tuple(attempts)
+
+
+def _location_signals(
+    intent: OrderSearchIntent,
+) -> tuple[tuple[str, str, str | None, str], ...]:
+    """Each address signal, paired with the fields that can answer it.
+
+    Returns ``(value, contact_point field, sales_order field, operator)``.
+    `address_line1` has no order-side counterpart -- `sales_order` records the
+    ship-to city, state and postal code but not the street -- so that entry
+    carries ``None`` rather than a field name that would fail the schema guard
+    and take the pass with it.
+    """
+    signals: list[tuple[str, str, str | None, str]] = []
+    for street in dict.fromkeys(intent.streetAddresses):
+        signals.append((street, "address_line1", None, "CONTAINS"))
+    for city in dict.fromkeys(intent.cities):
+        signals.append((city, "city", "ship_to_city", "CONTAINS"))
+    for state in dict.fromkeys(intent.states):
+        signals.append((state, "state", "ship_to_state", "EXACT"))
+    for postal_code in dict.fromkeys(intent.postalCodes):
+        signals.append((postal_code, "postal_code", "ship_to_postal_code", "EXACT"))
+    return tuple(signals)
 
 
 def build_customer_fuzzy_probe_plan() -> LogicalQueryPlan:
@@ -479,5 +653,5 @@ def rank_search_results(
         "intent": intent.model_dump(),
         "candidates": sorted_candidates[:MAX_CACHED_CANDIDATES],
         "total_found": len(sorted_candidates),
-        "unsupported_signals": list(_unsupported_signals_present(intent)),
+        "unsupported_signals": list(unsupported_signals(intent)),
     }

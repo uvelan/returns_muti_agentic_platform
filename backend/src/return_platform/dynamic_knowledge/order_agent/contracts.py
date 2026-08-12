@@ -38,6 +38,15 @@ class OrderSearchIntent(BaseModel):
     orderIds: tuple[str, ...] = ()
     orderNumbers: tuple[str, ...] = ()
     customerNames: tuple[str, ...] = ()
+    # The two the clarification policy ranks highest after the hard order
+    # anchors -- email at 95, phone at 90 in `config/returns/production.yaml`.
+    # They were absent here while the policy asked for them, and this model is
+    # `extra="forbid"`, so the agent would ask an associate for the email on the
+    # order and then have nowhere to put the answer: the reply was either
+    # rejected as an unknown field or flattened into `freeTextTerms` and
+    # searched against product descriptions.
+    emails: tuple[str, ...] = ()
+    phones: tuple[str, ...] = ()
     streetAddresses: tuple[str, ...] = ()
     cities: tuple[str, ...] = ()
     states: tuple[str, ...] = ()

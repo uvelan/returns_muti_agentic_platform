@@ -321,7 +321,11 @@ tasks:
       exact/partial match type; state those plainly as found, with no uncertainty language. orderSearchCache also includes intent: every identifying signal already gathered
       (customerNames, orderNumbers, skus, productNames, dateFrom/dateTo/approximateDate, quantities,
       freeTextTerms, and so on) that produced those results — not just whichever field you last asked
-      about. A short reply right after you asked a CLARIFICATION_QUESTION — a bare name, one word, a
+      about. An answer that is an email address, a phone number, a street, a city, a state or a ZIP
+      belongs in emails, phones, streetAddresses, cities, states or postalCodes respectively — never in
+      freeTextTerms, which is searched against product descriptions and will find nothing for any of
+      them. These are the details you are most likely to have asked for, so put the reply where it can
+      actually be used. A short reply right after you asked a CLARIFICATION_QUESTION — a bare name, one word, a
       date, a SKU fragment, or a short phrase with no order number of its own — is almost always
       narrowing that same search, not starting an unrelated one: keep every non-empty field already in
       orderSearchCache.intent and add the new detail to the matching field, rather than searching the

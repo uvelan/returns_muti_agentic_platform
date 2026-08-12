@@ -17,6 +17,7 @@ from return_platform.dynamic_knowledge.knowledge.guards import (
     StrongAnchorGuard,
     StrongAnchorRequest,
 )
+from return_platform.dynamic_knowledge.knowledge.query_plan import LogicalQueryPlan
 from return_platform.dynamic_knowledge.order_agent.contracts import OrderSearchIntent
 from return_platform.dynamic_knowledge.order_agent.search_strategy import (
     MAX_CACHED_CANDIDATES,
@@ -25,6 +26,7 @@ from return_platform.dynamic_knowledge.order_agent.search_strategy import (
     fuzzy_match_customers,
     rank_search_results,
     search_intent_signature,
+    unsupported_signals,
 )
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
@@ -380,3 +382,133 @@ def test_fuzzy_match_survives_a_trade_name_suffix() -> None:
     ]
     matches = fuzzy_match_customers(("melgan heatng",), rows)
     assert [row["customer_id"] for row in matches] == ["471565"]
+
+
+# ---------------------------------------------------------------------------
+# Identification signals the agent asks for and can now use
+#
+# The clarification policy ranks email at 95 and phone at 90 -- above every
+# narrowing signal -- and `OrderSearchIntent` had no field for either. The agent
+# asked an associate for the email on the order and then had nowhere to put the
+# answer. Address, city, state and postal code were declared but dropped, long
+# after the schema grew real properties for all of them.
+# ---------------------------------------------------------------------------
+
+
+def _fields_asked(plans: list[LogicalQueryPlan]) -> set[tuple[str, str, str]]:
+    return {
+        (condition.entity_id, condition.field_id, condition.operator)
+        for plan in plans
+        for condition in plan.filters
+    }
+
+
+def test_an_email_the_associate_supplies_is_searched() -> None:
+    """The answer to the highest-priority clarifying question after the anchors."""
+    plans = build_progressive_plans(OrderSearchIntent(emails=("dana@example.com",)))
+
+    assert ("contact_point", "email", "EXACT") in _fields_asked(plans)
+
+
+def test_a_partial_email_is_matched_loosely() -> None:
+    """A fragment is often all an associate can read off a screen.
+
+    EXACT on it would find nothing, and finding nothing looks identical to the
+    customer not existing.
+    """
+    plans = build_progressive_plans(OrderSearchIntent(emails=("dana at example",)))
+
+    assert ("contact_point", "email", "CONTAINS") in _fields_asked(plans)
+
+
+def test_a_phone_is_tried_both_as_typed_and_as_digits() -> None:
+    """Spoken and stored forms rarely agree, and neither can be assumed.
+
+    "(214) 555-0142" against a stored "2145550142" matches on neither side
+    unless both are asked for.
+    """
+    plans = build_progressive_plans(OrderSearchIntent(phones=("(214) 555-0142",)))
+    asked = {(condition.field_id, condition.value) for plan in plans for condition in plan.filters}
+
+    assert ("phone_number", "(214) 555-0142") in asked
+    assert ("phone_number", "2145550142") in asked
+    # The order side records its own ship-to phone, and it is EXACT-only, so
+    # only the digits form can match there.
+    assert ("ship_to_phone", "2145550142") in asked
+
+
+def test_two_spellings_of_one_number_are_not_searched_twice() -> None:
+    """`dict.fromkeys` dedupes what was typed, not what is asked."""
+    plans = build_progressive_plans(OrderSearchIntent(phones=("(214) 555-0142", "2145550142")))
+    order_side = [
+        condition
+        for plan in plans
+        for condition in plan.filters
+        if condition.field_id == "ship_to_phone"
+    ]
+
+    assert len(order_side) == 1
+
+
+def test_a_city_is_searched_where_the_customer_is_and_where_the_order_went() -> None:
+    """Two different questions, and an associate saying "Dallas" could mean either.
+
+    Asking only the contact point would miss an order shipped to a job site;
+    asking only the order would miss a customer whose orders went elsewhere.
+    """
+    asked = _fields_asked(build_progressive_plans(OrderSearchIntent(cities=("Dallas",))))
+
+    assert ("contact_point", "city", "CONTAINS") in asked
+    assert ("sales_order", "ship_to_city", "CONTAINS") in asked
+
+
+def test_state_and_postal_code_use_the_operator_the_schema_allows() -> None:
+    """CONTAINS on either is refused by the schema guard, losing the whole pass.
+
+    The failure is silent from the associate's side: they gave a ZIP and got
+    nothing back.
+    """
+    asked = _fields_asked(
+        build_progressive_plans(OrderSearchIntent(states=("TX",), postalCodes=("75201",)))
+    )
+
+    assert ("contact_point", "state", "EXACT") in asked
+    assert ("sales_order", "ship_to_state", "EXACT") in asked
+    assert ("contact_point", "postal_code", "EXACT") in asked
+    assert ("sales_order", "ship_to_postal_code", "EXACT") in asked
+
+
+def test_a_street_is_searched_only_where_a_street_exists() -> None:
+    """`sales_order` records the ship-to city, state and ZIP but not the street.
+
+    Naming a field that does not exist would fail the schema guard and take the
+    address pass with it, so the order side is skipped rather than guessed at.
+    """
+    plans = build_progressive_plans(OrderSearchIntent(streetAddresses=("120 Beacon St",)))
+    entities = {plan.start_entity_id for plan in plans}
+
+    assert entities == {"contact_point"}
+
+
+def test_colour_is_still_reported_rather_than_guessed() -> None:
+    """No entity carries a colour property, and pretending otherwise is worse.
+
+    Matching "blue" against product_description would put "Blue Ridge Faucet"
+    in front of someone who said the tap was blue, with no sign the colour had
+    been matched loosely.
+    """
+    intent = OrderSearchIntent(colors=("blue",))
+
+    assert build_progressive_plans(intent) == []
+    assert unsupported_signals(intent) == ("colors",)
+
+
+def test_the_search_signature_moves_when_a_contact_detail_changes() -> None:
+    """Otherwise a "show next" pages through someone else's cached results."""
+    first = OrderSearchIntent(emails=("dana@example.com",))
+    second = OrderSearchIntent(emails=("sam@example.com",))
+
+    assert search_intent_signature(first) != search_intent_signature(second)
+    assert search_intent_signature(
+        OrderSearchIntent(phones=("2145550142",))
+    ) != search_intent_signature(OrderSearchIntent(phones=("2145550143",)))
