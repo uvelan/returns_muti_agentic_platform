@@ -197,6 +197,11 @@ async def apply_action(
     loaded = getattr(request.app.state, "return_configuration", None)
     if (
         event_type is not None
+        # A case thread has no session, so there is no session-scoped
+        # production workflow to signal. Channel B outcomes on a case reach the
+        # return through `ReturnCaseWorkflow`'s `support_response` signal
+        # instead; bridging here as well would be two paths to the same event.
+        and data.sessionId is not None
         and isinstance(resources, RuntimeResources)
         and resources.temporal is not None
         and resources.mongo is not None

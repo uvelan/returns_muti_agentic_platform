@@ -36,14 +36,20 @@ function withoutComments(source: string): string {
 }
 
 /**
- * The one versioned path the shell may still call, and why.
+ * The versioned paths the shell may still call, and why. Each is a record of a
+ * real gap, not a relaxation: any *other* versioned call still fails.
  *
  * Order Discovery has no canonical `/api` route -- the agent is only exposed at
- * `/api/v2/order-agent/.../turns`. Listed as a named exception rather than
- * relaxing the rule, so this stays a one-line record of a real gap and any
- * *other* versioned call still fails.
+ * `/api/v2/order-agent/.../turns`.
+ *
+ * Returns Support is the same shape. Channel B's backend is mounted only at
+ * `/api/v1/return-support/*`, and the Support console is a screen over that
+ * existing service -- standing up a canonical router beside it would be a
+ * second HTTP surface for one backend, which is the fragmentation this
+ * programme is removing. The rename belongs with the consolidation wave that
+ * retires the versioned prefixes, not with the screen that first needed one.
  */
-const ALLOWED = ["/api/v2/order-agent/"];
+const ALLOWED = ["/api/v2/order-agent/", "/api/v1/return-support/"];
 
 it("never requests a versioned API path, except the agent turn endpoint", () => {
   const offenders = Object.entries(sources).flatMap(([path, source]) =>

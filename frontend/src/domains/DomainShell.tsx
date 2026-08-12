@@ -23,6 +23,9 @@ const DOMAIN_SCREENS: Partial<Record<string, ComponentType>> = {
   "/returns": lazy(() =>
     import("./returns/ReturnCopilotPage").then((m) => ({ default: m.ReturnCopilotPage })),
   ),
+  "/support": lazy(() =>
+    import("./support/SupportConsolePage").then((m) => ({ default: m.SupportConsolePage })),
+  ),
   "/config": lazy(() =>
     import("./config/ConfigurationPage").then((m) => ({ default: m.ConfigurationPage })),
   ),

@@ -59,7 +59,13 @@ class SupportMessageType(StrEnum):
 
 class SupportWorkItemView(SupportModel):
     id: str
-    sessionId: str
+    # A work item belongs to a return *session* (the legacy shape) or to a
+    # *case* (Channel B). Exactly one is set, and neither can be made required
+    # without excluding the other -- a case is the thing sessions hang off, so
+    # inventing a session id to satisfy the older field would be a lie the rest
+    # of the system would then try to resolve.
+    sessionId: str | None = None
+    caseId: str | None = None
     threadId: str
     status: SupportWorkItemStatus
     priority: str
@@ -214,7 +220,23 @@ class ReturnSupportService:
         self._repository = operational_repository
 
     async def ensure_indexes(self) -> None:
-        await self._work_items.create_index("sessionId", unique=True)
+        # Partial, where it used to be plainly unique. The rule -- one thread per
+        # session -- only applies to a thread that belongs to a session, and a
+        # case thread has none. Left unconditional, every case thread indexed as
+        # `{sessionId: null}` and the second one collided with the first.
+        await self._work_items.create_index(
+            "sessionId",
+            unique=True,
+            partialFilterExpression={"sessionId": {"$type": "string"}},
+        )
+        # The same rule for the case-scoped half: one Channel B thread per case.
+        # There is one Returns Support conversation per return, and opening a
+        # second would split the exchange a human is reading in two.
+        await self._work_items.create_index(
+            "caseId",
+            unique=True,
+            partialFilterExpression={"caseId": {"$type": "string"}},
+        )
         await self._work_items.create_index("idempotencyKey", unique=True)
         await self._work_items.create_index(
             [("status", ASCENDING), ("priorityRank", ASCENDING), ("slaDueAt", ASCENDING)]
@@ -385,6 +407,153 @@ class ReturnSupportService:
         """
         document = await self._work_items.find_one({"sessionId": session_id})
         return None if document is None else self._work_item_view(cast(dict[str, Any], document))
+
+    async def open_case_thread(
+        self,
+        *,
+        case_id: str,
+        tenant_id: str,
+        principal_id: str,
+        support_draft: str,
+        idempotency_key: str,
+    ) -> str:
+        """Open Channel B for a case, once, and return the work-item id.
+
+        The case-scoped counterpart to `create_work_item`, which is keyed to a
+        return *session*. A case has no session -- it is the thing sessions hang
+        off -- so this writes `caseId` and leaves `sessionId` unset.
+
+        Idempotent twice over: on `idempotencyKey`, which the workflow derives
+        from the case so a Temporal retry re-reads rather than re-opens, and on
+        the unique `caseId` index, which catches the race the key check cannot.
+        There is one Returns Support conversation per return; a second would
+        split the exchange a human is reading in two.
+        """
+        existing = await self._work_items.find_one(
+            {"$or": [{"idempotencyKey": idempotency_key}, {"caseId": case_id}]}
+        )
+        if existing is not None:
+            return str(existing["_id"])
+
+        now = _now()
+        item_id = str(uuid.uuid4())
+        thread_id = str(uuid.uuid4())
+        sla_minutes = self._config.workflow.sla_minutes["support_acknowledgement"]
+        document: dict[str, Any] = {
+            "_id": item_id,
+            "caseId": case_id,
+            "tenantId": tenant_id,
+            "sessionId": None,
+            "threadId": thread_id,
+            "status": SupportWorkItemStatus.NEW.value,
+            "priority": "NORMAL",
+            "priorityRank": 2,
+            "queue": "RETURNS_SUPPORT",
+            "subject": f"Return request for case {case_id}",
+            "requestSnapshotDigest": _digest({"caseId": case_id}),
+            "assignedTo": None,
+            "externalTicketReference": None,
+            "returnVersion": None,
+            "returnReference": None,
+            "returnCreationCommandId": None,
+            "returnCreationRequestedAt": None,
+            "shippingInstructionReference": None,
+            "customerResolutionStatus": None,
+            "acknowledgedAt": None,
+            "returnCreatedAt": None,
+            "shippingInstructionsIssuedAt": None,
+            "customerResolutionRecordedAt": None,
+            "completedAt": None,
+            "slaDueAt": now + timedelta(minutes=sla_minutes),
+            "lastMessageSequence": 1,
+            "version": 0,
+            "idempotencyKey": idempotency_key,
+            "createdBy": principal_id,
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        message = {
+            "_id": str(uuid.uuid4()),
+            "threadId": thread_id,
+            "sequence": 1,
+            "senderRole": "AGENT",
+            "senderId": "return-workflow-agent",
+            "messageType": SupportMessageType.REQUEST.value,
+            "messageText": support_draft,
+            "attachmentIds": [],
+            "businessPayload": {"caseId": case_id},
+            "createdAt": now,
+        }
+        try:
+            await self._work_items.insert_one(document)
+        except DuplicateKeyError:
+            # Lost the race on `caseId` or `idempotencyKey`. The winner's thread
+            # is the one thread this case gets.
+            winner = await self._work_items.find_one(
+                {"$or": [{"idempotencyKey": idempotency_key}, {"caseId": case_id}]}
+            )
+            if winner is None:  # pragma: no cover - duplicate on neither key
+                raise
+            return str(winner["_id"])
+        await self._messages.insert_one(message)
+        return item_id
+
+    async def post_reminder(
+        self,
+        *,
+        work_item_id: str,
+        reminder_number: int,
+        max_reminders: int,
+        idempotency_key: str,
+    ) -> None:
+        """A polite nudge on the existing thread.
+
+        Support knows it is talking to an agent, and the tone is still warm:
+        someone is reading this between other work, and a terse machine-stamped
+        line reads as pressure rather than a question.
+
+        Numbered and deduplicated on `businessPayload.reminderKey`, because the
+        cost of getting this wrong is not a duplicate row -- it is the same
+        message arriving twice in a person's queue.
+        """
+        already_sent = await self._messages.find_one(
+            {"businessPayload.reminderKey": idempotency_key}
+        )
+        if already_sent is not None:
+            return
+
+        item = await self._work_items.find_one({"_id": work_item_id})
+        if item is None:
+            raise KeyError(work_item_id)
+        # Stored documents are `dict[str, object]`; narrow rather than cast, the
+        # same way `add_message` narrows `lastMessageSequence`.
+        version_raw = item["version"]
+        if not isinstance(version_raw, (int, float)):
+            raise TypeError(f"Expected numeric version, got {type(version_raw).__name__}")
+
+        remaining = max(0, max_reminders - reminder_number)
+        closing = (
+            " No rush if it's in hand -- just let me know either way."
+            if remaining
+            else " If this one isn't the right queue, could you point me at who to ask?"
+        )
+        await self.add_message(
+            work_item_id,
+            CreateSupportMessageRequest(
+                messageType=SupportMessageType.COMMENT,
+                messageText=(
+                    "Hi -- just checking in on this return request."
+                    " Is there anything you need from me to move it along?" + closing
+                ),
+                businessPayload={
+                    "reminderKey": idempotency_key,
+                    "reminderNumber": reminder_number,
+                },
+                expectedVersion=int(version_raw),
+            ),
+            actor_id="return-workflow-agent",
+            actor_role="AGENT",
+        )
 
     async def list_messages(self, thread_id: str) -> list[SupportMessageView]:
         cursor = self._messages.find({"threadId": thread_id}).sort("sequence", ASCENDING)

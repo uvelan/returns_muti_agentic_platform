@@ -10316,6 +10316,17 @@
             ],
             "title": "Assignedto"
           },
+          "caseId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caseid"
+          },
           "completedAt": {
             "anyOf": [
               {
@@ -10441,8 +10452,15 @@
             "title": "Returnversion"
           },
           "sessionId": {
-            "title": "Sessionid",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessionid"
           },
           "shippingInstructionReference": {
             "anyOf": [
@@ -10496,7 +10514,6 @@
         },
         "required": [
           "id",
-          "sessionId",
           "threadId",
           "status",
           "priority",

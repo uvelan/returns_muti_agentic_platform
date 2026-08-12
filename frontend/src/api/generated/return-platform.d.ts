@@ -5790,6 +5790,8 @@ export interface components {
             acknowledgedAt?: string | null;
             /** Assignedto */
             assignedTo?: string | null;
+            /** Caseid */
+            caseId?: string | null;
             /** Completedat */
             completedAt?: string | null;
             /**
@@ -5822,7 +5824,7 @@ export interface components {
             /** Returnversion */
             returnVersion?: string | null;
             /** Sessionid */
-            sessionId: string;
+            sessionId?: string | null;
             /** Shippinginstructionreference */
             shippingInstructionReference?: string | null;
             /** Shippinginstructionsissuedat */

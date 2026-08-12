@@ -298,5 +298,16 @@ def test_the_work_item_session_lookup_relies_on_an_existing_unique_index() -> No
         / "service.py"
     ).read_text(encoding="utf-8")
 
-    assert 'create_index("sessionId", unique=True)' in source
+    # Asserted as two properties rather than one literal. The index became
+    # *partial* when case threads arrived -- they have no session, and an
+    # unconditional unique index made the second one collide on `sessionId:
+    # null` -- so the exact source spelling changed while the invariant this
+    # test exists for did not: a session still maps to at most one work item,
+    # which is why the response field is singular rather than a list.
+    session_index = source[source.index('create_index(\n            "sessionId"') :][:400]
+    assert "unique=True" in session_index
+    assert '"sessionId": {"$type": "string"}' in session_index, (
+        "the partial filter is what keeps uniqueness meaningful for sessions "
+        "without constraining case threads, which have no session"
+    )
     assert "async def get_work_item_for_session" in source

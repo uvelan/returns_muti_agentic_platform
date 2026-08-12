@@ -10,6 +10,7 @@ describe("the domain registry", () => {
       "/graph-schema",
       "/operations",
       "/returns",
+      "/support",
     ]);
   });
 
@@ -41,20 +42,27 @@ describe("the domain registry", () => {
 
   it("shares a visibility capability only where that is deliberate", () => {
     // Two domains resolving to the same capability is usually a copy-paste
-    // slip, which is what this catches. Operations is the one intended
-    // exception: it has no backend and therefore no capability of its own, and
-    // gating it on an invented `operations.*` the backend never grants would
-    // hide it from everyone. The exception is named so that a second, accidental
-    // collision still fails.
+    // slip, which is what this catches. Two are intended, and both for the same
+    // reason: the capability they would want does not exist yet, and gating on
+    // an invented one the backend never grants would hide the domain from
+    // everyone. Operations has no backend of its own; Support is a distinct
+    // *role* that has no `support.*` capability to be granted. Both are named
+    // so that a third, accidental collision still fails.
     const shared = new Map<string, string[]>();
     for (const domain of DOMAINS) {
       shared.set(domain.requires, [...(shared.get(domain.requires) ?? []), domain.path]);
     }
     const collisions = [...shared.entries()]
       .filter(([, paths]) => paths.length > 1)
-      .map(([capability, paths]) => `${capability}: ${paths.sort().join(", ")}`);
+      .map(([capability, paths]) => `${capability}: ${paths.sort().join(", ")}`)
+      // Sorted so the assertion does not depend on the order domains happen to
+      // be declared in: reordering the registry is not a regression.
+      .sort();
 
-    expect(collisions).toEqual(["config.runtime.read: /config, /operations"]);
+    expect(collisions).toEqual([
+      "config.runtime.read: /config, /operations",
+      "returns.session.read: /returns, /support",
+    ]);
   });
 
   it("marks a domain without a backend, rather than letting it look finished", () => {

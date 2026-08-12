@@ -1,4 +1,4 @@
-import { Activity, Bot, Network, RotateCcw, Settings } from "lucide-react";
+import { Activity, Bot, Headset, Network, RotateCcw, Settings } from "lucide-react";
 
 import type { Capability } from "../api/principal";
 
@@ -106,6 +106,22 @@ export const DOMAINS: readonly DomainDefinition[] = [
     // The copilot is one workspace with queues, not a set of sections. Its
     // queue picker stays on the screen, where it belongs -- it filters a list
     // rather than switching what the screen is.
+    sections: [],
+  },
+  {
+    path: "/support",
+    name: "Returns Support",
+    description: "The Channel B conversation: return requests, and the replies to them.",
+    purpose: "Answer the agent's return requests and issue the RMA, label and pickup.",
+    icon: Headset,
+    // Same capability as the copilot for now. Support is a distinct *role*, and
+    // it should get a distinct capability -- but inventing `support.*` before
+    // the backend grants it would hide this screen from everybody, which reads
+    // as a bug rather than as work in progress.
+    requires: "returns.session.read",
+    screenPhase: 18,
+    // One workspace: a queue and the conversation it opens. The queue picker
+    // filters a list rather than switching what the screen is.
     sections: [],
   },
   {

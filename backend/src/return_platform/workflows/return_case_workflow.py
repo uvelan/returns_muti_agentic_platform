@@ -65,6 +65,13 @@ _PERSIST_RETRY: Final = RetryPolicy(maximum_attempts=5)
 # it retries far less eagerly, and a persistent failure falls back rather than
 # hammering the provider.
 _DRAFT_RETRY: Final = RetryPolicy(maximum_attempts=2)
+# Bay is advisory, and it sits in front of every return. Retrying it on the
+# persistence policy meant five attempts with exponential backoff -- roughly
+# fifteen seconds added to the critical path before the workflow could conclude
+# what it already knew: there is no bay, carry on. Two attempts cover a genuine
+# blip; anything past that is a warehouse service that is down, and waiting
+# longer does not make one appear.
+_BEST_EFFORT_RETRY: Final = RetryPolicy(maximum_attempts=2)
 
 
 class ReturnCaseStatus(StrEnum):
@@ -368,7 +375,7 @@ class ReturnCaseWorkflow:
                     case_id=workflow_input.case_id, tenant_id=workflow_input.tenant_id
                 ),
                 start_to_close_timeout=_PERSIST_TIMEOUT,
-                retry_policy=_PERSIST_RETRY,
+                retry_policy=_BEST_EFFORT_RETRY,
             )
         except ActivityError:
             # Recorded, not raised. `orchestrator._handle` used to call the bay
