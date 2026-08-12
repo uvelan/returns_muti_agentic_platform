@@ -81,6 +81,11 @@ if command -v poetry >/dev/null; then
   PYTHON=(poetry --directory "$ROOT/backend" run python)
 elif [[ -x "$ROOT/backend/.venv/bin/python" ]]; then
   PYTHON=("$ROOT/backend/.venv/bin/python")
+elif [[ -x "$ROOT/backend/.venv/Scripts/python.exe" ]]; then
+  # Windows, under Git Bash. Without this the venv is invisible and the branch
+  # below falls through to a bare `python3`, which is not the platform's
+  # environment and fails on the first import.
+  PYTHON=("$ROOT/backend/.venv/Scripts/python.exe")
 else
   PYTHON=(python3)
 fi

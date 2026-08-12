@@ -45,7 +45,7 @@ case "$WORKER" in
     if command -v poetry >/dev/null; then
       exec poetry run python -m return_platform.workers.integration_outbox
     fi
-    exec .venv/bin/python -m return_platform.workers.integration_outbox
+    exec "$(venv_python)" -m return_platform.workers.integration_outbox
     ;;
   *)
     echo "Usage: $0 {temporal|orchestrator|outbox|jobs|integration-outbox} [--validate-ai]" >&2
@@ -58,4 +58,4 @@ export PYTHONPATH="$ROOT/backend/src${PYTHONPATH:+:$PYTHONPATH}"
 if command -v poetry >/dev/null; then
   exec poetry run python "scripts/$SCRIPT"
 fi
-exec .venv/bin/python "scripts/$SCRIPT"
+exec "$(venv_python)" "scripts/$SCRIPT"

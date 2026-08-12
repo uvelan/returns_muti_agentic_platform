@@ -21,6 +21,21 @@ while (($# > 0)); do
   shift
 done
 
+# The venv layout differs by platform: `bin/` on Linux and macOS, `Scripts/` on
+# Windows, where these scripts run under Git Bash. Hardcoding `bin/python` made
+# the no-Poetry fallback resolve to nothing there, and bash reports a missing
+# interpreter as exit 127 -- "command not found" -- with no output at all.
+venv_python() {
+  if [[ -x "$ROOT/backend/.venv/bin/python" ]]; then
+    printf '%s' "$ROOT/backend/.venv/bin/python"
+  elif [[ -x "$ROOT/backend/.venv/Scripts/python.exe" ]]; then
+    printf '%s' "$ROOT/backend/.venv/Scripts/python.exe"
+  else
+    echo "No backend Python environment: install Poetry or run scripts/bootstrap_host.sh." >&2
+    exit 1
+  fi
+}
+
 source "$ROOT/scripts/vault/export_runtime_vault_env.sh"
 if [[ "${PLATFORM_SKIP_RUNTIME_PREPARE:-false}" != "true" ]]; then
   prepare_args=()
@@ -33,4 +48,4 @@ export PYTHONPATH="$ROOT/backend/src${PYTHONPATH:+:$PYTHONPATH}"
 if command -v poetry >/dev/null; then
   exec poetry run uvicorn return_platform.asgi:app --host 0.0.0.0 --port 8000
 fi
-exec .venv/bin/python -m uvicorn return_platform.asgi:app --host 0.0.0.0 --port 8000
+exec "$(venv_python)" -m uvicorn return_platform.asgi:app --host 0.0.0.0 --port 8000
