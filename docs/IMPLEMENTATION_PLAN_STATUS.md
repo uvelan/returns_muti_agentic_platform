@@ -84,9 +84,35 @@ Not scheduled, and it came at the cost of Wave 2's tail. Recorded so the ledger 
 - **Seed data generator** (`scripts/generate_seed_data.py`) driven by
   `config/seed/generation.yaml`. Written and committed, **never executed**.
 
-## Verification debt
+## Verification: first full run
 
-Roughly 90 test files have been written and **not executed** since testing was paused mid-session
-at the operator's instruction. Before running them the API and worker must be restarted on
-current code. The index migrations and the sync-projection fix are specifically the changes only
-real infrastructure will confirm.
+Run 2026-08-12 in the diagnostics container: **2,392 passed, 56 failed, 10 skipped, 4 errors**
+(47 min). Waves 0-2, the three merged worktrees, the index migrations and the sync-projection
+change all hold against real infrastructure.
+
+**The 56 failures are an environment artefact, not code.** All are
+, all the same assertion:
+
+
+
+ is Neo4j on IPv6 loopback. Those tests construct their own , which reads
+the mounted repository-root  -- and that file was rewritten to literal  values
+when Vault was disabled. The Vault placeholders it replaced were host-agnostic; the literals are
+not, and inside the container they are wrong.  overrides do not help: they reach
+the process environment, and  re-reads the file underneath them.
+
+**Fix:** give the container a  carrying in-network values -- ,
+, , ,  -- rather than passing hostnames as
+ flags. Then re-run .
+
+Two hypotheses were wrong before this one: that  starved the
+scenarios, and that dropping the synthetic // collections removed
+their fixture data. Both were inferred from where failures clustered instead of from reading one
+assertion -- which is what execution rule 3 exists to prevent.
+
+**Still open:** 4 errors in 
+(SQL Server is up; likely a missing table or driver in that container). And  is
+worth enabling for the next full run so it records itself and later runs cost nothing.
+
+**Also note:** piping a container run through `tail` loses the entire output if the connection
+drops -- it happened twice. Write to a file inside the container and tail that afterwards.
