@@ -1,6 +1,6 @@
 """A connector type is not a store.
 
-`SourceConnectorRegistry` resolved a source to a connector by connector type
+`scan_connector_registry` resolved a source to a connector by connector type
 alone, which was correct while every MongoDB source lived in one database. The
 return side does not: cases, RMAs, items and handling units are in the
 platform's own store, and a connector is bound to one database for its lifetime.
@@ -16,7 +16,7 @@ from __future__ import annotations
 import pytest
 
 from return_platform.dynamic_knowledge.schema import ActiveSchema
-from return_platform.dynamic_knowledge.sync.adapters import SourceConnectorRegistry
+from return_platform.dynamic_knowledge.sync.adapters import scan_connector_registry
 
 
 class _Connector:
@@ -35,7 +35,7 @@ def test_a_source_resolves_by_connector_type_when_nothing_overrides_it(
 ) -> None:
     mongo = _Connector("mongo")
 
-    registry = SourceConnectorRegistry(schema=active_schema, mongo_connector=mongo)  # type: ignore[arg-type]
+    registry = scan_connector_registry(schema=active_schema, mongo_connector=mongo)  # type: ignore[arg-type]
 
     assert registry.resolve("source_a") is mongo
 
@@ -45,7 +45,7 @@ def test_an_override_wins_over_the_type_default(active_schema: ActiveSchema) -> 
     upstream = _Connector("upstream")
     platform = _Connector("platform")
 
-    registry = SourceConnectorRegistry(
+    registry = scan_connector_registry(
         schema=active_schema,
         mongo_connector=upstream,  # type: ignore[arg-type]
         overrides={"source_a": platform},  # type: ignore[dict-item]
@@ -74,7 +74,7 @@ def test_an_unoverridden_source_of_the_same_type_still_uses_the_default(
     }
     schema = ActiveSchema.model_validate(raw)
 
-    registry = SourceConnectorRegistry(
+    registry = scan_connector_registry(
         schema=schema,
         mongo_connector=upstream,  # type: ignore[arg-type]
         overrides={"source_c": platform},  # type: ignore[dict-item]
@@ -93,7 +93,7 @@ def test_a_type_with_no_connector_is_refused_rather_than_defaulted(
     override path: falling back to whichever connector is registered would read
     a Postgres table's worth of nothing out of MongoDB.
     """
-    registry = SourceConnectorRegistry(
+    registry = scan_connector_registry(
         schema=active_schema,
         mongo_connector=_Connector("mongo"),  # type: ignore[arg-type]
     )

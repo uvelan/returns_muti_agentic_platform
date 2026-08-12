@@ -14,7 +14,7 @@ the sort of failure that reports success:
   compiled Cypher proves the text, not that Neo4j matches on it.
 
 Assembly mirrors `data_platform/graph/sync_service.py`'s production recipe
-(two `MongoDBSourceScanConnector`s, a `SourceConnectorRegistry` with a per-source
+(two `MongoDBSourceScanConnector`s, a `scan_connector_registry` with a per-source
 override, `ProjectorGraphWriter`, `GenericSyncCoordinator`). A test that wired it
 differently could pass while production's wiring was broken, which is worse than
 no test.
@@ -51,7 +51,7 @@ from return_platform.dynamic_knowledge.on_demand_sync.extraction import (
 from return_platform.dynamic_knowledge.schema import ActiveSchema, ConnectorType
 from return_platform.dynamic_knowledge.sync.adapters import (
     ProjectorGraphWriter,
-    SourceConnectorRegistry,
+    scan_connector_registry,
 )
 from return_platform.dynamic_knowledge.sync.coordinator import GenericSyncCoordinator
 from return_platform.operations.repository import OperationalRepository
@@ -170,7 +170,7 @@ class _Harness:
         )
         writer = Neo4jDynamicGraphWriter(self.neo4j)
         return GenericSyncCoordinator(
-            connectors=SourceConnectorRegistry(
+            connectors=scan_connector_registry(
                 schema=self.schema,
                 mongo_connector=upstream,
                 sqlserver_connector=None,
