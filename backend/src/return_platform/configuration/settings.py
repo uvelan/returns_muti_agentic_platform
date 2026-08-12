@@ -130,6 +130,14 @@ class Settings(BaseSettings):
     graph_evidence_query_timeout_seconds: float = Field(default=5.0, ge=0.05, le=30.0)
     graph_sync_batch_size: int = Field(default=250, ge=1, le=5_000)
     graph_sync_max_records: int = Field(default=10_000, ge=1, le=1_000_000)
+    # How long a completed targeted-sync receipt keeps answering for its
+    # request. The digest for "sync this order key" is stable across
+    # conversations, so without an expiry the first success answers forever and
+    # an associate asking about the same order tomorrow is told the platform
+    # checked the source when it did not. Fifteen minutes: long enough that a
+    # retry inside one conversation is still deduplicated, short enough that
+    # the next associate gets a real read.
+    on_demand_sync_receipt_ttl_seconds: int = Field(default=900, ge=60, le=86_400)
 
     ai_provider_order: str = "GOOGLE,NVIDIA,SIMULATOR"
     ai_validated_route_bindings: tuple[str, ...] = ()

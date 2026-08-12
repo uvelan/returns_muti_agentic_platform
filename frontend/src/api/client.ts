@@ -72,6 +72,15 @@ function extractErrorDetails(
     }
   }
 
+  // `{code, message}` — the shape most of this platform's routers raise, and
+  // the one that was falling through to "The API request failed with status
+  // 502". An operator was shown a status code for a refusal that had already
+  // explained itself: "this return is already closed", "release has not been
+  // published", "no source binding for that dataset".
+  if (isRecord(detail) && typeof detail.message === "string") {
+    return { message: detail.message };
+  }
+
   const meta = payload.meta;
 
   if (!isRecord(meta)) {

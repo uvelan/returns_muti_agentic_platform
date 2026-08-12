@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
 
+import { DOMAINS } from "../src/domains/registry";
+
 /**
- * The four canonical routes, end to end, against the mock API.
+ * Every canonical route, end to end, against the mock API.
  *
  * Replaces `e2e.spec.ts`, `a11y.spec.ts` and the two `-real` specs, all of
  * which drove Data Console and `/associate/returns` paths that Wave F4 deleted.
@@ -13,14 +15,14 @@ import { expect, test } from "@playwright/test";
  * capability provider resolves a real principal over HTTP, and each domain's
  * queries reach a route that answers -- an import cycle, a bad envelope or a
  * mis-mounted router shows up here and nowhere else.
+ *
+ * **Driven from the registry, not from a copy of it.** This file used to hold
+ * its own list of four domains and assert the navigation had exactly four
+ * links. Three domains were added after that -- Support, Operations, Sync --
+ * and the spec went on asserting four, so the only test that would have caught
+ * a new screen failing to mount was itself the thing that broke. A hand-kept
+ * duplicate of a list that grows is a test that expires.
  */
-
-const DOMAINS = [
-  { path: "/returns", heading: "Return Business Copilot" },
-  { path: "/config", heading: "Configuration" },
-  { path: "/graph-schema", heading: "Graph Schema Analyzer" },
-  { path: "/ai", heading: "AI Control Center" },
-] as const;
 
 for (const domain of DOMAINS) {
   test(`${domain.path} renders its screen`, async ({ page }) => {
@@ -29,7 +31,7 @@ for (const domain of DOMAINS) {
 
     await page.goto(domain.path);
 
-    await expect(page.getByRole("heading", { name: domain.heading, level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: domain.name, level: 1 })).toBeVisible();
     // "You do not have access" is what a broken principal fetch looks like, and
     // it renders without throwing -- so the absence of errors is not enough.
     await expect(page.getByText("You do not have access")).toHaveCount(0);
@@ -47,9 +49,10 @@ test("an unrecognised path lands on returns rather than a dead end", async ({ pa
   ).toBeVisible();
 });
 
-test("the four domains are the whole navigation", async ({ page }) => {
-  // F4's stated end state. If a fifth entry appears here, something was added
-  // to the shell rather than to a domain.
+test("the registry is the whole navigation", async ({ page }) => {
+  // The invariant F4 set, stated against the registry rather than against a
+  // number: a link in the shell that no domain declares means something was
+  // added to the chrome instead of to a domain.
   await page.goto("/returns");
 
   const nav = page.getByRole("complementary");

@@ -231,7 +231,12 @@ CW273354 (IND DRFT MTR ASSY, qty 1), then a follow-up returned its status and sh
 method. `HallucinationGuard` verified every citation, including numeric path segments as
 decimal strings (`["rows","0","order_date"]`).
 
-Frontend: eslint clean, `tsc --noEmit` clean, **93 tests passing** across 14 files.
+Frontend: eslint clean, `npm run typecheck` clean, **93 tests passing** across 14 files.
+
+> `tsc --noEmit` checks *nothing* in this repo and must not be used as evidence:
+> the root `tsconfig.json` is a solution file with `files: []` and project
+> references, so it compiles zero files and exits 0 whatever the state of the
+> code. `npm run typecheck` (`tsc -b`) is the real check.
 Contract drift: PASS. Backend `ruff`/`mypy` clean on the changed files.
 
 ### And four more, from running the test suite against the rewritten schema

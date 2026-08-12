@@ -181,11 +181,26 @@ class MongoOnDemandSyncStore:
         database: str,
         *,
         collection: str = "dynamic_order_agent_on_demand_sync",
+        receipt_ttl_seconds: int = 900,
     ) -> None:
         self._collection = client[database][collection]
+        self._receipt_ttl_seconds = receipt_ttl_seconds
 
     async def ensure_indexes(self) -> None:
-        await self._collection.create_index("createdAt")
+        # Expiry belongs to Mongo, not to a sweeper: the record has to stop
+        # answering even if nothing ever reads it again, and a TTL index is the
+        # only thing that holds when no process is running.
+        #
+        # The digest for "sync this order key" is stable across conversations,
+        # so a receipt that lived forever meant the second associate to ask
+        # about an order was told the source had been checked when the check
+        # had happened days earlier. Deduplicating a retry is the point;
+        # deduplicating tomorrow is a stale answer wearing a success.
+        await self._collection.create_index(
+            "createdAt",
+            expireAfterSeconds=self._receipt_ttl_seconds,
+            name="ttl_created_at",
+        )
 
     async def reserve(
         self,

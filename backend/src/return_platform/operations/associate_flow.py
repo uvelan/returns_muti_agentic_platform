@@ -1215,8 +1215,14 @@ class AssociateConversationService:
         # nulls is pure cost. Not unique: a session reached by two conversation
         # attempts is unusual but not a corruption, and a unique index would
         # turn it into a write failure at the worst moment.
+        # Partial rather than sparse, for the reason the comment above
+        # intends: `returnSessionId` is written as explicit `None` on a
+        # conversation that has not reached a session, and on a *compound*
+        # index `sparse` omits a document only when every indexed field is
+        # absent -- `createdAt` never is. It indexed everything.
         await self._conversations.create_index(
-            [("returnSessionId", 1), ("createdAt", -1)], sparse=True
+            [("returnSessionId", 1), ("createdAt", -1)],
+            partialFilterExpression={"returnSessionId": {"$type": "string"}},
         )
         await self._messages.create_index([("conversationId", 1), ("sequence", 1)], unique=True)
         await self._messages.create_index([("conversationId", 1), ("createdAt", 1)])

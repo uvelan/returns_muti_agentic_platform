@@ -85,6 +85,17 @@ CONSOLE_PATHS: tuple[str, ...] = (
     # -- the same call a hand-written edit makes, deliberately, so that there is
     # no second write path into a draft.
     "/api/graph-schema/drafts/{draft_id}/mutations",
+    # Called by the console and never pinned here, so a router that stopped
+    # being mounted would have shipped a 404 behind a working-looking button --
+    # which is the exact failure this file exists for. `/validate` and
+    # `/publish` gate every release; the clarification pair is how an analyst
+    # answers the reasoning graph's questions.
+    "/api/graph-schema/drafts/{draft_id}/validate",
+    "/api/graph-schema/drafts/{draft_id}/publish",
+    "/api/graph-schema/analyses/{analysis_id}/abandon",
+    "/api/graph-schema/analyses/{analysis_id}/snapshot",
+    "/api/graph-schema/analyses/{analysis_id}/clarifications",
+    "/api/graph-schema/analyses/{analysis_id}/clarifications/{clarification_id}/answer",
     # Published graph-schema releases and the migration between two of them.
     "/api/schema-releases",
     "/api/schema-releases/{release_id}/migration-plan",

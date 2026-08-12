@@ -130,7 +130,11 @@ async def build_dynamic_order_agent_runtime(
         platform_mongo[settings.mongo_database][ACTIVE_RUNTIME_SNAPSHOTS_COLLECTION]
     )
 
-    on_demand_sync_store = MongoOnDemandSyncStore(platform_mongo, settings.mongo_database)
+    on_demand_sync_store = MongoOnDemandSyncStore(
+        platform_mongo,
+        settings.mongo_database,
+        receipt_ttl_seconds=settings.on_demand_sync_receipt_ttl_seconds,
+    )
     await on_demand_sync_store.ensure_indexes()
     on_demand_connectors = targeted_connector_registry(
         schema=schema,

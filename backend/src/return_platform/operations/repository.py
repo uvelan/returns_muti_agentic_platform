@@ -147,8 +147,24 @@ class OperationalRepository:
         await self.returns.create_index(
             [("sourceWebOrderNumber", ASCENDING), ("createdAt", DESCENDING)]
         )
-        await self.returns.create_index("supportWorkItemId", sparse=True)
-        await self.returns.create_index("idempotencyKey", unique=True, sparse=True)
+        # Partial, not sparse: `supportWorkItemId` is written as explicit
+        # `None` on every return that has not reached Support, so `sparse`
+        # indexed the entire collection and saved nothing.
+        await self._replace_index(
+            self.returns,
+            "supportWorkItemId",
+            partialFilterExpression={"supportWorkItemId": {"$type": "string"}},
+        )
+        # Partial rather than sparse for the same reason as the rest: it is
+        # correct whether the field is absent or written as null, and on a
+        # *unique* index the difference is a duplicate-key failure rather than
+        # wasted space.
+        await self._replace_index(
+            self.returns,
+            "idempotencyKey",
+            unique=True,
+            partialFilterExpression={"idempotencyKey": {"$type": "string"}},
+        )
         await self.events.create_index(
             [("streamId", ASCENDING), ("sequence", ASCENDING)], unique=True
         )
@@ -157,7 +173,19 @@ class OperationalRepository:
         await self.support_cases.create_index(
             [("status", ASCENDING), ("priorityRank", ASCENDING), ("slaDueAt", ASCENDING)]
         )
-        await self.support_cases.create_index("sessionId", unique=True, sparse=True)
+        # Unique *and* partial. This was unique + sparse over a field written
+        # as explicit `None`, which is the dangerous combination rather than
+        # merely a wasteful one: `sparse` omits a document only when the field
+        # is absent, so every session-less support case indexed `null`, and the
+        # second one raised DuplicateKeyError. A case raised from a case id
+        # rather than a session -- the ordinary path since Channel B learned to
+        # open a case thread -- could therefore be created exactly once.
+        await self._replace_index(
+            self.support_cases,
+            "sessionId",
+            unique=True,
+            partialFilterExpression={"sessionId": {"$type": "string"}},
+        )
         await self.ai_traces.create_index([("createdAt", DESCENDING)])
         await self.ai_traces.create_index([("sessionId", ASCENDING), ("createdAt", DESCENDING)])
         await self.ai_attempts.create_index([("createdAt", DESCENDING)])
@@ -197,7 +225,8 @@ class OperationalRepository:
         # duplication. `get_case_by_conversation` therefore returns the most
         # recent rather than assuming there is only one.
         await self.cases.create_index(
-            [("channelAConversationId", ASCENDING), ("createdAt", DESCENDING)], sparse=True
+            [("channelAConversationId", ASCENDING), ("createdAt", DESCENDING)],
+            partialFilterExpression={"channelAConversationId": {"$type": "string"}},
         )
         # The real idempotency boundary: tenant | conversation | order | lines.
         # A retried confirmation turn resolves to the existing case; a different
@@ -207,7 +236,15 @@ class OperationalRepository:
             unique=True,
             partialFilterExpression={"confirmationKey": {"$type": "string"}},
         )
-        await self.cases.create_index("sessionId", sparse=True)
+        # Partial, not sparse. `create_case` writes `sessionId: None`
+        # explicitly, and `sparse` only omits a document where the field is
+        # *absent* -- so every case without a session was indexed anyway, which
+        # is the whole population until one is linked.
+        await self._replace_index(
+            self.cases,
+            "sessionId",
+            partialFilterExpression={"sessionId": {"$type": "string"}},
+        )
         await self.case_facts.create_index("factId", unique=True)
         # Serves both the projection (newest per name) and the audit read
         # (everything about one case, in order).
@@ -233,7 +270,14 @@ class OperationalRepository:
         await self.return_items.create_index("returnItemId", unique=True)
         # Items gained a case and a return-record association: one RMA covers N
         # items, so the item must say which RMA it belongs to.
-        await self.return_items.create_index("returnRecordId", sparse=True)
+        # Nullable by design -- an item is named before Support says which RMA
+        # covers it -- and written as explicit null, so sparse indexed the
+        # whole collection.
+        await self._replace_index(
+            self.return_items,
+            "returnRecordId",
+            partialFilterExpression={"returnRecordId": {"$type": "string"}},
+        )
         # Partial, where it used to be plainly unique. The rule it encodes --
         # one item per (session, line) -- only means anything for an item that
         # belongs to a session, and case-scoped items have no session. Left
@@ -330,6 +374,46 @@ class OperationalRepository:
             },
             upsert=True,
         )
+
+    async def _replace_index(
+        self,
+        collection: Any,
+        keys: Any,
+        **options: Any,
+    ) -> None:
+        """Create an index, replacing one that differs only in its options.
+
+        `create_index` is idempotent for an identical definition and raises for
+        a conflicting one, which is the right default -- but it makes changing
+        an index's options impossible against a database that already has the
+        old one, and every sparse-to-partial correction below is exactly that
+        change. Without this, `ensure_indexes` raises at startup on any
+        deployment that ran a previous build.
+
+        Only the conflicting index is dropped, and only after the conflict is
+        reported, so this cannot quietly remove an index someone else defined.
+        A concurrent initializer winning the race (code 27, index not found) is
+        the migration succeeding, not failing.
+        """
+        try:
+            await collection.create_index(keys, **options)
+            return
+        except OperationFailure as exc:
+            # 85 IndexOptionsConflict, 86 IndexKeySpecsConflict.
+            if exc.code not in (85, 86):
+                raise
+
+        existing = await collection.index_information()
+        wanted = keys if isinstance(keys, list) else [(keys, ASCENDING)]
+        for name, definition in existing.items():
+            if name == "_id_" or list(definition.get("key", ())) != list(wanted):
+                continue
+            try:
+                await collection.drop_index(name)
+            except OperationFailure as exc:
+                if exc.code != 27:
+                    raise
+        await collection.create_index(keys, **options)
 
     async def _ensure_event_deduplication_index(self) -> None:
         indexes = await self.events.index_information()
