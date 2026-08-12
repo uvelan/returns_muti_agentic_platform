@@ -29,6 +29,8 @@ class _CaseRepository(Protocol):
 
     async def find_case_by_confirmation(self, confirmation_key: str) -> dict[str, Any] | None: ...
 
+    async def latest_case_facts(self, case_id: str) -> dict[str, dict[str, Any]]: ...
+
     async def create_case(
         self,
         *,
@@ -65,6 +67,16 @@ class _CaseRepository(Protocol):
 class RepositoryCaseStore:
     def __init__(self, repository: _CaseRepository) -> None:
         self._repository = repository
+
+    async def case_facts(self, case_id: str) -> dict[str, Any]:
+        """Name -> value for everything the case currently knows.
+
+        Flattened from the fact log's projection: the agent needs the values to
+        avoid re-asking, and handing it whole provenance records would put
+        agent ids and source paths into a reasoning prompt for no benefit.
+        """
+        latest = await self._repository.latest_case_facts(case_id)
+        return {name: fact.get("value") for name, fact in latest.items()}
 
     async def confirm_case(
         self,

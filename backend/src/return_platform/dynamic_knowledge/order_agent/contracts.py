@@ -179,6 +179,15 @@ class AgentTurnContext(BaseModel):
     # pauses inside the current turn; this is the conversation itself, and
     # without it the agent re-asks across turns what it already knows.
     transcript: tuple[dict[str, str], ...] = ()
+    # What the case already knows, once one exists: the projection of its fact
+    # log, name -> value.
+    #
+    # Two jobs. It stops the agent asking for something the case has already
+    # recorded -- the requirement that no agent re-asks a known fact -- and it
+    # is how a Support outcome reaches the associate's *original* conversation:
+    # the RMA lands on the case, and the next turn's context carries it without
+    # a new chat, a poll, or a client-side join.
+    case_facts: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentTurnResult(BaseModel):

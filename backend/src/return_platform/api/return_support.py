@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, ConfigDict, Field
 
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
 from return_platform.operations.production_event_authorization import (
@@ -31,6 +32,11 @@ from return_platform.security.authorization import (
 )
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 from return_platform.workflows.production_return_workflow import ProductionReturnEventType
+from return_platform.workflows.return_case_workflow import (
+    SupportResponseNotice,
+    SupportReturnRecord,
+    return_case_workflow_id,
+)
 
 router = APIRouter(prefix="/api/v1/return-support", tags=["Returns Support"])
 
@@ -278,3 +284,108 @@ async def apply_action(
                     ),
                 )
     return APIResponse(data=data, meta=_meta(request))
+
+
+class ReturnOutcomeRecord(BaseModel):
+    """One RMA as Support is issuing it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    returnReference: str = Field(min_length=1, max_length=128)
+    trackingReference: str | None = Field(default=None, max_length=128)
+    labelReference: str | None = Field(default=None, max_length=256)
+    returnLocation: str | None = Field(default=None, max_length=128)
+    shippingInstructionReference: str | None = Field(default=None, max_length=128)
+    orderLineReferences: tuple[str, ...] = Field(default=(), max_length=200)
+
+
+class ReturnOutcomeRequest(BaseModel):
+    """What Support is sending back to the case.
+
+    A *list* of records, because one reply can issue several RMAs with
+    different labels going to different places -- the shape the case model was
+    changed to carry, and the one a single set of fields cannot express.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    records: tuple[ReturnOutcomeRecord, ...] = Field(default=(), max_length=100)
+    rejected: bool = False
+    reason: str | None = Field(default=None, max_length=2_000)
+
+
+@router.post(
+    "/work-items/{work_item_id}/return-outcome", response_model=APIResponse[dict[str, str]]
+)
+async def submit_return_outcome(
+    work_item_id: str,
+    payload: ReturnOutcomeRequest,
+    request: Request,
+    # Support roles only: issuing an RMA is Support's act, and the same gate
+    # every other outcome-recording action on this router uses.
+    _actor_id: str = Depends(require_support_roles),
+) -> APIResponse[dict[str, str]]:
+    """Send Support's answer to the case that asked for it.
+
+    This is the step that made Channel B -> Channel A possible. The work item
+    knows its case, the case knows its workflow, and the workflow is waiting on
+    a durable timer for exactly this signal -- so the outcome reaches the
+    associate's original conversation instead of the browser trying to match an
+    order reference across two collections.
+
+    A signal, not a write. `ReturnCaseWorkflow` owns what happens next: it
+    records the return records, moves the case status and stops the reminder
+    cadence, and it does so once however many times Support presses send --
+    duplicate responses are ignored by the workflow, not deduplicated here.
+    """
+    item = await _service(request).get_work_item(work_item_id)
+    if item is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "WORK_ITEM_NOT_FOUND", "message": "No such work item."},
+        )
+    if item.caseId is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "WORK_ITEM_HAS_NO_CASE",
+                "message": (
+                    "This work item belongs to a return session rather than a case; "
+                    "record the outcome through the support action instead."
+                ),
+                "retryable": False,
+            },
+        )
+
+    resources = getattr(request.app.state, "resources", None)
+    if not isinstance(resources, RuntimeResources) or resources.temporal is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "WORKFLOW_HOST_UNAVAILABLE",
+                "message": "The case workflow cannot be reached from this process.",
+                "retryable": True,
+            },
+        )
+
+    handle = resources.temporal.get_workflow_handle(return_case_workflow_id(item.caseId))
+    await handle.signal(
+        "support_response",
+        SupportResponseNotice(
+            work_item_id=work_item_id,
+            records=tuple(
+                SupportReturnRecord(
+                    return_reference=record.returnReference,
+                    tracking_reference=record.trackingReference,
+                    label_reference=record.labelReference,
+                    return_location=record.returnLocation,
+                    shipping_instruction_reference=record.shippingInstructionReference,
+                    order_line_references=record.orderLineReferences,
+                )
+                for record in payload.records
+            ),
+            rejected=payload.rejected,
+            reason=payload.reason,
+        ),
+    )
+    return APIResponse(data={"caseId": item.caseId}, meta=_meta(request))

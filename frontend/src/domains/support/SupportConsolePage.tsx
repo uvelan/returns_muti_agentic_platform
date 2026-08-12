@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, Inbox, Send, UserRound } from "lucide-react";
+import { Bot, Inbox, PackageCheck, Send, UserRound } from "lucide-react";
 
 import {
   supportApi,
+  type ReturnOutcomeRecordInput,
   type SupportMessage,
   type SupportWorkItem,
 } from "../../api/support";
@@ -76,6 +77,30 @@ export function SupportConsolePage() {
     },
   });
 
+  /**
+   * Support's answer, going back to the case rather than onto the work item.
+   *
+   * The endpoint signals the case's workflow, so what happens next -- the
+   * return record, the case status, the fact the associate's next turn reads --
+   * is decided in one place. Pressing this twice is safe: the workflow ignores
+   * a second response, so this deliberately does not disable itself on a
+   * pending network request alone.
+   */
+  const outcome = useMutation({
+    mutationFn: (record: ReturnOutcomeRecordInput) => {
+      if (selected === null) throw new Error("Select a request before issuing an RMA.");
+      return supportApi.submitReturnOutcome(selected, { records: [record] });
+    },
+    onSuccess: async () => {
+      // The workflow writes asynchronously, so this is optimistic about
+      // timing, not about the result: a refetch that lands early shows the
+      // thread unchanged and the next one shows it settled.
+      await client.invalidateQueries({ queryKey: ["support", "work-item", selected] });
+      await client.invalidateQueries({ queryKey: ["support", "messages", selected] });
+      await client.invalidateQueries({ queryKey: ["support", "work-items"] });
+    },
+  });
+
   if (!can("returns.session.read")) {
     return <p className="text-sm text-on-surface-variant">You do not have access to support.</p>;
   }
@@ -105,6 +130,11 @@ export function SupportConsolePage() {
         }}
         sending={reply.isPending}
         error={reply.error}
+        onIssueOutcome={(record) => { outcome.mutate(record); }}
+        onResetOutcome={() => { outcome.reset(); }}
+        issuing={outcome.isPending}
+        issued={outcome.isSuccess}
+        outcomeError={outcome.error}
       />
     </div>
   );
@@ -209,6 +239,11 @@ function ThreadPane({
   onSend,
   sending,
   error,
+  onIssueOutcome,
+  onResetOutcome,
+  issuing,
+  issued,
+  outcomeError,
 }: {
   item: SupportWorkItem | null;
   messages: readonly SupportMessage[];
@@ -218,6 +253,11 @@ function ThreadPane({
   onSend: () => void;
   sending: boolean;
   error: Error | null;
+  onIssueOutcome: (record: ReturnOutcomeRecordInput) => void;
+  onResetOutcome: () => void;
+  issuing: boolean;
+  issued: boolean;
+  outcomeError: Error | null;
 }) {
   if (item === null) {
     return (
@@ -265,6 +305,16 @@ function ThreadPane({
         )}
       </div>
 
+      {item.caseId === null ? null : (
+        <IssueOutcomeForm
+          onSubmit={onIssueOutcome}
+          onReopen={onResetOutcome}
+          issuing={issuing}
+          issued={issued}
+          error={outcomeError}
+        />
+      )}
+
       <form
         className="border-t border-outline-variant p-3"
         onSubmit={(event) => {
@@ -298,6 +348,128 @@ function ThreadPane({
         </div>
       </form>
     </Pane>
+  );
+}
+
+/**
+ * Issue the RMA -- the moment Channel B answers Channel A.
+ *
+ * Only shown for a work item that belongs to a case, because the outcome
+ * travels to the case's workflow: for a work item without one there is nothing
+ * to signal, and offering the form would be offering a button that 409s.
+ *
+ * Collapsed until asked for. Most of what Support does on a thread is talk, and
+ * a permanently open form of empty reference fields reads as work outstanding.
+ */
+function IssueOutcomeForm({
+  onSubmit,
+  onReopen,
+  issuing,
+  issued,
+  error,
+}: {
+  onSubmit: (record: ReturnOutcomeRecordInput) => void;
+  onReopen: () => void;
+  issuing: boolean;
+  issued: boolean;
+  error: Error | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [returnReference, setReturnReference] = useState("");
+  const [trackingReference, setTrackingReference] = useState("");
+  const [returnLocation, setReturnLocation] = useState("");
+
+  // Collapsed by the *outcome*, not by the click. Closing on submit would hide
+  // the form -- and with it the error -- at the exact moment a refused RMA
+  // needs reading, and Support would walk away believing they had sent one.
+  // Derived rather than an effect, so there is one source of truth for "did
+  // this land" and it is the mutation's.
+  if (!open || issued) {
+    return (
+      <div className="border-t border-outline-variant px-3 py-2">
+        <button
+          type="button"
+          onClick={() => {
+            // Clears last time's answer as well as the fields: reopening is a
+            // new RMA, and a success line above an empty form reads as though
+            // the empty form had already been sent.
+            onReopen();
+            setReturnReference("");
+            setTrackingReference("");
+            setReturnLocation("");
+            setOpen(true);
+          }}
+          className="flex items-center gap-1.5 text-xs text-primary transition hover:underline"
+        >
+          <PackageCheck size={14} aria-hidden="true" />
+          Issue RMA
+        </button>
+        {issued ? (
+          <p role="status" className="mt-1 text-[11px] text-on-surface-variant">
+            Sent to the return. The associate will see it on their next message.
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <form
+      className="flex flex-col gap-2 border-t border-outline-variant px-3 py-2.5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (returnReference.trim().length === 0) return;
+        onSubmit({
+          returnReference: returnReference.trim(),
+          // Omitted rather than sent empty: "" would be recorded as a tracking
+          // number that exists and is blank.
+          ...(trackingReference.trim() === "" ? {} : { trackingReference: trackingReference.trim() }),
+          ...(returnLocation.trim() === "" ? {} : { returnLocation: returnLocation.trim() }),
+        });
+      }}
+    >
+      {error !== null ? (
+        <p role="alert" className="text-sm text-error">
+          {error.message}
+        </p>
+      ) : null}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {(
+          [
+            ["RMA number", returnReference, setReturnReference, true],
+            ["Tracking", trackingReference, setTrackingReference, false],
+            ["Return to", returnLocation, setReturnLocation, false],
+          ] as const
+        ).map(([label, value, set, required]) => (
+          <label key={label} className="flex flex-col gap-1 text-[11px] text-outline">
+            {label}
+            {required ? <span className="sr-only">(required)</span> : null}
+            <input
+              value={value}
+              required={required}
+              onChange={(event) => { set(event.target.value); }}
+              className="rounded border border-outline-variant bg-surface px-2 py-1.5 text-sm text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
+            />
+          </label>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="submit"
+          disabled={returnReference.trim().length === 0 || issuing}
+          className="rounded bg-primary px-3 py-1.5 text-xs text-on-primary transition disabled:opacity-40"
+        >
+          Send to the return
+        </button>
+        <button
+          type="button"
+          onClick={() => { setOpen(false); }}
+          className="text-xs text-on-surface-variant transition hover:text-on-surface"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 

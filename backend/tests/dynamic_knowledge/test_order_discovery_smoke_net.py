@@ -180,10 +180,16 @@ class RecordingCaseStore:
     broken node pass.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, facts: dict[str, Any] | None = None) -> None:
         self.confirmations: list[str] = []
         self.issued: list[str] = []
+        self.fact_reads: list[str] = []
+        self._facts = dict(facts or {})
         self._by_key: dict[str, str] = {}
+
+    async def case_facts(self, case_id: str) -> dict[str, Any]:
+        self.fact_reads.append(case_id)
+        return dict(self._facts)
 
     async def confirm_case(
         self,
@@ -611,6 +617,56 @@ async def test_confirming_an_order_creates_a_case_and_returns_its_id(
     # Back to `decide` after confirming, not straight to END: the associate is
     # owed a sentence, and only the model writes those.
     assert final["final_response"] is not None
+
+
+async def test_a_support_outcome_is_in_the_next_turn_context(schema: ActiveSchema) -> None:
+    """The last hop of Channel B -> Channel A.
+
+    Support issued the RMA on the case between two turns. Nothing in this
+    conversation was told; the fact is read when the context is assembled, so
+    the very next `decide` sees it -- which is what makes "no new conversation,
+    no poll, no client-side join" true rather than aspirational.
+    """
+    store = RecordingCaseStore(facts={"return_reference": "RMA-1001", "return_location": "DC-7"})
+    _, model, _ = await _run(
+        schema,
+        "yes, that one",
+        [_confirm(), _respond("Your RMA is RMA-1001.")],
+        case_store=store,
+        seed_candidate_set=True,
+    )
+
+    # The turn that confirmed had no case yet, so the first context is empty and
+    # the second carries what Support knows. Both halves matter: a store read
+    # unconditionally would be a lookup on a case id that does not exist.
+    assert model.contexts[0].case_facts == {}
+    assert model.contexts[1].case_facts["return_reference"] == "RMA-1001"
+    assert store.fact_reads == [store.issued[0]]
+
+
+async def test_the_conversation_survives_an_unreadable_case(schema: ActiveSchema) -> None:
+    """Facts are context, not a dependency.
+
+    A case store that is down degrades the answer -- the agent may re-ask
+    something the case knew -- but it must not end the associate's turn. This
+    is the failure the `case_facts` read is wrapped for.
+    """
+
+    class BrokenCaseStore(RecordingCaseStore):
+        async def case_facts(self, case_id: str) -> dict[str, Any]:
+            raise RuntimeError("mongo is unreachable")
+
+    store = BrokenCaseStore()
+    _, model, _ = await _run(
+        schema,
+        "yes, that one",
+        [_confirm(), _respond("Raising the return now.")],
+        case_store=store,
+        seed_candidate_set=True,
+    )
+
+    assert model.dispatched == [ActionType.CONFIRM_ORDER, ActionType.RESPOND]
+    assert model.contexts[1].case_facts == {}
 
 
 async def test_two_identical_confirmations_produce_one_case(schema: ActiveSchema) -> None:

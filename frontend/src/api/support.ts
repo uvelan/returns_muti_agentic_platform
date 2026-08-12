@@ -52,6 +52,20 @@ export type SupportActionInput = {
   trackingNumbers?: string[];
 };
 
+export type ReturnOutcomeRecordInput = {
+  returnReference: string;
+  trackingReference?: string;
+  labelReference?: string;
+  returnLocation?: string;
+  orderLineReferences?: string[];
+};
+
+export type ReturnOutcomeInput = {
+  records: ReturnOutcomeRecordInput[];
+  rejected?: boolean;
+  reason?: string;
+};
+
 export const supportApi = {
   async listWorkItems(status?: string): Promise<SupportWorkItem[]> {
     const query = status === undefined || status === "" ? "" : `?status=${encodeURIComponent(status)}`;
@@ -89,6 +103,25 @@ export const supportApi = {
         expectedVersion: input.expectedVersion,
       }),
     });
+  },
+
+  /**
+   * Send Support's answer back to the case.
+   *
+   * Distinct from `act` on purpose: `act` records an outcome on the work item
+   * itself, this one signals the case's workflow, which is what carries the RMA
+   * into the associate's original conversation. A list of records, because one
+   * reply can issue several RMAs.
+   */
+  async submitReturnOutcome(workItemId: string, input: ReturnOutcomeInput): Promise<void> {
+    await apiClient(
+      `/api/v1/return-support/work-items/${encodeURIComponent(workItemId)}/return-outcome`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      },
+    );
   },
 
   async act(workItemId: string, input: SupportActionInput): Promise<void> {

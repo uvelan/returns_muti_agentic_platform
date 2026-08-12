@@ -140,6 +140,10 @@ class CaseStore(Protocol):
     would put the whole return domain inside the reasoning loop's reach.
     """
 
+    async def case_facts(self, case_id: str) -> dict[str, Any]:
+        """Current value per fact name for a case. Empty when it has none."""
+        ...
+
     async def confirm_case(
         self,
         *,
@@ -217,7 +221,25 @@ async def _build_context(deps: GraphDependencies, state: dict[str, Any]) -> Agen
         ),
         query_evidence=evidence,
         schema_details=schema_details,
+        case_facts=await _case_facts(deps, state.get("case_id")),
     )
+
+
+async def _case_facts(deps: GraphDependencies, case_id: Any) -> dict[str, Any]:
+    """The case's known facts, or nothing.
+
+    Read per context build rather than checkpointed: the whole point is that a
+    fact recorded by *another* channel since the last turn -- Support issuing an
+    RMA -- is visible now, and a checkpointed copy would be exactly as stale as
+    the conversation that captured it.
+    """
+    if not isinstance(case_id, str) or not case_id or deps.case_store is None:
+        return {}
+    try:
+        return await deps.case_store.case_facts(case_id)
+    except Exception:  # noqa: BLE001 - context is better incomplete than absent
+        logger.warning("case_facts_unavailable", extra={"case_id": case_id})
+        return {}
 
 
 async def _invoke_decide(

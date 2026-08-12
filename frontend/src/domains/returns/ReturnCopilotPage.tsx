@@ -324,6 +324,12 @@ export function ReturnCopilotPage() {
     // sees `string | null` and needs a cast that says nothing the compiler can
     // check.
     queryFn: caseId === null ? skipToken : () => casesApi.read(caseId),
+    // Support answers on their own clock, and the associate is standing at a
+    // counter -- so the RMA has to appear without them sending a message to
+    // provoke it. Polling stops the moment there is a return record: the wait
+    // is for Support's first answer, not forever.
+    refetchInterval: (query) =>
+      (query.state.data?.returnRecords.length ?? 0) > 0 ? false : 10_000,
   });
 
   // The return session still backs the later milestones, which report on work

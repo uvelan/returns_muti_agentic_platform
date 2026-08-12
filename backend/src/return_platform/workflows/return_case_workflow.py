@@ -50,7 +50,19 @@ __all__ = [
     "SendSupportReminderInput",
     "SupportResponseNotice",
     "SupportReturnRecord",
+    "return_case_workflow_id",
 ]
+
+
+def return_case_workflow_id(case_id: str) -> str:
+    """The workflow execution that owns a case.
+
+    Derived rather than stored so any process holding a case id can reach its
+    workflow without a lookup -- the Support console signalling an outcome is
+    the caller this exists for. Mirrors `_order_discovery_workflow_id`.
+    """
+    return f"return-case-{case_id}"
+
 
 # Persistence activities. Short, because they are a Mongo write each.
 _PERSIST_TIMEOUT: Final = timedelta(seconds=30)

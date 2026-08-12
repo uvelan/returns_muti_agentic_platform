@@ -198,6 +198,40 @@ class ReturnCaseActivities:
                 },
                 expected_version=0,
             )
+            # Also a fact, and this is the step that reaches Channel A. The
+            # agent's turn context is built from the case's fact projection, so
+            # writing the RMA here is what makes it appear in the associate's
+            # *original* conversation on their next turn -- no new chat, no
+            # client-side join, no poll.
+            await self._repository.append_case_fact(
+                fact_id=f"rma-{record_id}",
+                case_id=request.case_id,
+                fact_name="return_reference",
+                value=record.return_reference,
+                agent_id="return-support",
+                channel=FactChannel.CHANNEL_B,
+                acquisition_method=FactAcquisition.OBSERVED,
+                source_system="RETURN_SUPPORT",
+                source_path="SUPPORT_REPLY",
+            )
+            for name, value in (
+                ("tracking_reference", record.tracking_reference),
+                ("label_reference", record.label_reference),
+                ("return_location", record.return_location),
+            ):
+                if value is None:
+                    continue
+                await self._repository.append_case_fact(
+                    fact_id=f"{name}-{record_id}",
+                    case_id=request.case_id,
+                    fact_name=name,
+                    value=value,
+                    agent_id="return-support",
+                    channel=FactChannel.CHANNEL_B,
+                    acquisition_method=FactAcquisition.OBSERVED,
+                    source_system="RETURN_SUPPORT",
+                    source_path="SUPPORT_REPLY",
+                )
             for line in record.order_line_references:
                 for item in await self._repository.list_case_return_items(request.case_id):
                     if item.get("orderLineId") == line and not item.get("returnRecordId"):
