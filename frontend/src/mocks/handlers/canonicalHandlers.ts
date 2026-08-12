@@ -244,6 +244,70 @@ export const canonicalHandlers = [
 
   // --- returns ---------------------------------------------------------------
 
+  // Earlier returns, from the graph. Answers with one case carrying one issued
+  // RMA, its items and a staged parcel, because the panel's whole job is to
+  // distinguish "nothing came back before" from "this line is already on an RMA
+  // sitting in a bay" -- and an empty fixture would only exercise the first.
+  http.get("/api/return-history", async ({ request }) => {
+    await delay(80);
+    const query = new URL(request.url).searchParams;
+    return HttpResponse.json(
+      envelope(
+        {
+          orderReference: query.get("orderReference"),
+          accountId: query.get("accountId"),
+          customerId: query.get("customerId"),
+          cases: [
+            {
+              caseId: "case-mock-1",
+              status: "AWAITING_SUPPORT",
+              confirmedOrderReference: "CW273354",
+              createdAt: "2026-07-02T10:15:00Z",
+              returnRecords: [
+                {
+                  returnRecordId: "rec-mock-1",
+                  returnReference: "RMA-1001",
+                  status: "ISSUED",
+                  returnLocation: "DC-7",
+                  trackingReference: "1Z999AA10123456784",
+                  items: [
+                    {
+                      returnItemId: "item-mock-1",
+                      orderLineReference: "L1",
+                      productReference: "3180140",
+                      quantity: 1,
+                      reason: "Damaged on arrival",
+                    },
+                  ],
+                },
+              ],
+              unassignedItems: [
+                {
+                  returnItemId: "item-mock-2",
+                  orderLineReference: "L2",
+                  productReference: "3180141",
+                  quantity: 2,
+                  reason: null,
+                },
+              ],
+              placements: [
+                {
+                  handlingUnitId: "sess-mock-1:HU:1",
+                  handlingUnitType: "PACKAGE",
+                  physicalStatus: "WAREHOUSE_STAGED",
+                  warehouseId: "1969",
+                  bayId: "BAY-04",
+                  trackingNumber: "1Z999AA10123456784",
+                },
+              ],
+            },
+          ],
+        },
+        "return-history",
+      ),
+    );
+  }),
+
   http.get("/api/returns", async () => {
     await delay(80);
     return HttpResponse.json(envelope([SESSION], "returns-list"));

@@ -40,6 +40,7 @@ from return_platform.api.physical_operations import router as physical_operation
 from return_platform.api.production_workflow import router as production_workflow_router
 from return_platform.api.return_agents import router as return_agents_router
 from return_platform.api.return_artifacts import router as return_artifacts_router
+from return_platform.api.return_history import router as return_history_router
 from return_platform.api.return_support import router as return_support_router
 from return_platform.api.returns import router as returns_router
 from return_platform.api.seed import router as seed_router
@@ -1062,6 +1063,7 @@ def create_app(
     fastapi_app.include_router(agent_configuration_router)
     fastapi_app.include_router(canonical_returns_router)
     fastapi_app.include_router(cases_router)
+    fastapi_app.include_router(return_history_router)
     fastapi_app.include_router(source_bindings_router)
     fastapi_app.include_router(canonical_ai_router)
     fastapi_app.include_router(canonical_session_router)

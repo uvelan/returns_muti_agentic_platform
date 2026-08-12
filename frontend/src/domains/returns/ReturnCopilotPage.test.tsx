@@ -14,6 +14,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type * as ActualModuleNamespace from "../../api/orderAgent";
 import type { AgentTurnResult, SendTurnInput } from "../../api/orderAgent";
+import type { ReturnHistory } from "../../api/returnHistory";
 import { ReturnCopilotPage } from "./ReturnCopilotPage";
 
 type ActualModule = typeof ActualModuleNamespace;
@@ -28,6 +29,8 @@ const mocks = vi.hoisted(() => ({
   can: vi.fn(),
   readCase: vi.fn(),
   listCases: vi.fn(),
+  historyByOrder: vi.fn(),
+  historyByCustomer: vi.fn(),
 }));
 
 vi.mock("../../api/orderAgent", async (importOriginal) => ({
@@ -42,6 +45,14 @@ vi.mock("../../api/orderAgent", async (importOriginal) => ({
 
 vi.mock("../../api/cases", () => ({
   casesApi: { read: mocks.readCase, list: mocks.listCases },
+}));
+
+// Mocked rather than left to MSW, even though a fixture handler exists. These
+// assertions are about *which* question the screen asks the graph, and a
+// fixture that answers every shape identically cannot distinguish an order
+// lookup from a customer lookup.
+vi.mock("../../api/returnHistory", () => ({
+  returnHistoryApi: { byOrder: mocks.historyByOrder, byCustomer: mocks.historyByCustomer },
 }));
 
 vi.mock("../../hooks/capabilityContext", () => ({
@@ -76,8 +87,16 @@ beforeEach(() => {
   // Resuming a conversation asks whether it raised a case. Most conversations
   // did not, and that answer is an empty list -- not an absent one.
   mocks.listCases.mockReset().mockResolvedValue([]);
+  // No earlier returns is the ordinary answer and a real one, so it is the
+  // default here rather than an unset mock that would reject.
+  mocks.historyByOrder.mockReset().mockResolvedValue(emptyHistory());
+  mocks.historyByCustomer.mockReset().mockResolvedValue(emptyHistory());
   conversationCounter = 0;
 });
+
+function emptyHistory(): ReturnHistory {
+  return { orderReference: null, accountId: null, customerId: null, cases: [] };
+}
 
 describe("the discovery copilot", () => {
   it("opens on the chat, not on a queue", () => {
@@ -715,5 +734,183 @@ describe("resuming a return", () => {
     // And it does not follow them into the next return, for the same reason
     // the conversation id is minted afresh.
     await waitFor(() => { expect(screen.queryByText("RMA-RESUMED")).toBeNull(); });
+  });
+});
+
+describe("the return history panel", () => {
+  /**
+   * The read the case surface cannot serve.
+   *
+   * `/api/cases` answers "show me this case", addressed by an id the confirming
+   * turn handed back and scoped to the caller's own cases. An associate holding
+   * a box asks the other question -- has this customer sent things back before,
+   * and is this line already on somebody else's RMA -- and the answer includes
+   * cases raised in conversations this screen has never seen. These pin that the
+   * screen asks the graph for it rather than re-deriving it from the one case it
+   * happens to hold.
+   */
+
+  function candidateTurn(data: Record<string, unknown>): AgentTurnResult {
+    return turn({
+      response: {
+        status: "RESOLVED",
+        business_capability: "order_discovery",
+        statements: [{ statement_id: "c", statement_type: "GRAPH_FACT", text: "Found 1." }],
+      },
+      query_evidence: [
+        {
+          query_execution_id: "qe-1",
+          schema_version: "v2",
+          graph_generation_id: "gen-abc12345",
+          result_checksum: "x",
+          result: { candidates: [{ data }] },
+        },
+      ],
+    });
+  }
+
+  const RESOLVED_CUSTOMER = {
+    sales_order_number: "CQ363350",
+    account_id: "CHARLOTTE",
+    customer_id: "9911",
+  };
+
+  it("asks about the customer, not only the order, when the candidate names one", async () => {
+    // The wider question is the useful one: "has this customer returned before"
+    // is not answerable from the single order in front of the associate.
+    mocks.sendTurn.mockResolvedValue(candidateTurn(RESOLVED_CUSTOMER));
+    const { container } = render(<ReturnCopilotPage />, { wrapper });
+    fire(container, "Atlas");
+
+    await waitFor(() => {
+      expect(mocks.historyByCustomer).toHaveBeenCalledWith("CHARLOTTE", "9911");
+    });
+    // Both halves of the key or neither: an ERP customer number is unique
+    // within a branch account and not across them.
+    expect(mocks.historyByOrder).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the order when the candidate carries no customer", async () => {
+    mocks.sendTurn.mockResolvedValue(
+      candidateTurn({ sales_order_number: "CQ363350", account_id: "CHARLOTTE" }),
+    );
+    const { container } = render(<ReturnCopilotPage />, { wrapper });
+    fire(container, "Atlas");
+
+    await waitFor(() => {
+      expect(mocks.historyByOrder).toHaveBeenCalledWith("CQ363350");
+    });
+    expect(mocks.historyByCustomer).not.toHaveBeenCalled();
+  });
+
+  it("asks nothing while more than one candidate is still in play", async () => {
+    // Two candidates have not resolved anybody, and one of the two histories
+    // would belong to a stranger.
+    mocks.sendTurn.mockResolvedValue(
+      turn({
+        response: {
+          status: "NEEDS_INPUT",
+          business_capability: "order_discovery",
+          statements: [{ statement_id: "c", statement_type: "GRAPH_FACT", text: "Found 2." }],
+        },
+        query_evidence: [
+          {
+            query_execution_id: "qe-1",
+            schema_version: "v2",
+            graph_generation_id: "gen-abc12345",
+            result_checksum: "x",
+            result: {
+              candidates: [
+                { data: { sales_order_number: "CQ363350", account_id: "A", customer_id: "1" } },
+                { data: { sales_order_number: "CQ363351", account_id: "A", customer_id: "2" } },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+    const { container } = render(<ReturnCopilotPage />, { wrapper });
+    fire(container, "Atlas");
+
+    expect(await screen.findByText("Candidates (2)")).toBeInTheDocument();
+    expect(mocks.historyByCustomer).not.toHaveBeenCalled();
+    expect(mocks.historyByOrder).not.toHaveBeenCalled();
+  });
+
+  it("says nothing came back before rather than rendering nothing", async () => {
+    // A panel that disappears on an empty answer is indistinguishable from one
+    // that failed to load, and "no, they have never returned anything" is a
+    // result the associate is entitled to be told.
+    mocks.sendTurn.mockResolvedValue(candidateTurn(RESOLVED_CUSTOMER));
+    const { container } = render(<ReturnCopilotPage />, { wrapper });
+    fire(container, "Atlas");
+
+    expect(await screen.findByText(/No earlier returns/)).toBeInTheDocument();
+  });
+
+  it("shows the earlier RMA, the lines it covers, and where the parcel is staged", async () => {
+    mocks.historyByCustomer.mockResolvedValue({
+      orderReference: null,
+      accountId: "CHARLOTTE",
+      customerId: "9911",
+      cases: [
+        {
+          caseId: "case-earlier",
+          status: "AWAITING_SUPPORT",
+          confirmedOrderReference: "CW111111",
+          createdAt: "2026-07-02T10:15:00Z",
+          returnRecords: [
+            {
+              returnRecordId: "rec-1",
+              returnReference: "RMA-1001",
+              status: "ISSUED",
+              returnLocation: "DC-7",
+              trackingReference: null,
+              items: [
+                {
+                  returnItemId: "item-1",
+                  orderLineReference: "L1",
+                  productReference: null,
+                  quantity: 1,
+                  reason: null,
+                },
+              ],
+            },
+          ],
+          unassignedItems: [],
+          placements: [
+            {
+              handlingUnitId: "sess-1:HU:1",
+              handlingUnitType: "PACKAGE",
+              physicalStatus: "WAREHOUSE_STAGED",
+              warehouseId: "1969",
+              bayId: "BAY-04",
+              trackingNumber: null,
+            },
+          ],
+        },
+      ],
+    } satisfies ReturnHistory);
+    mocks.sendTurn.mockResolvedValue(candidateTurn(RESOLVED_CUSTOMER));
+    const { container } = render(<ReturnCopilotPage />, { wrapper });
+    fire(container, "Atlas");
+
+    expect(await screen.findByText("RMA-1001")).toBeInTheDocument();
+    expect(screen.getByText("CW111111")).toBeInTheDocument();
+    // Which lines, not how many: one RMA covers many items, and a count does
+    // not tell the associate whether the line in their hand is already on one.
+    expect(screen.getByText("Covers L1")).toBeInTheDocument();
+    // The bay, which is the only thing here that answers "where is it now".
+    expect(screen.getByText(/BAY-04/)).toBeInTheDocument();
+  });
+
+  it("reports a failed history read instead of implying there is none", async () => {
+    mocks.historyByCustomer.mockRejectedValue(new Error("graph unavailable"));
+    mocks.sendTurn.mockResolvedValue(candidateTurn(RESOLVED_CUSTOMER));
+    const { container } = render(<ReturnCopilotPage />, { wrapper });
+    fire(container, "Atlas");
+
+    expect(await screen.findByText(/could not be read/)).toBeInTheDocument();
+    expect(screen.queryByText(/No earlier returns/)).toBeNull();
   });
 });

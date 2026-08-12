@@ -5,6 +5,7 @@ right connector per source without any business-specific branching.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Protocol
 
 from return_platform.dynamic_knowledge.graph.generation import (
@@ -117,9 +118,18 @@ class ProjectorGraphWriter:
 
 class SourceConnectorRegistry:
     """Dispatches to the one connector instance registered for each connector
-    type -- both connectors already serve every source of their own type, so
-    there is exactly one Mongo connector and one SQL Server connector per
-    sync run, never one per source.
+    type -- both connectors already serve every source of their own type, so by
+    default there is exactly one Mongo connector and one SQL Server connector
+    per sync run, never one per source.
+
+    `overrides` is the exception, and exists because a connector type does not
+    identify a *store*. A schema may name two MongoDB sources living in
+    different databases -- the upstream Ferguson collections and the platform's
+    own operational store are the case that forced this -- and a connector is
+    bound to one database at construction. Without a per-source answer the
+    second store's sources resolved to the first store's connector and scanned
+    collections that were not there, which reads as an empty projection rather
+    than as a misconfiguration.
 
     Types the connectors as the canonical `SourceScanConnector` rather than a
     one-method local protocol. The local one declared only
@@ -134,14 +144,19 @@ class SourceConnectorRegistry:
         schema: ActiveSchema,
         mongo_connector: SourceScanConnector | None = None,
         sqlserver_connector: SourceScanConnector | None = None,
+        overrides: Mapping[str, SourceScanConnector] | None = None,
     ) -> None:
         self._schema = schema
         self._connectors_by_type = {
             ConnectorType.MONGODB: mongo_connector,
             ConnectorType.MSSQL: sqlserver_connector,
         }
+        self._overrides = dict(overrides or {})
 
     def resolve(self, source_asset_id: str) -> SourceScanConnector:
+        override = self._overrides.get(source_asset_id)
+        if override is not None:
+            return override
         connector_type = self._schema.sources[source_asset_id].connector_type
         connector = self._connectors_by_type.get(connector_type)
         if connector is None:

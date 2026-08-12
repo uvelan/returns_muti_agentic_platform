@@ -40,6 +40,52 @@ sources:
       database: return_source
       name: shipmentInfo
     incremental_cursor_field: source_updated_at
+  # The four sources below are the platform's OWN operational store, not an
+  # upstream system: object_ref.database is return_platform (Settings.mongo_database)
+  # rather than return_source, and GraphSyncService routes them to a connector
+  # bound to that database. Declaring the database is therefore load-bearing here
+  # and not documentation -- a Mongo source that names any other database is read
+  # from the upstream store, which for these collections would silently find
+  # nothing.
+  #
+  # Every one of them cursors on updatedAt rather than on _id. Two of these
+  # collections are written with a string uuid _id (see
+  # OperationalRepository.persist_return_intake_records), so ObjectId cursoring --
+  # what a source with no incremental_cursor_field falls back to -- would compare
+  # a string against an ObjectId and page through them in BSON type order rather
+  # than in write order.
+  source_return_cases:
+    source_asset_id: source_return_cases
+    connector_type: MONGODB
+    connection_ref: vault://data-sources/platform-mongodb
+    object_ref:
+      database: return_platform
+      name: cases
+    incremental_cursor_field: source_updated_at
+  source_return_records:
+    source_asset_id: source_return_records
+    connector_type: MONGODB
+    connection_ref: vault://data-sources/platform-mongodb
+    object_ref:
+      database: return_platform
+      name: return_records
+    incremental_cursor_field: source_updated_at
+  source_return_items:
+    source_asset_id: source_return_items
+    connector_type: MONGODB
+    connection_ref: vault://data-sources/platform-mongodb
+    object_ref:
+      database: return_platform
+      name: operational_return_items
+    incremental_cursor_field: source_updated_at
+  source_handling_units:
+    source_asset_id: source_handling_units
+    connector_type: MONGODB
+    connection_ref: vault://data-sources/platform-mongodb
+    object_ref:
+      database: return_platform
+      name: handling_units
+    incremental_cursor_field: source_updated_at
 entities:
   customer:
     entity_id: customer
@@ -2588,6 +2634,1366 @@ entities:
         minimum_fields_present: 1
         maximum_expected_matches: 1
         on_demand_sync_allowed: true
+  return_case:
+    entity_id: return_case
+    description: 'One return case, from the `cases` collection: the spine that ties an associate''s conversation,
+      the order they confirmed, the RMAs Support issued and the items being sent back into one thing.
+      Without it the graph could find an order but could not say whether anyone had ever returned against
+      it -- the case existed only in MongoDB and the agent had no way to reach it.'
+    source_asset_id: source_return_cases
+    fields:
+      case_id:
+        field_id: case_id
+        description: Case identifier. Unique across the platform and the join key every return-side record
+          carries.
+        physical_path:
+        - caseId
+        graph_property: case_id
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      tenant_id:
+        field_id: tenant_id
+        description: Owning tenant. Present so a query can be scoped rather than filtered afterwards.
+        physical_path:
+        - tenantId
+        graph_property: tenant_id
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      principal_id:
+        field_id: principal_id
+        description: The associate who raised the case.
+        physical_path:
+        - principalId
+        graph_property: principal_id
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      branch_id:
+        field_id: branch_id
+        description: 'Branch the return belongs to. Null when the associate is scoped to several branches
+          and has not said which: the case store refuses to guess, and neither does this.'
+        physical_path:
+        - branchId
+        graph_property: branch_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      case_status:
+        field_id: case_status
+        description: GATHERING_INFO / AWAITING_SUPPORT / ... -- where the return has got to.
+        physical_path:
+        - status
+        graph_property: case_status
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      conversation_id:
+        field_id: conversation_id
+        description: Channel A conversation the case was raised from.
+        physical_path:
+        - channelAConversationId
+        graph_property: conversation_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      support_work_item_id:
+        field_id: support_work_item_id
+        description: Channel B work item, once Support has been asked. Null before that.
+        physical_path:
+        - channelBWorkItemId
+        graph_property: support_work_item_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      confirmed_order_reference:
+        field_id: confirmed_order_reference
+        description: 'The order number the associate confirmed. Joins to sales_order.sales_order_number,
+          which is unique within an account and NOT globally -- so a case can match more than one order
+          when the same number exists in two branches.'
+        physical_path:
+        - confirmedOrderReference
+        graph_property: confirmed_order_reference
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      session_id:
+        field_id: session_id
+        description: 'Return session the case is being fulfilled through. Joins to return_handling_unit.session_id
+          -- the only field that links a case to where its parcels are physically staged. Currently written
+          as null by the case store, so the STAGED_AS edge stays empty until the case aggregate records
+          its session.'
+        physical_path:
+        - sessionId
+        graph_property: session_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      workflow_id:
+        field_id: workflow_id
+        description: Temporal workflow driving the case, once one is running.
+        physical_path:
+        - workflowId
+        graph_property: workflow_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      created_at:
+        field_id: created_at
+        description: When the associate confirmed the order. The date a 'has this been returned before'
+          question is really asking about.
+        physical_path:
+        - createdAt
+        graph_property: created_at
+        data_type: DATETIME
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - GT
+          - GTE
+          - LT
+          - LTE
+          - BETWEEN
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      source_updated_at:
+        field_id: source_updated_at
+        description: Source change timestamp.
+        physical_path:
+        - updatedAt
+        graph_property: source_updated_at
+        data_type: DATETIME
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+    natural_key:
+    - case_id
+  return_record:
+    entity_id: return_record
+    description: 'One RMA, from `return_records`. First-class rather than a property of the item (decision
+      D6): Support routinely answers one case with several RMAs and puts several items on each, so an
+      item-level return reference cannot express what actually happened. `return_reference` is null between
+      the platform deciding to raise a record and Support issuing the number.'
+    source_asset_id: source_return_records
+    fields:
+      return_record_id:
+        field_id: return_record_id
+        description: Platform identifier for the record. Stable from the moment the case decides to raise
+          it, which is before the RMA number exists.
+        physical_path:
+        - returnRecordId
+        graph_property: return_record_id
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      case_id:
+        field_id: case_id
+        description: Owning case. Joins to return_case.case_id.
+        physical_path:
+        - caseId
+        graph_property: case_id
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      return_reference:
+        field_id: return_reference
+        description: The RMA number Support issued, e.g. RMA-1001. This is what an associate reads off
+          a label and quotes back.
+        physical_path:
+        - returnReference
+        graph_property: return_reference
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      return_record_status:
+        field_id: return_record_status
+        description: DRAFT until Support answers, then ISSUED.
+        physical_path:
+        - status
+        graph_property: return_record_status
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      return_location:
+        field_id: return_location
+        description: Where Support said the goods are to be sent, e.g. DC-7. A destination, not an observed
+          location -- for where a parcel actually is, read return_handling_unit.
+        physical_path:
+        - returnLocation
+        graph_property: return_location
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      tracking_reference:
+        field_id: tracking_reference
+        description: Carrier tracking for the return leg, when Support supplied one.
+        physical_path:
+        - trackingReference
+        graph_property: tracking_reference
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      label_reference:
+        field_id: label_reference
+        description: Return label reference.
+        physical_path:
+        - labelReference
+        graph_property: label_reference
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      shipping_instruction_reference:
+        field_id: shipping_instruction_reference
+        description: Shipping instruction issued for this RMA.
+        physical_path:
+        - shippingInstructionReference
+        graph_property: shipping_instruction_reference
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      source_system:
+        field_id: source_system
+        description: Which system the record came from, e.g. RETURN_SUPPORT.
+        physical_path:
+        - sourceSystem
+        graph_property: source_system
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      created_at:
+        field_id: created_at
+        description: When the record was raised.
+        physical_path:
+        - createdAt
+        graph_property: created_at
+        data_type: DATETIME
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - GT
+          - GTE
+          - LT
+          - LTE
+          - BETWEEN
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      source_updated_at:
+        field_id: source_updated_at
+        description: Source change timestamp.
+        physical_path:
+        - updatedAt
+        graph_property: source_updated_at
+        data_type: DATETIME
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+    natural_key:
+    - return_record_id
+  return_item:
+    entity_id: return_item
+    description: 'One line being sent back, from `operational_return_items`. That collection carries two
+      shapes written by two flows -- a case-scoped item (caseId/returnRecordId/quantity/reason) and the
+      older session-scoped intake item (sessionId/productId/requestedQuantity/reasonCode) -- so both are
+      mapped and each field says which writer fills it. They are deliberately not coalesced into one
+      quantity or one reason: a session item''s requestedQuantity is what was asked for and a case item''s
+      quantity is what was declared, and folding them together would assert an equivalence the data does
+      not have.'
+    source_asset_id: source_return_items
+    fields:
+      return_item_id:
+        field_id: return_item_id
+        description: Item identifier, unique across both shapes.
+        physical_path:
+        - returnItemId
+        graph_property: return_item_id
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      case_id:
+        field_id: case_id
+        description: Owning case. Case-scoped items only; null on session-scoped intake items.
+        physical_path:
+        - caseId
+        graph_property: case_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      return_record_id:
+        field_id: return_record_id
+        description: 'The RMA covering this item. Null until Support has said which RMA it belongs to
+          -- the associate names the lines before the record set is known, and the platform records that
+          rather than inventing a record to hold them.'
+        physical_path:
+        - returnRecordId
+        graph_property: return_record_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      session_id:
+        field_id: session_id
+        description: Return session. Session-scoped intake items only; null on case-scoped items.
+        physical_path:
+        - sessionId
+        graph_property: session_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      order_line_reference:
+        field_id: order_line_reference
+        description: 'The order line being returned, as the confirming turn stated it. Deliberately not
+          joined to order_line: that entity is keyed on (account, order number, line number) and this
+          field carries only the line part, so a match on it alone would attach the item to the same line
+          number on every other order.'
+        physical_path:
+        - orderLineId
+        graph_property: order_line_reference
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      product_reference:
+        field_id: product_reference
+        description: Product on a case-scoped item, as the confirming turn stated it.
+        physical_path:
+        - productReference
+        graph_property: product_reference
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      product_id:
+        field_id: product_id
+        description: Product on a session-scoped intake item. Not joined to product.product_id -- no
+          sample confirms these are catalog ids rather than order-line composite ids.
+        physical_path:
+        - productId
+        graph_property: product_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      quantity:
+        field_id: quantity
+        description: Quantity declared on a case-scoped item.
+        physical_path:
+        - quantity
+        graph_property: quantity
+        data_type: INTEGER
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      requested_quantity:
+        field_id: requested_quantity
+        description: Quantity asked for on a session-scoped intake item.
+        physical_path:
+        - requestedQuantity
+        graph_property: requested_quantity
+        data_type: INTEGER
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      approved_quantity:
+        field_id: approved_quantity
+        description: Quantity approved, once someone has approved one.
+        physical_path:
+        - approvedQuantity
+        graph_property: approved_quantity
+        data_type: INTEGER
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      return_reason:
+        field_id: return_reason
+        description: Free-text reason on a case-scoped item.
+        physical_path:
+        - reason
+        graph_property: return_reason
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          - PREFIX
+          - CONTAINS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      reason_code:
+        field_id: reason_code
+        description: Coded reason on a session-scoped intake item.
+        physical_path:
+        - reasonCode
+        graph_property: reason_code
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      item_condition:
+        field_id: item_condition
+        description: Condition the goods came back in, on a case-scoped item.
+        physical_path:
+        - condition
+        graph_property: item_condition
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      disposition:
+        field_id: disposition
+        description: PENDING and onwards, on a session-scoped intake item.
+        physical_path:
+        - disposition
+        graph_property: disposition
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      package_reference:
+        field_id: package_reference
+        description: Package the item was declared against on a case-scoped item. Not joined to return_handling_unit
+          -- no sample confirms this carries a handling unit id.
+        physical_path:
+        - packageReference
+        graph_property: package_reference
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      created_at:
+        field_id: created_at
+        description: When the item was recorded.
+        physical_path:
+        - createdAt
+        graph_property: created_at
+        data_type: DATETIME
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - GT
+          - GTE
+          - LT
+          - LTE
+          - BETWEEN
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      source_updated_at:
+        field_id: source_updated_at
+        description: Source change timestamp.
+        physical_path:
+        - updatedAt
+        graph_property: source_updated_at
+        data_type: DATETIME
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+    natural_key:
+    - return_item_id
+  return_handling_unit:
+    entity_id: return_handling_unit
+    description: 'A parcel or pallet on its way back, from `handling_units`, carrying where it currently
+      is: warehouse_id and bay_id are written by WarehousePlacementService when a bay is assigned. This
+      is the only entity that answers "where is this parcel now" -- return_record.return_location is where
+      it was told to go. The bay master itself lives in SQL Server (bay capacity, hazardous/oversized
+      support), so bay_id is a property here rather than a node of its own; a first-class Bay entity needs
+      an MSSQL source asset and is not part of this change.'
+    source_asset_id: source_handling_units
+    fields:
+      handling_unit_id:
+        field_id: handling_unit_id
+        description: Handling unit identifier, formatted <session>:HU:<sequence>.
+        physical_path:
+        - handlingUnitId
+        graph_property: handling_unit_id
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      session_id:
+        field_id: session_id
+        description: Return session the unit belongs to. Joins to return_case.session_id.
+        physical_path:
+        - sessionId
+        graph_property: session_id
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      sequence:
+        field_id: sequence
+        description: Which of the session's parcels this is, from 1.
+        physical_path:
+        - sequence
+        graph_property: sequence
+        data_type: INTEGER
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      handling_unit_type:
+        field_id: handling_unit_type
+        description: PACKAGE or PALLET.
+        physical_path:
+        - handlingUnitType
+        graph_property: handling_unit_type
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      physical_status:
+        field_id: physical_status
+        description: PLANNED / WAREHOUSE_STAGED / ... -- how far the parcel has physically got.
+        physical_path:
+        - physicalStatus
+        graph_property: physical_status
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      warehouse_id:
+        field_id: warehouse_id
+        description: Warehouse holding the unit. Absent until a bay is assigned.
+        physical_path:
+        - warehouseId
+        graph_property: warehouse_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      bay_id:
+        field_id: bay_id
+        description: Bay the unit is staged in. Absent until a bay is assigned.
+        physical_path:
+        - bayId
+        graph_property: bay_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      reservation_id:
+        field_id: reservation_id
+        description: SQL Server bay reservation backing the placement.
+        physical_path:
+        - reservationId
+        graph_property: reservation_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      assignment_id:
+        field_id: assignment_id
+        description: SQL Server bay assignment backing the placement.
+        physical_path:
+        - assignmentId
+        graph_property: assignment_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      tracking_number:
+        field_id: tracking_number
+        description: Carrier tracking for this parcel. What an associate is holding when they ask where
+          it is.
+        physical_path:
+        - trackingNumber
+        graph_property: tracking_number
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      bol_reference:
+        field_id: bol_reference
+        description: Bill of lading, for freight returns.
+        physical_path:
+        - bolReference
+        graph_property: bol_reference
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      shipping_instruction_id:
+        field_id: shipping_instruction_id
+        description: Shipping instruction the unit was released under.
+        physical_path:
+        - shippingInstructionId
+        graph_property: shipping_instruction_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      created_at:
+        field_id: created_at
+        description: When the unit was planned.
+        physical_path:
+        - createdAt
+        graph_property: created_at
+        data_type: DATETIME
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - GT
+          - GTE
+          - LT
+          - LTE
+          - BETWEEN
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+      source_updated_at:
+        field_id: source_updated_at
+        description: Source change timestamp.
+        physical_path:
+        - updatedAt
+        graph_property: source_updated_at
+        data_type: DATETIME
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+    natural_key:
+    - handling_unit_id
 graph:
   database: neo4j
   nodes:
@@ -2726,6 +4132,84 @@ graph:
       - source_system
       - shipped_at
       - source_updated_at
+    return_case_node:
+      projection_id: return_case_node
+      entity_id: return_case
+      label: ReturnCase
+      key_fields:
+      - case_id
+      property_fields:
+      - tenant_id
+      - principal_id
+      - branch_id
+      - case_status
+      - conversation_id
+      - support_work_item_id
+      - confirmed_order_reference
+      - session_id
+      - workflow_id
+      - created_at
+      - source_updated_at
+    return_record_node:
+      projection_id: return_record_node
+      entity_id: return_record
+      label: ReturnRecord
+      key_fields:
+      - return_record_id
+      property_fields:
+      - case_id
+      - return_reference
+      - return_record_status
+      - return_location
+      - tracking_reference
+      - label_reference
+      - shipping_instruction_reference
+      - source_system
+      - created_at
+      - source_updated_at
+    return_item_node:
+      projection_id: return_item_node
+      entity_id: return_item
+      label: ReturnItem
+      key_fields:
+      - return_item_id
+      property_fields:
+      - case_id
+      - return_record_id
+      - session_id
+      - order_line_reference
+      - product_reference
+      - product_id
+      - quantity
+      - requested_quantity
+      - approved_quantity
+      - return_reason
+      - reason_code
+      - item_condition
+      - disposition
+      - package_reference
+      - created_at
+      - source_updated_at
+    return_handling_unit_node:
+      projection_id: return_handling_unit_node
+      entity_id: return_handling_unit
+      label: ReturnHandlingUnit
+      key_fields:
+      - handling_unit_id
+      property_fields:
+      - session_id
+      - sequence
+      - handling_unit_type
+      - physical_status
+      - warehouse_id
+      - bay_id
+      - reservation_id
+      - assignment_id
+      - tracking_number
+      - bol_reference
+      - shipping_instruction_id
+      - created_at
+      - source_updated_at
   relationships:
     customer_placed_order:
       relationship_id: customer_placed_order
@@ -2799,6 +4283,91 @@ graph:
       - sales_order_number
       property_fields: []
       access: SEED_ONLY
+    case_covers_order:
+      relationship_id: case_covers_order
+      relationship_type: COVERS_ORDER
+      source_entity_id: return_case
+      target_entity_id: sales_order
+      source_match_fields:
+      - confirmed_order_reference
+      target_match_fields:
+      - sales_order_number
+      property_fields: []
+      access: CONNECTED_SYNC
+      # The edge that makes "has this customer returned this before" answerable:
+      # Customer -PLACED_ORDER-> SalesOrder <-COVERS_ORDER- ReturnCase.
+      #
+      # MANY_TO_MANY with no bound, deliberately. An order number is unique
+      # within an account and not globally (see sales_order.sales_order_number),
+      # and the confirmation only carries the number, so one case legitimately
+      # matches the same number in two branches. Declaring ONE_TO_ONE here would
+      # abort the whole Stage B reconciliation the first time that happened.
+      cardinality: MANY_TO_MANY
+    case_raised_return_record:
+      relationship_id: case_raised_return_record
+      relationship_type: RAISED_RETURN_RECORD
+      source_entity_id: return_case
+      target_entity_id: return_record
+      source_match_fields:
+      - case_id
+      target_match_fields:
+      - case_id
+      property_fields: []
+      access: CONNECTED_SYNC
+      # One case, N RMAs -- decision D6. Bounded on the target side only: a
+      # record document carries exactly one caseId, so more than one owning case
+      # would mean two case nodes sharing a case_id, which the key forbids.
+      cardinality: ONE_TO_MANY
+      maximum_sources_per_target: 1
+    case_includes_return_item:
+      relationship_id: case_includes_return_item
+      relationship_type: INCLUDES_RETURN_ITEM
+      source_entity_id: return_case
+      target_entity_id: return_item
+      source_match_fields:
+      - case_id
+      target_match_fields:
+      - case_id
+      property_fields: []
+      access: CONNECTED_SYNC
+      # Separate from the RMA edge because items exist before any RMA does: the
+      # associate names the lines, and only later does Support say which record
+      # covers which. Without this edge a case's items are unreachable in that
+      # window.
+      cardinality: ONE_TO_MANY
+      maximum_sources_per_target: 1
+    return_record_covers_item:
+      relationship_id: return_record_covers_item
+      relationship_type: COVERS_RETURN_ITEM
+      source_entity_id: return_record
+      target_entity_id: return_item
+      source_match_fields:
+      - return_record_id
+      target_match_fields:
+      - return_record_id
+      property_fields: []
+      access: CONNECTED_SYNC
+      # "What else is on this RMA". One RMA covers N items and an item belongs to
+      # at most one RMA, which is why the return record is first-class rather
+      # than a return reference stamped on each item.
+      cardinality: ONE_TO_MANY
+      maximum_sources_per_target: 1
+    case_staged_as:
+      relationship_id: case_staged_as
+      relationship_type: STAGED_AS
+      source_entity_id: return_case
+      target_entity_id: return_handling_unit
+      source_match_fields:
+      - session_id
+      target_match_fields:
+      - session_id
+      property_fields: []
+      access: CONNECTED_SYNC
+      # Unbounded on both sides even though the intent is one session per case:
+      # `cases.sessionId` is indexed but NOT uniquely, so two cases sharing a
+      # session is a state the store permits, and a cardinality bound would turn
+      # it into a failed sync rather than a visible oddity in the graph.
+      cardinality: MANY_TO_MANY
 agent_policies:
   order-discovery-agent:
     agent_id: order-discovery-agent
@@ -2819,6 +4388,15 @@ agent_policies:
     - order_line
     - product
     - shipment
+    # The return side. Projecting these into the graph is not enough on its own:
+    # SchemaQueryGuard refuses any plan whose start or traversal entity is not
+    # named here, and Neo4jKnowledgeGateway.compact_schema builds the entity and
+    # relationship catalogue the model sees from this same list -- so an omission
+    # reads as "the agent cannot see returns" rather than as a policy setting.
+    - return_case
+    - return_record
+    - return_item
+    - return_handling_unit
     standard_model_refs:
     - ai-task://ORDER_AGENT_REASONING_V1
     max_reasoning_steps: 8
@@ -2827,4 +4405,4 @@ agent_policies:
     max_clarifications: 3
     max_replans: 2
     max_targeted_syncs_per_turn: 3
-configuration_checksum: 7c9d67a64d2b23724995c86f9798f49f0322626e1abcc67dded11aaed0bbd6c8
+configuration_checksum: e0dea926e74ddc5fd5c1bce7eadd7f2f78b40331a33904ee257967d6eabb053e
