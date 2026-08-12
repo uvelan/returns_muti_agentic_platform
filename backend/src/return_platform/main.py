@@ -13,7 +13,7 @@ from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
 from return_platform.ai.interception.store import SystemStoreInterceptionStore
-from return_platform.ai.providers.replay_store import MongoReplayStore
+from return_platform.ai.providers.replay_store import SystemStoreReplayStore
 from return_platform.ai_gateway.configuration import (
     build_loaded_ai_gateway_configuration,
     load_ai_gateway_configuration,
@@ -598,12 +598,10 @@ async def lifespan(
         # same store rather than silently dropping replay -- the mistake the
         # interception store had until it was carried through `refresh` too.
         replay_store = (
-            MongoReplayStore(resources.mongo, settings.mongo_database)
-            if resources.mongo is not None
+            SystemStoreReplayStore(analyzer_system_store, analyzer_encryptor)
+            if analyzer_system_store is not None and analyzer_encryptor is not None
             else None
         )
-        if replay_store is not None:
-            await replay_store.ensure_indexes()
         app.state.ai_replay_store = replay_store
         app.state.ai_gateway_route_pool = AIRoutePool(
             build_routes(

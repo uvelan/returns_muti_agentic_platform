@@ -27,6 +27,19 @@ payload:
     ai_traces:
       physical_name: platform_ai_traces
       schema_version: 1
+    ai_replay_recordings:
+      physical_name: platform_ai_replay_recordings
+      schema_version: 1
+      # A recording is a model's answer to a real prompt: for order discovery
+      # it names customers and orders, and for the analyzer the prompt it
+      # answers carries rows read out of a customer's database. Sealed for the
+      # same reason ai_interceptions is -- only the lookup digest and the
+      # timestamps stay outside the envelope.
+      encrypted: true
+      indexes:
+        - name: replay_digest_unique
+          fields: [digest]
+          unique: true
     ai_interceptions:
       physical_name: platform_ai_interceptions
       schema_version: 1
