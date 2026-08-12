@@ -1565,6 +1565,39 @@
         "title": "APIResponse[FulfillmentAssessment]",
         "type": "object"
       },
+      "APIResponse_GraphSyncRunView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GraphSyncRunView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[GraphSyncRunView]",
+        "type": "object"
+      },
       "APIResponse_MigrationPlan_": {
         "additionalProperties": false,
         "properties": {
@@ -1728,6 +1761,39 @@
           "meta"
         ],
         "title": "APIResponse[ReturnEvidence]",
+        "type": "object"
+      },
+      "APIResponse_ReturnHistory_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReturnHistory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ReturnHistory]",
         "type": "object"
       },
       "APIResponse_ReturnSessionView_": {
@@ -2636,6 +2702,43 @@
           "meta"
         ],
         "title": "APIResponse[list[ConversationSummary]]",
+        "type": "object"
+      },
+      "APIResponse_list_GraphSyncRunView__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/GraphSyncRunView"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[list[GraphSyncRunView]]",
         "type": "object"
       },
       "APIResponse_list_OutboxView__": {
@@ -6304,6 +6407,171 @@
         "title": "GraphObjectKind",
         "type": "string"
       },
+      "GraphSyncRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "applySchema": {
+            "default": true,
+            "title": "Applyschema",
+            "type": "boolean"
+          },
+          "maxRecordsPerAsset": {
+            "default": 1000,
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Maxrecordsperasset",
+            "type": "integer"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/GraphSyncScope",
+            "default": "FULL"
+          }
+        },
+        "title": "GraphSyncRequest",
+        "type": "object"
+      },
+      "GraphSyncRunView": {
+        "additionalProperties": false,
+        "properties": {
+          "completedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completedat"
+          },
+          "configurationDigest": {
+            "title": "Configurationdigest",
+            "type": "string"
+          },
+          "constraintsApplied": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Constraintsapplied",
+            "type": "array"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "graphGenerationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graphgenerationid"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "nodeWrites": {
+            "minimum": 0.0,
+            "title": "Nodewrites",
+            "type": "integer"
+          },
+          "relationshipWrites": {
+            "minimum": 0.0,
+            "title": "Relationshipwrites",
+            "type": "integer"
+          },
+          "requestDigest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestdigest"
+          },
+          "requestedBy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncRunRequester"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schemaVersion": {
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "sourceCounts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Sourcecounts",
+            "type": "object"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "title": "Startedat",
+            "type": "string"
+          },
+          "startedBy": {
+            "title": "Startedby",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "RUNNING",
+              "COMPLETED",
+              "FAILED"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "mode",
+          "status",
+          "schemaVersion",
+          "sourceCounts",
+          "nodeWrites",
+          "relationshipWrites",
+          "constraintsApplied",
+          "configurationDigest",
+          "startedBy",
+          "startedAt"
+        ],
+        "title": "GraphSyncRunView",
+        "type": "object"
+      },
+      "GraphSyncScope": {
+        "enum": [
+          "FULL",
+          "SOURCE_MONGODB",
+          "SQLSERVER"
+        ],
+        "title": "GraphSyncScope",
+        "type": "string"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -8411,6 +8679,320 @@
           }
         },
         "title": "ReturnEvidence",
+        "type": "object"
+      },
+      "ReturnHistory": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accountid"
+          },
+          "cases": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReturnHistoryCase"
+            },
+            "title": "Cases",
+            "type": "array"
+          },
+          "customerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customerid"
+          },
+          "orderReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orderreference"
+          }
+        },
+        "title": "ReturnHistory",
+        "type": "object"
+      },
+      "ReturnHistoryCase": {
+        "additionalProperties": false,
+        "properties": {
+          "caseId": {
+            "title": "Caseid",
+            "type": "string"
+          },
+          "confirmedOrderReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmedorderreference"
+          },
+          "createdAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdat"
+          },
+          "placements": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReturnHistoryPlacement"
+            },
+            "title": "Placements",
+            "type": "array"
+          },
+          "returnRecords": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReturnHistoryRecord"
+            },
+            "title": "Returnrecords",
+            "type": "array"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "unassignedItems": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReturnHistoryItem"
+            },
+            "title": "Unassigneditems",
+            "type": "array"
+          }
+        },
+        "required": [
+          "caseId"
+        ],
+        "title": "ReturnHistoryCase",
+        "type": "object"
+      },
+      "ReturnHistoryItem": {
+        "additionalProperties": false,
+        "properties": {
+          "orderLineReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orderlinereference"
+          },
+          "productReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productreference"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "returnItemId": {
+            "title": "Returnitemid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "returnItemId"
+        ],
+        "title": "ReturnHistoryItem",
+        "type": "object"
+      },
+      "ReturnHistoryPlacement": {
+        "additionalProperties": false,
+        "description": "Where one parcel or pallet physically is.",
+        "properties": {
+          "bayId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bayid"
+          },
+          "handlingUnitId": {
+            "title": "Handlingunitid",
+            "type": "string"
+          },
+          "handlingUnitType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handlingunittype"
+          },
+          "physicalStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Physicalstatus"
+          },
+          "trackingNumber": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trackingnumber"
+          },
+          "warehouseId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warehouseid"
+          }
+        },
+        "required": [
+          "handlingUnitId"
+        ],
+        "title": "ReturnHistoryPlacement",
+        "type": "object"
+      },
+      "ReturnHistoryRecord": {
+        "additionalProperties": false,
+        "description": "One RMA and the items it covers -- decision D6, in the response shape.\n\nItems nest inside their record for the same reason they do on `/api/cases`:\na flat pair of lists leaves the client to join them, and \"label LBL-1 belongs\nto RMA-2\" must not be something a consumer can get wrong.",
+        "properties": {
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReturnHistoryItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "returnLocation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnlocation"
+          },
+          "returnRecordId": {
+            "title": "Returnrecordid",
+            "type": "string"
+          },
+          "returnReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnreference"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "trackingReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trackingreference"
+          }
+        },
+        "required": [
+          "returnRecordId"
+        ],
+        "title": "ReturnHistoryRecord",
         "type": "object"
       },
       "ReturnItemInput": {
@@ -11395,6 +11977,49 @@
         "title": "SyncMode",
         "type": "string"
       },
+      "SyncRunRequester": {
+        "additionalProperties": false,
+        "description": "The agent turn a targeted run was performed for. Absent on a scheduled run.\n\nAnchor *field ids*, not anchor values -- see `SyncOrigin` for why a run list\nis not somewhere to accumulate order numbers.",
+        "properties": {
+          "agentId": {
+            "title": "Agentid",
+            "type": "string"
+          },
+          "anchorFieldIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Anchorfieldids",
+            "type": "array"
+          },
+          "clientTurnId": {
+            "title": "Clientturnid",
+            "type": "string"
+          },
+          "conversationId": {
+            "title": "Conversationid",
+            "type": "string"
+          },
+          "entityId": {
+            "title": "Entityid",
+            "type": "string"
+          },
+          "strongAnchorId": {
+            "title": "Stronganchorid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agentId",
+          "conversationId",
+          "clientTurnId",
+          "entityId",
+          "strongAnchorId",
+          "anchorFieldIds"
+        ],
+        "title": "SyncRunRequester",
+        "type": "object"
+      },
       "TimelineEvent": {
         "additionalProperties": false,
         "properties": {
@@ -13261,6 +13886,150 @@
         ]
       }
     },
+    "/api/graph-sync/runs": {
+      "get": {
+        "description": "Sync runs, newest first: scheduled and agent-initiated in one history.",
+        "operationId": "list_runs_api_graph_sync_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_GraphSyncRunView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Runs",
+        "tags": [
+          "Graph Sync"
+        ]
+      },
+      "post": {
+        "description": "Run a sync now and answer with the run it produced.\n\nAwaited rather than backgrounded, matching `/api/v1/seed-data/apply`: the\nrequest is bounded by `maxRecordsPerAsset` and by\n`settings.graph_sync_max_records`, and a fire-and-forget task would have to\ninvent a way to hand back the run id that `GraphSyncService.sync` mints\ninternally. A failed run is still recorded FAILED in the ledger before the\nerror propagates, so the list is truthful either way.",
+        "operationId": "start_run_api_graph_sync_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphSyncRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_GraphSyncRunView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Run",
+        "tags": [
+          "Graph Sync"
+        ]
+      }
+    },
+    "/api/graph-sync/runs/{run_id}": {
+      "get": {
+        "operationId": "read_run_api_graph_sync_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_GraphSyncRunView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Run",
+        "tags": [
+          "Graph Sync"
+        ]
+      }
+    },
     "/api/principal": {
       "get": {
         "description": "401 when unauthenticated -- never an anonymous principal with no grants.\n\nReturning an empty capability set for an unauthenticated caller would make\n\"not signed in\" and \"signed in with nothing granted\" indistinguishable, and\nthe shell needs to tell those apart to decide between a sign-in prompt and\nan empty state.",
@@ -13280,6 +14049,97 @@
         "summary": "The calling principal, its roles, and its capabilities",
         "tags": [
           "Principal"
+        ]
+      }
+    },
+    "/api/return-history": {
+      "get": {
+        "description": "Returns against one order, or across one customer's orders.\n\nExactly one of the two anchors, never both and never neither. A request with\nno anchor is \"every return there has ever been\", which is not a question this\nsurface exists to answer; a request with both is two questions whose answers\nwould be silently intersected.\n\nNot scoped to the caller's own cases, unlike `/api/cases`. That is the whole\npoint: an associate asking whether this customer has returned this before is\nasking about returns somebody else raised. The anchor is a customer or an\norder the caller already has in front of them, so nothing is discoverable by\nguessing that the order search did not already surface.",
+        "operationId": "read_return_history_api_return_history_get",
+        "parameters": [
+          {
+            "description": "Every return raised against this order number, by anyone.",
+            "in": "query",
+            "name": "orderReference",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Every return raised against this order number, by anyone.",
+              "title": "Orderreference"
+            }
+          },
+          {
+            "description": "Branch account, with customerId: every return this customer has raised.",
+            "in": "query",
+            "name": "accountId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Branch account, with customerId: every return this customer has raised.",
+              "title": "Accountid"
+            }
+          },
+          {
+            "description": "ERP customer number, with accountId.",
+            "in": "query",
+            "name": "customerId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ERP customer number, with accountId.",
+              "title": "Customerid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ReturnHistory_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Return History",
+        "tags": [
+          "Return History"
         ]
       }
     },

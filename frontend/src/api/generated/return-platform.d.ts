@@ -821,6 +821,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/graph-sync/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runs
+         * @description Sync runs, newest first: scheduled and agent-initiated in one history.
+         */
+        get: operations["list_runs_api_graph_sync_runs_get"];
+        put?: never;
+        /**
+         * Start Run
+         * @description Run a sync now and answer with the run it produced.
+         *
+         *     Awaited rather than backgrounded, matching `/api/v1/seed-data/apply`: the
+         *     request is bounded by `maxRecordsPerAsset` and by
+         *     `settings.graph_sync_max_records`, and a fire-and-forget task would have to
+         *     invent a way to hand back the run id that `GraphSyncService.sync` mints
+         *     internally. A failed run is still recorded FAILED in the ledger before the
+         *     error propagates, so the list is truthful either way.
+         */
+        post: operations["start_run_api_graph_sync_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-sync/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Run */
+        get: operations["read_run_api_graph_sync_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/principal": {
         parameters: {
             query?: never;
@@ -838,6 +886,37 @@ export interface paths {
          *     an empty state.
          */
         get: operations["get_principal_api_principal_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/return-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Return History
+         * @description Returns against one order, or across one customer's orders.
+         *
+         *     Exactly one of the two anchors, never both and never neither. A request with
+         *     no anchor is "every return there has ever been", which is not a question this
+         *     surface exists to answer; a request with both is two questions whose answers
+         *     would be silently intersected.
+         *
+         *     Not scoped to the caller's own cases, unlike `/api/cases`. That is the whole
+         *     point: an associate asking whether this customer has returned this before is
+         *     asking about returns somebody else raised. The anchor is a customer or an
+         *     order the caller already has in front of them, so nothing is discoverable by
+         *     guessing that the order search did not already surface.
+         */
+        get: operations["read_return_history_api_return_history_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2951,6 +3030,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[GraphSyncRunView] */
+        APIResponse_GraphSyncRunView_: {
+            data?: components["schemas"]["GraphSyncRunView"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[MigrationPlan] */
         APIResponse_MigrationPlan_: {
             data?: components["schemas"]["MigrationPlan"] | null;
@@ -2978,6 +3063,12 @@ export interface components {
         /** APIResponse[ReturnEvidence] */
         APIResponse_ReturnEvidence_: {
             data?: components["schemas"]["ReturnEvidence"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[ReturnHistory] */
+        APIResponse_ReturnHistory_: {
+            data?: components["schemas"]["ReturnHistory"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -3158,6 +3249,13 @@ export interface components {
         APIResponse_list_ConversationSummary__: {
             /** Data */
             data?: components["schemas"]["ConversationSummary"][] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[list[GraphSyncRunView]] */
+        APIResponse_list_GraphSyncRunView__: {
+            /** Data */
+            data?: components["schemas"]["GraphSyncRunView"][] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -4522,6 +4620,68 @@ export interface components {
          * @enum {string}
          */
         GraphObjectKind: "NODE_KEY_CONSTRAINT" | "RELATIONSHIP_MATCH_INDEX" | "DECLARED_CONSTRAINT" | "DECLARED_INDEX";
+        /** GraphSyncRequest */
+        GraphSyncRequest: {
+            /**
+             * Applyschema
+             * @default true
+             */
+            applySchema: boolean;
+            /**
+             * Maxrecordsperasset
+             * @default 1000
+             */
+            maxRecordsPerAsset: number;
+            /** @default FULL */
+            mode: components["schemas"]["GraphSyncScope"];
+        };
+        /** GraphSyncRunView */
+        GraphSyncRunView: {
+            /** Completedat */
+            completedAt?: string | null;
+            /** Configurationdigest */
+            configurationDigest: string;
+            /** Constraintsapplied */
+            constraintsApplied: string[];
+            /** Errorcode */
+            errorCode?: string | null;
+            /** Graphgenerationid */
+            graphGenerationId?: string | null;
+            /** Id */
+            id: string;
+            /** Mode */
+            mode: string;
+            /** Nodewrites */
+            nodeWrites: number;
+            /** Relationshipwrites */
+            relationshipWrites: number;
+            /** Requestdigest */
+            requestDigest?: string | null;
+            requestedBy?: components["schemas"]["SyncRunRequester"] | null;
+            /** Schemaversion */
+            schemaVersion: string;
+            /** Sourcecounts */
+            sourceCounts: {
+                [key: string]: number;
+            };
+            /**
+             * Startedat
+             * Format: date-time
+             */
+            startedAt: string;
+            /** Startedby */
+            startedBy: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "RUNNING" | "COMPLETED" | "FAILED";
+        };
+        /**
+         * GraphSyncScope
+         * @enum {string}
+         */
+        GraphSyncScope: "FULL" | "SOURCE_MONGODB" | "SQLSERVER";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -5323,6 +5483,102 @@ export interface components {
             vendorReturnLinks?: {
                 [key: string]: unknown;
             }[];
+        };
+        /** ReturnHistory */
+        ReturnHistory: {
+            /** Accountid */
+            accountId?: string | null;
+            /**
+             * Cases
+             * @default []
+             */
+            cases: components["schemas"]["ReturnHistoryCase"][];
+            /** Customerid */
+            customerId?: string | null;
+            /** Orderreference */
+            orderReference?: string | null;
+        };
+        /** ReturnHistoryCase */
+        ReturnHistoryCase: {
+            /** Caseid */
+            caseId: string;
+            /** Confirmedorderreference */
+            confirmedOrderReference?: string | null;
+            /** Createdat */
+            createdAt?: string | null;
+            /**
+             * Placements
+             * @default []
+             */
+            placements: components["schemas"]["ReturnHistoryPlacement"][];
+            /**
+             * Returnrecords
+             * @default []
+             */
+            returnRecords: components["schemas"]["ReturnHistoryRecord"][];
+            /** Status */
+            status?: string | null;
+            /**
+             * Unassigneditems
+             * @default []
+             */
+            unassignedItems: components["schemas"]["ReturnHistoryItem"][];
+        };
+        /** ReturnHistoryItem */
+        ReturnHistoryItem: {
+            /** Orderlinereference */
+            orderLineReference?: string | null;
+            /** Productreference */
+            productReference?: string | null;
+            /** Quantity */
+            quantity?: number | null;
+            /** Reason */
+            reason?: string | null;
+            /** Returnitemid */
+            returnItemId: string;
+        };
+        /**
+         * ReturnHistoryPlacement
+         * @description Where one parcel or pallet physically is.
+         */
+        ReturnHistoryPlacement: {
+            /** Bayid */
+            bayId?: string | null;
+            /** Handlingunitid */
+            handlingUnitId: string;
+            /** Handlingunittype */
+            handlingUnitType?: string | null;
+            /** Physicalstatus */
+            physicalStatus?: string | null;
+            /** Trackingnumber */
+            trackingNumber?: string | null;
+            /** Warehouseid */
+            warehouseId?: string | null;
+        };
+        /**
+         * ReturnHistoryRecord
+         * @description One RMA and the items it covers -- decision D6, in the response shape.
+         *
+         *     Items nest inside their record for the same reason they do on `/api/cases`:
+         *     a flat pair of lists leaves the client to join them, and "label LBL-1 belongs
+         *     to RMA-2" must not be something a consumer can get wrong.
+         */
+        ReturnHistoryRecord: {
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["ReturnHistoryItem"][];
+            /** Returnlocation */
+            returnLocation?: string | null;
+            /** Returnrecordid */
+            returnRecordId: string;
+            /** Returnreference */
+            returnReference?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Trackingreference */
+            trackingReference?: string | null;
         };
         /** ReturnItemInput */
         ReturnItemInput: {
@@ -6414,6 +6670,27 @@ export interface components {
          * @enum {string}
          */
         SyncMode: "FULL" | "INCREMENTAL" | "ON_DEMAND";
+        /**
+         * SyncRunRequester
+         * @description The agent turn a targeted run was performed for. Absent on a scheduled run.
+         *
+         *     Anchor *field ids*, not anchor values -- see `SyncOrigin` for why a run list
+         *     is not somewhere to accumulate order numbers.
+         */
+        SyncRunRequester: {
+            /** Agentid */
+            agentId: string;
+            /** Anchorfieldids */
+            anchorFieldIds: string[];
+            /** Clientturnid */
+            clientTurnId: string;
+            /** Conversationid */
+            conversationId: string;
+            /** Entityid */
+            entityId: string;
+            /** Stronganchorid */
+            strongAnchorId: string;
+        };
         /** TimelineEvent */
         TimelineEvent: {
             /** Actorid */
@@ -7639,6 +7916,102 @@ export interface operations {
             };
         };
     };
+    list_runs_api_graph_sync_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                mode?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_GraphSyncRunView__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_run_api_graph_sync_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GraphSyncRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_GraphSyncRunView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_run_api_graph_sync_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_GraphSyncRunView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_principal_api_principal_get: {
         parameters: {
             query?: never;
@@ -7655,6 +8028,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_PrincipalView_"];
+                };
+            };
+        };
+    };
+    read_return_history_api_return_history_get: {
+        parameters: {
+            query?: {
+                /** @description Every return raised against this order number, by anyone. */
+                orderReference?: string | null;
+                /** @description Branch account, with customerId: every return this customer has raised. */
+                accountId?: string | null;
+                /** @description ERP customer number, with accountId. */
+                customerId?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ReturnHistory_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
