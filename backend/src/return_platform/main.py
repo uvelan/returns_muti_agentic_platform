@@ -13,6 +13,7 @@ from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
 from return_platform.ai.interception.store import SystemStoreInterceptionStore
+from return_platform.ai.providers.replay_store import MongoReplayStore
 from return_platform.ai_gateway.configuration import (
     build_loaded_ai_gateway_configuration,
     load_ai_gateway_configuration,
@@ -592,8 +593,24 @@ async def lifespan(
             else None
         )
         app.state.ai_interception_store = interception_store
+        # Recorded provider answers, when `ai_replay_mode` asks for them. Held
+        # on app state so a live configuration release rebuilds routes with the
+        # same store rather than silently dropping replay -- the mistake the
+        # interception store had until it was carried through `refresh` too.
+        replay_store = (
+            MongoReplayStore(resources.mongo, settings.mongo_database)
+            if resources.mongo is not None
+            else None
+        )
+        if replay_store is not None:
+            await replay_store.ensure_indexes()
+        app.state.ai_replay_store = replay_store
         app.state.ai_gateway_route_pool = AIRoutePool(
-            build_routes(settings, interception_store=interception_store),
+            build_routes(
+                settings,
+                interception_store=interception_store,
+                replay_store=replay_store,
+            ),
             ai_gateway_configuration.configuration,
         )
         dynamic_agent_enabled = dynamic_order_agent_enabled(settings)

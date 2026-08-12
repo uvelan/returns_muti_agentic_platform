@@ -180,3 +180,52 @@ async def test_an_unwritable_store_does_not_fail_a_good_answer() -> None:
 
     assert (await provider.generate(_request())).text == '{"n":1}'
     assert real.calls == 1
+
+
+# ---------------------------------------------------------------------------
+# Wiring: a mode nobody passes a store to is a feature that does not exist
+# ---------------------------------------------------------------------------
+
+
+def _routes(mode: str, *, with_store: bool) -> list[Any]:
+    from return_platform.ai.routing.routes import build_routes
+    from return_platform.configuration.settings import Settings
+
+    settings = Settings(environment="test", ai_provider_order="MANUAL", ai_replay_mode=mode)
+    return list(build_routes(settings, replay_store=_Store() if with_store else None))
+
+
+def test_replay_wraps_every_route_when_a_store_is_supplied() -> None:
+    """Every route, not a chosen one.
+
+    A suite is only reproducible if nothing in it reaches a network; one
+    unwrapped route is enough to make a run cost money and drift from the last.
+    """
+    for mode in ("REPLAY", "STRICT"):
+        wrapped = _routes(mode, with_store=True)
+        assert wrapped, f"{mode} built no routes"
+        assert all(isinstance(route.provider, ReplayProvider) for route in wrapped)
+
+
+def test_off_leaves_routes_untouched() -> None:
+    assert not any(
+        isinstance(route.provider, ReplayProvider) for route in _routes("OFF", with_store=True)
+    )
+
+
+def test_a_mode_without_a_store_is_a_no_op_rather_than_an_error() -> None:
+    """`ai_replay_mode` must not break a process that has no platform Mongo.
+
+    Refusing to build routes would make the setting unusable in exactly the
+    bare-process cases replay is most wanted in.
+    """
+    assert not any(
+        isinstance(route.provider, ReplayProvider) for route in _routes("REPLAY", with_store=False)
+    )
+
+
+def test_a_wrapped_route_keeps_the_underlying_identity() -> None:
+    route = _routes("REPLAY", with_store=True)[0]
+
+    assert route.provider.name == "MANUAL"
+    assert route.provider.model == "manual-human-v1"

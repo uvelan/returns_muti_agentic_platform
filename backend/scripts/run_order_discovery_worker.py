@@ -9,6 +9,7 @@ from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
 from return_platform.ai.interception.store import SystemStoreInterceptionStore
+from return_platform.ai.providers.replay_store import MongoReplayStore
 from return_platform.ai_gateway.routing import AIRoutePool, build_routes
 from return_platform.bootstrap.system_store import bootstrap_system_store
 from return_platform.configuration.runtime_loader import resolve_process_configuration
@@ -54,10 +55,13 @@ async def _run() -> None:
         # to the durable interception store here rather than to
         # ManualFileProvider's `.manual_llm/` directory, which would be relative
         # to whatever CWD the worker container happened to start in.
+        replay_store = MongoReplayStore(platform_mongo, settings.mongo_database)
+        await replay_store.ensure_indexes()
         route_pool = AIRoutePool(
             build_routes(
                 settings,
                 interception_store=SystemStoreInterceptionStore(system_store, envelope_encryptor),
+                replay_store=replay_store,
             ),
             runtime.ai_gateway_configuration.configuration,
         )
@@ -76,9 +80,7 @@ async def _run() -> None:
             # records its receipt -- it just never appears on the sync screen,
             # which is how an agent-initiated write to the graph stayed
             # invisible to operators.
-            targeted_sync_runs=MongoTargetedSyncRunLedger(
-                platform_mongo, settings.mongo_database
-            ),
+            targeted_sync_runs=MongoTargetedSyncRunLedger(platform_mongo, settings.mongo_database),
         )
         schema = load_active_schema(settings.dynamic_knowledge_schema_path)
         activities = OrderDiscoveryActivities(coordinator=coordinator, schema=schema)

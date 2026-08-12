@@ -59,7 +59,7 @@ def _documents(path: Path) -> list[dict[str, Any]]:
     raise SystemExit(f"{path.name}: expected an object or an array of objects")
 
 
-async def _run(directory: Path) -> None:
+async def _run(files: list[Path], directory: Path) -> None:
     settings, _ = await resolve_runtime_settings_from_vault(
         Settings(), resolve_ai_credentials=False
     )
@@ -77,10 +77,6 @@ async def _run(directory: Path) -> None:
         for source in schema.sources.values()
         if source.object_ref.get("database") == settings.source_mongo_database
     }
-
-    files = sorted(directory.glob("*.json"))
-    if not files:
-        raise SystemExit(f"no .json files in {directory}")
 
     try:
         for path in files:
@@ -110,7 +106,12 @@ def main() -> None:
     directory = Path(sys.argv[1])
     if not directory.is_dir():
         raise SystemExit(f"not a directory: {directory}")
-    asyncio.run(_run(directory))
+    # Globbed before the async boundary: a blocking filesystem walk inside the
+    # event loop stalls every other task sharing it.
+    files = sorted(directory.glob("*.json"))
+    if not files:
+        raise SystemExit(f"no .json files in {directory}")
+    asyncio.run(_run(files, directory))
 
 
 if __name__ == "__main__":

@@ -199,6 +199,7 @@ class RuntimeConfigurationActivator:
                 next_routes = build_routes(
                     activated_settings,
                     interception_store=getattr(self._app_state, "ai_interception_store", None),
+                    replay_store=getattr(self._app_state, "ai_replay_store", None),
                 )
                 current_route_pool = getattr(
                     self._app_state,
