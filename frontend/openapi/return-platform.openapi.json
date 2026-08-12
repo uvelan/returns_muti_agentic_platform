@@ -1367,6 +1367,39 @@
         "title": "APIResponse[BayAssessment]",
         "type": "object"
       },
+      "APIResponse_CaseDetail_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CaseDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[CaseDetail]",
+        "type": "object"
+      },
       "APIResponse_ConversationTranscript_": {
         "additionalProperties": false,
         "properties": {
@@ -2430,6 +2463,43 @@
           "meta"
         ],
         "title": "APIResponse[list[AuditLog]]",
+        "type": "object"
+      },
+      "APIResponse_list_CaseSummary__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CaseSummary"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[list[CaseSummary]]",
         "type": "object"
       },
       "APIResponse_list_ConversationSummary__": {
@@ -4126,6 +4196,452 @@
         "title": "Cardinality",
         "type": "string"
       },
+      "CaseDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "case": {
+            "$ref": "#/components/schemas/CaseView"
+          },
+          "facts": {
+            "items": {
+              "$ref": "#/components/schemas/CaseFactView"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
+          "returnRecords": {
+            "items": {
+              "$ref": "#/components/schemas/CaseReturnRecord"
+            },
+            "title": "Returnrecords",
+            "type": "array"
+          },
+          "unassignedItems": {
+            "items": {
+              "$ref": "#/components/schemas/CaseReturnItem"
+            },
+            "title": "Unassigneditems",
+            "type": "array"
+          }
+        },
+        "required": [
+          "case",
+          "returnRecords",
+          "unassignedItems",
+          "facts"
+        ],
+        "title": "CaseDetail",
+        "type": "object"
+      },
+      "CaseFactView": {
+        "additionalProperties": false,
+        "description": "One observation about a case, with how it was obtained.\n\n**Append-only.** Bay, Support, Fulfillment and Channel A all write facts\nconcurrently; a single mutable `facts` sub-document would make the last\nwriter win and silently drop what the others learned. Current state is a\nprojection over this log (`latest_case_facts`), so provenance is never\ndestroyed to record a newer value -- a correction supersedes rather than\noverwrites.",
+        "properties": {
+          "acquisitionMethod": {
+            "$ref": "#/components/schemas/FactAcquisition"
+          },
+          "agentId": {
+            "title": "Agentid",
+            "type": "string"
+          },
+          "caseId": {
+            "title": "Caseid",
+            "type": "string"
+          },
+          "channel": {
+            "$ref": "#/components/schemas/FactChannel"
+          },
+          "correlationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlationid"
+          },
+          "factId": {
+            "title": "Factid",
+            "type": "string"
+          },
+          "factName": {
+            "title": "Factname",
+            "type": "string"
+          },
+          "observedAt": {
+            "format": "date-time",
+            "title": "Observedat",
+            "type": "string"
+          },
+          "recordedAt": {
+            "format": "date-time",
+            "title": "Recordedat",
+            "type": "string"
+          },
+          "sourcePath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcepath"
+          },
+          "sourceSystem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcesystem"
+          },
+          "supersedesFactId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedesfactid"
+          },
+          "turnId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turnid"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "factId",
+          "caseId",
+          "factName",
+          "agentId",
+          "channel",
+          "acquisitionMethod",
+          "observedAt",
+          "recordedAt"
+        ],
+        "title": "CaseFactView",
+        "type": "object"
+      },
+      "CaseReturnItem": {
+        "additionalProperties": false,
+        "properties": {
+          "condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "orderLineReference": {
+            "title": "Orderlinereference",
+            "type": "string"
+          },
+          "packageReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Packagereference"
+          },
+          "productReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productreference"
+          },
+          "quantity": {
+            "default": 1,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "returnItemId": {
+            "title": "Returnitemid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "returnItemId",
+          "orderLineReference"
+        ],
+        "title": "CaseReturnItem",
+        "type": "object"
+      },
+      "CaseReturnRecord": {
+        "additionalProperties": false,
+        "description": "One RMA and everything that belongs to it rather than to the case.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CaseReturnItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "record": {
+            "$ref": "#/components/schemas/ReturnRecordView"
+          }
+        },
+        "required": [
+          "record",
+          "items"
+        ],
+        "title": "CaseReturnRecord",
+        "type": "object"
+      },
+      "CaseStatus": {
+        "description": "Where a return has got to, as an associate would describe it.\n\nDeliberately not `ReturnStatus`, which is the *session's* execution status\n(QUEUED, RUNNING, INTERCEPTION_PENDING). A case outlives any one execution\nand can sit for days in a state no execution status can express -- the\nassociate is not waiting on a queue, they are waiting on Support.",
+        "enum": [
+          "GATHERING_INFO",
+          "AWAITING_BAY",
+          "AWAITING_SUPPORT",
+          "RMA_RECEIVED",
+          "IN_TRANSIT",
+          "CLOSED",
+          "CANCELLED"
+        ],
+        "title": "CaseStatus",
+        "type": "string"
+      },
+      "CaseSummary": {
+        "additionalProperties": false,
+        "description": "A row in the associate's case list.\n\nCarries the counts rather than the records: a list of twenty cases must not\npull every RMA and item to render twenty lines.",
+        "properties": {
+          "caseId": {
+            "title": "Caseid",
+            "type": "string"
+          },
+          "channelAConversationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channelaconversationid"
+          },
+          "confirmedOrderReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmedorderreference"
+          },
+          "returnRecordCount": {
+            "title": "Returnrecordcount",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updatedAt": {
+            "title": "Updatedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "caseId",
+          "status",
+          "returnRecordCount",
+          "updatedAt"
+        ],
+        "title": "CaseSummary",
+        "type": "object"
+      },
+      "CaseView": {
+        "additionalProperties": false,
+        "description": "One return, owning every fact about it.\n\nThe two channel pointers are what make Channel B -> Channel A possible at\nall: today the only link between a support outcome and the associate's\nconversation is the browser matching an order reference client-side.",
+        "properties": {
+          "branchId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branchid"
+          },
+          "caseId": {
+            "title": "Caseid",
+            "type": "string"
+          },
+          "channelAConversationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channelaconversationid"
+          },
+          "channelBWorkItemId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channelbworkitemid"
+          },
+          "configurationReleaseId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configurationreleaseid"
+          },
+          "confirmationKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmationkey"
+          },
+          "confirmedOrderReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmedorderreference"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "graphGenerationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graphgenerationid"
+          },
+          "principalId": {
+            "title": "Principalid",
+            "type": "string"
+          },
+          "sessionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessionid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CaseStatus",
+            "default": "GATHERING_INFO"
+          },
+          "tenantId": {
+            "title": "Tenantid",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          },
+          "version": {
+            "default": 0,
+            "title": "Version",
+            "type": "integer"
+          },
+          "workflowId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflowid"
+          }
+        },
+        "required": [
+          "caseId",
+          "tenantId",
+          "principalId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "CaseView",
+        "type": "object"
+      },
       "ChangeCardinality": {
         "additionalProperties": false,
         "properties": {
@@ -5263,6 +5779,27 @@
         ],
         "title": "EvidenceReference",
         "type": "object"
+      },
+      "FactAcquisition": {
+        "description": "How a fact came to be known -- the part of provenance that decides trust.\n\n`STATED` is what someone typed and nothing has verified. `OBSERVED` came\nfrom a source system. `DERIVED` was computed from other facts. `INFERRED` is\na model's suggestion. An agent deciding whether to re-ask needs this: a\nSTATED order number that found nothing is worth re-asking; an OBSERVED one\nis not.",
+        "enum": [
+          "STATED",
+          "OBSERVED",
+          "DERIVED",
+          "INFERRED"
+        ],
+        "title": "FactAcquisition",
+        "type": "string"
+      },
+      "FactChannel": {
+        "description": "Which conversation a fact arrived on, or that no conversation did.\n\n`SYSTEM` covers facts derived from a source system or computed by an agent\nwithout anyone being asked -- a graph lookup, a sync result, a policy\ndecision. Recording that as \"channel A\" would make provenance a lie.",
+        "enum": [
+          "CHANNEL_A",
+          "CHANNEL_B",
+          "SYSTEM"
+        ],
+        "title": "FactChannel",
+        "type": "string"
       },
       "FallbackStrategy": {
         "enum": [
@@ -7238,6 +7775,114 @@
           "reasonCode"
         ],
         "title": "ReturnItemInput",
+        "type": "object"
+      },
+      "ReturnRecordView": {
+        "additionalProperties": false,
+        "description": "One RMA, and everything that belongs to that RMA rather than to the case.\n\nFirst-class because one RMA covers N items and one case can carry N RMAs:\na multi-item return can produce several RMAs with different labels and\ndifferent return locations, and putting these on the case (one each) or on\nthe item (one per item) can express neither.",
+        "properties": {
+          "caseId": {
+            "title": "Caseid",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "labelReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labelreference"
+          },
+          "returnLocation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnlocation"
+          },
+          "returnRecordId": {
+            "title": "Returnrecordid",
+            "type": "string"
+          },
+          "returnReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnreference"
+          },
+          "shippingInstructionReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippinginstructionreference"
+          },
+          "sourceSystem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcesystem"
+          },
+          "status": {
+            "default": "DRAFT",
+            "title": "Status",
+            "type": "string"
+          },
+          "trackingReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trackingreference"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          },
+          "version": {
+            "default": 0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "returnRecordId",
+          "caseId",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "ReturnRecordView",
         "type": "object"
       },
       "ReturnSessionView": {
@@ -10546,6 +11191,71 @@
         "summary": "List Tasks",
         "tags": [
           "AI Control Center"
+        ]
+      }
+    },
+    "/api/cases": {
+      "get": {
+        "description": "The caller's own cases, newest first.\n\nScoped by tenant and principal in the query, for the same reason the\nconversation history is: a case carries the customer's order and whatever\nthe associate typed about them, and \"list every case\" is not a read anyone\nshould be able to make by accident.",
+        "operationId": "list_cases_api_cases_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_CaseSummary__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Cases",
+        "tags": [
+          "Cases"
+        ]
+      }
+    },
+    "/api/cases/{case_id}": {
+      "get": {
+        "description": "One case, with each RMA carrying the items it covers.",
+        "operationId": "get_case_api_cases__case_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_CaseDetail_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Case",
+        "tags": [
+          "Cases"
         ]
       }
     },

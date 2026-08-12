@@ -254,6 +254,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Cases
+         * @description The caller's own cases, newest first.
+         *
+         *     Scoped by tenant and principal in the query, for the same reason the
+         *     conversation history is: a case carries the customer's order and whatever
+         *     the associate typed about them, and "list every case" is not a read anyone
+         *     should be able to make by accident.
+         */
+        get: operations["list_cases_api_cases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cases/{case_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Case
+         * @description One case, with each RMA carrying the items it covers.
+         */
+        get: operations["get_case_api_cases__case_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/config/audit": {
         parameters: {
             query?: never;
@@ -2642,6 +2687,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[CaseDetail] */
+        APIResponse_CaseDetail_: {
+            data?: components["schemas"]["CaseDetail"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[ConversationTranscript] */
         APIResponse_ConversationTranscript_: {
             data?: components["schemas"]["ConversationTranscript"] | null;
@@ -2847,6 +2898,13 @@ export interface components {
         APIResponse_list_AuditLog__: {
             /** Data */
             data?: components["schemas"]["AuditLog"][] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[list[CaseSummary]] */
+        APIResponse_list_CaseSummary__: {
+            /** Data */
+            data?: components["schemas"]["CaseSummary"][] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -3421,6 +3479,173 @@ export interface components {
          * @enum {string}
          */
         Cardinality: "ONE_TO_ONE" | "ONE_TO_MANY" | "MANY_TO_ONE" | "MANY_TO_MANY";
+        /** CaseDetail */
+        CaseDetail: {
+            case: components["schemas"]["CaseView"];
+            /** Facts */
+            facts: components["schemas"]["CaseFactView"][];
+            /** Returnrecords */
+            returnRecords: components["schemas"]["CaseReturnRecord"][];
+            /** Unassigneditems */
+            unassignedItems: components["schemas"]["CaseReturnItem"][];
+        };
+        /**
+         * CaseFactView
+         * @description One observation about a case, with how it was obtained.
+         *
+         *     **Append-only.** Bay, Support, Fulfillment and Channel A all write facts
+         *     concurrently; a single mutable `facts` sub-document would make the last
+         *     writer win and silently drop what the others learned. Current state is a
+         *     projection over this log (`latest_case_facts`), so provenance is never
+         *     destroyed to record a newer value -- a correction supersedes rather than
+         *     overwrites.
+         */
+        CaseFactView: {
+            acquisitionMethod: components["schemas"]["FactAcquisition"];
+            /** Agentid */
+            agentId: string;
+            /** Caseid */
+            caseId: string;
+            channel: components["schemas"]["FactChannel"];
+            /** Correlationid */
+            correlationId?: string | null;
+            /** Factid */
+            factId: string;
+            /** Factname */
+            factName: string;
+            /**
+             * Observedat
+             * Format: date-time
+             */
+            observedAt: string;
+            /**
+             * Recordedat
+             * Format: date-time
+             */
+            recordedAt: string;
+            /** Sourcepath */
+            sourcePath?: string | null;
+            /** Sourcesystem */
+            sourceSystem?: string | null;
+            /** Supersedesfactid */
+            supersedesFactId?: string | null;
+            /** Turnid */
+            turnId?: string | null;
+            /** Value */
+            value?: unknown;
+        };
+        /** CaseReturnItem */
+        CaseReturnItem: {
+            /** Condition */
+            condition?: string | null;
+            /** Orderlinereference */
+            orderLineReference: string;
+            /** Packagereference */
+            packageReference?: string | null;
+            /** Productreference */
+            productReference?: string | null;
+            /**
+             * Quantity
+             * @default 1
+             */
+            quantity: number;
+            /** Reason */
+            reason?: string | null;
+            /** Returnitemid */
+            returnItemId: string;
+        };
+        /**
+         * CaseReturnRecord
+         * @description One RMA and everything that belongs to it rather than to the case.
+         */
+        CaseReturnRecord: {
+            /** Items */
+            items: components["schemas"]["CaseReturnItem"][];
+            record: components["schemas"]["ReturnRecordView"];
+        };
+        /**
+         * CaseStatus
+         * @description Where a return has got to, as an associate would describe it.
+         *
+         *     Deliberately not `ReturnStatus`, which is the *session's* execution status
+         *     (QUEUED, RUNNING, INTERCEPTION_PENDING). A case outlives any one execution
+         *     and can sit for days in a state no execution status can express -- the
+         *     associate is not waiting on a queue, they are waiting on Support.
+         * @enum {string}
+         */
+        CaseStatus: "GATHERING_INFO" | "AWAITING_BAY" | "AWAITING_SUPPORT" | "RMA_RECEIVED" | "IN_TRANSIT" | "CLOSED" | "CANCELLED";
+        /**
+         * CaseSummary
+         * @description A row in the associate's case list.
+         *
+         *     Carries the counts rather than the records: a list of twenty cases must not
+         *     pull every RMA and item to render twenty lines.
+         */
+        CaseSummary: {
+            /** Caseid */
+            caseId: string;
+            /** Channelaconversationid */
+            channelAConversationId?: string | null;
+            /** Confirmedorderreference */
+            confirmedOrderReference?: string | null;
+            /** Returnrecordcount */
+            returnRecordCount: number;
+            /** Status */
+            status: string;
+            /** Updatedat */
+            updatedAt: string;
+        };
+        /**
+         * CaseView
+         * @description One return, owning every fact about it.
+         *
+         *     The two channel pointers are what make Channel B -> Channel A possible at
+         *     all: today the only link between a support outcome and the associate's
+         *     conversation is the browser matching an order reference client-side.
+         */
+        CaseView: {
+            /** Branchid */
+            branchId?: string | null;
+            /** Caseid */
+            caseId: string;
+            /** Channelaconversationid */
+            channelAConversationId?: string | null;
+            /** Channelbworkitemid */
+            channelBWorkItemId?: string | null;
+            /** Configurationreleaseid */
+            configurationReleaseId?: string | null;
+            /** Confirmationkey */
+            confirmationKey?: string | null;
+            /** Confirmedorderreference */
+            confirmedOrderReference?: string | null;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Graphgenerationid */
+            graphGenerationId?: string | null;
+            /** Principalid */
+            principalId: string;
+            /** Sessionid */
+            sessionId?: string | null;
+            /** @default GATHERING_INFO */
+            status: components["schemas"]["CaseStatus"];
+            /** Tenantid */
+            tenantId: string;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+            /**
+             * Version
+             * @default 0
+             */
+            version: number;
+            /** Workflowid */
+            workflowId?: string | null;
+        };
         /** ChangeCardinality */
         ChangeCardinality: {
             cardinality: components["schemas"]["Cardinality"];
@@ -3873,6 +4098,28 @@ export interface components {
             /** Result Path */
             result_path: string[];
         };
+        /**
+         * FactAcquisition
+         * @description How a fact came to be known -- the part of provenance that decides trust.
+         *
+         *     `STATED` is what someone typed and nothing has verified. `OBSERVED` came
+         *     from a source system. `DERIVED` was computed from other facts. `INFERRED` is
+         *     a model's suggestion. An agent deciding whether to re-ask needs this: a
+         *     STATED order number that found nothing is worth re-asking; an OBSERVED one
+         *     is not.
+         * @enum {string}
+         */
+        FactAcquisition: "STATED" | "OBSERVED" | "DERIVED" | "INFERRED";
+        /**
+         * FactChannel
+         * @description Which conversation a fact arrived on, or that no conversation did.
+         *
+         *     `SYSTEM` covers facts derived from a source system or computed by an agent
+         *     without anyone being asked -- a graph lookup, a sync result, a policy
+         *     decision. Recording that as "channel A" would make provenance a lie.
+         * @enum {string}
+         */
+        FactChannel: "CHANNEL_A" | "CHANNEL_B" | "SYSTEM";
         /**
          * FallbackStrategy
          * @enum {string}
@@ -4596,6 +4843,53 @@ export interface components {
             requestedQuantity: number;
             /** Shippedquantity */
             shippedQuantity?: number | null;
+        };
+        /**
+         * ReturnRecordView
+         * @description One RMA, and everything that belongs to that RMA rather than to the case.
+         *
+         *     First-class because one RMA covers N items and one case can carry N RMAs:
+         *     a multi-item return can produce several RMAs with different labels and
+         *     different return locations, and putting these on the case (one each) or on
+         *     the item (one per item) can express neither.
+         */
+        ReturnRecordView: {
+            /** Caseid */
+            caseId: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Labelreference */
+            labelReference?: string | null;
+            /** Returnlocation */
+            returnLocation?: string | null;
+            /** Returnrecordid */
+            returnRecordId: string;
+            /** Returnreference */
+            returnReference?: string | null;
+            /** Shippinginstructionreference */
+            shippingInstructionReference?: string | null;
+            /** Sourcesystem */
+            sourceSystem?: string | null;
+            /**
+             * Status
+             * @default DRAFT
+             */
+            status: string;
+            /** Trackingreference */
+            trackingReference?: string | null;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+            /**
+             * Version
+             * @default 0
+             */
+            version: number;
         };
         /** ReturnSessionView */
         ReturnSessionView: {
@@ -5947,6 +6241,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_list_AITaskView__"];
+                };
+            };
+        };
+    };
+    list_cases_api_cases_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_CaseSummary__"];
+                };
+            };
+        };
+    };
+    get_case_api_cases__case_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_CaseDetail_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

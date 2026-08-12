@@ -232,14 +232,24 @@ class OperationalRepository:
         )
         await self.return_items.create_index("returnItemId", unique=True)
         # Items gained a case and a return-record association: one RMA covers N
-        # items, so the item must say which RMA it belongs to. Sparse while
-        # existing session-scoped items predate both.
-        await self.return_items.create_index(
-            [("caseId", ASCENDING), ("orderLineId", ASCENDING)], sparse=True
-        )
+        # items, so the item must say which RMA it belongs to.
         await self.return_items.create_index("returnRecordId", sparse=True)
+        # Partial, where it used to be plainly unique. The rule it encodes --
+        # one item per (session, line) -- only means anything for an item that
+        # belongs to a session, and case-scoped items have no session. Left
+        # unconditional, every case-scoped item indexed as
+        # `{sessionId: null, orderLineId: "L1"}` and the second case returning
+        # line L1 collided with the first.
         await self.return_items.create_index(
-            [("sessionId", ASCENDING), ("orderLineId", ASCENDING)], unique=True
+            [("sessionId", ASCENDING), ("orderLineId", ASCENDING)],
+            unique=True,
+            partialFilterExpression={"sessionId": {"$type": "string"}},
+        )
+        # The same rule for the case-scoped half: one item per (case, line).
+        await self.return_items.create_index(
+            [("caseId", ASCENDING), ("orderLineId", ASCENDING)],
+            unique=True,
+            partialFilterExpression={"caseId": {"$type": "string"}},
         )
         await self.handling_units.create_index("handlingUnitId", unique=True)
         await self.handling_units.create_index(
@@ -908,6 +918,61 @@ class OperationalRepository:
                 raise KeyError(return_record_id)
             raise ConcurrencyConflictError(return_record_id)
         return cast(dict[str, Any], document)
+
+    async def create_case_return_item(
+        self,
+        *,
+        return_item_id: str,
+        case_id: str,
+        return_record_id: str | None,
+        order_line_reference: str,
+        product_reference: str | None = None,
+        quantity: int = 1,
+        reason: str | None = None,
+        condition: str | None = None,
+        package_reference: str | None = None,
+    ) -> dict[str, Any]:
+        """An item on a case, optionally already assigned to a return record.
+
+        `return_record_id` is nullable because the two are learned at different
+        times: the associate names the lines they are returning before Support
+        has said how many RMAs those lines will become. Forcing the association
+        up front would mean inventing a record to hold them.
+
+        Written into `operational_return_items` rather than a second item
+        collection. That collection is already the item list, already uniquely
+        indexed, and already read by three call sites; a parallel one would be
+        the duplication this programme is removing.
+        """
+        now = utc_now()
+        document = {
+            "returnItemId": return_item_id,
+            "caseId": case_id,
+            "returnRecordId": return_record_id,
+            "orderLineId": order_line_reference,
+            "productReference": product_reference,
+            "quantity": quantity,
+            "reason": reason,
+            "condition": condition,
+            "packageReference": package_reference,
+            "version": 0,
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        await self.return_items.insert_one(dict(document))
+        return document
+
+    async def list_case_return_items(self, case_id: str) -> list[dict[str, Any]]:
+        cursor = self.return_items.find({"caseId": case_id}).sort("createdAt", ASCENDING)
+        return [cast(dict[str, Any], document) async for document in cursor]
+
+    async def assign_return_item_to_record(
+        self, return_item_id: str, *, return_record_id: str, expected_version: int
+    ) -> dict[str, Any]:
+        """Attach an item to the RMA that covers it, once Support has said which."""
+        return await self.update_return_item(
+            return_item_id, {"returnRecordId": return_record_id}, expected_version=expected_version
+        )
 
     async def list_handling_units(self, session_id: str) -> list[dict[str, Any]]:
         cursor = self.handling_units.find({"sessionId": session_id}).sort("sequence", ASCENDING)

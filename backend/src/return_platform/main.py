@@ -24,6 +24,7 @@ from return_platform.api.canonical_ai import router as canonical_ai_router
 from return_platform.api.canonical_principal import router as canonical_principal_router
 from return_platform.api.canonical_returns import router as canonical_returns_router
 from return_platform.api.canonical_session import router as canonical_session_router
+from return_platform.api.cases import router as cases_router
 from return_platform.api.dependencies import router as dependencies_router
 from return_platform.api.dependency_probes import (
     probe_mongodb,
@@ -1042,6 +1043,7 @@ def create_app(
     # Configuration screen's Agents section was a 404 with a green suite.
     fastapi_app.include_router(agent_configuration_router)
     fastapi_app.include_router(canonical_returns_router)
+    fastapi_app.include_router(cases_router)
     fastapi_app.include_router(canonical_ai_router)
     fastapi_app.include_router(canonical_session_router)
     fastapi_app.include_router(canonical_principal_router)

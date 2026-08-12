@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { skipToken, useMutation, useQuery } from "@tanstack/react-query";
 import {
   Bot,
   CircleCheck,
@@ -18,6 +18,7 @@ import {
   type ConversationSummary,
   type ResponseStatement,
 } from "../../api/orderAgent";
+import { casesApi, type CaseReturnRecord } from "../../api/cases";
 import { returnsApi, type ReturnSessionView } from "../../api/returnsDomain";
 import { useCapabilities } from "../../hooks/capabilityContext";
 
@@ -308,16 +309,35 @@ export function ReturnCopilotPage() {
 
   const orderReference = resolvedOrderReference(candidates);
 
-  // The return session for the resolved order, if one has been raised. The
-  // copilot does not create it -- the later milestones report on work other
-  // agents did, so this is a read that stays null until they have.
+  // The case, once the associate has confirmed an order.
+  //
+  // **This replaces a client-side join.** The copilot used to fetch every
+  // return session and match `session.orderReference` against the top search
+  // candidate -- so two open orders sharing a reference showed the wrong one,
+  // and closing the tab lost the link entirely. `case_id` comes back on the
+  // turn that confirmed, so there is nothing left to guess.
+  const caseId = turn?.case_id ?? null;
+  const caseDetail = useQuery({
+    queryKey: ["cases", caseId],
+    // `skipToken` rather than `enabled`, so the null case is narrowed by the
+    // type system instead of asserted away: with `enabled` the closure still
+    // sees `string | null` and needs a cast that says nothing the compiler can
+    // check.
+    queryFn: caseId === null ? skipToken : () => casesApi.read(caseId),
+  });
+
+  // The return session still backs the later milestones, which report on work
+  // other agents did and have no case-level equivalent yet. Read by the case's
+  // own order reference rather than by a search candidate, so it is at least
+  // anchored to something the associate confirmed.
+  const confirmedOrder = caseDetail.data?.case.confirmedOrderReference ?? orderReference;
   const sessions = useQuery({
     queryKey: ["returns", "list"],
     queryFn: returnsApi.list,
-    enabled: orderReference !== null,
+    enabled: confirmedOrder !== null,
   });
   const session =
-    (sessions.data ?? []).find((candidate) => candidate.orderReference === orderReference) ?? null;
+    (sessions.data ?? []).find((candidate) => candidate.orderReference === confirmedOrder) ?? null;
 
   if (!can("returns.session.read")) {
     return <p className="text-sm text-on-surface-variant">You do not have access to returns.</p>;
@@ -353,7 +373,11 @@ export function ReturnCopilotPage() {
         onNewReturn={startNewReturn}
         onOpen={(id) => { setShowHistory(false); open.mutate(id); }}
       />
-      <ProgressPane context={{ turn, candidates, session }} anchors={anchors(history)} />
+      <ProgressPane
+        context={{ turn, candidates, session }}
+        anchors={anchors(history)}
+        returnRecords={caseDetail.data?.returnRecords ?? []}
+      />
       <ContextPane turn={turn} rows={candidates} />
     </div>
   );
@@ -676,12 +700,71 @@ function Typing() {
   );
 }
 
+/**
+ * The RMAs raised for this case, each with what belongs to it.
+ *
+ * One panel per record, not one panel with the fields of the "current" RMA. A
+ * multi-item return can produce two RMAs with different labels going to
+ * different locations, and a single-valued panel has to pick one -- which would
+ * send half the shipment to the wrong dock and look correct doing it.
+ */
+function ReturnRecordsPanel({ records }: { records: readonly CaseReturnRecord[] }) {
+  if (records.length === 0) return null;
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      {records.map(({ record, items }) => (
+        <div
+          key={record.returnRecordId}
+          className="rounded border border-outline-variant bg-surface-container-low p-2"
+        >
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="truncate text-xs font-semibold text-on-surface">
+              {record.returnReference ?? "RMA pending"}
+            </span>
+            <span className="shrink-0 text-[11px] text-outline">{record.status}</span>
+          </div>
+          <dl className="mt-1 flex flex-col gap-0.5">
+            {(
+              [
+                ["Tracking", record.trackingReference],
+                ["Label", record.labelReference],
+                ["Return to", record.returnLocation],
+                ["Pickup", record.shippingInstructionReference],
+              ] as const
+            ).flatMap(([label, value]) =>
+              value == null || value === ""
+                ? []
+                : [
+                    <div key={label} className="flex gap-2 text-[11px]">
+                      <dt className="shrink-0 text-outline">{label}</dt>
+                      <dd className="min-w-0 truncate text-on-surface" title={value}>
+                        {value}
+                      </dd>
+                    </div>,
+                  ],
+            )}
+          </dl>
+          {items.length > 0 ? (
+            // Which lines this RMA covers. Without it, two RMAs on one case are
+            // indistinguishable to whoever has to pack the boxes.
+            <p className="mt-1 truncate text-[11px] text-outline">
+              Covers {items.map((item) => item.orderLineReference).join(", ")}
+            </p>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ProgressPane({
   context,
   anchors: supplied,
+  returnRecords,
 }: {
   context: ProgressContext;
   anchors: readonly ResponseStatement[];
+  returnRecords: readonly CaseReturnRecord[];
 }) {
   // The furthest milestone reached, not the count of reached ones. A later
   // milestone can report before an earlier one does -- a warehouse scan can
@@ -728,7 +811,7 @@ function ProgressPane({
                   </span>
                   <span className="block text-xs text-outline">{milestone.agent}</span>
 
-                  {output.length > 0 ? (
+                  {output.length > 0 && !(milestone.label === "Case created" && returnRecords.length > 0) ? (
                     <dl className="mt-2 flex flex-col gap-1">
                       {output.map(([label, value]) => (
                         <div key={label} className="flex gap-2 text-xs">
@@ -739,6 +822,18 @@ function ProgressPane({
                         </div>
                       ))}
                     </dl>
+                  ) : null}
+
+                  {/*
+                    Under "Case created", because that is the milestone these
+                    belong to. Rendered instead of the milestone's own scalar
+                    RMA/Tracking pair whenever records exist: those come from
+                    `ReturnSessionView`, which can hold one of each, and showing
+                    both would put a single-valued summary next to the list that
+                    contradicts it.
+                  */}
+                  {milestone.label === "Case created" ? (
+                    <ReturnRecordsPanel records={returnRecords} />
                   ) : null}
 
                   {index === 0 && supplied.length > 0 ? (

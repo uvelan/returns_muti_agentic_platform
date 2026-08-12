@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   listConversations: vi.fn(),
   readTranscript: vi.fn(),
   can: vi.fn(),
+  readCase: vi.fn(),
 }));
 
 vi.mock("../../api/orderAgent", async (importOriginal) => ({
@@ -36,6 +37,10 @@ vi.mock("../../api/orderAgent", async (importOriginal) => ({
     readTranscript: mocks.readTranscript,
   },
   newConversationId: () => `disc-${String(conversationCounter++)}`,
+}));
+
+vi.mock("../../api/cases", () => ({
+  casesApi: { read: mocks.readCase, list: vi.fn() },
 }));
 
 vi.mock("../../hooks/capabilityContext", () => ({
@@ -66,6 +71,7 @@ beforeEach(() => {
   mocks.sendTurn.mockReset();
   mocks.listConversations.mockReset().mockResolvedValue([]);
   mocks.readTranscript.mockReset();
+  mocks.readCase.mockReset();
   conversationCounter = 0;
 });
 
@@ -468,3 +474,107 @@ function fire(_container: HTMLElement, text: string): void {
   });
   fireEvent.click(screen.getByLabelText("Send"));
 }
+
+describe("the RMA panel", () => {
+  /**
+   * A multi-item return can produce two RMAs with different labels going to
+   * different places. The panel that preceded this one held one of each, so it
+   * had to pick -- and whichever it picked would have sent half the shipment to
+   * the wrong dock while looking correct.
+   */
+  function record(reference: string, label: string, location: string, lines: string[]) {
+    return {
+      record: {
+        returnRecordId: `rec-${reference}`,
+        caseId: "case-1",
+        returnReference: reference,
+        status: "OPEN",
+        returnLocation: location,
+        trackingReference: `TRK-${reference}`,
+        labelReference: label,
+        shippingInstructionReference: null,
+        sourceSystem: null,
+        version: 0,
+        createdAt: "2026-08-12T00:00:00Z",
+        updatedAt: "2026-08-12T00:00:00Z",
+      },
+      items: lines.map((line) => ({
+        returnItemId: `item-${line}`,
+        orderLineReference: line,
+        productReference: null,
+        quantity: 1,
+        reason: null,
+        condition: null,
+        packageReference: null,
+      })),
+    };
+  }
+
+  function renderWithCase(returnRecords: ReturnType<typeof record>[]) {
+    mocks.readCase.mockResolvedValue({
+      case: {
+        caseId: "case-1",
+        tenantId: "tenant-a",
+        principalId: "tester",
+        branchId: null,
+        status: "AWAITING_SUPPORT",
+        channelAConversationId: "disc-0",
+        channelBWorkItemId: null,
+        confirmedOrderReference: "CW273354",
+        createdAt: "2026-08-12T00:00:00Z",
+        updatedAt: "2026-08-12T00:00:00Z",
+      },
+      returnRecords,
+      unassignedItems: [],
+      facts: [],
+    });
+    mocks.sendTurn.mockResolvedValue(turn({ case_id: "case-1" }));
+
+    render(<ReturnCopilotPage />, { wrapper });
+    fireEvent.change(screen.getByLabelText("Message the discovery agent"), {
+      target: { value: "yes that one" },
+    });
+    fireEvent.click(screen.getByLabelText("Send"));
+  }
+
+  it("shows every RMA, not just the first", async () => {
+    renderWithCase([
+      record("RMA-1", "LBL-1", "DOCK-3", ["L1", "L2"]),
+      record("RMA-2", "LBL-2", "BAY-12", ["L3"]),
+    ]);
+
+    expect(await screen.findByText("RMA-1")).toBeInTheDocument();
+    expect(screen.getByText("RMA-2")).toBeInTheDocument();
+  });
+
+  it("keeps each RMA's label and return location with that RMA", async () => {
+    renderWithCase([
+      record("RMA-1", "LBL-1", "DOCK-3", ["L1", "L2"]),
+      record("RMA-2", "LBL-2", "BAY-12", ["L3"]),
+    ]);
+
+    // The assertion that matters is positional: LBL-1 must sit inside the
+    // RMA-1 panel, not merely somewhere on the screen.
+    const first = (await screen.findByText("RMA-1")).closest("div")?.parentElement;
+    expect(first).not.toBeNull();
+    expect(first).toHaveTextContent("LBL-1");
+    expect(first).toHaveTextContent("DOCK-3");
+    expect(first).not.toHaveTextContent("LBL-2");
+    expect(first).not.toHaveTextContent("BAY-12");
+  });
+
+  it("says which lines each RMA covers", async () => {
+    renderWithCase([record("RMA-1", "LBL-1", "DOCK-3", ["L1", "L2"])]);
+
+    expect(await screen.findByText(/Covers L1, L2/)).toBeInTheDocument();
+  });
+
+  it("reads nothing until an order has been confirmed", () => {
+    mocks.sendTurn.mockResolvedValue(turn());
+    render(<ReturnCopilotPage />, { wrapper });
+
+    // No case id on the turn means no case fetch: the copilot no longer infers
+    // a return from a candidate list of length one.
+    expect(mocks.readCase).not.toHaveBeenCalled();
+  });
+});

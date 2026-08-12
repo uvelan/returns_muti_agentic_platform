@@ -52,6 +52,14 @@ export type AgentTurnResult = {
   response: StructuredAgentResponse;
   /** Set when the graph suspended on a clarifying question instead of finishing. */
   pending_clarification_thread_id?: string | null;
+  /**
+   * Set once this conversation has confirmed an order and a case exists.
+   *
+   * The handle everything downstream of discovery hangs off, and the reason the
+   * copilot no longer has to infer "an order was found" from a candidate list
+   * of length one.
+   */
+  case_id?: string | null;
   query_evidence: QueryEvidence[];
   model_provider: string;
   model_name: string;
