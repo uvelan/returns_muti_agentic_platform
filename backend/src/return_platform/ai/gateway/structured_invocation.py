@@ -509,7 +509,13 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
                     # not silently lost.
                     last_error = "PROVIDER_UNAVAILABLE"
                     self._logger.exception(
-                        f"{self._event_prefix}_model_attempt_unexpected_error",
+                        (
+                            f"{self._event_prefix}_model_attempt_unexpected_error "
+                            "provider=%s model=%s error=%s"
+                        ),
+                        route.provider_name,
+                        route.model,
+                        last_error,
                         extra={
                             **log_context,
                             "task_id": self._task_id,
@@ -537,7 +543,16 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
                     fallback_reason=fallback_reason,
                 )
                 self._logger.warning(
-                    f"{self._event_prefix}_model_attempt_failed",
+                    (
+                        f"{self._event_prefix}_model_attempt_failed "
+                        "attempt=%d tier=%s provider=%s model=%s error=%s latency_ms=%d"
+                    ),
+                    attempts,
+                    route.tier.value,
+                    route.provider_name,
+                    route.model,
+                    last_error,
+                    max(0, int((time.monotonic() - started) * 1_000)),
                     extra={
                         **log_context,
                         "task_id": self._task_id,
@@ -553,6 +568,25 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
                         ),
                     },
                 )
+        # Exhaustion was previously silent: the loop returned `None` and the only
+        # trace was N separate attempt lines that a reader had to count and
+        # correlate themselves. A turn that dies here is the caller's whole
+        # failure, so it says so once, with the tally of *why* -- the same error
+        # repeated N times and N different errors are very different diagnoses,
+        # and `failure_summary` already distinguishes them.
+        self._logger.warning(
+            f"{self._event_prefix}_model_attempts_exhausted attempts=%d last_error=%s breakdown=%s",
+            attempts,
+            last_error,
+            ", ".join(f"{code}x{count}" for code, count in sorted(failure_summary.items())),
+            extra={
+                **log_context,
+                "task_id": self._task_id,
+                "attempts": attempts,
+                "error_code": last_error,
+                "failure_summary": dict(failure_summary),
+            },
+        )
         return None, attempts, last_error
 
 
