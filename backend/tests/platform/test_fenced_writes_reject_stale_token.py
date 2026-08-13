@@ -36,6 +36,11 @@ from return_platform.platform.system_store.mongo import (
     _is_mongo_transient_transaction_error,
 )
 
+# Live infrastructure: this module opens a real MongoDB client. It is not named
+# `*_real_infra.py`, so this marker is what keeps it out of the default run
+# and inside `scripts/dev/run_real_infra_suite.sh`.
+pytestmark = pytest.mark.live_infra
+
 
 async def _clean(client: AsyncMongoClient[dict[str, object]]) -> None:
     db = client.get_database("platform")

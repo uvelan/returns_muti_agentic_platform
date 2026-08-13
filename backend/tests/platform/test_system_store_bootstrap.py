@@ -35,6 +35,11 @@ from return_platform.platform.system_store.mongo import (
     PymongoStructureGateway,
 )
 
+# Live infrastructure: this module opens a real MongoDB client. It is not named
+# `*_real_infra.py`, so this marker is what keeps it out of the default run
+# and inside `scripts/dev/run_real_infra_suite.sh`.
+pytestmark = pytest.mark.live_infra
+
 
 def _structures(physical_prefix: str) -> list[StructureDefinition]:
     return [

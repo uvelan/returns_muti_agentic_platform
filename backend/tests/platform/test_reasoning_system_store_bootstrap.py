@@ -40,6 +40,11 @@ from return_platform.platform.system_store.mongo import (
 )
 from return_platform.platform.system_store.repository import SystemStore
 
+# Live infrastructure: this module opens a real MongoDB client. It is not named
+# `*_real_infra.py`, so this marker is what keeps it out of the default run
+# and inside `scripts/dev/run_real_infra_suite.sh`.
+pytestmark = pytest.mark.live_infra
+
 
 def test_real_manifest_loads_and_includes_the_reasoning_structures() -> None:
     config = load_system_store_config(DEFAULT_SYSTEM_STORE_MANIFEST_PATH)

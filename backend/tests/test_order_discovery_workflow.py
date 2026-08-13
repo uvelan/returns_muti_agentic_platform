@@ -32,6 +32,11 @@ from return_platform.workflows.order_discovery_workflow import (
     SubmitOrderDiscoveryTurnCommand,
 )
 
+# Live infrastructure: this module opens a real Temporal client. It is not named
+# `*_real_infra.py`, so this marker is what keeps it out of the default run
+# and inside `scripts/dev/run_real_infra_suite.sh`.
+pytestmark = pytest.mark.live_infra
+
 _TEMPORAL_TARGET = os.getenv("PLATFORM_TEST_TEMPORAL_TARGET", "localhost:7233")
 
 

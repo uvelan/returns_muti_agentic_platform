@@ -22,6 +22,11 @@ from return_platform.dynamic_knowledge.graph.generation import LEGACY_GENERATION
 from return_platform.dynamic_knowledge.integration.mongo_store import MongoGraphStateProvider
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
+# Live infrastructure: this module opens a real MongoDB client. It is not named
+# `*_real_infra.py`, so this marker is what keeps it out of the default run
+# and inside `scripts/dev/run_real_infra_suite.sh`.
+pytestmark = pytest.mark.live_infra
+
 
 def test_sync_service_and_generation_module_agree_on_the_legacy_id() -> None:
     assert _LEGACY_GENERATION_ID == LEGACY_GENERATION_ID == "legacy-live"

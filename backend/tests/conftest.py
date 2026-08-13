@@ -38,6 +38,111 @@ def pytest_configure(
         raise RuntimeError("The repository environment file could not be loaded.")
 
 
+#: Filename suffixes that already mean "this one needs the real thing".
+#:
+#: Both were in use before any of this existed -- 21 modules end `_real_infra.py`
+#: and 7 end `_docker.py` -- and both were advisory. Nothing read them, so the
+#: tests they name ran in the default suite next to everything else, and one of
+#: them blocking on a datastore took the other 2,700 with it. Reading the suffix
+#: here is what turns a naming habit into the suite boundary.
+_LIVE_INFRA_MODULE_SUFFIXES = ("_real_infra.py", "_docker.py")
+
+#: Fixtures that open a connection to a real datastore for whoever requests
+#: them, directly or transitively.
+#:
+#: Matched against `item.fixturenames`, which is the resolved closure rather
+#: than the test's own parameter list, so a test three fixtures away from
+#: `reasoning_store` is classified as accurately as one that names it. That is
+#: what keeps `tests/reasoning/` from having to be declared live as a whole
+#: package: the modules in it that only read source stay in the normal suite,
+#: where they belong and where they are fast.
+_LIVE_INFRA_FIXTURES = frozenset(
+    {
+        "reasoning_store",
+        "temporal_target",
+        "sqlserver_test_database",
+    }
+)
+
+#: Names whose presence in a test module means it composes the application
+#: in process -- an app factory, a transport that speaks to it without a socket,
+#: or a workflow environment.
+#:
+#: A convenience split, not a safety boundary: `unit` and `integration` both run
+#: in the normal suite, so a module classified as one when it is really the
+#: other costs nothing but a label. The boundary that has to be exact is
+#: `live_infra`, and that one is decided by the two rules above plus an explicit
+#: marker -- never by this list.
+_IN_PROCESS_COMPOSITION_SYMBOLS = frozenset(
+    {
+        "TestClient",
+        "create_app",
+        "ASGITransport",
+        "WorkflowEnvironment",
+        "Worker",
+    }
+)
+
+_SUITE_MARKERS = ("live_infra", "browser", "integration", "unit")
+
+
+def _composes_the_application_in_process(
+    item: pytest.Item,
+) -> bool:
+    """Whether the test's module builds the application without a datastore."""
+
+    try:
+        module = item.module  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001 -- a non-module item simply has no namespace
+        return False
+
+    return not _IN_PROCESS_COMPOSITION_SYMBOLS.isdisjoint(vars(module))
+
+
+def _suite_of(
+    item: pytest.Item,
+) -> str:
+    """Return the one suite this test belongs to.
+
+    Ordered so that the explicit answer always wins: a module that says
+    `pytestmark = pytest.mark.live_infra` is live whatever it is named and
+    whatever it happens to import.
+    """
+
+    declared = {mark.name for mark in item.iter_markers()}
+
+    for suite in _SUITE_MARKERS:
+        if suite in declared:
+            return suite
+
+    if item.path.name.endswith(_LIVE_INFRA_MODULE_SUFFIXES):
+        return "live_infra"
+
+    if not _LIVE_INFRA_FIXTURES.isdisjoint(getattr(item, "fixturenames", ())):
+        return "live_infra"
+
+    if _composes_the_application_in_process(item):
+        return "integration"
+
+    return "unit"
+
+
+def pytest_itemcollected(
+    item: pytest.Item,
+) -> None:
+    """Give every collected test exactly one suite marker.
+
+    `pytest_itemcollected` rather than `pytest_collection_modifyitems`: `-m`
+    deselection is itself a `tryfirst` `pytest_collection_modifyitems`
+    implementation, so marking from there would depend on which of two
+    `tryfirst` hooks pluggy happens to call first. This one runs during
+    collection, before any deselection can look at a marker -- there is no
+    ordering to get wrong.
+    """
+
+    item.add_marker(getattr(pytest.mark, _suite_of(item)))
+
+
 def _required_environment_variable(
     name: str,
 ) -> str:
@@ -68,9 +173,36 @@ def _required_environment_variable(
 #: authentication error somewhere unrelated.
 _ABSENT_PROVIDER_KEY = "test-placeholder-no-provider-call-expected"
 
+#: Every stand-in string that means "there is no key here".
+#:
+#: Two of them, because two places already export one. The runner scripts and
+#: `compose.yaml`'s `diagnostics` service set `NVIDIA_API_KEY` and
+#: `GOOGLE_API_KEY` to `placeholder-not-a-real-key` so that `Settings` can build
+#: a route pool; `_ABSENT_PROVIDER_KEY` above is what this file substitutes when
+#: neither is set at all. `live_ai_credentials` used to ask only whether the
+#: variables were non-empty, and a placeholder is non-empty -- so in exactly the
+#: environments that export one it reported credentials present and let the test
+#: through.
+#:
+#: `test_order_agent_rest.py` is what that cost. Forty scenarios entered the
+#: application lifespan expecting a model response that could never arrive,
+#: blocked, and took the run with them. The live runner answered by excluding
+#: the file by name, which hid the fixture's blind spot rather than closing it.
+_PLACEHOLDER_PROVIDER_KEYS = frozenset(
+    {
+        _ABSENT_PROVIDER_KEY,
+        "placeholder-not-a-real-key",
+    }
+)
+
 
 def _provider_key(name: str) -> str:
     return os.getenv(name, "").strip() or _ABSENT_PROVIDER_KEY
+
+
+def _has_real_provider_key(name: str) -> bool:
+    value = os.getenv(name, "").strip()
+    return bool(value) and value not in _PLACEHOLDER_PROVIDER_KEYS
 
 
 @pytest.fixture
@@ -80,10 +212,15 @@ def live_ai_credentials() -> None:
     The explicit half of the rule the placeholder above implements: a test that
     needs a real key says so and is skipped without one, rather than every test
     in the suite carrying the requirement so that a handful can be satisfied.
+
+    "Without one" has to include a placeholder. A test that dispatches to a
+    provider on a fake key does not fail as a missing credential -- it blocks,
+    or it fails as an authentication error in a module that has nothing to do
+    with what is under test.
     """
 
     missing = [
-        name for name in ("NVIDIA_API_KEY", "GOOGLE_API_KEY") if not os.getenv(name, "").strip()
+        name for name in ("NVIDIA_API_KEY", "GOOGLE_API_KEY") if not _has_real_provider_key(name)
     ]
     if missing:
         pytest.skip(f"no model-provider credentials configured: {', '.join(missing)}")

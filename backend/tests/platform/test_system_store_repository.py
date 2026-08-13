@@ -23,6 +23,11 @@ from return_platform.platform.system_store.repository import (
     UnknownStructure,
 )
 
+# Live infrastructure: this module opens a real MongoDB client. It is not named
+# `*_real_infra.py`, so this marker is what keeps it out of the default run
+# and inside `scripts/dev/run_real_infra_suite.sh`.
+pytestmark = pytest.mark.live_infra
+
 
 @dataclass(frozen=True)
 class _Structure:

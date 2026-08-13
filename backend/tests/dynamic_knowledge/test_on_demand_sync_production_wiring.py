@@ -35,6 +35,11 @@ from return_platform.dynamic_knowledge.on_demand_sync.planner import build_targe
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 from return_platform.source_connectors.mongodb import MongoDBSourceScanConnector
 
+# Live infrastructure: this module opens real MongoDB and Neo4j clients. It is not named
+# `*_real_infra.py`, so this marker is what keeps it out of the default run
+# and inside `scripts/dev/run_real_infra_suite.sh`.
+pytestmark = pytest.mark.live_infra
+
 
 def _required_env(name: str) -> str:
     """Mirrors tests/conftest.py's _required_environment_variable -- this

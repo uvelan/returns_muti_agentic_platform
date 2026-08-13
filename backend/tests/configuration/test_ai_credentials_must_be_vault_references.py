@@ -48,6 +48,15 @@ _PRODUCTION_BASELINE: dict[str, object] = {
     "reasoning_encryption_key_secret_reference": (
         "vault://secret/production/platform/reasoning#encryption_key"
     ),
+    # Same category, and missing until it was the only thing these five tests
+    # were failing on. `PLATFORM_VAULT_ENABLED=false` in the repository `.env` is
+    # correct for a development profile and reaches `Settings()` here, where a
+    # production validator refuses it -- so every production case above failed
+    # with "Vault must be enabled in production" rather than on the credential
+    # rule it exists to check. Worse than a wrong reason: the outcome depended
+    # on the developer's `.env`, so the same commit passed on one machine and
+    # failed on the next. Stating it makes the result the test's own.
+    "vault_enabled": True,
 }
 
 
