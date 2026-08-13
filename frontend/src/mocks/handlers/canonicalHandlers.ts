@@ -32,6 +32,10 @@ const ALL_CAPABILITIES = [
   "graph_schema.draft.read",
   "graph_schema.draft.write",
   "graph_schema.generation.activate",
+  "governance.proposal.read",
+  "governance.proposal.write",
+  "governance.proposal.approve",
+  "governance.proposal.activate",
   "ai.request.read",
   "ai.metrics.read",
   "ai.interception.read",
@@ -143,6 +147,288 @@ const SESSION = {
   createdAt: "2026-08-09T09:00:00Z",
   updatedAt: "2026-08-10T11:30:00Z",
 };
+
+/**
+ * `configuration/api/sources.py::_definitions()`, as it is actually served.
+ *
+ * **No credential appears here, and that is not an omission to be tidied up.**
+ * `SourceItem` / `SourceDetail` have no field one could travel in, and
+ * `/api/config` scrubs every response through `redact_secret_values`. A fixture
+ * carrying a password would make the mock app the only place in the system
+ * where a credential reaches a browser.
+ */
+const SOURCES = [
+  {
+    id: "source-mongodb",
+    name: "Source MongoDB",
+    engine: "MONGODB",
+    environment: "LOCAL",
+    ownership: "AUTHORITATIVE",
+    health: "HEALTHY",
+    capability: "READ_ONLY",
+    lastInventoryTime: "2026-08-11T09:00:00Z",
+    connectionIdentity: "mongodb/source_db",
+    inventoryTotals: { assets: 2, records: null },
+    lastMetadataRefresh: "2026-08-11T09:00:00Z",
+    dependencyWarnings: [] as string[],
+    assets: [
+      {
+        assetId: "source_sales",
+        name: "source_db.salesInv",
+        kind: "COLLECTION",
+        ownership: "SOURCE",
+        authoritative: true,
+        writableInSandbox: false,
+      },
+      {
+        assetId: "source_products",
+        name: "source_db.products",
+        kind: "COLLECTION",
+        ownership: "SOURCE",
+        authoritative: true,
+        writableInSandbox: false,
+      },
+    ],
+  },
+  {
+    id: "platform-mongodb",
+    name: "Platform MongoDB",
+    engine: "PLATFORM",
+    environment: "LOCAL",
+    ownership: "INTERNAL",
+    health: "HEALTHY",
+    capability: "WRITABLE",
+    lastInventoryTime: "2026-08-11T09:00:00Z",
+    connectionIdentity: "mongodb/return_platform",
+    inventoryTotals: { assets: 0, records: null },
+    lastMetadataRefresh: "2026-08-11T09:00:00Z",
+    dependencyWarnings: [] as string[],
+    assets: [],
+  },
+  {
+    id: "sqlserver",
+    name: "Return Business State SQL Server",
+    engine: "SQL_SERVER",
+    environment: "LOCAL",
+    ownership: "AUTHORITATIVE",
+    health: "DEGRADED",
+    capability: "READ_ONLY",
+    lastInventoryTime: "2026-08-11T08:58:00Z",
+    connectionIdentity: "sqlserver/ReturnBusinessState",
+    inventoryTotals: { assets: 1, records: null },
+    lastMetadataRefresh: "2026-08-11T08:58:00Z",
+    // The probe's own `safe_message` -- written to be safe to display, and the
+    // only thing on the screen that says why a source is degraded.
+    dependencyWarnings: ["Login timeout expired while opening a pooled connection."],
+    assets: [
+      {
+        assetId: "sql_bay_assignment",
+        name: "dbo.BayAssignment",
+        kind: "TABLE",
+        ownership: "SOURCE",
+        authoritative: true,
+        writableInSandbox: false,
+      },
+    ],
+  },
+  {
+    id: "neo4j",
+    name: "Neo4j Graph Projection",
+    engine: "NEO4J",
+    environment: "LOCAL",
+    ownership: "DERIVED",
+    health: "HEALTHY",
+    capability: "READ_ONLY",
+    lastInventoryTime: "2026-08-11T09:00:00Z",
+    connectionIdentity: "neo4j/neo4j",
+    // Its assets are the graph's nodes and relationships, which the registry
+    // counts separately and the source has none of its own -- so the totals and
+    // the empty list disagree on purpose, exactly as the handler serves them.
+    inventoryTotals: { assets: 14, records: null },
+    lastMetadataRefresh: "2026-08-11T09:00:00Z",
+    dependencyWarnings: [] as string[],
+    assets: [],
+  },
+];
+
+/**
+ * `SourceItem` is `SourceDetail` minus the detail, so the list response is
+ * projected from the same fixture rather than written twice -- which is how a
+ * mock ends up reporting one health on the list and another on the detail.
+ */
+function sourceItem(source: (typeof SOURCES)[number]) {
+  return {
+    id: source.id,
+    name: source.name,
+    engine: source.engine,
+    environment: source.environment,
+    ownership: source.ownership,
+    health: source.health,
+    capability: source.capability,
+    lastInventoryTime: source.lastInventoryTime,
+  };
+}
+
+/** `SourceBindingView`. `connectionRef` is a pointer, never a resolved secret. */
+const BINDINGS = [
+  {
+    dataset: "source_sales",
+    sourceAssetId: "salesInv",
+    connectorType: "MONGODB",
+    connectionRef: "vault://return-platform/sources#salesInv",
+    objectRef: { database: "source_db", collection: "salesInv" },
+    incrementalCursorField: "updated_at",
+    overridden: false,
+  },
+  {
+    dataset: "sql_bay_assignment",
+    sourceAssetId: "BayAssignment",
+    connectorType: "MSSQL",
+    connectionRef: "vault://return-platform/sources#bay-assignment-restored",
+    objectRef: { schema: "dbo", table: "BayAssignment" },
+    incrementalCursorField: null,
+    overridden: true,
+  },
+];
+
+/**
+ * `ProposalDetailView`, one per kind, so the inbox shows what it is for: a
+ * schema draft, a configuration edit and a feedback improvement in one queue.
+ *
+ * `history` and `diff` keep the record's own key names (`occurred_at`), because
+ * the router serializes them straight from the Pydantic model rather than
+ * through a camelCase view.
+ */
+const PROPOSALS = [
+  {
+    proposalId: "prop-mock-1",
+    proposalType: "GRAPH_SCHEMA",
+    subjectId: "dr-mock-1",
+    title: "Add Bay to the return graph",
+    status: "REVIEW_PENDING",
+    risk: "HIGH",
+    affectedKeys: ["entities.bay", "entities.warehouse.legacy_slot"],
+    proposedBy: "analyst-2",
+    decidedBy: null,
+    createdAt: "2026-08-11T09:00:00Z",
+    updatedAt: "2026-08-11T09:30:00Z",
+    before: { entities: { warehouse: { legacy_slot: "slot_code" } } },
+    after: { entities: { warehouse: {}, bay: { label: "Bay" } } },
+    diff: [
+      { key: "entities.bay", change: "ADDED", before: null, after: { label: "Bay" } },
+      {
+        key: "entities.warehouse.legacy_slot",
+        change: "REMOVED",
+        before: "slot_code",
+        after: null,
+      },
+    ],
+    evidence: ["snapshot-4f2a", "validation-77"],
+    evidenceDigest: "9c1d0ae44d2b2372",
+    validationReceipt: "vr-2026-08-11-01",
+    decisionNote: null,
+    activationReference: null,
+    history: [
+      { status: "VALIDATED", actor: "analyst-2", occurred_at: "2026-08-11T09:10:00Z", note: null },
+      {
+        status: "REVIEW_PENDING",
+        actor: "analyst-2",
+        occurred_at: "2026-08-11T09:30:00Z",
+        note: "Ready for review",
+      },
+    ],
+  },
+  {
+    proposalId: "prop-mock-2",
+    proposalType: "CONFIGURATION",
+    subjectId: "ORDER_AGENT_REASONING_V1",
+    title: "Raise the order agent's candidate ceiling to 25",
+    status: "APPROVED",
+    risk: "MEDIUM",
+    affectedKeys: ["retrieval.max_candidates"],
+    proposedBy: "operator-1",
+    decidedBy: "mock-operator",
+    createdAt: "2026-08-10T14:00:00Z",
+    updatedAt: "2026-08-10T15:00:00Z",
+    before: { retrieval: { max_candidates: 10 } },
+    after: { retrieval: { max_candidates: 25 } },
+    diff: [{ key: "retrieval.max_candidates", change: "CHANGED", before: 10, after: 25 }],
+    evidence: ["conv-mock-1"],
+    evidenceDigest: "3b7d0210f4a9",
+    validationReceipt: "reload-2026-08-10-04",
+    decisionNote: "Agreed after the Charlotte ambiguity review.",
+    activationReference: null,
+    history: [
+      { status: "VALIDATED", actor: "operator-1", occurred_at: "2026-08-10T14:20:00Z", note: null },
+      {
+        status: "REVIEW_PENDING",
+        actor: "operator-1",
+        occurred_at: "2026-08-10T14:30:00Z",
+        note: null,
+      },
+      {
+        status: "APPROVED",
+        actor: "mock-operator",
+        occurred_at: "2026-08-10T15:00:00Z",
+        note: "Agreed after the Charlotte ambiguity review.",
+      },
+    ],
+  },
+  {
+    proposalId: "prop-mock-3",
+    proposalType: "IMPROVEMENT",
+    subjectId: "fb-mock-8",
+    title: "Add 'branch' as a clarification field",
+    status: "REVIEW_PENDING",
+    risk: "LOW",
+    affectedKeys: ["fields.branch"],
+    proposedBy: "feedback-learning",
+    decidedBy: null,
+    createdAt: "2026-08-11T07:00:00Z",
+    updatedAt: "2026-08-11T07:00:00Z",
+    before: {},
+    after: { fields: { branch: "account_id" } },
+    diff: [{ key: "fields.branch", change: "ADDED", before: null, after: "account_id" }],
+    evidence: ["conv-mock-1", "conv-mock-4"],
+    evidenceDigest: "7c9d67a6",
+    // No receipt: the screen must say so rather than leave a blank row, because
+    // a proposal nothing has certified is exactly what a reviewer must notice.
+    validationReceipt: null,
+    decisionNote: null,
+    activationReference: null,
+    history: [
+      {
+        status: "REVIEW_PENDING",
+        actor: "feedback-learning",
+        occurred_at: "2026-08-11T07:00:00Z",
+        note: null,
+      },
+    ],
+  },
+];
+
+/**
+ * `ProposalSummaryView` -- deliberately without `before`/`after`.
+ *
+ * The real router splits these for a reason worth preserving in the mock: a
+ * proposal's documents are unbounded (a graph schema is the whole shape), so
+ * listing the inbox must not pay for a payload only the detail pane reads.
+ */
+function proposalSummary(proposal: (typeof PROPOSALS)[number]) {
+  return {
+    proposalId: proposal.proposalId,
+    proposalType: proposal.proposalType,
+    subjectId: proposal.subjectId,
+    title: proposal.title,
+    status: proposal.status,
+    risk: proposal.risk,
+    affectedKeys: proposal.affectedKeys,
+    proposedBy: proposal.proposedBy,
+    decidedBy: proposal.decidedBy,
+    createdAt: proposal.createdAt,
+    updatedAt: proposal.updatedAt,
+  };
+}
 
 export const canonicalHandlers = [
   /**
@@ -502,15 +788,106 @@ export const canonicalHandlers = [
       { status: 422 },
     );
   }),
+  // --- data sources (UI-02) ---------------------------------------------------
+  //
+  // `SourceItem` / `SourceDetail`, field for field. The previous fixture here
+  // invented `{sourceId, kind, status}`, which no backend model has ever
+  // served -- it went unnoticed because the old configuration tab rendered the
+  // payload as raw JSON and could not be wrong about a field it never named.
+  // A degraded source is included on purpose: a fixture where everything is
+  // healthy exercises none of what the screen is for.
+
   http.get("/api/config/sources", async () => {
     await delay(80);
+    return HttpResponse.json(envelope(SOURCES.map(sourceItem), "sources"));
+  }),
+  http.get("/api/config/sources/:sourceId", async ({ params }) => {
+    await delay(80);
+    const source = SOURCES.find((candidate) => candidate.id === String(params.sourceId));
+    if (source === undefined) {
+      return HttpResponse.json({ detail: "Source not found." }, { status: 404 });
+    }
+    return HttpResponse.json(envelope(source, "source"));
+  }),
+
+  http.get("/api/source-bindings", async () => {
+    await delay(80);
+    return HttpResponse.json(envelope(BINDINGS, "source-bindings"));
+  }),
+  http.put("/api/source-bindings/:dataset", async ({ params, request }) => {
+    await delay(120);
+    const body = (await request.json()) as Record<string, unknown>;
+    return HttpResponse.json(
+      envelope({ ...body, dataset: String(params.dataset), overridden: true }, "rebind"),
+    );
+  }),
+  http.delete("/api/source-bindings/:dataset", async () => {
+    await delay(120);
+    return HttpResponse.json(envelope({ removed: true }, "clear-binding"));
+  }),
+
+  // --- approvals (UI-01) ------------------------------------------------------
+
+  http.get("/api/proposals", async ({ request }) => {
+    await delay(80);
+    const query = new URL(request.url).searchParams;
+    const status = query.get("status");
+    const type = query.get("type");
+    const rows = PROPOSALS.filter(
+      (proposal) =>
+        (status === null || proposal.status === status) &&
+        (type === null || proposal.proposalType === type),
+    ).map(proposalSummary);
+    return HttpResponse.json(envelope(rows, "proposals"));
+  }),
+  http.get("/api/proposals/:proposalId", async ({ params }) => {
+    await delay(80);
+    const proposal = PROPOSALS.find((row) => row.proposalId === String(params.proposalId));
+    if (proposal === undefined) {
+      return HttpResponse.json(
+        { detail: { code: "UNKNOWN_PROPOSAL", message: "no proposal." } },
+        { status: 404 },
+      );
+    }
+    return HttpResponse.json(envelope(proposal, "proposal"));
+  }),
+  http.post("/api/proposals/:proposalId/approve", async ({ params, request }) => {
+    await delay(150);
+    const body = (await request.json()) as { note: string | null };
+    const proposal = PROPOSALS.find((row) => row.proposalId === String(params.proposalId));
     return HttpResponse.json(
       envelope(
-        [
-          { sourceId: "mongo_main", kind: "MONGODB", status: "HEALTHY" },
-          { sourceId: "trilogie_sql", kind: "SQLSERVER", status: "DEGRADED" },
-        ],
-        "sources",
+        {
+          ...(proposal ?? PROPOSALS[0]),
+          status: "APPROVED",
+          decidedBy: "mock-operator",
+          decisionNote: body.note,
+        },
+        "approve",
+      ),
+    );
+  }),
+  http.post("/api/proposals/:proposalId/reject", async () => {
+    await delay(150);
+    // A refusal, deliberately: the path worth looking at is the one that shows
+    // the kernel's own reason, and a mock that always succeeds never reaches it.
+    return HttpResponse.json(
+      {
+        detail: {
+          code: "INVALID_TRANSITION",
+          message: "proposal prop-mock-1 is APPROVED; REJECTED is not reachable from there.",
+        },
+      },
+      { status: 409 },
+    );
+  }),
+  http.post("/api/proposals/:proposalId/activate", async ({ params }) => {
+    await delay(200);
+    const proposal = PROPOSALS.find((row) => row.proposalId === String(params.proposalId));
+    return HttpResponse.json(
+      envelope(
+        { ...(proposal ?? PROPOSALS[0]), status: "ACTIVATED", activationReference: "rel-mock-3" },
+        "activate",
       ),
     );
   }),

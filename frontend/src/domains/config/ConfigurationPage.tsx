@@ -16,12 +16,18 @@ import { JsonView } from "./JsonView";
 /**
  * The platform Configuration experience (Phase 19).
  *
- * **Four of nine tabs have a canonical endpoint**, up from two. D3 added
+ * **Data Sources is no longer a tab here.** It is the `/data-sources` domain.
+ * Sources are not a configuration field -- they are what the platform reads
+ * from -- and the people who ask whether a source is still reachable are
+ * generally not the people editing a release. `/api/config/sources` is
+ * unchanged and is now read by that screen.
+ *
+ * **Four of the remaining tabs have a canonical endpoint.** D3 added
  * `/api/config/sources` and `/api/config/audit`, both delegating to the Data
  * Console handlers rather than reimplementing them, so this screen reaches them
  * through the canonical path and nothing here breaks at cutover.
  *
- * Of the five that remain, three will never need one and say so rather than
+ * Of the four that remain, three will never need one and say so rather than
  * claiming to be pending: business config and integrations are *already* served
  * -- `/runtime` returns the whole snapshot and they are fields on it -- and
  * modules would return `[]` forever because the kernel module registry is empty
@@ -101,32 +107,11 @@ function TabBody({ tab, canReadReleases }: { tab: Tab; canReadReleases: boolean 
       return <RuntimeTab />;
     case "Releases":
       return <ReleasesTab canRead={canReadReleases} />;
-    case "Data Sources":
-      return <SourcesTab />;
     case "Audit":
       return <AuditTab />;
     default:
       return null;
   }
-}
-
-function SourcesTab() {
-  const sources = useQuery({ queryKey: ["config", "sources"], queryFn: configApi.sources });
-
-  if (sources.isLoading) return <p className="text-sm text-slate-500">Loading...</p>;
-  if (sources.error) return <p className="text-sm text-red-700">{sources.error.message}</p>;
-
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <h2 className="text-sm font-semibold text-slate-900">Configured sources</h2>
-      <p className="mt-1 text-xs text-slate-500">
-        Health is probed server-side. Secret references are shown as
-        <code className="mx-1">vault://</code>
-        pointers rather than resolved values.
-      </p>
-      <JsonView value={sources.data} />
-    </div>
-  );
 }
 
 function AuditTab() {

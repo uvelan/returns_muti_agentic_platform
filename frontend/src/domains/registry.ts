@@ -1,11 +1,21 @@
-import { Activity, Bot, Headset, Network, RefreshCw, RotateCcw, Settings } from "lucide-react";
+import {
+  Activity,
+  Bot,
+  ClipboardCheck,
+  Database,
+  Headset,
+  Network,
+  RefreshCw,
+  RotateCcw,
+  Settings,
+} from "lucide-react";
 
 import type { Capability } from "../api/principal";
 
 /**
- * The four canonical domains (Phase 17).
+ * The canonical domains (Phase 17).
  *
- * These four and nothing else -- no V1/V2 selector, no legacy groups. The
+ * These and nothing else -- no V1/V2 selector, no legacy groups. The
  * legacy shell in `routes.ts` keeps its own navigation until Wave F removes it.
  *
  * `requires` is the capability that makes a domain *visible*. It is
@@ -69,12 +79,21 @@ function sections(labels: readonly string[]): readonly DomainSection[] {
  * error in the screen's switch rather than a section that silently renders
  * nothing.
  */
+/**
+ * `"Data Sources"` is deliberately absent.
+ *
+ * It was a tab here, which made the platform's whole source surface -- health,
+ * the collections and tables each source exposes, and where every dataset is
+ * bound -- a nested selection inside Configuration. Sources are not a
+ * configuration *field*; they are what the platform reads from, and the
+ * question "can we still reach the warehouse database" is asked by people who
+ * are not editing configuration at all. It is now the `/data-sources` domain.
+ */
 export const CONFIG_SECTIONS = [
   "Overview",
   "Agents",
   "Runtime",
   "Releases",
-  "Data Sources",
   "Integrations",
   "Business",
   "Modules",
@@ -133,6 +152,34 @@ export const DOMAINS: readonly DomainDefinition[] = [
     requires: "config.runtime.read",
     screenPhase: 19,
     sections: sections(CONFIG_SECTIONS),
+  },
+  {
+    path: "/approvals",
+    name: "Approvals",
+    description: "Every change waiting on a human decision, in one queue.",
+    purpose: "Decide what is waiting on you, with the whole basis for the decision in front of you.",
+    icon: ClipboardCheck,
+    // The governance read, which is exactly the question this domain asks.
+    // `ProposalKernel` is one inbox on purpose -- a schema draft, an agent
+    // configuration edit and a feedback improvement are one decision queue --
+    // so it needs no per-type capability and this domain has none.
+    requires: "governance.proposal.read",
+    screenPhase: 22,
+    // One queue and the proposal it opens. The status filter narrows a list
+    // rather than switching what the screen is.
+    sections: [],
+  },
+  {
+    path: "/data-sources",
+    name: "Data Sources",
+    description: "Configured sources, their health, what they expose, and where each dataset is bound.",
+    purpose: "Check the platform can still reach its data, and point a dataset somewhere else.",
+    icon: Database,
+    requires: "config.source.read",
+    screenPhase: 22,
+    // One workspace: the source list, the source it opens, and the dataset
+    // bindings underneath. Nothing here switches what the screen is.
+    sections: [],
   },
   {
     path: "/graph-schema",

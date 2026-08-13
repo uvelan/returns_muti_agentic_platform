@@ -14,6 +14,16 @@ import { apiClient } from "./client";
  * answer to "where does this come from".
  */
 
+/**
+ * `dynamic_knowledge/schema.py::ConnectorType`, in declaration order.
+ *
+ * For labelling, not for validating: `SourceBindingView.connectorType` stays a
+ * plain string below, because a binding naming a connector this list has not
+ * caught up with is a stale frontend, not a corrupt record, and it should still
+ * render.
+ */
+export const CONNECTOR_TYPES = ["MONGODB", "MSSQL", "POSTGRESQL", "NEO4J"] as const;
+
 export type SourceBinding = {
   dataset: string;
   sourceAssetId: string;
