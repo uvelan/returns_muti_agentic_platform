@@ -37,6 +37,7 @@ from return_platform.dynamic_knowledge.integration.targeted_sync import (
 )
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_support.service import ReturnSupportService
+from return_platform.operations.sql_business_state import SQLBusinessStateRepository
 from return_platform.workflows.persistence import ReturnSessionRepository
 from return_platform.workflows.return_case_activities import ReturnCaseActivities
 from return_platform.workflows.return_case_launcher import TemporalCaseWorkflowLauncher
@@ -114,6 +115,16 @@ async def _run() -> None:
                 operational_repository=operational_repository,
             ),
             graph_sync=GraphReturnRecordSync.from_access(graph),
+            # RMA-01. The authoritative SQL return store. Constructed here rather
+            # than inside the activity because this is the process that owns
+            # `ReturnCaseWorkflow`, and because the repository resolves the
+            # process-wide bounded pool per operation -- so building it now opens
+            # no connection until the first RMA is actually persisted.
+            #
+            # Without this the activity raises rather than silently writing only
+            # to MongoDB, which is the same fail-loud stance `synchronize_return_records`
+            # takes about its graph port.
+            return_store=SQLBusinessStateRepository(settings),
         )
         worker = create_return_workflow_worker(
             temporal, repository, case_activities=case_activities
