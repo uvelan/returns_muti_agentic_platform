@@ -7,6 +7,7 @@ import json
 import uuid
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, TypeVar
 
@@ -20,6 +21,56 @@ from return_platform.operations.sql_connection_pool import (
 )
 
 T = TypeVar("T")
+
+
+@dataclass(frozen=True, slots=True)
+class ReturnRecordItemWrite:
+    """One item on one RMA. Belongs to exactly one return record."""
+
+    return_item_id: str
+    order_line_id: str
+    quantity: int
+    product_id: str | None = None
+    reason_code: str | None = None
+    item_status: str = "CREATED"
+
+
+@dataclass(frozen=True, slots=True)
+class ReturnRecordWrite:
+    """One RMA Support issued, with the fulfilment identity that is its own.
+
+    Label, tracking and return location are fields of the record and never of
+    the case: two records on one case carry two labels, and neither can reach
+    the other.
+    """
+
+    return_record_id: str
+    return_reference: str
+    record_status: str = "ISSUED"
+    source_system: str = "RETURN_SUPPORT"
+    label_reference: str | None = None
+    tracking_reference: str | None = None
+    return_location: str | None = None
+    shipping_instruction_reference: str | None = None
+    items: tuple[ReturnRecordItemWrite, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CaseReturnRecordsWrite:
+    """Everything one support outcome adds to the authoritative SQL return store.
+
+    A whole-case unit rather than a per-record one because T-14 requires the
+    records of one outcome to commit together: a case that ended up with RMA-A
+    persisted and RMA-B lost is precisely the partial state the single
+    transaction exists to prevent.
+    """
+
+    case_id: str
+    tenant_id: str
+    principal_id: str
+    order_reference: str | None
+    records: tuple[ReturnRecordWrite, ...]
+    case_status: str = "SUPPORT_COMPLETED"
 
 
 class SQLBusinessStateRepository:
@@ -483,6 +534,172 @@ class SQLBusinessStateRepository:
                             )
 
         await self._run(operation)
+
+    async def persist_case_return_records(
+        self,
+        write: CaseReturnRecordsWrite,
+    ) -> tuple[str, ...]:
+        """Persist one case and all of its RMAs in ONE idempotent transaction (T-14).
+
+        The canonical case path wrote no SQL at all: `record_support_outcome`
+        writes MongoDB and the graph, and the only SQL return writer --
+        `persist_support_result` -- is reachable only from the legacy
+        session providers. This is the missing authoritative write.
+
+        Idempotent on ids the workflow supplies, so a Temporal retry or a
+        replay after `continue_as_new` rewrites the same rows instead of
+        minting a second RMA. Replay is a no-op; a *different* record trying to
+        claim an order line another record already owns is not, and raises
+        inside the transaction so the whole outcome rolls back rather than
+        committing a case whose items are split across the wrong RMAs.
+
+        Returns the persisted record ids, so the caller synchronizes exactly
+        the records that committed -- never a wider set.
+        """
+
+        if not write.records:
+            return ()
+
+        def operation() -> None:
+            with self._transaction() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE dbo.return_case WITH (UPDLOCK, SERIALIZABLE)
+                        SET tenant_id=%s, principal_id=%s, order_reference=%s,
+                            case_status=%s, row_version=row_version+1,
+                            updated_at=SYSUTCDATETIME()
+                        WHERE case_id=%s;
+                        IF @@ROWCOUNT = 0
+                        INSERT INTO dbo.return_case (
+                            case_id, tenant_id, principal_id, order_reference, case_status
+                        ) VALUES (%s,%s,%s,%s,%s);
+                        """,
+                        (
+                            write.tenant_id,
+                            write.principal_id,
+                            write.order_reference,
+                            write.case_status,
+                            write.case_id,
+                            write.case_id,
+                            write.tenant_id,
+                            write.principal_id,
+                            write.order_reference,
+                            write.case_status,
+                        ),
+                    )
+                    for record in write.records:
+                        cursor.execute(
+                            """
+                            UPDATE dbo.return_record WITH (UPDLOCK, SERIALIZABLE)
+                            SET case_id=%s, return_reference=%s, label_reference=%s,
+                                tracking_reference=%s, return_location=%s,
+                                shipping_instruction_reference=%s, record_status=%s,
+                                source_system=%s, row_version=row_version+1,
+                                updated_at=SYSUTCDATETIME()
+                            WHERE return_record_id=%s;
+                            IF @@ROWCOUNT = 0
+                            INSERT INTO dbo.return_record (
+                                return_record_id, case_id, return_reference, label_reference,
+                                tracking_reference, return_location,
+                                shipping_instruction_reference, record_status, source_system
+                            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s);
+                            """,
+                            (
+                                write.case_id,
+                                record.return_reference,
+                                record.label_reference,
+                                record.tracking_reference,
+                                record.return_location,
+                                record.shipping_instruction_reference,
+                                record.record_status,
+                                record.source_system,
+                                record.return_record_id,
+                                record.return_record_id,
+                                write.case_id,
+                                record.return_reference,
+                                record.label_reference,
+                                record.tracking_reference,
+                                record.return_location,
+                                record.shipping_instruction_reference,
+                                record.record_status,
+                                record.source_system,
+                            ),
+                        )
+                        for item in record.items:
+                            # Keyed on the supplied item id so a replay is a
+                            # no-op. A second record claiming the same order
+                            # line is NOT absorbed here -- it reaches
+                            # UQ_return_record_item_case_line and raises.
+                            cursor.execute(
+                                """
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM dbo.return_record_item
+                                    WHERE return_item_id=%s
+                                )
+                                INSERT INTO dbo.return_record_item (
+                                    return_item_id, return_record_id, case_id, order_line_id,
+                                    product_id, quantity, reason_code, item_status
+                                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s);
+                                """,
+                                (
+                                    item.return_item_id,
+                                    item.return_item_id,
+                                    record.return_record_id,
+                                    write.case_id,
+                                    item.order_line_id,
+                                    item.product_id,
+                                    item.quantity,
+                                    item.reason_code,
+                                    item.item_status,
+                                ),
+                            )
+
+        await self._run(operation)
+        return tuple(record.return_record_id for record in write.records)
+
+    async def read_case_return_records(self, case_id: str) -> list[dict[str, Any]]:
+        """Read back one case's RMAs and their items, record-scoped.
+
+        The shape mirrors what was written: items nested inside their own
+        record, never flattened onto the case.
+        """
+
+        def operation() -> list[dict[str, Any]]:
+            with self._read() as connection:
+                with connection.cursor(as_dict=True) as cursor:
+                    cursor.execute(
+                        """
+                        SELECT return_record_id, case_id, return_reference, label_reference,
+                               tracking_reference, return_location,
+                               shipping_instruction_reference, record_status, source_system,
+                               row_version
+                        FROM dbo.return_record
+                        WHERE case_id=%s
+                        ORDER BY created_at ASC, return_record_id ASC
+                        """,
+                        (case_id,),
+                    )
+                    records = [dict(row) for row in cursor.fetchall() or []]
+                    cursor.execute(
+                        """
+                        SELECT return_item_id, return_record_id, order_line_id, product_id,
+                               quantity, reason_code, item_status
+                        FROM dbo.return_record_item
+                        WHERE case_id=%s
+                        ORDER BY created_at ASC, return_item_id ASC
+                        """,
+                        (case_id,),
+                    )
+                    items = [dict(row) for row in cursor.fetchall() or []]
+            by_record: dict[str, list[dict[str, Any]]] = {}
+            for item in items:
+                by_record.setdefault(str(item["return_record_id"]), []).append(item)
+            for record in records:
+                record["items"] = by_record.get(str(record["return_record_id"]), [])
+            return records
+
+        return await self._run(operation)
 
     async def assign_bay(
         self,

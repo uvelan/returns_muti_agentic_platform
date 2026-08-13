@@ -14,6 +14,7 @@ idempotency key generated inside would be new each time -- which for
 from __future__ import annotations
 
 import logging
+import uuid
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -31,7 +32,12 @@ from return_platform.workflows.return_case_workflow import (
     SynchronizeReturnRecordsInput,
 )
 
-__all__ = ["ReturnCaseActivities", "ReturnRecordGraphSyncPort", "ReturnRecordSyncOutcome"]
+__all__ = [
+    "ReturnCaseActivities",
+    "ReturnRecordGraphSyncPort",
+    "ReturnRecordStorePort",
+    "ReturnRecordSyncOutcome",
+]
 
 logger = logging.getLogger("return_platform.workflows.return_case_activities")
 
@@ -72,6 +78,22 @@ class ReturnRecordGraphSyncPort(Protocol):
     ) -> ReturnRecordSyncOutcome: ...
 
 
+class ReturnRecordStorePort(Protocol):
+    """The authoritative SQL return store, as this activity needs it (T-14).
+
+    Structural, like `ReturnRecordGraphSyncPort` above, so `workflows` does not
+    learn what a connection pool is; the adapter is
+    `operations/sql_business_state.py::SQLBusinessStateRepository`.
+
+    It must persist every record of one outcome in a single transaction and be
+    idempotent on the supplied ids, because this activity is retried.
+    """
+
+    async def persist_case_return_records(
+        self, write: Any
+    ) -> tuple[str, ...]: ...  # pragma: no cover
+
+
 class ReturnCaseActivities:
     """Narrow injected surface: one repository, one support service, one drafter."""
 
@@ -82,11 +104,13 @@ class ReturnCaseActivities:
         support_service: Any,
         drafter: SupportDraftPort | None = None,
         graph_sync: ReturnRecordGraphSyncPort | None = None,
+        return_store: ReturnRecordStorePort | None = None,
     ) -> None:
         self._repository = repository
         self._support = support_service
         self._drafter = drafter
         self._graph_sync = graph_sync
+        self._return_store = return_store
 
     @activity.defn(name="record_case_status")
     async def record_case_status(self, request: RecordCaseStatusInput) -> None:
@@ -201,6 +225,24 @@ class ReturnCaseActivities:
         unique index turns the second attempt into a no-op rather than a
         duplicate RMA.
         """
+        # T-14: the authoritative SQL return store commits FIRST, in one
+        # transaction covering every RMA of this outcome. Only then is the
+        # platform case updated, and only then are the affected records
+        # synchronized into the graph (the workflow's next activity).
+        #
+        # Raises rather than skipping when unconfigured, exactly as
+        # `synchronize_return_records` does and for the same reason: an
+        # activity that silently wrote no authoritative row would leave every
+        # case looking complete in MongoDB and absent from the return store,
+        # which is the failure this step exists to close.
+        if self._return_store is None:
+            raise RuntimeError(
+                "record_support_outcome was registered without a return store port; "
+                f"the RMAs for case {request.case_id} would exist in MongoDB and not "
+                "in the authoritative SQL return store"
+            )
+        await self._persist_records_to_return_store(request)
+
         for record, record_id in zip(request.records, request.return_record_ids, strict=False):
             try:
                 created = await self._repository.create_return_record(
@@ -269,6 +311,86 @@ class ReturnCaseActivities:
                             expected_version=int(item.get("version", 0)),
                         )
                         break
+
+    async def _persist_records_to_return_store(self, request: RecordSupportOutcomeInput) -> None:
+        """Project the support outcome onto the SQL return store's contract.
+
+        Item ids are derived with `uuid5` from the record id and the order
+        line, not minted: the workflow supplies stable record ids so a retry
+        must produce the same item ids too, or the second attempt would insert
+        a duplicate item under a new primary key.
+
+        Items keep their record. Nothing here promotes a label, tracking
+        reference or return location onto the case (contract C3).
+
+        The adapter's contracts are imported here rather than at module scope
+        so `workflows` does not pull `pymssql` in just by being imported --
+        the workflow module sits next to this one and is sandboxed.
+        """
+        from return_platform.operations.sql_business_state import (
+            CaseReturnRecordsWrite,
+            ReturnRecordItemWrite,
+            ReturnRecordWrite,
+        )
+
+        case = await self._repository.get_case(request.case_id)
+        if case is None:
+            raise ValueError(f"case {request.case_id} does not exist")
+
+        items_by_line = {
+            str(item["orderLineId"]): item
+            for item in await self._repository.list_case_return_items(request.case_id)
+            if item.get("orderLineId") is not None
+        }
+
+        records: list[ReturnRecordWrite] = []
+        for record, record_id in zip(request.records, request.return_record_ids, strict=False):
+            items: list[ReturnRecordItemWrite] = []
+            for line in record.order_line_references:
+                source = items_by_line.get(str(line), {})
+                items.append(
+                    ReturnRecordItemWrite(
+                        return_item_id=str(
+                            uuid.uuid5(uuid.NAMESPACE_URL, f"return-item:{record_id}:{line}")
+                        ),
+                        order_line_id=str(line),
+                        quantity=int(source.get("quantity") or 1),
+                        product_id=(
+                            str(source["productId"])
+                            if source.get("productId") is not None
+                            else None
+                        ),
+                        reason_code=(
+                            str(source["reasonCode"])
+                            if source.get("reasonCode") is not None
+                            else None
+                        ),
+                    )
+                )
+            records.append(
+                ReturnRecordWrite(
+                    return_record_id=record_id,
+                    return_reference=record.return_reference,
+                    label_reference=record.label_reference,
+                    tracking_reference=record.tracking_reference,
+                    return_location=record.return_location,
+                    shipping_instruction_reference=record.shipping_instruction_reference,
+                    items=tuple(items),
+                )
+            )
+
+        assert self._return_store is not None
+        await self._return_store.persist_case_return_records(
+            CaseReturnRecordsWrite(
+                case_id=request.case_id,
+                tenant_id=str(case.get("tenantId") or ""),
+                principal_id=str(case.get("principalId") or ""),
+                order_reference=(
+                    str(case["orderReference"]) if case.get("orderReference") is not None else None
+                ),
+                records=tuple(records),
+            )
+        )
 
     @activity.defn(name="synchronize_return_records")
     async def synchronize_return_records(self, request: SynchronizeReturnRecordsInput) -> str:

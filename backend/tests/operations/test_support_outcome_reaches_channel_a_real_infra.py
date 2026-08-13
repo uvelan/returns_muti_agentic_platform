@@ -76,10 +76,31 @@ async def context() -> Any:
     )
     repository = OperationalRepository(client, settings)
     await repository.ensure_indexes()
+
     # `support_service` is unused by `record_support_outcome`; the outcome path
     # writes to the case, not to the thread. Passing None rather than a stub
     # makes an accidental call a failure instead of a silent no-op.
-    activities = ReturnCaseActivities(repository=repository, support_service=None)
+    #
+    # `return_store` is required now: `record_support_outcome` commits to the
+    # authoritative SQL return store before it touches the case (T-14) and
+    # raises if the port is absent. This test's subject is Channel A
+    # propagation, not SQL, so the port is a recorder -- it keeps the new
+    # contract visible here without dragging SQL Server into a MongoDB test.
+    # The store's real behaviour is proven against real SQL Server in
+    # `test_case_return_records_real_infra.py`.
+    class _RecordingReturnStore:
+        def __init__(self) -> None:
+            self.writes: list[Any] = []
+
+        async def persist_case_return_records(self, write: Any) -> tuple[str, ...]:
+            self.writes.append(write)
+            return tuple(record.return_record_id for record in write.records)
+
+    activities = ReturnCaseActivities(
+        repository=repository,
+        support_service=None,
+        return_store=_RecordingReturnStore(),
+    )
     try:
         yield repository, activities, RepositoryCaseStore(repository)
     finally:
