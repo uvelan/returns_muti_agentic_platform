@@ -24,6 +24,7 @@ from typing import Any
 
 import pytest
 
+from return_platform.ai.gateway.final_dispatch import ALLOW_ALL
 from return_platform.ai.gateway.structured_invocation import StructuredOutputInvoker
 from return_platform.ai.gateway.telemetry import (
     AIAttemptRecord,
@@ -153,6 +154,10 @@ def _invoker(
         required_tier=required_tier,
         forbid_simulator=forbid_simulator,
         recorder=RepositoryAIAttemptRecorder(sink),
+        # This file is about telemetry, not interception. Stated rather
+        # than defaulted because AI-01 removed the default precisely so
+        # that leaving a path ungated has to be a decision someone typed.
+        interception=ALLOW_ALL,
     )
 
 
@@ -486,6 +491,7 @@ async def test_a_recorder_failure_does_not_fail_the_turn(
         event_prefix="test",
         subject="Test",
         recorder=RepositoryAIAttemptRecorder(_BrokenSink()),
+        interception=ALLOW_ALL,
     )
 
     with caplog.at_level(logging.ERROR, logger="test.correlation"):

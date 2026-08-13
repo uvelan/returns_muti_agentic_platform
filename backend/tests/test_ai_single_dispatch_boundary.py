@@ -42,6 +42,7 @@ from pydantic import BaseModel
 
 from return_platform.ai.gateway import final_dispatch as final_dispatch_module
 from return_platform.ai.gateway.final_dispatch import (
+    ALLOW_ALL,
     DispatchDecision,
     DispatchRequest,
     FinalDispatcher,
@@ -159,12 +160,24 @@ def test_only_the_boundary_builds_an_outbound_provider_request() -> None:
     )
 
 
-def test_the_recursive_redactor_is_applied_by_the_boundary_itself() -> None:
-    """Redaction that each caller must remember is redaction one caller will
-    forget -- which is exactly how the simulator's payloads left unmasked. It is
-    load-bearing that the mask is applied where the request is built."""
+def test_the_recursive_redactor_runs_before_the_interception_decision() -> None:
+    """Redaction each caller must remember is redaction one caller will forget --
+    which is exactly how the simulator's payloads left unmasked.
+
+    The *ordering* became load-bearing with AI-01: an interception policy
+    persists the held request for an operator to read, so masking after the
+    policy runs would seal customer data into a store the provider itself never
+    received. Asserted structurally rather than only behaviourally, because the
+    behavioural version passes for any payload that happens to contain nothing
+    sensitive.
+    """
     source = (SOURCE_ROOT / DISPATCH_MODULE).read_text(encoding="utf-8")
-    assert "redact_payload(dict(request.payload))" in source
+    redaction_at = source.index("redact_payload(dict(request.payload))")
+    interception_at = source.index("self._interception.decide(request)")
+    dispatch_at = source.index("route.provider.generate(")
+    assert redaction_at < interception_at < dispatch_at, (
+        "the payload must be masked before it can be persisted or dispatched"
+    )
 
 
 # --------------------------------------------------------------------------
@@ -342,7 +355,9 @@ def _invoker(
         logger=logging.getLogger("test"),
         event_prefix="test",
         subject="test invocation",
-        **kwargs,
+        # Overridable via kwargs; the interception-specific cases in
+        # test_ai_interception_covers_every_path.py pass a real policy.
+        **{"interception": ALLOW_ALL, **kwargs},
     )
 
 
@@ -800,13 +815,15 @@ def test_the_boundary_takes_no_configuration_of_its_own() -> None:
     )
 
 
-def test_the_default_policy_is_a_named_object_rather_than_an_omission() -> None:
-    """`ALLOW_ALL` is greppable; a missing argument is not. AI-01's remaining
-    work is exactly "replace each `ALLOW_ALL` with a real policy", and that is a
-    reviewable list only because the default has a name."""
+def test_an_ungated_path_is_stated_rather_than_defaulted() -> None:
+    """`ALLOW_ALL` survives AI-01 as a legitimate answer -- a process with no
+    interception store cannot hold a request -- but it is no longer a *default*.
+    It has to be typed at the call site, which is what turns "which paths are
+    ungated" from an audit finding into a grep."""
     assert isinstance(final_dispatch_module.ALLOW_ALL, InterceptionPolicy)
     dispatcher = FinalDispatcher(
         settings=_settings(),
         route_pool=AIRoutePool((), load_ai_gateway_configuration(CONFIG).configuration),
+        interception=final_dispatch_module.ALLOW_ALL,
     )
     assert dispatcher.interception is final_dispatch_module.ALLOW_ALL

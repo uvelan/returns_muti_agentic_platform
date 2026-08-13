@@ -34,7 +34,6 @@ from uuid import uuid4
 from pydantic import BaseModel
 
 from return_platform.ai.gateway.final_dispatch import (
-    ALLOW_ALL,
     DispatchDecision,
     DispatchObserver,
     DispatchRequest,
@@ -278,7 +277,13 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
             StructuredInvocationUnavailable
         ),
         recorder: AIAttemptRecorder | None = None,
-        interception: InterceptionPolicy = ALLOW_ALL,
+        # No default, for the reason AI-01 exists: this constructor's previous
+        # `= ALLOW_ALL` is the entire defect. The Order Agent and the Graph
+        # Analyzer both reach a provider through here, and neither had ever
+        # passed an argument, so turning interception on stopped eligibility
+        # decisions and did nothing to the reasoning traffic carrying the most
+        # customer data. A caller that genuinely has no store must now say so.
+        interception: InterceptionPolicy,
         dispatcher: FinalDispatcher | None = None,
     ) -> None:
         task = configuration.tasks.get(task_id)

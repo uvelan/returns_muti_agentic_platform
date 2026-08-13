@@ -33,23 +33,44 @@ from enum import StrEnum
 
 
 class InterceptionStatus(StrEnum):
-    """PENDING -> ANSWERED, or -> CANCELLED / EXPIRED.
+    """PENDING -> ANSWERED / ALLOWED, or -> CANCELLED / EXPIRED.
 
     `EXPIRED` is distinct from `CANCELLED` because they mean different things to
     an operator: expired is "nobody got to it in time", cancelled is "the run
     that needed it went away". Collapsing them would hide a staffing problem
     behind what looks like ordinary churn.
+
+    `ALLOWED` is distinct from `ANSWERED` for the same reason, and it is the one
+    the platform did not model: an operator could substitute a human answer
+    (`ANSWERED`) or kill the request (`CANCELLED`), but "I have looked at this
+    and the model may proceed unchanged" had no representation at all. Without it
+    interception can only ever divert a request, never approve one, and the three
+    outcomes C7 requires -- `ALLOW_PROVIDER | HUMAN_RESPONSE | REJECT` -- collapse
+    to two. It is also what distinguishes the provider's own output from a
+    human's in every downstream record: an `ALLOWED` request is answered by the
+    model and reported as the model, an `ANSWERED` one is reported as MANUAL.
     """
 
     PENDING = "PENDING"
     ANSWERED = "ANSWERED"
+    ALLOWED = "ALLOWED"
     CANCELLED = "CANCELLED"
     EXPIRED = "EXPIRED"
 
 
 _TERMINAL = frozenset(
-    {InterceptionStatus.ANSWERED, InterceptionStatus.CANCELLED, InterceptionStatus.EXPIRED}
+    {
+        InterceptionStatus.ANSWERED,
+        InterceptionStatus.ALLOWED,
+        InterceptionStatus.CANCELLED,
+        InterceptionStatus.EXPIRED,
+    }
 )
+
+#: Statuses that mean the held work may now continue. Both must reach the resume
+#: dispatcher: an approved request is as blocked as an answered one until its run
+#: is signalled.
+RESUMABLE = frozenset({InterceptionStatus.ANSWERED, InterceptionStatus.ALLOWED})
 
 
 def is_terminal(status: InterceptionStatus) -> bool:

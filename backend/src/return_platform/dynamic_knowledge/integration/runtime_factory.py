@@ -21,6 +21,7 @@ from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
 from return_platform.ai.gateway.telemetry import RepositoryAIAttemptRecorder
+from return_platform.ai.interception.store import SystemStoreInterceptionStore
 from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
 from return_platform.ai_gateway.routing import AIRoutePool
 from return_platform.configuration.return_configuration import (
@@ -152,6 +153,12 @@ async def build_dynamic_order_agent_runtime(
             configuration=ai_gateway_configuration.configuration,
             route_pool=route_pool,
             recorder=RepositoryAIAttemptRecorder(operational_repository),
+            # AI-01. The same sealed store the manual path already uses, and the
+            # same operator switch the eligibility path already reads -- so
+            # turning interception on now holds reasoning traffic too, which is
+            # where the customer data actually is.
+            interception_store=SystemStoreInterceptionStore(system_store, reasoning_encryptor),
+            gateway_settings=operational_repository,
         ),
         knowledge_gateway=graph.knowledge_gateway,
         conversation_store=AtomicConversationRepository(conversation_documents),

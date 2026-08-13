@@ -8,6 +8,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from return_platform.ai.gateway.interception_policy import AIGatewaySettingsSource
+from return_platform.ai.interception.store import InterceptionStore
 from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
 from return_platform.ai_gateway.routing import AIRoutePool
 from return_platform.configuration.settings import Settings
@@ -40,6 +42,11 @@ class DependencySimulationService:
         *,
         loaded_ai_gateway: LoadedAIGatewayConfiguration | None = None,
         route_pool: AIRoutePool | None = None,
+        # AI-01. Passed through rather than resolved here: the narrative service
+        # owns the dispatch, so it owns the policy; this class only knows who
+        # can supply the two things the policy needs.
+        interception_store: InterceptionStore | None = None,
+        gateway_settings: AIGatewaySettingsSource | None = None,
     ) -> None:
         self.repository = repository
         self.settings = settings
@@ -51,6 +58,8 @@ class DependencySimulationService:
             self.configuration,
             loaded_ai_gateway=loaded_ai_gateway,
             route_pool=route_pool,
+            interception_store=interception_store,
+            gateway_settings=gateway_settings,
         )
 
     @staticmethod

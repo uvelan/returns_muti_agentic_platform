@@ -35,6 +35,11 @@ from return_platform.ai.gateway.final_dispatch import (
     DispatchRequest,
     FinalDispatcher,
 )
+from return_platform.ai.gateway.interception_policy import (
+    AIGatewaySettingsSource,
+    build_interception_policy,
+)
+from return_platform.ai.interception.store import InterceptionStore
 from return_platform.ai.providers import ProviderResponse
 from return_platform.ai.routing.routes import AIRoute, build_routes
 from return_platform.ai.routing.selection import AIRoutePool
@@ -74,6 +79,8 @@ class SimulationNarrativeService:
         loaded_ai_gateway: LoadedAIGatewayConfiguration | None = None,
         route_pool: AIRoutePool | None = None,
         dispatcher: FinalDispatcher | None = None,
+        interception_store: InterceptionStore | None = None,
+        gateway_settings: AIGatewaySettingsSource | None = None,
     ) -> None:
         self._repository = repository
         self._settings = settings
@@ -103,6 +110,15 @@ class SimulationNarrativeService:
         self._dispatcher = dispatcher or FinalDispatcher(
             settings=settings,
             route_pool=self._route_pool,
+            # AI-01. Stated rather than defaulted, and gated whenever this
+            # process can hold a request: the simulator's narrative reaches a
+            # real provider like any other call, so exempting it would leave a
+            # third path outside a control the other two now have.
+            interception=build_interception_policy(
+                store=interception_store,
+                settings_source=gateway_settings,
+                subject="simulator_operation_narrative",
+            ),
         )
 
     def _active_task(self) -> TaskConfiguration | None:

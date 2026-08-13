@@ -55,7 +55,7 @@ import random
 import time
 from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
@@ -287,7 +287,12 @@ class FinalDispatcher:
         settings: Settings,
         route_pool: AIRoutePool,
         recorder: AIAttemptRecorder | None = None,
-        interception: InterceptionPolicy = ALLOW_ALL,
+        # No default. AI-01 was not a missing mechanism -- it was a mechanism two
+        # of three callers never opted into, and a defaulted parameter is what
+        # made not opting in the silent option. `ALLOW_ALL` is still available
+        # and is still the right answer for a process with no interception store,
+        # but it now has to be typed out at the call site.
+        interception: InterceptionPolicy,
     ) -> None:
         self._settings = settings
         self._route_pool = route_pool
@@ -431,6 +436,16 @@ class FinalDispatcher:
         next route rather than handing the caller something unparsed.
         """
         watcher = observer or _NULL_OBSERVER
+
+        # Redacted here, before anything else looks at the payload, and carried
+        # for the rest of the invocation. This is a *sequence* requirement, not
+        # a tidiness one: an interception policy persists the held request, and
+        # masking after that point would seal customer data into a store whose
+        # whole purpose is to be opened by an operator. Everything downstream --
+        # the policy, the `ProviderRequest`, the telemetry digest -- now sees the
+        # same masked payload, so "nothing unredacted leaves the platform" is one
+        # claim provable in one place rather than one claim per path.
+        request = replace(request, payload=redact_payload(dict(request.payload)))
 
         verdict = await self._interception.decide(request)
         if verdict.decision is not DispatchDecision.ALLOW_PROVIDER:
@@ -589,12 +604,13 @@ class FinalDispatcher:
                         route.provider.generate(
                             ProviderRequest(
                                 system_prompt=request.system_prompt,
-                                # Recursive redaction, at the last point before
-                                # the request leaves the platform. Applied here
-                                # rather than by each caller because a caller
-                                # that forgot would look exactly like a caller
-                                # with nothing to redact.
-                                user_payload=redact_payload(dict(request.payload)),
+                                # Already recursively redacted, at the top of
+                                # `dispatch` -- before the interception policy
+                                # could persist it. Masking here instead would
+                                # leave the held-request store richer than the
+                                # provider, which is the one place it must never
+                                # be.
+                                user_payload=dict(request.payload),
                                 max_output_tokens=request.max_output_tokens,
                                 temperature=request.temperature,
                                 response_schema=request.response_schema,

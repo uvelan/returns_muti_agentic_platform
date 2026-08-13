@@ -75,6 +75,10 @@ def _service(
                 else None
             ),
             route_pool=getattr(request.app.state, "ai_gateway_route_pool", None),
+            # AI-01. The simulator dispatches to a real provider like any other
+            # caller, so it is gated like one. Both values are already in hand.
+            interception_store=getattr(request.app.state, "ai_interception_store", None),
+            gateway_settings=operational,
         ),
         resources,
         loaded_returns,

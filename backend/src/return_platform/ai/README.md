@@ -64,9 +64,27 @@ three keys and will reject anything else as `RESPONSE_INVALID`.
 ### Interception
 
 Every dispatch begins with one `InterceptionPolicy` verdict: `ALLOW_PROVIDER`,
-`HUMAN_RESPONSE` or `REJECT` (contract C7). `GatewaySettingsInterceptionPolicy` reads the
-operator's `interceptMode`; `ALLOW_ALL` marks the paths AI-01 has still to wire, and is a
-named object precisely so `grep ALLOW_ALL` lists them.
+`HUMAN_RESPONSE` or `REJECT` (contract C7). There is no default — a caller must state its
+policy, because `= ALLOW_ALL` on a constructor is precisely what let the Order Agent and the
+Graph Analyzer run ungated while the eligibility path was gated (AI-01). `ALLOW_ALL` remains
+a legitimate answer for a process with no interception store, and `build_interception_policy`
+logs `ai_interception_ungated` naming the path when it returns one.
+
+`DurableInterceptionPolicy` holds rather than blocks. A first call persists the redacted
+request to `ai/interception/store.py` as `PENDING` and reports `HUMAN_RESPONSE`; the operator
+decides; `InterceptionResumeDispatcher` turns the decided record into a
+`reasoning_resume_commands` row; the resume worker signals the run; the resumed dispatch finds
+the decision. The interception id is *derived* from the task, the request digest and the
+caller's correlation, so a retry re-finds its own interception instead of opening a second.
+
+Five stored states map onto the three contract outcomes: `ALLOWED` → `ALLOW_PROVIDER`,
+`PENDING`/`ANSWERED` → `HUMAN_RESPONSE`, `CANCELLED`/`EXPIRED` → `REJECT`. `ALLOWED` is the
+one the platform did not model before AI-01; without it interception could only divert
+traffic, never approve it.
+
+**Redaction runs before the policy, not after.** Interception persists the held request for an
+operator to read, so masking at `ProviderRequest` construction would seal customer data into a
+store the provider itself never received. `dispatch` masks once, at the top.
 
 `DurableInterceptionProvider` is **not** this mechanism. It is a MANUAL provider, gated to
 development and test, that *replaces* the model with a human and reports `MANUAL` so a human

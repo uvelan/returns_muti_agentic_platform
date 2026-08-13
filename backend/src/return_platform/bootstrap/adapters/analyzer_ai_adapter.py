@@ -36,10 +36,15 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
+from return_platform.ai.gateway.interception_policy import (
+    AIGatewaySettingsSource,
+    build_interception_policy,
+)
 from return_platform.ai.gateway.structured_invocation import (
     StructuredInvocationUnavailable,
     StructuredOutputInvoker,
 )
+from return_platform.ai.interception.store import InterceptionStore
 from return_platform.ai.routing.selection import AIRoutePool
 from return_platform.ai.routing.tasks import AIGatewayConfiguration
 from return_platform.configuration.settings import Settings
@@ -93,6 +98,8 @@ class GatewaySchemaReasoningAdapter:
         configuration: AIGatewayConfiguration,
         route_pool: AIRoutePool,
         task_id: str = GRAPH_SCHEMA_PROPOSAL_TASK_ID,
+        interception_store: InterceptionStore | None = None,
+        gateway_settings: AIGatewaySettingsSource | None = None,
     ) -> None:
         self._invoker: StructuredOutputInvoker[_SchemaProposalDraft] = StructuredOutputInvoker(
             settings=settings,
@@ -104,6 +111,16 @@ class GatewaySchemaReasoningAdapter:
             event_prefix="analyzer_schema_proposal",
             subject="Graph schema proposal",
             unavailable_error=SchemaProposalUnavailable,
+            # AI-01. Block 5 of the analyzer's prompt is UNTRUSTED SOURCE SAMPLE
+            # -- rows read out of a customer's database -- so of the two paths
+            # that bypassed interception this is the one carrying the most
+            # sensitive payload, and the one an operator is most likely to want
+            # to look at before it leaves.
+            interception=build_interception_policy(
+                store=interception_store,
+                settings_source=gateway_settings,
+                subject="analyzer_schema_proposal",
+            ),
         )
 
     async def propose_schema(
@@ -160,6 +177,8 @@ def build_analyzer_ai_adapter(
     configuration: AIGatewayConfiguration,
     route_pool: AIRoutePool,
     task_id: str = GRAPH_SCHEMA_PROPOSAL_TASK_ID,
+    interception_store: InterceptionStore | None = None,
+    gateway_settings: AIGatewaySettingsSource | None = None,
 ) -> SchemaReasoningPort:
     """Typed factory -- the return annotation is what makes mypy prove port
     conformance, rather than a runtime isinstance that only checks method names.
@@ -175,4 +194,6 @@ def build_analyzer_ai_adapter(
         configuration=configuration,
         route_pool=route_pool,
         task_id=task_id,
+        interception_store=interception_store,
+        gateway_settings=gateway_settings,
     )

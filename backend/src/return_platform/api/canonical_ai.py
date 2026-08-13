@@ -289,6 +289,44 @@ async def answer_interception(
     )
 
 
+@router.post("/interceptions/{interception_id}/allow", response_model=APIResponse[dict[str, Any]])
+async def allow_interception(
+    interception_id: str,
+    request: Request,
+    actor_id: str = Depends(require_capability(capabilities.AI_INTERCEPTION_ACT)),
+) -> APIResponse[dict[str, Any]]:
+    """Approve the held request unchanged: let the model answer it after all.
+
+    The third outcome, and until AI-01 the missing one. An operator could
+    substitute a human answer or kill the request; "I have read this and it may
+    proceed" had no representation, so interception could only ever divert
+    traffic, never approve it -- which makes turning it on in production a choice
+    between inspecting nothing and hand-answering everything.
+
+    Same capability as answering, deliberately: approving a request that carries
+    a customer's data is an act on that data, not a lesser read.
+
+    Like `answer`, this only transitions the record. The resume dispatcher turns
+    an `ALLOWED` interception into a resume command exactly as it does an
+    `ANSWERED` one, and the resumed dispatch finds `ALLOW_PROVIDER` waiting for
+    it. The provider is called once, after the approval, and not before.
+    """
+    store = _require_interception_store(request)
+    try:
+        record = await store.allow(interception_id=interception_id, allowed_by=actor_id)
+    except InterceptionNotPending as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    return APIResponse(
+        data={
+            "interceptionId": record.interception_id,
+            "status": record.status.value,
+            "answeredBy": record.answered_by,
+            "answeredAt": record.answered_at.isoformat() if record.answered_at else None,
+        },
+        meta=_meta(request),
+    )
+
+
 @router.post("/interceptions/{interception_id}/cancel", response_model=APIResponse[dict[str, Any]])
 async def cancel_interception(
     interception_id: str,
