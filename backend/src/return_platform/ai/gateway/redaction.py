@@ -25,6 +25,14 @@ The masked form keeps the value's length class rather than its content, because
 "there is a phone number here" is information the model legitimately needs to
 decide whether it already has an anchor, and "555-0100" is information it does
 not.
+
+**Which names count as sensitive is not decided here.** That list moved to
+`platform.redaction.sensitive_keys` when W4.6 needed the same answer for analyzer
+samples, which cannot import `ai` (design doc 2.7). This module kept only the
+part that is specific to a provider payload: recursion into a JSON-encoded
+string, and the constant that replaces a leaf. A sample gets a different
+replacement for reasons `platform.redaction.sample_masking` sets out; both ask
+`is_sensitive_key` the question.
 """
 
 from __future__ import annotations
@@ -32,37 +40,16 @@ from __future__ import annotations
 import json
 from typing import Any, Final
 
+from return_platform.platform.redaction.sensitive_keys import is_sensitive_key
+
 __all__ = ["REDACTED", "redact_payload"]
 
 REDACTED: Final = "[REDACTED]"
-
-# Shared with AIGatewayService so one policy governs both entry points. Compared
-# against a key normalized to lower-case with `_` and `-` removed, so
-# `customer_name`, `customerName` and `CUSTOMER-NAME` are all caught.
-SENSITIVE_KEY_FRAGMENTS: Final[tuple[str, ...]] = (
-    "name",
-    "email",
-    "phone",
-    "address",
-    "password",
-    "secret",
-    "token",
-    "ssn",
-    "aadhaar",
-    "pan",
-    "card",
-    "cvv",
-)
 
 # Depth is bounded so a hostile or malformed payload cannot drive unbounded
 # recursion. Deeper than the gateway's own nesting limit (4) because a nested
 # JSON-encoded string resets the apparent depth without resetting the real one.
 _MAX_DEPTH: Final = 12
-
-
-def _is_sensitive(key: str) -> bool:
-    normalized = key.lower().replace("_", "").replace("-", "")
-    return any(fragment in normalized for fragment in SENSITIVE_KEY_FRAGMENTS)
 
 
 def _redact_json_string(value: str, depth: int) -> str:
@@ -95,7 +82,7 @@ def _redact(value: Any, depth: int) -> Any:
         result: dict[str, Any] = {}
         for key, nested in value.items():
             key_text = str(key)
-            if _is_sensitive(key_text) and not isinstance(nested, (dict, list)):
+            if is_sensitive_key(key_text) and not isinstance(nested, (dict, list)):
                 # A leaf under a sensitive key. `None` stays `None`: "absent" is
                 # not sensitive, and masking it would tell the model a value
                 # exists where none does.

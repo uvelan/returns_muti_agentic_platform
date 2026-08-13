@@ -23,6 +23,16 @@ that way, and the second is the one that actually matters:
   and append trusted-looking text after it. Prompt structure is only a boundary
   if content cannot forge the boundary marker.
 
+**Block 5 is masked as it is assembled (W4.6).** Delimiter neutralisation stops a
+row from forging prompt structure; it does nothing about the row containing a
+customer's name, and this is the last point before a sample becomes text bound
+for a provider. Masking here rather than trusting the caller is the same argument
+as everywhere else in this module: the guarantee has to hold for the caller who
+did not read the docstring. It is `SampleMasker`, so rows that already came
+through the masked inspection port pass through unchanged rather than being
+masked twice -- and field names, types, shape and cardinality survive, which is
+what leaves the model something to infer structure from.
+
 Returns structured blocks rather than one string so `SchemaReasoningPort`
 implementations can map them onto whatever the provider's message format is
 (system vs user turns) without re-parsing prose.
@@ -36,6 +46,8 @@ from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
+
+from return_platform.platform.redaction.sample_masking import SampleMasker
 
 __all__ = [
     "BLOCK_DELIMITER_PATTERN",
@@ -111,6 +123,7 @@ def build_prompt_blocks(
     untrusted_samples: Mapping[str, Sequence[Mapping[str, Any]]] | None,
     user_requirements: str,
     clarification_answers: Sequence[Mapping[str, str]] = (),
+    masker: SampleMasker | None = None,
 ) -> tuple[PromptBlock, ...]:
     """Assemble the six blocks in their fixed order.
 
@@ -119,6 +132,12 @@ def build_prompt_blocks(
     provided. An absent block would be ambiguous -- the model could not tell
     "no samples available" from "samples omitted by accident" -- and an
     always-present block keeps the six-block contract literally true.
+
+    `masker` is optional and defaults to a fresh one, so the masking is on by
+    default rather than on when a caller remembers. Pass the analysis's own
+    masker to keep the tokens in block 5 equal to the tokens the same analysis
+    saw through `SourceInspectionPort.sample`; without that they are internally
+    consistent within this prompt, which is what the model actually reasons over.
     """
     answered = "\n".join(
         f"Q: {neutralize_delimiters(item.get('question', ''))}\n"
@@ -158,7 +177,9 @@ def build_prompt_blocks(
             index=5,
             kind=PromptBlockKind.UNTRUSTED_SOURCE_SAMPLE,
             trusted=False,
-            content=_render_samples(untrusted_samples),
+            content=_render_samples(
+                untrusted_samples, masker=SampleMasker() if masker is None else masker
+            ),
         ),
         PromptBlock(
             index=6,
@@ -186,7 +207,19 @@ def _render_metadata(source_metadata: Sequence[Mapping[str, Any]]) -> str:
 
 def _render_samples(
     untrusted_samples: Mapping[str, Sequence[Mapping[str, Any]]] | None,
+    *,
+    masker: SampleMasker,
 ) -> str:
+    """Masked first, then neutralised, then rendered.
+
+    That order, because neutralisation rewrites text and masking has to see the
+    value the source actually holds to give equal values equal tokens. Reversing
+    it would let a row whose value contained a block-delimiter shape mask to a
+    token keyed on the *rewritten* string, so two rows holding the same value
+    could come out with different tokens -- and the cardinality signal the mask
+    exists to preserve would be wrong in exactly the rows that were tampered
+    with.
+    """
     if not untrusted_samples:
         return (
             "No source samples were provided for this analysis. Reason about the "
@@ -198,7 +231,7 @@ def _render_samples(
         for row in rows:
             rendered = ", ".join(
                 f"{neutralize_delimiters(str(key))}={neutralize_delimiters(str(value))}"
-                for key, value in row.items()
+                for key, value in masker.mask_row(row).items()
             )
             lines.append(f"    {rendered}")
     return "\n".join(lines)

@@ -29,21 +29,7 @@ from return_platform.ai.safety import (
 )
 from return_platform.configuration.settings import Settings
 from return_platform.operations.models import AIDecision, AIRequestStatus, AITraceView
-
-_SENSITIVE_KEY_FRAGMENTS = (
-    "name",
-    "email",
-    "phone",
-    "address",
-    "password",
-    "secret",
-    "token",
-    "ssn",
-    "aadhaar",
-    "pan",
-    "card",
-    "cvv",
-)
+from return_platform.platform.redaction.sensitive_keys import is_sensitive_key
 
 
 class AIGatewayRepository(Protocol):
@@ -140,8 +126,7 @@ class AIGatewayService:
                     raise _PayloadPolicyError(
                         AIRequestStatus.POLICY_BLOCKED, "AI input keys must be strings."
                     )
-                normalized_key = raw_key.lower().replace("_", "").replace("-", "")
-                if any(fragment in normalized_key for fragment in _SENSITIVE_KEY_FRAGMENTS):
+                if is_sensitive_key(raw_key):
                     raise _PayloadPolicyError(
                         AIRequestStatus.REDACTION_FAILED,
                         "Sensitive field was blocked by redaction policy.",
