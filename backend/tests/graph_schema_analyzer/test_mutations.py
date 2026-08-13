@@ -20,7 +20,6 @@ from return_platform.graph_schema_analyzer.application.mutation_service import (
 )
 from return_platform.graph_schema_analyzer.application.validation_service import ValidationService
 from return_platform.graph_schema_analyzer.domain import mutation as mutation_module
-from return_platform.graph_schema_analyzer.domain.approval import Approval, ApprovalStatus
 from return_platform.graph_schema_analyzer.domain.errors import InvalidSessionTransition
 from return_platform.graph_schema_analyzer.domain.mutation import (
     MUTATION_KINDS,
@@ -286,20 +285,10 @@ def test_an_empty_draft_cannot_be_validated() -> None:
         _draft(GraphSchemaShape()).validated("validation-1", occurred_at=NOW)
 
 
-# --- approval ---------------------------------------------------------------
-
-
-def test_an_approval_decision_is_final() -> None:
-    approval = Approval(
-        approval_id="ap1",
-        draft_id="d1",
-        revision_id="r1",
-        validation_result_id="v1",
-        approver="pending",
-    ).approved(by="analyst", occurred_at=NOW)
-    assert approval.status is ApprovalStatus.APPROVED
-    with pytest.raises(InvalidSessionTransition):
-        approval.rejected(by="someone-else", occurred_at=NOW)
+# The analyzer-owned `Approval` and its "a decision is final" invariant moved to
+# the shared proposal kernel in W4.3, where `REJECTED` and `SUPERSEDED` are
+# terminal states of one lifecycle serving all three kinds of governed change.
+# Its replacement is covered by `tests/platform/test_proposal_kernel.py`.
 
 
 # --- diff -------------------------------------------------------------------

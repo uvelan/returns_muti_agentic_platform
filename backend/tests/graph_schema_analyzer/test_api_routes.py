@@ -27,11 +27,11 @@ from return_platform.graph_schema_analyzer.domain import (
     SourceSchemaSnapshot,
     UnknownAnalysis,
 )
-from return_platform.graph_schema_analyzer.domain.approval import Approval
 from return_platform.graph_schema_analyzer.domain.schema_draft import GraphSchemaDraft
 from return_platform.graph_schema_analyzer.domain.schema_revision import SchemaRevision
 from return_platform.graph_schema_analyzer.domain.validation_result import ValidationResult
 from return_platform.graph_schema_analyzer.ports.system_store_port import PersistencePort
+from tests.governance_doubles import attach_governance
 
 NOW = datetime(2026, 8, 9, 12, 0, tzinfo=UTC)
 
@@ -52,7 +52,6 @@ class InMemoryPersistence:
         self.drafts: dict[str, GraphSchemaDraft] = {}
         self.revisions: list[SchemaRevision] = []
         self.validation_results: dict[str, ValidationResult] = {}
-        self.approvals: list[Approval] = []
         self.fail_next_save_with_conflict = False
 
     async def create_session(self, session: AnalysisSession) -> None:
@@ -140,12 +139,6 @@ class InMemoryPersistence:
     async def load_validation_result(self, result_id: str) -> ValidationResult:
         return self.validation_results[result_id]
 
-    async def save_approval(self, approval: Approval) -> None:
-        self.approvals.append(approval)
-
-    async def list_approvals(self, draft_id: str) -> Sequence[Approval]:
-        return [a for a in self.approvals if a.draft_id == draft_id]
-
 
 @pytest.fixture
 def persistence() -> InMemoryPersistence:
@@ -157,6 +150,7 @@ def client(persistence: InMemoryPersistence) -> TestClient:
     app = FastAPI()
     app.include_router(router)
     app.state.graph_schema_analyzer_persistence = persistence
+    attach_governance(app)
     return TestClient(app)
 
 

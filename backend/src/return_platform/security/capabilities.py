@@ -51,6 +51,16 @@ GRAPH_SCHEMA_DRAFT_READ: Final = "graph_schema.draft.read"
 GRAPH_SCHEMA_DRAFT_WRITE: Final = "graph_schema.draft.write"
 GRAPH_SCHEMA_GENERATION_ACTIVATE: Final = "graph_schema.generation.activate"
 
+# Governance domain -- `/api/proposals`, and every surface that proposes a
+# change. Deliberately *not* per-proposal-type: the whole point of the shared
+# kernel is that a schema draft, an agent configuration edit and a feedback
+# improvement are one decision queue with one grant behind it. Three approval
+# capabilities would be three approval paths wearing a shared type.
+GOVERNANCE_PROPOSAL_READ: Final = "governance.proposal.read"
+GOVERNANCE_PROPOSAL_WRITE: Final = "governance.proposal.write"
+GOVERNANCE_PROPOSAL_APPROVE: Final = "governance.proposal.approve"
+GOVERNANCE_PROPOSAL_ACTIVATE: Final = "governance.proposal.activate"
+
 # AI Control Center domain -- `/api/ai`.
 AI_REQUEST_READ: Final = "ai.request.read"
 AI_METRICS_READ: Final = "ai.metrics.read"
@@ -75,6 +85,10 @@ ALL_CAPABILITIES: Final = frozenset(
         GRAPH_SCHEMA_DRAFT_READ,
         GRAPH_SCHEMA_DRAFT_WRITE,
         GRAPH_SCHEMA_GENERATION_ACTIVATE,
+        GOVERNANCE_PROPOSAL_READ,
+        GOVERNANCE_PROPOSAL_WRITE,
+        GOVERNANCE_PROPOSAL_APPROVE,
+        GOVERNANCE_PROPOSAL_ACTIVATE,
         AI_REQUEST_READ,
         AI_METRICS_READ,
         AI_INTERCEPTION_READ,
@@ -91,6 +105,7 @@ _READ_ONLY_EVERYWHERE: Final = frozenset(
         CONFIG_RELEASE_READ,
         CONFIG_SOURCE_READ,
         GRAPH_SCHEMA_DRAFT_READ,
+        GOVERNANCE_PROPOSAL_READ,
         AI_REQUEST_READ,
         AI_METRICS_READ,
         AI_INTERCEPTION_READ,
@@ -105,7 +120,11 @@ _ROLE_CAPABILITIES: Final[dict[str, frozenset[str]]] = {
     r.CONSOLE_ADMIN: ALL_CAPABILITIES,
     r.CONSOLE_VIEWER: _READ_ONLY_EVERYWHERE,
     r.WORKSPACE_VIEWER: _READ_ONLY_EVERYWHERE,
-    r.WORKSPACE_EDITOR: _READ_ONLY_EVERYWHERE | {CONFIG_SOURCE_WRITE, GRAPH_SCHEMA_DRAFT_WRITE},
+    # An editor may propose and may not decide. That split is the reason the
+    # approval capability exists at all: before it, `POST /drafts/{id}/approve`
+    # carried no dependency and accepted any actor the middleware had let in.
+    r.WORKSPACE_EDITOR: _READ_ONLY_EVERYWHERE
+    | {CONFIG_SOURCE_WRITE, GRAPH_SCHEMA_DRAFT_WRITE, GOVERNANCE_PROPOSAL_WRITE},
     r.RETURN_ASSOCIATE: frozenset({RETURNS_SESSION_READ, RETURNS_SESSION_WRITE}),
     r.RETURN_SUPPORT: frozenset({RETURNS_SESSION_READ, RETURNS_SESSION_WRITE, RETURNS_SUPPORT_ACT}),
     r.LOGISTICS_COORDINATOR: frozenset(
@@ -120,6 +139,7 @@ _ROLE_CAPABILITIES: Final[dict[str, frozenset[str]]] = {
             RETURNS_AUDIT_READ,
             CONFIG_RUNTIME_READ,
             CONFIG_RELEASE_READ,
+            GOVERNANCE_PROPOSAL_READ,
             AI_REQUEST_READ,
             AI_METRICS_READ,
         }

@@ -3,8 +3,12 @@
 One repository per entity family rather than a single god-repository, because
 each has a genuinely different write discipline: compare-and-set for sessions
 and drafts, immutable content-addressed upsert for snapshots, append-only insert
-for revisions, state-machine-guarded upsert for clarifications and approvals.
+for revisions, state-machine-guarded upsert for clarifications.
 Collapsing them would force the weakest discipline on all of them.
+
+Approvals are not here. The decision on a validated draft is a governance
+proposal now (`platform.governance`), stored once for all three kinds of change
+this platform asks a human to sign off on.
 
 `SystemStorePersistence` composes them into the single `PersistencePort` the rest
 of the module resolves, so callers see one contract while each entity keeps its
@@ -21,15 +25,11 @@ from return_platform.graph_schema_analyzer.domain.analysis_session import (
     AnalysisSession,
     SessionStatus,
 )
-from return_platform.graph_schema_analyzer.domain.approval import Approval
 from return_platform.graph_schema_analyzer.domain.clarification import Clarification
 from return_platform.graph_schema_analyzer.domain.schema_draft import GraphSchemaDraft
 from return_platform.graph_schema_analyzer.domain.schema_revision import SchemaRevision
 from return_platform.graph_schema_analyzer.domain.source_snapshot import SourceSchemaSnapshot
 from return_platform.graph_schema_analyzer.domain.validation_result import ValidationResult
-from return_platform.graph_schema_analyzer.persistence.approval_repository import (
-    ApprovalRepository,
-)
 from return_platform.graph_schema_analyzer.persistence.clarification_repository import (
     ClarificationRepository,
 )
@@ -45,7 +45,6 @@ from return_platform.platform.system_store.repository import SystemStore
 
 __all__ = [
     "AnalysisSessionRepository",
-    "ApprovalRepository",
     "ClarificationRepository",
     "DraftRepository",
     "SourceSnapshotRepository",
@@ -62,7 +61,6 @@ class SystemStorePersistence:
         self.snapshots = SourceSnapshotRepository(system_store)
         self.clarifications = ClarificationRepository(system_store)
         self.drafts = DraftRepository(system_store)
-        self.approvals = ApprovalRepository(system_store)
 
     async def save_session(self, session: AnalysisSession, *, expected_version: int) -> None:
         await self.sessions.save(session, expected_version=expected_version)
@@ -116,12 +114,6 @@ class SystemStorePersistence:
 
     async def load_validation_result(self, result_id: str) -> ValidationResult:
         return await self.drafts.load_validation_result(result_id)
-
-    async def save_approval(self, approval: Approval) -> None:
-        await self.approvals.save(approval)
-
-    async def list_approvals(self, draft_id: str) -> Sequence[Approval]:
-        return await self.approvals.list_for_draft(draft_id)
 
 
 def build_system_store_persistence(system_store: SystemStore) -> PersistencePort:

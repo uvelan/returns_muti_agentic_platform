@@ -23,6 +23,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from return_platform.graph_schema_analyzer.api import router
+from tests.governance_doubles import attach_governance
 from tests.graph_schema_analyzer.test_draft_api import (
     InMemoryPersistence,
     PassingTarget,
@@ -43,8 +44,10 @@ def persistence() -> InMemoryPersistence:
 def client(persistence: InMemoryPersistence) -> TestClient:
     app = FastAPI()
     app.include_router(router)
+    target = PassingTarget()
     app.state.graph_schema_analyzer_persistence = persistence
-    app.state.graph_schema_analyzer_graph_target = PassingTarget()
+    app.state.graph_schema_analyzer_graph_target = target
+    attach_governance(app, target)
     return TestClient(app)
 
 

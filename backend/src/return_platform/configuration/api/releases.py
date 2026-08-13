@@ -12,16 +12,15 @@ from return_platform.ai_gateway.configuration import (
     AIGatewayConfiguration,
     LoadedAIGatewayConfiguration,
 )
+from return_platform.configuration.application.release_promotion import (
+    ReleasePromotionError,
+    promote_configuration_release,
+)
 from return_platform.configuration.graph_repository import (
     ConfigurationGraphRepository,
-    ConfigurationRevisionConflict,
-    transition_allowed,
 )
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 from return_platform.configuration.runtime_activation import RuntimeConfigurationActivator
-from return_platform.configuration.runtime_integrations import (
-    verify_runtime_validation_receipts,
-)
 from return_platform.configuration.snapshot import (
     AI_GATEWAY_DOMAIN_KEY,
     DEPENDENCY_SIMULATION_DOMAIN_KEY,
@@ -334,114 +333,42 @@ async def promote_release_status(
     request: Request,
     user_id: str = Depends(require_write_roles),
 ) -> APIResponse[dict[str, Any]]:
-    """Promote a validated immutable release through an explicit lifecycle."""
+    """Promote a validated immutable release through an explicit lifecycle.
+
+    The body of this handler is `promote_configuration_release`. It moved there
+    when W4.2 made an agent configuration edit into a release: the kernel's
+    activator has to publish one and has no `Request` to do it with, and the
+    rules that make a promotion safe -- three domains present and valid,
+    unexpired receipts, `expected_head_revision`, forced refresh on RELEASED --
+    are not rules worth having two copies of.
+    """
 
     repo = resolve_configuration_repository(request)
-    release = await repo.get_release(release_id)
-    if release is None:
-        raise HTTPException(status_code=404, detail=f"Release {release_id} not found")
-
-    # Shared table, not a third copy -- see RELEASE_TRANSITIONS. This early check
-    # exists so a refused promotion answers 409 before the domain validation
-    # below does any work; `promote_release` enforces the same rule as the real
-    # boundary.
-    if not transition_allowed(release.status, body.status):
-        raise HTTPException(
-            status_code=409,
-            detail=f"Invalid configuration transition {release.status} -> {body.status}",
-        )
-
-    if body.status in {"VALIDATED", "RELEASED"}:
-        domain_payloads = await repo.get_all_domain_configs(release_id)
-        required_domains = {
-            RETURN_PLATFORM_DOMAIN_KEY,
-            AI_GATEWAY_DOMAIN_KEY,
-            DEPENDENCY_SIMULATION_DOMAIN_KEY,
-        }
-        missing_domains = sorted(required_domains - set(domain_payloads))
-        if missing_domains:
-            raise HTTPException(
-                status_code=422,
-                detail="Release is missing behavior domains: " + ", ".join(missing_domains),
-            )
-        try:
-            validated_configuration = ReturnPlatformConfiguration.model_validate(
-                domain_payloads[RETURN_PLATFORM_DOMAIN_KEY]
-            )
-            AIGatewayConfiguration.model_validate(domain_payloads[AI_GATEWAY_DOMAIN_KEY])
-            DependencySimulationConfiguration.model_validate(
-                domain_payloads[DEPENDENCY_SIMULATION_DOMAIN_KEY]
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        resources = getattr(request.app.state, "resources", None)
-        if not isinstance(resources, RuntimeResources) or resources.mongo is None:
-            raise HTTPException(status_code=503, detail="Validation receipt store is unavailable")
-        try:
-            await verify_runtime_validation_receipts(
-                resources.mongo,
-                resources.settings.mongo_database,
-                validated_configuration,
-                require_unexpired=True,
-            )
-        except RuntimeError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    if body.status == "RELEASED" and body.expected_head_revision is None:
-        raise HTTPException(
-            status_code=422,
-            detail="expected_head_revision is required to publish a configuration release",
-        )
-
+    resources = getattr(request.app.state, "resources", None)
+    store = resources if isinstance(resources, RuntimeResources) else None
+    activator = getattr(request.app.state, "runtime_configuration_activator", None)
     try:
-        updated = await repo.promote_release(
-            release_id,
-            body.status,
+        outcome = await promote_configuration_release(
+            repository=repo,
+            release_id=release_id,
+            target_status=body.status,
             actor_id=user_id,
             expected_head_revision=body.expected_head_revision,
+            mongo=store.mongo if store is not None else None,
+            mongo_database=store.settings.mongo_database if store is not None else None,
+            activator=(activator if isinstance(activator, RuntimeConfigurationActivator) else None),
         )
-    except ConfigurationRevisionConflict as exc:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "CONFIGURATION_REVISION_CONFLICT",
-                "message": str(exc),
-                "current_head_revision": await repo.get_head_revision(),
-            },
-        ) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ReleasePromotionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
-    activated_snapshot = None
-    if body.status == "RELEASED":
-        activator = getattr(request.app.state, "runtime_configuration_activator", None)
-        if not isinstance(activator, RuntimeConfigurationActivator):
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    "Configuration was released in the graph, but this process has no runtime "
-                    "configuration activator"
-                ),
-            )
-        try:
-            activated_snapshot = await activator.refresh(force=True)
-        except Exception as exc:
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    "Configuration was released in the graph but could not be activated in this "
-                    f"process: {type(exc).__name__}"
-                ),
-            ) from exc
-
-    data = updated.model_dump(mode="json")
-    data["domains"] = await repo.get_all_domain_configs(release_id)
-    data["head_revision"] = await repo.get_head_revision()
-    if activated_snapshot is not None:
+    data = outcome.release.model_dump(mode="json")
+    data["domains"] = outcome.domains
+    data["head_revision"] = outcome.head_revision
+    if outcome.activated_snapshot is not None:
         data["runtime_activation"] = {
-            "release_id": activated_snapshot.release_id,
-            "checksum_sha256": activated_snapshot.checksum_sha256,
-            "head_revision": activated_snapshot.head_revision,
-            "loaded_at": activated_snapshot.loaded_at,
+            "release_id": outcome.activated_snapshot.release_id,
+            "checksum_sha256": outcome.activated_snapshot.checksum_sha256,
+            "head_revision": outcome.activated_snapshot.head_revision,
+            "loaded_at": outcome.activated_snapshot.loaded_at,
         }
     return APIResponse(data=data, meta=_response_meta(request))

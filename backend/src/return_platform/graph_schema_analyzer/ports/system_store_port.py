@@ -20,7 +20,6 @@ from return_platform.graph_schema_analyzer.domain.analysis_session import (
     AnalysisSession,
     SessionStatus,
 )
-from return_platform.graph_schema_analyzer.domain.approval import Approval
 from return_platform.graph_schema_analyzer.domain.clarification import Clarification
 from return_platform.graph_schema_analyzer.domain.schema_draft import GraphSchemaDraft
 from return_platform.graph_schema_analyzer.domain.schema_revision import SchemaRevision
@@ -67,7 +66,13 @@ class PersistencePort(Protocol):
 
     async def list_clarifications(self, analysis_id: str) -> Sequence[Clarification]: ...
 
-    # --- drafts, revisions, validation, approval ---------------------------
+    # --- drafts, revisions, validation -------------------------------------
+    #
+    # Approval is deliberately absent. It used to live here as `save_approval` /
+    # `list_approvals` over an analyzer-owned `Approval` document; the decision
+    # now belongs to the shared proposal kernel (`platform.governance`), which
+    # every governed change goes through, and duplicating it here would put the
+    # analyzer back on its own approval path.
     async def create_draft(self, draft: GraphSchemaDraft) -> None: ...
 
     async def save_draft(self, draft: GraphSchemaDraft, *, expected_version: int) -> None:
@@ -85,7 +90,3 @@ class PersistencePort(Protocol):
     async def save_validation_result(self, result: ValidationResult) -> None: ...
 
     async def load_validation_result(self, result_id: str) -> ValidationResult: ...
-
-    async def save_approval(self, approval: Approval) -> None: ...
-
-    async def list_approvals(self, draft_id: str) -> Sequence[Approval]: ...

@@ -13,6 +13,19 @@ pass nobody obtained.
 **A step is "done" only when its own Validation clause holds.** Several steps below were
 previously reported complete and are recorded here as partial, because theirs does not.
 
+W4.3, W4.2 and W4.4 were added on 2026-08-13 and are recorded as **implemented but
+unverified**: test execution for that branch was deferred to Linux by decision, so what
+holds is the lint gate, `mypy --strict`, and 358 targeted host-runnable tests. What a
+Linux run still has to establish is listed under Wave 4 rather than implied to have
+passed.
+
+Two pre-existing failures were reproduced on the untouched checkout and are **not** from
+that work: `tests/configuration/test_ai_credentials_must_be_vault_references.py` (5 tests,
+environment-driven — the developer `.env` disables Vault) and
+`test_canonical_returns_surface.py::test_the_number_of_return_routers_has_not_grown`
+(`api/return_history.py` is not in that test's known-router list). Neither was fixed
+here: the second would mean editing an allowlist to bless a router nobody reviewed.
+
 ## Wave 0 — complete
 
 | Step | Status |
@@ -625,10 +638,13 @@ make blind at the end of a session that is being wrapped up.
 
 ## Wave 3 — blocked on Gate A
 
-## Wave 4 — 3 of 12
+## Wave 4 — 1 done, 5 implemented-but-unverified, of 12
 
 | Step | Status |
 |---|---|
+| W4.2 Agent config writes become releases | **implemented; not verified against real infrastructure** — `PUT /api/agents/{id}` no longer writes packaged YAML. It validates the candidate through the same `ConfigurationLoader` the platform boots from (in a throwaway directory, so the discipline survives the change of sink), submits a `CONFIGURATION` proposal, and answers 202 with the proposal rather than the document. Activation publishes an `AGENT_MODULES` domain on a release cloned from the active one and refreshes the runtime. Reads prefer the release over the packaged file and say which. See below for what is and is not proven |
+| W4.3 Shared proposal kernel | **implemented; not verified against real infrastructure** — one kernel, one lifecycle, three types. The analyzer's `Approval` is **deleted**, not joined: a validated draft is a `GRAPH_SCHEMA` proposal in the same store an agent edit and a feedback improvement use. `approve_draft` carries a capability dependency for the first time. Activation re-derives the diff and affected keys from before/after and re-applies the key policy derived from the proposal type. See below |
+| W4.4 Feedback emits a typed `ImprovementProposal` | **implemented; not verified against real infrastructure** — two evidence-tied rules produce bounded changes over permitted keys, routed through the kernel and, on approval, into a configuration release the existing `RuntimeConfigurationActivator` picks up. `reviewStatus` now reports `REVIEW_PENDING` only when a proposal really is waiting. Two of section 7's permitted prefixes are refused rather than accepted — see below |
 | W4.5 Complete analyzer connectors | **done** — one read-only `SourceInspectionPort` (`validate`, `list_sources`, `list_objects`, `describe_object`, `sample`, `profile`, `list_indexes`, `list_relationships`) with adapters for MongoDB, SQL Server, PostgreSQL and Neo4j, each proven against a real server. Scope is a hard filter in the tool layer (`ScopedSourceInspection`), refusing inbound *and* filtering outbound. `psycopg` added; dispatch extends the existing `SourceConnectorsByType` rather than adding a second registry. W2.4's blocker — "the analyzer's connector cannot describe the SQL warehouse source" — is closed |
 | W4.6 Mask analyzer samples at the port boundary | **done** — `MaskedSourceInspection` wraps the port and `build_scoped_source_inspection` composes `Masked(Scoped(port))` with no opt-out, so the object an analysis is handed cannot return an unmasked row. The mask preserves field names, types, shape, cardinality and distribution metadata as the clause requires: the surrogate is deterministic, so equal values give equal tokens and a foreign key stays inferable, and it states the type and size it replaced. One sensitivity policy — `platform.redaction.sensitive_keys` — now serves both this and W0.4's provider boundary, replacing the two byte-identical copies that existed in `ai/gateway/redaction.py` and `ai/gateway/service.py`. Block 5 of the prompt framing masks with the same implementation; it is idempotent, so the two boundaries compose. **Verified by unit tests only** (24), not by exercising a running analysis — see the note below |
 | W4.8 Selectivity into `compact_schema` | **done** — `FieldSelectivity` on `FieldDefinition` carries `null_rate`, `approximate_distinct` and a graded `identifier_likelihood`, filled by the release compiler from the analyzer's `profile` and emitted per field by `Neo4jKnowledgeGateway.compact_schema`. `sampled_rows` and `approximate_row_count` travel with the numbers, which is what W4.5's note required: 40 distinct over a 50-row table and over a million rows sampled 50 deep are different claims. `DECLARED_UNIQUE` (a unique index) is kept apart from `LIKELY`/`POSSIBLE` (counted over a full or partial sample) and from `UNKNOWN` (not measured), because collapsing them ranks confidently on absent evidence. No question order is written down; unprofiled fields emit nothing rather than a stated `UNKNOWN`. **Verified by unit tests only** (21) — see the note below |
@@ -680,6 +696,88 @@ carries the mask; the HTTP surface that will do so is W4.10. Likewise, W4.8's
 selectivity reaches `compact_schema` for any release compiled from a source
 observation, and the eleven shipped entities were compiled without profiles, so
 they emit no selectivity until a re-analysis supplies one.
+### Why W4.2/W4.3/W4.4 are not marked done
+
+Not because anything is stubbed — no production path in these three ends in a
+placeholder, and each refuses rather than degrades when a dependency is absent
+(`GOVERNANCE_UNAVAILABLE` at 503, `NoActivatorRegistered` rather than an
+`ACTIVATED` proposal with nothing behind it). They are unverified because test
+execution for this branch was deliberately deferred to Linux, and what ran here
+was the host-runnable subset:
+
+- `ruff format --check`, `ruff check` and `mypy --strict src` pass.
+- 358 targeted unit and API tests pass, including 24 new kernel tests, 9 inbox
+  tests, 13 agent-configuration-release tests and 12 improvement tests.
+- The three OpenAPI snapshots are regenerated and `test_drift.py` passes.
+
+What that does **not** cover, and what a Linux run has to establish:
+
+- **The Mongo-backed `SystemStoreProposalStore` has never been exercised.** Every
+  kernel test runs against `tests/governance_doubles.InMemoryProposalStore`,
+  which satisfies the port and its compare-and-set contract structurally. The
+  `governance_proposals` structure is declared in the manifest and will be
+  auto-bootstrapped, but nothing has yet written a proposal to a real server or
+  proven the unique index refuses a duplicate id.
+- **No release has been published to a real Neo4j configuration graph by an
+  activator.** Both activation paths are tested against
+  `InMemoryConfigurationGraphRepository` with `verify_runtime_validation_receipts`
+  patched, and against a recording stand-in for `RuntimeConfigurationActivator`
+  rather than the real one. The promotion body they call is the same code the
+  HTTP route calls — it was moved, not reimplemented — and that route's real
+  behaviour is covered by `test_configuration_api.py`; but the composed path
+  (proposal → release → runtime refresh) has not been run end to end.
+- **No API process has served `/api/proposals` for real.** The router is mounted
+  and in the contract; the wiring in `main.py` is composed but unexercised
+  outside the exporter. This is the failure mode `/api/agents` had, and it is
+  named here rather than assumed away.
+
+### W4.3: what the kernel does and does not decide
+
+The kernel owns the record and the transitions; the activators own how a change
+reaches the runtime. Deliberate consequences:
+
+- **`ACTIVATED` means the activator ran and produced a receipt**, not that the
+  runtime is necessarily pointing at the result. Publishing a schema without
+  activating it (`activate: false`) still activates the *proposal*, because the
+  proposal's terminal act is being carried into a release; whether the runtime
+  adopts that release is a release-level decision already visible in the release
+  lifecycle. The receipt carries the release id either way.
+- **`REJECTED` and `SUPERSEDED` are terminal.** A rejected schema is not
+  re-opened; the analyst edits and re-validates, which produces a new proposal
+  and supersedes the old one. `POST /drafts/{id}/reject` is new — `Approval` had
+  a `REJECTED` status that nothing ever set.
+- **Nothing enforces four eyes.** An actor may approve a proposal they wrote.
+  The plan does not ask for separation of duty and inventing one would be a
+  policy decision this step is not entitled to make.
+- **`agent.failure_policy.*` matches nothing today.** The forbidden set is
+  section 7 verbatim and is matched at every segment offset, which is what makes
+  the single-root patterns (`secrets.*`, `credentials.*`, `auth.*`, …) bite
+  inside a nested document. `failure_policy` lives in
+  `ReturnPlatformConfiguration.agents[x]`, not in the manifest agent modules, so
+  no proposal can currently produce a key that pattern matches. Recorded rather
+  than re-spelled: changing the pattern to fit the current namespace would edit
+  the plan from the code.
+
+### W4.4: which permitted keys are actually applicable
+
+Section 7 permits seven key prefixes. Five resolve to a real field in
+`ReturnPlatformConfiguration` and carry server-side min/max bounds; two do not,
+and a key under either is **refused** with that reason rather than accepted into
+a proposal nothing could ever activate:
+
+- `returns.support.template.*` — support configuration carries queues, a default
+  priority and an outbox topic. There are no message templates to change.
+- `returns.fulfillment.polling.*` — fulfillment polling is not configuration.
+
+Closing those two is a configuration-model change, not a governance one, and
+belongs to whoever adds the fields.
+
+The two emission rules are deliberately narrow — support rework raises
+`max_prompts_per_turn` by one, an unresolved order line widens
+`ambiguity_gap_millionths` by one documented step. The record's missing-field
+insights were **not** mapped to smart-question priorities: those fields are
+workflow fields and the questions are discovery questions, and the link would
+have been invented.
 
 ### W4.5's `profile` and what W4.8 inherits
 

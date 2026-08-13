@@ -9,6 +9,7 @@ from neo4j import AsyncDriver, AsyncGraphDatabase
 from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
+from return_platform.bootstrap.system_store import bootstrap_system_store
 from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
 from return_platform.configuration.runtime_loader import resolve_process_configuration
 from return_platform.configuration.settings import Settings
@@ -21,6 +22,8 @@ from return_platform.dynamic_knowledge.integration.targeted_sync import (
 )
 from return_platform.operations.orchestrator import ReturnOrchestrator
 from return_platform.operations.repository import OperationalRepository
+from return_platform.platform.governance.kernel import ProposalKernel
+from return_platform.platform.governance.store import SystemStoreProposalStore
 from return_platform.workflows.fulfillment_tracking import ShipmentObservationPort
 
 logger = logging.getLogger("return_platform.scripts.run_return_orchestrator")
@@ -83,11 +86,26 @@ async def _run() -> None:
         temporal = await Client.connect(settings.temporal_target)
         repository = OperationalRepository(mongo, settings, source_mongo)
         worker_id = f"{socket.gethostname()}-{uuid.uuid4().hex[:8]}"
+        # The proposal kernel, so a completed return that produced a
+        # machine-applicable recommendation lands in the one review queue rather
+        # than in a `REVIEW_PENDING` field nothing transitions (W4.4).
+        #
+        # No activators are registered here on purpose: this process *proposes*
+        # and never approves or applies. Activation publishes a configuration
+        # release and belongs to an operator on `/api/proposals`, not to the
+        # worker that noticed the pattern.
+        system_store, _ = await bootstrap_system_store(settings, mongo)
         orchestrator = ReturnOrchestrator(
             repository=repository,
             temporal=temporal,
             settings=settings,
             worker_id=worker_id,
+            return_configuration=runtime.return_configuration.configuration,
+            proposal_kernel=ProposalKernel(
+                SystemStoreProposalStore(system_store),
+                activators={},
+                audit=repository,
+            ),
             shipment_observations=await _shipment_observations(
                 settings, mongo, source_mongo, neo4j_driver
             ),

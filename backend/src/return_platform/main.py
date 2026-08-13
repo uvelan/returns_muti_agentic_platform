@@ -1,8 +1,8 @@
 import asyncio
 import logging
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
-from typing import cast
+from typing import Any, cast
 
 import redis.asyncio as redis
 from fastapi import FastAPI, Request, Response, status
@@ -40,6 +40,7 @@ from return_platform.api.graph_sync import router as graph_sync_router
 from return_platform.api.integration_outbox import router as integration_outbox_router
 from return_platform.api.physical_operations import router as physical_operations_router
 from return_platform.api.production_workflow import router as production_workflow_router
+from return_platform.api.proposals import router as governance_proposals_router
 from return_platform.api.return_agents import router as return_agents_router
 from return_platform.api.return_artifacts import router as return_artifacts_router
 from return_platform.api.return_history import router as return_history_router
@@ -58,6 +59,15 @@ from return_platform.bootstrap.adapters.analyzer_graph_target_adapter import (
 )
 from return_platform.bootstrap.adapters.analyzer_source_adapter import (
     build_mongo_source_discovery_adapter,
+)
+from return_platform.bootstrap.adapters.governance_agent_configuration import (
+    AgentConfigurationProposalActivator,
+)
+from return_platform.bootstrap.adapters.governance_graph_schema import (
+    GraphSchemaProposalActivator,
+)
+from return_platform.bootstrap.adapters.governance_improvement import (
+    ImprovementProposalActivator,
 )
 from return_platform.bootstrap.adapters.source_inspection_mongodb import (
     build_mongo_source_inspection_adapter,
@@ -99,7 +109,10 @@ from return_platform.configuration.runtime_integrations import (
     verify_runtime_validation_receipts,
 )
 from return_platform.configuration.settings import BACKEND_ROOT, Settings
-from return_platform.configuration.snapshot import ConfigurationSnapshotBuilder
+from return_platform.configuration.snapshot import (
+    AGENT_MODULES_DOMAIN_KEY,
+    ConfigurationSnapshotBuilder,
+)
 from return_platform.data_governance import load_asset_catalog
 from return_platform.data_platform.graph.sync_service import GraphSyncService
 from return_platform.data_platform.operational_generation.adapters.graph_sync import (
@@ -137,6 +150,10 @@ from return_platform.operations.return_support.service import ReturnSupportServi
 from return_platform.platform.capabilities.registry import InMemoryCapabilityRegistry
 from return_platform.platform.contracts.epoch import RuntimeEpoch
 from return_platform.platform.contracts.runtime_configuration import RuntimeConfigurationView
+from return_platform.platform.governance.kernel import ProposalKernel
+from return_platform.platform.governance.ports import ProposalActivationPort
+from return_platform.platform.governance.proposal import ProposalType
+from return_platform.platform.governance.store import SystemStoreProposalStore
 from return_platform.platform.modules.registry import ModuleRegistry
 from return_platform.resources import (
     AsyncValkeyClient,
@@ -486,10 +503,25 @@ async def lifespan(
             app.state.secret_resolver = secret_resolver
         resources.settings = settings
         app.state.settings = settings
-        # Each agent's own module file, editable through /api/config/agents.
-        # Reads and writes both go through the loader the platform boots from,
-        # so the console cannot accept a document the platform would refuse.
-        app.state.agent_configuration = AgentConfigurationService(BACKEND_ROOT / "config")
+
+        # Each agent's own module document, editable through /api/agents.
+        # Reads and proposals both go through the loader the platform boots
+        # from, so the console cannot accept a document the platform would
+        # refuse.
+        #
+        # The overlay is read through a closure rather than passed as a value:
+        # this service is built once at startup and the active release moves
+        # underneath it every time one is published, so a snapshot captured here
+        # would keep serving the configuration that was live at boot.
+        def _released_agent_modules() -> Mapping[str, Any]:
+            snapshot = getattr(app.state, "return_configuration_snapshot", None)
+            payloads = getattr(snapshot, "domain_payloads", None)
+            modules = payloads.get(AGENT_MODULES_DOMAIN_KEY) if isinstance(payloads, dict) else None
+            return modules if isinstance(modules, Mapping) else {}
+
+        app.state.agent_configuration = AgentConfigurationService(
+            BACKEND_ROOT / "config", overlay=_released_agent_modules
+        )
 
         await _initialize_mongodb(
             settings,
@@ -785,6 +817,43 @@ async def lifespan(
                 logger.warning(
                     "graph_schema_analyzer_reasoning_unavailable",
                     extra={"missing_dependencies": ("ai_gateway_routes",)},
+                )
+            # The shared proposal kernel (W4.3). Built here because it needs the
+            # same SystemStore the analyzer persists into and the operational
+            # repository's audit trail, and registered with one activator per
+            # proposal type -- the only place that sees both the kernel and the
+            # module a given change lands in.
+            #
+            # A missing activator is not stubbed out. `ProposalKernel.activate`
+            # raises `NoActivatorRegistered` and the route answers 503, so a
+            # process without a graph target reports that it cannot publish
+            # rather than marking a proposal ACTIVATED with nothing behind it.
+            governance_activators: dict[ProposalType, ProposalActivationPort] = {}
+            graph_target = getattr(app.state, "graph_schema_analyzer_graph_target", None)
+            if graph_target is not None:
+                governance_activators[ProposalType.GRAPH_SCHEMA] = GraphSchemaProposalActivator(
+                    app.state.graph_schema_analyzer_persistence, graph_target
+                )
+            governance_activators[ProposalType.CONFIGURATION] = AgentConfigurationProposalActivator(
+                agents=app.state.agent_configuration,
+                repository=graph_configuration_repository,
+                resources=resources,
+                activator=app.state.runtime_configuration_activator,
+            )
+            # An approved improvement becomes a configuration release like any
+            # other -- section 7's "feedback proposals never activate anything
+            # directly" is satisfied by going through the release lifecycle, not
+            # by having nowhere to go.
+            governance_activators[ProposalType.IMPROVEMENT] = ImprovementProposalActivator(
+                repository=graph_configuration_repository,
+                resources=resources,
+                activator=app.state.runtime_configuration_activator,
+            )
+            if resources.mongo is not None:
+                app.state.proposal_kernel = ProposalKernel(
+                    SystemStoreProposalStore(analyzer_system_store),
+                    activators=governance_activators,
+                    audit=OperationalRepository(resources.mongo, settings, resources.source_mongo),
                 )
             app.state.graph_schema_analyzer_status = {
                 "state": "READY",
@@ -1146,6 +1215,10 @@ def create_app(
     fastapi_app.include_router(associate_returns_router)
     fastapi_app.include_router(dynamic_order_agent_router)
     fastapi_app.include_router(graph_schema_analyzer_router)
+    # The one governance inbox (S9). Mounted beside the analyzer rather than
+    # inside it: a graph schema draft is one of the three kinds of change it
+    # carries, not the surface's owner.
+    fastapi_app.include_router(governance_proposals_router)
     fastapi_app.include_router(canonical_configuration_router)
     # `/api/agents`, not `/api/config/agents` -- see that module's own docstring
     # for why the two surfaces stay separate. It was written, tested against

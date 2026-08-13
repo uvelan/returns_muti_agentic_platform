@@ -24,6 +24,7 @@ from return_platform.graph_schema_analyzer.domain.source_snapshot import (
     SourceSchemaSnapshot,
 )
 from return_platform.graph_schema_analyzer.ports.source_port import DiscoveredDataset
+from tests.governance_doubles import attach_governance
 from tests.graph_schema_analyzer.test_api_routes import InMemoryPersistence
 from tests.graph_schema_analyzer.test_draft_api import PassingTarget
 
@@ -82,8 +83,10 @@ def persistence() -> InMemoryPersistence:
 def _client(persistence: InMemoryPersistence, sources: object | None) -> TestClient:
     app = FastAPI()
     app.include_router(router)
+    target = PassingTarget()
     app.state.graph_schema_analyzer_persistence = persistence
-    app.state.graph_schema_analyzer_graph_target = PassingTarget()
+    app.state.graph_schema_analyzer_graph_target = target
+    attach_governance(app, target)
     if sources is not None:
         app.state.graph_schema_analyzer_source_discovery = sources
     return TestClient(app)
