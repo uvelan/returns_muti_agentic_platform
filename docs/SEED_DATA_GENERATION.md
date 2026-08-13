@@ -34,6 +34,42 @@ therefore verifies every declared path against a generated document **before**
 anything is written, and refuses rather than loading a corpus the schema cannot
 read.
 
+## A document is built per source asset, not per entity
+
+Extraction runs *every* entity bound to a source over whatever document it is
+handed, so which collection an entity belongs in is the schema's answer rather
+than the caller's. `_build_source_document` takes a source asset id and builds
+all of them together, nesting each exploded entity's records at its
+`record_path` inside the enclosing entity's records:
+
+| Collection | Entities on it |
+|---|---|
+| `salesInv` | `sales_order`, `customer`, `order_line` at `salesLines[]`, `contact_point` at `customer.address[]` |
+| `customerOutboundCDM` | `customer_party` at `party[]`, `customer_account` at `party[].custAccts.additionalCustomerInfo[]` |
+| `lkpSearchProduct` | `product` |
+| `shipmentInfo` | `shipment` |
+
+`contact_point` sits on the **order**, not on the CDM document: the schema binds
+it to `source_sales` because the contact rows are embedded on `salesInv` under
+`customer.address[]`. `customer` is likewise read off the order, which carries
+custId/custName directly.
+
+Which levels of a `record_path` are arrays is only partly declared. `explode`
+marks the level the records sit at — `party[]`, `address[]` — and says nothing
+about the levels above it, so intermediate segments are written as plain
+objects. That matches the real `salesInv`, where `customer` is an object holding
+an `address` array. It differs from the field specification for the CDM bridge,
+which writes `custAccts[]`: no available sample carries that array (which is why
+`customer_account` is marked UNVERIFIED and SEED_ONLY), and extraction descends
+through a list and an object alike, so the flattening changes nothing that reads
+the corpus.
+
+The `customer_id` on `party[].custAccts.additionalCustomerInfo[]` is the
+documented bridge back to `salesInv` custId. Orders draw their customer from the
+same generated contexts, so the two agree by construction; if they did not,
+every `CustomerParty` in the graph would be an orphan from data that looked
+entirely plausible.
+
 ## Realism rules that carry weight
 
 - **Emails derive from the name they belong to** (`marcus.feldman@example.com`).
