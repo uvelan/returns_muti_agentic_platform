@@ -2,17 +2,23 @@
 
 The step's Validation clause is "a tracking number not previously in the graph is
 synced on demand and then read **from the graph, not SQL**". This establishes it
-against both real stores, through the production adapters.
+against both real stores, through the production adapters, **on the descriptor as
+shipped**.
 
-**One deviation from the shipped descriptor, stated rather than hidden.**
-`shipment` ships as `source_access: SEED_ONLY` with `source_contract_status:
-UNVERIFIED`, because no `shipmentInfo` sample has ever been supplied and its
-physical paths are carried over from the original schema unchecked. The adapter
-honours that and skips the sync -- so exercising the sync half at all requires
-promoting the entity here. That is a real precondition, not test scaffolding:
-until somebody verifies `shipmentInfoEventData.*` against a genuine document and
-flips the descriptor, fulfillment reads whatever a scheduled sync left behind
-and reports `SHIPMENT_ABSENT` otherwise. Nothing else in the mechanism changes.
+That last part is the point of this module. These tests used to promote
+`shipment` from `SEED_ONLY`/`UNVERIFIED` to `CONNECTED_SYNC`/`VERIFIED` in the
+fixture, because no `shipmentInfo` sample had ever been supplied and the adapter
+rightly refuses a targeted read against paths nobody has confirmed. A sample now
+exists, the paths are confirmed, and the descriptor says so -- so the promotion
+is gone and the sync exercised below is the one production runs. A test that has
+to edit the configuration to reach the behaviour it asserts is evidence about a
+configuration that does not exist.
+
+The documents written here carry the shape the verified contract declares:
+`shipmentInfoEventData` for the shipment's own fields and
+`shipmentInfoEventMeta.lastUpdateTs` for the change timestamp. Writing the old
+`carrierCode`/`shippedAt`/root-`updatedAt` shape would pass just as happily and
+prove nothing about real documents.
 """
 
 from __future__ import annotations
@@ -50,6 +56,7 @@ from return_platform.dynamic_knowledge.on_demand_sync.extraction import (
 from return_platform.dynamic_knowledge.schema import (
     ActiveSchema,
     EntitySourceAccess,
+    RelationshipSourceAccess,
     SourceContractStatus,
 )
 from return_platform.source_connectors.mongodb import MongoDBSourceScanConnector
@@ -87,14 +94,22 @@ def _neo4j_uri() -> str:
     return f"bolt://{host}:7687"
 
 
-def _connected(schema: ActiveSchema) -> ActiveSchema:
-    """The descriptor with `shipment` promoted -- see the module docstring."""
+def _demoted(schema: ActiveSchema) -> ActiveSchema:
+    """The descriptor with `shipment` pushed back to `SEED_ONLY`.
+
+    The inverse of the promotion this module used to need. One test still wants
+    the refusal path, and demoting for it keeps every other test on the shipped
+    descriptor rather than the other way round.
+    """
     document = schema.model_dump(mode="json")
-    document["entities"][SHIPMENT_ENTITY_ID]["source_access"] = (
-        EntitySourceAccess.CONNECTED_SYNC.value
-    )
+    document["entities"][SHIPMENT_ENTITY_ID]["source_access"] = EntitySourceAccess.SEED_ONLY.value
     document["entities"][SHIPMENT_ENTITY_ID]["source_contract_status"] = (
-        SourceContractStatus.VERIFIED.value
+        SourceContractStatus.UNVERIFIED.value
+    )
+    # Relationship access is capped by its endpoints, so demoting the entity
+    # would otherwise make the whole descriptor fail validation.
+    document["graph"]["relationships"]["order_shipped_as"]["access"] = (
+        RelationshipSourceAccess.SEED_ONLY.value
     )
     return ActiveSchema.model_validate(document)
 
@@ -148,18 +163,30 @@ class _Harness:
         )
 
     async def write_shipment(self) -> None:
-        """A `shipmentInfo` document at the paths the descriptor declares."""
+        """A `shipmentInfo` document in the shape real ones have.
+
+        Every key is one the 100-document sample confirmed, including the
+        meta block the change timestamp lives in -- there is no root `updatedAt`
+        on a real document, and a fixture that invented one would let a wrong
+        cursor path pass.
+        """
         await self.mongo[self.source_database]["shipmentInfo"].insert_one(
             {
+                "_id": f"DIST*CW273354*{self.tracking}",
                 "shipmentInfoEventData": {
                     "trkNum": self.tracking,
                     "trilOrdNum": "CW273354",
-                    "carrierCode": "UPS",
                     "shipmentId": f"SHP-{self.suffix}",
-                    "currentStatus": "PICKED_UP",
-                    "srcSystem": "DISPATCHTRACK",
+                    "acctId": "DIST",
+                    "currentStatus": "intransit",
+                    "srcSystem": "DispatchTrack",
                 },
-                "updatedAt": datetime.now(UTC),
+                "shipmentInfoEventMeta": {
+                    "docType": "disptrck",
+                    "insertTs": datetime.now(UTC),
+                    "lastUpdateTs": datetime.now(UTC),
+                    "updatedBy": "shipment-writer-v1",
+                },
             }
         )
 
@@ -191,14 +218,19 @@ def descriptor() -> ActiveSchema:
 async def test_a_tracking_number_absent_from_the_graph_is_synced_and_then_read(
     descriptor: ActiveSchema,
 ) -> None:
-    """The step's Validation clause, against both real stores.
+    """The step's Validation clause, against both real stores and no promotion.
 
     Read first to establish the number is genuinely absent, then observe. The
     status that comes back is the one the *source* holds, not one inferred from
     the platform having written a reference -- which is the whole of what W2.6
     changes.
+
+    Would catch a descriptor that stopped permitting the targeted sync, and a
+    physical path that stopped resolving against a real document: the observation
+    would come back `ABSENT` with a `sync_skipped_reason`, or `OBSERVED` with a
+    status of `None`.
     """
-    harness = _Harness(_connected(descriptor))
+    harness = _Harness(descriptor)
     try:
         await harness.write_shipment()
         await harness.generation_writer.create_generation(
@@ -215,8 +247,8 @@ async def test_a_tracking_number_absent_from_the_graph_is_synced_and_then_read(
         observation = await observations.observe(harness.tracking)
 
         assert observation.evidence is ShipmentEvidence.OBSERVED
-        assert observation.current_status == "PICKED_UP"
-        assert observation.carrier_code == "UPS"
+        assert observation.current_status == "intransit"
+        assert observation.shipment_id == f"SHP-{harness.suffix}"
         assert observation.sync_request_id is not None
         assert observation.sync_skipped_reason is None
         assert observation.graph_generation_id == harness.generation
@@ -233,7 +265,7 @@ async def test_a_tracking_number_no_source_knows_reads_as_absent(
     A label printed and left on the counter produces exactly this: a reference
     the platform minted and a carrier that has never seen the parcel.
     """
-    harness = _Harness(_connected(descriptor))
+    harness = _Harness(descriptor)
     try:
         await harness.generation_writer.create_generation(
             graph_generation_id=harness.generation, fencing_token=1
@@ -248,18 +280,22 @@ async def test_a_tracking_number_no_source_knows_reads_as_absent(
 
 
 @pytest.mark.asyncio
-async def test_the_shipped_descriptor_skips_the_sync_and_still_reads_the_graph(
+async def test_an_entity_demoted_to_seed_only_skips_the_sync_and_still_reads_the_graph(
     descriptor: ActiveSchema,
 ) -> None:
-    """What actually happens in production today, asserted rather than assumed.
+    """The refusal path, which is a configuration setting and not dead code.
 
-    `shipment` is SEED_ONLY, so no targeted read is issued -- and the graph is
-    still consulted, because a scheduled sync may have projected the shipment. A
-    reader of the fulfillment evidence sees `SOURCE_ACCESS_SEED_ONLY` on the
-    observation and `SHIPMENT_ABSENT` on the stage result rather than a silent
-    downgrade.
+    An entity whose source contract stops holding is demoted, and the adapter
+    must then decline the targeted read while still consulting the graph -- a
+    scheduled sync may have projected the shipment. A reader of the fulfillment
+    evidence sees `SOURCE_ACCESS_SEED_ONLY` on the observation and
+    `SHIPMENT_ABSENT` on the stage result rather than a silent downgrade.
+
+    Would catch a promotion that made the access check unreachable: with the
+    check gone, this demoted schema would sync anyway and the observation would
+    come back OBSERVED.
     """
-    harness = _Harness(descriptor)
+    harness = _Harness(_demoted(descriptor))
     try:
         await harness.write_shipment()
         await harness.generation_writer.create_generation(

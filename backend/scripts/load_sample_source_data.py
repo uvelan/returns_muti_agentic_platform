@@ -13,10 +13,16 @@ committed them would make that decision silently. `deidentify_reference_dataset`
 is the tool for the other direction.
 
 Each file loads into the collection its own name implies, which is also what the
-active schema's `object_ref.name` declares -- `salesInv1.json` is a second batch
-of `salesInv` documents, so the trailing digits are stripped. A file whose
-collection no source asset names is skipped and reported rather than loaded,
-because a collection nothing reads is indistinguishable from a typo.
+active schema's `object_ref.name` declares. Real extracts arrive named for a
+reader rather than for this script -- `salesInv1.json` is a second batch of
+`salesInv`, `shipment.shipmentInfo_limited.json` is a partial extract of
+`shipmentInfo` -- so a batch digit, a `<subject>.` prefix and an extract
+qualifier after `_` are all stripped, and the candidates are matched against
+what the schema actually declares rather than assumed. A file whose collection
+no source asset names is skipped and reported rather than loaded, because a
+collection nothing reads is indistinguishable from a typo -- and silently
+loading `shipment.shipmentInfo_limited` as its own collection would leave the
+shipment entity reading an empty `shipmentInfo` with no error anywhere.
 
 Idempotent: documents are replaced by `_id`, so re-running loads the same
 dataset rather than a second copy.
@@ -45,9 +51,32 @@ from return_platform.secrets.runtime import resolve_runtime_settings_from_vault
 _TRAILING_BATCH_DIGITS = re.compile(r"\d+$")
 
 
-def _collection_for(path: Path) -> str:
-    """`salesInv1.json` -> `salesInv`. A batch suffix is not a new collection."""
-    return _TRAILING_BATCH_DIGITS.sub("", path.stem)
+def _collection_candidates(path: Path) -> list[str]:
+    """Every collection name a file name could plausibly mean, most literal first.
+
+    `salesInv1` -> `salesInv` (a batch suffix is not a new collection);
+    `shipment.shipmentInfo_limited` -> `shipmentInfo` (a subject prefix and an
+    extract qualifier are not either). Candidates rather than one answer,
+    because the caller matches them against the collections the schema declares
+    -- stripping unconditionally would turn a genuine collection whose name
+    happens to contain `_` into a shorter name nothing reads.
+    """
+    stem = path.stem
+    candidates = [stem]
+    if "." in stem:
+        candidates.append(stem.rsplit(".", 1)[1])
+    for candidate in list(candidates):
+        if "_" in candidate:
+            candidates.append(candidate.split("_", 1)[0])
+    return [_TRAILING_BATCH_DIGITS.sub("", candidate) for candidate in candidates]
+
+
+def _collection_for(path: Path, known: set[str]) -> str | None:
+    """The declared collection this file belongs to, or None if none does."""
+    for candidate in _collection_candidates(path):
+        if candidate in known:
+            return candidate
+    return None
 
 
 def _documents(path: Path) -> list[dict[str, Any]]:
@@ -73,16 +102,20 @@ async def _run(files: list[Path], directory: Path) -> None:
 
     schema = load_active_schema(settings.dynamic_knowledge_schema_path)
     known = {
-        source.object_ref.get("name")
+        name
         for source in schema.sources.values()
         if source.object_ref.get("database") == settings.source_mongo_database
+        and isinstance(name := source.object_ref.get("name"), str)
     }
 
     try:
         for path in files:
-            collection_name = _collection_for(path)
-            if collection_name not in known:
-                print(f"  skip  {path.name}: no source asset reads {collection_name!r}")
+            collection_name = _collection_for(path, known)
+            if collection_name is None:
+                print(
+                    f"  skip  {path.name}: no source asset reads any of "
+                    f"{_collection_candidates(path)}"
+                )
                 continue
             documents = _documents(path)
             collection = database[collection_name]

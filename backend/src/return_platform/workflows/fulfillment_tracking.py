@@ -65,13 +65,17 @@ class ShipmentObservation:
     evidence available at the time, and without the id nobody can establish that
     afterwards. It is not a claim that the rows were filtered to that
     generation -- `Neo4jKnowledgeGateway.execute` does not fence reads.
+
+    No carrier: the verified `shipmentInfo` contract has none at this grain, and
+    a field nothing can ever populate reads to a caller as "the carrier is
+    unknown for this shipment" rather than as "this platform does not carry a
+    carrier".
     """
 
     tracking_reference: str
     evidence: ShipmentEvidence
     graph_generation_id: str
     current_status: str | None = None
-    carrier_code: str | None = None
     shipment_id: str | None = None
     #: Set when a targeted sync ran for this tracking reference before the read.
     sync_request_id: str | None = None
