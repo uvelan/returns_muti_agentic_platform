@@ -689,6 +689,19 @@ update itself failed — because which of the two it is decides everything above
   every operation times out — which is why the `*_real_infra` modules error on the host. The two
   new real-infra modules use a direct connection and therefore run in both places.
 
+  **Now fixed everywhere, and every claim below that cites this bucket is stale.** Twenty modules
+  built the DSN without it, including the shared `test_settings` fixture in `tests/conftest.py`.
+  All twenty carry `directConnection=true` now, and **131 tests that could not previously be run
+  from the host pass there** — among them `test_generation_lifecycle_e2e` and
+  `test_on_demand_sync_production_wiring`, both of which appear in the failure lists below as
+  environment noise, and the whole of `tests/operations`.
+
+  This matters beyond the count. "Host Mongo topology" had become the bucket that unread failures
+  were sorted into, by me and by three separate agents. It was a real defect every time it was
+  cited, but a standing excuse is exactly where a genuine failure hides — and the next run should
+  no longer have one to reach for. A `*_real_infra` module that fails on the host now needs a
+  reason.
+
 ## Verification: first full run
 
 Run 2026-08-12 in the diagnostics container: **2,392 passed, 56 failed, 10 skipped, 4 errors**
