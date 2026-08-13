@@ -157,14 +157,21 @@ def _project_relationships(
                     continue
                 seen.add(dedupe_key)
                 targets_per_source[source_match_key] += 1
-                target_match_key = tuple(
-                    target.record.values.get(field_id)
-                    for field_id in relationship.target_match_fields
-                )
-                sources_per_target[target_match_key] += 1
+                # Counted per target *node*, not per target match key. Those are
+                # the same thing only when the match key identifies the node, and
+                # for the ordinary foreign-key shape it never does: every
+                # `ReturnRecord` of one case matches on the same `case_id`, every
+                # `Bay` of one warehouse on the same `warehouse_id`. Keyed on the
+                # match value, this counter added one for every edge drawn into
+                # *any* of them and tripped `maximum_sources_per_target=1` on the
+                # second target -- reporting "this target has two sources" about a
+                # target that has one, and refusing the whole projection. It is
+                # the node key that says which target a source was attached to.
+                target_node_key = tuple(sorted(target_keys.items()))
+                sources_per_target[target_node_key] += 1
                 if (
                     relationship.maximum_sources_per_target is not None
-                    and sources_per_target[target_match_key]
+                    and sources_per_target[target_node_key]
                     > relationship.maximum_sources_per_target
                 ):
                     raise GraphProjectionError(

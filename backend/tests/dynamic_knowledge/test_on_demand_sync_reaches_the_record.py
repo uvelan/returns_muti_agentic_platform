@@ -514,6 +514,15 @@ async def test_every_configured_source_reaches_the_source_through_one_path(
     for every anchor the schema declares without any code knowing which source
     it belongs to. A second sync path for a second source would show up here as
     an anchor that plans on one asset and not on another.
+
+    **The check itself used to know.** It asserted `statement["projection"]`,
+    which is the MongoDB branch's shape -- every source in the descriptor was a
+    collection, so nothing noticed. W2.4's `bay`/`warehouse` are the first
+    SQL-backed anchored entities and `compile_source_read` returns them a
+    statement *string*, so the assertion raised `TypeError: string indices must
+    be integers` on a compilation that had in fact succeeded. What it means to
+    project the entity's fields is asked below in each backend's own vocabulary
+    rather than in one backend's.
     """
     anchored = [
         (entity.entity_id, anchor_id, anchor)
@@ -535,5 +544,16 @@ async def test_every_configured_source_reaches_the_source_through_one_path(
             or {anchor.fields[0].field_id: ("EXACT", "probe")},
         )
         compiled = compile_source_read(schema, plan)
-        assert compiled.statement["projection"], f"{entity_id}/{anchor_id} projects nothing"
+        where = f"{entity_id}/{anchor_id}"
+        # The one property that matters, asked of whichever shape came back: the
+        # read names the paths the entity is projected from. `projected_physical_
+        # paths` is the connector-independent statement of that, and the shape
+        # check below is what stops it being satisfied by a statement that names
+        # nothing.
+        assert compiled.projected_physical_paths, f"{where} projects nothing"
+        if isinstance(compiled.statement, dict):
+            assert compiled.statement["projection"], f"{where} projects no Mongo field"
+        else:
+            for path in compiled.projected_physical_paths:
+                assert path[-1] in compiled.statement, f"{where} omits {path[-1]!r}"
         assert plan.source_asset_id == schema.entities[entity_id].source_asset_id
