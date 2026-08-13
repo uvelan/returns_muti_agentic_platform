@@ -23,6 +23,17 @@ export type SyncRunMode = "FULL" | "SOURCE_MONGODB" | "SQLSERVER" | "ON_DEMAND";
 export type SyncRunStatus = "RUNNING" | "COMPLETED" | "FAILED";
 
 /**
+ * Which *records* a run read, as opposed to which sources it covered.
+ *
+ * A full run rescans every record in every participating source. An incremental
+ * one resumes each source from the cursor its last run left behind. The two are
+ * indistinguishable from a run's status -- both complete green -- so the run has
+ * to say which it was, or nobody can tell an incremental sync from one that is
+ * quietly rescanning production on every schedule tick.
+ */
+export type SyncRecordScope = "FULL" | "INCREMENTAL";
+
+/**
  * The agent turn a targeted run was performed for.
  *
  * Anchor *field ids*, never anchor values: the anchor is an order number or a
@@ -56,12 +67,22 @@ export type SyncRun = {
   graphGenerationId: string | null;
   requestDigest: string | null;
   requestedBy: SyncRunRequester | null;
+  /** Optional: runs recorded before incremental sync existed carry neither field. */
+  recordScope?: SyncRecordScope;
+  /**
+   * Participating sources an incremental run could not resume, because they
+   * declare no cursor field. They did not sync, and the run still says
+   * COMPLETED -- which is why this is shown rather than logged.
+   */
+  skippedSources?: string[];
 };
 
 export type StartSyncInput = {
   mode: Exclude<SyncRunMode, "ON_DEMAND">;
   maxRecordsPerAsset?: number;
   applySchema?: boolean;
+  /** Resume each source from its last cursor instead of rescanning it. */
+  incremental?: boolean;
 };
 
 export const graphSyncApi = {

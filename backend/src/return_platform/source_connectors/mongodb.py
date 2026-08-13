@@ -232,6 +232,22 @@ class MongoDBSourceScanConnector:
             if source.incremental_cursor_field is None
             else self._resolve_physical_field(source_asset_id, source.incremental_cursor_field)
         )
+        # A resumed scan is handed a cursor some earlier run persisted, and the
+        # source's cursor strategy may have been reconfigured since. Checked here,
+        # where the source and both types can still be named: without it an
+        # OBJECT_ID cursor reaching `_field_datetime_bounds` dies as a bare
+        # `ValueError: Invalid isoformat string: '68f3...'` naming neither, and a
+        # FIELD_DATETIME cursor reaching `_object_id_bounds` dies as an equally
+        # bare `InvalidId`. Fail closed rather than defaulting to `after=None`:
+        # silently restarting from the beginning of a collection is a full rescan
+        # wearing an incremental run's clothes.
+        expected_cursor_type = _OBJECT_ID if cursor_field is None else _FIELD_DATETIME
+        if after is not None and after.cursor_type != expected_cursor_type:
+            raise MongoConnectorError(
+                f"source {source_asset_id!r} resumes from a {after.cursor_type!r} cursor but is "
+                f"now configured to scan by {expected_cursor_type!r}; the stored checkpoint "
+                "predates a change to incremental_cursor_field and cannot be resumed from"
+            )
 
         query: dict[str, Any] = {}
         seed_pin = self._seed_pins.get(source_asset_id)

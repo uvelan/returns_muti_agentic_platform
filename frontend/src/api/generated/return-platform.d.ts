@@ -4628,6 +4628,11 @@ export interface components {
              */
             applySchema: boolean;
             /**
+             * Incremental
+             * @default false
+             */
+            incremental: boolean;
+            /**
              * Maxrecordsperasset
              * @default 1000
              */
@@ -4653,6 +4658,12 @@ export interface components {
             mode: string;
             /** Nodewrites */
             nodeWrites: number;
+            /**
+             * Recordscope
+             * @default FULL
+             * @enum {string}
+             */
+            recordScope: "FULL" | "INCREMENTAL";
             /** Relationshipwrites */
             relationshipWrites: number;
             /** Requestdigest */
@@ -4660,6 +4671,8 @@ export interface components {
             requestedBy?: components["schemas"]["SyncRunRequester"] | null;
             /** Schemaversion */
             schemaVersion: string;
+            /** Skippedsources */
+            skippedSources?: string[];
             /** Sourcecounts */
             sourceCounts: {
                 [key: string]: number;

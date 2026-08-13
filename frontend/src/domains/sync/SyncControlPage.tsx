@@ -39,6 +39,19 @@ const SCOPES = [
   { label: "SQL Server sources", value: "SQLSERVER" },
 ] as const;
 
+/**
+ * Which records to read, asked separately from which sources to cover.
+ *
+ * Two questions, not one list of four combinations: the scope above chooses the
+ * sources, this chooses how much of each. Phrased as what it does rather than as
+ * "full/incremental" -- the operator's question is "does this reread everything",
+ * and the answer to that is the whole reason the choice exists.
+ */
+const READS = [
+  { label: "Only what changed since the last run", value: true },
+  { label: "Everything, ignoring the last run", value: false },
+] as const;
+
 export function SyncControlPage() {
   const { can } = useCapabilities();
   const client = useQueryClient();
@@ -215,6 +228,16 @@ function RunListPane({
                     </span>
                     <span className="truncate text-sm text-on-surface">{run.mode}</span>
                     <StatusPill status={run.status} />
+                    {/*
+                      Only the incremental case is badged. A full scan is the
+                      default and marking every row "FULL" would make the one
+                      distinction that matters harder to spot, not easier.
+                    */}
+                    {run.recordScope === "INCREMENTAL" ? (
+                      <span className="rounded-full border border-outline-variant px-1.5 py-0.5 text-[10px] uppercase text-on-surface-variant">
+                        Incremental
+                      </span>
+                    ) : null}
                   </span>
                   <span className="flex flex-wrap items-center gap-x-3 text-[11px] text-outline">
                     <span>{when(run.startedAt)}</span>
@@ -256,6 +279,10 @@ function StartSyncForm({
 }) {
   const [open, setOpen] = useState(false);
   const [scope, setScope] = useState<StartSyncInput["mode"]>("FULL");
+  // Defaults to the full scan, matching the backend. A manual "Sync now" is
+  // usually pressed *because* something looks wrong with the graph, and resuming
+  // from a cursor is the wrong default for that.
+  const [incremental, setIncremental] = useState(false);
   const [maxRecords, setMaxRecords] = useState("1000");
 
   if (!open) {
@@ -290,6 +317,7 @@ function StartSyncForm({
         const parsed = Number.parseInt(maxRecords, 10);
         onSubmit({
           mode: scope,
+          incremental,
           // Omitted rather than sent as NaN if the field was cleared; the
           // backend has its own default and its own ceiling.
           ...(Number.isFinite(parsed) && parsed > 0 ? { maxRecordsPerAsset: parsed } : {}),
@@ -318,6 +346,22 @@ function StartSyncForm({
         >
           {SCOPES.map((option) => (
             <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1 text-[11px] text-outline">
+        Read
+        <select
+          value={incremental ? "incremental" : "full"}
+          onChange={(event) => {
+            setIncremental(event.target.value === "incremental");
+          }}
+          className="rounded border border-outline-variant bg-surface px-2 py-1.5 text-sm text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
+        >
+          {READS.map((option) => (
+            <option key={option.label} value={option.value ? "incremental" : "full"}>
               {option.label}
             </option>
           ))}
@@ -411,6 +455,7 @@ function RunDetailPane({ run, loading }: { run: SyncRun | null; loading: boolean
               ["Finished", when(run.completedAt)],
               ["Started by", run.startedBy],
               ["Schema", run.schemaVersion],
+              ["Read", run.recordScope === "INCREMENTAL" ? "Only what changed" : "Everything"],
               ...(run.graphGenerationId === null
                 ? []
                 : ([["Generation", run.graphGenerationId]] as const)),
@@ -427,7 +472,15 @@ function RunDetailPane({ run, loading }: { run: SyncRun | null; loading: boolean
               ["Relationships", String(run.relationshipWrites)],
             ]}
           />
-          {run.status === "COMPLETED" && run.nodeWrites === 0 ? (
+          {/*
+            Deliberately not shown for an incremental run. Writing nothing is
+            the *expected* outcome there -- it means no source changed since the
+            last run -- and an error-toned warning on every quiet run is how a
+            real one stops being read.
+          */}
+          {run.status === "COMPLETED" &&
+          run.nodeWrites === 0 &&
+          run.recordScope !== "INCREMENTAL" ? (
             // The specific failure that hid behind a green status: the source
             // answered and nothing reached the graph. Said plainly rather than
             // left for someone to notice a zero.
@@ -437,6 +490,29 @@ function RunDetailPane({ run, loading }: { run: SyncRun | null; loading: boolean
             </p>
           ) : null}
         </section>
+
+        {run.skippedSources === undefined || run.skippedSources.length === 0 ? null : (
+          <section className="flex flex-col gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-outline">
+              Skipped
+            </h3>
+            {/*
+              A source with no cursor field cannot be resumed, so an incremental
+              run passes over it entirely and still reports COMPLETED. Left
+              unsaid, that source silently stops syncing until someone runs a
+              full scan.
+            */}
+            <p className="text-xs text-error">
+              These sources have no cursor and were not read. They stay as the
+              last full sync left them.
+            </p>
+            <ul className="flex flex-col gap-0.5 text-xs text-on-surface">
+              {run.skippedSources.map((source) => (
+                <li key={source}>{source}</li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <section className="flex flex-col gap-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-outline">Read</h3>

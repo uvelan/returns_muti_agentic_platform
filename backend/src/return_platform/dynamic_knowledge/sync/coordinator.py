@@ -242,6 +242,7 @@ class GenericSyncCoordinator:
         schema: ActiveSchema,
         graph_generation_id: str,
         fencing_token: int,
+        source_asset_ids: frozenset[str] | None = None,
         expected_generation_status: GraphGenerationStatus = GraphGenerationStatus.ACTIVE,
     ) -> tuple[int, int]:
         """Incremental Stage A (node upserts/deletes) then, per page, Incremental
@@ -250,13 +251,34 @@ class GenericSyncCoordinator:
         reconciliation. The checkpoint advances only after both stages succeed
         for a page; advancing right after the node write risks permanently
         skipping a relationship that later fails to reconcile.
+
+        source_asset_ids narrows which configured sources participate, with the
+        same meaning as in full_sync -- a caller doing a Mongo-only or SQL-only
+        incremental pass. Sources with no incremental_cursor_field are skipped
+        whether or not they were named: there is no position to resume from.
+        Deciding that silently is a real hazard for an operator who triggered an
+        incremental run and got nothing for a source, so callers that surface
+        runs to people are expected to report the skipped set (see
+        GraphSyncService.incremental_skipped_source_ids).
+
+        Unlike full_sync, watermarks are captured per source immediately before
+        that source's own scan rather than for every source up front. The
+        sequencing hazard full_sync guards against does not exist here: each
+        source resumes from its own persisted checkpoint, so a later source
+        seeing more recent writes than an earlier one leaves no gap -- the
+        earlier source's next run picks up from where its own checkpoint stopped.
         """
 
         if schema.runtime_mode is not RuntimeMode.CONNECTED_SYNC:
             raise RuntimeError("INCREMENTAL_SYNC_REQUIRES_CONNECTED_SYNC_MODE")
+        participating = (
+            source_asset_ids if source_asset_ids is not None else frozenset(schema.sources)
+        )
         total_nodes = 0
         total_relationships = 0
         for source_asset_id, source in sorted(schema.sources.items()):
+            if source_asset_id not in participating:
+                continue
             if source.incremental_cursor_field is None:
                 continue
             connector = self._connectors.resolve(source_asset_id)

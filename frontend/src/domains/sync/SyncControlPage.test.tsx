@@ -132,6 +132,13 @@ describe("SyncControlPage", () => {
   });
 
   it("does not call out a healthy run", async () => {
+    // This test was wrong, not the screen. `readRun` is mocked in `beforeEach`
+    // to the *targeted* run (5 writes), so the detail pane never showed "300"
+    // and `findByText("300")` failed on the setup line -- the assertion below
+    // has never once run. The list row is no help either: its span reads
+    // "300 nodes" as a single text content, which an exact `findByText("300")`
+    // does not match.
+    mocks.readRun.mockResolvedValue(run());
     renderPage();
     fireEvent.click(await screen.findByText("FULL"));
 
@@ -151,7 +158,36 @@ describe("SyncControlPage", () => {
     });
     expect(mocks.startRun).toHaveBeenCalledWith({
       mode: "SOURCE_MONGODB",
+      // Sent explicitly, including when false: the request now carries two
+      // independent choices, and leaving one implicit is how "which records did
+      // that run actually read" stops being answerable.
+      incremental: false,
       maxRecordsPerAsset: 50,
+    });
+  });
+
+  it("defaults to rereading everything rather than resuming", async () => {
+    // A manual sync is usually pressed because the graph looks wrong, and
+    // resuming from a cursor is the wrong default for that.
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /sync now/i }));
+
+    expect(screen.getByLabelText(/^read$/i)).toHaveValue("full");
+  });
+
+  it("sends an incremental run when the operator asks for one", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /sync now/i }));
+    fireEvent.change(screen.getByLabelText(/^read$/i), { target: { value: "incremental" } });
+    fireEvent.click(screen.getByRole("button", { name: /start sync/i }));
+
+    await waitFor(() => {
+      expect(mocks.startRun).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.startRun).toHaveBeenCalledWith({
+      mode: "FULL",
+      incremental: true,
+      maxRecordsPerAsset: 1000,
     });
   });
 
@@ -164,7 +200,34 @@ describe("SyncControlPage", () => {
     await waitFor(() => {
       expect(mocks.startRun).toHaveBeenCalledTimes(1);
     });
-    expect(mocks.startRun).toHaveBeenCalledWith({ mode: "FULL" });
+    expect(mocks.startRun).toHaveBeenCalledWith({ mode: "FULL", incremental: false });
+  });
+
+  it("does not call out an incremental run that had nothing to do", async () => {
+    // The one case where zero writes is the healthy answer: no source changed
+    // since the last run. Warning about it in error tone on every quiet run is
+    // how the genuine warning above stops being read.
+    mocks.readRun.mockResolvedValue(
+      run({ nodeWrites: 0, relationshipWrites: 0, recordScope: "INCREMENTAL" }),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByText("FULL"));
+
+    await screen.findByText("Only what changed");
+    expect(screen.queryByText(/completed without writing anything/i)).toBeNull();
+  });
+
+  it("names the sources an incremental run could not resume", async () => {
+    // Skipped silently, this source stops syncing until someone runs a full
+    // scan -- and the run still says COMPLETED.
+    mocks.readRun.mockResolvedValue(
+      run({ recordScope: "INCREMENTAL", skippedSources: ["sql_bay_assignment"] }),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByText("FULL"));
+
+    expect(await screen.findByText("sql_bay_assignment")).toBeTruthy();
+    expect(screen.getByText(/have no cursor and were not read/i)).toBeTruthy();
   });
 
   it("surfaces a refused sync instead of reporting it ran", async () => {

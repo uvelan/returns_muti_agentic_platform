@@ -8,6 +8,7 @@ same two collections the old hand-coded path read.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
@@ -19,6 +20,7 @@ from return_platform.data_platform.graph.sync_service import (
     GraphSyncScope,
     GraphSyncService,
 )
+from return_platform.dynamic_knowledge.graph.generation import LEGACY_GENERATION_ID
 from return_platform.dynamic_knowledge.graph.neo4j_writer import (
     GenerationFencingError,
     Neo4jDynamicGraphWriter,
@@ -63,11 +65,16 @@ class FakeMongoCollection:
 
 
 class FakeDatabase:
-    def __init__(self, collections: dict[str, FakeMongoCollection]) -> None:
+    def __init__(
+        self, collections: dict[str, FakeMongoCollection], *, name: str = "source"
+    ) -> None:
         self._collections = collections
+        #: `GraphSyncService.platform_store_source_ids` routes on the platform
+        #: database's own name, so the fake standing in for it needs one.
+        self.name = name
 
     def __getitem__(self, name: str) -> FakeMongoCollection:
-        return self._collections[name]
+        return self._collections.setdefault(name, FakeMongoCollection([]))
 
 
 class FakeResult:
@@ -153,7 +160,46 @@ class _FakeSecret:
         return self._value
 
 
+class FakeReleases:
+    """A published release that resolves to the schema the test built.
+
+    `GraphSyncService.sync` calls `refresh_schema` before it reads anything, and
+    this fake had no `_releases` and no `dynamic_knowledge_schema_path` -- both
+    tests below died in `refresh_schema` with an `AttributeError` long before
+    reaching the pipeline they exist to exercise. The fake was stale, not the
+    service: `refresh_schema` was added after this module was written and nothing
+    updated it.
+
+    Returning the interim schema (rather than `None`, which falls through to
+    loading the shipped YAML) keeps the assertions below meaningful. The shipped
+    descriptor names its sources `source_sales`/`source_customers`; this module
+    is deliberately written against `build_interim_active_schema`'s
+    `sales_inventory`/`customer_outbound`, and silently swapping one for the
+    other would make the run counts below assert nothing.
+    """
+
+    def __init__(self, schema: Any) -> None:
+        self._schema = schema
+
+    async def active(self) -> Any:
+        return self._schema
+
+
+class FakeCheckpoints:
+    """A full run must never read or write checkpoints; only an incremental one
+    does. Raising keeps that a fact rather than an assumption -- the coordinator
+    is now handed a real store in production, so "full_sync does not checkpoint"
+    is worth continuing to enforce somewhere."""
+
+    async def read(self, **kwargs: Any) -> None:
+        raise AssertionError("full_sync must not read checkpoints")
+
+    async def write(self, **kwargs: Any) -> None:
+        raise AssertionError("full_sync must not write checkpoints")
+
+
 class FakeSettings:
+    dynamic_knowledge_schema_path = Path("config/dynamic_knowledge/active-schema.return-order.yaml")
     mongo_database = "platform"
     source_mongo_database = "returns_source"
     neo4j_database = "neo4j"
@@ -171,7 +217,7 @@ class FakeSettings:
 def _service_with(tx: FakeTransaction, source_db: FakeDatabase) -> GraphSyncService:
     service = cast(Any, object.__new__(GraphSyncService))
     service._settings = FakeSettings()
-    service._platform_db = None
+    service._platform_db = FakeDatabase({}, name=FakeSettings.mongo_database)
     service._source_db = source_db
     service._driver = FakeDriver(tx)
     service._runs = FakeRuns()
@@ -181,6 +227,8 @@ def _service_with(tx: FakeTransaction, source_db: FakeDatabase) -> GraphSyncServ
         approved_by="admin",
         approved_at=datetime(2026, 8, 7, tzinfo=UTC),
     )
+    service._releases = FakeReleases(service._schema)
+    service._checkpoints = FakeCheckpoints()
     service._writer = Neo4jDynamicGraphWriter(service._driver, database="neo4j")
     service._projector = GenericGraphProjector()
     return cast(GraphSyncService, service)
@@ -287,3 +335,125 @@ async def test_sync_records_failure_status_when_a_write_raises() -> None:
     (run_document,) = stored.values()
     assert run_document["status"] == "FAILED"
     assert run_document["errorCode"]
+
+
+class RecordingCheckpoints:
+    """A checkpoint store that answers instead of raising, for the incremental
+    branch. `FakeMongoCollection.find` ignores the query it is given, so this
+    module cannot show that a stored cursor actually *narrows* a scan -- that is
+    proved against real MongoDB in
+    `tests/dynamic_knowledge/test_incremental_sync_real_infra.py`. What it can
+    show, and what nothing else does, is that `GraphSyncService` reaches
+    `incremental_sync` at all rather than quietly running a full scan under an
+    incremental label."""
+
+    def __init__(self) -> None:
+        self.reads: list[tuple[str, str]] = []
+        self.writes: list[tuple[str, str, int]] = []
+
+    async def read(self, *, source_asset_id: str, graph_generation_id: str) -> None:
+        self.reads.append((source_asset_id, graph_generation_id))
+        return None
+
+    async def write(
+        self,
+        *,
+        source_asset_id: str,
+        graph_generation_id: str,
+        checkpoint: Any,
+        fencing_token: int,
+    ) -> None:
+        del checkpoint
+        self.writes.append((source_asset_id, graph_generation_id, fencing_token))
+
+
+def _mongo_source_db() -> FakeDatabase:
+    return FakeDatabase(
+        {
+            "customerOutboundCDM": FakeMongoCollection(
+                [
+                    {
+                        "_id": ObjectId(),
+                        "partyId": "1",
+                        "customerName": "n",
+                        "updatedAt": "2026-08-01T00:00:00Z",
+                    }
+                ]
+            ),
+            "salesInv": FakeMongoCollection([]),
+            "shipmentInfo": FakeMongoCollection([]),
+            "lkpSearchProduct": FakeMongoCollection([]),
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_incremental_request_consults_the_checkpoint_store_and_says_so() -> None:
+    """The wiring W2.8 was missing.
+
+    `GraphSyncService` previously constructed the coordinator with a checkpoint
+    store whose every method raised, and called `full_sync` unconditionally --
+    `incremental_sync` was unreachable from the API, the console, or any
+    scheduler. The `FakeCheckpoints` used by the full-scan tests above still
+    raises, so this test would fail loudly if the incremental request fell
+    through to `full_sync`.
+    """
+    checkpoints = RecordingCheckpoints()
+    service = _service_with(FakeTransaction(fence_matched=1), _mongo_source_db())
+    service._checkpoints = checkpoints  # type: ignore[attr-defined]
+
+    run = await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, incremental=True, applySchema=False),
+        actor_id="test",
+    )
+
+    assert run.status == "COMPLETED"
+    assert run.recordScope == "INCREMENTAL"
+    assert ("customer_outbound", LEGACY_GENERATION_ID) in checkpoints.reads
+    # The one source with a document is the one that produces a page and so the
+    # one that advances. An empty source has nothing to checkpoint.
+    assert [source for source, _generation, _token in checkpoints.writes] == ["customer_outbound"]
+
+
+@pytest.mark.asyncio
+async def test_a_full_request_still_records_itself_as_a_full_scan() -> None:
+    """`recordScope` defaults are not decorative: an operator reading the run
+    list has to be able to tell the two apart, and every historical run in the
+    ledger predates the field entirely."""
+    service = _service_with(FakeTransaction(fence_matched=1), _mongo_source_db())
+
+    run = await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, applySchema=False),
+        actor_id="test",
+    )
+
+    assert run.recordScope == "FULL"
+    assert run.skippedSources == []
+
+
+@pytest.mark.asyncio
+async def test_an_incremental_run_names_the_sources_it_could_not_resume() -> None:
+    """A source with no `incremental_cursor_field` is skipped by the coordinator
+    by design -- there is no position to resume from. Silently is the problem:
+    an operator triggers an incremental run, sees COMPLETED, and never learns
+    that one source has not synced since the last full scan.
+    """
+    checkpoints = RecordingCheckpoints()
+    service = _service_with(FakeTransaction(fence_matched=1), _mongo_source_db())
+    service._checkpoints = checkpoints  # type: ignore[attr-defined]
+    schema = service._schema  # type: ignore[attr-defined]
+    without_cursor = schema.sources["shipment_info"].model_copy(
+        update={"incremental_cursor_field": None}
+    )
+    service._schema = schema.model_copy(  # type: ignore[attr-defined]
+        update={"sources": {**schema.sources, "shipment_info": without_cursor}}
+    )
+    service._releases = FakeReleases(service._schema)  # type: ignore[attr-defined]
+
+    run = await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, incremental=True, applySchema=False),
+        actor_id="test",
+    )
+
+    assert run.skippedSources == ["shipment_info"]
+    assert "shipment_info" not in [source for source, _generation in checkpoints.reads]
