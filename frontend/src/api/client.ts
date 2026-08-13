@@ -1,4 +1,4 @@
-import type { APIResponse } from "../contracts/api";
+import type { APIResponse, PageMeta, ResponseMeta } from "../contracts/api";
 
 
 type ErrorDetails = {
@@ -120,9 +120,25 @@ function extractErrorDetails(
 }
 
 
+type EnvelopeShape =
+  Record<string, unknown>
+  & { readonly meta: Record<string, unknown> };
+
+
+/**
+ * Is this the platform envelope?
+ *
+ * `meta` alone decides it. Both `data` and `page` are optional in the contract —
+ * the backend models them as `T | None = None`, so the generated schema marks
+ * neither as required — and an envelope carrying no `data` is a legitimate
+ * "nothing to report", not a malformed response.
+ *
+ * This still rejects the bare, non-enveloped body the check exists for: such a
+ * body has no conforming `meta`, which is what fails it.
+ */
 function isApiResponseEnvelope(
   payload: unknown,
-): payload is APIResponse<unknown> {
+): payload is EnvelopeShape {
   if (!isRecord(payload)) {
     return false;
   }
@@ -140,7 +156,6 @@ function isApiResponseEnvelope(
     && typeof meta.freshness === "string"
     && typeof meta.partial === "boolean"
     && Array.isArray(meta.warnings)
-    && Object.hasOwn(payload, "data")
   );
 }
 
@@ -307,5 +322,13 @@ export async function apiClient<T>(
     );
   }
 
-  return payload as APIResponse<T>;
+  // `data` and `page` are optional on the wire but non-optional on
+  // `APIResponse<T>`. Settle the absent case to `null` here, once, so the value
+  // handed to callers matches the type they are given and a caller that checks
+  // `data === null` sees the same thing as one that writes `data ?? fallback`.
+  return {
+    data: (payload.data ?? null) as T | null,
+    page: (payload.page ?? null) as PageMeta | null,
+    meta: payload.meta as unknown as ResponseMeta,
+  };
 }
