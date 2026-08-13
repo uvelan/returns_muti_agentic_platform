@@ -40,6 +40,8 @@ from return_platform.ai.routing.routes import AIRoute, build_routes
 from return_platform.ai.routing.selection import AIRoutePool
 from return_platform.ai.routing.tasks import (
     LoadedAIGatewayConfiguration,
+    ModelTier,
+    TaskConfiguration,
     load_ai_gateway_configuration,
 )
 from return_platform.ai.safety import inspect_input, inspect_output
@@ -86,8 +88,10 @@ class SimulationNarrativeService:
             )
         loaded = loaded_ai_gateway
         self._gateway_configuration = loaded.configuration
-        self._task = self._gateway_configuration.tasks[configuration.ai.taskId]
-        if self._task.tier.value != "LIGHTWEIGHT" or self._task.allowTierEscalation:
+        # Validated at wiring time so a misconfigured task fails on startup, and
+        # re-read per call by `_active_task` so an activated release applies.
+        startup_task = self._gateway_configuration.tasks[configuration.ai.taskId]
+        if startup_task.tier.value != "LIGHTWEIGHT" or startup_task.allowTierEscalation:
             raise ValueError("Dependency simulator narratives must remain lightweight-only.")
         self._route_pool = route_pool or AIRoutePool(
             build_routes(settings), self._gateway_configuration
@@ -98,9 +102,21 @@ class SimulationNarrativeService:
         # are written by the observer below.
         self._dispatcher = dispatcher or FinalDispatcher(
             settings=settings,
-            configuration=self._gateway_configuration,
             route_pool=self._route_pool,
         )
+
+    def _active_task(self) -> TaskConfiguration | None:
+        """The narrative task as currently released, or nothing usable.
+
+        Returns `None` rather than raising when the release has removed the task
+        or moved it off the lightweight tier: the narrative is optional wording
+        and must never block a simulation, so an unusable configuration falls
+        back to the deterministic template like any other failure.
+        """
+        task = self._dispatcher.task(self._configuration.ai.taskId)
+        if task is None or task.tier.value != "LIGHTWEIGHT" or task.allowTierEscalation:
+            return None
+        return task
 
     @staticmethod
     def _digest(value: object) -> str:
@@ -188,7 +204,9 @@ class SimulationNarrativeService:
                 "model": model,
                 "credentialId": credential_id,
                 "routeId": route_id,
-                "modelTier": self._task.tier.value,
+                # The tier this service is constrained to. `_active_task` refuses
+                # anything else, so a released change cannot move it silently.
+                "modelTier": ModelTier.LIGHTWEIGHT.value,
                 "selectionReason": selection_reason,
                 "status": status,
                 "fallbackUsed": fallback_used,
@@ -298,6 +316,20 @@ class SimulationNarrativeService:
                 status="SKIPPED",
             )
 
+        task = self._active_task()
+        if task is None:
+            return await self._fallback(
+                operation_id=operation_id,
+                session_id=session_id,
+                dependency=dependency,
+                operation=operation,
+                fallback=fallback,
+                request_digest=request_digest,
+                error_code="TASK_NOT_CONFIGURED",
+                attempt=0,
+                status="SKIPPED",
+            )
+
         observer = _NarrativeObserver(
             service=self,
             operation_id=operation_id,
@@ -309,15 +341,15 @@ class SimulationNarrativeService:
         outcome = await self._dispatcher.dispatch(
             DispatchRequest(
                 task_id=self._configuration.ai.taskId,
-                task=self._task,
-                system_prompt=self._task.systemPrompt,
+                task=task,
+                system_prompt=task.systemPrompt,
                 payload=request_payload,
                 request_digest=request_digest,
                 estimated_tokens=max(1, len(json.dumps(request_payload, sort_keys=True)) // 4),
                 safety_status=safety.status.value,
                 max_output_tokens=min(
                     self._configuration.ai.maxOutputTokens,
-                    self._task.maximumOutputTokens,
+                    task.maximumOutputTokens,
                 ),
                 temperature=self._configuration.ai.temperature,
                 # The simulator's narrative is optional work behind a user
@@ -338,7 +370,9 @@ class SimulationNarrativeService:
 
         # "Nothing to try" and "everything tried and failed" are different
         # operator problems, so an empty candidate set keeps its own code.
-        error_code = outcome.last_error if outcome.attempts or outcome.failure_summary else _NO_ROUTE
+        error_code = (
+            outcome.last_error if outcome.attempts or outcome.failure_summary else _NO_ROUTE
+        )
         return await self._fallback(
             operation_id=operation_id,
             session_id=session_id,

@@ -133,6 +133,10 @@ _ALLOW_VERDICT = InterceptionVerdict(decision=DispatchDecision.ALLOW_PROVIDER)
 #: callers still bypass operator inspection.
 ALLOW_ALL = InterceptionPolicy()
 
+#: Shared because `InvocationCorrelation` is frozen: a caller with no business
+#: identifiers gets the same empty record rather than a fresh allocation.
+_NO_CORRELATION = InvocationCorrelation()
+
 
 @dataclass(frozen=True, slots=True)
 class DispatchRequest:
@@ -151,7 +155,7 @@ class DispatchRequest:
     payload: Mapping[str, Any]
     request_digest: str
     estimated_tokens: int
-    correlation: InvocationCorrelation = InvocationCorrelation()
+    correlation: InvocationCorrelation = field(default=_NO_CORRELATION)
     #: The input-safety verdict the caller already computed. Recorded on every
     #: attempt so a row says what was known about the request, not only about
     #: the response.
@@ -241,7 +245,9 @@ class DispatchObserver:
 
     async def on_tier_escalation(self, *, attempts: int, last_error: str) -> None: ...
 
-    async def on_exhausted(self, *, attempts: int, last_error: str, breakdown: Mapping[str, int]) -> None: ...
+    async def on_exhausted(
+        self, *, attempts: int, last_error: str, breakdown: Mapping[str, int]
+    ) -> None: ...
 
     async def on_record_failed(self, *, trace_id: str, error: BaseException) -> None:
         """Telemetry could not be written. Never fails the caller's work, but a
@@ -264,19 +270,26 @@ class FinalDispatcher:
     state. `route_pool` is shared deliberately -- circuit state learned from a
     reasoning call must be visible to the next eligibility call, or a dead
     credential is rediscovered once per caller.
+
+    **There is deliberately no `configuration` argument.** The active document is
+    read from the route pool on every dispatch, because `replace_routes` swaps
+    routes and configuration together under the pool's own lock -- it is the one
+    object in the process that is already atomically updated when a release is
+    activated. A dispatcher holding its own copy would answer "which
+    configuration is in force" differently from the pool it dispatches over, and
+    a constructor copy is how task-level settings came to be pinned for the
+    lifetime of a process while route changes hot-applied around them.
     """
 
     def __init__(
         self,
         *,
         settings: Settings,
-        configuration: AIGatewayConfiguration,
         route_pool: AIRoutePool,
         recorder: AIAttemptRecorder | None = None,
         interception: InterceptionPolicy = ALLOW_ALL,
     ) -> None:
         self._settings = settings
-        self._configuration = configuration
         self._route_pool = route_pool
         self._recorder = recorder
         self._interception = interception
@@ -284,6 +297,21 @@ class FinalDispatcher:
     @property
     def route_pool(self) -> AIRoutePool:
         return self._route_pool
+
+    @property
+    def configuration(self) -> AIGatewayConfiguration:
+        """The document in force *now*, not the one this object was built with."""
+        return self._route_pool.configuration
+
+    def task(self, task_id: str) -> TaskConfiguration | None:
+        """The task as currently released.
+
+        Callers resolve their task through here on every invocation rather than
+        caching it, so promptVersion, tier, token ceilings, allowed providers,
+        retry limits and pricing all follow an activated release the same way
+        routes already did.
+        """
+        return self.configuration.tasks.get(task_id)
 
     @property
     def interception(self) -> InterceptionPolicy:
@@ -305,7 +333,7 @@ class FinalDispatcher:
         `amount_micros=None` -- never `0`, which sums and charts and makes real
         spend look free.
         """
-        return self._configuration.pricing.estimate(
+        return self.configuration.pricing.estimate(
             provider=route.provider_name if route else None,
             model=route.model if route else None,
             at=datetime.now(UTC),
@@ -503,7 +531,7 @@ class FinalDispatcher:
         fallback_reason: str | None,
     ) -> DispatchOutcome[ValueT] | None:
         """The only failover loop. Returns an outcome, or `None` if exhausted."""
-        retry = self._configuration.retry
+        retry = self.configuration.retry
         for route in candidates:
             for route_attempt in range(retry.maximumAttemptsPerRoute):
                 if state.attempts >= retry.maximumTotalAttempts:
@@ -673,13 +701,13 @@ class FinalDispatcher:
         return None
 
     def _backoff_seconds(self, route_attempt: int) -> float:
-        retry = self._configuration.retry
+        retry = self.configuration.retry
         base_ms = min(
             retry.maximumBackoffMilliseconds,
             retry.initialBackoffMilliseconds * (2**route_attempt),
         )
         jitter = random.randint(0, max(1, base_ms // 4)) if retry.jitter else 0
-        return (base_ms + jitter) / 1000
+        return float(base_ms + jitter) / 1000
 
 
 @dataclass(slots=True)

@@ -252,9 +252,13 @@ class _InvokerObserver(DispatchObserver):
 class StructuredOutputInvoker[ResponseT: BaseModel]:
     """Runs one structured-output task through the shared dispatch boundary.
 
-    One instance is bound to one configured task and one response model, so the
-    tier/provider checks below happen once at construction rather than on every
-    call -- a misconfigured task fails at wiring time, not on a user's request.
+    One instance is bound to one task *id* and one response model. The
+    tier/provider checks run at construction so a misconfigured task fails at
+    wiring time rather than on a user's request -- but the task itself is
+    re-resolved on every `invoke`, because binding to the task *object* pinned
+    promptVersion, tier, token ceilings and allowed providers to whatever had
+    been loaded when the process started. Routes hot-applied around them and
+    nothing said so.
     """
 
     def __init__(
@@ -285,9 +289,9 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         if forbid_simulator and "SIMULATOR" in task.allowedProviders:
             raise RuntimeError(f"AI task {task_id!r} must not permit the simulator provider")
         self._settings = settings
-        self._configuration = configuration
         self._task_id = task_id
-        self._task: TaskConfiguration = task
+        self._required_tier = required_tier
+        self._forbid_simulator = forbid_simulator
         self._response_model = response_model
         self._logger = logger
         self._event_prefix = event_prefix
@@ -296,10 +300,10 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         # A caller may pass a dispatcher it already owns, so one process has one
         # boundary rather than one per invoker. Constructing a default keeps
         # every existing call site working; it still shares the route pool,
-        # which is where the state that must not fork actually lives.
+        # which is where both the circuit state and the active configuration
+        # live.
         self._dispatcher = dispatcher or FinalDispatcher(
             settings=settings,
-            configuration=configuration,
             route_pool=route_pool,
             recorder=recorder,
             interception=interception,
@@ -307,7 +311,27 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
 
     @property
     def task(self) -> TaskConfiguration:
-        return self._task
+        """The task as currently released.
+
+        A property rather than a stored attribute so a reader cannot hold a
+        stale copy without noticing. The wiring-time guards are re-applied here:
+        a release that moved this task to the wrong tier, or that started
+        permitting the simulator for a reasoning task, must fail the call rather
+        than quietly answer it -- a reasoning loop parsing simulator output as a
+        real structured answer would be acting on fiction.
+        """
+        task = self._dispatcher.task(self._task_id)
+        if task is None:
+            raise self._unavailable_error(f"AI task {self._task_id!r} is not configured")
+        if self._required_tier is not None and task.tier is not self._required_tier:
+            raise self._unavailable_error(
+                f"AI task {self._task_id!r} must use the {self._required_tier.value} tier"
+            )
+        if self._forbid_simulator and "SIMULATOR" in task.allowedProviders:
+            raise self._unavailable_error(
+                f"AI task {self._task_id!r} must not permit the simulator provider"
+            )
+        return task
 
     @property
     def dispatcher(self) -> FinalDispatcher:
@@ -361,9 +385,13 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         # provider's structured-output field: not every configured provider
         # honours a native schema parameter, and the prompt copy is what makes
         # the contract identical across all of them.
+        # Resolved once, here, and used for the whole invocation: a release
+        # activated mid-call must not move the prompt out from under the digest
+        # that identifies it.
+        task = self.task
         schema_str = json.dumps(clean_gemini_schema(self._response_model.model_json_schema()))
         full_prompt = (
-            f"{self._task.systemPrompt}\n\n"
+            f"{task.systemPrompt}\n\n"
             "REQUIRED RESPONSE SCHEMA (Output exactly this JSON structure):\n"
             f"```json\n{schema_str}\n```"
         )
@@ -380,17 +408,17 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         )
         request = DispatchRequest(
             task_id=self._task_id,
-            task=self._task,
+            task=task,
             system_prompt=full_prompt,
             payload=payload,
             request_digest=request_digest,
             estimated_tokens=max(1, len(size_probe) // 4),
             correlation=correlation,
             safety_status=safety.status.value,
-            max_output_tokens=self._task.maximumOutputTokens,
+            max_output_tokens=task.maximumOutputTokens,
             temperature=0.0,
             response_schema=self._response_model.model_json_schema(),
-            allow_tier_escalation=self._task.allowTierEscalation,
+            allow_tier_escalation=task.allowTierEscalation,
         )
 
         if not safety.allowed:

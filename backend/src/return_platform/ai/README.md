@@ -32,22 +32,56 @@ contain a provider or model literal.
 | `routing/selection.py` | `AIRoutePool`: everything mutable — candidate ordering, per-route/model/credential/provider/tier minute counters, concurrency, and the four-level circuit breaker. |
 | `providers/` | One adapter per provider, plus `contracts.py` (`AIProvider`, `ProviderRequest`, `ProviderResponse`, `ProviderError`) and `registry.py`. |
 | `safety/` | Deterministic input and output policy: `injection_guard` (untrusted-input containment), `scope_guard` (business-scope enforcement), composed by `inspection.py`. |
-| `gateway/service.py` | `AIGatewayService.evaluate` — the decision-shaped path: `{decision, explanation, confidenceMillionths}`, with a deterministic manual-review fallback. |
-| `gateway/structured_invocation.py` | `StructuredOutputInvoker` — the structured-output path: any pydantic response model, with the same failover and tier escalation. |
+| `gateway/final_dispatch.py` | **`FinalDispatcher` — the one place a provider is called.** Owns the interception decision, the caller precondition, route selection, acquire/release, retry and deadline, recursive redaction, the single `provider.generate` expression, output safety, failover bookkeeping, pricing and attempt telemetry. |
+| `gateway/service.py` | `AIGatewayService.evaluate` — the decision-shaped *response contract*: `{decision, explanation, confidenceMillionths}`, the persistent `AITrace`, the session quota, and a deterministic manual-review fallback. |
+| `gateway/structured_invocation.py` | `StructuredOutputInvoker` — the structured-output *response contract*: any pydantic response model, parsed back from the same dispatch. |
 | `gateway/models.py` | API-facing views for routes, tasks, usage, and safety tests. |
 
-### Why there are two entry points, not one
+### One boundary, several response contracts
 
-`AIGatewayService.evaluate` and `StructuredOutputInvoker.invoke` are **not** two execution
-paths. They share the route pool, the configuration, the safety guards, the circuit
-breakers, and the rate limiters; they differ only in response contract. `evaluate` enforces
-a fixed decision envelope and answers with `REVIEW_REQUIRED` when every route fails, because
-its callers are business decisions that must always produce an outcome. `invoke` enforces an
-arbitrary caller-supplied pydantic schema and *raises* when every route fails, because its
-callers are reasoning loops that must not be handed a fabricated result.
+`AIGatewayService.evaluate`, `StructuredOutputInvoker.invoke` and the dependency
+simulator's narrative service are **not** separate execution paths. Until AI-02 they were:
+each owned a copy of the machinery around the call, and a control attached to one copy was
+absent from the others — interception existed only on the decision path, recursive redaction
+had to be remembered per loop and the simulator's never got it, and cost came from the
+released catalog on two loops and from a local table returning `0` on the third.
+
+They now differ only in response contract and in what they persist alongside. Everything
+provider-facing arrives from `FinalDispatcher` via a `DispatchRequest`, a `validate`
+callable and a `DispatchObserver`.
+
+`evaluate` enforces a fixed decision envelope and answers with `REVIEW_REQUIRED` when every
+route fails, because its callers are business decisions that must always produce an outcome.
+`invoke` enforces an arbitrary caller-supplied pydantic schema and *raises* when every route
+fails, because its callers are reasoning loops that must not be handed a fabricated result.
 
 A caller needing structured output must not reach for `evaluate`: its parser accepts exactly
 three keys and will reject anything else as `RESPONSE_INVALID`.
+
+`tests/test_ai_single_dispatch_boundary.py` enforces this by enumerating every
+`AIProvider.generate` call site in the source tree. Adding a fourth loop fails it.
+
+### Interception
+
+Every dispatch begins with one `InterceptionPolicy` verdict: `ALLOW_PROVIDER`,
+`HUMAN_RESPONSE` or `REJECT` (contract C7). `GatewaySettingsInterceptionPolicy` reads the
+operator's `interceptMode`; `ALLOW_ALL` marks the paths AI-01 has still to wire, and is a
+named object precisely so `grep ALLOW_ALL` lists them.
+
+`DurableInterceptionProvider` is **not** this mechanism. It is a MANUAL provider, gated to
+development and test, that *replaces* the model with a human and reports `MANUAL` so a human
+answer is never recorded as model output. Gating dispatch and substituting the thing
+dispatched to are different things.
+
+### Configuration freshness
+
+`FinalDispatcher` takes no `configuration` argument. The active document is read from
+`AIRoutePool` on every dispatch, because `replace_routes` swaps routes and configuration
+together under the pool's own lock and is therefore the only object an activation updates
+atomically. Callers resolve their task per invocation through `FinalDispatcher.task`, so
+prompt version, tier, token ceilings, allowed providers, retry limits and pricing follow an
+activated release the same way routes already did. Constructor copies of a task previously
+pinned all of those for the life of a process while routes hot-applied around them.
 
 ## Route selection, briefly
 

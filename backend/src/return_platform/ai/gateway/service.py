@@ -222,8 +222,9 @@ class AIGatewayService:
                 settings.ai_gateway_configuration_path
             )
         self._loaded_configuration = loaded_configuration
-        self._configuration: AIGatewayConfiguration = self._loaded_configuration.configuration
-        self._route_pool = route_pool or AIRoutePool(build_routes(settings), self._configuration)
+        self._route_pool = route_pool or AIRoutePool(
+            build_routes(settings), loaded_configuration.configuration
+        )
         # A repository that cannot store attempts records none, which is the
         # state a caller passing a minimal stand-in was already in.
         recorder = (
@@ -233,7 +234,6 @@ class AIGatewayService:
         )
         self._dispatcher = dispatcher or FinalDispatcher(
             settings=settings,
-            configuration=self._configuration,
             route_pool=self._route_pool,
             recorder=recorder,
             interception=GatewaySettingsInterceptionPolicy(repository),
@@ -245,7 +245,14 @@ class AIGatewayService:
 
     @property
     def configuration(self) -> AIGatewayConfiguration:
-        return self._configuration
+        """The document in force now.
+
+        Read through the dispatcher, which reads the route pool, which is what
+        `replace_routes` swaps under its own lock when a release is activated.
+        A constructor copy here meant `/ai/tasks` reported the configuration the
+        process started with long after an operator had released a new one.
+        """
+        return self._dispatcher.configuration
 
     @property
     def dispatcher(self) -> FinalDispatcher:
@@ -441,7 +448,9 @@ class AIGatewayService:
         original_request_digest: str | None = None,
         task_id: str = "RETURN_ELIGIBILITY_V1",
     ) -> GatewayEvaluation:
-        task = self._configuration.tasks.get(task_id)
+        # Resolved per call, not cached: promptVersion, tier, token ceilings and
+        # allowed providers must follow an activated release the way routes do.
+        task = self._dispatcher.task(task_id)
         if task is None:
             raise ValueError(f"Unknown AI task: {task_id}")
         candidate = dict(redacted_input)

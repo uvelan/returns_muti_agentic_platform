@@ -154,7 +154,9 @@ def test_only_the_boundary_builds_an_outbound_provider_request() -> None:
         for module, lines in _provider_request_constructions().items()
         if module != DISPATCH_MODULE and not module.startswith(PROVIDER_PACKAGE)
     }
-    assert offenders == {}, f"outbound provider requests are built outside the boundary: {offenders}"
+    assert offenders == {}, (
+        f"outbound provider requests are built outside the boundary: {offenders}"
+    )
 
 
 def test_the_recursive_redactor_is_applied_by_the_boundary_itself() -> None:
@@ -175,8 +177,7 @@ class _Answer(BaseModel):
 
 
 _ELIGIBILITY_TEXT = (
-    '{"decision":"APPROVE","explanation":"Within the return window.",'
-    '"confidenceMillionths":900000}'
+    '{"decision":"APPROVE","explanation":"Within the return window.","confidenceMillionths":900000}'
 )
 _STRUCTURED_TEXT = '{"verdict":"ok"}'
 
@@ -485,9 +486,7 @@ async def test_route_selection_failover_and_telemetry_each_run_once_per_attempt(
     repository = _Repository()
     from return_platform.ai.gateway.telemetry import RepositoryAIAttemptRecorder
 
-    invoker = _invoker(
-        loaded.configuration, pool, recorder=RepositoryAIAttemptRecorder(repository)
-    )
+    invoker = _invoker(loaded.configuration, pool, recorder=RepositoryAIAttemptRecorder(repository))
     result = await invoker.invoke(payload={"a": "b"}, size_probe="small", log_context={})
 
     assert result.value.verdict == "ok"
@@ -693,6 +692,114 @@ async def test_an_intercepted_request_does_not_spend_the_session_quota() -> None
     assert consumed == []
 
 
+# --------------------------------------------------------------------------
+# Connection: configuration freshness is one question with one answer
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_an_activated_release_changes_the_next_structured_invocation() -> None:
+    """Task-level AI configuration used to be pinned for the life of a process.
+
+    `StructuredOutputInvoker.__init__` took a copy of the task and of the
+    configuration, so promptVersion, tier, token ceilings, allowed providers,
+    retry limits and pricing were all frozen at construction -- everywhere,
+    including the API, and even though `AIRoutePool.replace_routes` had already
+    swapped the pool's own document. Routes hot-applied and the settings around
+    them did not, which is the worst of the two failure modes: the process looks
+    like it adopted the release.
+
+    Driven through `replace_routes`, the real activation path, rather than by
+    reaching into the invoker.
+    """
+    loaded = load_ai_gateway_configuration(CONFIG)
+    provider = _CapturingProvider("GOOGLE", "model-standard", _STRUCTURED_TEXT)
+    route = _route(provider, ModelTier.STANDARD)
+    pool = _CountingPool((route,), loaded.configuration)
+    invoker = _invoker(loaded.configuration, pool)
+    task_id = _structured_task_id(loaded.configuration)
+
+    await invoker.invoke(payload={"a": "b"}, size_probe="small", log_context={})
+    assert loaded.configuration.tasks[task_id].systemPrompt in provider.requests[-1].system_prompt
+
+    released = loaded.configuration.model_copy(
+        update={
+            "tasks": {
+                **loaded.configuration.tasks,
+                task_id: loaded.configuration.tasks[task_id].model_copy(
+                    update={
+                        "systemPrompt": "RELEASED PROMPT v2",
+                        "maximumOutputTokens": 321,
+                    }
+                ),
+            }
+        }
+    )
+    await pool.replace_routes((route,), released)
+
+    await invoker.invoke(payload={"a": "b"}, size_probe="small", log_context={})
+
+    assert provider.requests[-1].system_prompt.startswith("RELEASED PROMPT v2")
+    assert provider.requests[-1].max_output_tokens == 321
+    # And the invoker reports the released task, not the one it was built with.
+    assert invoker.task.maximumOutputTokens == 321
+
+
+@pytest.mark.asyncio
+async def test_an_activated_release_changes_the_next_decision_invocation() -> None:
+    """The same question, answered the same way on the other entry point --
+    which is the point of having one boundary. `AIGatewayService.configuration`
+    is what `/ai/tasks` reports, so a stale copy also made the console describe a
+    release the process was no longer running."""
+    loaded = load_ai_gateway_configuration(CONFIG)
+    provider = _CapturingProvider("GOOGLE", "model-lightweight", _ELIGIBILITY_TEXT)
+    route = _route(provider, ModelTier.LIGHTWEIGHT)
+    pool = _CountingPool((route,), loaded.configuration)
+    service = AIGatewayService(
+        _Repository(), _settings(), loaded_configuration=loaded, route_pool=pool
+    )
+
+    await service.evaluate(session_id="RET-7", redacted_input=dict(_SAFE_INPUT))
+    assert provider.requests[-1].max_output_tokens == (
+        loaded.configuration.tasks[DECISION_TASK].maximumOutputTokens
+    )
+
+    released = loaded.configuration.model_copy(
+        update={
+            "tasks": {
+                **loaded.configuration.tasks,
+                DECISION_TASK: loaded.configuration.tasks[DECISION_TASK].model_copy(
+                    update={"maximumOutputTokens": 77, "promptVersion": "released-v9"}
+                ),
+            }
+        }
+    )
+    await pool.replace_routes((route,), released)
+
+    result = await service.evaluate(session_id="RET-8", redacted_input=dict(_SAFE_INPUT))
+
+    assert provider.requests[-1].max_output_tokens == 77
+    assert result.trace.promptVersion == "released-v9"
+    assert service.configuration.tasks[DECISION_TASK].maximumOutputTokens == 77
+
+
+def test_the_boundary_takes_no_configuration_of_its_own() -> None:
+    """The structural guarantee behind the two tests above.
+
+    A `configuration` constructor argument would let a dispatcher answer "which
+    document is in force" differently from the pool it dispatches over, and the
+    copy would go stale exactly as the invoker's did. The pool is the only object
+    an activation updates atomically, so it is the only source.
+    """
+    import inspect
+
+    parameters = inspect.signature(FinalDispatcher.__init__).parameters
+    assert "configuration" not in parameters, (
+        "the dispatch boundary must read the active configuration from the route "
+        "pool, not hold a copy"
+    )
+
+
 def test_the_default_policy_is_a_named_object_rather_than_an_omission() -> None:
     """`ALLOW_ALL` is greppable; a missing argument is not. AI-01's remaining
     work is exactly "replace each `ALLOW_ALL` with a real policy", and that is a
@@ -700,7 +807,6 @@ def test_the_default_policy_is_a_named_object_rather_than_an_omission() -> None:
     assert isinstance(final_dispatch_module.ALLOW_ALL, InterceptionPolicy)
     dispatcher = FinalDispatcher(
         settings=_settings(),
-        configuration=load_ai_gateway_configuration(CONFIG).configuration,
         route_pool=AIRoutePool((), load_ai_gateway_configuration(CONFIG).configuration),
     )
     assert dispatcher.interception is final_dispatch_module.ALLOW_ALL
