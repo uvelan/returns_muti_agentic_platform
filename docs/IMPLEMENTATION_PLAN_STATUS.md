@@ -508,3 +508,41 @@ buckets, none of them this change set:
 whole suite on the host wedged at 42% and was killed — a Temporal test hanging is the likeliest
 cause, and `test_return_workflow_concurrency.py`'s own docstring documents that a wedged workflow
 produces exactly that. **The next full run belongs in the diagnostics container.**
+
+## Verification: after merging the three parallel branches
+
+The hygiene, W4.5 and W2.6 branches were cut from `493c3f3` independently and merged in that
+order. Post-merge on the integrated tree:
+
+| Command | Result |
+|---|---|
+| `ruff check src tests scripts` | All checks passed |
+| `ruff format --check src tests scripts` | 800 files already formatted |
+| `mypy --strict src` | Success: no issues found in **502** source files |
+| smoke net, connector routing, search strategy, sync adapters, fulfillment observation, credentials, canonical application, source scope | **140 passed** |
+
+Three hand-resolved conflicts, all from branches converging on the same work: both the hygiene
+branch and W4.5 independently fixed the connector-routing tripwire and the `run_data_job_worker.py`
+I001, and both added `psycopg`.
+
+### One real cross-branch interaction, not a conflict
+
+`git merge` reported no conflict between W2.6 and the smoke net, and the merge was nonetheless
+wrong. `test_an_anchor_the_schema_does_not_enable_never_reaches_the_source` used `shipment` as its
+example of an entity carrying a well-formed anchor that is nonetheless `SEED_ONLY` — and W2.6's
+entire purpose was to stop `shipment` being seed-only. After the merge the guard correctly
+permitted the sync, the source was read, and the tripwire failed on `source.reads == 0`, which is
+precisely the assertion it exists to make. Neither branch was wrong; the descriptor moved out from
+under a test that named a specific entity.
+
+It now demotes a copy of the shipped descriptor, reusing the `_demoted` shape the two fulfillment
+modules already use. No other entity substitutes: `customer_account` and `customer_party` are the
+only remaining `SEED_ONLY` entities and neither declares a strong anchor, so pointing the test at
+one would have exercised the missing-anchor refusal instead — green, and guarding nothing.
+
+Its `pytest.raises` is tightened in the same change. It accepted
+`(OrderAgentFailure, AssertionError)`, and `ScriptedModel` raises `AssertionError` when the graph
+asks for an unscripted action — so a turn that sailed past the guard and came back for a second
+decision satisfied a `raises` meant to capture a refusal. Only the trailing `source.reads`
+assertion caught it. **Any scenario in this module without a comparable trailing assertion has the
+same hole**, and that is worth a sweep.
