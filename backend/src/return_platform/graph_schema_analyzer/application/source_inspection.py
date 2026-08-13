@@ -20,6 +20,10 @@ approaches it.
 
 Bounds are enforced the same way: `sample` and `profile` clamp to the source's
 `max_sample_rows`, so no argument value can widen what a source yields.
+
+Scope decides *which* values a caller may see; W4.6's masking decides *what a
+value looks like* once it may be seen. `build_scoped_source_inspection` composes
+both, and the ordering is set out in `sample_masking`.
 """
 
 from __future__ import annotations
@@ -27,6 +31,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from return_platform.graph_schema_analyzer.application.sample_masking import (
+    build_masked_source_inspection,
+)
 from return_platform.graph_schema_analyzer.domain.errors import ScopeViolation
 from return_platform.graph_schema_analyzer.domain.source_scope import InspectionScope
 from return_platform.graph_schema_analyzer.ports.source_port import (
@@ -38,6 +45,7 @@ from return_platform.graph_schema_analyzer.ports.source_port import (
     SourceObjectRef,
     SourceValidation,
 )
+from return_platform.platform.redaction.sample_masking import SampleMasker
 
 __all__ = ["ScopedSourceInspection", "build_scoped_source_inspection"]
 
@@ -185,7 +193,10 @@ class ScopedSourceInspection:
 
 
 def build_scoped_source_inspection(
-    inspection: SourceInspectionPort, *, scope: InspectionScope
+    inspection: SourceInspectionPort,
+    *,
+    scope: InspectionScope,
+    masker: SampleMasker | None = None,
 ) -> SourceInspectionPort:
     """Typed factory, and the reason it exists is not decoration.
 
@@ -193,5 +204,15 @@ def build_scoped_source_inspection(
     satisfies the port -- so a method added to `SourceInspectionPort` later
     cannot be answered by the unscoped adapter while this class quietly lacks it,
     which would be a hole that type-checks and reads as complete.
+
+    Masking is applied outside the scope check, and a caller that supplies no
+    `masker` gets a fresh one rather than an unmasked port. The default is what
+    matters: an opt-in mask is a mask the first caller written in a hurry does
+    not have, and there is no legitimate reason to hand a *reasoning loop*
+    unmasked rows. A caller that needs tokens to line up across several analyses
+    -- or a test that needs them to be reproducible -- passes its own.
     """
-    return ScopedSourceInspection(inspection, scope=scope)
+    return build_masked_source_inspection(
+        ScopedSourceInspection(inspection, scope=scope),
+        masker=SampleMasker() if masker is None else masker,
+    )
