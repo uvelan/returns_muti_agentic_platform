@@ -8,6 +8,13 @@ W2.4/W2.7, cut in parallel from `d9639e4` and `4116915`.
 **A step is "done" only when its own Validation clause holds.** Several steps below were
 previously reported complete and are recorded here as partial, because theirs does not.
 
+W4.7, W4.11 and W4.12 landed after that line, on Windows, with test execution deliberately
+deferred to Linux. W4.7 is marked **done** because §9's per-step clause is entirely
+static-and-unit and was met; W4.11 and W4.12 are marked **implemented and unverified**, not
+done, because both write to Mongo and both cross the Temporal boundary and neither was ever
+run against either. The exact gaps are listed under "What W4.11 and W4.12 could not verify
+here".
+
 ## Wave 0 — complete
 
 | Step | Status |
@@ -375,13 +382,101 @@ The 19 steps are in the plan. Nothing is deleted before it, so Wave 3 is blocked
 
 ## Wave 3 — blocked on Gate A
 
-## Wave 4 — 1 of 12
+## Wave 4 — 2 of 12 done, 2 implemented and unverified
 
 | Step | Status |
 |---|---|
 | W4.5 Complete analyzer connectors | **done** — one read-only `SourceInspectionPort` (`validate`, `list_sources`, `list_objects`, `describe_object`, `sample`, `profile`, `list_indexes`, `list_relationships`) with adapters for MongoDB, SQL Server, PostgreSQL and Neo4j, each proven against a real server. Scope is a hard filter in the tool layer (`ScopedSourceInspection`), refusing inbound *and* filtering outbound. `psycopg` added; dispatch extends the existing `SourceConnectorsByType` rather than adding a second registry. W2.4's blocker — "the analyzer's connector cannot describe the SQL warehouse source" — is closed |
+| W4.7 `as_of` and `session_timezone` | **done** — §9's per-step clause (changed-module tests, static checks, affected contract) holds and needs no infrastructure. `as_of` is pinned once in `coordinator._run_turn`, checkpointed, and read from state by `_build_context`; `resolve_date_windows` converts eight relative phrases to absolute half-open UTC ranges computed at *session-local* midnight; the instant is stated in the system prompt through a new per-request `prompt_addendum`; both values are persisted on the committed `AgentTurnResult`. Proven by running the real graph over a three-context turn and asserting all three agree, and against a real `RoutePoolReasoningModelGateway` with a capturing provider. See below |
+| W4.11 AI pricing as versioned runtime config | **implemented, unverified against infrastructure** — pricing is a field on the released `AIGatewayConfiguration`, so it travels the existing validate → release → activate path and `config/ai_gateway.yaml` is untouched. Cost is computed at the effective rate at request time and stored; absent pricing records `estimated_cost = null` with `pricing_status = UNKNOWN`, and the summary counts unpriced attempts rather than adding zero. 16 unit tests pass. **Not demonstrated:** a price list published through the config API onto a real Neo4j release and picked up by a running worker. See below |
+| W4.12 AI correlation | **implemented, unverified against infrastructure** — `trace_id`, `correlation_id`, `case_id`, `conversation_id`, `agent_id`, provider, model, `prompt_version`, input/cached-input/output tokens, latency, `estimated_cost`, `pricing_version`, `fallback_reason` and status are on the attempt record, written by both dispatch paths through one `AIAttemptRecord`. The reasoning path records attempts at all for the first time. Replay and compare are mounted on canonical `/api/ai` and called from S8. 14 unit tests pass. **Not demonstrated:** a row actually reaching Mongo, or a correlation id surviving the Temporal workflow → activity boundary in a running worker. See below |
 
-Confirmed absent: `as_of` on `AgentTurnContext` (W4.7 — zero references).
+W4.7's "confirmed absent — zero references" note is retired: `as_of` exists.
+
+### W4.7: one clock read, and where it had to go
+
+`_build_context` is called at seven sites in `graph_nodes.py`, once per node entry.
+Reading the clock there would let a turn gather evidence under one "yesterday" and
+answer about another, so `as_of` is pinned once in `coordinator._run_turn` and
+carried in checkpointed graph state. That is also the only placement Temporal
+permits: `_run_turn` runs inside the `run_order_discovery_turn` activity or
+directly under FastAPI, never in a workflow body.
+
+**A resumed clarification keeps the as-of its attempt started under.** Refreshing
+it was considered and rejected: the evidence already in the checkpoint was
+filtered against the original instant, so moving the boundary leaves an attempt's
+own evidence and its own date filter meaning different days. The cost is that a
+clarification answered a day later reasons about a slightly stale "today" — the
+smaller wrong, and the only one that is visible. A checkpoint written before the
+field existed is back-filled on resume rather than failing a live conversation.
+
+**Relative phrases are converted in Python, not in prose.** `resolve_date_windows`
+computes eight named windows at *local* midnight, so Kolkata's "today" begins at
+18:30 UTC the previous day and New York's week boundary moves by an hour across
+the November DST change. A model asked to do that arithmetic in a sentence gets
+it right most of the time, which is the worst available failure rate.
+
+`config/ai_gateway.yaml` was not edited. The as-of changes every turn and a
+configured system prompt is one immutable string per release, so the grounding
+block is appended per request through a new `prompt_addendum` on the shared
+`StructuredOutputInvoker` — after the configured prompt and the schema, leaving
+the cacheable prefix W5.3 needs unbroken.
+
+Deliberately not built: a free-text date parser. The model still decides what the
+associate meant; it no longer computes what that means in UTC.
+
+### W4.11 and W4.12 chose `structured_invocation.py`, not the shim
+
+W5.4 is the step that retires `ai_gateway/` and consolidates `service.py`'s
+bespoke contract onto `structured_invocation.py`. Pricing and correlation were
+therefore put where that consolidation keeps them: `ai/pricing.py` and
+`ai/gateway/telemetry.py`, with `structured_invocation.py` as the primary
+consumer. `AIGatewayService` feeds the *same* `AIAttemptRecord` rather than
+keeping its own dict literal, so there is one row shape and one pricing call for
+one collection — this is not W5.4's work, but it does not entrench the
+duplication either.
+
+Recording happens around `provider.generate()`, which is what makes correlation
+provider-agnostic: MANUAL's file handoff, the durable interception a human
+answers, the simulator and the replay provider all produce the same row as a live
+HTTP call.
+
+**Pricing follows the release mechanism.** `AIGatewayConfiguration.pricing`
+defaults to *empty*, not to a shipped price list. An empty catalog reports
+`UNKNOWN`; a shipped one would be confidently wrong, which is worse than the
+hardcoded zero it replaces. Because the field is defaulted, every release stored
+before it existed still validates and no stored checksum is invalidated.
+
+**`estimatedCostMicrousd` is renamed `estimatedCostMicros`** with
+`pricingCurrency` beside it. The currency is configuration now, so a field name
+asserting USD is a claim the configuration is free to contradict. The dependency
+simulator keeps its own `estimatedCostMicrousd` — that is a simulated
+dependency's cost model, not this telemetry.
+
+### What W4.11 and W4.12 could not verify here
+
+Testing was deferred to Linux by instruction, so no real-infrastructure or
+Docker suite was run for either step. Specifically **not demonstrated**:
+
+- A pricing catalog published through `POST /api/config/releases/{id}/domains/AI_GATEWAY`,
+  activated on a real Neo4j release, and picked up by a running worker. The
+  round-trip is unit-tested at the model level only.
+- An attempt row actually written to Mongo's `ai_usage_attempts` by
+  `RepositoryAIAttemptRecorder`. The recorder is exercised against a recording
+  sink, not a database.
+- A `correlation_id` surviving API → Temporal workflow update → activity →
+  coordinator in a running worker. Each hop is wired and type-checked; none was
+  executed.
+- The S8 replay/compare buttons against a live backend. The routes are mounted
+  and the client calls them; the console was not driven.
+- `test_order_agent_coordinator_real_infra.py` and every other `*_real_infra*`
+  and `*_docker*` module.
+
+What *was* run on Windows: `ruff format --check`, `ruff check`, `mypy --strict`
+(510 files), 547 backend tests across `tests/dynamic_knowledge`,
+`tests/test_ai_*` and `tests/test_order_discovery_workflow.py`, the W0.7 smoke
+net, frontend `typecheck`, `lint`, and the AI and API vitest suites, plus a full
+OpenAPI regeneration with the drift check passing.
 
 ### W4.5's `profile` and what W4.8 inherits
 
