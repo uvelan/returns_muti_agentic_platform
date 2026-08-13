@@ -417,6 +417,15 @@ def materialize_domain_seed(
         }
 
     def build_shipment(index: int) -> dict[str, Any]:
+        """A seed shipment at the paths the *verified* `shipment` contract declares.
+
+        Every key here is one the entity reads. The previous shape carried
+        `carrierCode` and `shippedAt`, which genuine `shipmentInfo` documents do
+        not have and the entity no longer declares, and put the change timestamp
+        at the document root, where the entity does not look for it -- a seed
+        that satisfies no path projects a node with null properties and looks
+        like a source that had no data.
+        """
         order = SEED_ORDERS[index]
         ordinal = index + 1
         days = order["daysSinceDelivery"]
@@ -427,14 +436,22 @@ def materialize_domain_seed(
             "shipmentInfoEventData": {
                 "trkNum": tracking_reference,
                 "trilOrdNum": str(order["orderReference"]),
-                "carrierCode": "UPS",
-                "shippedAt": (
-                    delivered_at - timedelta(days=2) if delivered_at is not None else applied_at
-                ),
+                "shipmentId": f"SANDBOX:{order['orderReference']}:{ordinal}",
+                "acctId": "SANDBOX",
+                # The only authoritative delivery signal the model has, so a
+                # seeded order with a delivery date must read as delivered or
+                # the return scenarios built on it contradict their own data.
+                "currentStatus": "delivered" if delivered_at is not None else "intransit",
+                "srcSystem": "DispatchTrack",
+            },
+            "shipmentInfoEventMeta": {
+                "docType": "disptrck",
+                "insertTs": applied_at,
+                "lastUpdateTs": applied_at,
+                "updatedBy": "seed-manifest",
             },
             "seedVersion": seed_version,
             "seedDigest": digest,
-            "updatedAt": applied_at,
             "ordinal": ordinal,
         }
 

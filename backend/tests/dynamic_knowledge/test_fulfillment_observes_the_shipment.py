@@ -39,6 +39,7 @@ from return_platform.dynamic_knowledge.on_demand_sync.extraction import (
 from return_platform.dynamic_knowledge.schema import (
     ActiveSchema,
     EntitySourceAccess,
+    RelationshipSourceAccess,
     SourceContractStatus,
 )
 from return_platform.source_connectors.contracts import LogicalTargetedReadPlan
@@ -170,22 +171,25 @@ def _observations(
     )
 
 
-def _connected(schema: ActiveSchema) -> ActiveSchema:
-    """The descriptor with `shipment` promoted to CONNECTED_SYNC.
+def _demoted(schema: ActiveSchema) -> ActiveSchema:
+    """The descriptor with `shipment` pushed back to `SEED_ONLY`/`UNVERIFIED`.
 
-    The shipped descriptor declares it `SEED_ONLY` with an `UNVERIFIED` source
-    contract, because no `shipmentInfo` sample has been supplied and its physical
-    paths are carried over from the original schema unchecked. That is a real
-    configuration statement and the adapter honours it, so exercising the sync
-    half at all requires stating the promotion explicitly here rather than
-    quietly in production.
+    The shipped descriptor now declares it `CONNECTED_SYNC` with a `VERIFIED`
+    source contract, its physical paths having been confirmed against 100 real
+    `shipmentInfo` documents -- so the sync half is exercised on the descriptor
+    as shipped and only the *refusal* needs a constructed schema. That refusal is
+    a live configuration setting rather than dead code: an entity whose contract
+    stops holding is demoted, and the sync has to stop with it.
     """
     document = schema.model_dump(mode="json")
-    document["entities"][SHIPMENT_ENTITY_ID]["source_access"] = (
-        EntitySourceAccess.CONNECTED_SYNC.value
-    )
+    document["entities"][SHIPMENT_ENTITY_ID]["source_access"] = EntitySourceAccess.SEED_ONLY.value
     document["entities"][SHIPMENT_ENTITY_ID]["source_contract_status"] = (
-        SourceContractStatus.VERIFIED.value
+        SourceContractStatus.UNVERIFIED.value
+    )
+    # Relationship access is capped by its endpoints, so demoting the entity
+    # without this makes the whole descriptor fail validation.
+    document["graph"]["relationships"]["order_shipped_as"]["access"] = (
+        RelationshipSourceAccess.SEED_ONLY.value
     )
     return ActiveSchema.model_validate(document)
 
@@ -227,8 +231,7 @@ async def test_an_observed_shipment_carries_the_status_the_graph_holds(
         [
             {
                 SHIPMENT_TRACKING_FIELD_ID: TRACKING,
-                "current_status": "DELIVERED",
-                "carrier_code": "UPS",
+                "current_status": "delivered",
                 "shipment_id": "SHP-1",
             }
         ]
@@ -237,8 +240,8 @@ async def test_an_observed_shipment_carries_the_status_the_graph_holds(
     observation = await _observations(descriptor, reader).observe(TRACKING)
 
     assert observation.evidence is ShipmentEvidence.OBSERVED
-    assert observation.current_status == "DELIVERED"
-    assert observation.carrier_code == "UPS"
+    assert observation.current_status == "delivered"
+    assert observation.shipment_id == "SHP-1"
     assert observation.graph_generation_id == GENERATION
 
 
@@ -303,19 +306,24 @@ async def test_a_graph_outage_is_raised_rather_than_reported_as_no_shipment(
 async def test_the_sync_is_skipped_and_named_when_the_descriptor_forbids_it(
     descriptor: ActiveSchema,
 ) -> None:
-    """`shipment` ships SEED_ONLY, and that is not something to route around.
+    """A demoted entity is not something to route around.
 
-    Its physical paths are carried over unverified, so a targeted read would
-    compile paths nobody has confirmed against a real document. Skipping while
-    still reading the graph is the honest behaviour: a scheduled sync may have
-    brought the shipment in, and the reason is recorded so the skip is visible.
+    An entity whose paths nobody has confirmed against a real document would have
+    a targeted read compile those paths anyway. Skipping while still reading the
+    graph is the honest behaviour: a scheduled sync may have brought the shipment
+    in, and the reason is recorded so the skip is visible.
+
+    Would catch the access check being dropped as redundant now that the shipped
+    descriptor permits the sync -- the skip reason would be `None` and a plan
+    would reach the connector.
     """
     connector = _Connector()
     reader = _Reader([])
+    demoted = _demoted(descriptor)
 
-    observation = await _observations(descriptor, reader, connector).observe(TRACKING)
+    observation = await _observations(demoted, reader, connector).observe(TRACKING)
 
-    assert descriptor.entities[SHIPMENT_ENTITY_ID].source_access is EntitySourceAccess.SEED_ONLY
+    assert demoted.entities[SHIPMENT_ENTITY_ID].source_access is EntitySourceAccess.SEED_ONLY
     assert observation.sync_skipped_reason == "SOURCE_ACCESS_SEED_ONLY"
     assert connector.plans == []
     # The read still happened.
@@ -329,12 +337,14 @@ async def test_a_connected_shipment_entity_is_synced_before_the_read(
     """The step's Validation clause, in the unit that can assert it.
 
     A tracking number is anchored, one targeted source read is issued for it,
-    and only that number -- never a source-wide scan of shipmentInfo.
+    and only that number -- never a source-wide scan of shipmentInfo. On the
+    shipped descriptor: the entity is `CONNECTED_SYNC` there now, so this no
+    longer proves anything about a schema only the test holds.
     """
     connector = _Connector()
-    reader = _Reader([{SHIPMENT_TRACKING_FIELD_ID: TRACKING, "current_status": "IN_TRANSIT"}])
+    reader = _Reader([{SHIPMENT_TRACKING_FIELD_ID: TRACKING, "current_status": "intransit"}])
 
-    observation = await _observations(_connected(descriptor), reader, connector).observe(TRACKING)
+    observation = await _observations(descriptor, reader, connector).observe(TRACKING)
 
     assert observation.sync_skipped_reason is None
     assert observation.sync_request_id is not None
@@ -359,11 +369,9 @@ async def test_a_failed_sync_does_not_stop_the_read(descriptor: ActiveSchema) ->
         async def targeted_read(self, **kwargs: Any) -> RawSourcePage:
             raise RuntimeError("source unreachable")
 
-    reader = _Reader([{SHIPMENT_TRACKING_FIELD_ID: TRACKING, "current_status": "PICKED_UP"}])
+    reader = _Reader([{SHIPMENT_TRACKING_FIELD_ID: TRACKING, "current_status": "delivered"}])
 
-    observation = await _observations(_connected(descriptor), reader, _BrokenConnector()).observe(
-        TRACKING
-    )
+    observation = await _observations(descriptor, reader, _BrokenConnector()).observe(TRACKING)
 
     assert observation.evidence is ShipmentEvidence.OBSERVED
     assert observation.sync_skipped_reason is not None

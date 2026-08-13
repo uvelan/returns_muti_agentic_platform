@@ -34,7 +34,7 @@ policy, timings · W1.8 case list and resume.
 | W2.3 Re-analysis and migration | done — three-way diff, proposals as typed mutations, migration plan recorded before the pointer moves |
 | W2.4 Return and warehouse entities | **partial** — return entities added, but **by hand-editing the descriptor**, which the step forbids; **no warehouse or bay entity exists**. Blocked on the MSSQL analyzer connector (W4.5), as the step's own Failure condition predicts |
 | W2.5 Return on-demand sync | **done** — `ReturnCaseWorkflow` runs a record-scoped `synchronize_return_records` activity after the return record commits, blocking, parking the case as `RETURN_GRAPH_SYNC_FAILED` on failure. Proven against real Mongo and Neo4j: a committed record is queryable through the compiler afterwards, and the pre-fix upstream connector routing is shown writing nothing |
-| W2.6 Fulfillment on-demand sync | **partial** — the code is done and `IN_TRANSIT` now requires an observed shipment, but the Validation clause does not hold on the shipped descriptor; see below |
+| W2.6 Fulfillment on-demand sync | **done** — a genuine 100-document `shipmentInfo` sample verified the contract; `shipment` is `VERIFIED`/`CONNECTED_SYNC` and the Validation clause holds on the shipped descriptor with no in-test promotion; see below |
 | W2.7 Warehouse and bay on-demand sync | **not started** — blocked on W2.4's warehouse entity |
 | W2.8 Sync control (S6) and incremental sync | **partial** — S6 ships with run list, filters, detail and manual trigger; `incremental_sync` not confirmed implemented against the cursor contract |
 
@@ -50,25 +50,47 @@ array. The order the sync was requested for was the one entity never projected; 
 Projection is now derived from every mapped field of every entity bound to the source, plus the
 paths its selectors test.
 
-### W2.6 is `partial`, and the reason is configuration rather than code
+### W2.6 closed: the source contract is verified
 
-`shipment` ships as `source_access: SEED_ONLY` with `source_contract_status: UNVERIFIED`,
-because **no `shipmentInfo` sample has ever been supplied** — its physical paths are carried over
-from the original schema unchecked, and the source store holds no such collection
-(`return_source` has `customerOutboundCDM`, `salesInv`, `lkpSearchProduct` and nothing else).
-`EntitySourceAccess`'s own matrix forbids on-demand sync at that level, and `ActiveSchema`
-refuses to validate an `UNVERIFIED` entity declaring `CONNECTED_SYNC`.
+A genuine `shipmentInfo` sample (100 documents) was supplied and every declared physical path
+checked against all 100, not against document 0. **Six of nine resolved; three did not, and none
+of the three was a typo:**
 
-So the fulfillment path **skips the targeted sync and records `SOURCE_ACCESS_SEED_ONLY`**, then
-reads the graph anyway — a scheduled sync may have projected the shipment. The step's Validation
-clause ("a tracking number not previously in the graph is synced on demand and then read from the
-graph") is proven in `test_fulfillment_shipment_sync_real_infra.py` only with the entity promoted
-in the test, which that module states in its docstring rather than hiding.
+- **`carrier_code` → `shipmentInfoEventData.carrierCode`: does not exist.** That block holds
+  exactly `acctId`, `currentStatus`, `shipmentId`, `srcSystem`, `trilOrdNum`, `trkNum`. Carrier
+  *is* in the source, but only inside the `shipmentInfo[]` detail array and only for one of the
+  two document families: Convey carries `carrierScac`/`carrierName` (28 of 100), DispatchTrack
+  carries a truck and a driver because it is own-fleet delivery. **Dropped.** Reaching it would
+  mean `explode`ing `shipmentInfo[]`, which makes a shipment's presence in the graph conditional
+  on that array being non-empty — and an absent shipment reports `AWAITING_HANDOFF`, the exact
+  false negative W2.6 exists to remove. Explode would also have to pick one element per tracking
+  number, and on one of the 100 documents element 0 is the one *without* a carrier while its three
+  siblings name UPS.
+- **`shipped_at` → `shipmentInfoEventData.shippedAt`: does not exist**, and no actual ship *event*
+  timestamp exists at any grain. Convey has `shipmentInfo[].shipmentInfo.carrierShipDate` (29 of
+  100, same explode problem); DispatchTrack has `reqrdShipDate`, a *required* ship date — a plan,
+  and a `MM/DD/YYYY` string, not a `DATETIME`. **Dropped** rather than mapped to something that
+  means a different thing.
+- **`source_updated_at` → `updatedAt`: absent on all 100.** The change timestamp is
+  **`shipmentInfoEventMeta.lastUpdateTs`** (present on all 100), the same meta-block pattern
+  `salesInv` cursors on. **Path corrected.**
 
-**To close it:** verify `shipmentInfoEventData.{trkNum,trilOrdNum,carrierCode,shipmentId,
-currentStatus,srcSystem,shippedAt}` against a genuine `shipmentInfo` document, flip the entity to
-`VERIFIED` / `CONNECTED_SYNC`, and add shipments to `scripts/generate_seed_data.py` (it names
-`shipmentInfo` in `config/seed/generation.yaml` and emits nothing for it). No code changes.
+**No `where` selector.** `shipmentInfoEventMeta.docType` is `disptrck` on 72 and `convey` on 28;
+both are genuine shipments sharing one `shipmentInfoEventData` shape, so a selector would discard
+a whole family. Two documents also carry `docType: disptrck` over a convey-shaped body, so it is
+not a reliable discriminator anyway.
+
+`shipment` is now `VERIFIED` / `CONNECTED_SYNC`, `order_shipped_as` rises to `CONNECTED_SYNC`
+(it was `SEED_ONLY` only because the endpoint ceiling forbade more), and the promotion
+`test_fulfillment_shipment_sync_real_infra.py` needed is gone — the Validation clause is proven on
+the descriptor as shipped. What remains constructed is the *demotion*, for the one test that
+asserts the refusal path.
+
+**Known and not fixed:** `trkNum` is **not unique** — 93 distinct values across 100 documents,
+with distinct shipments on distinct orders sharing a number. `natural_key: [tracking_number]`
+therefore merges them into one node. Only `_id` (`acctId*orderNumber*trkNum`) is unique;
+`shipmentId` is worse (89 distinct). Changing the node key is a graph migration touching
+constraints, indexes and every edge into `Shipment` — W2.2/W2.3 work, not a W2.6 edit.
 
 The defect the step exists to fix **is** closed regardless: `IN_TRANSIT` is no longer inferred
 from a reference existing. Absent an observed shipment the state is `AWAITING_HANDOFF`, and
@@ -109,9 +131,18 @@ Not scheduled, and it came at the cost of Wave 2's tail. Recorded so the ledger 
   simulator: recorded answers replayed, a miss calling the real provider and recording it. This
   makes W5.2's evaluation suite affordable to run repeatedly.
 - **Seed data generator** (`scripts/generate_seed_data.py`) driven by
-  `config/seed/generation.yaml`. Written and committed, **never executed**. It also emits nothing
-  for `shipmentInfo` despite naming the collection, which is one of the two reasons W2.6 is
-  `partial`.
+  `config/seed/generation.yaml`. It now emits shipments — one per order that actually shipped a
+  line, so "the graph holds no shipment for this number" stays a state the corpus can produce.
+  First execution (120 orders into a throwaway database) produced 109 shipments whose every
+  declared path resolves and whose order numbers join real `salesInv` documents.
+
+  That first run also found three **pre-existing** generator defects, confirmed by stashing and
+  re-running: `contact_point`, `customer_account` and `customer_party` all fail the generator's own
+  `_verify` because their `record_path`s (`customer.address`, `party.custAccts.
+  additionalCustomerInfo`, `party`) are never built. `_entity_fields` writes only
+  `CURRENT_RECORD`-origin fields at the top level and never creates the nesting an exploded entity
+  needs, so the customer corpus produces no contact points, accounts or parties. Unrelated to W2.6
+  and left open.
 
 ## Found while landing W2.5 and W2.6
 

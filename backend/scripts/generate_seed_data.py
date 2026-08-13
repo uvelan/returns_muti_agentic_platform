@@ -249,6 +249,18 @@ PRODUCT_BRANDS = ("Moen", "Kohler", "Delta", "Zurn", "Rheem", "Watts", "Nibco")
 ORDER_STATUSES = ("CALLCSR", "OPEN", "SHIPPED", "INVOICED", "CLOSED")
 UNITS = ("EA", "BX", "FT", "CS")
 
+# The two shipment families the real `shipmentInfo` collection holds, paired
+# with the tracking-number shape each one issues: Convey brokers parcel carriers
+# and carries their tracking numbers, DispatchTrack is own-fleet last-mile and
+# issues its own route references. Generating one shape for both would make a
+# tracking-number search look uniform in a way the real source is not.
+#
+# `currentStatus` is generated normalised. The real source is not -- it holds
+# `intransit`, `in_transit`, `INTRANSIT` and `DELIVEREDD` for two states -- but
+# reproducing that here would put dirt in the corpus that no consumer has been
+# built to handle yet, and a generator is the wrong place to decide that.
+SHIPMENT_STATUSES = ("intransit", "delivered")
+
 
 class Phones:
     """Unique phone numbers, by construction rather than by retry.
@@ -447,7 +459,7 @@ async def _run(config: dict[str, Any], config_name: str) -> None:
         products = _products(counts["products"], schema, rng)
         await _write(database[names["products"]], products, replace=replace, label="products")
 
-        orders = _orders(
+        orders, order_contexts = _orders(
             counts["orders"],
             schema,
             customers,
@@ -460,8 +472,16 @@ async def _run(config: dict[str, Any], config_name: str) -> None:
         )
         await _write(database[names["orders"]], orders, replace=replace, label="orders")
 
+        shipments = _shipments(schema, orders, order_contexts, rng)
+        await _write(database[names["shipments"]], shipments, replace=replace, label="shipments")
+        if not shipments:
+            # A corpus with orders but no shipments is the state this run exists
+            # to end, and it is silent otherwise -- fulfillment simply reports
+            # every return as awaiting handoff.
+            raise SystemExit("no shipments generated; check shipped_fraction and lines_per_order")
+
         print("\nverifying every declared path resolves against a generated document...")
-        _verify(schema, orders[0], customers[0], products[0])
+        _verify(schema, orders[0], customers[0], products[0], shipments[0])
         print("all declared paths resolve.")
     finally:
         await client.close()
@@ -567,13 +587,21 @@ def _orders(
     earliest: datetime,
     span_days: int,
     rng: random.Random,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The order documents, and the contexts they were built from, aligned by index.
+
+    The contexts are returned rather than stashed on the documents because
+    shipments have to agree with the order they belong to -- same account, same
+    order number -- or `SHIPPED_AS` matches nothing and every shipment lands in
+    the graph orphaned.
+    """
     order_entity = schema.entities["sales_order"]
     line_entity = schema.entities.get("order_line")
     line_bounds = config["lines_per_order"]
     shipped_fraction = float(config.get("shipped_fraction", 0.7))
 
-    documents = []
+    documents: list[dict[str, Any]] = []
+    contexts: list[dict[str, Any]] = []
     for index in range(count):
         customer = rng.choice(customers)["__context"]
         warehouse = rng.choice(warehouses)
@@ -629,7 +657,94 @@ def _orders(
                 lines.append(line)
             _assign(document, tuple(line_entity.record_path), lines)
         documents.append(document)
+        contexts.append(context)
+    return documents, contexts
+
+
+def _shipments(
+    schema: ActiveSchema,
+    orders: list[dict[str, Any]],
+    order_contexts: list[dict[str, Any]],
+    rng: random.Random,
+) -> list[dict[str, Any]]:
+    """One `shipmentInfo` document per order that actually shipped something.
+
+    `config/seed/generation.yaml` has named `shipmentInfo` since the generator
+    was written and nothing was ever emitted for it, so the fulfillment path had
+    no corpus to read and every tracking number in a generated deployment looked
+    like a label printed and never collected.
+
+    An order with no shipped line gets no shipment, deliberately: a shipment for
+    every order would make "the graph holds no shipment for this number" a state
+    the corpus can never produce, and that is precisely the reading W2.6 exists
+    to make possible.
+    """
+    entity = schema.entities.get("shipment")
+    if entity is None:
+        return []
+    line_entity = schema.entities.get("order_line")
+    shipped_quantity_path = (
+        line_entity.fields["shipped_quantity"].physical_path
+        if line_entity is not None and "shipped_quantity" in line_entity.fields
+        else None
+    )
+    record_path = tuple(line_entity.record_path) if line_entity is not None else ()
+
+    documents: list[dict[str, Any]] = []
+    for index, (order, context) in enumerate(zip(orders, order_contexts, strict=True)):
+        if not _has_shipped_line(order, record_path, shipped_quantity_path):
+            continue
+        ordinal = index + 1
+        # Convey brokers parcel carriers, DispatchTrack runs own fleet; the
+        # tracking numbers they issue do not look alike, and the source system
+        # is the field that says which one a number came from.
+        convey = rng.random() < 0.3
+        tracking = f"1Z{ordinal:09d}" if convey else f"{3520000000 + ordinal}_474"
+        shipment_context = {
+            "tracking_number": tracking,
+            "sales_order_number": context["sales_order_number"],
+            "account_id": context["account_id"],
+            "shipment_id": (
+                f"shipid{ordinal:06d}"
+                if convey
+                else f"{context['account_id']}:{context['sales_order_number']}:4"
+            ),
+            "current_status": rng.choice(SHIPMENT_STATUSES),
+            "source_system": "Convey" if convey else "DispatchTrack",
+            "__timestamp__": context["__timestamp__"],
+        }
+        # `_id` mirrors the real collection's composite: account, order and
+        # tracking number together, which is the only thing unique about a
+        # `shipmentInfo` document -- the tracking number alone is not.
+        document: dict[str, Any] = {
+            "_id": f"{context['account_id']}*{context['sales_order_number']}*{tracking}"
+        }
+        _entity_fields(entity, document, shipment_context, rng)
+        _apply_selectors(entity, document)
+        documents.append(document)
     return documents
+
+
+def _has_shipped_line(
+    order: dict[str, Any],
+    record_path: tuple[str, ...],
+    shipped_quantity_path: tuple[str, ...] | None,
+) -> bool:
+    """Whether any of this order's lines carries a shipped quantity."""
+    if shipped_quantity_path is None:
+        return True
+    node: Any = order
+    for part in record_path:
+        node = node.get(part) if isinstance(node, dict) else None
+    if not isinstance(node, list):
+        return False
+    for line in node:
+        value: Any = line
+        for part in shipped_quantity_path:
+            value = value.get(part) if isinstance(value, dict) else None
+        if isinstance(value, int) and value > 0:
+            return True
+    return False
 
 
 def _verify(
@@ -637,6 +752,7 @@ def _verify(
     order: dict[str, Any],
     customer: dict[str, Any],
     product: dict[str, Any],
+    shipment: dict[str, Any],
 ) -> None:
     """Every declared path must resolve, or the entity silently vanishes.
 
@@ -648,6 +764,7 @@ def _verify(
         "source_sales": order,
         "source_customers": customer,
         "source_products": product,
+        "source_shipments": shipment,
     }
     missing: list[str] = []
     for entity_id, entity in schema.entities.items():

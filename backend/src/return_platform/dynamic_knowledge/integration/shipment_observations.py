@@ -63,8 +63,12 @@ SHIPMENT_TRACKING_FIELD_ID = "tracking_number"
 #: Graph properties worth carrying back onto the observation. `current_status`
 #: is the only authoritative "was it delivered" signal in the model -- salesInv
 #: carries commit and ship dates but no proof of delivery.
+#:
+#: No carrier: verifying `shipmentInfo` against real documents established that
+#: shipmentInfoEventData has no carrier field, and the carrier the source does
+#: hold sits at a different grain the entity cannot reach. Asking for a property
+#: the descriptor no longer declares would fail the compiler's field allowlist.
 _STATUS_FIELD_ID = "current_status"
-_CARRIER_FIELD_ID = "carrier_code"
 _SHIPMENT_ID_FIELD_ID = "shipment_id"
 
 
@@ -147,7 +151,6 @@ class GraphShipmentObservations:
             evidence=ShipmentEvidence.OBSERVED,
             graph_generation_id=generation,
             current_status=_text(row.get(_STATUS_FIELD_ID)),
-            carrier_code=_text(row.get(_CARRIER_FIELD_ID)),
             shipment_id=_text(row.get(_SHIPMENT_ID_FIELD_ID)),
             sync_request_id=sync_request_id,
             sync_skipped_reason=skipped,
@@ -158,13 +161,14 @@ class GraphShipmentObservations:
     ) -> tuple[str | None, str | None]:
         """Bring this one tracking number in, or say why not.
 
-        The descriptor decides whether a targeted read is legal at all. `shipment`
-        ships as `SEED_ONLY` because no `shipmentInfo` sample has been supplied
-        and its physical paths are carried over unverified -- so a targeted read
-        would compile paths nobody has confirmed against a real document. That is
-        a configuration statement, not a code branch to route around: the day the
-        contract is verified and the entity becomes `CONNECTED_SYNC`, this starts
-        syncing with no change here.
+        The descriptor decides whether a targeted read is legal at all, and the
+        checks below are reads of configuration rather than branches over a
+        source's name. `shipment` was `SEED_ONLY` until its paths were confirmed
+        against genuine `shipmentInfo` documents; promoting it to
+        `CONNECTED_SYNC` turned the sync on with no change here, which is what
+        those checks being configuration rather than code buys. They stay
+        because an entity can be demoted again -- a source contract that stops
+        holding must stop the sync, not be routed around.
         """
         if schema.runtime_mode is not RuntimeMode.CONNECTED_SYNC:
             return None, f"RUNTIME_MODE_{schema.runtime_mode.value}"
@@ -213,7 +217,6 @@ class GraphShipmentObservations:
             fields=(
                 SHIPMENT_TRACKING_FIELD_ID,
                 _STATUS_FIELD_ID,
-                _CARRIER_FIELD_ID,
                 _SHIPMENT_ID_FIELD_ID,
             ),
             filters=(

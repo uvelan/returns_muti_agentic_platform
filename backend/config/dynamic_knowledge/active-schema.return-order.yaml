@@ -2385,8 +2385,26 @@ entities:
     source_access: SEED_ONLY
   shipment:
     entity_id: shipment
-    description: Shipment context. No shipmentInfo sample has been provided, so these paths are carried
-      over unverified from the original schema.
+    description: 'Shipment context, verified against 100 genuine shipmentInfo documents. Every path
+      below resolved on every document; three declared paths did not resolve on any and are gone rather
+      than left projecting null forever. `carrierCode` and `shippedAt` are absent from shipmentInfoEventData
+      entirely -- it holds exactly acctId, currentStatus, shipmentId, srcSystem, trilOrdNum and trkNum
+      -- and `updatedAt` does not exist at the document root; the change timestamp is shipmentInfoEventMeta.lastUpdateTs,
+      the same meta-block pattern salesInv cursors on. Carrier and ship date do exist in the source,
+      but only inside the shipmentInfo[] detail array, at a different grain and in two mutually exclusive
+      shapes: the Convey family carries carrierScac/carrierName (28 of 100 documents), the DispatchTrack
+      family carries a truck and a driver instead of a carrier because it is own-fleet delivery. Reaching
+      them would mean exploding shipmentInfo[], which makes a shipment''s presence in the graph conditional
+      on that array being non-empty -- and an absent shipment is reported as AWAITING_HANDOFF, which is
+      the false negative W2.6 exists to remove. Explode would also have to pick one array element per
+      tracking number, and on one of the 100 documents element 0 is the one with no carrier while its
+      three siblings name UPS. No `where` selector, deliberately: shipmentInfoEventMeta.docType is disptrck
+      on 72 and convey on 28, both genuine shipments sharing one shipmentInfoEventData shape, so a selector
+      would discard one whole family. Two documents carry docType disptrck over a convey-shaped body,
+      which is a second reason not to route on it. Known and not fixed here: trkNum is not unique -- 93
+      distinct values over 100 documents, with distinct shipments on distinct orders sharing a number
+      -- so natural_key [tracking_number] merges them. Only _id (acctId*orderNumber*trkNum) is unique;
+      changing the node key is a graph migration, not a W2.6 edit.'
     source_asset_id: source_shipments
     fields:
       tracking_number:
@@ -2441,30 +2459,6 @@ entities:
           displayable_by:
           - '*'
           searchable_by:
-          - '*'
-          masking: null
-      carrier_code:
-        field_id: carrier_code
-        description: Carrier.
-        physical_path:
-        - shipmentInfoEventData
-        - carrierCode
-        graph_property: carrier_code
-        data_type: STRING
-        nullable: true
-        capabilities:
-          searchable: false
-          filterable: true
-          distinct: true
-          aggregatable: false
-          displayable: true
-          on_demand_sync_anchor: false
-          operators:
-          - EXACT
-          - EQUALS
-          aggregations: []
-        permissions:
-          displayable_by:
           - '*'
           masking: null
       shipment_id:
@@ -2568,38 +2562,14 @@ entities:
           displayable_by:
           - '*'
           masking: null
-      shipped_at:
-        field_id: shipped_at
-        description: Ship timestamp.
-        physical_path:
-        - shipmentInfoEventData
-        - shippedAt
-        graph_property: shipped_at
-        data_type: DATETIME
-        nullable: true
-        capabilities:
-          searchable: false
-          filterable: true
-          distinct: false
-          aggregatable: false
-          displayable: true
-          on_demand_sync_anchor: false
-          operators:
-          - GT
-          - GTE
-          - LT
-          - LTE
-          - BETWEEN
-          aggregations: []
-        permissions:
-          displayable_by:
-          - '*'
-          masking: null
       source_updated_at:
         field_id: source_updated_at
-        description: Source change timestamp.
+        description: Source change timestamp, and what source_shipments cursors on. Lives in the event
+          meta block rather than at the document root -- there is no root `updatedAt` on any of the 100
+          verified documents.
         physical_path:
-        - updatedAt
+        - shipmentInfoEventMeta
+        - lastUpdateTs
         graph_property: source_updated_at
         data_type: DATETIME
         nullable: true
@@ -2620,8 +2590,8 @@ entities:
           masking: null
     natural_key:
     - tracking_number
-    source_contract_status: UNVERIFIED
-    source_access: SEED_ONLY
+    source_contract_status: VERIFIED
+    source_access: CONNECTED_SYNC
     strong_anchors:
       exact_tracking:
         anchor_id: exact_tracking
@@ -4125,12 +4095,10 @@ graph:
       - tracking_number
       property_fields:
       - sales_order_number
-      - carrier_code
       - shipment_id
       - account_id
       - current_status
       - source_system
-      - shipped_at
       - source_updated_at
     return_case_node:
       projection_id: return_case_node
@@ -4282,7 +4250,10 @@ graph:
       target_match_fields:
       - sales_order_number
       property_fields: []
-      access: SEED_ONLY
+      # SEED_ONLY only ever because `shipment` was: the endpoint ceiling forbade
+      # anything higher. Now that both endpoints sync, leaving it would declare
+      # that this edge is seed-only when a connected sync does in fact form it.
+      access: CONNECTED_SYNC
     case_covers_order:
       relationship_id: case_covers_order
       relationship_type: COVERS_ORDER
@@ -4405,4 +4376,4 @@ agent_policies:
     max_clarifications: 3
     max_replans: 2
     max_targeted_syncs_per_turn: 3
-configuration_checksum: e0dea926e74ddc5fd5c1bce7eadd7f2f78b40331a33904ee257967d6eabb053e
+configuration_checksum: 1a9c7915613309b756395964ebb009d9c95f2d93551b42d6ac35a199a287b106
