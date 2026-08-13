@@ -1,8 +1,8 @@
 # Implementation plan — execution status
 
 Against [`FERGUSON_RETURNS_IMPLEMENTATION_PLAN_FINAL.md`](FERGUSON_RETURNS_IMPLEMENTATION_PLAN_FINAL.md).
-Last verified 2026-08-13 on `refactor/unified-return-platform`, after merging W0.7/W5.9/W5.11
-hygiene, W4.5 and W2.6 — three branches cut in parallel from `493c3f3`.
+Last verified 2026-08-13 on `refactor/unified-return-platform`, after W2.4 and W2.7 — which
+build on the merge of W0.7/W5.9/W5.11 hygiene, W4.5 and W2.6 at `d9639e4`.
 
 **A step is "done" only when its own Validation clause holds.** Several steps below were
 previously reported complete and are recorded here as partial, because theirs does not.
@@ -33,11 +33,147 @@ policy, timings · W1.8 case list and resume.
 | W2.1 Analyzer → runtime schema | **done** — approved draft compiles to an `ActiveSchema` release; runtime prefers it over YAML |
 | W2.2 Split shape from source binding | **partial** — binding catalogue, store and API shipped; `DOMAIN_SOURCE_COLLECTIONS` still has 3 references in `operations/repository.py`, so the Validation clause (rename `salesInv → salesInvV2` through configuration only) would fail |
 | W2.3 Re-analysis and migration | done — three-way diff, proposals as typed mutations, migration plan recorded before the pointer moves |
-| W2.4 Return and warehouse entities | **partial** — return entities added, but **by hand-editing the descriptor**, which the step forbids; **no warehouse or bay entity exists**. No longer blocked: W4.5 landed the MSSQL analyzer connector its Failure condition named |
+| W2.4 Return and warehouse entities | **partial** — `warehouse` and `bay` now exist and were **produced by the analyzer**, not typed: `scripts/add_warehouse_bay_entities.py` inspects the real `platform.bay_configuration` through W4.5's `SourceInspectionPort`, turns it into a snapshot, takes `ReanalysisService`'s proposed `AddEntity`/`AddProperty` batch, applies the modelling decisions as typed mutations, compiles through `compile_active_schema` and writes the descriptor. The **return** entities are still the ones hand-added earlier and were not re-derived — see below |
 | W2.5 Return on-demand sync | **done** — `ReturnCaseWorkflow` runs a record-scoped `synchronize_return_records` activity after the return record commits, blocking, parking the case as `RETURN_GRAPH_SYNC_FAILED` on failure. Proven against real Mongo and Neo4j: a committed record is queryable through the compiler afterwards, and the pre-fix upstream connector routing is shown writing nothing |
 | W2.6 Fulfillment on-demand sync | **done** — a genuine 100-document `shipmentInfo` sample verified the contract; `shipment` is `VERIFIED`/`CONNECTED_SYNC` and the Validation clause holds on the shipped descriptor with no in-test promotion; see below |
-| W2.7 Warehouse and bay on-demand sync | **not started** — still blocked on W2.4's warehouse entity, which is now producible |
+| W2.7 Warehouse and bay on-demand sync | **done** — `WarehousePlacementService` takes candidates from a `WarehouseBayObservationPort`; `GraphWarehouseBayObservations` syncs the warehouse on demand and reads `Warehouse` then `Bay` through `CypherCompiler`. `sql.list_bay_candidates` is off the agent path and the fallback is deliberately absent. Validation proven against real Mongo, SQL Server **and Neo4j**: six bays for a real warehouse come back out of the graph after a targeted sync, an unknown id reports `WAREHOUSE_NOT_IN_GRAPH`, and no reference at all reports `NO_WAREHOUSE_REFERENCE` instead of every bay in the estate. One thing the graph cannot carry did not move, and is named below |
 | W2.8 Sync control (S6) and incremental sync | **partial** — S6 ships with run list, filters, detail and manual trigger; `incremental_sync` not confirmed implemented against the cursor contract |
+
+### W2.4: what the analyzer produced, and what it still cannot
+
+**The entities exist and nobody typed them.** `bay` carries all 18 columns
+`platform.bay_configuration` declares, with the types, the nullability and the
+capabilities all derived from the catalogue and the two declared indexes:
+`bay_id` is searchable and an anchor because it is the primary key,
+`warehouse_id` because it leads the lookup index, `active` and `priority` are
+filterable and not searchable because they sit *behind* it, and the eleven
+columns no index covers are displayable only. `warehouse` is a dimension
+projected out of the same table.
+
+**The warehouse structure is still provisional, and less invented than it was.**
+`docs/SEED_DATA_GENERATION.md` documents a `warehouseMaster` collection made up
+for this project. It is **not in `return_source`** — the four collections there
+are `salesInv`, `customerOutboundCDM`, `lkpSearchProduct` and `shipmentInfo` —
+so an entity declared against it would have put paths in the descriptor that
+resolve on nothing, which is the defect W2.6 spent its whole verification budget
+removing. `platform.bay_configuration.warehouse_id` is real, NOT NULL on every
+row and indexed, so `warehouse` is projected off it the way `customer` is
+projected off `salesInv`. It carries `warehouse_id` and `branch_id` and nothing
+else, because nothing else about a warehouse is stated anywhere this platform can
+reach. **It is not a warehouse master**, its own description says so, and a real
+one arriving is still a rebinding plus a re-analysis rather than an edit.
+
+**Verified at full breadth, in two halves that do not assume each other.**
+`tests/bootstrap/test_analyzer_produced_warehouse_entities.py` re-runs the whole
+analyzer path against a written-out observation and requires it to reproduce the
+shipped entities exactly; `tests/dynamic_knowledge/test_warehouse_bay_source_
+contract_real_infra.py` reads the live SQL Server and requires the catalogue and
+the indexes to be that observation, then checks every declared path against
+**every row** rather than row zero. A relational source lets that standard be met
+exactly rather than approximately — the catalogue *is* the contract.
+
+**What did not go through the analyzer, and why.**
+
+- **The return entities were not re-derived.** W2.4 covers them too and they are
+  still the hand-added ones. Re-deriving them means describing four collections
+  in the platform's own Mongo store, and a Mongo `describe_object` reports the
+  union of keys over a bounded sample, so the exercise would be a *sampled*
+  contract check for entities whose paths are already in use — a different and
+  much weaker claim than the one just made for `bay`. Worth doing; not done.
+- **The authoring form still cannot say several things the descriptor needs**, so
+  a whole-descriptor recompile remains lossy and `compile_addition` merges a
+  compiled fragment onto the baseline instead. Missing from `GraphSchemaShape`:
+  `record_path`, `explode`, `where`, `distinct`, `key_resolution`,
+  `ownership_policy`, `deletion_policy`, a description, and any separation of
+  entity id from graph label. Six of the eleven existing entities use at least
+  one of those, and recompiling the file would silently drop them. **This is
+  W2.2's remaining work stated concretely** — the list above is what it has to
+  add before the analyzer can own the whole document.
+- **`maximum_expected_matches` on a non-unique index.** `bay.warehouse_id` is an
+  anchor *field* and defines no anchor: bounding a read to "some number of bays"
+  would need a number no observation supplies, and inventing one is how a
+  selectivity hint becomes a lie. W2.7 anchors on `warehouse` instead, which the
+  node key genuinely bounds to one.
+
+### Three defects found by W2.4/W2.7, all pre-existing
+
+Each was found by running the thing, not by reading it.
+
+1. **A targeted read of any SQL source outside the default schema was
+   impossible.** `source_connectors/compilation.py` composed
+   `FROM "bay_configuration"` and dropped `object_ref.namespace`, so SQL Server
+   answered `Invalid object name`. `SqlServerSourceScanConnector._resolve` has
+   always *required* that namespace for a scheduled scan, so the two halves of
+   the same connector disagreed. Nothing noticed because every source in the
+   descriptor was MongoDB until now.
+2. **`maximum_sources_per_target` counted the wrong thing.**
+   `graph/projector.py` keyed the counter on the target's *match* key rather than
+   its node key. Those coincide only when the match key identifies the node, and
+   for the ordinary foreign-key shape it never does: every `ReturnRecord` of one
+   case matches on the same `case_id`. So the counter incremented once per edge
+   into *any* target sharing the key and tripped `maximum_sources_per_target=1`
+   on the second one — refusing a whole projection while reporting "this target
+   has two sources" about a target that had one. **`case_raised_return_record`,
+   `case_includes_return_item` and `return_record_covers_item` all carry that
+   bound**, so a case with two RMAs would have failed its sync. Not observed in
+   the wild, because nothing had projected a multi-record case through this path.
+3. **Every property a re-analysis proposed compiled to an unusable path.**
+   `ReanalysisService` writes `source_field` as `<dataset>.<column>` and strips
+   that prefix when comparing; the release compiler did not, so `salesInv.trkNum`
+   became the path `('salesInv', 'trkNum')` — which resolves on no document and
+   projects null forever. The two halves of one convention now agree.
+
+Two smaller ones, in passing: `nvarchar` was absent from the analyzer's type
+table, so every Unicode string column of a SQL Server source was reported as
+"could not be typed and is left out"; and `compile_active_schema` marked every
+entity it produced `VERIFIED`/`CONNECTED_SYNC` by model default — asserting that
+paths nothing had checked were confirmed, and permitting a sync from a source
+nothing had read. Both are closed.
+
+### W2.7: what moved to the graph, and the one thing that could not
+
+**The defect the step closes is not performance.** `list_bay_candidates` filtered
+with `WHERE (%s IS NULL OR configuration.warehouse_id = %s)`. A return whose
+`processingWarehouseReference` was never set passed `None`, the predicate
+collapsed to true, and the agent was handed **every bay in every warehouse** to
+rank — then staged a parcel into one of them. A missing reference produced a
+*longer* candidate list than a present one, and nothing said the warehouse was
+unknown. That is the W2.6 defect class in the other direction: the presence or
+absence of a reference standing in for an observation.
+
+`BayEvidence` keeps three readings apart, and `WarehouseObservation.evidence_
+reference` puts which one applied into the audit trail:
+`WAREHOUSE_ABSENT:NO_WAREHOUSE_REFERENCE` (never routed),
+`WAREHOUSE_ABSENT:WAREHOUSE_NOT_IN_GRAPH` (an id that resolves to nothing) and
+`WAREHOUSE_UNAVAILABLE:*` (we could not look). A warehouse that *is* observed and
+has no eligible bay is `OBSERVED` with an empty list — a real state, and not the
+same as the other three.
+
+**One anchored read syncs both entities.** `warehouse` and `bay` are bound to the
+same object and `GenericSourceRecordExtractor` runs every entity bound to a
+source over each document, so a targeted read anchored on `warehouse_id` returns
+that warehouse's bay rows and projects one `Warehouse`, its `Bay` nodes and the
+`HAS_BAY` edges between them. Proven end to end against the real SQL Server: 6
+rows in, 12 node mutations and 6 relationship mutations out, one warehouse node.
+
+**Live reserved capacity did not move and cannot.** The SQL query computed
+`max_capacity - SUM(reserved_capacity) WHERE expires_at > SYSUTCDATETIME()` — an
+aggregate over unexpired reservations evaluated at the instant of the query. It
+changes with the clock rather than with any source write, so no sync however
+targeted makes a graph node current for it. `capacityAvailable` is therefore now
+the bay's **declared maximum**, and the platform relies on
+`reserve_and_assign_handling_unit` to refuse an over-committed bay — which is the
+only place holding a lock over that decision anyway. The consequence worth
+stating plainly: **the agent can now recommend a bay that is full**, and finds
+out at assignment rather than at ranking. Modelling `bay_reservation` as a fourth
+entity with a time-filtered read is the way to get it back, and is not in W2.7.
+
+**No SQL fallback, on purpose.** With no observation port configured the service
+still uses the SQL path, so a deployment that has not built the targeted-graph
+stack keeps working; with one configured, an `ABSENT` or `UNAVAILABLE` reading
+yields no candidates and never reaches SQL Server.
+`tests/operations/test_bay_candidates_come_from_the_graph.py` injects a
+repository that fails the test if `list_bay_candidates` is called at all.
 
 ### A defect found and fixed inside W2.5/W2.6's area
 
@@ -508,6 +644,82 @@ buckets, none of them this change set:
 whole suite on the host wedged at 42% and was killed — a Temporal test hanging is the likeliest
 cause, and `test_return_workflow_concurrency.py`'s own docstring documents that a wedged workflow
 produces exactly that. **The next full run belongs in the diagnostics container.**
+
+## Verification: W2.4 and W2.7
+
+Run on the **host** from a worktree at `d9639e4`, against the running compose
+infrastructure. Host runs cannot reach Mongo (see `directConnection` above), so this is
+not a substitute for a diagnostics-container run — but SQL Server *is* reachable from the
+host, which is what both steps needed.
+
+| Command | Result |
+|---|---|
+| `ruff format --check src tests scripts` | 809 files already formatted |
+| `ruff check src tests scripts` | All checks passed |
+| `mypy --strict src` | Success: no issues found in **506** source files |
+| `tests/dynamic_knowledge/test_order_discovery_smoke_net.py` (the W0.7 net) | 24 passed |
+| the four new modules plus the projector regression | 47 passed |
+| `tests/bootstrap tests/graph_schema_analyzer tests/operations tests/source_connectors tests/configuration`, `--ignore-glob="*real_infra*"` | 361 passed, 5 failed, 10 skipped, 6 errors (4m46s) |
+| `tests/dynamic_knowledge`, `--ignore-glob="*real_infra*"` | **450 passed**, 9 failed, 4 errors (9m25s) |
+
+**Every failure was read, none inferred.** The 5 configuration failures are the
+documented `Vault must be enabled in production` bucket. The 9 failures and 4 errors in
+`dynamic_knowledge` are three modules — `test_generation_lifecycle_e2e`,
+`test_mongo_graph_state_provider`, `test_on_demand_sync_production_wiring` — all failing
+on the documented host-side Mongo topology defect, verbatim
+(`ServerSelectionTimeoutError ... ('mongodb', 27017)`), and all three are named in that
+bucket already. The 6 errors in `test_mongodb_connector_docker` are the same defect.
+None is attributable to this change set.
+
+**One failure was not environmental and is repaired.**
+`test_on_demand_sync_reaches_the_record.py::test_every_configured_source_reaches_the_
+source_through_one_path` asserted `compiled.statement["projection"]` — the MongoDB
+branch's shape. `bay` and `warehouse` are the first SQL-backed anchored entities and
+`compile_source_read` hands those a statement *string*, so the assertion raised
+`TypeError: string indices must be integers` on a compilation that had succeeded. The
+test's own docstring says the plan is built "without any code knowing which source it
+belongs to", and the check itself knew. It now asks the same question in each backend's
+own vocabulary.
+
+**The SQL-backed real-infra module runs on the host and is green**:
+`test_warehouse_bay_source_contract_real_infra.py`, 5 passed — the live catalogue, the
+declared indexes, every path against every row, the anchored read, and the projection.
+
+**W2.7 was driven end to end against real Mongo, real SQL Server and real Neo4j**, not
+only through stand-ins, because "candidates come from the graph" is not a claim a test
+with a fake writer can make. Against the running compose stack, on generation
+`legacy-live`:
+
+| `observe(...)` | Result |
+|---|---|
+| `"WH-CHENNAI-01"` | `OBSERVED`, a sync request id, and **6 bay rows read back out of Neo4j** — `BAY-PPL-01`, `BAY-BOL-01`, `BAY-HOLD-01`, `BAY-CUSTOMER-SHIP-01`, `BAY-DIRECT-VENDOR-01`, `BAY-FIELD-SCRAP-01`, carrying the names and capacities SQL Server holds |
+| `"WH-DOES-NOT-EXIST"` | `ABSENT` / `WAREHOUSE_NOT_IN_GRAPH` — the sync ran and found nothing, which is a different statement from not having looked |
+| `None` | `ABSENT` / `NO_WAREHOUSE_REFERENCE`, no sync issued and no read attempted |
+
+**The two new labels need their constraints before the first sync writes**, and the run
+above applied them:
+
+```
+CREATE CONSTRAINT IF NOT EXISTS FOR (n:`Bay`)       REQUIRE (n.`graph_generation_id`, n.`bay_id`) IS UNIQUE
+CREATE CONSTRAINT IF NOT EXISTS FOR (n:`Warehouse`) REQUIRE (n.`graph_generation_id`, n.`warehouse_id`) IS UNIQUE
+CREATE INDEX      IF NOT EXISTS FOR (n:`Warehouse`) ON (n.`graph_generation_id`, n.`warehouse_id`)
+CREATE INDEX      IF NOT EXISTS FOR (n:`Bay`)       ON (n.`graph_generation_id`, n.`warehouse_id`)
+```
+
+`required_node_constraints` and `required_relationship_indexes` derive all four from the
+schema, so nothing was hand-written — but **any other environment needs the constraint
+pass run before its first bay sync**, and that is an operational step, not a code change.
+
+**Not run:** `tests/api`, `tests/test_order_agent_rest.py`, the Temporal workflow modules
+and every `*_real_infra*`/`*_docker*` module that needs Mongo from the host.
+
+### What is not verified, and is worth stating
+
+**The `bay-recommendation` route was not exercised against a running backend.** The
+service, the observation adapter, the candidate mapping and the graph read are all
+covered — the last of them against real infrastructure — but the wiring in
+`api/warehouse_placement.py` that builds the port from `app.state` and caches it is not.
+That is what a diagnostics-container run of `tests/api` would add.
 
 ## Verification: after merging the three parallel branches
 
