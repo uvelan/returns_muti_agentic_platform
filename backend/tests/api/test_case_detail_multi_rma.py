@@ -32,7 +32,10 @@ from pymongo import AsyncMongoClient
 from return_platform.configuration.settings import Settings
 from return_platform.operations.repository import OperationalRepository
 
-pytestmark = pytest.mark.asyncio(loop_scope="module")
+# Live infrastructure: this module opens a real MongoDB client. It is not named
+# `*_real_infra.py`, so this marker is what keeps it out of the default run
+# and inside `scripts/dev/run_real_infra_suite.sh`.
+pytestmark = [pytest.mark.asyncio(loop_scope="module"), pytest.mark.live_infra]
 
 
 def _required_env(name: str) -> str:

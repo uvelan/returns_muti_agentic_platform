@@ -18,6 +18,11 @@ from return_platform.configuration.settings import Settings
 from return_platform.platform.system_store.contracts import StructureIdentity
 from return_platform.platform.system_store.mongo import MongoLeaseStore, MongoVersionLedger
 
+# Live infrastructure: this module opens a real MongoDB client. It is not named
+# `*_real_infra.py`, so this marker is what keeps it out of the default run
+# and inside `scripts/dev/run_real_infra_suite.sh`.
+pytestmark = pytest.mark.live_infra
+
 
 async def _physical_identity(
     client: AsyncMongoClient[dict[str, object]], physical_name: str

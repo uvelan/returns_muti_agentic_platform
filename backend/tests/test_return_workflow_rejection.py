@@ -55,6 +55,11 @@ from return_platform.workflows.stage_results import (
     bind_stage_activity_result,
 )
 
+# Live infrastructure: this module opens a real Temporal client. It is not named
+# `*_real_infra.py`, so this marker is what keeps it out of the default run
+# and inside `scripts/dev/run_real_infra_suite.sh`.
+pytestmark = pytest.mark.live_infra
+
 # Host runs reach Temporal on the published port; inside the compose network the
 # real-infra runner sets PLATFORM_TEST_TEMPORAL_TARGET. Same convention as
 # tests/conftest.py and tests/test_order_discovery_workflow.py.

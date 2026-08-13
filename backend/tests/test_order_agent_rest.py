@@ -1,3 +1,25 @@
+"""Forty discovery scenarios through the real REST surface.
+
+Two requirements, and this module used to declare neither.
+
+`TestClient(create_app(...))` is entered as a context manager, so the
+application lifespan runs and opens MongoDB, Neo4j, Valkey and Temporal for
+real; and every scenario needs an actual model response. Unmarked, it was
+collected into the default run alongside 2,700 tests that need nothing --
+`test_order_agent_scenarios` blocked on `client.post(...)` waiting for
+infrastructure, the run was killed at a per-test timeout, and the entire suite
+produced no pass/fail signal at all. That is the whole of Y-10: one test's
+dependency erasing every other test's result.
+
+`live_infra` answers the first requirement -- it moves this module into the
+suite that has the datastores. `live_ai_credentials` answers the second, and is
+the mechanism `tests/conftest.py` already defines for it: with real provider
+keys these scenarios run, and without them they say so and skip. The live-suite
+runner used to `--ignore` this file by name to get the same effect, which meant
+the exclusion was permanent and invisible from here. A requirement a test states
+itself is one that stops applying the moment it is satisfied.
+"""
+
 import logging
 import time
 import uuid
@@ -59,8 +81,9 @@ SCENARIOS = [
 ]
 
 
+@pytest.mark.live_infra
 @pytest.mark.parametrize("scenario_id, message", SCENARIOS)
-def test_order_agent_scenarios(scenario_id: int, message: str, test_settings):
+def test_order_agent_scenarios(scenario_id: int, message: str, test_settings, live_ai_credentials):
     logger.debug(
         "order_agent_scenario_test_started",
         extra={

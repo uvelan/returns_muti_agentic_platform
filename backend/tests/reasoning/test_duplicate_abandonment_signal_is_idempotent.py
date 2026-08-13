@@ -16,6 +16,11 @@ from return_platform.platform.reasoning.resume_worker import ReasoningResumeWork
 from tests.reasoning._throwaway_workflow import ThrowawayReasoningTestWorkflow
 from tests.reasoning.conftest import ReasoningTestFixture
 
+# Live infrastructure: this module opens a real Temporal client. It is not named
+# `*_real_infra.py`, so this marker is what keeps it out of the default run
+# and inside `scripts/dev/run_real_infra_suite.sh`.
+pytestmark = pytest.mark.live_infra
+
 
 @pytest.mark.asyncio
 async def test_redelivering_the_same_command_id_does_not_double_process(

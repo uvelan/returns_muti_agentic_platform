@@ -76,6 +76,11 @@ from return_platform.dynamic_knowledge.sync.adapters import (
 from return_platform.dynamic_knowledge.sync.coordinator import GenericSyncCoordinator
 from return_platform.source_connectors.mongodb import MongoDBSourceScanConnector
 
+# Live infrastructure: this module opens real MongoDB and Neo4j clients. It is not named
+# `*_real_infra.py`, so this marker is what keeps it out of the default run
+# and inside `scripts/dev/run_real_infra_suite.sh`.
+pytestmark = pytest.mark.live_infra
+
 SNAPSHOT_NAME = "E2E"
 
 

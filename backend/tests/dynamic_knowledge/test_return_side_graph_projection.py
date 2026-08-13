@@ -47,7 +47,10 @@ from return_platform.dynamic_knowledge.on_demand_sync.extraction import (
 )
 from return_platform.dynamic_knowledge.schema import ActiveSchema, EntitySourceAccess
 
-pytestmark = pytest.mark.asyncio
+# Live infrastructure: this module opens a real Neo4j driver. It is not named
+# `*_real_infra.py`, so this marker is what keeps it out of the default run
+# and inside `scripts/dev/run_real_infra_suite.sh`.
+pytestmark = [pytest.mark.asyncio, pytest.mark.live_infra]
 
 SCHEMA_PATH = (
     Path(__file__).resolve().parents[2]

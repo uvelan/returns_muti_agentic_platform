@@ -107,7 +107,35 @@ ignore = ["E501", "RUF100"]
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
 testpaths = ["tests"]
+
+# Four suites. `tests/conftest.py::pytest_collection_modifyitems` gives every
+# collected test exactly one of these, so the four partition the tree rather
+# than overlapping -- and `tests/platform/
+# test_the_normal_suite_never_needs_live_infrastructure.py` fails if a module
+# that opens a real driver connection is not in the `live_infra` one.
+markers = [
+    "unit: no infrastructure, no network, no in-process application composition.",
+    "integration: composes the application in-process (app factory, TestClient, workflow test environment). Stubs permitted. Still opens no connection to a real service.",
+    "live_infra: needs the real MongoDB / Neo4j / Temporal / SQL Server / Valkey. Deselected from the default run; `scripts/dev/run_real_infra_suite.sh` selects it.",
+    "browser: drives a real browser. Deselected from the default run.",
+]
+
 addopts = [
     "--strict-config",
     "--strict-markers",
+    # The default run is the *normal* suite: unit + integration.
+    #
+    # Not a convenience. Before this line the default run was every test in the
+    # tree, so one live-infrastructure test that blocked took the whole suite
+    # with it: the run aborted inside `test_order_agent_rest.py` and 2,700-odd
+    # unrelated tests produced no result at all. A suite whose signal any one
+    # datastore can destroy is a suite nobody can act on.
+    #
+    # Deselection, not skipping. These tests are mandatory and they run -- in
+    # the suite that has what they need, where a failure means the thing under
+    # test is broken rather than absent. `-m` on the command line replaces this
+    # (it is a `store` option and the command line is parsed after addopts),
+    # which is how the live and browser suites select themselves back in.
+    "-m",
+    "not live_infra and not browser",
 ]
