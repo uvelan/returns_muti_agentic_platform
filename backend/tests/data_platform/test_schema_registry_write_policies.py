@@ -10,7 +10,14 @@ def test_schema_registry_write_policies() -> None:
     registry_path = project_root / "backend" / "config" / "schema_registry.yaml"
     registry = load_schema_registry(registry_path)
 
-    registry_hash = hashlib.sha256(registry_path.read_bytes()).hexdigest()
+    # Hashed over the *normalized text*, not the raw bytes. This file is checked
+    # out with CRLF on Windows and LF on Linux, so `read_bytes` gives a different
+    # digest per platform for a file nobody edited -- and since the digest is
+    # written into a committed evidence artefact below, that produced a spurious
+    # one-line diff on every run.
+    registry_hash = hashlib.sha256(
+        registry_path.read_text(encoding="utf-8").replace("\r\n", "\n").encode("utf-8")
+    ).hexdigest()
 
     assets_by_owner: dict[str, int] = {}
     assets_by_write_policy: dict[str, int] = {}
@@ -85,5 +92,10 @@ def test_schema_registry_write_policies() -> None:
     evidence_dir = project_root / "docs" / "evidence" / "ai_studio_operational_generation" / "aig1"
     evidence_dir.mkdir(parents=True, exist_ok=True)
 
+    # `newline=""` so the LF that `json.dumps` emits is written as an LF. Plain
+    # `write_text` opens in text mode, which on Windows translates every one to
+    # CRLF -- the second, independent reason this committed artefact came back
+    # modified after a run that changed nothing.
     inventory_path = evidence_dir / "asset_policy_inventory.json"
-    inventory_path.write_text(json.dumps(inventory, indent=2))
+    with inventory_path.open("w", encoding="utf-8", newline="") as handle:
+        handle.write(json.dumps(inventory, indent=2))

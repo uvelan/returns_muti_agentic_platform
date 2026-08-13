@@ -257,6 +257,22 @@ def test_the_reverse_conversation_lookup_exists_and_is_indexed() -> None:
     Without the method the endpoint cannot be written; without the index it is a
     collection scan on every call, on a collection that grows with every
     discovery attempt whether or not it ever became a return.
+
+    **And the index has to be `partialFilterExpression`, not `sparse`.** This
+    test used to require the opposite, which made it fail the correct
+    implementation and pass the broken one -- the most expensive shape a
+    tripwire can have. `returnSessionId` is written as an explicit `None` on
+    every conversation that has not reached a session, and `sparse` omits a
+    document only when the indexed field is *absent*; an explicit null is
+    indexed like any other value. On this **compound** index it is worse still,
+    because `sparse` omits a document only when every indexed field is absent
+    and `createdAt` never is -- so the filter excluded nothing at all and the
+    index quietly covered the whole collection, which is the cost it was added
+    to avoid.
+
+    Asserted through the AST rather than by matching source text: the previous
+    version pinned an exact string including its line wrapping, so `ruff format`
+    could have broken it without a single behavioural change.
     """
     import ast
     from pathlib import Path
@@ -276,11 +292,32 @@ def test_the_reverse_conversation_lookup_exists_and_is_indexed() -> None:
         for node in ast.walk(tree)
     ), "AssociateConversationService.get_for_session is missing"
     assert "returnSessionId" in text
-    assert (
-        'create_index(\n            [("returnSessionId", 1), ("createdAt", -1)], sparse=True\n        )'
-        in text
-        or ('("returnSessionId", 1)' in text and "sparse=True" in text)
-    ), "the reverse lookup has no index"
+
+    def _indexes_the_reverse_lookup(call: ast.Call) -> bool:
+        if not (isinstance(call.func, ast.Attribute) and call.func.attr == "create_index"):
+            return False
+        if not call.args:
+            return False
+        keys = ast.dump(call.args[0])
+        return "'returnSessionId'" in keys and "'createdAt'" in keys
+
+    declarations = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and _indexes_the_reverse_lookup(node)
+    ]
+    assert declarations, "the reverse lookup has no index"
+
+    for declaration in declarations:
+        options = {keyword.arg for keyword in declaration.keywords}
+        assert "partialFilterExpression" in options, (
+            "the reverse lookup index must be partial: `returnSessionId` is written as an "
+            "explicit None, which `sparse` indexes anyway"
+        )
+        assert "sparse" not in options, (
+            "`sparse` on a compound index omits a document only when every indexed field is "
+            "absent, and `createdAt` never is -- it would index the whole collection"
+        )
 
 
 def test_the_work_item_session_lookup_relies_on_an_existing_unique_index() -> None:
