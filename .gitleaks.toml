@@ -1,0 +1,85 @@
+title = "returns platform - secret scan configuration (SEC-01)"
+
+# Start from the upstream rule set rather than hand-maintaining provider
+# patterns here. Anything added below is repository-specific.
+[extend]
+useDefault = true
+
+# ---------------------------------------------------------------------------
+# Repository-specific rules
+#
+# The upstream rule set knows what an NVIDIA or Google key looks like. It does
+# not know that this platform's infrastructure passwords are the thing that
+# actually leaked, because a 40-character random string in a `.env` file has no
+# distinguishing shape. These rules key on the variable name instead, which is
+# stable across this repository by convention.
+# ---------------------------------------------------------------------------
+
+[[rules]]
+id = "platform-infrastructure-password"
+description = "Plaintext infrastructure credential in an env-style assignment"
+regex = '''(?i)^\s*(?:export\s+)?(MSSQL_SA_PASSWORD|GRAPH_PASSWORD|MONGO_ROOT_PASSWORD|MONGO_REPLICA_SET_KEY|TEMPORAL_DB_PASSWORD|VALKEY_PASSWORD|PLATFORM_[A-Z0-9_]*(?:PASSWORD|SECRET))\s*=\s*["']?([^"'\s$<{][^"'\s]{15,})'''
+secretGroup = 2
+keywords = [
+    "MSSQL_SA_PASSWORD",
+    "GRAPH_PASSWORD",
+    "MONGO_ROOT_PASSWORD",
+    "MONGO_REPLICA_SET_KEY",
+    "TEMPORAL_DB_PASSWORD",
+    "VALKEY_PASSWORD",
+    "PASSWORD",
+]
+
+[rules.allowlist]
+# A Vault reference or a shell interpolation is the correct way to carry these
+# values, so it must not trip the rule that exists to enforce it.
+regexes = [
+    '''vault:''',
+    '''vault://''',
+    '''\$\{''',
+    '''(?i)(changeme|placeholder|your[-_ ]|example|redacted|dummy|sample)''',
+]
+paths = ['''\.env\.example$''']
+
+[[rules]]
+id = "platform-provider-key-list"
+description = "Provider API key embedded in a PLATFORM_*_API_KEYS JSON array"
+regex = '''PLATFORM_[A-Z]+_API_KEYS\s*=\s*\[\s*["'](nvapi-[A-Za-z0-9_\-]{20,}|AIza[0-9A-Za-z_\-]{35}|sk-[A-Za-z0-9_\-]{32,})'''
+secretGroup = 1
+keywords = ["PLATFORM_", "API_KEYS", "nvapi-", "AIza", "sk-"]
+
+# ---------------------------------------------------------------------------
+# SEC-01 baseline allowlist
+#
+# READ scripts/security/known_exposures.json BEFORE CHANGING ANYTHING BELOW.
+#
+# These entries suppress the nine credentials that are already unrecoverably
+# present in this repository's history. They are suppressed so that the history
+# scan fails loudly on a TENTH one instead of drowning in the nine that are
+# already tracked, rotated (pending) and scheduled for removal.
+#
+# DELETE THIS ENTIRE [allowlist] SECTION the moment
+# scripts/security/purge_history_secrets.sh has run and been verified. Leaving
+# it in place after the purge would silently re-permit the same paths.
+# ---------------------------------------------------------------------------
+[allowlist]
+description = "SEC-01 known historical exposures -- remove after the history purge"
+
+# Both paths were untracked (5b5392a and 0615921) and neither exists at HEAD.
+# Allowlisting a path that no longer exists cannot mask a future secret: any
+# recreation of these files is blocked by `.gitignore`'s `.env.*` rule and by
+# the `--no-allowlist` working-tree job in .github/workflows/secret-scan.yml.
+paths = [
+    '''^\.env\.vault-backup$''',
+    '''^backend/\.env\.vault-backup$''',
+]
+
+# backend/tests/conftest.py is a LIVE file, so it is allowlisted by commit
+# rather than by path. These are the only two commits whose conftest.py carried
+# the hardcoded NVIDIA and Google keys; fbfcf05 removed them. A future secret in
+# conftest.py arrives in a different commit and is still reported.
+commits = [
+    "52732a5a8a76ef2311ad28c699c21654fbdb0b08",
+    "65106ce9f030b7f044969763201b8a33f8989f4f",
+    "bb9bf2e6acf041bf075797eafcbb9829cd4344f2",
+]

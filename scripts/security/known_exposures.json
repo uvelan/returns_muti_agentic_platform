@@ -1,0 +1,160 @@
+{
+  "$comment": [
+    "SEC-01 baseline. Every entry here is a credential that IS ALREADY IN GIT",
+    "HISTORY and cannot be removed without rewriting it. The allowlist exists so",
+    "that the history secret scan fails on anything NEW while the known set is",
+    "pending the coordinated purge -- it is not an acceptance of these values.",
+    "",
+    "Entries are keyed by sha256[:16] of the credential value. The value itself",
+    "appears nowhere in this repository, this file, or any CI log; the digest",
+    "identifies it for rotation tracking without disclosing it.",
+    "",
+    "DELETE THIS FILE'S known_exposures ARRAY IMMEDIATELY AFTER",
+    "scripts/security/purge_history_secrets.sh RUNS. An empty array is the",
+    "post-purge steady state: the history scan then blocks on every finding.",
+    "Removal is verified by `scan_secrets.py --mode history`, which must report",
+    "0 findings against the rewritten history.",
+    "",
+    "Allowlisting a NEW value is a security decision, not a build fix. Only add",
+    "an entry for a confirmed false positive, and only with a named reviewer."
+  ],
+  "baseline_commit": "061592121325af08765f000029faa559d4423210",
+  "finding_id": "SEC-01",
+  "purge_runbook": "scripts/security/SEC-01_HISTORY_PURGE_RUNBOOK.md",
+  "known_exposures": [
+    {
+      "sha256_prefix": "6291454d01707e29",
+      "provider": "NVIDIA (build.nvidia.com / NGC)",
+      "credential": "PLATFORM_NVIDIA_API_KEYS[0] / Settings.nvidia_api_keys[0]",
+      "shape": "nvapi-* , 70 characters",
+      "paths": [
+        "backend/.env.vault-backup",
+        "backend/tests/conftest.py"
+      ],
+      "introduced": "52732a5 (backend/tests/conftest.py), bb9bf2e (backend/.env.vault-backup)",
+      "removed_from_tree": "fbfcf05 (conftest.py), 5b5392a (backend/.env.vault-backup)",
+      "still_in_history": true,
+      "rotation_status": "CLAIMED_IN_COMMIT_MESSAGE_ONLY -- NOT INDEPENDENTLY VERIFIED",
+      "reason": "SEC-01 P0. Live provider key. Awaiting operator-verified revocation in the NVIDIA console and the coordinated history purge."
+    },
+    {
+      "sha256_prefix": "0d7468d555b8e40d",
+      "provider": "Google (Generative Language / AI Studio)",
+      "credential": "PLATFORM_GOOGLE_API_KEYS[0] / Settings.google_api_keys[0]",
+      "shape": "AIza* , 39 characters",
+      "paths": [
+        "backend/.env.vault-backup",
+        "backend/tests/conftest.py"
+      ],
+      "introduced": "52732a5 (backend/tests/conftest.py), bb9bf2e (backend/.env.vault-backup)",
+      "removed_from_tree": "fbfcf05 (conftest.py), 5b5392a (backend/.env.vault-backup)",
+      "still_in_history": true,
+      "rotation_status": "CLAIMED_IN_COMMIT_MESSAGE_ONLY -- NOT INDEPENDENTLY VERIFIED",
+      "reason": "SEC-01 P0. Live provider key. Awaiting operator-verified revocation in the Google Cloud console and the coordinated history purge."
+    },
+    {
+      "sha256_prefix": "2bab9dd32edc0ef6",
+      "provider": "Google (Generative Language / AI Studio)",
+      "credential": "PLATFORM_GOOGLE_API_KEYS[1]",
+      "shape": "AIza* , 39 characters",
+      "paths": [
+        "backend/.env.vault-backup"
+      ],
+      "introduced": "bb9bf2e",
+      "removed_from_tree": "5b5392a",
+      "still_in_history": true,
+      "rotation_status": "NOT CLAIMED ANYWHERE -- the commit message mentions one key; this is a second, distinct one",
+      "reason": "SEC-01 P0. Second Google key the audit did not record. Awaiting operator-verified revocation and the coordinated history purge."
+    },
+    {
+      "sha256_prefix": "6b25863890a2f9de",
+      "provider": "self-hosted infrastructure (SQL Server)",
+      "credential": "MSSQL_SA_PASSWORD",
+      "shape": "40 characters",
+      "paths": [
+        ".env.vault-backup",
+        "backend/.env.vault-backup"
+      ],
+      "introduced": "bb9bf2e",
+      "removed_from_tree": "0615921 (root), 5b5392a (backend)",
+      "still_in_history": true,
+      "rotation_status": "NOT ROTATED -- no commit or record claims otherwise",
+      "reason": "SEC-01 P0. SQL Server sa password. Rotate in the compose stack and Vault, then purge."
+    },
+    {
+      "sha256_prefix": "bc7a0dd37bd187f3",
+      "provider": "self-hosted infrastructure (Neo4j)",
+      "credential": "GRAPH_PASSWORD",
+      "shape": "40 characters",
+      "paths": [
+        ".env.vault-backup",
+        "backend/.env.vault-backup"
+      ],
+      "introduced": "bb9bf2e",
+      "removed_from_tree": "0615921 (root), 5b5392a (backend)",
+      "still_in_history": true,
+      "rotation_status": "NOT ROTATED -- no commit or record claims otherwise",
+      "reason": "SEC-01 P0. Neo4j password. Rotate in the compose stack and Vault, then purge."
+    },
+    {
+      "sha256_prefix": "00b7c04354ae15be",
+      "provider": "self-hosted infrastructure (MongoDB)",
+      "credential": "MONGO_ROOT_PASSWORD",
+      "shape": "40 characters",
+      "paths": [
+        ".env.vault-backup",
+        "backend/.env.vault-backup"
+      ],
+      "introduced": "bb9bf2e",
+      "removed_from_tree": "0615921 (root), 5b5392a (backend)",
+      "still_in_history": true,
+      "rotation_status": "NOT ROTATED -- no commit or record claims otherwise",
+      "reason": "SEC-01 P0. MongoDB root password. Rotate in the compose stack and Vault, then purge."
+    },
+    {
+      "sha256_prefix": "4c6320fdad5c6f20",
+      "provider": "self-hosted infrastructure (MongoDB replica set)",
+      "credential": "MONGO_REPLICA_SET_KEY",
+      "shape": "96 characters",
+      "paths": [
+        ".env.vault-backup",
+        "backend/.env.vault-backup"
+      ],
+      "introduced": "bb9bf2e",
+      "removed_from_tree": "0615921 (root), 5b5392a (backend)",
+      "still_in_history": true,
+      "rotation_status": "NOT ROTATED -- no commit or record claims otherwise",
+      "reason": "SEC-01 P0. Replica-set keyfile material; it authenticates members to each other. Regenerate with the cluster, then purge."
+    },
+    {
+      "sha256_prefix": "2e596e2a20a66573",
+      "provider": "self-hosted infrastructure (Temporal database)",
+      "credential": "TEMPORAL_DB_PASSWORD",
+      "shape": "40 characters",
+      "paths": [
+        ".env.vault-backup",
+        "backend/.env.vault-backup"
+      ],
+      "introduced": "bb9bf2e",
+      "removed_from_tree": "0615921 (root), 5b5392a (backend)",
+      "still_in_history": true,
+      "rotation_status": "NOT ROTATED -- no commit or record claims otherwise",
+      "reason": "SEC-01 P0. Temporal persistence password. Rotate in the compose stack and Vault, then purge."
+    },
+    {
+      "sha256_prefix": "235aa2b01a3e107f",
+      "provider": "self-hosted infrastructure (Valkey)",
+      "credential": "VALKEY_PASSWORD",
+      "shape": "40 characters",
+      "paths": [
+        ".env.vault-backup",
+        "backend/.env.vault-backup"
+      ],
+      "introduced": "bb9bf2e",
+      "removed_from_tree": "0615921 (root), 5b5392a (backend)",
+      "still_in_history": true,
+      "rotation_status": "NOT ROTATED -- no commit or record claims otherwise",
+      "reason": "SEC-01 P0. Valkey password. Rotate in the compose stack and Vault, then purge."
+    }
+  ]
+}
