@@ -15,10 +15,18 @@ configuration is not stored, so this collection answers "what has someone
 deliberately changed" rather than shadowing the file. `DELETE` returns a
 dataset to whatever configuration says.
 
-Changing a binding does not change what is running. The active release captured
-its sources when it was compiled, and a rebinding reaches the runtime the next
-time a schema is published -- which is deliberate: an infrastructure edit must
-not silently re-point a release someone approved.
+Changing a binding does not change what a *release* is running. The active
+release captured its sources when it was compiled, and a rebinding reaches the
+graph the next time a schema is published -- which is deliberate: an
+infrastructure edit must not silently re-point a release someone approved.
+
+Direct source reads are the other case, and they follow a rebinding on the next
+request. `OperationalRepository` resolves this same catalogue to find the four
+upstream datasets it seeds and reads; nothing there was ever compiled, so there
+is no approved artifact to protect, and the alternative is a repository that
+keeps reading a collection an operator has already told the platform to stop
+using. The two halves therefore differ on purpose, and can differ in practice
+between a rebinding and the next publish.
 """
 
 from __future__ import annotations

@@ -8,6 +8,10 @@ from pathlib import Path
 from return_platform.data_platform.schema_registry import load_schema_registry
 from return_platform.operations.seed_manifest import (
     SEED_SCENARIOS,
+    SOURCE_CUSTOMERS_DATASET,
+    SOURCE_PRODUCTS_DATASET,
+    SOURCE_SALES_DATASET,
+    SOURCE_SHIPMENTS_DATASET,
     materialize_domain_seed,
     scenario_counts,
 )
@@ -36,28 +40,36 @@ def test_seed_matrix_has_required_positive_negative_and_review_coverage() -> Non
     assert len({str(item["id"]) for item in SEED_SCENARIOS}) == len(SEED_SCENARIOS)
 
 
-def test_domain_seed_keys_are_coherent_across_hld_source_collections() -> None:
+def test_domain_seed_keys_are_the_configured_datasets_not_collection_names() -> None:
+    """The manifest fills datasets; a binding decides which collections those are.
+
+    This used to assert the keys were `salesInv`, `customerOutboundCDM`,
+    `shipmentInfo` and `lkpSearchProduct` -- the physical names -- which made the
+    seed generator a second, silent declaration of where those datasets live. The
+    old assertion was right about the shape it was checking and wrong about which
+    vocabulary belongs here.
+    """
     records = materialize_domain_seed(
         "contract-test",
         datetime(2026, 7, 24, tzinfo=UTC),
         "contract-test-evidence-key",
     )
     assert set(records) == {
-        "salesInv",
-        "customerOutboundCDM",
-        "shipmentInfo",
-        "lkpSearchProduct",
+        SOURCE_SALES_DATASET,
+        SOURCE_CUSTOMERS_DATASET,
+        SOURCE_SHIPMENTS_DATASET,
+        SOURCE_PRODUCTS_DATASET,
     }
 
-    customers = {str(item["customerId"]) for item in records["customerOutboundCDM"]}
-    products = {str(item["productId"]) for item in records["lkpSearchProduct"]}
-    assert len(records["salesInv"]) == 1_000
-    assert len(records["customerOutboundCDM"]) == 1_000
-    assert len(records["lkpSearchProduct"]) == 1_000
+    customers = {str(item["customerId"]) for item in records[SOURCE_CUSTOMERS_DATASET]}
+    products = {str(item["productId"]) for item in records[SOURCE_PRODUCTS_DATASET]}
+    assert len(records[SOURCE_SALES_DATASET]) == 1_000
+    assert len(records[SOURCE_CUSTOMERS_DATASET]) == 1_000
+    assert len(records[SOURCE_PRODUCTS_DATASET]) == 1_000
     sample_indexes = (0, 9, 999)
     for index in sample_indexes:
-        order = records["salesInv"][index]
-        shipment = records["shipmentInfo"][index]
+        order = records[SOURCE_SALES_DATASET][index]
+        shipment = records[SOURCE_SHIPMENTS_DATASET][index]
         header = order["salesHdrEventData"]
         customer = order["salesHdr"]["salesHdrData"]
         line = order["salesLines"][0]["lineData"]

@@ -9,10 +9,18 @@ from typing import Any, Final, cast
 
 from fastapi import HTTPException, Request
 from pymongo import ASCENDING, DESCENDING, AsyncMongoClient, ReplaceOne, ReturnDocument
+from pymongo.asynchronous.collection import AsyncCollection
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from return_platform.ai_gateway.models import AIUsageAttemptView, AIUsageSummaryView
 from return_platform.configuration.settings import Settings
+from return_platform.dynamic_knowledge.config_loader import resolve_active_schema
+from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore
+from return_platform.dynamic_knowledge.source_binding_store import SourceBindingStore
+from return_platform.dynamic_knowledge.source_bindings import (
+    SourceBindingCatalogue,
+    catalogue_from,
+)
 from return_platform.operations.models import (
     AIGatewaySettingsView,
     AIRequestStatus,
@@ -32,6 +40,10 @@ from return_platform.operations.models import (
     utc_now,
 )
 from return_platform.operations.seed_manifest import (
+    SOURCE_CUSTOMERS_DATASET,
+    SOURCE_PRODUCTS_DATASET,
+    SOURCE_SALES_DATASET,
+    SOURCE_SHIPMENTS_DATASET,
     effective_seed_counts,
     manifest_digest,
     materialize_domain_seed,
@@ -75,16 +87,57 @@ _EVENT_DEDUPLICATION_KEYS: Final = (
 )
 _EVENT_DEDUPLICATION_FILTER: Final = {"deduplicationKey": {"$type": "string"}}
 
-DOMAIN_SOURCE_COLLECTIONS: Final = (
-    "salesInv",
-    "customerOutboundCDM",
-    "shipmentInfo",
-    "lkpSearchProduct",
+#: The upstream datasets this repository reads and seeds, named as configuration
+#: names them. Where each one physically lives is resolved through the source
+#: binding catalogue, so renaming a collection is a configuration edit and never
+#: a code change. This tuple used to be `DOMAIN_SOURCE_COLLECTIONS` and held
+#: `salesInv`, `customerOutboundCDM`, `shipmentInfo`, `lkpSearchProduct` -- the
+#: physical names -- which is precisely what made the rename a code change.
+DOMAIN_SOURCE_DATASETS: Final = (
+    SOURCE_SALES_DATASET,
+    SOURCE_CUSTOMERS_DATASET,
+    SOURCE_SHIPMENTS_DATASET,
+    SOURCE_PRODUCTS_DATASET,
 )
+
+#: The lookup indexes the deterministic seed needs on each domain dataset, as
+#: (key, index name, unique). Declared per dataset rather than written out
+#: against a collection name so that the same rebinding that moves the reads
+#: moves the indexes with them -- an index built on the collection a dataset no
+#: longer resolves to is worse than no index, because the query it was meant to
+#: serve still collection-scans while the operator can see an index exists.
+_DOMAIN_SOURCE_INDEXES: Final[dict[str, tuple[tuple[str, str, bool], ...]]] = {
+    SOURCE_SALES_DATASET: (
+        ("salesHdrEventData.orderId", "sales_order_number_unique", True),
+        ("salesHdr.salesHdrData.custId", "sales_customer_lookup", False),
+        ("salesLines.lineData.productId", "sales_product_lookup", False),
+        ("salesLines.lineData.sku", "sales_sku_lookup", False),
+    ),
+    SOURCE_CUSTOMERS_DATASET: (
+        ("customerId", "customer_id_unique", True),
+        ("phoneNumber", "customer_phone_lookup", False),
+        ("email", "customer_email_lookup", False),
+    ),
+    SOURCE_SHIPMENTS_DATASET: (("shipmentInfoEventData.trkNum", "tracking_number_unique", True),),
+    SOURCE_PRODUCTS_DATASET: (
+        ("productId", "product_id_unique", True),
+        ("sku", "product_sku_lookup", False),
+    ),
+}
 
 
 class ConcurrencyConflictError(RuntimeError):
     pass
+
+
+class SourceDatasetUnresolvedError(RuntimeError):
+    """Configuration does not say where a dataset this code reads actually is.
+
+    Raised rather than defaulted. Falling back to the name the collection had
+    when this module was written would make a misconfigured platform read stale
+    documents from the collection a rename was meant to retire, and report
+    success -- the one failure mode the binding catalogue exists to prevent.
+    """
 
 
 class OperationalRepository:
@@ -95,12 +148,18 @@ class OperationalRepository:
         client: AsyncMongoClient[dict[str, object]],
         settings: Settings,
         source_client: AsyncMongoClient[dict[str, object]] | None = None,
+        bindings: SourceBindingCatalogue | None = None,
     ) -> None:
         self._client = client
         self._source_client = source_client or client
         self._settings = settings
         self._db = client[settings.mongo_database]
         self._source_db = self._source_client[settings.source_mongo_database]
+        # Resolved on first use rather than here, because building it reads the
+        # published release and the stored overrides and this constructor is
+        # synchronous and runs on every request. A supplied catalogue skips that
+        # -- a caller that has already resolved one should not resolve a second.
+        self._bindings = bindings
         self.returns = self._db[RETURNS]
         self.events = self._db[EVENTS]
         self.support_cases = self._db[SUPPORT_CASES]
@@ -136,6 +195,48 @@ class OperationalRepository:
     def source_client(self) -> AsyncMongoClient[dict[str, object]]:
         """Expose the read/source client for governed cross-store services."""
         return self._source_client
+
+    async def source_bindings(self) -> SourceBindingCatalogue:
+        """Where configuration currently says each dataset lives.
+
+        The same resolution the release compiler and the bindings API perform,
+        and deliberately not a second one: a published release if there is one,
+        the shipped schema file otherwise, with the stored overrides layered on
+        top. Cached for the lifetime of this repository -- which is one request
+        on the API paths and one process on the worker paths -- so a rebinding
+        is picked up on the next request rather than mid-way through one.
+        """
+        if self._bindings is None:
+            releases = SchemaReleaseStore(self._client, self._settings.mongo_database)
+            baseline = await resolve_active_schema(
+                self._settings.dynamic_knowledge_schema_path, releases
+            )
+            overrides = await SourceBindingStore(self._client, self._settings.mongo_database).list()
+            self._bindings = catalogue_from(baseline, overrides)
+        return self._bindings
+
+    async def source_dataset(self, dataset: str) -> AsyncCollection[dict[str, object]]:
+        """The collection a dataset resolves to, on the upstream source client.
+
+        Only `object_ref["name"]` is taken from the resolved asset. The database
+        stays `settings.source_mongo_database`: the shipped schema declares
+        `return_source` for these four, which equals that setting only by
+        default, and `targeted_sync.platform_store_source_ids` already treats an
+        operator who renamed the setting as the authority. Honouring a declared
+        database here would silently disagree with that.
+        """
+        asset = (await self.source_bindings()).resolve(dataset)
+        if asset is None:
+            raise SourceDatasetUnresolvedError(
+                f"no configured source binding resolves dataset {dataset!r}"
+            )
+        collection_name = asset.object_ref.get("name")
+        if not collection_name:
+            raise SourceDatasetUnresolvedError(
+                f"dataset {dataset!r} resolves to source asset "
+                f"{asset.source_asset_id!r}, whose object_ref names no collection"
+            )
+        return self._source_db[collection_name]
 
     async def ensure_indexes(self) -> None:
         await self.returns.create_index([("createdAt", DESCENDING)])
@@ -2245,9 +2346,8 @@ class OperationalRepository:
         return None if document is None else cast(dict[str, Any], document)
 
     async def source_order(self, order_reference: str) -> dict[str, Any] | None:
-        sales_inventory = await self._source_db["salesInv"].find_one(
-            {"salesHdrEventData.orderId": order_reference}
-        )
+        sales = await self.source_dataset(SOURCE_SALES_DATASET)
+        sales_inventory = await sales.find_one({"salesHdrEventData.orderId": order_reference})
         if sales_inventory is not None:
             raw = cast(dict[str, Any], sales_inventory)
             header_event = raw.get("salesHdrEventData")
@@ -2292,7 +2392,8 @@ class OperationalRepository:
                 "sourceDocumentReference": str(raw.get("_id") or order_reference),
             }
 
-        # Transitional fallback for existing sandbox fixtures. New flows must seed salesInv.
+        # Transitional fallback for existing sandbox fixtures. New flows must
+        # seed the configured sales dataset.
         document = await self._source_db[SOURCE_ORDERS].find_one({"_id": order_reference})
         return None if document is None else cast(dict[str, Any], document)
 
@@ -2308,6 +2409,21 @@ class OperationalRepository:
             record_limit,
         )
         seeded_query = {"seedVersion": seed_version, "seedDigest": expected_digest}
+        # A dataset configuration cannot place is reported, not raised. This is
+        # the readiness card: a schema that names none of the four is exactly
+        # when an operator needs the diagnostics page to render and say so, and
+        # a 500 here would take the whole card list down. The seed *write* paths
+        # keep raising, because there the cost of guessing is data.
+        domain_counts: dict[str, int] = {}
+        unresolved: list[str] = []
+        for dataset in DOMAIN_SOURCE_DATASETS:
+            try:
+                collection = await self.source_dataset(dataset)
+            except SourceDatasetUnresolvedError as error:
+                domain_counts[dataset] = 0
+                unresolved.append(f"{error}.")
+                continue
+            domain_counts[dataset] = await collection.count_documents(seeded_query)
         counts = {
             "sourceCustomers": await self._source_db[SOURCE_CUSTOMERS].count_documents({}),
             "sourceOrders": await self._source_db[SOURCE_ORDERS].count_documents({}),
@@ -2317,14 +2433,11 @@ class OperationalRepository:
             ),
             "seededOrders": await self._source_db[SOURCE_ORDERS].count_documents(seeded_query),
             "seededProducts": await self._source_db[SOURCE_PRODUCTS].count_documents(seeded_query),
-            "salesInv": await self._source_db["salesInv"].count_documents(seeded_query),
-            "customerOutboundCDM": await self._source_db["customerOutboundCDM"].count_documents(
-                seeded_query
-            ),
-            "shipmentInfo": await self._source_db["shipmentInfo"].count_documents(seeded_query),
-            "lkpSearchProduct": await self._source_db["lkpSearchProduct"].count_documents(
-                seeded_query
-            ),
+            # Reported per dataset, not per collection. The readiness card names
+            # what an operator can act on: "source_sales expected 1000, found 0"
+            # stays true through a rebinding, where "salesInv ..." would name a
+            # collection the platform had already been told to stop reading.
+            **domain_counts,
             "returns": await self.returns.count_documents({}),
             "completedReturns": await self.returns.count_documents(
                 {"status": ReturnStatus.COMPLETED.value}
@@ -2335,19 +2448,19 @@ class OperationalRepository:
         counts["customers"] = counts["seededCustomers"]
         counts["orders"] = counts["seededOrders"]
         counts["products"] = counts["seededProducts"]
-        counts["shipments"] = counts["shipmentInfo"]
+        counts["shipments"] = counts[SOURCE_SHIPMENTS_DATASET]
         expected_counts = {
             "seededCustomers": expected_counts_by_asset["customers"],
             "seededOrders": expected_counts_by_asset["orders"],
             "seededProducts": expected_counts_by_asset["products"],
-            "salesInv": expected_counts_by_asset["orders"],
-            "customerOutboundCDM": expected_counts_by_asset["customers"],
-            "shipmentInfo": expected_counts_by_asset["orders"],
-            "lkpSearchProduct": expected_counts_by_asset["products"],
+            SOURCE_SALES_DATASET: expected_counts_by_asset["orders"],
+            SOURCE_CUSTOMERS_DATASET: expected_counts_by_asset["customers"],
+            SOURCE_SHIPMENTS_DATASET: expected_counts_by_asset["orders"],
+            SOURCE_PRODUCTS_DATASET: expected_counts_by_asset["products"],
             "returns": 0,
             "supportCases": 0,
         }
-        errors = [
+        errors = unresolved + [
             f"{name} expected {expected}, found {counts[name]}."
             for name, expected in expected_counts.items()
             if counts[name] != expected
@@ -2399,11 +2512,15 @@ class OperationalRepository:
             evidence_hmac_key,
             record_limit,
         )
+        domain_targets = [
+            (await self.source_dataset(dataset), records)
+            for dataset, records in domain_records.items()
+        ]
         for collection, documents in (
             (self._source_db[SOURCE_CUSTOMERS], customers),
             (self._source_db[SOURCE_PRODUCTS], products),
             (self._source_db[SOURCE_ORDERS], orders),
-            *((self._source_db[name], records) for name, records in domain_records.items()),
+            *domain_targets,
         ):
             cancel_check()
             await collection.delete_many({"seedVersion": seed_version})
@@ -2424,34 +2541,10 @@ class OperationalRepository:
         await self.returns.delete_many({"seedVersion": seed_version})
         await self.events.delete_many({"seedVersion": seed_version})
         await self.support_cases.delete_many({"seedVersion": seed_version})
-        await self._source_db["salesInv"].create_index(
-            "salesHdrEventData.orderId", unique=True, name="sales_order_number_unique"
-        )
-        await self._source_db["salesInv"].create_index(
-            "salesHdr.salesHdrData.custId", name="sales_customer_lookup"
-        )
-        await self._source_db["salesInv"].create_index(
-            "salesLines.lineData.productId", name="sales_product_lookup"
-        )
-        await self._source_db["salesInv"].create_index(
-            "salesLines.lineData.sku", name="sales_sku_lookup"
-        )
-        await self._source_db["customerOutboundCDM"].create_index(
-            "customerId", unique=True, name="customer_id_unique"
-        )
-        await self._source_db["customerOutboundCDM"].create_index(
-            "phoneNumber", name="customer_phone_lookup"
-        )
-        await self._source_db["customerOutboundCDM"].create_index(
-            "email", name="customer_email_lookup"
-        )
-        await self._source_db["shipmentInfo"].create_index(
-            "shipmentInfoEventData.trkNum", unique=True, name="tracking_number_unique"
-        )
-        await self._source_db["lkpSearchProduct"].create_index(
-            "productId", unique=True, name="product_id_unique"
-        )
-        await self._source_db["lkpSearchProduct"].create_index("sku", name="product_sku_lookup")
+        for dataset, index_specs in _DOMAIN_SOURCE_INDEXES.items():
+            collection = await self.source_dataset(dataset)
+            for key, index_name, unique in index_specs:
+                await collection.create_index(key, unique=unique, name=index_name)
         await self.seed_metadata.replace_one(
             {"_id": seed_version},
             {
@@ -2473,8 +2566,8 @@ class OperationalRepository:
         await self._source_db[SOURCE_CUSTOMERS].delete_many(source_cleanup)
         await self._source_db[SOURCE_PRODUCTS].delete_many(source_cleanup)
         await self._source_db[SOURCE_ORDERS].delete_many(source_cleanup)
-        for collection_name in DOMAIN_SOURCE_COLLECTIONS:
-            await self._source_db[collection_name].delete_many(source_cleanup)
+        for dataset in DOMAIN_SOURCE_DATASETS:
+            await (await self.source_dataset(dataset)).delete_many(source_cleanup)
         await self.seed_metadata.delete_many({"_id": seed_version})
         await self.returns.delete_many(source_cleanup)
         await self.events.delete_many(source_cleanup)
@@ -2486,8 +2579,8 @@ class OperationalRepository:
         await self._source_db[SOURCE_CUSTOMERS].delete_many(source_cleanup)
         await self._source_db[SOURCE_PRODUCTS].delete_many(source_cleanup)
         await self._source_db[SOURCE_ORDERS].delete_many(source_cleanup)
-        for collection_name in DOMAIN_SOURCE_COLLECTIONS:
-            await self._source_db[collection_name].delete_many(source_cleanup)
+        for dataset in DOMAIN_SOURCE_DATASETS:
+            await (await self.source_dataset(dataset)).delete_many(source_cleanup)
         await self.seed_metadata.delete_many({"_id": seed_version})
         await self.returns.delete_many({})
         await self.events.delete_many({})

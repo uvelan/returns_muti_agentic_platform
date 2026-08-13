@@ -1,8 +1,9 @@
 # Implementation plan — execution status
 
 Against [`FERGUSON_RETURNS_IMPLEMENTATION_PLAN_FINAL.md`](FERGUSON_RETURNS_IMPLEMENTATION_PLAN_FINAL.md).
-Last verified 2026-08-13 on `refactor/unified-return-platform`, after merging W0.7/W5.9/W5.11
-hygiene, W4.5 and W2.6 — three branches cut in parallel from `493c3f3`.
+Last verified 2026-08-13 on `refactor/unified-return-platform` at `4116915`, after closing W2.2
+and after merging W0.7/W5.9/W5.11 hygiene, W4.5 and W2.6 — three branches cut in parallel from
+`493c3f3`.
 
 **A step is "done" only when its own Validation clause holds.** Several steps below were
 previously reported complete and are recorded here as partial, because theirs does not.
@@ -31,13 +32,62 @@ policy, timings · W1.8 case list and resume.
 | Step | Status |
 |---|---|
 | W2.1 Analyzer → runtime schema | **done** — approved draft compiles to an `ActiveSchema` release; runtime prefers it over YAML |
-| W2.2 Split shape from source binding | **partial** — binding catalogue, store and API shipped; `DOMAIN_SOURCE_COLLECTIONS` still has 3 references in `operations/repository.py`, so the Validation clause (rename `salesInv → salesInvV2` through configuration only) would fail |
+| W2.2 Split shape from source binding | **done** — `DOMAIN_SOURCE_COLLECTIONS` is gone; `operations/repository.py` resolves its four upstream datasets through the same catalogue the release compiler and the bindings API already use. The Validation clause is demonstrated against real Mongo, not asserted: editing only `object_ref.name` moves the seed, its indexes and `source_order` to `salesInvV2` and leaves nothing in `salesInv`; a stored rebinding moves the read with the schema file untouched. See below |
 | W2.3 Re-analysis and migration | done — three-way diff, proposals as typed mutations, migration plan recorded before the pointer moves |
 | W2.4 Return and warehouse entities | **partial** — return entities added, but **by hand-editing the descriptor**, which the step forbids; **no warehouse or bay entity exists**. No longer blocked: W4.5 landed the MSSQL analyzer connector its Failure condition named |
 | W2.5 Return on-demand sync | **done** — `ReturnCaseWorkflow` runs a record-scoped `synchronize_return_records` activity after the return record commits, blocking, parking the case as `RETURN_GRAPH_SYNC_FAILED` on failure. Proven against real Mongo and Neo4j: a committed record is queryable through the compiler afterwards, and the pre-fix upstream connector routing is shown writing nothing |
 | W2.6 Fulfillment on-demand sync | **done** — a genuine 100-document `shipmentInfo` sample verified the contract; `shipment` is `VERIFIED`/`CONNECTED_SYNC` and the Validation clause holds on the shipped descriptor with no in-test promotion; see below |
 | W2.7 Warehouse and bay on-demand sync | **not started** — still blocked on W2.4's warehouse entity, which is now producible |
 | W2.8 Sync control (S6) and incremental sync | **partial** — S6 ships with run list, filters, detail and manual trigger; `incremental_sync` not confirmed implemented against the cursor contract |
+
+### W2.2 closed: the rename is a configuration edit
+
+`operations/repository.py` held the last three references to `DOMAIN_SOURCE_COLLECTIONS`, and
+they were not the whole problem — the same four physical names appeared 26 times in that file:
+`source_order`'s `find_one`, the readiness counts, and nine `create_index` calls written directly
+against `self._source_db["salesInv"]`. All of them now go through
+`OperationalRepository.source_dataset`, which resolves `catalogue_from(resolve_active_schema(...),
+SourceBindingStore.list())` — the same call the release compiler and `GET /api/source-bindings`
+make. The catalogue is built lazily and cached per repository instance, so a rebinding reaches
+the next request rather than half of the one in flight.
+
+The stable handle is the **source asset id** (`source_sales`, `source_customers`,
+`source_shipments`, `source_products`), not the collection name. Keying on the collection name
+would have re-broken the clause: after the rename the catalogue knows the asset as `salesInvV2`,
+so `resolve("salesInv")` is correctly `None`. `materialize_domain_seed` was re-keyed to match,
+since a manifest keyed by physical name is a second, silent declaration of the binding.
+
+**Proven, not asserted** — `tests/operations/test_source_dataset_binding_real_infra.py`, 7 tests
+against real Mongo, same code and two configurations:
+
+- shipped configuration seeds `salesInv` and leaves `salesInvV2` empty;
+- with only `object_ref.name` edited, the seed and all nine indexes land on `salesInvV2` and
+  **nothing** is left in `salesInv`, and `source_order` returns the order from there;
+- a stored rebinding moves the read with the schema file untouched — the 3am route, which needs
+  no publish;
+- an unplaceable dataset is refused rather than defaulted to a plausible neighbour.
+
+Three things this deliberately does not do, each recorded rather than fixed:
+
+- **Only the collection moves, not the database.** `source_dataset` takes `object_ref["name"]`
+  and keeps `settings.source_mongo_database`. The shipped schema declares `return_source`, which
+  equals that setting only by default, and `targeted_sync.platform_store_source_ids` already
+  treats an operator who renamed the setting as the authority. Honouring a declared database here
+  would silently disagree with that.
+- **A release that renames the asset ids breaks this.** Something has to be stable between code
+  and configuration, and the asset id is it. `ActiveSchema` will not validate a schema missing an
+  asset its entities reference, so this is the only unresolvable case — and in `seed_status` it
+  degrades to a validation error rather than raising, because that method draws a diagnostics
+  card and a 500 there takes down every other card with it.
+- **Rebinding now means two different things** in the two halves of the platform, on purpose. A
+  release still captures its sources at compile time; direct source reads follow the override on
+  the next request. `api/source_bindings.py`'s docstring claimed the first for both and is
+  corrected.
+
+`data_platform/ai_studio.py`, `data_platform/operational_generation/relationships.py`,
+`data_platform/graph/sandbox.py`, `graph/interim_active_schema.py` and
+`scripts/load_reference_dataset.py` still carry the four literal collection names. None is on the
+repository's read path and none is in W2.2's scope, but a future rename does not reach them.
 
 ### A defect found and fixed inside W2.5/W2.6's area
 
@@ -539,6 +589,40 @@ It now demotes a copy of the shipped descriptor, reusing the `_demoted` shape th
 modules already use. No other entity substitutes: `customer_account` and `customer_party` are the
 only remaining `SEED_ONLY` entities and neither declares a strong anchor, so pointing the test at
 one would have exercised the missing-anchor refusal instead — green, and guarding nothing.
+
+## Verification: after closing W2.2
+
+Host run from a worktree at `4116915`, on the shared `backend/.venv`.
+
+| Command | Result |
+|---|---|
+| `ruff format --check src tests scripts` | 801 files already formatted |
+| `ruff check src tests scripts` | All checks passed |
+| `mypy --strict src` | Success: no issues found in **502** source files |
+| `tests/operations/test_source_dataset_binding_real_infra.py` | **7 passed** |
+| `tests/operations` + `test_seed_manifest.py` + `test_stage4_schema_and_seed_contracts.py` + `test_seed_api.py` | **29 passed, 26 errors** — all pre-existing, see below |
+| `tests/dynamic_knowledge`, excluding `*_real_infra*`, `*_docker*`, the smoke net and the lifecycle E2E | **416 passed, 5 failed** — all pre-existing, see below |
+
+### The 31 reds are one environment defect, and it is not new
+
+Every one of them is `ServerSelectionTimeoutError: Could not reach any servers in
+[('mongodb', 27017)]`. The DSN omits `directConnection=true`, so topology discovery from the host
+learns the container hostname the single-node replica set advertises and resolves a name that does
+not exist there. **Reproduced identically on an untouched checkout**, both modules and both
+symptoms — this was measured, not assumed.
+
+Two origins: the shared `test_settings` fixture in `backend/tests/conftest.py` (the 5 failures, in
+`test_mongo_graph_state_provider.py` and `test_on_demand_sync_production_wiring.py`) and the
+per-module `_mongo_dsn()` helpers in the three `tests/operations/*_real_infra.py` modules (the 26
+errors). The fix is one query parameter, and the working pattern with its rationale is already in
+`tests/dynamic_knowledge/test_return_record_sync_real_infra.py`. Left alone deliberately: it is a
+separate defect spanning 31 tests it would be wrong to fold into a W2.2 commit.
+
+**Not run:** `tests/dynamic_knowledge`'s `*_real_infra*` and `*_docker*` modules, its discovery
+smoke net and its generation lifecycle E2E. A full `tests/dynamic_knowledge` run was started and
+wedged — no output after 50 minutes, ~21s of CPU accumulated, so blocked on IO rather than
+looping. That is the same symptom recorded above for the whole-suite attempt, and **the next full
+run still belongs in the diagnostics container.**
 
 Its `pytest.raises` is tightened in the same change. It accepted
 `(OrderAgentFailure, AssertionError)`, and `ScriptedModel` raises `AssertionError` when the graph
