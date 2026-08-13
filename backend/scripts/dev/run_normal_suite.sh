@@ -96,15 +96,24 @@ if [ -z "${PYTHON}" ]; then
     fi
   done
 fi
+# `import pytest` alone is not a sufficient probe. A bare system interpreter
+# often carries pytest and nothing else, and it will then be selected, reach
+# `tests/conftest.py`, and die on `ModuleNotFoundError: pydantic` -- an exit 4
+# that reads as a broken tree rather than a missing interpreter. Probing an
+# application dependency that conftest imports at module scope moves the
+# failure to the point where the message can say what to do about it. This cost
+# a track real debugging time; the diagnosis is the fix.
 if [ -z "${PYTHON}" ] && command -v python >/dev/null 2>&1; then
-  if python -c "import pytest" >/dev/null 2>&1; then
+  if python -c "import pytest, pydantic" >/dev/null 2>&1; then
     PYTHON="$(command -v python)"
   fi
 fi
 if [ -z "${PYTHON}" ]; then
-  echo "no interpreter with pytest found." >&2
-  echo "set PLATFORM_TEST_PYTHON to one with the dev group installed -- from a" >&2
-  echo "worktree that is the venv in the checkout the worktree was made from." >&2
+  echo "no interpreter with the dev group installed was found." >&2
+  echo "set PLATFORM_TEST_PYTHON to one -- from a worktree that is the venv in" >&2
+  echo "the checkout the worktree was made from, e.g." >&2
+  echo "  PLATFORM_TEST_PYTHON=/path/to/main/backend/.venv/Scripts/python.exe \\" >&2
+  echo "    bash backend/scripts/dev/run_normal_suite.sh" >&2
   exit 1
 fi
 
