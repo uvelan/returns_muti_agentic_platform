@@ -89,7 +89,12 @@ from return_platform.dynamic_knowledge.order_agent.graph_nodes import (
     TurnRuntimeContext,
 )
 from return_platform.dynamic_knowledge.order_agent.state import CandidateSet
-from return_platform.dynamic_knowledge.schema import ActiveSchema
+from return_platform.dynamic_knowledge.schema import (
+    ActiveSchema,
+    EntitySourceAccess,
+    RelationshipSourceAccess,
+    SourceContractStatus,
+)
 from return_platform.source_connectors.compilation import compile_source_read
 from return_platform.source_connectors.contracts import RawSourceDocument, RawSourcePage
 
@@ -1030,18 +1035,54 @@ async def test_the_targeted_sync_budget_is_enforced(schema: ActiveSchema) -> Non
     assert source.reads == policy.max_targeted_syncs_per_turn
 
 
+def _seed_only_shipment(schema: ActiveSchema) -> ActiveSchema:
+    """The shipped descriptor with `shipment` pushed back to `SEED_ONLY`.
+
+    Relationship access is capped by its endpoints, so demoting the entity
+    without also demoting `order_shipped_as` makes the whole descriptor fail
+    validation -- which would fail this test for a reason that has nothing to do
+    with what it guards.
+    """
+    document = schema.model_dump(mode="json")
+    document["entities"]["shipment"]["source_access"] = EntitySourceAccess.SEED_ONLY.value
+    document["entities"]["shipment"]["source_contract_status"] = (
+        SourceContractStatus.UNVERIFIED.value
+    )
+    document["graph"]["relationships"]["order_shipped_as"]["access"] = (
+        RelationshipSourceAccess.SEED_ONLY.value
+    )
+    return ActiveSchema.model_validate(document)
+
+
 async def test_an_anchor_the_schema_does_not_enable_never_reaches_the_source(
     schema: ActiveSchema,
 ) -> None:
     """The guard, not the connector, decides what may be fetched.
 
-    `shipment` declares a perfectly well-formed `exact_tracking` anchor with
+    The entity declares a perfectly well-formed `exact_tracking` anchor with
     `on_demand_sync_allowed: true` and is nonetheless `source_access:
-    SEED_ONLY` -- shipmentInfo has no verified source contract. So a request
-    that looks entirely legitimate must still be refused, and refused *before*
-    the read: a rejection that arrived after the source had been queried would
-    not be a rejection of anything.
+    SEED_ONLY`. A request that looks entirely legitimate must still be refused,
+    and refused *before* the read: a rejection that arrived after the source had
+    been queried would not be a rejection of anything.
+
+    **On the constructed schema.** This ran against the shipped descriptor until
+    W2.6, which verified shipmentInfo's contract against 100 real documents and
+    promoted `shipment` to `CONNECTED_SYNC`/`VERIFIED` -- so the descriptor no
+    longer contains the combination this guards, and the tripwire started
+    reading the source it exists to prove is never read. No other entity
+    substitutes: `customer_account` and `customer_party` are the only remaining
+    `SEED_ONLY` entities and neither declares a strong anchor, so pointing this
+    at one would exercise the missing-anchor refusal instead and quietly stop
+    testing `source_access` at all.
+
+    Demotion rather than promotion, which is the direction that stays honest:
+    it asserts a refusal on a schema that says refuse, and the same
+    `_demoted` shape is what `test_fulfillment_observes_the_shipment.py` and
+    `test_fulfillment_shipment_sync_real_infra.py` already use. It is a live
+    configuration state, not dead code -- an entity whose source contract stops
+    holding gets demoted, and every read path has to stop with it.
     """
+    schema = _seed_only_shipment(schema)
     source, writer = ProjectingSource(), CountingGraphWriter()
     forbidden = AgentAction(
         business_capability=CAPABILITY,
@@ -1072,7 +1113,11 @@ async def test_an_anchor_the_schema_does_not_enable_never_reaches_the_source(
         )
     )
 
-    with pytest.raises((OrderAgentFailure, AssertionError)):
+    # `OrderAgentFailure` alone, not `(OrderAgentFailure, AssertionError)` as
+    # before: `ScriptedModel` raises `AssertionError` when the graph asks for an
+    # action the scenario did not script, so accepting it let a turn that sailed
+    # past the guard and came back for a second decision pass as a refusal.
+    with pytest.raises(OrderAgentFailure):
         await graph.ainvoke(
             _state(schema, "where is that shipment"),
             context=TurnRuntimeContext(guard_context=_guard_context(schema)),
