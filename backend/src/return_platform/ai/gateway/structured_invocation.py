@@ -500,8 +500,35 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
                 except ProviderError as exc:
                     last_error = exc.code
                     await self._route_pool.record_failure(route, last_error)
-                except (ValueError, TypeError):
+                except (ValueError, TypeError) as exc:
                     last_error = "RESPONSE_INVALID"
+                    # The reason was being thrown away with the exception. A
+                    # Pydantic `ValidationError` names the field path, the
+                    # expected type and what arrived instead -- which is the
+                    # difference between "the model is chatty" (already handled
+                    # by the brace-span fallback in `parse_structured_response`)
+                    # and "the schema and the model disagree about a field",
+                    # which no amount of retrying will fix. Logged as text
+                    # rather than as the payload: Pydantic's message carries
+                    # field names and types, never the values, so this stays on
+                    # the safe side of the provider boundary.
+                    self._logger.warning(
+                        (
+                            f"{self._event_prefix}_response_invalid "
+                            "provider=%s model=%s error_type=%s detail=%s"
+                        ),
+                        route.provider_name,
+                        route.model,
+                        type(exc).__name__,
+                        str(exc)[:2000],
+                        extra={
+                            **log_context,
+                            "task_id": self._task_id,
+                            "provider": route.provider_name,
+                            "model": route.model,
+                            "error_type": type(exc).__name__,
+                        },
+                    )
                     await self._route_pool.record_failure(route, last_error)
                 except Exception:
                     # Unexpected provider/transport failure: keep the failover loop
