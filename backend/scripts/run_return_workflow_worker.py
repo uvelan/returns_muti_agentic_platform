@@ -31,12 +31,19 @@ from return_platform.configuration.runtime_activation import (
 from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
 from return_platform.configuration.runtime_loader import resolve_process_configuration
 from return_platform.data_platform.graph.sync_service import MongoTargetedSyncRunLedger
+from return_platform.dynamic_knowledge.integration.bay_observations import (
+    GraphWarehouseBayObservations,
+)
+from return_platform.dynamic_knowledge.integration.order_placement_observations import (
+    GraphOrderPlacementObservations,
+)
 from return_platform.dynamic_knowledge.integration.return_record_sync import GraphReturnRecordSync
 from return_platform.dynamic_knowledge.integration.targeted_sync import (
     build_targeted_graph_access,
 )
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_support.service import ReturnSupportService
+from return_platform.operations.warehouse.case_placement import CaseBayPlacement
 from return_platform.workflows.persistence import ReturnSessionRepository
 from return_platform.workflows.return_case_activities import ReturnCaseActivities
 from return_platform.workflows.return_case_launcher import TemporalCaseWorkflowLauncher
@@ -114,6 +121,17 @@ async def _run() -> None:
                 operational_repository=operational_repository,
             ),
             graph_sync=GraphReturnRecordSync.from_access(graph),
+            # BAY-01. `WarehousePlacementService` was graph-oriented, real and
+            # keyed by session, so the case flow -- which has no session --
+            # never called it and `request_bay_assignment` acknowledged a
+            # request nothing served. Same observation port, same ranking
+            # agent, re-keyed onto the case.
+            bay_placement=CaseBayPlacement(
+                repository=operational_repository,
+                configuration=runtime.return_configuration.configuration,
+                observations=GraphWarehouseBayObservations.from_access(graph),
+                order_observations=GraphOrderPlacementObservations.from_access(graph),
+            ),
         )
         worker = create_return_workflow_worker(
             temporal, repository, case_activities=case_activities

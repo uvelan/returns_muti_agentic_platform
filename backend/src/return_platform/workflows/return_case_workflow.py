@@ -152,11 +152,35 @@ class ReturnCaseWorkflowInput:
 
 @dataclass(frozen=True, slots=True)
 class BayResultNotice:
-    """Advisory. `bay_reference` is None when no bay could be found."""
+    """One coherent placement answer, or a stated reason there is none (C2).
+
+    Advisory. `bay_reference` is None when no bay could be recommended, and
+    `reason` then names *which* state applied -- no warehouse reference, a
+    warehouse the graph does not hold, a graph that could not be read, or a
+    warehouse whose bays are all ineligible. An operator who cannot tell those
+    apart cannot act on any of them.
+
+    The fields after `reason` were absent, and their absence is what made this
+    a partial result: a bay id with no location, no confidence and no evidence
+    obliged every reader to go and find the rest somewhere else.
+    `confidence_millionths` is `BayAssignmentAgent`'s computed margin over the
+    runner-up -- never a constant -- and is None when there is no
+    recommendation to be confident about.
+
+    All of them default, so a caller that only knows a bay id (a late external
+    signal, say) still constructs a valid notice.
+    """
 
     warehouse_reference: str | None
     bay_reference: str | None
     reason: str | None = None
+    return_location: str | None = None
+    confidence_millionths: int | None = None
+    explanation: str | None = None
+    #: The reading placement was made from, in the shape the return event log
+    #: uses -- `WAREHOUSE_OBSERVED:<generation>:<count>` and its two siblings.
+    evidence_reference: str | None = None
+    graph_generation_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -407,15 +431,27 @@ class ReturnCaseWorkflow:
         Best-effort in both directions: a failed request is recorded and
         stepped over, and an unanswered one simply times out. Nothing
         downstream reads the bay, so neither outcome may stop the return.
+
+        The activity now *answers* rather than merely acknowledging (BAY-01).
+        It used to write one `bay_assignment_requested` fact and return None,
+        leaving the workflow to wait `bay_wait_seconds` for a `bay_result`
+        signal whose only sender was a test -- so every case waited the full
+        bay window and then proceeded with nothing, and the wait looked like a
+        timeout rather than like a step that was never wired.
+
+        The signal is kept, and is still the way a *late* or externally-decided
+        result arrives: `bay_result` ignores a second notice, so an answer
+        already in hand is never overwritten by one that arrives afterwards.
         """
         workflow_input = self._require_input()
         await self._set_status(ReturnCaseStatus.AWAITING_BAY)
         try:
-            await workflow.execute_activity(
+            notice: BayResultNotice | None = await workflow.execute_activity(
                 "request_bay_assignment",
                 RequestBayAssignmentInput(
                     case_id=workflow_input.case_id, tenant_id=workflow_input.tenant_id
                 ),
+                result_type=BayResultNotice,
                 start_to_close_timeout=_PERSIST_TIMEOUT,
                 retry_policy=_BEST_EFFORT_RETRY,
             )
@@ -427,6 +463,12 @@ class ReturnCaseWorkflow:
                 warehouse_reference=None, bay_reference=None, reason="REQUEST_FAILED"
             )
             return
+
+        if notice is not None and self._state.bay is None:
+            # First answer wins, exactly as `bay_result` decides it: a signal
+            # that raced ahead of the activity is already the case's bay, and
+            # replacing it here would make the outcome depend on scheduling.
+            self._state.bay = notice
 
         if timings.bay_wait_seconds <= 0:
             return
