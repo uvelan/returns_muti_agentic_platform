@@ -13,6 +13,7 @@ from typing import Any, Protocol, TypeVar
 from return_platform.dynamic_knowledge.graph.generation import GraphGenerationStatus
 from return_platform.dynamic_knowledge.graph.write_compiler import (
     compile_generation_create,
+    compile_generation_fence_claim,
     compile_generation_lookup,
     compile_generation_transition,
 )
@@ -21,6 +22,33 @@ from return_platform.dynamic_knowledge.graph.write_compiler import (
 class GenerationTransitionError(RuntimeError):
     """A generation status transition did not apply -- the generation's current
     status did not match what the caller expected, so nothing was changed."""
+
+
+class GenerationMarkerMissing(RuntimeError):
+    """No GraphGeneration marker exists for the id a caller wanted to own.
+
+    Distinguished from losing a claim: there is nothing to fence against at all,
+    which means the caller resolved a generation id that was never created or
+    has been removed, not that someone else got there first.
+    """
+
+
+class StaleFencingToken(RuntimeError):
+    """A write-ownership claim lost to a higher fencing token already on the marker.
+
+    The holder of that higher token owns the generation now. Raised rather than
+    returned so a caller cannot proceed to write under a token the marker will
+    reject -- which is the whole failure this fence exists to prevent.
+    """
+
+    def __init__(self, graph_generation_id: str, *, requested: int, observed: int) -> None:
+        self.graph_generation_id = graph_generation_id
+        self.requested = requested
+        self.observed = observed
+        super().__init__(
+            f"generation {graph_generation_id!r} is held at fencing token {observed}; "
+            f"this claim presented {requested} and has been fenced off"
+        )
 
 
 class GenerationWriteTransaction(Protocol):
@@ -100,6 +128,40 @@ class Neo4jGenerationWriter:
                 new_status=new_status,
             )
 
+    async def claim_write_ownership(
+        self, *, graph_generation_id: str, fencing_token: int
+    ) -> tuple[GraphGenerationStatus, int]:
+        """Become the generation's writer by raising its fencing token.
+
+        Returns the marker's status and the token now stored on it. The token is
+        always the one presented -- a claim that lost raises `StaleFencingToken`
+        instead of returning the winner's token, because a caller that carried
+        on writing with a token the marker no longer holds would have every
+        write rejected one at a time rather than stopping here.
+
+        `fencing_token` must come from a durable monotonic allocator
+        (`lifecycle.mongo_store.MongoFencingTokenAllocator`); a locally chosen
+        value would not survive a restart and could re-issue a token an earlier
+        owner already used.
+        """
+        async with self._driver.session(database=self._database) as session:
+            row = await session.execute_write(
+                _claim,
+                graph_generation_id=graph_generation_id,
+                fencing_token=fencing_token,
+            )
+        if row is None:
+            raise GenerationMarkerMissing(
+                f"no GraphGeneration marker exists for {graph_generation_id!r}; "
+                "there is nothing to claim write ownership of"
+            )
+        status, observed = row
+        if observed != fencing_token:
+            raise StaleFencingToken(
+                graph_generation_id, requested=fencing_token, observed=observed
+            )
+        return status, observed
+
     async def get_status(
         self, *, graph_generation_id: str
     ) -> tuple[GraphGenerationStatus, int] | None:
@@ -142,6 +204,19 @@ async def _transition(
             f"generation {graph_generation_id!r} did not transition {expected_status.value!r} "
             f"-> {new_status.value!r}: current status did not match {expected_status.value!r}"
         )
+
+
+async def _claim(
+    tx: GenerationWriteTransaction, *, graph_generation_id: str, fencing_token: int
+) -> tuple[GraphGenerationStatus, int] | None:
+    statement = compile_generation_fence_claim(
+        graph_generation_id=graph_generation_id, fencing_token=fencing_token
+    )
+    result = await tx.run(statement.cypher, statement.parameters)
+    rows = [dict(record) async for record in result]
+    if not rows:
+        return None
+    return GraphGenerationStatus(rows[0]["status"]), int(rows[0]["fencing_token"])
 
 
 async def _lookup(

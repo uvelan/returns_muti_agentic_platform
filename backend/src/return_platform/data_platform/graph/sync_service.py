@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from collections.abc import AsyncIterator, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal
@@ -29,12 +30,33 @@ from return_platform.dynamic_knowledge.config_loader import (
 )
 from return_platform.dynamic_knowledge.graph.constraints import required_node_constraints
 from return_platform.dynamic_knowledge.graph.generation import (
+    LEGACY_FENCING_TOKEN,
     LEGACY_GENERATION_ID,
     GraphGenerationStatus,
 )
+from return_platform.dynamic_knowledge.graph.generation_writer import Neo4jGenerationWriter
 from return_platform.dynamic_knowledge.graph.neo4j_writer import Neo4jDynamicGraphWriter
 from return_platform.dynamic_knowledge.graph.projector import GenericGraphProjector
 from return_platform.dynamic_knowledge.graph.write_compiler import compile_node_writes
+from return_platform.dynamic_knowledge.lifecycle.handle import DEFAULT_SNAPSHOT_NAME
+from return_platform.dynamic_knowledge.lifecycle.lease_store import (
+    GENERATION_LEASES_COLLECTION,
+    MongoGenerationLeaseStore,
+)
+from return_platform.dynamic_knowledge.lifecycle.mongo_store import (
+    ACTIVE_RUNTIME_SNAPSHOTS_COLLECTION,
+    GENERATION_FENCING_TOKENS_COLLECTION,
+    REBUILD_LEASES_COLLECTION,
+    MongoActiveRuntimeSnapshotStore,
+    MongoFencingTokenAllocator,
+    MongoRebuildLeaseStore,
+)
+from return_platform.dynamic_knowledge.lifecycle.neo4j_validator import Neo4jGenerationValidator
+from return_platform.dynamic_knowledge.lifecycle.orchestrator import (
+    ActivationError,
+    GenerationLifecycleOrchestrator,
+    adopt_existing_generation,
+)
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
     GraphNodeMutation,
     SyncOrigin,
@@ -71,7 +93,42 @@ from return_platform.source_connectors.sqlserver import (
 )
 
 _LEGACY_GENERATION_ID = LEGACY_GENERATION_ID
-_LEGACY_FENCING_TOKEN = 1
+_LEGACY_FENCING_TOKEN = LEGACY_FENCING_TOKEN
+"""Both survive only as *bootstrap* values, not as what production runs on.
+
+This service used to write every sync into a single, permanently-active graph
+generation under these two literals rather than building a new generation and
+swapping. Three things followed, stated plainly because they were the reason
+this had to change:
+
+  * A full sync mutated the live graph in place, so a reader could observe a
+    partially rebuilt graph while it ran.
+  * A destructive schema change had no safe cutover path.
+  * The fencing token was constant, so it fenced nothing -- neither the Neo4j
+    marker's exact-match check nor `MongoSyncCheckpointStore`'s `$lte` refusal
+    could tell an owner from a stale writer when every writer presented `1`.
+
+The blue/green machinery that fixes this already existed and was complete
+(`dynamic_knowledge/graph/generation.py`: GraphGeneration, fencing tokens,
+read/write drain leases, ProjectionOwnership; `dynamic_knowledge/lifecycle/`:
+the orchestrator, the snapshot compare-and-swap, the drain). It is now what this
+service uses. Adopting generations here means, and here does mean: allocate a
+generation, sync into it, validate, swap the ActiveRuntimeSnapshot, drain
+readers on the old generation, retire it. **The active generation is never
+dropped before its replacement validates** -- if the candidate fails at any
+stage it is marked FAILED, the compare-and-swap never runs, and N keeps serving.
+
+Where these literals still appear: a deployment whose graph predates the
+protocol has nodes under `legacy-live` and no ActiveRuntimeSnapshot. That
+generation is *adopted* as activation version 1 (`_resolve_active_generation`
+below), which both gives the next rebuild a predecessor to drain and retire
+instead of orphaning the live data, and claims a real allocated token on the
+marker so a writer still holding `_LEGACY_FENCING_TOKEN` is fenced off from
+that moment on. A brand-new deployment creates the same marker once, for the
+same reason: readers that have not yet seen a snapshot fall back to this exact
+id (see `LEGACY_GENERATION_ID`), so writer and reader must agree on it until
+adoption completes.
+"""
 
 
 class GraphSyncScope(StrEnum):
@@ -126,9 +183,12 @@ class GraphSyncRunView(GraphSyncModel):
     startedBy: str
     startedAt: datetime
     completedAt: datetime | None = None
-    # Populated for ON_DEMAND runs only. A scheduled run writes into the one
-    # legacy generation and has no requesting turn, so both stay null there
-    # rather than being invented.
+    # The generation the run actually wrote into. For a destructive rebuild this
+    # is the *new* generation the run built and activated, not the one that was
+    # serving when it started -- which is the question an operator reading the
+    # ledger after a cutover is asking. Still null for runs recorded before the
+    # service resolved a generation at all, rather than being back-filled with a
+    # value those runs never had.
     graphGenerationId: str | None = None
     requestDigest: str | None = None
     requestedBy: SyncRunRequester | None = None
@@ -266,6 +326,76 @@ def _text(value: Any) -> str | None:
     return normalized or None
 
 
+@dataclass(frozen=True, slots=True)
+class _SyncOutcome:
+    """What one run wrote, and where.
+
+    `graph_generation_id` is carried out rather than assumed by the caller
+    because it is no longer a constant: a destructive rebuild writes into the
+    generation it built, every other run writes into the one that was serving,
+    and the run ledger has to record which.
+    """
+
+    node_writes: int
+    relationship_writes: int
+    graph_generation_id: str | None
+
+
+def _is_destructive_rebuild(request: GraphSyncRequest) -> bool:
+    """Which requests replace the graph rather than update it in place.
+
+    A full scan of every source *is* a rebuild -- it re-derives the whole
+    projection -- so it goes through the blue/green cutover. A single-source
+    resync or an incremental pass updates part of a graph that stays live, and
+    forcing those through a full rebuild would make an operator re-reading one
+    collection pay for a complete re-projection of every other.
+    """
+    return request.mode is GraphSyncScope.FULL and not request.incremental
+
+
+class _ScopedRebuildCoordinator:
+    """Pins a rebuild to this run's participating sources, and totals what it wrote.
+
+    Two mismatches to bridge. `RebuildSyncCoordinator` takes no
+    `source_asset_ids` (a rebuild is every source, by definition), while this
+    service resolves its own participating set including the platform-store
+    routing; and `build_and_activate` returns a snapshot, not write counts, which
+    the run ledger records.
+
+    Accumulating across calls is correct rather than lossy: the orchestrator runs
+    `full_sync` twice, once to build and once to catch up on what changed since
+    the build's watermarks were captured, and both wrote into the generation this
+    run activated.
+    """
+
+    def __init__(self, inner: GenericSyncCoordinator, source_asset_ids: frozenset[str]) -> None:
+        self._inner = inner
+        self._source_asset_ids = source_asset_ids
+        self.node_writes = 0
+        self.relationship_writes = 0
+
+    async def full_sync(
+        self,
+        *,
+        schema: ActiveSchema,
+        graph_generation_id: str,
+        fencing_token: int,
+        expected_generation_status: GraphGenerationStatus,
+        sync_run_id: str | None = None,
+    ) -> tuple[int, int]:
+        nodes, relationships = await self._inner.full_sync(
+            schema=schema,
+            graph_generation_id=graph_generation_id,
+            fencing_token=fencing_token,
+            source_asset_ids=self._source_asset_ids,
+            expected_generation_status=expected_generation_status,
+            sync_run_id=sync_run_id,
+        )
+        self.node_writes += nodes
+        self.relationship_writes += relationships
+        return nodes, relationships
+
+
 class _CountingConnector:
     """Wraps a connector to record per-source document counts for the run view --
     orchestration-level bookkeeping, not something the generic connectors need
@@ -343,6 +473,26 @@ class GraphSyncService:
         self._checkpoints = MongoSyncCheckpointStore(platform_client, settings.mongo_database)
         self._writer = Neo4jDynamicGraphWriter(driver, database=settings.neo4j_database)
         self._projector = GenericGraphProjector()
+        # The blue/green half. Every store here already existed and had no
+        # production construction site; this is that site. The collection names
+        # come from the modules that own them so this service and the request
+        # path (lifecycle/handle.py) cannot drift onto different collections --
+        # which would look exactly like a cutover no reader ever noticed.
+        self._generation_writer = Neo4jGenerationWriter(driver, database=settings.neo4j_database)
+        self._snapshots = MongoActiveRuntimeSnapshotStore(
+            self._platform_db[ACTIVE_RUNTIME_SNAPSHOTS_COLLECTION]
+        )
+        self._rebuild_leases = MongoRebuildLeaseStore(self._platform_db[REBUILD_LEASES_COLLECTION])
+        self._generation_leases = MongoGenerationLeaseStore(
+            self._platform_db[GENERATION_LEASES_COLLECTION]
+        )
+        self._fencing_tokens = MongoFencingTokenAllocator(
+            self._platform_db[GENERATION_FENCING_TOKENS_COLLECTION]
+        )
+        self._validator = Neo4jGenerationValidator(driver, database=settings.neo4j_database)
+        # Identifies this process to the rebuild lease, so a lease held by a
+        # crashed instance is attributable rather than anonymous.
+        self._owner_instance_id = f"graph-sync-{uuid.uuid4().hex[:12]}"
 
     @staticmethod
     def incremental_skipped_source_ids(
@@ -417,9 +567,14 @@ class GraphSyncService:
 
         if not mutations:
             return
+        # The generation that is actually serving, not the legacy literal: after
+        # a cutover the rolled-back records live in the new generation, and
+        # deleting them from the retired one would leave the live graph still
+        # projecting source records that no longer exist.
+        graph_generation_id = await self._resolve_active_generation()
         async with self._driver.session(database=self._settings.neo4j_database) as session:
             for statement in compile_node_writes(
-                self._schema, tuple(mutations), graph_generation_id=_LEGACY_GENERATION_ID
+                self._schema, tuple(mutations), graph_generation_id=graph_generation_id
             ):
                 result = await session.run(statement.cypher, statement.parameters)
                 await result.consume()
@@ -474,17 +629,17 @@ class GraphSyncService:
             "startedBy": actor_id,
             "startedAt": now,
             "completedAt": None,
+            "graphGenerationId": None,
             "recordScope": "INCREMENTAL" if request.incremental else "FULL",
             "skippedSources": [],
         }
         await self._runs.insert_one(document)
         try:
             constraints = await self._apply_constraints() if request.applySchema else []
-            await self._ensure_generation_marker()
 
             source_counts: dict[str, int] = {}
             skipped: list[str] = []
-            node_writes, relationship_writes = await self._sync_participating_sources(
+            outcome = await self._sync_participating_sources(
                 request=request,
                 run_id=run_id,
                 limit=limit,
@@ -500,9 +655,10 @@ class GraphSyncService:
                     "status": "COMPLETED",
                     "sourceCounts": source_counts,
                     "skippedSources": skipped,
-                    "nodeWrites": node_writes,
-                    "relationshipWrites": relationship_writes,
+                    "nodeWrites": outcome.node_writes,
+                    "relationshipWrites": outcome.relationship_writes,
                     "constraintsApplied": constraints,
+                    "graphGenerationId": outcome.graph_generation_id,
                     "completedAt": completed,
                 }
             )
@@ -529,7 +685,7 @@ class GraphSyncService:
         seed_digest: str | None,
         source_counts: dict[str, int],
         skipped: list[str],
-    ) -> tuple[int, int]:
+    ) -> _SyncOutcome:
         mongo_source_ids = frozenset(
             source_id
             for source_id, source in self._schema.sources.items()
@@ -550,7 +706,9 @@ class GraphSyncService:
         if request.mode in {GraphSyncScope.FULL, GraphSyncScope.SQLSERVER}:
             participating |= sql_source_ids
         if not participating:
-            return 0, 0
+            # Nothing to sync, so nothing to resolve, adopt or cut over to. A
+            # generation id here would name a generation this run never touched.
+            return _SyncOutcome(0, 0, None)
         if request.incremental:
             skipped.extend(
                 self.incremental_skipped_source_ids(self._schema, frozenset(participating))
@@ -629,6 +787,22 @@ class GraphSyncService:
             reconciler=self._writer,
             ownership_reconciler=self._writer,
         )
+        participating_ids = frozenset(participating)
+
+        if _is_destructive_rebuild(request):
+            return await self._rebuild_and_activate(
+                coordinator=coordinator, source_asset_ids=participating_ids
+            )
+
+        # Every other shape writes into the generation that is already serving:
+        # an incremental pass resuming from its own checkpoints, or a
+        # single-source resync. Neither replaces the graph, so neither is a
+        # cutover -- but both are still fenced, with a token allocated now rather
+        # than a constant, so a run of either kind that stalled and was
+        # superseded is rejected instead of writing on top of its successor.
+        graph_generation_id = await self._resolve_active_generation()
+        fencing_token = await self._claim_write_ownership(graph_generation_id)
+
         if request.incremental:
             # No `sync_run_id`: the run manifest records the watermark bounds a
             # *full* run fixed up front, and an incremental run has no such
@@ -637,21 +811,136 @@ class GraphSyncService:
             # incremental_sync deliberately (see `_project_page`), because a
             # replace-child-set pass driven by a partial page would delete the
             # children of every parent the page did not contain.
-            return await coordinator.incremental_sync(
+            nodes, relationships = await coordinator.incremental_sync(
                 schema=self._schema,
-                graph_generation_id=_LEGACY_GENERATION_ID,
-                fencing_token=_LEGACY_FENCING_TOKEN,
-                source_asset_ids=frozenset(participating),
+                graph_generation_id=graph_generation_id,
+                fencing_token=fencing_token,
+                source_asset_ids=participating_ids,
                 expected_generation_status=GraphGenerationStatus.ACTIVE,
             )
-        return await coordinator.full_sync(
-            schema=self._schema,
-            graph_generation_id=_LEGACY_GENERATION_ID,
-            fencing_token=_LEGACY_FENCING_TOKEN,
-            source_asset_ids=frozenset(participating),
-            expected_generation_status=GraphGenerationStatus.ACTIVE,
-            sync_run_id=run_id,
+        else:
+            nodes, relationships = await coordinator.full_sync(
+                schema=self._schema,
+                graph_generation_id=graph_generation_id,
+                fencing_token=fencing_token,
+                source_asset_ids=participating_ids,
+                expected_generation_status=GraphGenerationStatus.ACTIVE,
+                sync_run_id=run_id,
+            )
+        return _SyncOutcome(nodes, relationships, graph_generation_id)
+
+    async def _rebuild_and_activate(
+        self, *, coordinator: GenericSyncCoordinator, source_asset_ids: frozenset[str]
+    ) -> _SyncOutcome:
+        """The C9 destructive flow, driven by the lifecycle that already implements it.
+
+        allocate generation N+1 -> capture high watermark -> sync into N+1 ->
+        catch up deltas -> validate N+1 -> atomically swap ActiveRuntimeSnapshot
+        -> block new readers from N -> drain old readers -> retire N. Every step
+        of that belongs to `GenerationLifecycleOrchestrator`; this method exists
+        to hand it the pipeline *this service* assembles rather than a second one
+        built beside it, so a rebuild reads through the same connectors, the same
+        seed pins, the same per-source counting and the same record limits as
+        every other run.
+
+        A rebuild already running elsewhere is reported, not swallowed. The
+        request-scoped API caller asked for a sync now and needs to know it did
+        not happen; `RebuildTrigger` swallows the same condition because its
+        callers are startup and schedules, where standing down is correct.
+
+        If N+1 fails at any point -- build, catch-up, validation, or the
+        compare-and-swap -- the orchestrator marks it FAILED and never moves the
+        snapshot, so N stays active and serving. That is the property, and it is
+        why this must never pre-emptively touch N.
+        """
+        scoped = _ScopedRebuildCoordinator(coordinator, source_asset_ids)
+        orchestrator = GenerationLifecycleOrchestrator(
+            snapshot_store=self._snapshots,
+            lease_store=self._rebuild_leases,
+            generation_writer=self._generation_writer,
+            sync_coordinator=scoped,
+            fencing_tokens=self._fencing_tokens,
+            owner_instance_id=self._owner_instance_id,
+            generation_lease_store=self._generation_leases,
+            validator=self._validator,
         )
+        # Adopt first. Without a predecessor the cutover would activate the new
+        # generation beside the live graph instead of replacing it, and every
+        # node already there would be orphaned under `legacy-live` with nothing
+        # left pointing at it.
+        await self._resolve_active_generation()
+        snapshot = await orchestrator.build_and_activate(
+            schema=self._schema,
+            snapshot_name=DEFAULT_SNAPSHOT_NAME,
+            configuration_release_id=self._schema.configuration_release_id,
+        )
+        return _SyncOutcome(
+            scoped.node_writes, scoped.relationship_writes, snapshot.graph_generation_id
+        )
+
+    async def _resolve_active_generation(self) -> str:
+        """Which generation is serving, creating and adopting one if none is yet.
+
+        Three states, in the order they are checked:
+
+        1. An `ActiveRuntimeSnapshot` exists -- the normal case once a cutover
+           has run. Its generation is authoritative, and it is the same pointer
+           `lifecycle/handle.py` resolves on the read path, so writer and reader
+           cannot disagree about what is live.
+        2. No snapshot, but a `legacy-live` marker exists -- a deployment whose
+           graph predates the protocol. Adopt it (see
+           `adopt_existing_generation`): its data stays served, and the next
+           destructive rebuild has a predecessor to drain and retire.
+        3. Neither -- a new deployment. Create the marker exactly as this service
+           always has, then adopt it, so a partial or incremental sync on a fresh
+           install still has somewhere to write and readers falling back to
+           `LEGACY_GENERATION_ID` still agree with it.
+
+        States 2 and 3 converge deliberately: after either, a snapshot exists and
+        nothing resolves "the current generation" by falling back to a literal.
+        """
+        snapshot = await self._snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)
+        if snapshot is not None:
+            return snapshot.graph_generation_id
+
+        await self._ensure_generation_marker()
+        adopted = await adopt_existing_generation(
+            snapshot_store=self._snapshots,
+            generation_writer=self._generation_writer,
+            fencing_tokens=self._fencing_tokens,
+            graph_generation_id=_LEGACY_GENERATION_ID,
+            snapshot_name=DEFAULT_SNAPSHOT_NAME,
+            configuration_release_id=self._schema.configuration_release_id,
+            schema_fingerprint=self._schema.configuration_checksum,
+        )
+        return adopted.graph_generation_id
+
+    async def _claim_write_ownership(self, graph_generation_id: str) -> int:
+        """Allocate this run's fencing token and stamp it on the generation.
+
+        The token is durable and monotonic, so claiming it is what fences off any
+        earlier run that still believes it owns this generation: its writes stop
+        matching the Neo4j marker, and `MongoSyncCheckpointStore` refuses to let
+        its lower token rewind a cursor this run has advanced. Before this, every
+        run presented the same constant and no run could ever be fenced.
+
+        ACTIVE is required rather than merely observed. The snapshot only ever
+        points at an ACTIVE generation, so anything else means the generation
+        began draining between resolution and the claim -- and a run that carried
+        on would write into a generation about to be retired, reporting success
+        for data that is discarded.
+        """
+        token = await self._fencing_tokens.allocate(scope=DEFAULT_SNAPSHOT_NAME)
+        status, _ = await self._generation_writer.claim_write_ownership(
+            graph_generation_id=graph_generation_id, fencing_token=token
+        )
+        if status is not GraphGenerationStatus.ACTIVE:
+            raise ActivationError(
+                f"generation {graph_generation_id!r} is {status.value}, not ACTIVE; "
+                "this run has been superseded and must not write",
+                stage="CLAIM_WRITE_OWNERSHIP",
+            )
+        return token
 
     @staticmethod
     def platform_store_source_ids(
@@ -695,10 +984,15 @@ class GraphSyncService:
         return {source_id: pin for source_id in mongo_source_ids}
 
     async def _ensure_generation_marker(self) -> None:
-        """This service does not run a real blue/green rebuild -- it resyncs
-        directly into one stable, always-ACTIVE generation marker. The real
-        generation lifecycle (PREPARING -> ... -> ACTIVE -> RETIRED) is a
-        separate, later cutover (see the source-to-graph alignment plan)."""
+        """Create the legacy marker if this deployment has never had a generation.
+
+        Bootstrap only, and reached exactly once per deployment: the very next
+        step adopts it into an `ActiveRuntimeSnapshot`, after which
+        `_resolve_active_generation` answers from the snapshot and never comes
+        back here. It is deliberately still a MERGE with `ON CREATE SET` -- an
+        existing marker carries an adopted status and an allocated fencing token,
+        and overwriting either would un-fence whoever currently owns it.
+        """
 
         async with self._driver.session(database=self._settings.neo4j_database) as session:
             result = await session.run(

@@ -53,6 +53,39 @@ def compile_generation_fence(
     )
 
 
+def compile_generation_fence_claim(
+    *, graph_generation_id: str, fencing_token: int
+) -> CompiledWrite:
+    """Take write ownership of a generation by raising its fencing token.
+
+    This is what turns the fence from a formality into a real one. Every writer
+    of a generation presents a token and `compile_generation_fence` demands an
+    exact match, so raising the marker's token is precisely how a previous owner
+    -- a sync run whose process stalled, a redeployed worker that has not
+    noticed -- stops being able to write.
+
+    Monotonic at the marker itself: the `CASE` only ever moves the token up, so
+    a claimer arriving with a token no higher than the stored one cannot rewind
+    it and two racing claimers agree on one winner without a transaction. The
+    row is returned unconditionally (rather than filtering with `WHERE`) so a
+    caller can tell "no such marker" from "my claim lost to a higher token", and
+    sees the token that beat it.
+    """
+
+    return CompiledWrite(
+        cypher=(
+            "MATCH (g:GraphGeneration {generation_id: $generationId}) "
+            "SET g.fencing_token = CASE WHEN g.fencing_token < $fencingToken "
+            "THEN $fencingToken ELSE g.fencing_token END "
+            "RETURN g.status AS status, g.fencing_token AS fencing_token"
+        ),
+        parameters={
+            "generationId": graph_generation_id,
+            "fencingToken": fencing_token,
+        },
+    )
+
+
 def compile_receipt_lookup(*, sync_run_id: str, chunk_id: str) -> CompiledWrite:
     return CompiledWrite(
         cypher=(

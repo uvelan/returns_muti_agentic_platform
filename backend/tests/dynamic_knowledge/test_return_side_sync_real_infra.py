@@ -29,6 +29,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -306,11 +307,25 @@ async def _seed_order_document(harness: _Harness) -> None:
     Inserted rather than built through a repository because `salesInv` is an
     upstream collection this platform only ever reads. The paths are the ones
     the active schema configures for `sales_order`.
+
+    `lastUpdateTs` must be a real BSON date, not an ISO string. It is
+    `source_sales`'s configured `incremental_cursor_field` (`source_updated_at`,
+    `data_type: DATETIME`), so `capture_high_watermark` returns a
+    `FIELD_DATETIME` cursor and `scan` bounds the query with a real datetime.
+    MongoDB's BSON type ordering puts String below Date, so a string-typed field
+    matches no `$lte <date>` bound: the scan silently returned zero rows, no
+    SalesOrder was ever projected, and the COVERS_ORDER edge Stage B would have
+    joined had nothing to join to. Every other document in this module is
+    written through `OperationalRepository`, which stores real datetimes, which
+    is why only this hand-seeded upstream one was affected.
+
+    The same hazard, with the same explanation, is documented at
+    `test_generation_lifecycle_e2e._Harness.seed_source`.
     """
     await harness.mongo[harness.source_database]["salesInv"].insert_one(
         {
             "_id": f"CHARLOTTE*{ORDER_REFERENCE}",
-            "salesHdrEventMeta": {"lastUpdateTs": "2026-08-12T09:00:00Z"},
+            "salesHdrEventMeta": {"lastUpdateTs": datetime(2026, 8, 12, 9, tzinfo=UTC)},
             "salesHdrEventData": {
                 "accountId": "CHARLOTTE",
                 "orderId": ORDER_REFERENCE,

@@ -163,6 +163,18 @@ class _QuietSyncCoordinator:
         return (0, 0)
 
 
+class _CountingTokens:
+    """Strictly increasing, as `MongoFencingTokenAllocator` is."""
+
+    def __init__(self) -> None:
+        self._next = 1
+
+    async def allocate(self, *, scope: str, floor: int = 0) -> int:
+        del scope
+        self._next = max(self._next, floor) + 1
+        return self._next
+
+
 def _previous_snapshot(graph_generation_id: str) -> ActiveRuntimeSnapshot:
     return ActiveRuntimeSnapshot(
         snapshot_name="default",
@@ -189,6 +201,7 @@ def _orchestrator(
         lease_store=_FakeRebuildLeaseStore(),  # type: ignore[arg-type]
         generation_writer=writer,  # type: ignore[arg-type]
         sync_coordinator=sync_coordinator or _QuietSyncCoordinator(),  # type: ignore[arg-type]
+        fencing_tokens=_CountingTokens(),  # type: ignore[arg-type]
         owner_instance_id="test-instance",
         generation_lease_store=lease_store,  # type: ignore[arg-type]
         drain_timeout_seconds=drain_timeout_seconds,
