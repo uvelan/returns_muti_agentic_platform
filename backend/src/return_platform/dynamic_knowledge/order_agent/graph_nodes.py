@@ -1136,8 +1136,21 @@ def make_respond_node(deps: GraphDependencies) -> Any:
             graph_generation_id=state["graph_generation_id"],
         )
         if not validation.valid:
+            # The reasons go in the *message*, not only in `extra`. They were
+            # already computed and then discarded by every log formatter that
+            # does not render extras, which left the only record of why a turn
+            # was refused sitting in a dictionary nobody prints -- an operator
+            # saw "could not be validated" and had nowhere to go. The reasons
+            # name statement ids, evidence paths and generation ids, all of
+            # which are platform identifiers rather than customer data.
+            reasons = "; ".join(
+                f"{item.statement_id}: {item.reason}" for item in validation.failures
+            )
             logger.warning(
-                "order_agent_response_validation_failed",
+                "order_agent_response_validation_failed attempt=%d failures=%d reasons=%s",
+                correction_attempts,
+                len(validation.failures),
+                reasons,
                 extra={
                     "conversation_id": state["conversation_id"],
                     "client_turn_id": state["client_turn_id"],

@@ -17,10 +17,16 @@
       "port": 8000
     },
     {
+      "name": "order-discovery-worker",
+      "runtimeExecutable": "backend/.venv/Scripts/python.exe",
+      "runtimeArgs": ["backend/scripts/run_order_discovery_worker.py"],
+      "autoPort": true
+    },
+    {
       "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
-      "port": 5173
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev", "--", "--port", "5273"],
+      "port": 5273
     },
     {
       "name": "frontend-mock",
