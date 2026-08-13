@@ -37,6 +37,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
+from return_platform.ai.gateway.final_dispatch import ALLOW_ALL
 from return_platform.ai.gateway.service import AIGatewayService
 from return_platform.ai.gateway.structured_invocation import (
     StructuredInvocationUnavailable,
@@ -209,6 +210,7 @@ def _harness() -> tuple[AIGatewayService, StructuredOutputInvoker[_Answer], _Cou
         logger=logging.getLogger("test"),
         event_prefix="test",
         subject="test invocation",
+        interception=ALLOW_ALL,
     )
     return service, invoker, pool
 
@@ -333,4 +335,5 @@ def test_the_invoker_refuses_a_task_that_permits_the_simulator() -> None:
             event_prefix="test",
             subject="test invocation",
             required_tier=None,
+            interception=ALLOW_ALL,
         )

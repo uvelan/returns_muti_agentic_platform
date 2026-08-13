@@ -14,10 +14,15 @@ import json
 import logging
 from typing import Any
 
+from return_platform.ai.gateway.interception_policy import (
+    AIGatewaySettingsSource,
+    build_interception_policy,
+)
 from return_platform.ai.gateway.structured_invocation import (
     StructuredInvocationUnavailable,
     StructuredOutputInvoker,
 )
+from return_platform.ai.interception.store import InterceptionStore
 from return_platform.ai.gateway.telemetry import AIAttemptRecorder, InvocationCorrelation
 from return_platform.ai.routing.selection import AIRoutePool
 from return_platform.ai.routing.tasks import AIGatewayConfiguration
@@ -54,6 +59,12 @@ class RoutePoolReasoningModelGateway:
         route_pool: AIRoutePool,
         task_id: str = "ORDER_AGENT_REASONING_V1",
         recorder: AIAttemptRecorder | None = None,
+        # AI-01. This is the path the audit found bypassing interception, and
+        # the reason it did was that nothing here ever mentioned it. A store and
+        # a settings source produce a real gate; their absence produces a logged
+        # `ALLOW_ALL` rather than a silent one.
+        interception_store: InterceptionStore | None = None,
+        gateway_settings: AIGatewaySettingsSource | None = None,
     ) -> None:
         self._invoker: StructuredOutputInvoker[AgentAction] = StructuredOutputInvoker(
             settings=settings,
@@ -66,6 +77,11 @@ class RoutePoolReasoningModelGateway:
             subject="Order Agent",
             unavailable_error=StandardReasoningUnavailable,
             recorder=recorder,
+            interception=build_interception_policy(
+                store=interception_store,
+                settings_source=gateway_settings,
+                subject="order_agent_reasoning",
+            ),
         )
         self._settings = settings
         self._task_id = task_id

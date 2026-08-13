@@ -78,6 +78,8 @@ class InterceptionStore(Protocol):
         self, *, interception_id: str, response_text: str, answered_by: str
     ) -> Interception: ...
 
+    async def allow(self, *, interception_id: str, allowed_by: str) -> Interception: ...
+
     async def cancel(self, *, interception_id: str, status: InterceptionStatus) -> None: ...
 
     async def list_pending(self, *, limit: int = 100) -> list[Interception]: ...
@@ -223,6 +225,53 @@ class SystemStoreInterceptionStore:
                 f"interception {interception_id!r} stopped being PENDING during the write"
             )
         return _from_document(updated, response_text=response_text)
+
+    async def allow(self, *, interception_id: str, allowed_by: str) -> Interception:
+        """Approve the held request unchanged: the model, not a human, answers it.
+
+        The same compare-and-set discipline as `answer`, for the same reason --
+        an operator approving while another answers must produce one winner, not
+        a request that is both approved and substituted.
+
+        Deliberately writes **no** response text and does not touch the sealed
+        envelope. Approval is a statement about the request, not about its
+        answer, and inventing an empty answer here is exactly how an approved
+        request would later be mistaken for a human-answered one.
+
+        `allowed_by` reuses the `answered_by` column because the question it
+        answers is the same -- which operator acted -- and a second near-identical
+        column is how an audit query comes to cover half the actions. `status`
+        distinguishes what they did.
+        """
+        now = datetime.now(UTC)
+        document = await self._store.read_only(AI_INTERCEPTIONS).find_one(
+            {"interception_id": interception_id}
+        )
+        if document is None:
+            raise InterceptionNotPending(f"interception {interception_id!r} does not exist")
+        if document.get("status") != InterceptionStatus.PENDING.value:
+            raise InterceptionNotPending(
+                f"interception {interception_id!r} is {document.get('status')}, not PENDING"
+            )
+        updated = dict(document)
+        updated.update(
+            {
+                "status": InterceptionStatus.ALLOWED.value,
+                "answered_at": now,
+                "answered_by": allowed_by,
+            }
+        )
+        result = await self._store.replace_one(
+            AI_INTERCEPTIONS,
+            {"interception_id": interception_id, "status": InterceptionStatus.PENDING.value},
+            updated,
+            allowed_metadata_fields=METADATA_FIELDS,
+        )
+        if getattr(result, "matched_count", 0) != 1:
+            raise InterceptionNotPending(
+                f"interception {interception_id!r} stopped being PENDING during the write"
+            )
+        return _from_document(updated)
 
     async def list_pending(self, *, limit: int = 100) -> list[Interception]:
         """The operator queue: what is waiting on a human, oldest first.

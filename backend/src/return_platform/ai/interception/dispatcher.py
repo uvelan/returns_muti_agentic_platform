@@ -34,6 +34,7 @@ from typing import Any
 
 from pymongo.errors import DuplicateKeyError
 
+from return_platform.ai.interception.records import RESUMABLE
 from return_platform.ai.interception.store import AI_INTERCEPTIONS, METADATA_FIELDS
 from return_platform.platform.system_store.repository import SystemStore
 
@@ -70,9 +71,16 @@ class InterceptionResumeDispatcher:
         Returns how many were enqueued, so a caller can distinguish "idle" from
         "working" without inspecting the store.
         """
+        # `ALLOWED` as well as `ANSWERED`: an approved request is as blocked as
+        # an answered one until its run is signalled. Enqueueing only answers
+        # would make "allow this through" a decision that is recorded and then
+        # never acted on, which is worse than not offering it.
         cursor = (
             self._interceptions.find(
-                {"status": "ANSWERED", "resume_enqueued_at": {"$exists": False}}
+                {
+                    "status": {"$in": sorted(status.value for status in RESUMABLE)},
+                    "resume_enqueued_at": {"$exists": False},
+                }
             )
             .sort("answered_at", 1)
             .limit(self._batch_size)

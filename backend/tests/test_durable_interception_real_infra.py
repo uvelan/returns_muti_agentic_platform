@@ -441,3 +441,101 @@ async def test_a_dispatched_interception_leaves_the_dispatch_queue(
     assert document is not None and document.get("resume_enqueued_at") is not None
     # And the payload is still sealed after the stamping rewrite.
     assert SECRET_PROMPT not in str(document)
+
+
+# ---------------------------------------------------------------------------
+# AI-01: the third outcome, against real storage
+# ---------------------------------------------------------------------------
+#
+# `ALLOWED` is the decision the platform did not model. An operator could
+# substitute a human answer or kill a request; "I have read this and the model
+# may proceed" had no representation, which made turning interception on in
+# production a choice between inspecting nothing and hand-answering everything.
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_allowing_records_the_operator_without_inventing_an_answer(
+    system_store: SystemStore,
+) -> None:
+    """Approval is a statement about the request, not about its answer.
+
+    Writing an empty `responseText` here would make an approved request
+    indistinguishable from a human-answered one downstream -- and the whole
+    reason MANUAL is reported separately is that human text must never be
+    measured as model output.
+    """
+    store = SystemStoreInterceptionStore(system_store, _encryptor())
+    interception_id = f"i-{uuid.uuid4().hex[:8]}"
+    await _open(store, interception_id)
+
+    allowed = await store.allow(interception_id=interception_id, allowed_by="alex@example.com")
+
+    assert allowed.status is InterceptionStatus.ALLOWED
+    assert allowed.answered_by == "alex@example.com"
+    assert allowed.response_text is None
+    payload = await store.request_payload(interception_id)
+    assert payload is not None
+    assert "responseText" not in payload
+    # The sealed prompt survives the transition unread and unrewritten.
+    assert payload["systemPrompt"] == SECRET_PROMPT
+    raw = await system_store.read_only(AI_INTERCEPTIONS).find_one(
+        {"interception_id": interception_id}
+    )
+    assert raw is not None and SECRET_PROMPT not in str(raw)
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_allowing_and_answering_cannot_both_win(system_store: SystemStore) -> None:
+    """Same compare-and-set discipline as two operators answering at once. A
+    request that was both approved and substituted has no single truth about who
+    produced its answer."""
+    store = SystemStoreInterceptionStore(system_store, _encryptor())
+    interception_id = f"i-{uuid.uuid4().hex[:8]}"
+    await _open(store, interception_id)
+
+    await store.allow(interception_id=interception_id, allowed_by="op-1")
+
+    with pytest.raises(InterceptionNotPending):
+        await store.answer(
+            interception_id=interception_id, response_text="{}", answered_by="op-2"
+        )
+    with pytest.raises(InterceptionNotPending):
+        await store.allow(interception_id=interception_id, allowed_by="op-2")
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_an_allowed_interception_becomes_a_resume_command(
+    system_store: SystemStore,
+) -> None:
+    """An approved request is as blocked as an answered one until its run is
+    signalled. Enqueueing only answers would make "allow this through" a decision
+    that is recorded and then never acted on."""
+    await _assert_command_index(system_store)
+    store = SystemStoreInterceptionStore(system_store, _encryptor())
+    dispatcher = InterceptionResumeDispatcher(system_store)
+    interception_id = f"i-{uuid.uuid4().hex[:8]}"
+    await _open(store, interception_id)
+    await store.allow(interception_id=interception_id, allowed_by="op-1")
+
+    assert await dispatcher.dispatch_once() >= 1
+
+    command = await system_store.read_only(RESUME_COMMANDS).find_one(
+        {"command_id": resume_command_id(interception_id)}
+    )
+    assert command is not None
+    assert command["status"] == "PENDING"
+    assert command["workflow_id"] == "wf-1"
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_an_allowed_interception_leaves_the_operator_queue(
+    system_store: SystemStore,
+) -> None:
+    store = SystemStoreInterceptionStore(system_store, _encryptor())
+    interception_id = f"i-{uuid.uuid4().hex[:8]}"
+    await _open(store, interception_id)
+    assert any(item.interception_id == interception_id for item in await store.list_pending())
+
+    await store.allow(interception_id=interception_id, allowed_by="op-1")
+
+    assert not any(item.interception_id == interception_id for item in await store.list_pending())

@@ -805,6 +805,11 @@ async def lifespan(
                         settings=settings,
                         configuration=ai_gateway_configuration.configuration,
                         route_pool=app.state.ai_gateway_route_pool,
+                        # AI-01. Block 5 of this prompt is UNTRUSTED SOURCE
+                        # SAMPLE -- rows out of a customer's database -- and it
+                        # was the least gated path on the platform.
+                        interception_store=getattr(app.state, "ai_interception_store", None),
+                        gateway_settings=operational_repository,
                     )
                 except Exception as exc:  # noqa: BLE001 - degrade, never block startup
                     logger.warning(
