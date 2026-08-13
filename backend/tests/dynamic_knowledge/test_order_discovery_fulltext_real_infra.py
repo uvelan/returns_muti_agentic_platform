@@ -19,10 +19,11 @@ predecessor's own query against the same corpus and asserts it misses. Without
 it the passing test above could be read as "both approaches work at this
 scale", which is exactly the reading that let the defect ship.
 
-Corpus size is `ORDER_DISCOVERY_FULLTEXT_CORPUS_SIZE`, defaulting to the
-audit's 250,000. Every seeded node carries this run's `graph_generation_id` and
-is deleted in the fixture's teardown; nothing here mutates data it did not
-create.
+The corpus is the audit's own 250,000 rows and seeds in about half a minute;
+`ORDER_DISCOVERY_FULLTEXT_CORPUS_SIZE` shrinks it for a developer iterating on
+this file, holding every named row at the same relative depth. Every seeded
+node carries this run's `graph_generation_id` and is deleted in the fixture's
+teardown; nothing here mutates data it did not create.
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ from typing import Any
 import pytest
 import pytest_asyncio
 from langgraph.runtime import Runtime
-from neo4j import AsyncGraphDatabase, AsyncDriver
+from neo4j import AsyncDriver, AsyncGraphDatabase
 
 from return_platform.dynamic_knowledge.config_loader import load_active_schema
 from return_platform.dynamic_knowledge.integration.neo4j_gateway import Neo4jKnowledgeGateway
@@ -113,7 +114,7 @@ TRADE_NAME_POSITION = _seeded_position(201_500)
 #: The bound the deleted `build_customer_fuzzy_probe_plan` carried.
 OLD_PROBE_LIMIT = 100
 
-_BATCH_SIZE = 5_000
+_BATCH_SIZE = 10_000
 
 
 def _required_env(name: str) -> str:
@@ -170,7 +171,7 @@ async def corpus() -> AsyncIterator[tuple[AsyncDriver, str, str]]:
                     else:
                         name = _customer_name(position)
                     rows.append({"customer_id": f"{run_token}-{position:07d}", "name": name})
-                await session.run(
+                written = await session.run(
                     "UNWIND $rows AS row "
                     "CREATE (c:Customer {account_id: $account_id, "
                     "customer_id: row.customer_id, customer_name: row.name, "
@@ -179,14 +180,20 @@ async def corpus() -> AsyncIterator[tuple[AsyncDriver, str, str]]:
                     account_id=account_id,
                     generation_id=generation_id,
                 )
+                # Consumed rather than left streaming: an unconsumed result
+                # holds its connection open, and fifty of them in a row is how
+                # a seed loop ends in "failed to read from defunct connection"
+                # that reads like an infrastructure fault.
+                await written.consume()
         yield driver, account_id, generation_id
     finally:
         async with driver.session() as session:
-            await session.run(
+            removed = await session.run(
                 "MATCH (c:Customer {graph_generation_id: $generation_id}) "
-                "CALL { WITH c DETACH DELETE c } IN TRANSACTIONS OF 10000 ROWS",
+                "CALL (c) { DETACH DELETE c } IN TRANSACTIONS OF 10000 ROWS",
                 generation_id=generation_id,
             )
+            await removed.consume()
         await driver.close()
 
 
@@ -235,7 +242,9 @@ def _dependencies(schema: ActiveSchema, driver: AsyncDriver) -> GraphDependencie
     return GraphDependencies(
         schema=schema,
         model_gateway=_UnusedModel(),
-        knowledge_gateway=Neo4jKnowledgeGateway(driver, database=os.getenv("PLATFORM_NEO4J_DATABASE", "neo4j")),
+        knowledge_gateway=Neo4jKnowledgeGateway(
+            driver, database=os.getenv("PLATFORM_NEO4J_DATABASE", "neo4j")
+        ),
         evidence_store=_CollectingEvidenceStore(),
         capability_guard=CapabilityGuard(),
         schema_guard=SchemaQueryGuard(),

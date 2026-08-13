@@ -164,6 +164,7 @@ class CustomerFulltextPolicy:
     candidate_limit: int = MAX_CACHED_CANDIDATES
     relative_score_floor: float = 0.55
 
+
 # Intent fields that identify *what* was searched for, as opposed to
 # metadata about the search itself (searchMode, confidence, wantsMoreResults).
 # Used to detect whether a "show next" follow-up still refers to the same
@@ -650,7 +651,9 @@ def narrow_fulltext_matches(
         score = float(raw_score)
         if score <= 0.0:
             continue
-        scored.append(({key: value for key, value in row.items() if key != FULLTEXT_SCORE_FIELD}, score))
+        scored.append(
+            ({key: value for key, value in row.items() if key != FULLTEXT_SCORE_FIELD}, score)
+        )
     if not scored:
         return []
     scored.sort(key=lambda item: item[1], reverse=True)

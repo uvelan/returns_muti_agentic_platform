@@ -128,7 +128,9 @@ async def build_dynamic_order_agent_runtime(
     # property that matters: `customer_name_search_v2` is created by a migration
     # and can be rebuilt under a new name, and the agent has to follow.
     progressive = progressive_discovery or (
-        load_return_configuration(settings.return_configuration_path).configuration.discovery.progressive
+        load_return_configuration(
+            settings.return_configuration_path
+        ).configuration.discovery.progressive
     )
 
     coordinator = DynamicOrderAgentCoordinator(

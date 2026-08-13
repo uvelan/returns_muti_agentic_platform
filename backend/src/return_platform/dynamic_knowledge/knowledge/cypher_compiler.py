@@ -201,7 +201,9 @@ class CypherCompiler:
             )
         indexed_property = entity.fields[field_id].graph_property
         selected = plan.fields or tuple(
-            selectable for selectable, field in entity.fields.items() if field.capabilities.displayable
+            selectable
+            for selectable, field in entity.fields.items()
+            if field.capabilities.displayable
         )
         if not selected:
             raise QueryCompilationError("query has no configured display fields")

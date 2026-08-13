@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 from uuid import uuid4
@@ -196,7 +196,7 @@ class GraphDependencies:
     # construction site keeps working; `runtime_factory` supplies the operator's
     # configured values, which is what makes the index name repointable without
     # a code change.
-    customer_fulltext: CustomerFulltextPolicy = CustomerFulltextPolicy()
+    customer_fulltext: CustomerFulltextPolicy = field(default_factory=CustomerFulltextPolicy)
 
 
 async def _rehydrate_evidence(

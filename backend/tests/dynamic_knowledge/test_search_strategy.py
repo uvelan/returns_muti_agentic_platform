@@ -5,7 +5,10 @@ from pathlib import Path
 import pytest
 
 from return_platform.dynamic_knowledge.config_loader import load_active_schema
-from return_platform.dynamic_knowledge.knowledge.cypher_compiler import CypherCompiler
+from return_platform.dynamic_knowledge.knowledge.cypher_compiler import (
+    FULLTEXT_SCORE_FIELD,
+    CypherCompiler,
+)
 from return_platform.dynamic_knowledge.knowledge.guards import (
     AnchorValue,
     GuardContext,
@@ -17,7 +20,6 @@ from return_platform.dynamic_knowledge.knowledge.guards import (
     StrongAnchorGuard,
     StrongAnchorRequest,
 )
-from return_platform.dynamic_knowledge.knowledge.cypher_compiler import FULLTEXT_SCORE_FIELD
 from return_platform.dynamic_knowledge.knowledge.query_plan import (
     LogicalQueryPlan,
     QueryOperation,
@@ -247,7 +249,7 @@ def test_two_names_are_alternatives_and_one_name_is_a_conjunction() -> None:
 
 
 def test_a_name_with_nothing_searchable_in_it_produces_no_plan() -> None:
-    """"customer" and "order" are the model's words, not the customer's name.
+    """ "customer" and "order" are the model's words, not the customer's name.
 
     A query built from them alone would match on the noise; returning no plan
     reports "no misspelling recovery available" instead.
@@ -370,7 +372,7 @@ def test_narrowing_keeps_every_row_that_is_genuinely_competitive() -> None:
 def test_the_relevance_score_does_not_travel_on_as_customer_data() -> None:
     """It is search metadata. Left in the row it reaches the model's context and
     the stored evidence as though the graph had returned it as a property."""
-    (row, score), = narrow_fulltext_matches([_row("C1", 4.5)], policy=CustomerFulltextPolicy())
+    ((row, score),) = narrow_fulltext_matches([_row("C1", 4.5)], policy=CustomerFulltextPolicy())
 
     assert FULLTEXT_SCORE_FIELD not in row
     assert score == 4.5
