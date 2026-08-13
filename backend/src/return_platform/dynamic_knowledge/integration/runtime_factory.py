@@ -54,6 +54,7 @@ from return_platform.dynamic_knowledge.order_agent.conversation_repository impor
 )
 from return_platform.dynamic_knowledge.order_agent.coordinator import DynamicOrderAgentCoordinator
 from return_platform.dynamic_knowledge.order_agent.search_strategy import CustomerFulltextPolicy
+from return_platform.dynamic_knowledge.schema import ActiveSchema
 from return_platform.operations.repository import OperationalRepository
 from return_platform.platform.reasoning.evidence_store import QueryEvidenceStore
 from return_platform.platform.secrets.envelope import EnvelopeEncryptor
@@ -102,10 +103,15 @@ async def build_dynamic_order_agent_runtime(
     temporal_client: Client,
     return_case_timings: ReturnCaseTimingConfiguration,
     progressive_discovery: ProgressiveDiscoveryConfiguration | None = None,
+    schema: ActiveSchema | None = None,
 ) -> DynamicOrderAgentCoordinator:
     # The published release if the analyzer has activated one, else the file.
     # This is the line that makes approving a schema in the console change what
     # the agent reasons over -- before it, an approved draft went nowhere.
+    #
+    # `schema` is supplied only when the caller has already resolved the release
+    # this rebuild is *for* (the worker's configuration reconciler); see
+    # `build_targeted_graph_access` for why resolving twice is not equivalent.
     graph = await build_targeted_graph_access(
         settings=settings,
         platform_mongo=platform_mongo,
@@ -113,6 +119,7 @@ async def build_dynamic_order_agent_runtime(
         neo4j_driver=neo4j_driver,
         owner_role="order-agent",
         targeted_sync_runs=targeted_sync_runs,
+        schema=schema,
     )
     conversation_documents = MongoAtomicConversationStore(
         platform_mongo,
