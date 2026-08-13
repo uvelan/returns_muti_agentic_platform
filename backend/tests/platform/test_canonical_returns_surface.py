@@ -9,9 +9,14 @@ test for the legacy surface; this covers the canonical one, which is where new
 endpoints will actually be added.
 
 **"API only under `/api/returns`."** Not yet true, and this test says so out
-loud rather than pretending. It records the nine routers currently serving the
+loud rather than pretending. It records the routers currently serving the
 return domain so the number cannot silently grow while consolidation is in
-progress -- adding a tenth fails here and makes someone justify it.
+progress -- adding one more fails here and makes someone justify it.
+
+(The inventory is eleven as of the SRCH-01/WF-01 remediation wave. Deliberately
+not restated as a number in prose: the earlier text said "nine" while the list
+held ten, which is the drift an executable inventory exists to prevent. Count
+the dict, not the sentence.)
 
 (The count started as eight in an earlier draft of this file. The test caught
 `return_agents.py`, which is precisely the kind of surface a hand-written
@@ -44,6 +49,21 @@ _KNOWN_RETURN_ROUTERS = {
     "associate_returns.py": "/api/v1/associate-returns",
     "return_agents.py": "/api/v1/return-agents",
     "canonical_returns.py": "/api/returns",
+    # Justified per this test's own contract, which requires a new router to be
+    # argued for rather than silently admitted. `return_history.py` was added
+    # deliberately by 2800412 ("the return itself is now something the graph can
+    # answer for") as a graph-backed *read* surface: it plans, guards, compiles
+    # and executes one read per request and mutates nothing, so the "no generic
+    # advance" rule above cannot be violated through it.
+    #
+    # It is recorded here rather than folded into `/api/returns` because it is
+    # already shipped and consumed -- `frontend/src/api/returnHistory.ts` plus
+    # its tests, the generated `return-platform.d.ts`, and the published
+    # `openapi.json` all carry `/api/return-history`. Relocating a live path
+    # would be a breaking change bought for no correctness gain. Consolidation
+    # stays where the docstring puts it: Wave F's deletion work, once the
+    # canonical surface owns the capability.
+    "return_history.py": "/api/return-history",
 }
 
 
