@@ -16,6 +16,13 @@ __pycache__/
 .mypy_cache/
 .venv/
 .env
+# Every `.env` variant, not just the bare name. `backend/.env.vault-backup` was
+# tracked and carried a live provider key into history, which GitHub's push
+# protection caught and the W0.1 credential migration did not: a backup taken
+# *before* that migration kept the plaintext it was meant to remove. A prefix
+# match is the point -- the next variant will not be called `.env` either.
+.env.*
+!.env.example
 .vault-local/
 
 # Generated validation and test output
