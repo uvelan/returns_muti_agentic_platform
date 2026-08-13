@@ -55,6 +55,7 @@ from return_platform.dynamic_knowledge.sync.adapters import (
     ProjectorGraphWriter,
     scan_connector_registry,
 )
+from return_platform.dynamic_knowledge.sync.checkpoint_store import MongoSyncCheckpointStore
 from return_platform.dynamic_knowledge.sync.coordinator import GenericSyncCoordinator
 from return_platform.source_connectors.contracts import (
     CursorComparison,
@@ -87,6 +88,13 @@ class GraphSyncRequest(GraphSyncModel):
     mode: GraphSyncScope = GraphSyncScope.FULL
     maxRecordsPerAsset: int = Field(default=1_000, ge=1, le=100_000)
     applySchema: bool = True
+    #: Which *records* a run reads, orthogonal to `mode`, which chooses which
+    #: *sources* take part. Kept as a separate field rather than a fourth
+    #: `GraphSyncScope` value so the two questions stay composable -- an
+    #: incremental Mongo-only pass is `SOURCE_MONGODB` + `incremental`, not a
+    #: fifth enum member per combination. Defaults to False: a caller that has
+    #: not thought about resume semantics gets the full scan it always got.
+    incremental: bool = False
 
 
 class SyncRunRequester(GraphSyncModel):
@@ -124,6 +132,16 @@ class GraphSyncRunView(GraphSyncModel):
     graphGenerationId: str | None = None
     requestDigest: str | None = None
     requestedBy: SyncRunRequester | None = None
+    #: FULL or INCREMENTAL, which is what the plan's S6 calls FULL/PARTIAL.
+    #: Defaulted rather than required because every run recorded before
+    #: incremental sync was reachable was a full scan, and back-filling a
+    #: historical ledger to say so would be inventing a record.
+    recordScope: Literal["FULL", "INCREMENTAL"] = "FULL"
+    #: Sources that took no part in an incremental run because they declare no
+    #: `incremental_cursor_field`. Empty on a full run. Surfaced because the
+    #: alternative is an operator seeing a green run and a source that quietly
+    #: never syncs -- exactly the failure this step exists to make visible.
+    skippedSources: list[str] = Field(default_factory=list)
 
 
 GRAPH_SYNC_RUNS_COLLECTION = "graph_sync_runs"
@@ -162,6 +180,8 @@ def sync_run_view(document: dict[str, Any]) -> GraphSyncRunView:
             "graphGenerationId": document.get("graphGenerationId"),
             "requestDigest": document.get("requestDigest"),
             "requestedBy": document.get("requestedBy"),
+            "recordScope": document.get("recordScope", "FULL"),
+            "skippedSources": document.get("skippedSources", []),
         }
     )
 
@@ -246,23 +266,6 @@ def _text(value: Any) -> str | None:
     return normalized or None
 
 
-class _UnusedCheckpointStore:
-    """full_sync never reads or writes checkpoints; only incremental_sync does."""
-
-    async def read(self, *, source_asset_id: str, graph_generation_id: str) -> SourceCursor | None:
-        raise NotImplementedError("GraphSyncService only ever runs full_sync")
-
-    async def write(
-        self,
-        *,
-        source_asset_id: str,
-        graph_generation_id: str,
-        checkpoint: SourceCursor,
-        fencing_token: int,
-    ) -> None:
-        raise NotImplementedError("GraphSyncService only ever runs full_sync")
-
-
 class _CountingConnector:
     """Wraps a connector to record per-source document counts for the run view --
     orchestration-level bookkeeping, not something the generic connectors need
@@ -337,8 +340,30 @@ class GraphSyncService:
         # make every read of `self._schema` optional for no gain.
         self._schema = load_active_schema(settings.dynamic_knowledge_schema_path)
         self._releases = SchemaReleaseStore(platform_client, settings.mongo_database)
+        self._checkpoints = MongoSyncCheckpointStore(platform_client, settings.mongo_database)
         self._writer = Neo4jDynamicGraphWriter(driver, database=settings.neo4j_database)
         self._projector = GenericGraphProjector()
+
+    @staticmethod
+    def incremental_skipped_source_ids(
+        schema: ActiveSchema, participating: frozenset[str]
+    ) -> tuple[str, ...]:
+        """Participating sources an incremental run cannot resume, because they
+        declare no `incremental_cursor_field`.
+
+        The coordinator skips these by design -- there is no position to read
+        from. Naming them here is what keeps that from being invisible: a run
+        that completes green having never touched a source is the failure mode
+        this whole step is about.
+        """
+
+        return tuple(
+            sorted(
+                source_id
+                for source_id in participating
+                if schema.sources[source_id].incremental_cursor_field is None
+            )
+        )
 
     async def refresh_schema(self) -> None:
         """Pick up a release published since this service started."""
@@ -348,6 +373,7 @@ class GraphSyncService:
 
     async def ensure_indexes(self) -> None:
         await self._releases.ensure_indexes()
+        await self._checkpoints.ensure_indexes()
         await self._runs.create_index([("startedAt", -1)])
         await self._runs.create_index("status")
         # The ledger now holds both scheduled and on-demand runs, and the first
@@ -448,6 +474,8 @@ class GraphSyncService:
             "startedBy": actor_id,
             "startedAt": now,
             "completedAt": None,
+            "recordScope": "INCREMENTAL" if request.incremental else "FULL",
+            "skippedSources": [],
         }
         await self._runs.insert_one(document)
         try:
@@ -455,6 +483,7 @@ class GraphSyncService:
             await self._ensure_generation_marker()
 
             source_counts: dict[str, int] = {}
+            skipped: list[str] = []
             node_writes, relationship_writes = await self._sync_participating_sources(
                 request=request,
                 run_id=run_id,
@@ -462,6 +491,7 @@ class GraphSyncService:
                 seed_version=seed_version,
                 seed_digest=seed_digest,
                 source_counts=source_counts,
+                skipped=skipped,
             )
 
             completed = _now()
@@ -469,6 +499,7 @@ class GraphSyncService:
                 {
                     "status": "COMPLETED",
                     "sourceCounts": source_counts,
+                    "skippedSources": skipped,
                     "nodeWrites": node_writes,
                     "relationshipWrites": relationship_writes,
                     "constraintsApplied": constraints,
@@ -497,6 +528,7 @@ class GraphSyncService:
         seed_version: str | None,
         seed_digest: str | None,
         source_counts: dict[str, int],
+        skipped: list[str],
     ) -> tuple[int, int]:
         mongo_source_ids = frozenset(
             source_id
@@ -519,6 +551,10 @@ class GraphSyncService:
             participating |= sql_source_ids
         if not participating:
             return 0, 0
+        if request.incremental:
+            skipped.extend(
+                self.incremental_skipped_source_ids(self._schema, frozenset(participating))
+            )
 
         # Only the upstream store. A seed generation is something the seeder
         # writes into the Ferguson source collections; the platform's own
@@ -589,10 +625,25 @@ class GraphSyncService:
             connectors=connectors,
             extractor=extractor,
             writer=projector_writer,
-            checkpoints=_UnusedCheckpointStore(),
+            checkpoints=self._checkpoints,
             reconciler=self._writer,
             ownership_reconciler=self._writer,
         )
+        if request.incremental:
+            # No `sync_run_id`: the run manifest records the watermark bounds a
+            # *full* run fixed up front, and an incremental run has no such
+            # single set -- each source resumes from its own checkpoint. No
+            # ownership reconciliation either; the coordinator withholds it from
+            # incremental_sync deliberately (see `_project_page`), because a
+            # replace-child-set pass driven by a partial page would delete the
+            # children of every parent the page did not contain.
+            return await coordinator.incremental_sync(
+                schema=self._schema,
+                graph_generation_id=_LEGACY_GENERATION_ID,
+                fencing_token=_LEGACY_FENCING_TOKEN,
+                source_asset_ids=frozenset(participating),
+                expected_generation_status=GraphGenerationStatus.ACTIVE,
+            )
         return await coordinator.full_sync(
             schema=self._schema,
             graph_generation_id=_LEGACY_GENERATION_ID,

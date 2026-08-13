@@ -101,9 +101,15 @@ def _neo4j_uri() -> str:
 class _NoCheckpoints:
     """`full_sync` never touches checkpoints; only `incremental_sync` does.
 
-    Mirrors production's `_UnusedCheckpointStore` -- raising rather than
-    returning None so a future change that *did* start checkpointing during a
-    full sync would fail loudly here instead of silently reading nothing.
+    Raising rather than returning None, so a future change that *did* start
+    checkpointing during a full sync would fail loudly here instead of silently
+    reading nothing.
+
+    This used to say it mirrored production's `_UnusedCheckpointStore`. That
+    class is gone: production now hands the coordinator a real
+    `MongoSyncCheckpointStore`, because `incremental_sync` finally has a caller.
+    Which makes keeping the guard here more useful than before, not less --
+    nothing in production raises on a full-sync checkpoint read any more.
     """
 
     async def read(self, *, source_asset_id: str, graph_generation_id: str) -> None:

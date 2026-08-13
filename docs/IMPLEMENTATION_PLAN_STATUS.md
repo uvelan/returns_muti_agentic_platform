@@ -2,7 +2,8 @@
 
 Against [`FERGUSON_RETURNS_IMPLEMENTATION_PLAN_FINAL.md`](FERGUSON_RETURNS_IMPLEMENTATION_PLAN_FINAL.md).
 Last verified 2026-08-13 on `refactor/unified-return-platform`, after merging W0.7/W5.9/W5.11
-hygiene, W4.5 and W2.6 — three branches cut in parallel from `493c3f3`.
+hygiene, W4.5 and W2.6 — three branches cut in parallel from `493c3f3` — and then W2.8 on top
+of `d9639e4`.
 
 **A step is "done" only when its own Validation clause holds.** Several steps below were
 previously reported complete and are recorded here as partial, because theirs does not.
@@ -37,7 +38,7 @@ policy, timings · W1.8 case list and resume.
 | W2.5 Return on-demand sync | **done** — `ReturnCaseWorkflow` runs a record-scoped `synchronize_return_records` activity after the return record commits, blocking, parking the case as `RETURN_GRAPH_SYNC_FAILED` on failure. Proven against real Mongo and Neo4j: a committed record is queryable through the compiler afterwards, and the pre-fix upstream connector routing is shown writing nothing |
 | W2.6 Fulfillment on-demand sync | **done** — a genuine 100-document `shipmentInfo` sample verified the contract; `shipment` is `VERIFIED`/`CONNECTED_SYNC` and the Validation clause holds on the shipped descriptor with no in-test promotion; see below |
 | W2.7 Warehouse and bay on-demand sync | **not started** — still blocked on W2.4's warehouse entity, which is now producible |
-| W2.8 Sync control (S6) and incremental sync | **partial** — S6 ships with run list, filters, detail and manual trigger; `incremental_sync` not confirmed implemented against the cursor contract |
+| W2.8 Sync control (S6) and incremental sync | **done** against its Validation clause — forced failure, restart, resume from the correct watermark and no duplicate reads are proven against real MongoDB, and the failure is visible in S6. `incremental_sync` and the connector were already correct; what did not exist was a checkpoint store that persists anything and a caller that runs them. Two items from the step's *Change* clause remain unshipped — see below |
 
 ### A defect found and fixed inside W2.5/W2.6's area
 
@@ -99,6 +100,89 @@ from a reference existing. Absent an observed shipment the state is `AWAITING_HA
 `SHIPMENT_UNAVAILABLE`. `_bind_fulfillment_tracking` used to *require* `tracking_reference is
 None` for `AWAITING_HANDOFF`, which made "we have a number" and "it is moving" the same statement
 by construction; that clause is relaxed.
+
+### W2.8: the incremental sync existed and had never once run
+
+`incremental_sync` was **not** missing and **not** wrong. `GenericSyncCoordinator.incremental_sync`
+reads the checkpoint, hands it to the connector as `after`, and advances the checkpoint only after
+both the node write and the affected-relationship reconciliation succeed for a page.
+`MongoDBSourceScanConnector.scan` honours `after` with a real `$gt` bound. Read in isolation, both
+halves are correct.
+
+What did not exist was anything to connect them to:
+
+- **No `CheckpointStore` implementation persisted anything.** The only one in the tree was
+  `sync_service._UnusedCheckpointStore`, whose `read` and `write` both raised
+  `NotImplementedError`.
+- **No caller ran it.** `GraphSyncService._sync_participating_sources` called `full_sync`
+  unconditionally, and `GraphSyncScope`'s three values (`FULL`, `SOURCE_MONGODB`, `SQLSERVER`)
+  all choose *which sources* participate, never *which records*. Every run S6 has ever
+  triggered or listed was a full scan.
+- **The existing tests could not have caught it.** `test_generic_sync_coordinator.py` drives
+  `incremental_sync` through a fake whose `read` returns `None` on every call — and `after=None`
+  is precisely the input under which a resume and a full scan produce identical output. Eight
+  tests exercised the method; none of them exercised a resume.
+
+This is the failure mode the step's *Why* names, in a shape the run list cannot show. A
+full-scanning "incremental" sync produces the same rows, the same statuses and the same green
+ticks; only the cost differs, and only against a real source at real volume.
+
+Now: `MongoSyncCheckpointStore` (Mongo-backed, keyed by generation and source, writes guarded by
+fencing token so a fenced-off run raises rather than silently rewinding a live cursor), and
+`GraphSyncRequest.incremental` selecting the branch. `incremental` is a separate field rather than
+a fourth `GraphSyncScope` value so "which sources" and "which records" stay composable instead of
+needing one enum member per combination.
+
+**Proven against real MongoDB**, not around a mock — `test_incremental_sync_real_infra.py`, on the
+descriptor as shipped, cursoring on the `shipmentInfoEventMeta.lastUpdateTs` path W2.6 corrected:
+a second run reads only the record that changed; a run with nothing to do reads nothing; a run
+that fails on page 3 of 4 leaves the checkpoint at page 2 and the restart reads pages 3 and 4 and
+neither of the first two; a checkpoint whose record was since deleted still resumes from that
+position rather than stalling or restarting. Both halves were then broken deliberately to confirm
+the tests fail — a non-persisting `read` fails all eight, and a `scan` that ignores `after` fails
+exactly the four resume-dependent ones.
+
+**Single-stage checkpointing, as the step's Failure condition permits.** Two-stage incremental
+checkpointing and blue/green catch-up sequencing remain out of scope and are not half-implemented.
+
+**Two operator-facing hazards surfaced rather than left silent.** A source with no
+`incremental_cursor_field` is skipped by the coordinator by design; the run now names those in
+`skippedSources` and S6 shows them, because otherwise a source quietly stops syncing behind a
+COMPLETED run. And S6's "completed without writing anything" warning is suppressed for incremental
+runs — writing nothing is the *expected* result there, and an error-toned warning on every quiet
+run is how the genuine one stops being read.
+
+**Not shipped, from the step's *Change* clause:**
+
+- **`config/sync/order_{full,partial}.yaml` are still unbound.** Both are `status: DRAFT` and
+  nothing reads them. They describe the *order discovery* sync profiles (`FULL_ORDER_SYNC` /
+  `PARTIAL_ORDER_SYNC` with strong anchors), which is the targeted on-demand path from W2.5/W2.6,
+  not the cursor-based incremental sync closed here.
+- **S6 does not show entity, binding version, watermark, or a retry control.** Run id, source,
+  schema generation, FULL/PARTIAL, processed, written, skipped, failed, start, finish and failure
+  reason are all present. The stored watermark is persisted but has no reader — an operator can
+  see that the second run read fewer records, not the cursor value it resumed from.
+
+**A known gap in the resume contract.** A checkpoint is refused when the source's cursor
+*strategy* changes (an `OBJECT_ID` cursor against a source now scanning by timestamp is a named
+`MongoConnectorError`, not a silent full rescan). It is **not** refused when the cursor's
+*physical path* changes underneath it while the type stays the same — the `CheckpointStore`
+protocol gives `read` only the source id and the generation, so the binding is not knowable there.
+W2.6's own path correction would not have been caught by it. In that case the old connector fails
+closed in `capture_high_watermark` rather than resuming wrongly, but that is a property of that
+particular change, not a guarantee.
+
+### A pre-existing test that had never run
+
+`tests/data_platform/graph/test_sync_service_pipeline.py` — the only test of
+`GraphSyncService.sync()`'s orchestration — died on an `AttributeError` in `refresh_schema` before
+reaching the pipeline it exists to exercise. `refresh_schema` was added after the module was
+written and its `FakeSettings` never caught up. Both tests in it were failing at `d9639e4`. The
+fake was stale, not the service; it is fixed and the tests now run.
+
+Likewise `SyncControlPage.test.tsx`'s "does not call out a healthy run" failed on its own setup
+line: `readRun` is mocked to the *targeted* run (5 writes), so the detail pane never rendered the
+`300` the test waited for, and its assertion had never once executed.
 
 ## Gate A — not run
 
