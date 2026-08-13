@@ -163,6 +163,40 @@ class CaseStore(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class StartedCaseWorkflow:
+    """The durable execution that owns a case, and who started it.
+
+    Mirrors `ConfirmedCase`: `already_running` is how a first confirmation is
+    told apart from a retried or simultaneous one, and it is the assertion that
+    proves a second execution was not created for the same case.
+    """
+
+    workflow_id: str
+    already_running: bool
+
+
+class CaseWorkflowLauncher(Protocol):
+    """The agent's second and last write outside its own conversation.
+
+    As narrow as `CaseStore` and for the same reason: the reasoning loop may
+    bring the case's durable execution into being and learn its id, and it may
+    do nothing else to it -- no signal, no query, no cancel. Everything after
+    confirmation belongs to that workflow, and an agent able to reach into it
+    would be an agent able to fake a support outcome.
+    """
+
+    async def ensure_case_workflow(
+        self,
+        *,
+        case_id: str,
+        tenant_id: str,
+        principal_id: str,
+        conversation_id: str,
+        configuration_release_id: str,
+    ) -> StartedCaseWorkflow: ...
+
+
+@dataclass(frozen=True, slots=True)
 class TurnRuntimeContext:
     """Per-invocation data that must never be checkpointed. Passed via
     LangGraph's Runtime.context, never through OrderAgentGraphState."""
@@ -190,6 +224,10 @@ class GraphDependencies:
     # platform Mongo client can still search and answer. CONFIRM_ORDER fails
     # loudly rather than silently no-op'ing when it is absent.
     case_store: CaseStore | None = None
+    # Optional on the same terms, and checked in the same breath: a process
+    # that cannot start the case's workflow must not create the case either,
+    # because the case would be durable and unreachable.
+    case_workflow_launcher: CaseWorkflowLauncher | None = None
 
 
 async def _rehydrate_evidence(
@@ -1003,33 +1041,47 @@ def make_confirm_order_node(deps: GraphDependencies) -> Any:
     async def confirm_order(
         state: dict[str, Any], runtime: Runtime[TurnRuntimeContext]
     ) -> dict[str, Any]:
-        """Turn a searched-for order into a durable case.
+        """Confirms exactly one order for this conversation and starts the case's
+        durable workflow.
 
-        This is the transition the platform did not have. Discovery could search
-        and answer; nothing recorded that the associate had *chosen*, so every
-        step after it was unreachable and the console inferred resolution from a
-        candidate list of length one.
+        The node is idempotent on (tenant | conversation | order | line-set): a
+        repeated or simultaneous confirmation returns the existing case rather
+        than creating a second one. CandidateSet.validate_selection re-binds the
+        selection to the conversation, principal, tenant and graph generation
+        before anything is written, so a candidate captured in one conversation
+        cannot be confirmed in another.
 
-        Two things make the confirmation trustworthy rather than a claim:
+        After the case is committed, this node starts exactly one
+        ReturnCaseWorkflow, keyed by return_case_workflow_id(case_id). The start
+        is idempotent: an existing execution with that id is adopted rather than
+        duplicated. Everything after confirmation - concurrent Bay Assignment,
+        the support conversation, durable business-time waits and reminders, RMA
+        recording and propagation of the RMA back into this conversation -
+        belongs to that workflow and to nothing else.
 
-        * The selection is validated against the live `CandidateSet` -- the same
-          guard `graph_query` uses -- so a model cannot confirm an order it did
-          not find, one belonging to a different conversation or principal, or
-          one from an expired or superseded graph generation.
-        * The case store is idempotent on
-          `tenant | conversation | order | line-set`, so a Temporal retry of the
-          same turn, or two confirmations racing, yield one case.
+        If the workflow cannot be started, the confirmation fails. A case that
+        exists without its workflow is unreachable by every downstream agent.
 
-        Starting the case's durable workflow is deliberately *not* here:
-        `ReturnCaseWorkflow` does not exist yet, and a node that pretended to
-        start one would be the stub this plan forbids. The case is durable now;
-        the workflow binds to it when it lands.
+        The failure is reported as retryable and the case is left committed, so
+        the next attempt at the same confirmation resolves to the same case and
+        starts the same workflow id. `workflows/return_case_recovery.py` is what
+        closes the gap when no next attempt arrives.
         """
         guard_context = runtime.context.guard_context
         if deps.case_store is None:
             raise OrderAgentFailure(
                 "ORDER_AGENT_CASE_STORE_UNAVAILABLE",
                 "Return cases cannot be created in this process.",
+                retryable=True,
+            )
+        if deps.case_workflow_launcher is None:
+            # Checked *before* the case is written, not after. A process that
+            # cannot start the workflow would otherwise commit a durable case
+            # and then discover it has no way to make it reachable -- the exact
+            # orphan this node exists to prevent.
+            raise OrderAgentFailure(
+                "ORDER_AGENT_CASE_WORKFLOW_UNAVAILABLE",
+                "The case's durable workflow cannot be started from this process.",
                 retryable=True,
             )
         action = AgentAction.model_validate(state["action"])
@@ -1074,6 +1126,36 @@ def make_confirm_order_node(deps: GraphDependencies) -> Any:
             configuration_release_id=state["configuration_release_id"],
             graph_generation_id=state["graph_generation_id"],
         )
+        # Attempted on every confirmation, including one that resolved to an
+        # existing case. A turn that committed the case and then failed to start
+        # the workflow is precisely the state that needs the next attempt to try
+        # again, and skipping the start for `already_existed` would make the
+        # retry a no-op that reports success.
+        try:
+            started = await deps.case_workflow_launcher.ensure_case_workflow(
+                case_id=case.case_id,
+                tenant_id=guard_context.principal.tenant_id,
+                principal_id=guard_context.principal.principal_id,
+                conversation_id=state["conversation_id"],
+                configuration_release_id=state["configuration_release_id"],
+            )
+        except Exception as error:
+            logger.error(
+                "order_agent_case_workflow_start_failed case_id=%s error=%s",
+                case.case_id,
+                error,
+                extra={
+                    "conversation_id": state["conversation_id"],
+                    "client_turn_id": state["client_turn_id"],
+                    "case_id": case.case_id,
+                },
+                exc_info=True,
+            )
+            raise OrderAgentFailure(
+                "ORDER_AGENT_CASE_WORKFLOW_START_FAILED",
+                "The return was recorded but its workflow could not be started.",
+                retryable=True,
+            ) from error
         logger.info(
             "order_agent_order_confirmed",
             extra={
@@ -1081,6 +1163,8 @@ def make_confirm_order_node(deps: GraphDependencies) -> Any:
                 "client_turn_id": state["client_turn_id"],
                 "case_id": case.case_id,
                 "already_existed": case.already_existed,
+                "case_workflow_id": started.workflow_id,
+                "case_workflow_already_running": started.already_running,
             },
         )
         return {
@@ -1204,8 +1288,10 @@ __all__ = [
     "END",
     "NODE_NAMES",
     "CaseStore",
+    "CaseWorkflowLauncher",
     "ConfirmedCase",
     "GraphDependencies",
+    "StartedCaseWorkflow",
     "TurnRuntimeContext",
     "make_clarify_node",
     "make_confirm_order_node",

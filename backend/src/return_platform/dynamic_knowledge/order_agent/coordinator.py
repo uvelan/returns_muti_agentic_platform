@@ -46,6 +46,7 @@ from return_platform.dynamic_knowledge.order_agent.errors import OrderAgentFailu
 from return_platform.dynamic_knowledge.order_agent.graph import build_order_agent_graph
 from return_platform.dynamic_knowledge.order_agent.graph_nodes import (
     CaseStore,
+    CaseWorkflowLauncher,
     EvidenceStore,
     GraphDependencies,
     KnowledgeGateway,
@@ -261,6 +262,7 @@ class DynamicOrderAgentCoordinator:
         owner_instance_id: str = "order-agent",
         active_snapshot_store: ActiveRuntimeSnapshotStore | None = None,
         case_store: CaseStore | None = None,
+        case_workflow_launcher: CaseWorkflowLauncher | None = None,
     ) -> None:
         self._schema = schema
         self._conversations = conversation_store
@@ -297,6 +299,7 @@ class DynamicOrderAgentCoordinator:
             on_demand_sync=on_demand_sync,
             compiler=cypher_compiler or CypherCompiler(),
             case_store=case_store,
+            case_workflow_launcher=case_workflow_launcher,
         )
         checkpointer = SystemStoreCheckpointSaver(system_store, envelope_encryptor)
         self._graph = build_order_agent_graph(deps, checkpointer=checkpointer)

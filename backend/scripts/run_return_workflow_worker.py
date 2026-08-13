@@ -19,6 +19,8 @@ from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_support.service import ReturnSupportService
 from return_platform.workflows.persistence import ReturnSessionRepository
 from return_platform.workflows.return_case_activities import ReturnCaseActivities
+from return_platform.workflows.return_case_launcher import TemporalCaseWorkflowLauncher
+from return_platform.workflows.return_case_recovery import ReturnCaseWorkflowRecovery
 from return_platform.workflows.worker import create_return_workflow_worker
 
 _SESSIONS_COLLECTION = "return_sessions"
@@ -95,6 +97,22 @@ async def _run() -> None:
         worker = create_return_workflow_worker(
             temporal, repository, case_activities=case_activities
         )
+        # The durable retry path behind confirmation (WF-01). Confirmation
+        # commits the case and then starts its workflow; if the second step
+        # cannot be reached the turn fails, but nothing about a failed turn
+        # repairs the case. This sweep runs in the process that owns
+        # `ReturnCaseWorkflow`, finds cases whose `workflowId` was never
+        # recorded and starts the execution they are owed -- through the same
+        # launcher and therefore the same idempotency the node uses.
+        case_recovery = ReturnCaseWorkflowRecovery(
+            launcher=TemporalCaseWorkflowLauncher(
+                client=temporal,
+                repository=operational_repository,
+                timings=runtime.return_configuration.configuration.return_case,
+                task_queue=settings.return_workflow_task_queue,
+            ),
+            repository=operational_repository,
+        )
         instance_id = f"{socket.gethostname()}-{uuid.uuid4().hex[:8]}"
 
         async def heartbeat() -> None:
@@ -107,11 +125,13 @@ async def _run() -> None:
                 await asyncio.sleep(max(1.0, settings.worker_readiness_ttl_seconds / 3))
 
         heartbeat_task = asyncio.create_task(heartbeat())
+        recovery_task = asyncio.create_task(case_recovery.run_forever())
         try:
             await worker.run()
         finally:
             heartbeat_task.cancel()
-            await asyncio.gather(heartbeat_task, return_exceptions=True)
+            recovery_task.cancel()
+            await asyncio.gather(heartbeat_task, recovery_task, return_exceptions=True)
     finally:
         await neo4j_driver.close()
         if source_mongo is not mongo:

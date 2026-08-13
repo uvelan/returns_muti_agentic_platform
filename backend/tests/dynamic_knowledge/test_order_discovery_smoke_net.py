@@ -86,6 +86,7 @@ from return_platform.dynamic_knowledge.order_agent.graph import build_order_agen
 from return_platform.dynamic_knowledge.order_agent.graph_nodes import (
     ConfirmedCase,
     GraphDependencies,
+    StartedCaseWorkflow,
     TurnRuntimeContext,
 )
 from return_platform.dynamic_knowledge.order_agent.state import CandidateSet
@@ -97,6 +98,7 @@ from return_platform.dynamic_knowledge.schema import (
 )
 from return_platform.source_connectors.compilation import compile_source_read
 from return_platform.source_connectors.contracts import RawSourceDocument, RawSourcePage
+from return_platform.workflows.return_case_workflow import return_case_workflow_id
 
 pytestmark = pytest.mark.asyncio
 
@@ -284,6 +286,38 @@ class RecordingCaseStore:
         return ConfirmedCase(case_id=case_id, already_existed=False)
 
 
+class RecordingCaseWorkflowLauncher:
+    """Idempotent on the derived execution id, like the real launcher.
+
+    A confirmation that does not reach here is the WF-01 defect: the case was
+    committed and `ReturnCaseWorkflow` was started by nobody, so Support's RMA
+    signalled an execution that had never existed. The full behaviour of this
+    seam -- concurrency, restart, failed start, recovery -- lives in
+    `test_confirmation_starts_the_case_workflow.py`; the net only has to hold
+    that confirmation still reaches it.
+    """
+
+    def __init__(self) -> None:
+        self.attempts: list[str] = []
+        self.started: dict[str, str] = {}
+
+    async def ensure_case_workflow(
+        self,
+        *,
+        case_id: str,
+        tenant_id: str,
+        principal_id: str,
+        conversation_id: str,
+        configuration_release_id: str,
+    ) -> StartedCaseWorkflow:
+        del tenant_id, principal_id, conversation_id, configuration_release_id
+        workflow_id = return_case_workflow_id(case_id)
+        self.attempts.append(workflow_id)
+        already_running = workflow_id in self.started
+        self.started[workflow_id] = case_id
+        return StartedCaseWorkflow(workflow_id=workflow_id, already_running=already_running)
+
+
 def _candidate_set_cache() -> dict[str, Any]:
     """A live candidate set, as `order_search` would have left it.
 
@@ -410,6 +444,7 @@ def _dependencies(
     evidence: MemoryEvidence,
     case_store: RecordingCaseStore | None = None,
     on_demand_sync: Any = None,
+    case_workflow_launcher: RecordingCaseWorkflowLauncher | None = None,
 ) -> GraphDependencies:
     """Real guards and the real compiler -- the point of the exercise."""
     return GraphDependencies(
@@ -426,6 +461,15 @@ def _dependencies(
         on_demand_sync=on_demand_sync,
         compiler=CypherCompiler(),
         case_store=case_store,
+        # Supplied whenever a case store is: `confirm_order` refuses to write a
+        # case it cannot make reachable, so the two arrive together in
+        # production and a scenario that gave one without the other would be
+        # testing a configuration that cannot exist.
+        case_workflow_launcher=(
+            case_workflow_launcher
+            if case_workflow_launcher is not None or case_store is None
+            else RecordingCaseWorkflowLauncher()
+        ),
     )
 
 
@@ -473,6 +517,7 @@ async def _run(
     case_store: RecordingCaseStore | None = None,
     seed_candidate_set: bool = False,
     on_demand_sync: Any = None,
+    case_workflow_launcher: RecordingCaseWorkflowLauncher | None = None,
 ) -> tuple[dict[str, Any], ScriptedModel, RecordingKnowledge]:
     model = ScriptedModel(actions)
     knowledge = RecordingKnowledge(rows if rows is not None else [])
@@ -484,6 +529,7 @@ async def _run(
             MemoryEvidence(),
             case_store=case_store,
             on_demand_sync=on_demand_sync,
+            case_workflow_launcher=case_workflow_launcher,
         )
     )
     state = _state(schema, message)
@@ -891,17 +937,23 @@ async def test_confirming_an_order_creates_a_case_and_returns_its_id(
     # that searched *then* confirmed a fixed id would be rejected -- correctly,
     # and for a reason that has nothing to do with what this test is about.
     store = RecordingCaseStore()
+    launcher = RecordingCaseWorkflowLauncher()
     final, model, _ = await _run(
         schema,
         "yes, that one",
         [_confirm(), _respond("Raising the return now.")],
         case_store=store,
         seed_candidate_set=True,
+        case_workflow_launcher=launcher,
     )
 
     assert model.dispatched == [ActionType.CONFIRM_ORDER, ActionType.RESPOND]
     assert final["case_id"] == store.issued[0]
     assert len(store.confirmations) == 1
+    # And the case is *owned*. A confirmation that stopped at the store is the
+    # WF-01 defect: everything after it -- bay, support, reminders, the RMA
+    # coming back into this conversation -- belongs to this execution.
+    assert launcher.attempts == [return_case_workflow_id(final["case_id"])]
     # Back to `decide` after confirming, not straight to END: the associate is
     # owed a sentence, and only the model writes those.
     assert final["final_response"] is not None
@@ -960,6 +1012,7 @@ async def test_the_conversation_survives_an_unreadable_case(schema: ActiveSchema
 async def test_two_identical_confirmations_produce_one_case(schema: ActiveSchema) -> None:
     """A Temporal retry of the same turn must not fork the case."""
     store = RecordingCaseStore()
+    launcher = RecordingCaseWorkflowLauncher()
     for _ in range(2):
         await _run(
             schema,
@@ -967,10 +1020,12 @@ async def test_two_identical_confirmations_produce_one_case(schema: ActiveSchema
             [_confirm(), _respond()],
             case_store=store,
             seed_candidate_set=True,
+            case_workflow_launcher=launcher,
         )
 
     assert len(store.confirmations) == 2, "both turns reached the store"
     assert len(set(store.issued)) == 1, "and both resolved to one case"
+    assert len(launcher.started) == 1, "and to one durable execution"
 
 
 async def test_a_confirmation_for_a_candidate_that_was_never_offered_is_refused(
