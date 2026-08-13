@@ -8,6 +8,7 @@ same graph).
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -257,6 +258,11 @@ def guard_context(schema: ActiveSchema) -> GuardContext:
     )
 
 
+#: The turn's pinned as-of. A fixed instant rather than `now()` so a state
+#: assertion cannot pass or fail depending on the wall clock the suite ran at.
+TURN_AS_OF = datetime(2026, 8, 13, 9, 30, tzinfo=UTC)
+
+
 def initial_state(schema: ActiveSchema) -> dict[str, Any]:
     return {
         "conversation_id": "c1",
@@ -269,6 +275,8 @@ def initial_state(schema: ActiveSchema) -> dict[str, Any]:
         "prompt_version": schema.prompt_version,
         "agent_id": "agent_a",
         "run_id": str(uuid4()),
+        "as_of": TURN_AS_OF.isoformat(),
+        "session_timezone": "UTC",
         "requested_schema_entity_ids": (),
         "evidence_refs": (),
         "order_search_cache": None,

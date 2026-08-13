@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
@@ -160,6 +161,11 @@ class AgentTurnRequest(BaseModel):
     message_id: str
     message: str = Field(min_length=1, max_length=20_000)
     agent_id: str
+    # The associate's IANA time zone, as their browser reports it. Optional
+    # because it is the client's contribution and not every caller has one --
+    # an absent or unresolvable zone grounds the turn in UTC rather than
+    # rejecting it (see temporal_grounding.normalize_session_timezone).
+    session_timezone: str | None = Field(default=None, max_length=64)
 
 
 class AgentTurnContext(BaseModel):
@@ -167,7 +173,28 @@ class AgentTurnContext(BaseModel):
 
     conversation_id: str
     client_turn_id: str
+    agent_id: str
+    # Which case this conversation resolved to, and which API request set the
+    # whole thing off. Both exist for AI telemetry (W4.12): the metrics knew
+    # every model call's route and token count and none of them knew which piece
+    # of business work had caused it. Both are platform-issued identifiers --
+    # see ai/gateway/telemetry.py for why nothing customer-identifying may join
+    # them. `case_id` is null until the associate confirms an order;
+    # `correlation_id` is null for a caller with no HTTP request behind it.
+    case_id: str | None = None
+    correlation_id: str | None = None
     user_message: str
+    # When this turn is happening, decided once and reused by every context
+    # build in it. Without it the model had no "now" at all and answered
+    # date-bearing questions from whatever its training data implied; with it
+    # re-read per build, two queries in one turn could resolve "yesterday"
+    # differently and the turn would contradict itself in its own evidence.
+    as_of: datetime
+    session_timezone: str
+    # `RELATIVE_DATE_PHRASES` -> {"start", "endExclusive"} as absolute UTC
+    # instants, computed from `as_of` in `session_timezone`. The model selects a
+    # window; it does not do calendar arithmetic across a UTC offset in prose.
+    resolved_date_windows: dict[str, dict[str, str]] = Field(default_factory=dict)
     schema_version: str
     graph_generation_id: str
     configuration_release_id: str
@@ -220,6 +247,17 @@ class AgentTurnResult(BaseModel):
     query_evidence: tuple[QueryEvidence, ...]
     model_provider: str
     model_name: str
+    # What "now" meant while this turn reasoned, and in whose calendar. Carried
+    # out on the result because the result is what `commit_turn` persists under
+    # the turn's idempotency key: replaying a date-bearing question a month
+    # later has to resolve it against the instant it was actually asked, and a
+    # turn that does not record its own as-of cannot be replayed at all.
+    #
+    # Optional only for turns committed before this field existed, which
+    # `AgentTurnResult.model_validate` still has to read back out of the
+    # conversation document on an idempotent retry.
+    as_of: datetime | None = None
+    session_timezone: str | None = None
 
 
 class ModelInvocationResult(BaseModel):

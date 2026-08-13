@@ -70,6 +70,10 @@ from return_platform.dynamic_knowledge.order_agent.search_strategy import (
     search_intent_signature,
 )
 from return_platform.dynamic_knowledge.order_agent.state import CandidateSet
+from return_platform.dynamic_knowledge.order_agent.temporal_grounding import (
+    normalize_session_timezone,
+    resolve_date_windows,
+)
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
 logger = logging.getLogger("return_platform.dynamic_knowledge.order_agent.graph_nodes")
@@ -205,12 +209,23 @@ async def _build_context(deps: GraphDependencies, state: dict[str, Any]) -> Agen
         else {}
     )
     order_search_cache = state.get("order_search_cache")
+    # Read from state, never from the clock. The turn's as-of was pinned once
+    # when the attempt started (coordinator._run_turn); re-reading it here --
+    # this function runs on every node entry -- is exactly how a turn ends up
+    # citing evidence from one "yesterday" in an answer about another.
+    as_of, session_timezone = _pinned_grounding(state)
     return AgentTurnContext(
         clarification_exchanges=state.get("clarification_exchanges", ()),
         transcript=tuple(state.get("transcript", ())),
         conversation_id=state["conversation_id"],
         client_turn_id=state["client_turn_id"],
+        agent_id=state["agent_id"],
+        case_id=state.get("case_id"),
+        correlation_id=state.get("correlation_id"),
         user_message=state["user_message"],
+        as_of=as_of,
+        session_timezone=session_timezone,
+        resolved_date_windows=resolve_date_windows(as_of, session_timezone),
         schema_version=state["schema_version"],
         graph_generation_id=state["graph_generation_id"],
         configuration_release_id=state["configuration_release_id"],
@@ -224,6 +239,36 @@ async def _build_context(deps: GraphDependencies, state: dict[str, Any]) -> Agen
         schema_details=schema_details,
         case_facts=await _case_facts(deps, state.get("case_id")),
     )
+
+
+def _pinned_grounding(state: dict[str, Any]) -> tuple[datetime, str]:
+    """The turn's pinned as-of and session zone, or a loud failure.
+
+    There is deliberately no clock fallback. A missing `as_of` means the state
+    reached here without going through `coordinator._run_turn` -- which pins it
+    on a fresh turn and back-fills it on a checkpoint resumed from before the
+    field existed -- and quietly substituting `datetime.now()` would restore the
+    exact per-node re-read this step removed, while looking like it worked.
+    """
+    raw = state.get("as_of")
+    if not isinstance(raw, str) or not raw:
+        raise OrderAgentFailure(
+            "ORDER_AGENT_TURN_NOT_GROUNDED",
+            "The reasoning turn has no pinned as-of instant.",
+            retryable=False,
+        )
+    try:
+        as_of = datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise OrderAgentFailure(
+            "ORDER_AGENT_TURN_NOT_GROUNDED",
+            "The reasoning turn's pinned as-of instant is not a valid timestamp.",
+            retryable=False,
+        ) from exc
+    if as_of.tzinfo is None:
+        as_of = as_of.replace(tzinfo=UTC)
+    zone = state.get("session_timezone")
+    return as_of, normalize_session_timezone(zone if isinstance(zone, str) else None)
 
 
 async def _case_facts(deps: GraphDependencies, case_id: Any) -> dict[str, Any]:

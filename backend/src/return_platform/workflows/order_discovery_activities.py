@@ -69,6 +69,7 @@ class OrderDiscoveryActivities:
             message_id=request.message_id,
             message=request.message,
             agent_id=request.agent_id,
+            session_timezone=request.session_timezone,
         )
         try:
             result = await self._coordinator.process_turn(
@@ -76,6 +77,7 @@ class OrderDiscoveryActivities:
                 guard_context,
                 workflow_id=request.workflow_id,
                 resume_thread_id=request.resume_thread_id,
+                correlation_id=request.correlation_id,
             )
         except OrderAgentFailure as exc:
             return OrderDiscoveryTurnOutcome(

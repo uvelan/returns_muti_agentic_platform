@@ -70,11 +70,21 @@ class GeminiProvider(HTTPProvider):
         if not isinstance(text, str) or not text.strip():
             raise ProviderError("RESPONSE_INVALID")
         usage = data.get("usageMetadata", {})
+        prompt_tokens = usage.get("promptTokenCount") if isinstance(usage, dict) else None
+        # Gemini's `cachedContentTokenCount` is part of `promptTokenCount`, the
+        # same convention OpenAI uses, so the uncached prompt is the remainder.
+        cached_input_tokens = (
+            usage.get("cachedContentTokenCount") if isinstance(usage, dict) else None
+        )
+        uncached_input_tokens = prompt_tokens
+        if isinstance(prompt_tokens, int) and isinstance(cached_input_tokens, int):
+            uncached_input_tokens = max(0, prompt_tokens - cached_input_tokens)
         return ProviderResponse(
             self.name,
             self.model,
             text,
-            input_tokens=usage.get("promptTokenCount") if isinstance(usage, dict) else None,
+            input_tokens=uncached_input_tokens,
+            cached_input_tokens=cached_input_tokens,
             output_tokens=usage.get("candidatesTokenCount") if isinstance(usage, dict) else None,
             total_tokens=usage.get("totalTokenCount") if isinstance(usage, dict) else None,
         )

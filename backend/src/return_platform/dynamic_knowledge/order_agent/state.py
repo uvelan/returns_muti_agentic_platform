@@ -115,6 +115,27 @@ class OrderAgentGraphState(TypedDict, total=False):
     prompt_version: str
     agent_id: str
     run_id: str
+    # When this reasoning attempt believes "now" is, ISO-8601 UTC, and the
+    # calendar its day/week/month boundaries belong to.
+    #
+    # Pinned here rather than read in `_build_context` because that function
+    # runs once per node entry -- up to seven times in a turn -- and a clock
+    # read in it would let "yesterday" mean two different days inside one
+    # answer. Checkpointing it also means a clarification the associate answers
+    # tomorrow resumes with the as-of the attempt started under: the evidence
+    # already gathered was filtered against that instant, and refreshing it
+    # would leave the attempt's own evidence and its own date filter disagreeing.
+    # A long-delayed resume therefore reasons about a slightly stale "today",
+    # which is the smaller of the two wrongs and the only one that is visible.
+    as_of: str
+    session_timezone: str
+    # The API request that caused this turn, so AI telemetry can be read from
+    # the business end rather than only the provider end (W4.12). Unlike
+    # `as_of`, this is *replaced* on a resume: the as-of has to agree with
+    # evidence the checkpoint already holds, while a correlation id only names
+    # the request in flight, and the request in flight on a resume is the new
+    # one. An opaque platform-issued id, safe to checkpoint.
+    correlation_id: str | None
 
     # Accumulated working state -- ids only, never raw business data.
     requested_schema_entity_ids: tuple[str, ...]
@@ -174,6 +195,12 @@ ORDER_DISCOVERY_CHECKPOINT_ALLOWLIST: frozenset[str] = frozenset(
         "prompt_version",
         "agent_id",
         "run_id",
+        # Safe to checkpoint: a timestamp the platform generated and an IANA
+        # zone name. Neither says anything about a customer, and the turn is
+        # unreplayable without them.
+        "as_of",
+        "session_timezone",
+        "correlation_id",
         "requested_schema_entity_ids",
         "evidence_refs",
         "order_search_cache",

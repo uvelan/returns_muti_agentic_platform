@@ -87,6 +87,15 @@ class SubmitOrderDiscoveryTurnCommand:
     tenant_id: str
     roles: frozenset[str]
     branch_ids: frozenset[str]
+    # The associate's IANA time zone, carried verbatim. The workflow neither
+    # reads nor defaults it -- resolving an unknown zone name is a validation
+    # decision and validation in a workflow body is a determinism hazard the
+    # moment the tz database on the worker changes.
+    session_timezone: str | None = None
+    # The API request behind this submission, for AI telemetry (W4.12). Passed
+    # through untouched -- the workflow never generates one, because a uuid in a
+    # workflow body is exactly the non-determinism replay cannot survive.
+    correlation_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +116,8 @@ class RunOrderDiscoveryTurnActivityInput:
     roles: frozenset[str]
     branch_ids: frozenset[str]
     workflow_id: str
+    session_timezone: str | None = None
+    correlation_id: str | None = None
     # When set, this turn is the associate's answer to a clarifying question, and
     # the coordinator must RESUME the already-paused graph execution on this thread
     # (LangGraph `Command(resume=...)`) instead of starting a fresh one. The
@@ -330,6 +341,8 @@ class OrderDiscoveryWorkflow:
                     roles=command.roles,
                     branch_ids=command.branch_ids,
                     workflow_id=workflow.info().workflow_id,
+                    session_timezone=command.session_timezone,
+                    correlation_id=command.correlation_id,
                     resume_thread_id=resume_thread_id,
                 ),
                 result_type=OrderDiscoveryTurnOutcome,

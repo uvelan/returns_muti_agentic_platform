@@ -12,6 +12,7 @@ from pymongo import ASCENDING, DESCENDING, AsyncMongoClient, ReplaceOne, ReturnD
 from pymongo.asynchronous.collection import AsyncCollection
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
+from return_platform.ai.pricing import AIPricingStatus
 from return_platform.ai_gateway.models import AIUsageAttemptView, AIUsageSummaryView
 from return_platform.configuration.settings import Settings
 from return_platform.dynamic_knowledge.config_loader import resolve_active_schema
@@ -1855,9 +1856,15 @@ class OperationalRepository:
             "latencyMs": None,
             "rateLimitWaitMs": 0,
             "inputTokens": None,
+            "cachedInputTokens": None,
             "outputTokens": None,
             "totalTokens": None,
-            "estimatedCostMicrousd": 0,
+            # Not yet costed rather than costed at zero -- the trace is created
+            # before the call is made, so there is nothing to price.
+            "estimatedCostMicros": None,
+            "pricingCurrency": None,
+            "pricingStatus": AIPricingStatus.UNKNOWN.value,
+            "pricingVersion": None,
             "responseDigest": None,
             "attempts": 0,
             "fallbackUsed": False,
@@ -1937,7 +1944,24 @@ class OperationalRepository:
         by_model: dict[str, int] = {}
         by_task: dict[str, int] = {}
         by_tier: dict[str, int] = {}
+        # Priced attempts are summed; unpriced ones are counted. Adding them at
+        # zero is what made "estimated cost" a number that quietly disagreed
+        # with the invoice, and mixing currencies into one integer would do the
+        # same thing again, so a second currency makes the total unreportable
+        # rather than wrong.
+        priced_total = 0
+        unpriced = 0
+        currencies: set[str] = set()
         for item in attempts:
+            if (
+                item.pricingStatus is AIPricingStatus.PRICED
+                and item.estimatedCostMicros is not None
+            ):
+                priced_total += item.estimatedCostMicros
+                if item.pricingCurrency:
+                    currencies.add(item.pricingCurrency)
+            else:
+                unpriced += 1
             provider = item.provider or "NONE"
             model = item.model or "NONE"
             by_provider[provider] = by_provider.get(provider, 0) + 1
@@ -1956,9 +1980,15 @@ class OperationalRepository:
             fallbacks=sum(item.fallbackUsed for item in attempts),
             blockedBySafety=sum(item.status == "SAFETY_BLOCKED" for item in attempts),
             inputTokens=sum(item.inputTokens for item in attempts),
+            cachedInputTokens=sum(item.cachedInputTokens or 0 for item in attempts),
             outputTokens=sum(item.outputTokens for item in attempts),
             totalTokens=sum(item.totalTokens for item in attempts),
-            estimatedCostMicrousd=sum(item.estimatedCostMicrousd for item in attempts),
+            estimatedCostMicros=priced_total,
+            # One currency or none. Two would mean the integer above is the sum
+            # of unlike quantities, and reporting it as a single figure would be
+            # a bigger lie than the zero this step removed.
+            pricingCurrency=next(iter(currencies)) if len(currencies) == 1 else None,
+            unpricedAttempts=unpriced,
             byProvider=by_provider,
             byModel=by_model,
             byTask=by_task,

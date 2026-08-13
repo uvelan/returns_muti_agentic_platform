@@ -73,12 +73,22 @@ class OpenAIResponsesProvider(HTTPProvider):
         usage = data.get("usage", {})
         input_tokens = usage.get("input_tokens") if isinstance(usage, dict) else None
         output_tokens = usage.get("output_tokens") if isinstance(usage, dict) else None
+        # OpenAI reports `cached_tokens` as a *subset* of `input_tokens`, so the
+        # uncached remainder is the subtraction. Passing the raw pair through
+        # would bill the cached prompt twice, once at each rate.
+        details = usage.get("input_tokens_details") if isinstance(usage, dict) else None
+        cached_input_tokens = details.get("cached_tokens") if isinstance(details, dict) else None
+        uncached_input_tokens = input_tokens
+        if isinstance(input_tokens, int) and isinstance(cached_input_tokens, int):
+            uncached_input_tokens = max(0, input_tokens - cached_input_tokens)
         return ProviderResponse(
             self.name,
             self.model,
             text,
-            input_tokens=input_tokens,
+            input_tokens=uncached_input_tokens,
+            cached_input_tokens=cached_input_tokens,
             output_tokens=output_tokens,
+            # The vendor's own total, which still counts the whole prompt once.
             total_tokens=(
                 int(input_tokens or 0) + int(output_tokens or 0)
                 if input_tokens is not None or output_tokens is not None

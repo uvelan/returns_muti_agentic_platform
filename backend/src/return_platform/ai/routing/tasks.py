@@ -11,6 +11,8 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from return_platform.ai.pricing import AIPricingCatalog
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -94,6 +96,17 @@ class AIGatewayConfiguration(StrictModel):
     rateLimits: RateLimitConfiguration
     providerLimits: dict[str, LimitConfiguration]
     tasks: dict[str, TaskConfiguration]
+    # W4.11. Prices belong to the AI domain and change on their own schedule, so
+    # they ride the release mechanism every other runtime change already uses:
+    # declared here, validated on save, published as an immutable checksummed
+    # release. Nothing writes a rate into packaged YAML.
+    #
+    # Defaulted to empty rather than required so that every release published
+    # before this field existed still validates -- and, more importantly, still
+    # validates to *no prices*, which reports UNKNOWN. Defaulting to a shipped
+    # price list would be worse than the hardcoded zero it replaces: it would be
+    # confidently wrong instead of obviously absent.
+    pricing: AIPricingCatalog = AIPricingCatalog()
 
     @model_validator(mode="after")
     def validate_registry(self) -> AIGatewayConfiguration:

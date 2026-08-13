@@ -141,6 +141,15 @@
         "title": "AIInterceptionRequest",
         "type": "object"
       },
+      "AIPricingStatus": {
+        "description": "Whether a recorded cost means anything.\n\n`UNKNOWN` exists so a missing price is a fact on the record rather than a\nzero in a sum. Anything that totals cost must exclude `UNKNOWN` rows and say\nhow many it excluded.",
+        "enum": [
+          "PRICED",
+          "UNKNOWN"
+        ],
+        "title": "AIPricingStatus",
+        "type": "string"
+      },
       "AIReplayRequest": {
         "additionalProperties": false,
         "properties": {
@@ -470,6 +479,18 @@
             "title": "Attempts",
             "type": "integer"
           },
+          "cachedInputTokens": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cachedinputtokens"
+          },
           "confidenceMillionths": {
             "anyOf": [
               {
@@ -525,11 +546,17 @@
             ],
             "title": "Errorcode"
           },
-          "estimatedCostMicrousd": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Estimatedcostmicrousd",
-            "type": "integer"
+          "estimatedCostMicros": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedcostmicros"
           },
           "explanation": {
             "anyOf": [
@@ -630,6 +657,33 @@
               }
             ],
             "title": "Outputtokens"
+          },
+          "pricingCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricingcurrency"
+          },
+          "pricingStatus": {
+            "default": "UNKNOWN",
+            "title": "Pricingstatus",
+            "type": "string"
+          },
+          "pricingVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricingversion"
           },
           "promptVersion": {
             "title": "Promptversion",
@@ -791,13 +845,69 @@
       "AIUsageAttemptView": {
         "additionalProperties": false,
         "properties": {
+          "agentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agentid"
+          },
           "attemptNumber": {
             "minimum": 0.0,
             "title": "Attemptnumber",
             "type": "integer"
           },
+          "cachedInputTokens": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cachedinputtokens"
+          },
+          "caseId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caseid"
+          },
           "configuredTier": {
             "$ref": "#/components/schemas/ModelTier"
+          },
+          "conversationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversationid"
+          },
+          "correlationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlationid"
           },
           "createdAt": {
             "format": "date-time",
@@ -826,10 +936,28 @@
             ],
             "title": "Errorcode"
           },
-          "estimatedCostMicrousd": {
-            "minimum": 0.0,
-            "title": "Estimatedcostmicrousd",
-            "type": "integer"
+          "estimatedCostMicros": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedcostmicros"
+          },
+          "fallbackReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallbackreason"
           },
           "fallbackUsed": {
             "default": false,
@@ -865,6 +993,43 @@
             "minimum": 0.0,
             "title": "Outputtokens",
             "type": "integer"
+          },
+          "pricingCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricingcurrency"
+          },
+          "pricingStatus": {
+            "$ref": "#/components/schemas/AIPricingStatus",
+            "default": "UNKNOWN"
+          },
+          "pricingVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricingversion"
+          },
+          "promptVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promptversion"
           },
           "provider": {
             "anyOf": [
@@ -968,7 +1133,6 @@
           "inputTokens",
           "outputTokens",
           "totalTokens",
-          "estimatedCostMicrousd",
           "requestDigest",
           "createdAt"
         ],
@@ -1016,9 +1180,16 @@
             "title": "Bytier",
             "type": "object"
           },
-          "estimatedCostMicrousd": {
+          "cachedInputTokens": {
+            "default": 0,
             "minimum": 0.0,
-            "title": "Estimatedcostmicrousd",
+            "title": "Cachedinputtokens",
+            "type": "integer"
+          },
+          "estimatedCostMicros": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Estimatedcostmicros",
             "type": "integer"
           },
           "failures": {
@@ -1041,6 +1212,17 @@
             "title": "Outputtokens",
             "type": "integer"
           },
+          "pricingCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricingcurrency"
+          },
           "successes": {
             "minimum": 0.0,
             "title": "Successes",
@@ -1049,6 +1231,12 @@
           "totalTokens": {
             "minimum": 0.0,
             "title": "Totaltokens",
+            "type": "integer"
+          },
+          "unpricedAttempts": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Unpricedattempts",
             "type": "integer"
           }
         },
@@ -1061,7 +1249,6 @@
           "inputTokens",
           "outputTokens",
           "totalTokens",
-          "estimatedCostMicrousd",
           "byProvider",
           "byModel",
           "byTask",
@@ -3566,6 +3753,18 @@
           "message_id": {
             "title": "Message Id",
             "type": "string"
+          },
+          "session_timezone": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Timezone"
           }
         },
         "required": [
@@ -3583,6 +3782,18 @@
       "AgentTurnResult": {
         "additionalProperties": false,
         "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
           "case_id": {
             "anyOf": [
               {
@@ -3638,6 +3849,17 @@
           },
           "response": {
             "$ref": "#/components/schemas/StructuredAgentResponse"
+          },
+          "session_timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Timezone"
           }
         },
         "required": [
@@ -12666,6 +12888,112 @@
           }
         },
         "summary": "Metrics Summary",
+        "tags": [
+          "AI Control Center"
+        ]
+      }
+    },
+    "/api/ai/requests/{trace_id}/compare": {
+      "post": {
+        "description": "The same recorded request against several providers at once.\n\nConcurrent rather than sequential because the point is a comparison, and a\nserial run spreads the attempts across minutes of changing rate-limit and\ncircuit state -- which is a different experiment from the one the operator\nasked for.\n\nEach provider produces its own trace, and each is priced by the same catalog\nat the same instant, so \"which provider answers this well, and what does it\ncost\" is one read afterwards rather than an estimate.",
+        "operationId": "compare_request_api_ai_requests__trace_id__compare_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trace_id",
+            "required": true,
+            "schema": {
+              "title": "Trace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AICompareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_AITraceView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare Request",
+        "tags": [
+          "AI Control Center"
+        ]
+      }
+    },
+    "/api/ai/requests/{trace_id}/replay": {
+      "post": {
+        "description": "Re-run a recorded request, optionally against a different provider.\n\nThe mechanism existed on `/api/v1/ai-gateway` and had no caller (C4.5), so\nthe first question anyone asks about a bad answer -- \"was that the model or\nthe prompt?\" -- could only be answered from the database. Mounting it on the\ncanonical surface is what S8 needs; the implementation is the same\n`AIGatewayService.evaluate`, not a second one.\n\n**The original trace is never modified.** A replay produces a new trace\ncarrying `originalRequestDigest`, so the pair is comparable and the recorded\nevidence stays as recorded. Editing the original would destroy the only\naccount of what actually happened.\n\nThe forced provider is validated against production rules here rather than\ntrusted from the console: SIMULATOR is refused in production, and a custom\nprompt is refused outside development and test.",
+        "operationId": "replay_request_api_ai_requests__trace_id__replay_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trace_id",
+            "required": true,
+            "schema": {
+              "title": "Trace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIReplayRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AITraceView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replay Request",
         "tags": [
           "AI Control Center"
         ]

@@ -244,6 +244,10 @@ async def process_turn(
                     tenant_id=tenant_id,
                     roles=principal.roles,
                     branch_ids=branch_ids,
+                    session_timezone=payload.session_timezone,
+                    # Server-set, from the request middleware -- never read off
+                    # the request body, which a client could fill with anything.
+                    correlation_id=_meta(request).request_id,
                 ),
             ),
         )

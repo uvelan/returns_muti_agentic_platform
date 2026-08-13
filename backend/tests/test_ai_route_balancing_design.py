@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -374,7 +375,10 @@ async def test_order_agent_fails_over_to_next_provider_and_logs_attempts(
     context = AgentTurnContext(
         conversation_id="conversation-1",
         client_turn_id="turn-1",
+        agent_id="agent_a",
         user_message="Find order ORD-10001",
+        as_of=datetime(2026, 8, 13, 9, 30, tzinfo=UTC),
+        session_timezone="UTC",
         schema_version="1",
         graph_generation_id="generation-1",
         configuration_release_id="release-1",
@@ -439,7 +443,10 @@ async def test_order_agent_escalates_to_lightweight_tier_when_standard_exhausted
     context = AgentTurnContext(
         conversation_id="conversation-1",
         client_turn_id="turn-1",
+        agent_id="agent_a",
         user_message="Find order ORD-10001",
+        as_of=datetime(2026, 8, 13, 9, 30, tzinfo=UTC),
+        session_timezone="UTC",
         schema_version="1",
         graph_generation_id="generation-1",
         configuration_release_id="release-1",
