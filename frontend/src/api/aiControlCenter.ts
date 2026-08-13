@@ -63,9 +63,14 @@ export type AIUsageAttemptView = {
   readonly latencyMs: number;
   readonly rateLimitWaitMs: number;
   readonly inputTokens: number;
+  readonly cachedInputTokens: number | null;
   readonly outputTokens: number;
   readonly totalTokens: number;
-  readonly estimatedCostMicrousd: number;
+  /** Null when the release holds no price for this provider/model -- not zero. */
+  readonly estimatedCostMicros: number | null;
+  readonly pricingCurrency: string | null;
+  readonly pricingStatus: "PRICED" | "UNKNOWN";
+  readonly pricingVersion: string | null;
   readonly errorCode: string | null;
   readonly requestDigest: string;
   readonly responseDigest: string | null;
@@ -81,7 +86,10 @@ export type AIUsageSummaryView = {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly totalTokens: number;
-  readonly estimatedCostMicrousd: number;
+  /** Summed over priced attempts only; see `unpricedAttempts` for the rest. */
+  readonly estimatedCostMicros: number;
+  readonly pricingCurrency: string | null;
+  readonly unpricedAttempts: number;
   readonly byProvider: Readonly<Record<string, number>>;
   readonly byModel: Readonly<Record<string, number>>;
   readonly byTask: Readonly<Record<string, number>>;
@@ -172,4 +180,6 @@ export const aiControlCenterApi = {
         body: JSON.stringify({ responseText }),
       },
     ),
+
 };
+

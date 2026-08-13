@@ -2642,6 +2642,16 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /**
+         * AIPricingStatus
+         * @description Whether a recorded cost means anything.
+         *
+         *     `UNKNOWN` exists so a missing price is a fact on the record rather than a
+         *     zero in a sum. Anything that totals cost must exclude `UNKNOWN` rows and say
+         *     how many it excluded.
+         * @enum {string}
+         */
+        AIPricingStatus: "PRICED" | "UNKNOWN";
         /** AIReplayRequest */
         AIReplayRequest: {
             /** Editedsystemprompt */
@@ -2750,6 +2760,8 @@ export interface components {
              * @default 0
              */
             attempts: number;
+            /** Cachedinputtokens */
+            cachedInputTokens?: number | null;
             /** Confidencemillionths */
             confidenceMillionths?: number | null;
             /**
@@ -2767,11 +2779,8 @@ export interface components {
             decision?: components["schemas"]["AIDecision"] | null;
             /** Errorcode */
             errorCode?: string | null;
-            /**
-             * Estimatedcostmicrousd
-             * @default 0
-             */
-            estimatedCostMicrousd: number;
+            /** Estimatedcostmicros */
+            estimatedCostMicros?: number | null;
             /** Explanation */
             explanation?: string | null;
             /**
@@ -2795,6 +2804,15 @@ export interface components {
             originalRequestDigest?: string | null;
             /** Outputtokens */
             outputTokens?: number | null;
+            /** Pricingcurrency */
+            pricingCurrency?: string | null;
+            /**
+             * Pricingstatus
+             * @default UNKNOWN
+             */
+            pricingStatus: string;
+            /** Pricingversion */
+            pricingVersion?: string | null;
             /** Promptversion */
             promptVersion: string;
             /** Provider */
@@ -2851,6 +2869,8 @@ export interface components {
         AIUsageAttemptView: {
             /** Attemptnumber */
             attemptNumber: number;
+            /** Cachedinputtokens */
+            cachedInputTokens?: number | null;
             configuredTier: components["schemas"]["ModelTier"];
             /**
              * Createdat
@@ -2861,8 +2881,8 @@ export interface components {
             credentialId?: string | null;
             /** Errorcode */
             errorCode?: string | null;
-            /** Estimatedcostmicrousd */
-            estimatedCostMicrousd: number;
+            /** Estimatedcostmicros */
+            estimatedCostMicros?: number | null;
             /**
              * Fallbackused
              * @default false
@@ -2878,6 +2898,12 @@ export interface components {
             model?: string | null;
             /** Outputtokens */
             outputTokens: number;
+            /** Pricingcurrency */
+            pricingCurrency?: string | null;
+            /** @default UNKNOWN */
+            pricingStatus: components["schemas"]["AIPricingStatus"];
+            /** Pricingversion */
+            pricingVersion?: string | null;
             /** Provider */
             provider?: string | null;
             /** Ratelimitwaitms */
@@ -2925,8 +2951,16 @@ export interface components {
             byTier: {
                 [key: string]: number;
             };
-            /** Estimatedcostmicrousd */
-            estimatedCostMicrousd: number;
+            /**
+             * Cachedinputtokens
+             * @default 0
+             */
+            cachedInputTokens: number;
+            /**
+             * Estimatedcostmicros
+             * @default 0
+             */
+            estimatedCostMicros: number;
             /** Failures */
             failures: number;
             /** Fallbacks */
@@ -2935,10 +2969,17 @@ export interface components {
             inputTokens: number;
             /** Outputtokens */
             outputTokens: number;
+            /** Pricingcurrency */
+            pricingCurrency?: string | null;
             /** Successes */
             successes: number;
             /** Totaltokens */
             totalTokens: number;
+            /**
+             * Unpricedattempts
+             * @default 0
+             */
+            unpricedAttempts: number;
         };
         /** APIResponse[AIGatewaySettingsView] */
         APIResponse_AIGatewaySettingsView_: {

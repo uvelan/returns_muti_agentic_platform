@@ -28,7 +28,18 @@ class ProviderResponse:
     provider: str
     model: str
     text: str
+    # `input_tokens` is the prompt the provider actually processed -- the
+    # *uncached* part -- and `cached_input_tokens` is what it served from a
+    # prompt cache. They are separate because they are billed at different
+    # rates, and adapters normalise to this split rather than passing through
+    # whichever convention their vendor uses: Anthropic reports cache reads as a
+    # sibling of `input_tokens`, OpenAI reports them as a subset of the prompt
+    # count, and adding a subset to its own superset doubles the bill.
+    #
+    # `None` means the provider said nothing about caching, which is not the
+    # same as "nothing was cached" -- it is why this is not defaulted to 0.
     input_tokens: int | None = None
+    cached_input_tokens: int | None = None
     output_tokens: int | None = None
     total_tokens: int | None = None
 

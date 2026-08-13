@@ -338,9 +338,17 @@ class AITraceView(MutableContract):
     latencyMs: int | None = Field(default=None, ge=0)
     rateLimitWaitMs: int = Field(default=0, ge=0)
     inputTokens: int | None = Field(default=None, ge=0)
+    cachedInputTokens: int | None = Field(default=None, ge=0)
     outputTokens: int | None = Field(default=None, ge=0)
     totalTokens: int | None = Field(default=None, ge=0)
-    estimatedCostMicrousd: int = Field(default=0, ge=0)
+    # Nullable, and null by default. The previous `= 0` meant every trace ever
+    # recorded claimed a cost of zero, which is a measurement rather than an
+    # absence: it charts, it sums, and it is wrong. `pricingStatus` is what
+    # distinguishes "free" from "unpriced" (W4.11).
+    estimatedCostMicros: int | None = Field(default=None, ge=0)
+    pricingCurrency: str | None = None
+    pricingStatus: str = "UNKNOWN"
+    pricingVersion: str | None = None
     responseDigest: str | None = None
     attempts: int = Field(default=0, ge=0)
     fallbackUsed: bool = False

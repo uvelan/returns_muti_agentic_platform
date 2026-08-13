@@ -88,11 +88,21 @@ class OpenAICompatibleProvider(HTTPProvider):
         if not isinstance(text, str) or not text.strip():
             raise ProviderError("RESPONSE_INVALID")
         usage = data.get("usage", {})
+        prompt_tokens = usage.get("prompt_tokens") if isinstance(usage, dict) else None
+        # Chat-completions convention: `cached_tokens` is a subset of
+        # `prompt_tokens`, so the uncached prompt is the remainder. Absent on
+        # every provider that does not cache, which stays `None` rather than 0.
+        details = usage.get("prompt_tokens_details") if isinstance(usage, dict) else None
+        cached_input_tokens = details.get("cached_tokens") if isinstance(details, dict) else None
+        uncached_input_tokens = prompt_tokens
+        if isinstance(prompt_tokens, int) and isinstance(cached_input_tokens, int):
+            uncached_input_tokens = max(0, prompt_tokens - cached_input_tokens)
         return ProviderResponse(
             self.name,
             self.model,
             text,
-            input_tokens=usage.get("prompt_tokens") if isinstance(usage, dict) else None,
+            input_tokens=uncached_input_tokens,
+            cached_input_tokens=cached_input_tokens,
             output_tokens=usage.get("completion_tokens") if isinstance(usage, dict) else None,
             total_tokens=usage.get("total_tokens") if isinstance(usage, dict) else None,
         )

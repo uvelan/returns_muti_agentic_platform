@@ -126,7 +126,19 @@ function MetricsTab() {
       </div>
 
       <p className="text-xs text-slate-500">
-        Estimated cost: {(s.estimatedCostMicrousd / 1_000_000).toFixed(4)} USD.
+        Estimated cost: {(s.estimatedCostMicros / 1_000_000).toFixed(4)}{" "}
+        {s.pricingCurrency ?? "(currency unknown)"}.
+        {s.unpricedAttempts > 0 && (
+          // Named, not hidden. The total covers only the attempts the active
+          // release holds a price for, and a figure that quietly excludes a
+          // provider is worse than one that says how much it is missing.
+          <>
+            {" "}
+            {s.unpricedAttempts} attempt
+            {s.unpricedAttempts === 1 ? " is" : "s are"} not included: no price in the active
+            configuration release.
+          </>
+        )}
       </p>
     </div>
   );
@@ -224,6 +236,8 @@ function RequestsTab() {
             <Field label="Rate-limit wait" value={`${String(selected.rateLimitWaitMs)} ms`} />
             <Field label="Input / output tokens" value={`${String(selected.inputTokens)} / ${String(selected.outputTokens)}`} />
             <Field label="Error" value={selected.errorCode ?? "-"} />
+            <Field label="Cost" value={formatCost(selected)} />
+            <Field label="Pricing version" value={selected.pricingVersion ?? "-"} />
             <Field label="Request digest" value={selected.requestDigest} mono />
             <Field label="Response digest" value={selected.responseDigest ?? "-"} mono />
             <p className="mt-2 text-xs text-slate-500">
@@ -236,6 +250,21 @@ function RequestsTab() {
     </div>
   );
 }
+
+/**
+ * `pricingStatus` is why this is not a division.
+ *
+ * An unpriced attempt has `estimatedCostMicros === null`, and rendering it as
+ * "0.0000 USD" would put the exact defect W4.11 removed from the backend back
+ * into the screen the backend feeds.
+ */
+function formatCost(attempt: AIUsageAttemptView): string {
+  if (attempt.pricingStatus !== "PRICED" || attempt.estimatedCostMicros === null) {
+    return "unknown -- no price in the active release";
+  }
+  return `${(attempt.estimatedCostMicros / 1_000_000).toFixed(6)} ${attempt.pricingCurrency ?? ""}`.trim();
+}
+
 
 function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (

@@ -141,6 +141,15 @@
         "title": "AIInterceptionRequest",
         "type": "object"
       },
+      "AIPricingStatus": {
+        "description": "Whether a recorded cost means anything.\n\n`UNKNOWN` exists so a missing price is a fact on the record rather than a\nzero in a sum. Anything that totals cost must exclude `UNKNOWN` rows and say\nhow many it excluded.",
+        "enum": [
+          "PRICED",
+          "UNKNOWN"
+        ],
+        "title": "AIPricingStatus",
+        "type": "string"
+      },
       "AIReplayRequest": {
         "additionalProperties": false,
         "properties": {
@@ -470,6 +479,18 @@
             "title": "Attempts",
             "type": "integer"
           },
+          "cachedInputTokens": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cachedinputtokens"
+          },
           "confidenceMillionths": {
             "anyOf": [
               {
@@ -525,11 +546,17 @@
             ],
             "title": "Errorcode"
           },
-          "estimatedCostMicrousd": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Estimatedcostmicrousd",
-            "type": "integer"
+          "estimatedCostMicros": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedcostmicros"
           },
           "explanation": {
             "anyOf": [
@@ -630,6 +657,33 @@
               }
             ],
             "title": "Outputtokens"
+          },
+          "pricingCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricingcurrency"
+          },
+          "pricingStatus": {
+            "default": "UNKNOWN",
+            "title": "Pricingstatus",
+            "type": "string"
+          },
+          "pricingVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricingversion"
           },
           "promptVersion": {
             "title": "Promptversion",
@@ -796,6 +850,18 @@
             "title": "Attemptnumber",
             "type": "integer"
           },
+          "cachedInputTokens": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cachedinputtokens"
+          },
           "configuredTier": {
             "$ref": "#/components/schemas/ModelTier"
           },
@@ -826,10 +892,17 @@
             ],
             "title": "Errorcode"
           },
-          "estimatedCostMicrousd": {
-            "minimum": 0.0,
-            "title": "Estimatedcostmicrousd",
-            "type": "integer"
+          "estimatedCostMicros": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedcostmicros"
           },
           "fallbackUsed": {
             "default": false,
@@ -865,6 +938,32 @@
             "minimum": 0.0,
             "title": "Outputtokens",
             "type": "integer"
+          },
+          "pricingCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricingcurrency"
+          },
+          "pricingStatus": {
+            "$ref": "#/components/schemas/AIPricingStatus",
+            "default": "UNKNOWN"
+          },
+          "pricingVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricingversion"
           },
           "provider": {
             "anyOf": [
@@ -968,7 +1067,6 @@
           "inputTokens",
           "outputTokens",
           "totalTokens",
-          "estimatedCostMicrousd",
           "requestDigest",
           "createdAt"
         ],
@@ -1016,9 +1114,16 @@
             "title": "Bytier",
             "type": "object"
           },
-          "estimatedCostMicrousd": {
+          "cachedInputTokens": {
+            "default": 0,
             "minimum": 0.0,
-            "title": "Estimatedcostmicrousd",
+            "title": "Cachedinputtokens",
+            "type": "integer"
+          },
+          "estimatedCostMicros": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Estimatedcostmicros",
             "type": "integer"
           },
           "failures": {
@@ -1041,6 +1146,17 @@
             "title": "Outputtokens",
             "type": "integer"
           },
+          "pricingCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricingcurrency"
+          },
           "successes": {
             "minimum": 0.0,
             "title": "Successes",
@@ -1049,6 +1165,12 @@
           "totalTokens": {
             "minimum": 0.0,
             "title": "Totaltokens",
+            "type": "integer"
+          },
+          "unpricedAttempts": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Unpricedattempts",
             "type": "integer"
           }
         },
@@ -1061,7 +1183,6 @@
           "inputTokens",
           "outputTokens",
           "totalTokens",
-          "estimatedCostMicrousd",
           "byProvider",
           "byModel",
           "byTask",

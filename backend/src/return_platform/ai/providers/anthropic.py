@@ -108,11 +108,20 @@ class AnthropicProvider(HTTPProvider):
         usage = data.get("usage", {})
         input_tokens = usage.get("input_tokens") if isinstance(usage, dict) else None
         output_tokens = usage.get("output_tokens") if isinstance(usage, dict) else None
+        # Anthropic reports cache reads *beside* `input_tokens`, not inside it,
+        # so this is already the platform's uncached/cached split and needs no
+        # subtraction. Writes are billed at yet another rate and are deliberately
+        # not folded in here -- the pricing catalog has no write rate, and
+        # charging them at the read rate would be a quiet mispricing.
+        cached_input_tokens = (
+            usage.get("cache_read_input_tokens") if isinstance(usage, dict) else None
+        )
         return ProviderResponse(
             self.name,
             self.model,
             text,
             input_tokens=input_tokens,
+            cached_input_tokens=cached_input_tokens,
             output_tokens=output_tokens,
             total_tokens=(
                 int(input_tokens or 0) + int(output_tokens or 0)

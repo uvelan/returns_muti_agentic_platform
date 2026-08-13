@@ -9,9 +9,11 @@ import random
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from return_platform.ai.gateway.redaction import redact_payload
+from return_platform.ai.pricing import AICostEstimate
 from return_platform.ai.providers import ProviderError, ProviderRequest
 from return_platform.ai.routing.routes import AIRoute, build_routes
 from return_platform.ai.routing.selection import AIRoutePool
@@ -60,6 +62,21 @@ class AIGatewayRepository(Protocol):
 class GatewayEvaluation:
     trace: AITraceView
     pending_interception: bool
+
+
+def _priced_trace_fields(cost: AICostEstimate) -> dict[str, Any]:
+    """One estimate, spread across the trace's four pricing columns.
+
+    Written once rather than at each update site so a future column cannot be
+    added to the record and forgotten at one of them, which is how the trace and
+    its own attempt rows would come to disagree about what a call cost.
+    """
+    return {
+        "estimatedCostMicros": cost.amount_micros,
+        "pricingCurrency": cost.currency,
+        "pricingStatus": cost.status.value,
+        "pricingVersion": cost.pricing_version,
+    }
 
 
 class _PayloadPolicyError(ValueError):
@@ -237,10 +254,23 @@ class AIGatewayService:
         request_digest: str,
         response_digest: str | None,
         error_code: str | None,
+        cached_input_tokens: int | None = None,
     ) -> None:
         method = getattr(self._repository, "insert_ai_attempt_metric", None)
         if not callable(method):
             return
+        # Priced here, at the moment of the attempt, against the release's own
+        # catalog -- not derived when a dashboard is opened. A cost recomputed
+        # at read time silently rewrites every historical figure the day a
+        # vendor changes a rate.
+        cost = self._configuration.pricing.estimate(
+            provider=route.provider_name if route else None,
+            model=route.model if route else None,
+            at=datetime.now(UTC),
+            input_tokens=input_tokens,
+            cached_input_tokens=cached_input_tokens or 0,
+            output_tokens=output_tokens,
+        )
         await method(
             {
                 "_id": str(uuid.uuid4()),
@@ -261,9 +291,13 @@ class AIGatewayService:
                 "latencyMs": latency_ms,
                 "rateLimitWaitMs": rate_limit_wait_ms,
                 "inputTokens": input_tokens,
+                "cachedInputTokens": cached_input_tokens,
                 "outputTokens": output_tokens,
                 "totalTokens": total_tokens,
-                "estimatedCostMicrousd": 0,
+                "estimatedCostMicros": cost.amount_micros,
+                "pricingCurrency": cost.currency,
+                "pricingStatus": cost.status.value,
+                "pricingVersion": cost.pricing_version,
                 "errorCode": error_code,
                 "requestDigest": request_digest,
                 "responseDigest": response_digest,
@@ -528,8 +562,19 @@ class AIGatewayService:
                             "responseDigest": response_digest,
                             "latencyMs": latency,
                             "inputTokens": response.input_tokens,
+                            "cachedInputTokens": response.cached_input_tokens,
                             "outputTokens": response.output_tokens,
                             "totalTokens": response.total_tokens,
+                            **_priced_trace_fields(
+                                self._configuration.pricing.estimate(
+                                    provider=route.provider_name,
+                                    model=route.model,
+                                    at=datetime.now(UTC),
+                                    input_tokens=int(response.input_tokens or 0),
+                                    cached_input_tokens=int(response.cached_input_tokens or 0),
+                                    output_tokens=int(response.output_tokens or 0),
+                                )
+                            ),
                         },
                     )
                     decision, explanation, confidence = self._parse_response(response.text)
@@ -565,6 +610,7 @@ class AIGatewayService:
                         latency_ms=latency,
                         rate_limit_wait_ms=0,
                         input_tokens=int(response.input_tokens or 0),
+                        cached_input_tokens=response.cached_input_tokens,
                         output_tokens=int(response.output_tokens or 0),
                         total_tokens=int(
                             response.total_tokens
