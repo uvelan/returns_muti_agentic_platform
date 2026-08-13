@@ -109,7 +109,7 @@ async def update_agent_configuration(
         return _ok(request, _agents(request).write(manifest_id, payload.document))
     except ValueError as error:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "code": "AGENT_CONFIGURATION_REJECTED",
                 "message": str(error),

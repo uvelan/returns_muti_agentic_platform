@@ -5,10 +5,10 @@ import socket
 import uuid
 
 from pymongo import AsyncMongoClient
+from return_platform.data_console.api.jobs import JobService
 
 from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
 from return_platform.configuration.runtime_loader import resolve_process_configuration
-from return_platform.data_console.api.jobs import JobService
 from return_platform.operations.repository import OperationalRepository
 
 

@@ -628,53 +628,89 @@ async def test_date_window_is_a_usable_search(schema: ActiveSchema) -> None:
     assert knowledge.plans
 
 
-async def test_declared_address_and_colour_anchors_produce_no_plan(schema: ActiveSchema) -> None:
-    """A gap, pinned where it is load-bearing.
+async def test_every_address_anchor_the_flow_names_compiles_into_cypher(
+    schema: ActiveSchema,
+) -> None:
+    """Street, city, state and postal code are searches, not decoration.
 
-    `streetAddresses`, `cities`, `states`, `postalCodes` and `colors` are all
-    declared on `OrderSearchIntent`, so the model can legitimately return them
-    and the action validates -- and `build_progressive_plans` then drops them,
-    logging `order_search_unsupported_intent_signals` at WARNING. The search
-    runs, finds nothing on that anchor, and nothing tells the associate why.
+    All four were declared on `OrderSearchIntent`, validated by the action
+    contract, and then dropped by `build_progressive_plans` -- so the associate
+    read out a shipping address, the search ran without it, and nothing said
+    why. They are ordinary passes now.
 
-    Shipping address and colour are both named identification fields in the
-    business flow, so this is not a nice-to-have. Asserted as *current
-    behaviour*: when a plan shape is added for them, this test fails and should
-    be replaced with the positive assertion.
+    Asserted through the whole graph rather than against
+    `build_progressive_plans` alone, because a plan that exists and is then
+    refused by `SchemaQueryGuard` is indistinguishable from one that was never
+    built: `order_search` logs the rejection at DEBUG and moves on. Only
+    reaching `compile_read` proves the field, the entity and the operator are
+    all legal on the shipped descriptor -- and the operator is where this would
+    break, since `state` and `postal_code` are EXACT-only.
     """
     for intent in (
         {"streetAddresses": ["1 High Street"]},
         {"cities": ["Charlotte"]},
+        {"states": ["NC"]},
         {"postalCodes": ["28202"]},
-        {"colors": ["chrome"]},
     ):
-        _, _, knowledge = await _run(schema, "address anchor", [_search(**intent), _respond()])
-        assert not knowledge.plans, (
-            f"{intent} now produces a plan -- the gap is closed; replace this "
-            "test with a positive assertion and update the field catalog"
-        )
+        _, model, knowledge = await _run(schema, "address anchor", [_search(**intent), _respond()])
+        assert model.dispatched[0] is ActionType.ORDER_SEARCH
+        assert knowledge.compiled, f"{intent} produced no compiled query"
+        # The value has to reach the query, not merely a plan shaped like one:
+        # a pass compiled with the anchor dropped would search on nothing and
+        # return the same empty result the old behaviour did.
+        asked = {condition.field_id for plan in knowledge.plans for condition in plan.filters}
+        assert asked, f"{intent} compiled a query with no filter on the anchor"
 
 
-async def test_phone_and_email_cannot_be_expressed_as_search_anchors() -> None:
-    """The other half of the same gap.
+async def test_an_email_or_phone_becomes_a_search_instead_of_a_dead_answer(
+    schema: ActiveSchema,
+) -> None:
+    """The agent's own highest-priority clarifying questions, now answerable.
 
-    The business flow lists phone and email among the allowed identification
-    fields, and `clarification_policy` in `config/returns/production.yaml` ranks
-    them at priority 95 and 90 -- so the agent will ask for an email and then
-    have no way to search on the answer. `OrderSearchIntent` is
-    `extra="forbid"`, so this is a hard limit the model cannot route around.
+    `clarification_policy` in `config/returns/production.yaml` ranks email at 95
+    and phone at 90 -- above every narrowing signal -- and `OrderSearchIntent`
+    carried neither field while being `extra="forbid"`. The agent asked an
+    associate for the email on the order and had nowhere to put the answer.
 
-    Four of the eight mandated identification fields therefore do not work:
-    address and colour are dropped after validation, phone and email cannot be
-    stated at all. Order number, product name, customer name and purchase date
-    are the four that do.
+    The catalogue is asserted alongside the behaviour because the two fail
+    differently: a missing field makes the action itself unconstructable, while
+    a present field with no plan shape fails silently one layer down.
     """
     fields = set(OrderSearchIntent.model_fields)
+    assert {"emails", "phones", "orderNumbers", "customerNames", "productNames"} <= fields
 
-    assert "emails" not in fields
-    assert "phones" not in fields
-    # Stated against a concrete inventory rather than in the abstract.
-    assert {"orderNumbers", "customerNames", "productNames", "dateFrom"} <= fields
+    for intent in ({"emails": ["dana@example.com"]}, {"phones": ["(704) 555-0142"]}):
+        _, model, knowledge = await _run(schema, "contact anchor", [_search(**intent), _respond()])
+        assert model.dispatched[0] is ActionType.ORDER_SEARCH
+        assert knowledge.compiled, f"{intent} produced no compiled query"
+
+
+async def test_a_colour_is_named_back_to_the_model_rather_than_dropped(
+    schema: ActiveSchema,
+) -> None:
+    """The one signal that is still unsupported, and the reason that is safe.
+
+    No entity carries a colour property, and matching "blue" against
+    `product_description` would put "Blue Ridge Faucet" in front of someone who
+    said the tap was blue, with no sign the colour had been matched loosely. So
+    the colour is deliberately not searched -- but the model is told, in the
+    evidence the next `decide` reads, so a search that came back empty can be
+    explained instead of just being empty.
+
+    A regression here is silent from every other angle: the turn still
+    completes, the response still reads well, and the associate is told nothing.
+    """
+    _, model, knowledge = await _run(
+        schema, "it was the chrome one", [_search(colors=["chrome"]), _respond()]
+    )
+
+    assert not knowledge.compiled, "a colour must not be guessed at against another field"
+    reported = [
+        signal
+        for evidence in model.contexts[1].query_evidence
+        for signal in evidence.result["unsupported_signals"]
+    ]
+    assert "colors" in reported
 
 
 async def test_replan_clears_evidence_and_returns_to_decide(schema: ActiveSchema) -> None:

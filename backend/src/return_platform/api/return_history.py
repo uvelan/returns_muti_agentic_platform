@@ -399,7 +399,7 @@ async def read_return_history(
     by_customer = account is not None and customer is not None
     if by_order == by_customer:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "code": "RETURN_HISTORY_ANCHOR_REQUIRED",
                 "message": (
@@ -480,7 +480,7 @@ async def read_return_history(
         # it names. Reported as 422 with the guard's own code so the cause is
         # readable rather than hidden behind a generic 500.
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "code": rejected.code,
                 "message": rejected.message,

@@ -16,6 +16,13 @@ dependencies = [
     "pymongo==4.17.0",
     "neo4j==6.2.0",
     "pymssql==2.3.13",
+    # §5A requires a read-only PostgreSQL analyzer connector alongside MongoDB,
+    # SQL Server and Neo4j, and no Postgres driver was declared at all -- the
+    # connector could not be written, only planned. psycopg 3 rather than
+    # psycopg2 or asyncpg: the analyzer ports and every existing connector are
+    # async, and psycopg 3 is the one of the three that offers a native async
+    # connection without a second sync code path beside it.
+    "psycopg[binary]==3.3.4",
     "redis==8.0.1",
     "temporalio==1.30.0",
     "httpx==0.28.1",
