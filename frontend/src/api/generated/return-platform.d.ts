@@ -207,6 +207,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ai/requests/{trace_id}/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Compare Request
+         * @description The same recorded request against several providers at once.
+         *
+         *     Concurrent rather than sequential because the point is a comparison, and a
+         *     serial run spreads the attempts across minutes of changing rate-limit and
+         *     circuit state -- which is a different experiment from the one the operator
+         *     asked for.
+         *
+         *     Each provider produces its own trace, and each is priced by the same catalog
+         *     at the same instant, so "which provider answers this well, and what does it
+         *     cost" is one read afterwards rather than an estimate.
+         */
+        post: operations["compare_request_api_ai_requests__trace_id__compare_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/requests/{trace_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay Request
+         * @description Re-run a recorded request, optionally against a different provider.
+         *
+         *     The mechanism existed on `/api/v1/ai-gateway` and had no caller (C4.5), so
+         *     the first question anyone asks about a bad answer -- "was that the model or
+         *     the prompt?" -- could only be answered from the database. Mounting it on the
+         *     canonical surface is what S8 needs; the implementation is the same
+         *     `AIGatewayService.evaluate`, not a second one.
+         *
+         *     **The original trace is never modified.** A replay produces a new trace
+         *     carrying `originalRequestDigest`, so the pair is comparable and the recorded
+         *     evidence stays as recorded. Editing the original would destroy the only
+         *     account of what actually happened.
+         *
+         *     The forced provider is validated against production rules here rather than
+         *     trusted from the console: SIMULATOR is refused in production, and a custom
+         *     prompt is refused outside development and test.
+         */
+        post: operations["replay_request_api_ai_requests__trace_id__replay_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ai/routes": {
         parameters: {
             query?: never;
@@ -2867,11 +2931,19 @@ export interface components {
         };
         /** AIUsageAttemptView */
         AIUsageAttemptView: {
+            /** Agentid */
+            agentId?: string | null;
             /** Attemptnumber */
             attemptNumber: number;
             /** Cachedinputtokens */
             cachedInputTokens?: number | null;
+            /** Caseid */
+            caseId?: string | null;
             configuredTier: components["schemas"]["ModelTier"];
+            /** Conversationid */
+            conversationId?: string | null;
+            /** Correlationid */
+            correlationId?: string | null;
             /**
              * Createdat
              * Format: date-time
@@ -2883,6 +2955,8 @@ export interface components {
             errorCode?: string | null;
             /** Estimatedcostmicros */
             estimatedCostMicros?: number | null;
+            /** Fallbackreason */
+            fallbackReason?: string | null;
             /**
              * Fallbackused
              * @default false
@@ -2904,6 +2978,8 @@ export interface components {
             pricingStatus: components["schemas"]["AIPricingStatus"];
             /** Pricingversion */
             pricingVersion?: string | null;
+            /** Promptversion */
+            promptVersion?: string | null;
             /** Provider */
             provider?: string | null;
             /** Ratelimitwaitms */
@@ -7102,6 +7178,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_AIUsageSummaryView_"];
+                };
+            };
+        };
+    };
+    compare_request_api_ai_requests__trace_id__compare_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                trace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AICompareRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_AITraceView__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replay_request_api_ai_requests__trace_id__replay_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                trace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIReplayRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AITraceView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

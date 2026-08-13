@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from return_platform.ai.gateway.redaction import redact_payload
+from return_platform.ai.gateway.telemetry import AIAttemptRecord, InvocationCorrelation
 from return_platform.ai.pricing import AICostEstimate
 from return_platform.ai.providers import ProviderError, ProviderRequest
 from return_platform.ai.routing.routes import AIRoute, build_routes
@@ -255,6 +256,8 @@ class AIGatewayService:
         response_digest: str | None,
         error_code: str | None,
         cached_input_tokens: int | None = None,
+        fallback_reason: str | None = None,
+        prompt_version: str = "",
     ) -> None:
         method = getattr(self._repository, "insert_ai_attempt_metric", None)
         if not callable(method):
@@ -271,38 +274,42 @@ class AIGatewayService:
             cached_input_tokens=cached_input_tokens or 0,
             output_tokens=output_tokens,
         )
-        await method(
-            {
-                "_id": str(uuid.uuid4()),
-                "traceId": trace_id,
-                "sessionId": session_id,
-                "taskId": task_id,
-                "configuredTier": configured_tier.value,
-                "selectedTier": selected_tier.value if selected_tier else None,
-                "provider": route.provider_name if route else None,
-                "model": route.model if route else None,
-                "credentialId": route.credential_id if route else None,
-                "routeId": route.route_id if route else None,
-                "attemptNumber": attempt_number,
-                "selectionReason": selection_reason,
-                "status": status,
-                "fallbackUsed": fallback_used,
-                "safetyStatus": safety.status.value,
-                "latencyMs": latency_ms,
-                "rateLimitWaitMs": rate_limit_wait_ms,
-                "inputTokens": input_tokens,
-                "cachedInputTokens": cached_input_tokens,
-                "outputTokens": output_tokens,
-                "totalTokens": total_tokens,
-                "estimatedCostMicros": cost.amount_micros,
-                "pricingCurrency": cost.currency,
-                "pricingStatus": cost.status.value,
-                "pricingVersion": cost.pricing_version,
-                "errorCode": error_code,
-                "requestDigest": request_digest,
-                "responseDigest": response_digest,
-            }
+        # Built through the shared record so this path and `structured_invocation`
+        # write the same columns under the same names. Two hand-written dict
+        # literals for one collection is how a metrics query silently comes to
+        # cover only half the traffic.
+        record = AIAttemptRecord(
+            trace_id=trace_id,
+            task_id=task_id,
+            prompt_version=prompt_version,
+            attempt_number=attempt_number,
+            status=status,
+            configured_tier=configured_tier.value,
+            selected_tier=selected_tier.value if selected_tier else None,
+            provider=route.provider_name if route else None,
+            model=route.model if route else None,
+            credential_id=route.credential_id if route else None,
+            route_id=route.route_id if route else None,
+            selection_reason=selection_reason,
+            fallback_used=fallback_used,
+            fallback_reason=fallback_reason,
+            safety_status=safety.status.value,
+            latency_ms=latency_ms,
+            rate_limit_wait_ms=rate_limit_wait_ms,
+            input_tokens=input_tokens,
+            cached_input_tokens=cached_input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
+            cost=cost,
+            # This path serves the eligibility decision, which is scoped to a
+            # session rather than a conversation or a case. The other three ids
+            # are genuinely absent here, and are recorded as absent.
+            correlation=InvocationCorrelation(session_id=session_id),
+            request_digest=request_digest,
+            response_digest=response_digest,
+            error_code=error_code,
         )
+        await method({"_id": str(uuid.uuid4()), **record.to_document()})
 
     async def _manual_review(
         self,
@@ -365,6 +372,8 @@ class AIGatewayService:
             request_digest=trace.requestDigest,
             response_digest=trace.responseDigest,
             error_code=error_code,
+            fallback_reason=error_code,
+            prompt_version=task.promptVersion,
         )
         return GatewayEvaluation(trace=trace, pending_interception=False)
 
@@ -515,6 +524,7 @@ class AIGatewayService:
                         request_digest=digest,
                         response_digest=None,
                         error_code=acquired.reason,
+                        prompt_version=task.promptVersion,
                     )
                     break
 
@@ -619,6 +629,7 @@ class AIGatewayService:
                         request_digest=digest,
                         response_digest=response_digest,
                         error_code=None,
+                        prompt_version=task.promptVersion,
                     )
                     return GatewayEvaluation(trace=trace, pending_interception=False)
                 except TimeoutError:
@@ -660,6 +671,7 @@ class AIGatewayService:
                     request_digest=digest,
                     response_digest=None,
                     error_code=last_error,
+                    prompt_version=task.promptVersion,
                 )
                 if last_error in {
                     AIRequestStatus.AUTH_FAILED.value,

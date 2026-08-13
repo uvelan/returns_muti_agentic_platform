@@ -50,6 +50,16 @@ class AIUsageAttemptView(Contract):
     id: str
     traceId: str
     sessionId: str | None = None
+    # W4.12. Which piece of business work this call served. Platform ids only --
+    # see `ai/gateway/telemetry.py` for why nothing customer-identifying may be
+    # added here. Optional throughout because a schema-analysis call has no
+    # conversation and a turn before CONFIRM_ORDER has no case; absent is
+    # recorded as absent rather than as a placeholder.
+    correlationId: str | None = None
+    caseId: str | None = None
+    conversationId: str | None = None
+    agentId: str | None = None
+    promptVersion: str | None = None
     taskId: str
     configuredTier: ModelTier
     selectedTier: ModelTier | None = None
@@ -61,6 +71,9 @@ class AIUsageAttemptView(Contract):
     selectionReason: str
     status: str
     fallbackUsed: bool = False
+    # Why the fallback happened, not just that it did. "Fallbacks: 214" tells an
+    # operator nothing actionable; "214, all TIMEOUT on one provider" does.
+    fallbackReason: str | None = None
     safetyStatus: SafetyStatus
     latencyMs: int = Field(ge=0)
     rateLimitWaitMs: int = Field(ge=0)

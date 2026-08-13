@@ -19,6 +19,7 @@ from __future__ import annotations
 from neo4j import AsyncDriver
 from pymongo import AsyncMongoClient
 
+from return_platform.ai.gateway.telemetry import RepositoryAIAttemptRecorder
 from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
 from return_platform.ai_gateway.routing import AIRoutePool
 from return_platform.configuration.settings import Settings
@@ -87,12 +88,20 @@ async def build_dynamic_order_agent_runtime(
     )
     await conversation_documents.ensure_indexes()
 
+    # One repository, two consumers: the case store below and the AI attempt
+    # recorder here. Constructed once so the reasoning path's telemetry lands in
+    # the same `ai_usage_attempts` collection the gateway's own attempts use --
+    # a second store for the second dispatch path would make every cost query
+    # depend on remembering there are two (W4.12).
+    operational_repository = OperationalRepository(platform_mongo, settings)
+
     coordinator = DynamicOrderAgentCoordinator(
         schema=graph.schema,
         model_gateway=RoutePoolReasoningModelGateway(
             settings=settings,
             configuration=ai_gateway_configuration.configuration,
             route_pool=route_pool,
+            recorder=RepositoryAIAttemptRecorder(operational_repository),
         ),
         knowledge_gateway=graph.knowledge_gateway,
         conversation_store=AtomicConversationRepository(conversation_documents),
@@ -117,7 +126,7 @@ async def build_dynamic_order_agent_runtime(
         # constructed here rather than passed in because this factory already
         # owns the platform Mongo client, and the agent must not be handed the
         # repository itself -- only the one-method port over it.
-        case_store=RepositoryCaseStore(OperationalRepository(platform_mongo, settings)),
+        case_store=RepositoryCaseStore(operational_repository),
         active_snapshot_store=graph.active_snapshot_store,
     )
     return coordinator

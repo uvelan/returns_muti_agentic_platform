@@ -173,6 +173,16 @@ class AgentTurnContext(BaseModel):
 
     conversation_id: str
     client_turn_id: str
+    agent_id: str
+    # Which case this conversation resolved to, and which API request set the
+    # whole thing off. Both exist for AI telemetry (W4.12): the metrics knew
+    # every model call's route and token count and none of them knew which piece
+    # of business work had caused it. Both are platform-issued identifiers --
+    # see ai/gateway/telemetry.py for why nothing customer-identifying may join
+    # them. `case_id` is null until the associate confirms an order;
+    # `correlation_id` is null for a caller with no HTTP request behind it.
+    case_id: str | None = None
+    correlation_id: str | None = None
     user_message: str
     # When this turn is happening, decided once and reused by every context
     # build in it. Without it the model had no "now" at all and answered

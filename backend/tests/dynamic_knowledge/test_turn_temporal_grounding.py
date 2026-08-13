@@ -309,6 +309,7 @@ def _context() -> AgentTurnContext:
     return AgentTurnContext(
         conversation_id="conversation-1",
         client_turn_id="turn-1",
+        agent_id="agent_a",
         user_message="Find the orders from yesterday",
         as_of=as_of,
         session_timezone=zone,

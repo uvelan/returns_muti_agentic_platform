@@ -49,6 +49,16 @@ export type AIUsageAttemptView = {
   readonly id: string;
   readonly traceId: string;
   readonly sessionId: string | null;
+  /**
+   * Which piece of business work the call served (W4.12). Platform ids only --
+   * the backend record deliberately carries no customer-identifying field, so
+   * there is nothing here to redact before rendering.
+   */
+  readonly correlationId: string | null;
+  readonly caseId: string | null;
+  readonly conversationId: string | null;
+  readonly agentId: string | null;
+  readonly promptVersion: string | null;
   readonly taskId: string;
   readonly configuredTier: ModelTier;
   readonly selectedTier: ModelTier | null;
@@ -59,6 +69,7 @@ export type AIUsageAttemptView = {
   readonly selectionReason: string;
   readonly status: string;
   readonly fallbackUsed: boolean;
+  readonly fallbackReason: string | null;
   readonly safetyStatus: SafetyStatus;
   readonly latencyMs: number;
   readonly rateLimitWaitMs: number;
@@ -181,5 +192,52 @@ export const aiControlCenterApi = {
       },
     ),
 
+  /**
+   * Re-run a recorded request, optionally forcing a different provider.
+   *
+   * The route has existed and been unreachable: mounted on the backend, never
+   * called from here, so the "was this a model problem or a prompt problem"
+   * question had no answer short of a database query. The reply is a *new*
+   * trace, not an edit of the old one -- the original is evidence and stays
+   * exactly as recorded.
+   */
+  replayRequest: (traceId: string, provider?: string) =>
+    unwrap<AITraceView>(`/api/ai/requests/${encodeURIComponent(traceId)}/replay`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(provider ? { provider } : {}),
+    }),
+
+  /** The same request against two to six providers at once, for comparison. */
+  compareRequest: (traceId: string, providers: readonly string[]) =>
+    unwrap<AITraceView[]>(`/api/ai/requests/${encodeURIComponent(traceId)}/compare`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ providers }),
+    }),
 };
 
+/**
+ * One recorded AI request. Transcribed from `operations/models.py::AITraceView`,
+ * narrowed to the fields S8 renders -- the full model carries the prompt and the
+ * response text, which this screen deliberately does not put on a list.
+ */
+export type AITraceView = {
+  readonly id: string;
+  readonly status: string;
+  readonly taskId: string;
+  readonly provider: string | null;
+  readonly model: string | null;
+  readonly promptVersion: string;
+  readonly decision: string | null;
+  readonly explanation: string | null;
+  readonly latencyMs: number | null;
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
+  readonly estimatedCostMicros: number | null;
+  readonly pricingCurrency: string | null;
+  readonly pricingStatus: string;
+  readonly pricingVersion: string | null;
+  readonly errorCode: string | null;
+  readonly createdAt: string;
+};

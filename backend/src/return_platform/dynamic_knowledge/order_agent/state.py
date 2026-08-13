@@ -129,6 +129,13 @@ class OrderAgentGraphState(TypedDict, total=False):
     # which is the smaller of the two wrongs and the only one that is visible.
     as_of: str
     session_timezone: str
+    # The API request that caused this turn, so AI telemetry can be read from
+    # the business end rather than only the provider end (W4.12). Unlike
+    # `as_of`, this is *replaced* on a resume: the as-of has to agree with
+    # evidence the checkpoint already holds, while a correlation id only names
+    # the request in flight, and the request in flight on a resume is the new
+    # one. An opaque platform-issued id, safe to checkpoint.
+    correlation_id: str | None
 
     # Accumulated working state -- ids only, never raw business data.
     requested_schema_entity_ids: tuple[str, ...]
@@ -193,6 +200,7 @@ ORDER_DISCOVERY_CHECKPOINT_ALLOWLIST: frozenset[str] = frozenset(
         # unreplayable without them.
         "as_of",
         "session_timezone",
+        "correlation_id",
         "requested_schema_entity_ids",
         "evidence_refs",
         "order_search_cache",

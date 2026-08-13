@@ -18,6 +18,7 @@ from return_platform.ai.gateway.structured_invocation import (
     StructuredInvocationUnavailable,
     StructuredOutputInvoker,
 )
+from return_platform.ai.gateway.telemetry import AIAttemptRecorder, InvocationCorrelation
 from return_platform.ai.routing.selection import AIRoutePool
 from return_platform.ai.routing.tasks import AIGatewayConfiguration
 from return_platform.configuration.settings import Settings
@@ -52,6 +53,7 @@ class RoutePoolReasoningModelGateway:
         configuration: AIGatewayConfiguration,
         route_pool: AIRoutePool,
         task_id: str = "ORDER_AGENT_REASONING_V1",
+        recorder: AIAttemptRecorder | None = None,
     ) -> None:
         self._invoker: StructuredOutputInvoker[AgentAction] = StructuredOutputInvoker(
             settings=settings,
@@ -63,6 +65,7 @@ class RoutePoolReasoningModelGateway:
             event_prefix="order_agent",
             subject="Order Agent",
             unavailable_error=StandardReasoningUnavailable,
+            recorder=recorder,
         )
         self._settings = settings
         self._task_id = task_id
@@ -151,6 +154,15 @@ class RoutePoolReasoningModelGateway:
             # one immutable string per configuration release and this changes
             # every turn.
             prompt_addendum=temporal_grounding_prompt(context.as_of, context.session_timezone),
+            # W4.12. The business dimension the metrics were blind on. All five
+            # are platform-issued identifiers -- nothing the associate typed and
+            # nothing retrieved from the graph travels with them.
+            correlation=InvocationCorrelation(
+                correlation_id=context.correlation_id,
+                case_id=context.case_id,
+                conversation_id=context.conversation_id,
+                agent_id=context.agent_id,
+            ),
         )
         return ModelInvocationResult(
             action=invocation.value,

@@ -375,6 +375,7 @@ async def test_order_agent_fails_over_to_next_provider_and_logs_attempts(
     context = AgentTurnContext(
         conversation_id="conversation-1",
         client_turn_id="turn-1",
+        agent_id="agent_a",
         user_message="Find order ORD-10001",
         as_of=datetime(2026, 8, 13, 9, 30, tzinfo=UTC),
         session_timezone="UTC",
@@ -442,6 +443,7 @@ async def test_order_agent_escalates_to_lightweight_tier_when_standard_exhausted
     context = AgentTurnContext(
         conversation_id="conversation-1",
         client_turn_id="turn-1",
+        agent_id="agent_a",
         user_message="Find order ORD-10001",
         as_of=datetime(2026, 8, 13, 9, 30, tzinfo=UTC),
         session_timezone="UTC",

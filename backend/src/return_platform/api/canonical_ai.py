@@ -26,6 +26,7 @@ implementation.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import asdict
 from typing import Any, cast
 
@@ -41,6 +42,7 @@ from return_platform.ai.gateway.models import (
 from return_platform.ai.gateway.service import AIGatewayService
 from return_platform.ai.interception.records import InterceptionStatus
 from return_platform.ai.interception.store import InterceptionNotPending
+from return_platform.operations.models import AICompareRequest, AIReplayRequest, AITraceView
 from return_platform.operations.repository import (
     OperationalRepository,
     resolve_operational_repository,
@@ -333,3 +335,126 @@ async def cancel_interception(
         data={"interceptionId": record.interception_id, "status": record.status.value},
         meta=_meta(request),
     )
+
+
+@router.post("/requests/{trace_id}/replay", response_model=APIResponse[AITraceView])
+async def replay_request(
+    trace_id: str,
+    payload: AIReplayRequest,
+    request: Request,
+    actor_id: str = Depends(require_capability(capabilities.AI_REPLAY_READ)),
+) -> APIResponse[AITraceView]:
+    """Re-run a recorded request, optionally against a different provider.
+
+    The mechanism existed on `/api/v1/ai-gateway` and had no caller (C4.5), so
+    the first question anyone asks about a bad answer -- "was that the model or
+    the prompt?" -- could only be answered from the database. Mounting it on the
+    canonical surface is what S8 needs; the implementation is the same
+    `AIGatewayService.evaluate`, not a second one.
+
+    **The original trace is never modified.** A replay produces a new trace
+    carrying `originalRequestDigest`, so the pair is comparable and the recorded
+    evidence stays as recorded. Editing the original would destroy the only
+    account of what actually happened.
+
+    The forced provider is validated against production rules here rather than
+    trusted from the console: SIMULATOR is refused in production, and a custom
+    prompt is refused outside development and test.
+    """
+    repository = resolve_operational_repository(request)
+    trace = await repository.get_ai_trace(trace_id)
+    if trace is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"AI request {trace_id} does not exist"
+        )
+    settings = request.app.state.settings
+    if settings.environment == "production" and payload.provider == "SIMULATOR":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="SIMULATOR is forbidden in production",
+        )
+    if payload.editedSystemPrompt is not None and settings.environment not in {
+        "development",
+        "test",
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Custom prompts are forbidden in this environment",
+        )
+    evaluation = await _gateway(request, repository).evaluate(
+        session_id=trace.sessionId,
+        redacted_input=trace.redactedInput,
+        force_provider=payload.provider,
+        system_prompt=payload.editedSystemPrompt,
+        original_request_digest=trace.requestDigest,
+        task_id=trace.taskId,
+    )
+    await repository.append_audit(
+        action="AI_REQUEST_REPLAY",
+        actor=actor_id,
+        target=trace.id,
+        details={
+            "replacementTraceId": evaluation.trace.id,
+            "provider": payload.provider,
+            "originalRequestDigest": trace.requestDigest,
+            "replacementRequestDigest": evaluation.trace.requestDigest,
+        },
+    )
+    return APIResponse(data=evaluation.trace, meta=_meta(request))
+
+
+@router.post("/requests/{trace_id}/compare", response_model=APIResponse[list[AITraceView]])
+async def compare_request(
+    trace_id: str,
+    payload: AICompareRequest,
+    request: Request,
+    actor_id: str = Depends(require_capability(capabilities.AI_REPLAY_READ)),
+) -> APIResponse[list[AITraceView]]:
+    """The same recorded request against several providers at once.
+
+    Concurrent rather than sequential because the point is a comparison, and a
+    serial run spreads the attempts across minutes of changing rate-limit and
+    circuit state -- which is a different experiment from the one the operator
+    asked for.
+
+    Each provider produces its own trace, and each is priced by the same catalog
+    at the same instant, so "which provider answers this well, and what does it
+    cost" is one read afterwards rather than an estimate.
+    """
+    repository = resolve_operational_repository(request)
+    trace = await repository.get_ai_trace(trace_id)
+    if trace is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"AI request {trace_id} does not exist"
+        )
+    settings = request.app.state.settings
+    if settings.environment == "production" and "SIMULATOR" in payload.providers:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="SIMULATOR is forbidden in production",
+        )
+    service = _gateway(request, repository)
+    evaluations = await asyncio.gather(
+        *(
+            service.evaluate(
+                session_id=trace.sessionId,
+                redacted_input=trace.redactedInput,
+                force_provider=provider,
+                original_request_digest=trace.requestDigest,
+                task_id=trace.taskId,
+            )
+            for provider in payload.providers
+        )
+    )
+    traces = [evaluation.trace for evaluation in evaluations]
+    await repository.append_audit(
+        action="AI_REQUEST_COMPARE",
+        actor=actor_id,
+        target=trace.id,
+        details={
+            "providers": payload.providers,
+            "comparisonTraceIds": [item.id for item in traces],
+            "originalRequestDigest": trace.requestDigest,
+        },
+    )
+    return APIResponse(data=traces, meta=_meta(request))

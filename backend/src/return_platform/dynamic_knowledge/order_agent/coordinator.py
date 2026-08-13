@@ -308,6 +308,7 @@ class DynamicOrderAgentCoordinator:
         *,
         workflow_id: str | None = None,
         resume_thread_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> AgentTurnResult:
         """`workflow_id` is optional and stamped onto the run's `reasoning_runs`
         record verbatim -- the Temporal workflow host (Wave C2, Commit 3) passes
@@ -320,7 +321,13 @@ class DynamicOrderAgentCoordinator:
         execution: instead of starting a fresh reasoning attempt, the existing
         paused thread is resumed with `Command(resume=request.message)` and
         continues from inside the `clarify` node. Only the Temporal workflow
-        knows a clarification is outstanding, so only it passes this."""
+        knows a clarification is outstanding, so only it passes this.
+
+        `correlation_id` is the platform request id of the API call behind this
+        turn. It is a keyword here rather than a field on `AgentTurnRequest`
+        because the server sets it: a request-body field would let a client
+        supply its own, putting unvalidated caller text into the telemetry
+        stream every dashboard reads."""
         policy = self._schema.agent_policies.get(request.agent_id)
         if policy is None or policy.agent_id != guard_context.agent_policy.agent_id:
             raise OrderAgentFailure(
@@ -347,6 +354,7 @@ class DynamicOrderAgentCoordinator:
                     resume_thread_id=resume_thread_id,
                     rebound_from=None,
                     paused_values=paused_values,
+                    correlation_id=correlation_id,
                 )
 
         async with self._generation_handles.acquire_read(self._schema) as handle:
@@ -361,6 +369,7 @@ class DynamicOrderAgentCoordinator:
                 resume_thread_id=resume_thread_id,
                 rebound_from=rebound_from,
                 paused_values=paused_values,
+                correlation_id=correlation_id,
             )
 
     async def _paused_checkpoint_values(self, resume_thread_id: str | None) -> dict[str, Any]:
@@ -401,6 +410,7 @@ class DynamicOrderAgentCoordinator:
         resume_thread_id: str | None,
         rebound_from: str | None = None,
         paused_values: dict[str, Any] | None = None,
+        correlation_id: str | None = None,
     ) -> AgentTurnResult:
         """The turn itself, with its generation already resolved and pinned.
 
@@ -458,6 +468,7 @@ class DynamicOrderAgentCoordinator:
             "run_id": run_id,
             "as_of": as_of.isoformat(),
             "session_timezone": session_timezone,
+            "correlation_id": correlation_id,
             "requested_schema_entity_ids": (),
             "evidence_refs": (),
             "order_search_cache": _cache_for_generation(
@@ -482,11 +493,15 @@ class DynamicOrderAgentCoordinator:
         # meaning different days. The back-fill below is only for a checkpoint
         # written before the field existed, which otherwise resumes into a turn
         # with no grounding at all.
-        grounding_backfill = (
-            {"as_of": as_of.isoformat(), "session_timezone": session_timezone}
-            if resume_thread_id and not _has_pinned_grounding(paused_values)
-            else {}
-        )
+        resume_update: dict[str, Any] = {}
+        if resume_thread_id:
+            if not _has_pinned_grounding(paused_values):
+                resume_update["as_of"] = as_of.isoformat()
+                resume_update["session_timezone"] = session_timezone
+            # Always replaced, never back-filled: this turn is a different API
+            # request from the one that paused, and the telemetry has to name
+            # the request that is actually in flight.
+            resume_update["correlation_id"] = correlation_id
 
         # Resuming feeds the answer into the suspended `interrupt()` and discards
         # `initial_state` entirely -- the paused checkpoint already holds the real
@@ -516,15 +531,11 @@ class DynamicOrderAgentCoordinator:
                 update={
                     "graph_generation_id": graph_generation_id,
                     "order_search_cache": None,
-                    **grounding_backfill,
+                    **resume_update,
                 },
             )
         elif resume_thread_id:
-            graph_input = (
-                Command(resume=request.message, update=grounding_backfill)
-                if grounding_backfill
-                else Command(resume=request.message)
-            )
+            graph_input = Command(resume=request.message, update=resume_update)
         else:
             graph_input = initial_state
         try:

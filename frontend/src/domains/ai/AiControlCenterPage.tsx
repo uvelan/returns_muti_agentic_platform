@@ -15,9 +15,13 @@ import { useDomainSection } from "../useDomainSection";
  *
  * **Respond Manually now works.** D2 landed two operator routes -- unseal a held
  * request, and answer it -- so the manual response editor is real. Claim,
- * Generate Candidate, Replay Same/Alternate Route and Release still have no
- * route and are still named as unavailable rather than rendered as buttons that
- * would 404.
+ * Generate Candidate and Release still have no route and are still named as
+ * unavailable rather than rendered as buttons that would 404.
+ *
+ * **Replay and Compare are wired (W4.12).** Both routes had shipped and neither
+ * was reachable from here, so "was that a model problem or a prompt problem?"
+ * had no answer short of a database query. Both mint new traces; the recorded
+ * original is evidence and is never edited.
  *
  * **Never expose hidden chain-of-thought.** Nothing here renders model
  * reasoning text, and there is none to render: an attempt carries a
@@ -236,14 +240,25 @@ function RequestsTab() {
             <Field label="Rate-limit wait" value={`${String(selected.rateLimitWaitMs)} ms`} />
             <Field label="Input / output tokens" value={`${String(selected.inputTokens)} / ${String(selected.outputTokens)}`} />
             <Field label="Error" value={selected.errorCode ?? "-"} />
+            <Field label="Fallback reason" value={selected.fallbackReason ?? "-"} />
             <Field label="Cost" value={formatCost(selected)} />
             <Field label="Pricing version" value={selected.pricingVersion ?? "-"} />
             <Field label="Request digest" value={selected.requestDigest} mono />
             <Field label="Response digest" value={selected.responseDigest ?? "-"} mono />
+
+            {/* W4.12: the business dimension. Ids only -- no customer data
+                reaches this surface, by design of the record itself. */}
+            <Field label="Correlation" value={selected.correlationId ?? "-"} mono />
+            <Field label="Case" value={selected.caseId ?? "-"} mono />
+            <Field label="Conversation" value={selected.conversationId ?? "-"} mono />
+            <Field label="Agent" value={selected.agentId ?? "-"} />
+            <Field label="Prompt version" value={selected.promptVersion ?? "-"} />
+
             <p className="mt-2 text-xs text-slate-500">
               Digests, not bodies. Prompt and response payloads are deliberately not
               served by this surface.
             </p>
+            <ReplayControls traceId={selected.traceId} />
           </dl>
         )}
       </aside>
@@ -265,6 +280,94 @@ function formatCost(attempt: AIUsageAttemptView): string {
   return `${(attempt.estimatedCostMicros / 1_000_000).toFixed(6)} ${attempt.pricingCurrency ?? ""}`.trim();
 }
 
+/**
+ * Replay and compare, wired into S8.
+ *
+ * Both routes shipped and neither was reachable, so the first question anyone
+ * asks about a bad answer -- "is it the model or the prompt?" -- could only be
+ * answered from a database. Both produce *new* traces; the original is evidence
+ * and is never modified.
+ *
+ * Gated on `ai.replay.read` -- the capability the backend routes require. It is
+ * named `.read` and grants a provider call, which is a naming wart the platform
+ * already has; matching it is better than inventing a second answer here.
+ */
+function ReplayControls({ traceId }: { traceId: string }) {
+  const { can } = useCapabilities();
+  const [provider, setProvider] = useState("");
+  const replay = useMutation({
+    mutationFn: () => aiControlCenterApi.replayRequest(traceId, provider || undefined),
+  });
+  const compare = useMutation({
+    mutationFn: () => aiControlCenterApi.compareRequest(traceId, COMPARE_PROVIDERS),
+  });
+
+  if (!can("ai.replay.read")) return null;
+
+  return (
+    <div className="mt-3 flex flex-col gap-2 border-t border-slate-200 pt-3">
+      <label className="text-xs uppercase tracking-wide text-slate-500" htmlFor="replay-provider">
+        Replay provider
+      </label>
+      <select
+        id="replay-provider"
+        className="rounded border border-slate-300 p-1 text-sm"
+        value={provider}
+        onChange={(event) => { setProvider(event.target.value); }}
+      >
+        <option value="">Same routing as recorded</option>
+        {COMPARE_PROVIDERS.map((name) => (
+          <option key={name} value={name}>{name}</option>
+        ))}
+      </select>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          className="rounded bg-slate-900 px-2 py-1 text-sm text-white disabled:opacity-50"
+          disabled={replay.isPending}
+          onClick={() => { replay.mutate(); }}
+        >
+          Replay
+        </button>
+        <button
+          type="button"
+          className="rounded border border-slate-300 px-2 py-1 text-sm disabled:opacity-50"
+          disabled={compare.isPending}
+          onClick={() => { compare.mutate(); }}
+        >
+          Compare providers
+        </button>
+      </div>
+      {replay.error ? <p className="text-xs text-red-700">{replay.error.message}</p> : null}
+      {compare.error ? <p className="text-xs text-red-700">{compare.error.message}</p> : null}
+      {replay.data ? (
+        <p className="text-xs text-slate-600">
+          Replayed as trace <span className="font-mono">{replay.data.id}</span>:{" "}
+          {replay.data.provider ?? "-"} / {replay.data.model ?? "-"} -&gt;{" "}
+          {replay.data.decision ?? replay.data.status}
+        </p>
+      ) : null}
+      {compare.data ? (
+        <ul className="flex flex-col gap-1 text-xs text-slate-600">
+          {compare.data.map((trace) => (
+            <li key={trace.id}>
+              {trace.provider ?? "-"} / {trace.model ?? "-"} -&gt;{" "}
+              {trace.decision ?? trace.status}
+              {trace.errorCode ? ` (${trace.errorCode})` : ""}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Deliberately excludes SIMULATOR: the backend refuses it in production, and
+ * offering an option that 422s in the only environment that matters is worse
+ * than not offering it.
+ */
+const COMPARE_PROVIDERS = ["GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC"] as const;
 
 function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (

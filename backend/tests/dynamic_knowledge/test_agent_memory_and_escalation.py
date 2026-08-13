@@ -122,6 +122,7 @@ def test_the_turn_context_carries_the_conversation() -> None:
     context = AgentTurnContext(
         conversation_id="c1",
         client_turn_id="t1",
+        agent_id="agent_a",
         user_message="the chrome one",
         as_of=datetime(2026, 8, 13, 9, 30, tzinfo=UTC),
         session_timezone="UTC",

@@ -81,6 +81,7 @@ def _context() -> AgentTurnContext:
     return AgentTurnContext(
         conversation_id="conv-manual-1",
         client_turn_id="turn-1",
+        agent_id="agent_a",
         user_message="Find order ORD-10001",
         as_of=datetime(2026, 8, 13, 9, 30, tzinfo=UTC),
         session_timezone="UTC",

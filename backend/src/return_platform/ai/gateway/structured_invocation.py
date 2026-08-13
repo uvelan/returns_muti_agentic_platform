@@ -21,18 +21,27 @@ should not require editing this file.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import time
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from pydantic import BaseModel
 
 from return_platform.ai.gateway.redaction import redact_payload
-from return_platform.ai.providers import ProviderError, ProviderRequest
+from return_platform.ai.gateway.telemetry import (
+    AIAttemptRecord,
+    AIAttemptRecorder,
+    InvocationCorrelation,
+    payload_digest,
+)
+from return_platform.ai.providers import ProviderError, ProviderRequest, ProviderResponse
 from return_platform.ai.providers.schema_cleaner import clean_gemini_schema
 from return_platform.ai.routing.routes import AIRoute
 from return_platform.ai.routing.selection import AIRoutePool
@@ -41,6 +50,7 @@ from return_platform.ai.routing.tasks import (
     ModelTier,
     TaskConfiguration,
 )
+from return_platform.ai.safety import SafetyStatus
 from return_platform.ai.safety.inspection import inspect_input, inspect_output
 from return_platform.configuration.settings import Settings
 
@@ -97,6 +107,7 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         unavailable_error: type[StructuredInvocationUnavailable] = (
             StructuredInvocationUnavailable
         ),
+        recorder: AIAttemptRecorder | None = None,
     ) -> None:
         task = configuration.tasks.get(task_id)
         if task is None:
@@ -115,6 +126,12 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         self._event_prefix = event_prefix
         self._subject = subject
         self._unavailable_error = unavailable_error
+        # Optional at construction, and a process that leaves it unset records
+        # nothing -- which is the state this path was already in, not a
+        # regression. `runtime_factory` supplies one for the Order Agent; a test
+        # that does not care about telemetry omits it rather than being made to
+        # build a Mongo client.
+        self._recorder = recorder
 
     @property
     def task(self) -> TaskConfiguration:
@@ -127,6 +144,7 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         size_probe: str,
         log_context: Mapping[str, Any],
         prompt_addendum: str | None = None,
+        correlation: InvocationCorrelation | None = None,
     ) -> StructuredInvocation[ResponseT]:
         """Send `payload`, returning the parsed `response_model`.
 
@@ -146,23 +164,23 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         the first -- and it goes last so the stable prefix in front of it stays
         byte-identical across requests, which is the precondition for the
         provider-side prompt caching W5.3 enables.
+
+        `correlation` is which piece of business work this call serves. It is
+        recorded, never sent: it does not enter the payload, the prompt or the
+        size probe, and no provider ever sees it.
         """
+        correlation = correlation or InvocationCorrelation()
+        trace_id = str(uuid4())
         if len(size_probe.encode("utf-8")) > self._settings.ai_max_payload_bytes:
             raise self._unavailable_error(
                 f"{self._subject} input exceeds the configured payload limit"
             )
 
-        safety = inspect_input(dict(payload))
-        if not safety.allowed:
-            raise self._unavailable_error(f"{self._subject} input rejected: {safety.status.value}")
-
-        estimated_tokens = max(1, len(size_probe) // 4)
-        candidates = await self._route_pool.candidates(self._task, task_id=self._task_id)
-        if not candidates and not self._task.allowTierEscalation:
-            raise self._unavailable_error(
-                f"No healthy {self._task.tier.value} route is available for {self._task_id}"
-            )
-
+        # The prompt is assembled before the safety gate rather than after,
+        # because a blocked request still has to record *what* was blocked, and
+        # the digest is the only representation of that a telemetry row is
+        # allowed to hold. It is pure string building; nothing is sent yet.
+        #
         # The response schema travels in the prompt rather than only in the
         # provider's structured-output field: not every configured provider
         # honours a native schema parameter, and the prompt copy is what makes
@@ -175,6 +193,37 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         )
         if prompt_addendum:
             full_prompt = f"{full_prompt}\n\n{prompt_addendum}"
+        request_digest = payload_digest(full_prompt, dict(payload))
+
+        safety = inspect_input(dict(payload))
+        if not safety.allowed:
+            # Recorded, not merely raised. A request the safety inspector
+            # rejected never reaches a provider, so without this row the only
+            # evidence that it happened at all is a log line.
+            await self._record(
+                trace_id=trace_id,
+                correlation=correlation,
+                route=None,
+                attempt_number=0,
+                status="SAFETY_BLOCKED",
+                selection_reason="INPUT_SAFETY_REJECTED",
+                safety_status=safety.status.value,
+                latency_ms=0,
+                response=None,
+                request_digest=request_digest,
+                response_digest=None,
+                error_code=safety.status.value,
+                fallback_reason=None,
+            )
+            raise self._unavailable_error(f"{self._subject} input rejected: {safety.status.value}")
+
+        estimated_tokens = max(1, len(size_probe) // 4)
+        candidates = await self._route_pool.candidates(self._task, task_id=self._task_id)
+        if not candidates and not self._task.allowTierEscalation:
+            raise self._unavailable_error(
+                f"No healthy {self._task.tier.value} route is available for {self._task_id}"
+            )
+
         deadline = asyncio.get_running_loop().time() + self._settings.ai_global_timeout_seconds
         attempts = 0
         last_error = "PROVIDER_UNAVAILABLE"
@@ -190,6 +239,10 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
             last_error=last_error,
             failure_summary=failure_summary,
             log_context=log_context,
+            trace_id=trace_id,
+            correlation=correlation,
+            request_digest=request_digest,
+            fallback_reason=None,
         )
         if result is not None:
             return result
@@ -220,6 +273,12 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
                     last_error=last_error,
                     failure_summary=failure_summary,
                     log_context=log_context,
+                    trace_id=trace_id,
+                    correlation=correlation,
+                    request_digest=request_digest,
+                    # Every attempt below this line is the escalation, and the
+                    # reason it happened is the error that exhausted STANDARD.
+                    fallback_reason=last_error,
                 )
                 if result is not None:
                     return result
@@ -231,6 +290,85 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
             f"All {self._task_id} routes and lightweight fallbacks failed; "
             f"attempts={attempts}; last_error={last_error}; failures={summary or 'none'}"
         )
+
+    async def _record(
+        self,
+        *,
+        trace_id: str,
+        correlation: InvocationCorrelation,
+        route: AIRoute | None,
+        attempt_number: int,
+        status: str,
+        selection_reason: str,
+        safety_status: str,
+        latency_ms: int,
+        response: ProviderResponse | None,
+        request_digest: str,
+        response_digest: str | None,
+        error_code: str | None,
+        fallback_reason: str | None,
+    ) -> None:
+        """Write one attempt, priced, or do nothing if no sink is configured.
+
+        Costed here rather than at read time (W4.11): the rate that applied is
+        the one in the release this process is running, and re-deriving it later
+        would re-cost every historical attempt the next time a vendor moved a
+        price.
+
+        A recorder failure must not fail the associate's turn -- telemetry is
+        not the work. It is logged loudly instead, because a silently absent
+        metrics stream is how a cost report comes to cover a third of traffic
+        and nobody notices for a quarter.
+        """
+        if self._recorder is None:
+            return
+        input_tokens = max(0, int(response.input_tokens or 0)) if response else 0
+        cached_input_tokens = response.cached_input_tokens if response else None
+        output_tokens = max(0, int(response.output_tokens or 0)) if response else 0
+        cost = self._configuration.pricing.estimate(
+            provider=route.provider_name if route else None,
+            model=route.model if route else None,
+            at=datetime.now(UTC),
+            input_tokens=input_tokens,
+            cached_input_tokens=max(0, int(cached_input_tokens or 0)),
+            output_tokens=output_tokens,
+        )
+        record = AIAttemptRecord(
+            trace_id=trace_id,
+            task_id=self._task_id,
+            prompt_version=self._task.promptVersion,
+            attempt_number=attempt_number,
+            status=status,
+            configured_tier=self._task.tier.value,
+            selected_tier=route.tier.value if route else None,
+            provider=route.provider_name if route else None,
+            model=route.model if route else None,
+            credential_id=route.credential_id if route else None,
+            route_id=route.route_id if route else None,
+            selection_reason=selection_reason,
+            fallback_used=fallback_reason is not None,
+            fallback_reason=fallback_reason,
+            safety_status=safety_status,
+            latency_ms=latency_ms,
+            rate_limit_wait_ms=0,
+            input_tokens=input_tokens,
+            cached_input_tokens=cached_input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=(max(0, int(response.total_tokens or 0)) if response else 0)
+            or (input_tokens + output_tokens),
+            cost=cost,
+            correlation=correlation,
+            request_digest=request_digest,
+            response_digest=response_digest,
+            error_code=error_code,
+        )
+        try:
+            await self._recorder.record(record)
+        except Exception:
+            self._logger.exception(
+                f"{self._event_prefix}_attempt_record_failed",
+                extra={"task_id": self._task_id, "trace_id": trace_id},
+            )
 
     async def _attempt_routes(
         self,
@@ -244,6 +382,10 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         last_error: str,
         failure_summary: Counter[str],
         log_context: Mapping[str, Any],
+        trace_id: str,
+        correlation: InvocationCorrelation,
+        request_digest: str,
+        fallback_reason: str | None,
     ) -> tuple[StructuredInvocation[ResponseT] | None, int, str]:
         for route in candidates:
             for _ in range(self._configuration.retry.maximumAttemptsPerRoute):
@@ -326,6 +468,21 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
                             ),
                         },
                     )
+                    await self._record(
+                        trace_id=trace_id,
+                        correlation=correlation,
+                        route=route,
+                        attempt_number=attempts,
+                        status="SUCCESS",
+                        selection_reason="HEALTHY_ROUTE_SELECTED",
+                        safety_status=output_safety.status.value,
+                        latency_ms=max(0, int((time.monotonic() - started) * 1_000)),
+                        response=response,
+                        request_digest=request_digest,
+                        response_digest=hashlib.sha256(response.text.encode("utf-8")).hexdigest(),
+                        error_code=None,
+                        fallback_reason=fallback_reason,
+                    )
                     return (
                         StructuredInvocation(
                             value=value,
@@ -364,6 +521,21 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
                 finally:
                     await self._route_pool.release(route)
                 failure_summary[last_error] += 1
+                await self._record(
+                    trace_id=trace_id,
+                    correlation=correlation,
+                    route=route,
+                    attempt_number=attempts,
+                    status="FAILED",
+                    selection_reason="HEALTHY_ROUTE_SELECTED",
+                    safety_status=SafetyStatus.SAFE.value,
+                    latency_ms=max(0, int((time.monotonic() - started) * 1_000)),
+                    response=None,
+                    request_digest=request_digest,
+                    response_digest=None,
+                    error_code=last_error,
+                    fallback_reason=fallback_reason,
+                )
                 self._logger.warning(
                     f"{self._event_prefix}_model_attempt_failed",
                     extra={
