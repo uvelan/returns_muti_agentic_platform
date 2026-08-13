@@ -128,6 +128,7 @@ async def build_targeted_graph_access(
     neo4j_driver: AsyncDriver,
     owner_role: str,
     targeted_sync_runs: TargetedSyncRunLedger | None = None,
+    schema: ActiveSchema | None = None,
 ) -> TargetedGraphAccess:
     """Assemble the stack once, from the published release where one exists.
 
@@ -135,10 +136,19 @@ async def build_targeted_graph_access(
     `bootstrap/system_store.py` establishes a per-process uuid as the
     convention, and that is the right granularity -- a lease outlives a request
     but never the process that took it.
+
+    `schema` is for a caller that has already resolved the release and must
+    build against that exact one -- the Order Discovery worker's configuration
+    reconciler, which decides whether to rebuild by comparing the resolved
+    release against the running one. Resolving again here would let a release
+    published between the two reads leave the rebuilt coordinator and the
+    activity surface holding different schemas, with nothing to notice it
+    because both would then look current. Everyone else omits it and resolves.
     """
     releases = SchemaReleaseStore(platform_mongo, settings.mongo_database)
     await releases.ensure_indexes()
-    schema = await resolve_active_schema(settings.dynamic_knowledge_schema_path, releases)
+    if schema is None:
+        schema = await resolve_active_schema(settings.dynamic_knowledge_schema_path, releases)
 
     graph_state = MongoGraphStateProvider(platform_mongo, settings.mongo_database)
     await graph_state.ensure_indexes()

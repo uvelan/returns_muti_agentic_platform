@@ -1,4 +1,20 @@
-"""Run the Return workflow worker as a dedicated Docker process."""
+"""Run the Return workflow worker as a dedicated Docker process.
+
+Runs the same configuration reconciler the API process runs, so this worker's
+settings, secrets and AI gateway release stay level with the API's rather than
+freezing at whatever was live when the container started (T-16).
+
+What it deliberately does *not* hot-swap is the return configuration the case
+activities were built from. `ReturnCaseWorkflow` carries a
+`configuration_release_id` on its input, which is the platform's statement that
+this family is case-pinned: a case runs to completion on the release it started
+under, and a new case starts on the new one. Replacing the support service's
+configuration underneath a running case would break that, not honour it.
+
+The reconciler runs as a plain asyncio task in this process. It is on the worker
+side of the Temporal boundary and never inside a workflow body, so no
+configuration read it performs can reach replay.
+"""
 
 import asyncio
 import socket
@@ -8,6 +24,10 @@ from neo4j import AsyncGraphDatabase
 from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
+from return_platform.configuration.runtime_activation import (
+    build_worker_runtime_activation,
+    run_runtime_activation_loop,
+)
 from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
 from return_platform.configuration.runtime_loader import resolve_process_configuration
 from return_platform.data_platform.graph.sync_service import MongoTargetedSyncRunLedger
@@ -28,6 +48,7 @@ _AUDITS_COLLECTION = "return_session_audit_events"
 _OUTBOX_COLLECTION = "return_session_outbox_events"
 _DECISIONS_COLLECTION = "return_session_agent_decisions"
 _PERSISTENCE_TIMEOUT_SECONDS = 5.0
+_PROCESS_CLASS = "return-workflow-worker"
 
 
 async def _run() -> None:
@@ -114,24 +135,39 @@ async def _run() -> None:
             repository=operational_repository,
         )
         instance_id = f"{socket.gethostname()}-{uuid.uuid4().hex[:8]}"
+        activation = await build_worker_runtime_activation(
+            runtime=runtime,
+            process_class=_PROCESS_CLASS,
+            instance_id=instance_id,
+            mongo=mongo,
+            source_mongo=source_mongo,
+            neo4j_driver=neo4j_driver,
+        )
+        state = activation.state
 
         async def heartbeat() -> None:
             while True:
                 await operational_repository.heartbeat(
-                    "return-workflow-worker",
+                    _PROCESS_CLASS,
                     instance_id,
-                    ttl_seconds=settings.worker_readiness_ttl_seconds,
+                    # Through the activated state, not the startup settings: a
+                    # released TTL change has to reach the readiness signal
+                    # without a restart like everything else here.
+                    ttl_seconds=state.settings.worker_readiness_ttl_seconds,
                 )
-                await asyncio.sleep(max(1.0, settings.worker_readiness_ttl_seconds / 3))
+                await asyncio.sleep(max(1.0, state.settings.worker_readiness_ttl_seconds / 3))
 
         heartbeat_task = asyncio.create_task(heartbeat())
         recovery_task = asyncio.create_task(case_recovery.run_forever())
+        activation_task = asyncio.create_task(run_runtime_activation_loop(activation.activator))
+        background = (heartbeat_task, recovery_task, activation_task)
         try:
             await worker.run()
         finally:
-            heartbeat_task.cancel()
-            recovery_task.cancel()
-            await asyncio.gather(heartbeat_task, recovery_task, return_exceptions=True)
+            for task in background:
+                task.cancel()
+            await asyncio.gather(*background, return_exceptions=True)
+            await activation.aclose()
     finally:
         await neo4j_driver.close()
         if source_mongo is not mongo:

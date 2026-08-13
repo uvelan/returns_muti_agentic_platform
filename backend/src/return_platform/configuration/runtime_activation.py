@@ -1,22 +1,52 @@
-"""Atomic activation of published graph configuration in long-running API processes."""
+"""Atomic activation of published graph configuration in long-running processes.
+
+One reconciler, two ways of driving it. The FastAPI process drives
+`RuntimeConfigurationActivator.refresh` from request middleware; a worker has no
+request to drive it, so `run_runtime_activation_loop` polls the same object on
+the same 5-second guard. There is deliberately no second reconciler: an API and
+a worker that disagreed about which release is live would be an administrator
+switching the discovery model in the AI Control Centre, seeing the new route go
+active, and every agent turn still reaching the old provider because the Order
+Agent reasons inside the worker.
+
+`ActivationParticipant` is the seam for configuration families that live outside
+the graph release document -- today the published `ActiveSchema`, which has its
+own activation pointer in Platform Mongo. Participants are adopted by this
+reconciler, under this lock, behind this poll guard, so a process only ever has
+one answer to "which configuration am I running".
+"""
 
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
+from neo4j import AsyncDriver, AsyncGraphDatabase
+from pymongo import AsyncMongoClient
+
+from return_platform.ai.interception.store import InterceptionStore
+from return_platform.ai.providers.replay import ReplayStore
 from return_platform.ai_gateway.configuration import (
     LoadedAIGatewayConfiguration,
     build_loaded_ai_gateway_configuration,
 )
 from return_platform.ai_gateway.routing import AIRoutePool, build_routes
-from return_platform.configuration.graph_repository import ConfigurationGraphRepository
+from return_platform.configuration.graph_repository import (
+    ConfigurationGraphRepository,
+    InMemoryConfigurationGraphRepository,
+    Neo4jConfigurationGraphRepository,
+)
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
 from return_platform.configuration.runtime_integrations import (
     apply_graph_runtime_configuration,
 )
+from return_platform.configuration.runtime_loader import ResolvedProcessConfiguration
+from return_platform.configuration.settings import Settings
 from return_platform.configuration.snapshot import (
     ConfigurationSnapshotBuilder,
     PinnedConfigurationSnapshot,
@@ -26,8 +56,10 @@ from return_platform.dependency_simulation.configuration import (
     build_loaded_dependency_simulation_configuration,
 )
 from return_platform.operations.repository import OperationalRepository
-from return_platform.resources import RuntimeResources
 from return_platform.secrets.runtime import resolve_runtime_settings_from_vault
+from return_platform.secrets.vault import VaultHTTPSecretResolver
+
+logger = logging.getLogger("return_platform.configuration.runtime_activation")
 
 _RESTART_REQUIRED_SETTINGS = (
     "mongo_dsn",
@@ -46,6 +78,90 @@ _RESTART_REQUIRED_SETTINGS = (
 )
 
 
+@dataclass(frozen=True, slots=True)
+class ActivationContext:
+    """The release a participant is being asked to adopt.
+
+    Carries the already-validated artifacts rather than letting a participant
+    re-read them, so every participant in one activation adopts the same release
+    and the snapshot's `release_id`/`head_revision` are the epoch a process
+    reports having adopted (CFG-02).
+    """
+
+    snapshot: PinnedConfigurationSnapshot
+    settings: Settings
+    return_configuration: LoadedReturnConfiguration
+    ai_gateway_configuration: LoadedAIGatewayConfiguration | None
+
+
+class ActivationParticipant(Protocol):
+    """Process-local state that has to be rebuilt when configuration changes.
+
+    Two phases, because the activation boundary is worth nothing if half of a
+    process can fail after the other half has already swapped. `prepare` does
+    every fallible thing -- reads, validation, construction -- and returns the
+    replacement without making it visible; `publish` is the assignment, runs
+    inside the activator's own assignment block, and must not fail.
+
+    Returning `None` from `prepare` means "nothing changed for me". A
+    participant owning a configuration family with its own activation pointer
+    (the published `ActiveSchema`) is called on every poll, including the polls
+    where the graph release did not move, and answers `None` for all of them.
+    """
+
+    async def prepare(self, context: ActivationContext) -> object | None: ...
+
+    def publish(self, prepared: object) -> None: ...
+
+
+class ActivationResources(Protocol):
+    """The two fields the activator needs from a process's resources.
+
+    Structural rather than `RuntimeResources` so a worker does not have to build
+    an asset catalogue and a probe manager to run the reconciler.
+    `RuntimeResources` satisfies it as written.
+    """
+
+    settings: Settings
+    mongo: AsyncMongoClient[dict[str, object]] | None
+    source_mongo: AsyncMongoClient[dict[str, object]] | None
+
+
+@dataclass(slots=True)
+class ProcessRuntimeState:
+    """A worker's equivalent of `app.state`, for the same activator.
+
+    The attribute names are the ones `RuntimeConfigurationActivator` already
+    reads and writes on the FastAPI app state -- this is the same contract, not
+    a parallel one. It is passed as both `app_state` and `resources`, so the
+    activator's two settings assignments land on one field and a worker cannot
+    end up with a resource-level and a state-level answer that differ.
+
+    `process_class` and `instance_id` are the identity the heartbeat already
+    publishes. They live here so adoption reporting (CFG-02) has one place to
+    read process class, instance and adopted release/epoch from -- the last two
+    being `return_configuration_snapshot.release_id` and `.head_revision`.
+    """
+
+    process_class: str
+    instance_id: str
+    settings: Settings
+    return_configuration: LoadedReturnConfiguration
+    return_configuration_snapshot: PinnedConfigurationSnapshot | None = None
+    ai_gateway_configuration: LoadedAIGatewayConfiguration | None = None
+    dependency_simulation_configuration: LoadedDependencySimulationConfiguration | None = None
+    secret_resolver: VaultHTTPSecretResolver | None = None
+    ai_gateway_route_pool: AIRoutePool | None = None
+    # Held so a live route rebuild keeps the durable stores this process started
+    # with. Without them `build_routes` rebuilds MANUAL as the filesystem
+    # provider and an operator waiting on the console waits for a prompt that
+    # was written to a file in the container instead.
+    ai_interception_store: InterceptionStore | None = None
+    ai_replay_store: ReplayStore | None = None
+    mongo: AsyncMongoClient[dict[str, object]] | None = None
+    source_mongo: AsyncMongoClient[dict[str, object]] | None = None
+
+
 class RuntimeConfigurationActivator:
     """Refresh one process from the active graph release without exposing partial state."""
 
@@ -57,8 +173,9 @@ class RuntimeConfigurationActivator:
         baseline_path: Path,
         ai_gateway_baseline_path: Path | None = None,
         dependency_simulation_baseline_path: Path | None = None,
-        resources: RuntimeResources | None,
+        resources: ActivationResources | None,
         refresh_interval_seconds: float = 5.0,
+        participants: Sequence[ActivationParticipant] = (),
     ) -> None:
         self._app_state = app_state
         self._repository = repository
@@ -67,6 +184,7 @@ class RuntimeConfigurationActivator:
         self._dependency_simulation_baseline_path = dependency_simulation_baseline_path
         self._resources = resources
         self._refresh_interval_seconds = refresh_interval_seconds
+        self._participants = tuple(participants)
         self._last_checked_monotonic = 0.0
         self._lock = asyncio.Lock()
 
@@ -94,17 +212,18 @@ class RuntimeConfigurationActivator:
 
             self._last_checked_monotonic = now
             head_revision = await self._repository.get_head_revision()
-            if (
-                current is not None
-                and current.source == "NEO4J_CONFIGURATION_GRAPH"
-                and current.head_revision == head_revision
+            if current is not None and (
+                (
+                    current.source == "NEO4J_CONFIGURATION_GRAPH"
+                    and current.head_revision == head_revision
+                )
+                or (current.source == "VERSION_CONTROLLED_BASELINE" and head_revision == 0)
             ):
-                return current
-            if (
-                current is not None
-                and current.source == "VERSION_CONTROLLED_BASELINE"
-                and head_revision == 0
-            ):
+                # The graph release has not moved. Families with their own
+                # activation pointer -- the published `ActiveSchema` -- still get
+                # their turn here, because the alternative is a second poll loop
+                # with its own guard and its own idea of what is live.
+                self._publish_participants(await self._prepare_participants(current))
                 return current
 
             baseline = getattr(self._app_state, "return_configuration", None)
@@ -188,6 +307,16 @@ class RuntimeConfigurationActivator:
                         "Released configuration changes infrastructure settings that require a "
                         "restart: " + ", ".join(changed_infrastructure)
                     )
+            # Before the route pool is touched, because `replace_routes` mutates
+            # the live pool in place: a participant that fails to build its
+            # replacement must leave this process on the release it was already
+            # running, not on a half-adopted one.
+            prepared_participants = await self._prepare_participants(
+                snapshot,
+                settings=activated_settings,
+                return_configuration=loaded,
+                ai_gateway_configuration=loaded_ai_gateway,
+            )
             route_pool = None
             if activated_settings is not None and loaded_ai_gateway is not None:
                 # The store the process was started with, carried into the
@@ -248,9 +377,187 @@ class RuntimeConfigurationActivator:
                 self._app_state.dependency_simulation_configuration = loaded_dependency_simulation
             if route_pool is not None:
                 self._app_state.ai_gateway_route_pool = route_pool
+            self._publish_participants(prepared_participants)
             self._app_state.return_configuration_snapshot = snapshot
             return snapshot
 
     def _current_snapshot(self) -> PinnedConfigurationSnapshot | None:
         value = getattr(self._app_state, "return_configuration_snapshot", None)
         return value if isinstance(value, PinnedConfigurationSnapshot) else None
+
+    async def _prepare_participants(
+        self,
+        snapshot: PinnedConfigurationSnapshot,
+        *,
+        settings: Settings | None = None,
+        return_configuration: LoadedReturnConfiguration | None = None,
+        ai_gateway_configuration: LoadedAIGatewayConfiguration | None = None,
+    ) -> tuple[tuple[ActivationParticipant, object], ...]:
+        """Build every replacement, publish none of them.
+
+        Called with explicit artifacts when a release is being adopted, and off
+        the process's current state when it is not; either way a participant
+        sees one coherent release. An exception here propagates: the caller has
+        not swapped anything yet, so the process stays on its last good release.
+        """
+
+        if not self._participants:
+            return ()
+        state_settings = settings if settings is not None else self._state_settings()
+        if state_settings is None:
+            return ()
+        context = ActivationContext(
+            snapshot=snapshot,
+            settings=state_settings,
+            return_configuration=(
+                return_configuration
+                if return_configuration is not None
+                else self._app_state.return_configuration
+            ),
+            ai_gateway_configuration=(
+                ai_gateway_configuration
+                if ai_gateway_configuration is not None
+                else getattr(self._app_state, "ai_gateway_configuration", None)
+            ),
+        )
+        prepared: list[tuple[ActivationParticipant, object]] = []
+        for participant in self._participants:
+            replacement = await participant.prepare(context)
+            if replacement is not None:
+                prepared.append((participant, replacement))
+        return tuple(prepared)
+
+    def _publish_participants(
+        self, prepared: tuple[tuple[ActivationParticipant, object], ...]
+    ) -> None:
+        """Make every prepared replacement visible. Assignments only."""
+
+        for participant, replacement in prepared:
+            participant.publish(replacement)
+
+    def _state_settings(self) -> Settings | None:
+        value = getattr(self._app_state, "settings", None)
+        if isinstance(value, Settings):
+            return value
+        return self._resources.settings if self._resources is not None else None
+
+
+async def run_runtime_activation_loop(
+    activator: RuntimeConfigurationActivator,
+    *,
+    interval_seconds: float = 5.0,
+) -> None:
+    """Drive the one reconciler in a process that has no request to drive it.
+
+    This is not a second reconciler and holds no configuration state of its own:
+    the API's middleware calls `refresh()` on every request and a worker calls
+    it on a timer, and both are gated by the activator's own poll guard.
+
+    A failed poll is logged and retried rather than terminating the worker --
+    including the deliberate failure the activator raises when a release changes
+    an infrastructure endpoint, which is restart-required and must leave the
+    process on its last good release rather than take it down.
+    """
+
+    while True:
+        try:
+            await activator.refresh()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                "runtime_configuration_refresh_failed_using_last_good_snapshot",
+                extra={"error_type": type(exc).__name__},
+            )
+        await asyncio.sleep(interval_seconds)
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerRuntimeActivation:
+    """A worker's activator, the state it activates into, and its own driver."""
+
+    state: ProcessRuntimeState
+    activator: RuntimeConfigurationActivator
+    owned_driver: AsyncDriver | None
+
+    async def aclose(self) -> None:
+        """Close only a driver this helper opened; a supplied one is the caller's."""
+
+        if self.owned_driver is not None:
+            await self.owned_driver.close()
+
+
+async def build_worker_runtime_activation(
+    *,
+    runtime: ResolvedProcessConfiguration,
+    process_class: str,
+    instance_id: str,
+    mongo: AsyncMongoClient[dict[str, object]] | None = None,
+    source_mongo: AsyncMongoClient[dict[str, object]] | None = None,
+    neo4j_driver: AsyncDriver | None = None,
+    route_pool: AIRoutePool | None = None,
+    interception_store: InterceptionStore | None = None,
+    replay_store: ReplayStore | None = None,
+    participants: Sequence[ActivationParticipant] = (),
+    refresh_interval_seconds: float = 5.0,
+) -> WorkerRuntimeActivation:
+    """Give one worker process the activator the API process already has.
+
+    The configuration repository has to be the Neo4j one for adoption to mean
+    anything -- the in-memory repository reports head revision 0 forever, so a
+    process holding it never sees a release move. Falling back to it outside
+    production mirrors `resolve_process_configuration`, which is what the
+    process booted under; in production an unreachable graph fails closed here
+    exactly as it does at startup.
+    """
+
+    settings = runtime.settings
+    owned_driver: AsyncDriver | None = None
+    driver = neo4j_driver
+    if driver is None:
+        owned_driver = AsyncGraphDatabase.driver(
+            settings.neo4j_uri,
+            auth=(settings.neo4j_user, settings.neo4j_password.get_secret_value()),
+        )
+        driver = owned_driver
+    repository: ConfigurationGraphRepository
+    try:
+        await driver.verify_connectivity()
+        repository = Neo4jConfigurationGraphRepository(driver)
+    except Exception as exc:
+        logger.exception("configuration_graph_unavailable_for_runtime_activation")
+        if settings.environment == "production":
+            if owned_driver is not None:
+                await owned_driver.close()
+            raise RuntimeError("Required Neo4j dependency is unavailable") from exc
+        repository = InMemoryConfigurationGraphRepository()
+
+    state = ProcessRuntimeState(
+        process_class=process_class,
+        instance_id=instance_id,
+        settings=settings,
+        return_configuration=runtime.return_configuration,
+        return_configuration_snapshot=runtime.snapshot,
+        ai_gateway_configuration=runtime.ai_gateway_configuration,
+        dependency_simulation_configuration=runtime.dependency_simulation_configuration,
+        secret_resolver=runtime.secret_resolver,
+        ai_gateway_route_pool=route_pool,
+        ai_interception_store=interception_store,
+        ai_replay_store=replay_store,
+        mongo=mongo,
+        source_mongo=source_mongo,
+    )
+    activator = RuntimeConfigurationActivator(
+        app_state=state,
+        repository=repository,
+        baseline_path=runtime.return_configuration.path,
+        ai_gateway_baseline_path=runtime.ai_gateway_configuration.path,
+        dependency_simulation_baseline_path=runtime.dependency_simulation_configuration.path,
+        # The same object as `app_state`, so the activator's two settings
+        # assignments are one field and a worker cannot hold a resource-level
+        # and a state-level answer that disagree.
+        resources=state,
+        refresh_interval_seconds=refresh_interval_seconds,
+        participants=participants,
+    )
+    return WorkerRuntimeActivation(state=state, activator=activator, owned_driver=owned_driver)

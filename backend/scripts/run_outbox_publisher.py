@@ -1,4 +1,10 @@
-"""Publish authoritative MongoDB events to Valkey Streams."""
+"""Publish authoritative MongoDB events to Valkey Streams.
+
+Runs the configuration reconciler alongside the flush loop so a released change
+to the stream retention or the readiness TTL reaches this process without a
+restart, and so it has an adopted release to report (T-16). The Valkey endpoint
+itself is restart-required and the reconciler refuses a release that moves it.
+"""
 
 import asyncio
 import socket
@@ -8,11 +14,17 @@ from typing import cast
 import redis.asyncio as redis
 from pymongo import AsyncMongoClient
 
+from return_platform.configuration.runtime_activation import (
+    build_worker_runtime_activation,
+    run_runtime_activation_loop,
+)
 from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
 from return_platform.configuration.runtime_loader import resolve_process_configuration
 from return_platform.operations.events import flush_outbox
 from return_platform.operations.repository import OperationalRepository
 from return_platform.resources import AsyncValkeyClient
+
+_PROCESS_CLASS = "outbox-publisher"
 
 
 async def _run() -> None:
@@ -30,6 +42,14 @@ async def _run() -> None:
     client = cast(AsyncValkeyClient, valkey)
     repository = OperationalRepository(mongo, settings)
     instance_id = f"{socket.gethostname()}-{uuid.uuid4().hex[:8]}"
+    activation = await build_worker_runtime_activation(
+        runtime=runtime,
+        process_class=_PROCESS_CLASS,
+        instance_id=instance_id,
+        mongo=mongo,
+    )
+    state = activation.state
+    activation_task = asyncio.create_task(run_runtime_activation_loop(activation.activator))
     try:
         await verify_runtime_validation_receipts(
             mongo,
@@ -38,19 +58,25 @@ async def _run() -> None:
         )
         await repository.ensure_indexes()
         while True:
+            # One read per flush: a batch already being published keeps the
+            # retention it started under, and the next batch adopts the new one.
+            active = state.settings
             await repository.heartbeat(
-                "outbox-publisher",
+                _PROCESS_CLASS,
                 instance_id,
-                ttl_seconds=settings.worker_readiness_ttl_seconds,
+                ttl_seconds=active.worker_readiness_ttl_seconds,
             )
             published = await flush_outbox(
                 client,
                 repository,
-                maxlen=settings.event_stream_retention,
+                maxlen=active.event_stream_retention,
             )
             if published == 0:
                 await asyncio.sleep(0.5)
     finally:
+        activation_task.cancel()
+        await asyncio.gather(activation_task, return_exceptions=True)
+        await activation.aclose()
         await client.aclose()
         await mongo.close()
 

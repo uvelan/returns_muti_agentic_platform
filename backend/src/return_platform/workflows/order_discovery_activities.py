@@ -11,6 +11,8 @@ receives (or needs) the full `ActiveSchema` on the wire; it already holds one.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from temporalio import activity
 
 from return_platform.dynamic_knowledge.knowledge.guards import GuardContext, PrincipalContext
@@ -27,21 +29,62 @@ from return_platform.workflows.order_discovery_workflow import (
     RunOrderDiscoveryTurnActivityInput,
 )
 
-__all__ = ["OrderDiscoveryActivities"]
+__all__ = ["OrderDiscoveryActivities", "OrderDiscoveryRuntime"]
+
+
+@dataclass(frozen=True, slots=True)
+class OrderDiscoveryRuntime:
+    """One coordinator and the schema it was built from, as an inseparable pair.
+
+    The two must agree: the schema decides the agent policy and what the guards
+    admit, while the coordinator compiles queries and pins
+    `configuration_release_id` onto the turn from a schema of its own. A process
+    holding one from release N and the other from N+1 would evaluate guards
+    against a different schema than it queried with, so they are replaced
+    together or not at all.
+    """
+
+    coordinator: DynamicOrderAgentCoordinator
+    schema: ActiveSchema
 
 
 class OrderDiscoveryActivities:
-    """Narrow injected activity surface: one coordinator, one schema."""
+    """Narrow injected activity surface: one coordinator, one schema.
+
+    The pair is swappable because the Order Agent's reasoning runs here rather
+    than in the API process, so a release an administrator activates has to
+    reach *this* process to take effect (T-16). `adopt` is called by the
+    worker's configuration reconciler, never from workflow code -- see
+    `scripts/run_order_discovery_worker.py`.
+    """
 
     def __init__(self, *, coordinator: DynamicOrderAgentCoordinator, schema: ActiveSchema) -> None:
-        self._coordinator = coordinator
-        self._schema = schema
+        self._runtime = OrderDiscoveryRuntime(coordinator=coordinator, schema=schema)
+
+    @property
+    def runtime(self) -> OrderDiscoveryRuntime:
+        return self._runtime
+
+    def adopt(self, runtime: OrderDiscoveryRuntime) -> None:
+        """Point subsequent turns at a newly activated release.
+
+        One attribute assignment of one frozen pair, which is the whole
+        mechanism: a turn already running holds the pair it read on entry and
+        finishes on the release it started with, and the next activity task
+        picks up the new one. Nothing observes a half-swapped process.
+        """
+
+        self._runtime = runtime
 
     @activity.defn(name="run_order_discovery_turn")
     async def run_order_discovery_turn(
         self, request: RunOrderDiscoveryTurnActivityInput
     ) -> OrderDiscoveryTurnOutcome:
-        policy = self._schema.agent_policies.get(request.agent_id)
+        # The turn's one configuration read. Everything below uses this pair,
+        # so an activation mid-turn cannot change the schema underneath a
+        # conversation that has already pinned its `configuration_release_id`.
+        runtime = self._runtime
+        policy = runtime.schema.agent_policies.get(request.agent_id)
         if policy is None:
             return OrderDiscoveryTurnOutcome(
                 result=None,
@@ -52,7 +95,7 @@ class OrderDiscoveryActivities:
                 ),
             )
         guard_context = GuardContext(
-            schema=self._schema,
+            schema=runtime.schema,
             agent_policy=policy,
             principal=PrincipalContext(
                 principal_id=request.principal_id,
@@ -72,7 +115,7 @@ class OrderDiscoveryActivities:
             session_timezone=request.session_timezone,
         )
         try:
-            result = await self._coordinator.process_turn(
+            result = await runtime.coordinator.process_turn(
                 agent_turn_request,
                 guard_context,
                 workflow_id=request.workflow_id,

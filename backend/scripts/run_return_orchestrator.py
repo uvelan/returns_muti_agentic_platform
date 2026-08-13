@@ -1,4 +1,11 @@
-"""Run the E2E return orchestrator as a dedicated process."""
+"""Run the E2E return orchestrator as a dedicated process.
+
+Runs the configuration reconciler so this process's settings, secrets and AI
+gateway release stay level with the API's rather than freezing at container
+start (T-16). The orchestrator's own `return_configuration` stays as it was
+handed over: a session runs to completion on the release it started under, the
+same case-pinning rule the return workflow worker follows.
+"""
 
 import asyncio
 import logging
@@ -10,6 +17,10 @@ from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
 from return_platform.bootstrap.system_store import bootstrap_system_store
+from return_platform.configuration.runtime_activation import (
+    build_worker_runtime_activation,
+    run_runtime_activation_loop,
+)
 from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
 from return_platform.configuration.runtime_loader import resolve_process_configuration
 from return_platform.configuration.settings import Settings
@@ -27,6 +38,8 @@ from return_platform.platform.governance.store import SystemStoreProposalStore
 from return_platform.workflows.fulfillment_tracking import ShipmentObservationPort
 
 logger = logging.getLogger("return_platform.scripts.run_return_orchestrator")
+
+_PROCESS_CLASS = "return-orchestrator"
 
 
 async def _shipment_observations(
@@ -110,7 +123,21 @@ async def _run() -> None:
                 settings, mongo, source_mongo, neo4j_driver
             ),
         )
-        await orchestrator.run_forever()
+        activation = await build_worker_runtime_activation(
+            runtime=runtime,
+            process_class=_PROCESS_CLASS,
+            instance_id=worker_id,
+            mongo=mongo,
+            source_mongo=source_mongo,
+            neo4j_driver=neo4j_driver,
+        )
+        activation_task = asyncio.create_task(run_runtime_activation_loop(activation.activator))
+        try:
+            await orchestrator.run_forever()
+        finally:
+            activation_task.cancel()
+            await asyncio.gather(activation_task, return_exceptions=True)
+            await activation.aclose()
     finally:
         await neo4j_driver.close()
         if source_mongo is not mongo:
