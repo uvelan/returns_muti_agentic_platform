@@ -38,6 +38,7 @@ from return_platform.operations.return_support.service import (
     ReturnSupportService,
 )
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
+from return_platform.platform.governance.kernel import ProposalKernel
 from return_platform.workflows.bay_assignment import build_bay_assignment_result
 from return_platform.workflows.feedback_learning import build_feedback_learning_result
 from return_platform.workflows.fulfillment_tracking import (
@@ -134,6 +135,7 @@ class ReturnOrchestrator:
         ai_gateway_route_pool: AIRoutePool | None = None,
         workflow_definition: WorkflowDefinition | None = None,
         shipment_observations: ShipmentObservationPort | None = None,
+        proposal_kernel: ProposalKernel | None = None,
     ) -> None:
         self._repository = repository
         # Optional because a process with no Neo4j driver can still drive a
@@ -182,9 +184,16 @@ class ReturnOrchestrator:
             if settings.support_ticket_mode == "EXTERNAL_AUTHORITY"
             else None
         )
+        # The kernel is what turns a feedback recommendation into a reviewable
+        # proposal (W4.4). Optional here because this orchestrator is also
+        # constructed by tests and repair scripts that drive a return without a
+        # system store; absent one, the feedback record is prose, exactly as it
+        # was before, and says so in its own `reviewStatus`.
         self._feedback = FeedbackLearningService(
             repository.platform_client,
             settings,
+            configuration=self._return_configuration if proposal_kernel is not None else None,
+            kernel=proposal_kernel,
         )
 
     async def run_forever(self) -> None:

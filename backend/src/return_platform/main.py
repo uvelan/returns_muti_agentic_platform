@@ -66,6 +66,9 @@ from return_platform.bootstrap.adapters.governance_agent_configuration import (
 from return_platform.bootstrap.adapters.governance_graph_schema import (
     GraphSchemaProposalActivator,
 )
+from return_platform.bootstrap.adapters.governance_improvement import (
+    ImprovementProposalActivator,
+)
 from return_platform.bootstrap.adapters.source_inspection_mongodb import (
     build_mongo_source_inspection_adapter,
 )
@@ -833,6 +836,15 @@ async def lifespan(
                 )
             governance_activators[ProposalType.CONFIGURATION] = AgentConfigurationProposalActivator(
                 agents=app.state.agent_configuration,
+                repository=graph_configuration_repository,
+                resources=resources,
+                activator=app.state.runtime_configuration_activator,
+            )
+            # An approved improvement becomes a configuration release like any
+            # other -- section 7's "feedback proposals never activate anything
+            # directly" is satisfied by going through the release lifecycle, not
+            # by having nowhere to go.
+            governance_activators[ProposalType.IMPROVEMENT] = ImprovementProposalActivator(
                 repository=graph_configuration_repository,
                 resources=resources,
                 activator=app.state.runtime_configuration_activator,
