@@ -6415,6 +6415,11 @@
             "title": "Applyschema",
             "type": "boolean"
           },
+          "incremental": {
+            "default": false,
+            "title": "Incremental",
+            "type": "boolean"
+          },
           "maxRecordsPerAsset": {
             "default": 1000,
             "maximum": 100000.0,
@@ -6491,6 +6496,15 @@
             "title": "Nodewrites",
             "type": "integer"
           },
+          "recordScope": {
+            "default": "FULL",
+            "enum": [
+              "FULL",
+              "INCREMENTAL"
+            ],
+            "title": "Recordscope",
+            "type": "string"
+          },
           "relationshipWrites": {
             "minimum": 0.0,
             "title": "Relationshipwrites",
@@ -6520,6 +6534,13 @@
           "schemaVersion": {
             "title": "Schemaversion",
             "type": "string"
+          },
+          "skippedSources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Skippedsources",
+            "type": "array"
           },
           "sourceCounts": {
             "additionalProperties": {
