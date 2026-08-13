@@ -3,7 +3,12 @@
 Against [`FERGUSON_RETURNS_IMPLEMENTATION_PLAN_FINAL.md`](FERGUSON_RETURNS_IMPLEMENTATION_PLAN_FINAL.md).
 Last verified 2026-08-13 on `refactor/unified-return-platform`, after merging W0.7/W5.9/W5.11
 hygiene, W4.5 and W2.6 — three branches cut in parallel from `493c3f3` — and then W2.8, W2.2 and
-W2.4/W2.7, cut in parallel from `d9639e4` and `4116915`.
+W2.4/W2.7, cut in parallel from `d9639e4` and `4116915`, and W4.6/W4.8 from `e3231bd`.
+
+W4.6 and W4.8 were built with test execution deferred to Linux. Lint, `mypy
+--strict` and the infrastructure-free suites were run; no real-infrastructure or
+Docker suite was. Their row below says which is which rather than reporting a
+pass nobody obtained.
 
 **A step is "done" only when its own Validation clause holds.** Several steps below were
 previously reported complete and are recorded here as partial, because theirs does not.
@@ -375,13 +380,61 @@ The 19 steps are in the plan. Nothing is deleted before it, so Wave 3 is blocked
 
 ## Wave 3 — blocked on Gate A
 
-## Wave 4 — 1 of 12
+## Wave 4 — 3 of 12
 
 | Step | Status |
 |---|---|
 | W4.5 Complete analyzer connectors | **done** — one read-only `SourceInspectionPort` (`validate`, `list_sources`, `list_objects`, `describe_object`, `sample`, `profile`, `list_indexes`, `list_relationships`) with adapters for MongoDB, SQL Server, PostgreSQL and Neo4j, each proven against a real server. Scope is a hard filter in the tool layer (`ScopedSourceInspection`), refusing inbound *and* filtering outbound. `psycopg` added; dispatch extends the existing `SourceConnectorsByType` rather than adding a second registry. W2.4's blocker — "the analyzer's connector cannot describe the SQL warehouse source" — is closed |
+| W4.6 Mask analyzer samples at the port boundary | **done** — `MaskedSourceInspection` wraps the port and `build_scoped_source_inspection` composes `Masked(Scoped(port))` with no opt-out, so the object an analysis is handed cannot return an unmasked row. The mask preserves field names, types, shape, cardinality and distribution metadata as the clause requires: the surrogate is deterministic, so equal values give equal tokens and a foreign key stays inferable, and it states the type and size it replaced. One sensitivity policy — `platform.redaction.sensitive_keys` — now serves both this and W0.4's provider boundary, replacing the two byte-identical copies that existed in `ai/gateway/redaction.py` and `ai/gateway/service.py`. Block 5 of the prompt framing masks with the same implementation; it is idempotent, so the two boundaries compose. **Verified by unit tests only** (24), not by exercising a running analysis — see the note below |
+| W4.8 Selectivity into `compact_schema` | **done** — `FieldSelectivity` on `FieldDefinition` carries `null_rate`, `approximate_distinct` and a graded `identifier_likelihood`, filled by the release compiler from the analyzer's `profile` and emitted per field by `Neo4jKnowledgeGateway.compact_schema`. `sampled_rows` and `approximate_row_count` travel with the numbers, which is what W4.5's note required: 40 distinct over a 50-row table and over a million rows sampled 50 deep are different claims. `DECLARED_UNIQUE` (a unique index) is kept apart from `LIKELY`/`POSSIBLE` (counted over a full or partial sample) and from `UNKNOWN` (not measured), because collapsing them ranks confidently on absent evidence. No question order is written down; unprofiled fields emit nothing rather than a stated `UNKNOWN`. **Verified by unit tests only** (21) — see the note below |
 
 Confirmed absent: `as_of` on `AgentTurnContext` (W4.7 — zero references).
+
+### What W4.6 and W4.8 were *not* able to prove here
+
+Both were implemented with test execution deferred to Linux, so what follows is
+what was and was not actually run rather than an implied pass.
+
+**Run and green on this host:** `ruff format --check`, `ruff check` and `mypy
+--strict` across all 510 source files; the 45 new tests for these two steps (24
+for W4.6, 21 for W4.8); the 167 infrastructure-free tests of
+`tests/graph_schema_analyzer`; the W0.7 order-discovery smoke net (24); and 791
+tests across `tests/bootstrap`, `tests/graph_schema_analyzer`,
+`tests/configuration` and `tests/dynamic_knowledge` with real-infra and Docker
+modules excluded.
+
+**Not run:** every `*_real_infra*` and `*_docker*` module — including
+`tests/graph_schema_analyzer/test_persistence_real_infra.py` (9) and the four
+connector suites that exercise `sample` and `profile` against real MongoDB, SQL
+Server, PostgreSQL and Neo4j servers.
+
+Those connector suites were *read* rather than run, and they construct
+`ScopedSourceInspection` directly rather than going through
+`build_scoped_source_inspection`, so they see the unmasked port and their
+assertions on sampled values are untouched by W4.6. That is deliberate — they
+exist to prove the adapters and the scope filter against a real server, which is
+a different claim from proving the mask — but it does mean **no test anywhere
+exercises masking against a real source**, and the Linux run will not close that
+gap either. The masking evidence is the unit tests, and that is the honest
+boundary of what was verified.
+
+**Pre-existing failures, unrelated and confirmed at `e3231bd` with these changes
+stashed:** `tests/platform/test_canonical_returns_surface.py` and
+`tests/platform/test_main_is_composition_only.py` (router-count guards), and five
+in `tests/configuration/test_ai_credentials_must_be_vault_references.py`, which
+are an invocation artifact — a fully populated `.env` supplies both
+`PLATFORM_*_API_KEYS` and `PLATFORM_*_API_KEY_REFERENCES`, and production forbids
+the pair.
+
+**Neither step has a live consumer yet, and that is W4.5's state carried
+forward, not something these steps introduced.** `app.state.graph_schema_analyzer_
+source_inspection` holds the *routing* adapter — unscoped and unmasked — because
+scope is per-analysis and cannot be applied at composition time. Any consumer
+needing a scope must go through `build_scoped_source_inspection`, which is what
+carries the mask; the HTTP surface that will do so is W4.10. Likewise, W4.8's
+selectivity reaches `compact_schema` for any release compiled from a source
+observation, and the eleven shipped entities were compiled without profiles, so
+they emit no selectivity until a re-analysis supplies one.
 
 ### W4.5's `profile` and what W4.8 inherits
 
@@ -398,11 +451,16 @@ reason: W4.8 compares these numbers *across* sources.
 - **No HTTP surface.** The port and the scoped tool layer are bound onto
   `app.state.graph_schema_analyzer_source_inspection`; S4's permitted-object browse and
   S5's profile/diff screens are W4.10, and adding routes here would build them twice.
-- **No masking.** `sample` returns values as read. W4.6 masks at the port boundary
-  before model invocation, and doing half of it here would leave two places claiming
+- **No masking.** `sample` returned values as read. W4.6 masks at the port boundary
+  before model invocation, and doing half of it here would have left two places claiming
   responsibility. `profile` needs no masking because it returns no value at all.
+  *(Closed by W4.6 — the mask sits in `MaskedSourceInspection` and `profile` is
+  passed through untouched, as anticipated here.)*
 - **Nothing consumes `profile` yet.** W4.8 is what puts selectivity into
   `compact_schema`; this step produces the numbers and nothing reads them.
+  *(Closed by W4.8 — `observed_selectivity` reads the profile, the release compiler
+  writes it onto `FieldDefinition`, and `compact_schema` emits it with `sampled_rows`
+  and `approximate_row_count` alongside.)*
 - **The PostgreSQL tests are environment-gated.** This platform runs no PostgreSQL for
   the application (`temporal-postgresql` is Temporal's private store and publishes no
   host port), so `tests/source_connectors/test_source_inspection_postgresql_docker.py`
