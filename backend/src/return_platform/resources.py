@@ -12,6 +12,7 @@ from temporalio.client import Client
 from return_platform.configuration.settings import Settings
 from return_platform.data_governance import LoadedAssetCatalog
 from return_platform.data_platform.schema_registry import SchemaRegistry
+from return_platform.operations.sql_connection_pool import close_sql_connection_pools
 from return_platform.shared.contracts import DependencyProbeResult
 
 logger = logging.getLogger("return_platform.resources")
@@ -275,6 +276,28 @@ async def _observe_active_sql_probe(resources: RuntimeResources) -> None:
         )
 
 
+def _close_sql_connection_pools(resources: RuntimeResources) -> None:
+    """Drain and close the bounded SQL Server pools this process opened.
+
+    Mongo, Neo4j and Valkey each hand their pool back above; SQL Server had
+    nothing to hand back because `pymssql` connections were opened and closed
+    per operation. They are pooled now, so shutdown has to drain them or the
+    server keeps sessions alive until it times them out itself.
+    """
+    try:
+        close_sql_connection_pools(
+            drain_timeout_seconds=resources.settings.operation_timeout_seconds,
+        )
+    except Exception as exc:
+        logger.exception(
+            "dependency_shutdown_failed",
+            extra={
+                "dependency": "sqlserver_pool",
+                "error_type": type(exc).__name__,
+            },
+        )
+
+
 def _shutdown_sql_executor(resources: RuntimeResources) -> None:
     try:
         resources.sql_manager.executor.shutdown(
@@ -298,6 +321,7 @@ async def close_resources(resources: RuntimeResources) -> None:
     await _close_valkey(resources)
     await _observe_active_sql_probe(resources)
 
+    _close_sql_connection_pools(resources)
     _shutdown_sql_executor(resources)
 
     resources.probe_cache.clear()

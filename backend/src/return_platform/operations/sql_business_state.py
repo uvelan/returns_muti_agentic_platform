@@ -5,38 +5,70 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Any, TypeVar
-
-import pymssql
 
 from return_platform.configuration.settings import Settings
 from return_platform.operations.models import ReturnSessionView
 from return_platform.operations.return_support.providers.contracts import ReturnSupportResult
 from return_platform.operations.seed_manifest import SEED_ORDERS, SEED_SCENARIOS, manifest_digest
+from return_platform.operations.sql_connection_pool import (
+    SQLConnectionPool,
+    get_sql_connection_pool,
+)
 
 T = TypeVar("T")
 
 
 class SQLBusinessStateRepository:
-    """Bounded blocking SQL access isolated behind asynchronous methods."""
+    """Bounded blocking SQL access isolated behind asynchronous methods.
 
-    def __init__(self, settings: Settings) -> None:
+    Every method borrows a connection from the process-wide bounded pool rather
+    than opening one of its own. `pymssql.connect` per operation put no ceiling
+    on how many connections a burst of returns could open at once; the pool caps
+    it at `sqlserver_pool_max_size` and makes the wait for a free connection a
+    bounded, observable failure instead of an unbounded one.
+    """
+
+    def __init__(self, settings: Settings, *, pool: SQLConnectionPool | None = None) -> None:
         self._settings = settings
+        self._pool_override = pool
 
-    def _connect(self) -> Any:
-        timeout = max(1, int(self._settings.operation_timeout_seconds))
-        return pymssql.connect(
-            server=self._settings.sqlserver_host,
-            port=str(self._settings.sqlserver_port),
-            user=self._settings.sqlserver_user,
-            password=self._settings.sqlserver_password.get_secret_value(),
-            database=self._settings.sqlserver_database,
-            login_timeout=timeout,
-            timeout=timeout,
-            autocommit=False,
-        )
+    def _pool(self) -> SQLConnectionPool:
+        """Resolve the process-wide pool for this configuration.
+
+        Looked up per operation rather than captured in `__init__`: this
+        repository is constructed per request in `api/seed.py` and
+        `api/warehouse_placement.py`, so a pool bound at construction time
+        would either be a new pool per request -- exactly the unbounded
+        connection count this replaced -- or a pool that shutdown has already
+        drained. The lookup is one dict read under a lock.
+        """
+        return self._pool_override or get_sql_connection_pool(self._settings)
+
+    @contextmanager
+    def _transaction(self) -> Iterator[Any]:
+        """Borrow a pooled connection for a write.
+
+        Commits on success, rolls back on failure, and returns the connection to
+        the pool either way -- a failed business operation must not cost the
+        process one of its bounded connections.
+        """
+        with self._pool().transaction() as connection:
+            yield connection
+
+    @contextmanager
+    def _read(self) -> Iterator[Any]:
+        """Borrow a pooled connection for read-only statements.
+
+        Rolled back rather than committed on return: with `autocommit=False`
+        even a bare `SELECT` opens a transaction that must not follow the
+        connection to its next borrower.
+        """
+        with self._pool().acquire() as connection:
+            yield connection
 
     async def _run(self, operation: Callable[[], T]) -> T:
         async with asyncio.timeout(self._settings.operation_timeout_seconds):
@@ -51,7 +83,7 @@ class SQLBusinessStateRepository:
         status: str,
     ) -> None:
         def operation() -> None:
-            with self._connect() as connection:
+            with self._transaction() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
@@ -85,7 +117,6 @@ class SQLBusinessStateRepository:
                             status,
                         ),
                     )
-                connection.commit()
 
         await self._run(operation)
 
@@ -100,7 +131,7 @@ class SQLBusinessStateRepository:
         status: str,
     ) -> None:
         def operation() -> None:
-            with self._connect() as connection:
+            with self._transaction() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
@@ -131,13 +162,12 @@ class SQLBusinessStateRepository:
                             status,
                         ),
                     )
-                connection.commit()
 
         await self._run(operation)
 
     async def mark_return_status(self, session_id: str, status: str) -> None:
         def operation() -> None:
-            with self._connect() as connection:
+            with self._transaction() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
@@ -149,7 +179,6 @@ class SQLBusinessStateRepository:
                     )
                     if cursor.rowcount != 1:
                         raise RuntimeError("Authoritative return record is missing.")
-                connection.commit()
 
         await self._run(operation)
 
@@ -179,7 +208,7 @@ class SQLBusinessStateRepository:
         )
 
         def operation() -> int:
-            with self._connect() as connection:
+            with self._transaction() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         "DELETE FROM dbo.e2e_seed_scenarios WHERE seed_version=%s", (seed_version,)
@@ -193,7 +222,6 @@ class SQLBusinessStateRepository:
                         """,
                         rows,
                     )
-                connection.commit()
             return len(rows)
 
         return await self._run(operation)
@@ -210,7 +238,7 @@ class SQLBusinessStateRepository:
         )
 
         def operation() -> dict[str, Any]:
-            with self._connect() as connection:
+            with self._read() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
@@ -234,12 +262,11 @@ class SQLBusinessStateRepository:
 
     async def reset_seed_manifest(self, seed_version: str) -> None:
         def operation() -> None:
-            with self._connect() as connection:
+            with self._transaction() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         "DELETE FROM dbo.e2e_seed_scenarios WHERE seed_version=%s", (seed_version,)
                     )
-                connection.commit()
 
         await self._run(operation)
 
@@ -251,74 +278,72 @@ class SQLBusinessStateRepository:
         """Delete business facts created from deterministic E2E seed orders."""
 
         def operation() -> None:
-            with self._connect() as connection:
-                try:
-                    with connection.cursor() as cursor:
-                        rows: list[tuple[Any, ...]] = []
-                        effective_order_count = min(
-                            len(SEED_ORDERS),
-                            order_count if order_count is not None else len(SEED_ORDERS),
-                        )
-                        for offset in range(0, effective_order_count, 1_000):
-                            order_batch = tuple(
-                                str(SEED_ORDERS[index]["orderReference"])
-                                for index in range(
-                                    offset,
-                                    min(offset + 1_000, effective_order_count),
-                                )
+            # The explicit try/rollback this replaced is now the pool's
+            # `transaction()` contract, which additionally returns the
+            # connection instead of closing it.
+            with self._transaction() as connection:
+                with connection.cursor() as cursor:
+                    rows: list[tuple[Any, ...]] = []
+                    effective_order_count = min(
+                        len(SEED_ORDERS),
+                        order_count if order_count is not None else len(SEED_ORDERS),
+                    )
+                    for offset in range(0, effective_order_count, 1_000):
+                        order_batch = tuple(
+                            str(SEED_ORDERS[index]["orderReference"])
+                            for index in range(
+                                offset,
+                                min(offset + 1_000, effective_order_count),
                             )
-                            placeholders = ",".join("%s" for _ in order_batch)
-                            cursor.execute(
-                                f"""
-                                SELECT session_id, return_reference
-                                FROM dbo.return_requests
-                                WHERE order_reference IN ({placeholders})
-                                """,
-                                order_batch,
-                            )
-                            rows.extend(cursor.fetchall())
-                        session_ids = tuple(str(row[0]) for row in rows)
-                        return_references = tuple(str(row[1]) for row in rows if row[1] is not None)
-
-                        def delete_many(
-                            table: str,
-                            column: str,
-                            values: tuple[str, ...],
-                        ) -> None:
-                            for offset in range(0, len(values), 1_000):
-                                value_batch = values[offset : offset + 1_000]
-                                value_placeholders = ",".join("%s" for _ in value_batch)
-                                cursor.execute(
-                                    f"DELETE FROM {table} WHERE {column} IN ({value_placeholders})",
-                                    value_batch,
-                                )
-
-                        delete_many(
-                            "platform.bay_assignment",
-                            "return_reference",
-                            return_references,
                         )
-                        delete_many(
-                            "dbo.return_tracking",
-                            "return_reference",
-                            return_references,
-                        )
-                        delete_many(
-                            "integration.return_support_ticket",
-                            "session_id",
-                            session_ids,
-                        )
-                        delete_many("dbo.return_items", "session_id", session_ids)
-                        delete_many("dbo.return_fulfillment", "session_id", session_ids)
-                        delete_many("dbo.return_requests", "session_id", session_ids)
+                        placeholders = ",".join("%s" for _ in order_batch)
                         cursor.execute(
-                            "DELETE FROM dbo.e2e_seed_scenarios WHERE seed_version=%s",
-                            (seed_version,),
+                            f"""
+                            SELECT session_id, return_reference
+                            FROM dbo.return_requests
+                            WHERE order_reference IN ({placeholders})
+                            """,
+                            order_batch,
                         )
-                    connection.commit()
-                except Exception:
-                    connection.rollback()
-                    raise
+                        rows.extend(cursor.fetchall())
+                    session_ids = tuple(str(row[0]) for row in rows)
+                    return_references = tuple(str(row[1]) for row in rows if row[1] is not None)
+
+                    def delete_many(
+                        table: str,
+                        column: str,
+                        values: tuple[str, ...],
+                    ) -> None:
+                        for offset in range(0, len(values), 1_000):
+                            value_batch = values[offset : offset + 1_000]
+                            value_placeholders = ",".join("%s" for _ in value_batch)
+                            cursor.execute(
+                                f"DELETE FROM {table} WHERE {column} IN ({value_placeholders})",
+                                value_batch,
+                            )
+
+                    delete_many(
+                        "platform.bay_assignment",
+                        "return_reference",
+                        return_references,
+                    )
+                    delete_many(
+                        "dbo.return_tracking",
+                        "return_reference",
+                        return_references,
+                    )
+                    delete_many(
+                        "integration.return_support_ticket",
+                        "session_id",
+                        session_ids,
+                    )
+                    delete_many("dbo.return_items", "session_id", session_ids)
+                    delete_many("dbo.return_fulfillment", "session_id", session_ids)
+                    delete_many("dbo.return_requests", "session_id", session_ids)
+                    cursor.execute(
+                        "DELETE FROM dbo.e2e_seed_scenarios WHERE seed_version=%s",
+                        (seed_version,),
+                    )
 
         await self._run(operation)
 
@@ -333,7 +358,7 @@ class SQLBusinessStateRepository:
         """Atomically persist the support ticket and authoritative return/tracking facts."""
 
         def operation() -> None:
-            with self._connect() as connection:
+            with self._transaction() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
@@ -456,7 +481,6 @@ class SQLBusinessStateRepository:
                                     result.tracking_reference,
                                 ),
                             )
-                connection.commit()
 
         await self._run(operation)
 
@@ -471,7 +495,7 @@ class SQLBusinessStateRepository:
         """Select the highest-priority compatible active bay and persist one assignment."""
 
         def operation() -> tuple[str, str]:
-            with self._connect() as connection:
+            with self._transaction() as connection:
                 with connection.cursor(as_dict=True) as cursor:
                     cursor.execute(
                         """
@@ -536,7 +560,6 @@ class SQLBusinessStateRepository:
                             session.id,
                         ),
                     )
-                connection.commit()
                 return warehouse_id, bay_id
 
         return await self._run(operation)
@@ -551,7 +574,7 @@ class SQLBusinessStateRepository:
         """Return platform-owned bay capacity candidates for agent ranking."""
 
         def operation() -> list[dict[str, Any]]:
-            with self._connect() as connection:
+            with self._read() as connection:
                 with connection.cursor(as_dict=True) as cursor:
                     cursor.execute(
                         """
@@ -642,7 +665,7 @@ class SQLBusinessStateRepository:
         )
 
         def operation() -> tuple[str, str]:
-            with self._connect() as connection:
+            with self._transaction() as connection:
                 with connection.cursor(as_dict=True) as cursor:
                     cursor.execute(
                         """
@@ -735,7 +758,6 @@ class SQLBusinessStateRepository:
                             handling_unit_id,
                         ),
                     )
-                connection.commit()
             return reservation_id, assignment_id
 
         return await self._run(operation)
