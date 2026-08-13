@@ -73,6 +73,21 @@ class SourceConnectorsByType[ConnectorT]:
             if connector is not None
         }
 
+    def connectors(self) -> tuple[ConnectorT, ...]:
+        """Every distinct registered connector, overrides first.
+
+        Added for the analyzer's inspection routing, which has to ask each
+        connector what it can reach rather than resolve a source it already
+        knows the id of. Deduplicated by identity because one connector instance
+        is commonly registered both by type and as an override for a specific
+        source, and a caller enumerating it twice would report its sources twice.
+        """
+        ordered: list[ConnectorT] = []
+        for connector in (*self._overrides.values(), *self._connectors.values()):
+            if not any(connector is existing for existing in ordered):
+                ordered.append(connector)
+        return tuple(ordered)
+
     def resolve(self, source_asset_id: str) -> ConnectorT:
         override = self._overrides.get(source_asset_id)
         if override is not None:

@@ -12,6 +12,7 @@ __all__ = [
     "ClassificationViolation",
     "ConcurrentModification",
     "InvalidSessionTransition",
+    "ScopeViolation",
     "SnapshotIntegrityError",
     "UnknownAnalysis",
 ]
@@ -40,6 +41,16 @@ class ClassificationViolation(AnalyzerError):
     `sample_classification` (design doc section 13.6) -- e.g. NONE carrying a
     samples reference, or ENCRYPTED without the mandatory expiry. Raised before
     any durable write, never after."""
+
+
+class ScopeViolation(AnalyzerError):
+    """Source inspection was asked for something the analysis was not granted.
+
+    Raised rather than degraded to an empty result: a caller that silently gets
+    nothing back cannot tell "this table is empty" from "you may not read this
+    table", and the model asking is precisely the case the refusal exists to make
+    visible. Never caught inside the inspection path -- it is the answer.
+    """
 
 
 class SnapshotIntegrityError(AnalyzerError):

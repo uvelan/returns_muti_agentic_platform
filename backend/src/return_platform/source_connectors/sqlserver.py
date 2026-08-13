@@ -88,9 +88,19 @@ class SqlServerConnectionSettings:
         self.timeout_seconds = timeout_seconds
 
 
-def _run_query(
+def run_read_query(
     connection: SqlServerConnectionSettings, query: str, params: dict[str, Any]
 ) -> list[dict[str, Any]]:
+    """The module's single blocking connection path, shared with the analyzer's
+    SQL Server inspection adapter.
+
+    Public so that adapter does not have to reach for a private name or open a
+    second, separately-configured connection of its own -- one place that knows
+    how this codebase connects to SQL Server is the point. It is *not* a port
+    method and nothing outside a connector module may reach a caller-supplied
+    string to it: every statement passed in is composed in this package from
+    validated identifiers, with all values bound as parameters.
+    """
     timeout = max(1, int(connection.timeout_seconds))
     with pymssql.connect(
         server=connection.server,
@@ -138,7 +148,7 @@ class SqlServerSourceScanConnector:
     async def capture_high_watermark(self, *, source_asset_id: str) -> SourceCursor:
         namespace, table, cursor_field = self._resolve(source_asset_id)
         rows = await asyncio.to_thread(
-            _run_query,
+            run_read_query,
             self._connection,
             f"SELECT MAX([{cursor_field}]) AS watermark FROM [{namespace}].[{table}]",
             {},
@@ -190,7 +200,7 @@ class SqlServerSourceScanConnector:
             f"SELECT {top}* FROM [{namespace}].[{table}] "
             f"WHERE {predicate} ORDER BY [{cursor_field}] ASC"
         )
-        rows = await asyncio.to_thread(_run_query, self._connection, query, params)
+        rows = await asyncio.to_thread(run_read_query, self._connection, query, params)
 
         batch: list[RawSourceDocument] = []
         last_cursor_value: datetime | None = None
@@ -226,7 +236,7 @@ class SqlServerSourceScanConnector:
         )  # this connector always uses the schema bound at construction; see class docstring
         compiled = compile_source_read(self._schema, plan)
         query = _COLON_PARAMETER.sub(r"%(\1)s", compiled.statement)
-        rows = await asyncio.to_thread(_run_query, self._connection, query, compiled.parameters)
+        rows = await asyncio.to_thread(run_read_query, self._connection, query, compiled.parameters)
         documents = tuple(
             RawSourceDocument(
                 operation="UPSERT",
@@ -326,7 +336,7 @@ async def sample_rows(
         f"ORDER BY [{safe_order_by}] OFFSET %(offset)s ROWS FETCH NEXT %(limit)s ROWS ONLY"
     )
     return await asyncio.to_thread(
-        _run_query, connection, query, {"offset": max(0, offset), "limit": limit}
+        run_read_query, connection, query, {"offset": max(0, offset), "limit": limit}
     )
 
 
@@ -344,5 +354,5 @@ async def fetch_row(
     safe_table = _validate_identifier(table, what="table")
     safe_key_column = _validate_identifier(key_column, what="column")
     query = f"SELECT * FROM [{safe_namespace}].[{safe_table}] WHERE [{safe_key_column}] = %(key)s"
-    rows = await asyncio.to_thread(_run_query, connection, query, {"key": key_value})
+    rows = await asyncio.to_thread(run_read_query, connection, query, {"key": key_value})
     return rows[0] if rows else None

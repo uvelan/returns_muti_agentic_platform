@@ -32,10 +32,10 @@ policy, timings · W1.8 case list and resume.
 | W2.1 Analyzer → runtime schema | **done** — approved draft compiles to an `ActiveSchema` release; runtime prefers it over YAML |
 | W2.2 Split shape from source binding | **partial** — binding catalogue, store and API shipped; `DOMAIN_SOURCE_COLLECTIONS` still has 3 references in `operations/repository.py`, so the Validation clause (rename `salesInv → salesInvV2` through configuration only) would fail |
 | W2.3 Re-analysis and migration | done — three-way diff, proposals as typed mutations, migration plan recorded before the pointer moves |
-| W2.4 Return and warehouse entities | **partial** — return entities added, but **by hand-editing the descriptor**, which the step forbids; **no warehouse or bay entity exists**. Blocked on the MSSQL analyzer connector (W4.5), as the step's own Failure condition predicts |
+| W2.4 Return and warehouse entities | **partial** — return entities added, but **by hand-editing the descriptor**, which the step forbids; **no warehouse or bay entity exists**. No longer blocked: W4.5 landed the MSSQL analyzer connector its Failure condition named |
 | W2.5 Return on-demand sync | **done** — `ReturnCaseWorkflow` runs a record-scoped `synchronize_return_records` activity after the return record commits, blocking, parking the case as `RETURN_GRAPH_SYNC_FAILED` on failure. Proven against real Mongo and Neo4j: a committed record is queryable through the compiler afterwards, and the pre-fix upstream connector routing is shown writing nothing |
 | W2.6 Fulfillment on-demand sync | **partial** — the code is done and `IN_TRANSIT` now requires an observed shipment, but the Validation clause does not hold on the shipped descriptor; see below |
-| W2.7 Warehouse and bay on-demand sync | **not started** — blocked on W2.4's warehouse entity |
+| W2.7 Warehouse and bay on-demand sync | **not started** — still blocked on W2.4's warehouse entity, which is now producible |
 | W2.8 Sync control (S6) and incremental sync | **partial** — S6 ships with run list, filters, detail and manual trigger; `incremental_sync` not confirmed implemented against the cursor contract |
 
 ### A defect found and fixed inside W2.5/W2.6's area
@@ -83,9 +83,49 @@ The 19 steps are in the plan. Nothing is deleted before it, so Wave 3 is blocked
 
 ## Wave 3 — blocked on Gate A
 
-## Wave 4 — not started (0 of 12)
+## Wave 4 — 1 of 12
+
+| Step | Status |
+|---|---|
+| W4.5 Complete analyzer connectors | **done** — one read-only `SourceInspectionPort` (`validate`, `list_sources`, `list_objects`, `describe_object`, `sample`, `profile`, `list_indexes`, `list_relationships`) with adapters for MongoDB, SQL Server, PostgreSQL and Neo4j, each proven against a real server. Scope is a hard filter in the tool layer (`ScopedSourceInspection`), refusing inbound *and* filtering outbound. `psycopg` added; dispatch extends the existing `SourceConnectorsByType` rather than adding a second registry. W2.4's blocker — "the analyzer's connector cannot describe the SQL warehouse source" — is closed |
 
 Confirmed absent: `as_of` on `AgentTurnContext` (W4.7 — zero references).
+
+### W4.5's `profile` and what W4.8 inherits
+
+`profile` returns statistics and never a value: approximate row count, per-field
+null rate, approximate distinct, identifier candidacy and change-tracking candidacy,
+plus the `sampled_rows` those were computed over. The last one matters for W4.8 —
+`approximate_distinct` over 50 sampled rows is a different claim from the same
+number over a table, and a ranking that cannot tell them apart is a coincidence.
+The statistics are computed in one shared module for all four backends for the same
+reason: W4.8 compares these numbers *across* sources.
+
+### What W4.5 deliberately did not do
+
+- **No HTTP surface.** The port and the scoped tool layer are bound onto
+  `app.state.graph_schema_analyzer_source_inspection`; S4's permitted-object browse and
+  S5's profile/diff screens are W4.10, and adding routes here would build them twice.
+- **No masking.** `sample` returns values as read. W4.6 masks at the port boundary
+  before model invocation, and doing half of it here would leave two places claiming
+  responsibility. `profile` needs no masking because it returns no value at all.
+- **Nothing consumes `profile` yet.** W4.8 is what puts selectivity into
+  `compact_schema`; this step produces the numbers and nothing reads them.
+- **The PostgreSQL tests are environment-gated.** This platform runs no PostgreSQL for
+  the application (`temporal-postgresql` is Temporal's private store and publishes no
+  host port), so `tests/source_connectors/test_source_inspection_postgresql_docker.py`
+  skips unless `PLATFORM_TEST_POSTGRES_HOST` is set. They were run green against a
+  throwaway `postgres:17.10-alpine`; a CI run that does not provide one will skip them
+  rather than fail, which is worth knowing before trusting a green suite.
+
+### PostgreSQL is connected synchronously, on purpose
+
+psycopg 3 refuses to run async on asyncio's `ProactorEventLoop`, which is the
+default on Windows and what uvicorn selects there — an `AsyncConnection` works in
+the Linux containers and raises `InterfaceError` on every developer machine here.
+The connector wraps the synchronous driver in `asyncio.to_thread`, which is what
+`SqlServerSourceScanConnector` already does with pymssql. Found by running the
+tests, not by reading the docs.
 
 ## Wave 5 — partial (0 done, 2 partial of 11)
 
@@ -214,6 +254,14 @@ The plan, in the order that makes a failure cheap:
 **Do not start this before W4.5.** The analyzer connector work lands a Neo4j read-only connector,
 which adds to the surface being validated; validating twice is the avoidable cost.
 
+W5.11's first clause — "add a PostgreSQL driver" — is done as part of W4.5
+(`psycopg[binary]==3.3.4`, in `pyproject.toml` and `poetry.lock`). The rest of W5.11
+(Node/npm alignment, the two Starlette deprecations, the Neo4j 5.26 → 2025.x plan)
+is untouched.
+
+W5.9's "`scripts/run_data_job_worker.py` fails `ruff check`" is also closed — it was
+the only thing standing between this branch and a clean `ruff check src tests scripts`.
+
 ## Work done outside the plan
 
 Not scheduled, and it came at the cost of Wave 2's tail. Recorded so the ledger is honest:
@@ -263,7 +311,10 @@ Not scheduled, and it came at the cost of Wave 2's tail. Recorded so the ledger 
   exactly as the test's own docstring requires, and the test asserted on a bare `ValueError` and a
   message from one of the two registries that were consolidated into it. It now asserts
   `UnreachableSource`, which is what `tests/dynamic_knowledge/test_sync_adapters.py:198` already
-  asserted on the same code path.
+  asserted on the same code path. W4.5 reached the identical fix independently and in parallel,
+  and adds one detail worth keeping: the expected *type* was wrong as well as the message —
+  `UnreachableSource` is a `RuntimeError`, so correcting only the `match=` string would still have
+  left the test red.
 
 - **A fifth test is red at `493c3f3`** and was not on the list above:
   `tests/api/test_canonical_returns_support_and_conversation.py::test_the_reverse_conversation_lookup_exists_and_is_indexed`.
@@ -344,24 +395,50 @@ ConnectionRefusedError: [Errno 111] Connect call failed ('::1', 7687, 0, 0)
   -> dependency_initialization_failed -> 503 -> assert 503 in (200, 201)
 ```
 
-`::1` port 7687 is Neo4j on IPv6 loopback. Those tests construct their own `Settings()`, which
-reads the mounted repository-root `.env` — and that file was rewritten to literal `localhost`
-values when Vault was disabled. The Vault placeholders it replaced were host-agnostic; the
-literals are not, and inside the container they are wrong. `docker exec -e` overrides do not
-help: they reach the process environment, and `Settings()` re-reads the file underneath them.
+`::1` port 7687 is Neo4j on IPv6 loopback. The diagnosis recorded here — that those tests build
+their own `Settings()` which re-reads the mounted `.env` underneath any `-e` override — was
+wrong, and wrong in a way that made the fix look bigger than it is. They use the shared
+`test_settings` fixture, and that fixture passed `neo4j_uri="bolt://localhost:7687"` and
+`valkey_host="localhost"` as **literal keyword arguments**. A pydantic-settings init keyword
+outranks the process environment *and* the dotenv file, so `docker exec -e` set a value nothing
+ever consulted — and so would a rewritten container `.env`.
 
-**Fix:** give the container its own `.env` carrying in-network values — `mongodb:27017`,
-`bolt://neo4j:7687`, `temporal:7233`, `valkey`, `sqlserver` — rather than passing hostnames as
-`-e` flags. Then re-run `tests/test_order_agent_rest.py`.
+**Fixed in W4.5.** `PLATFORM_TEST_NEO4J_URI`, `PLATFORM_TEST_VALKEY_HOST` and
+`PLATFORM_TEST_SQLSERVER_PORT` now override those three, mirroring the `MONGO_HOST`,
+`TEMPORAL_TARGET` and `SQLSERVER_HOST` overrides that already existed. Every default is today's
+value, so a host run is unchanged. A container run on the compose network needs:
+
+```
+PLATFORM_TEST_MONGO_HOST=mongodb  PLATFORM_TEST_NEO4J_URI=bolt://neo4j:7687
+PLATFORM_TEST_TEMPORAL_TARGET=temporal:7233  PLATFORM_TEST_VALKEY_HOST=valkey
+PLATFORM_TEST_SQLSERVER_HOST=sqlserver  PLATFORM_TEST_SQLSERVER_PORT=1433
+```
+
+**Not yet verified:** `tests/test_order_agent_rest.py` has not been re-run in a container with
+these set. The change is the mechanism the fix needs; the 56 failures are not yet observed green.
 
 Two hypotheses were wrong before this one: that `PLATFORM_AI_PROVIDER_ORDER=MANUAL` starved the
 scenarios, and that dropping the synthetic `orders`/`products`/`customers` collections removed
 their fixture data. Both were inferred from where the failures clustered instead of from reading
 one assertion — which is what execution rule 3 exists to prevent.
 
-**Still open:** 4 errors in `tests/source_connectors/test_sqlserver_connector_docker.py`
-(SQL Server is up; likely a missing table or driver in that container). And `ai_replay_mode` is
-worth enabling for the next full run so it records itself and later runs cost nothing.
+**The 4 errors in `tests/source_connectors/test_sqlserver_connector_docker.py` are closed**, and
+the guess recorded here ("a missing table or driver in that container") was wrong on both counts.
+pymssql reported only `Login failed for user 'sa'`, which reads as credentials; the server's own
+log gives the real reason:
+
+```
+Login failed for user 'sa'. Reason: Failed to open the explicitly specified database 'test_db'.
+```
+
+`tests/conftest.py::test_settings` has always declared `sqlserver_database="test_db"` and nothing
+in the repository ever created it — the SQL migrations run against `return_platform` and compose
+has no init script. `test_db` appears as a literal in exactly two test files and nowhere else, so
+this module has never been able to run, on the host or in a container. A fixture in
+`tests/source_connectors/conftest.py` now creates the database from `master`; all 4 pass.
+
+**Still open:** `ai_replay_mode` is worth enabling for the next full run so it records itself and
+later runs cost nothing.
 
 **Also note:** piping a container run through `tail` loses the entire output if the connection
 drops -- it happened twice. Write to a file inside the container and tail that afterwards.

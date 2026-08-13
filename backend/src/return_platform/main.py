@@ -59,6 +59,18 @@ from return_platform.bootstrap.adapters.analyzer_graph_target_adapter import (
 from return_platform.bootstrap.adapters.analyzer_source_adapter import (
     build_mongo_source_discovery_adapter,
 )
+from return_platform.bootstrap.adapters.source_inspection_mongodb import (
+    build_mongo_source_inspection_adapter,
+)
+from return_platform.bootstrap.adapters.source_inspection_neo4j import (
+    build_neo4j_source_inspection_adapter,
+)
+from return_platform.bootstrap.adapters.source_inspection_routing import (
+    build_routing_source_inspection_adapter,
+)
+from return_platform.bootstrap.adapters.source_inspection_sqlserver import (
+    build_sqlserver_source_inspection_adapter,
+)
 from return_platform.bootstrap.api import router as runtime_config_router
 from return_platform.bootstrap.context import (
     RuntimeContext,
@@ -119,6 +131,7 @@ from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore
 from return_platform.dynamic_knowledge.source_binding_store import SourceBindingStore
 from return_platform.graph_schema_analyzer.api import router as graph_schema_analyzer_router
 from return_platform.graph_schema_analyzer.persistence import build_system_store_persistence
+from return_platform.graph_schema_analyzer.ports.source_port import SourceInspectionPort
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_support.service import ReturnSupportService
 from return_platform.platform.capabilities.registry import InMemoryCapabilityRegistry
@@ -143,6 +156,7 @@ from return_platform.shared.contracts import (
     ResponseMeta,
     WarningMeta,
 )
+from return_platform.source_connectors.sqlserver import SqlServerConnectionSettings
 
 logger = logging.getLogger("return_platform.main")
 
@@ -678,6 +692,55 @@ async def lifespan(
                         source_id=settings.source_mongo_database,
                     )
                 )
+            # The object-at-a-time inspection surface (W4.5), beside the
+            # whole-source discovery above rather than replacing it: `discover`
+            # reads every object of a source in one call, which is the
+            # escalation this surface exists to avoid, and W2.4 needs the SQL
+            # warehouse described object by object before it can have an entity.
+            #
+            # Registered as per-source `overrides` because each adapter is bound
+            # to one client and one database at construction. A connector type
+            # does not identify a store: two MongoDB sources in different
+            # databases resolving to one connector is how a scan reads
+            # collections that are not there and reports an empty projection
+            # rather than a misconfiguration.
+            inspection_overrides: dict[str, SourceInspectionPort] = {}
+            if resources.source_mongo is not None:
+                inspection_overrides[settings.source_mongo_database] = (
+                    build_mongo_source_inspection_adapter(
+                        resources.source_mongo,
+                        database_name=settings.source_mongo_database,
+                        source_id=settings.source_mongo_database,
+                    )
+                )
+            inspection_overrides[settings.sqlserver_database] = (
+                build_sqlserver_source_inspection_adapter(
+                    SqlServerConnectionSettings(
+                        server=settings.sqlserver_host,
+                        port=settings.sqlserver_port,
+                        user=settings.sqlserver_user,
+                        password=settings.sqlserver_password.get_secret_value(),
+                        database=settings.sqlserver_database,
+                        timeout_seconds=max(1, int(settings.operation_timeout_seconds)),
+                    ),
+                    source_id=settings.sqlserver_database,
+                )
+            )
+            if resources.neo4j is not None:
+                inspection_overrides["platform_graph"] = build_neo4j_source_inspection_adapter(
+                    resources.neo4j, source_id="platform_graph"
+                )
+            app.state.graph_schema_analyzer_source_inspection = (
+                build_routing_source_inspection_adapter(
+                    # The catalogue stays empty and every adapter is an override:
+                    # nothing here needs the active schema, and reading one at
+                    # startup would tie source inspection to a schema generation
+                    # it is meant to help produce.
+                    sources={},
+                    connectors={},
+                    overrides=inspection_overrides,
+                )
+            )
             if resources.neo4j is not None:
                 app.state.graph_schema_analyzer_graph_target = build_neo4j_graph_target_adapter(
                     resources.neo4j,
@@ -726,6 +789,12 @@ async def lifespan(
             app.state.graph_schema_analyzer_status = {
                 "state": "READY",
                 "source_discovery": resources.source_mongo is not None,
+                # Which sources the inspection surface can actually reach, rather
+                # than a bare boolean: SQL Server is always registered (the
+                # adapter opens no connection until asked) while Mongo and Neo4j
+                # depend on a live client, so "inspection is available" on its own
+                # would be true while the source an operator wants is not there.
+                "source_inspection": sorted(inspection_overrides),
                 "graph_target": resources.neo4j is not None,
                 "reasoning": analyzer_reasoning_bound,
             }
@@ -773,6 +842,7 @@ async def lifespan(
             del app.state.dynamic_order_agent_runtime
         for analyzer_attribute in (
             "graph_schema_analyzer_source_discovery",
+            "graph_schema_analyzer_source_inspection",
             "graph_schema_analyzer_graph_target",
             "graph_schema_analyzer_reasoning",
         ):

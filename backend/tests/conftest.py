@@ -137,6 +137,21 @@ def test_settings(
     mongo_host = os.getenv("PLATFORM_TEST_MONGO_HOST", "localhost")
     temporal_target = os.getenv("PLATFORM_TEST_TEMPORAL_TARGET", "localhost:7233")
     sqlserver_host = os.getenv("PLATFORM_TEST_SQLSERVER_HOST", "localhost")
+    # The remaining three dependency addresses, overridable for the same reason
+    # and previously not. They were passed to `Settings` as literal keyword
+    # arguments, and an init keyword outranks both the process environment and
+    # the dotenv file -- so a container run could not move them at all, and
+    # `docker exec -e PLATFORM_NEO4J_URI=...` reached a value nothing consulted.
+    # That is what made every test in `test_order_agent_rest.py` fail on a Neo4j
+    # connection to IPv6 loopback inside the compose network.
+    neo4j_uri = os.getenv("PLATFORM_TEST_NEO4J_URI", "bolt://localhost:7687")
+    valkey_host = os.getenv("PLATFORM_TEST_VALKEY_HOST", "localhost")
+    # Published port on the host, container port in-network. The default reads
+    # the repository `.env` that `pytest_configure` loaded, so the host case is
+    # unchanged whatever that file says.
+    sqlserver_port = int(
+        os.getenv("PLATFORM_TEST_SQLSERVER_PORT") or os.getenv("PLATFORM_SQLSERVER_PORT", "1433")
+    )
 
     return Settings(
         _env_file=str(REPOSITORY_ROOT / ".env"),
@@ -148,10 +163,10 @@ def test_settings(
             f"@{mongo_host}:27017/return_platform"
             "?authSource=admin"
         ),
-        neo4j_uri="bolt://localhost:7687",
+        neo4j_uri=neo4j_uri,
         neo4j_user="neo4j",
         neo4j_password=SecretStr(_required_environment_variable("GRAPH_PASSWORD")),
-        valkey_host="localhost",
+        valkey_host=valkey_host,
         valkey_password=SecretStr(_required_environment_variable("VALKEY_PASSWORD")),
         ai_provider_order="NVIDIA,GOOGLE",
         nvidia_lightweight_models=["meta/llama-3.1-8b-instruct"],
@@ -164,6 +179,7 @@ def test_settings(
         ai_timeout_seconds=30.0,
         ai_global_timeout_seconds=120.0,
         sqlserver_host=sqlserver_host,
+        sqlserver_port=sqlserver_port,
         sqlserver_user="sa",
         sqlserver_password=SecretStr(_required_environment_variable("MSSQL_SA_PASSWORD")),
         sqlserver_database="test_db",
