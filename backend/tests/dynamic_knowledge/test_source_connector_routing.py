@@ -17,6 +17,7 @@ import pytest
 
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 from return_platform.dynamic_knowledge.sync.adapters import scan_connector_registry
+from return_platform.source_connectors.registry import UnreachableSource
 
 
 class _Connector:
@@ -98,5 +99,11 @@ def test_a_type_with_no_connector_is_refused_rather_than_defaulted(
         mongo_connector=_Connector("mongo"),  # type: ignore[arg-type]
     )
 
-    with pytest.raises(ValueError, match="no connector registered"):
+    # Asserts the type and message the consolidated registry actually raises.
+    # This tripwire was previously written against `ValueError` and the wording
+    # "no connector registered", neither of which has existed since the two
+    # registries became `SourceConnectorsByType` -- so it was failing on its own
+    # assertion rather than on the behaviour it guards, which is worse than not
+    # existing: a red tripwire stops being read.
+    with pytest.raises(UnreachableSource, match="no connector of that type is configured"):
         registry.resolve("source_b")

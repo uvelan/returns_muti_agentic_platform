@@ -16,6 +16,11 @@ dependencies = [
     "pymongo==4.17.0",
     "neo4j==6.2.0",
     "pymssql==2.3.13",
+    # W4.5/W5.11: §5A has always required a PostgreSQL connector and no driver
+    # was installed. `[binary]` because the pure-Python build needs libpq
+    # development headers present at install time, which the Windows developer
+    # machines here do not have and the container images would have to grow.
+    "psycopg[binary]==3.3.4",
     "redis==8.0.1",
     "temporalio==1.30.0",
     "httpx==0.28.1",
