@@ -496,9 +496,7 @@ async def test_allowing_and_answering_cannot_both_win(system_store: SystemStore)
     await store.allow(interception_id=interception_id, allowed_by="op-1")
 
     with pytest.raises(InterceptionNotPending):
-        await store.answer(
-            interception_id=interception_id, response_text="{}", answered_by="op-2"
-        )
+        await store.answer(interception_id=interception_id, response_text="{}", answered_by="op-2")
     with pytest.raises(InterceptionNotPending):
         await store.allow(interception_id=interception_id, allowed_by="op-2")
 

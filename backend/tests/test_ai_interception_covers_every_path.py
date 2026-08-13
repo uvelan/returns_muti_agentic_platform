@@ -304,9 +304,7 @@ async def test_adversarial_scenario_32_structured_call_is_held_then_allowed() ->
 
     # explicit ALLOW_PROVIDER — the operator action, through the store the
     # `/interceptions/{id}/allow` endpoint drives.
-    allowed = await store.allow(
-        interception_id=pending[0].interception_id, allowed_by="operator-1"
-    )
+    allowed = await store.allow(interception_id=pending[0].interception_id, allowed_by="operator-1")
     assert allowed.status is InterceptionStatus.ALLOWED
 
     # The resumed call. Same payload, therefore the same derived id, therefore
@@ -387,9 +385,7 @@ async def test_a_decision_outlives_the_switch_being_turned_off() -> None:
         logger=logging.getLogger("test"),
         event_prefix="test",
         subject="test invocation",
-        interception=build_interception_policy(
-            store=store, settings_source=switch, subject="test"
-        ),
+        interception=build_interception_policy(store=store, settings_source=switch, subject="test"),
     )
 
     with pytest.raises(StructuredInvocationUnavailable):
