@@ -25,6 +25,14 @@ logger = logging.getLogger("return_platform.configuration.snapshot")
 RETURN_PLATFORM_DOMAIN_KEY = "RETURN_PLATFORM"
 AI_GATEWAY_DOMAIN_KEY = "AI_GATEWAY"
 DEPENDENCY_SIMULATION_DOMAIN_KEY = "DEPENDENCY_SIMULATION"
+#: Per-agent module documents, as `manifest.yaml` declares them (W4.2).
+#:
+#: Deliberately **not** in the required-domain set. The three above are behaviour
+#: domains every release must carry; this one is present only once an agent has
+#: been edited through a release, and a deployment that has never edited one
+#: reads the packaged files as its baseline. Requiring it would make every
+#: release cut before W4.2 unpublishable.
+AGENT_MODULES_DOMAIN_KEY = "AGENT_MODULES"
 _ACTIVE_RELEASE_STATUSES = frozenset({"RELEASED"})
 
 

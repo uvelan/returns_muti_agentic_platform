@@ -74,8 +74,12 @@ def configuration_client(
     async def accept_receipts(*_args: object, **_kwargs: object) -> None:
         return None
 
+    # The receipt check moved with the promotion body in W4.2: the router now
+    # delegates to `promote_configuration_release`, so this patches where the
+    # call actually lives rather than where it used to be imported.
     monkeypatch.setattr(
-        "return_platform.configuration.api.releases.verify_runtime_validation_receipts",
+        "return_platform.configuration.application.release_promotion"
+        ".verify_runtime_validation_receipts",
         accept_receipts,
     )
     return TestClient(app)

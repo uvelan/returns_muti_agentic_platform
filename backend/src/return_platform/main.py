@@ -1,8 +1,8 @@
 import asyncio
 import logging
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
-from typing import cast
+from typing import Any, cast
 
 import redis.asyncio as redis
 from fastapi import FastAPI, Request, Response, status
@@ -60,6 +60,9 @@ from return_platform.bootstrap.adapters.analyzer_graph_target_adapter import (
 from return_platform.bootstrap.adapters.analyzer_source_adapter import (
     build_mongo_source_discovery_adapter,
 )
+from return_platform.bootstrap.adapters.governance_agent_configuration import (
+    AgentConfigurationProposalActivator,
+)
 from return_platform.bootstrap.adapters.governance_graph_schema import (
     GraphSchemaProposalActivator,
 )
@@ -103,7 +106,10 @@ from return_platform.configuration.runtime_integrations import (
     verify_runtime_validation_receipts,
 )
 from return_platform.configuration.settings import BACKEND_ROOT, Settings
-from return_platform.configuration.snapshot import ConfigurationSnapshotBuilder
+from return_platform.configuration.snapshot import (
+    AGENT_MODULES_DOMAIN_KEY,
+    ConfigurationSnapshotBuilder,
+)
 from return_platform.data_governance import load_asset_catalog
 from return_platform.data_platform.graph.sync_service import GraphSyncService
 from return_platform.data_platform.operational_generation.adapters.graph_sync import (
@@ -495,10 +501,24 @@ async def lifespan(
         resources.settings = settings
         app.state.settings = settings
 
-        # Each agent's own module file, editable through /api/config/agents.
-        # Reads and writes both go through the loader the platform boots from,
-        # so the console cannot accept a document the platform would refuse.
-        app.state.agent_configuration = AgentConfigurationService(BACKEND_ROOT / "config")
+        # Each agent's own module document, editable through /api/agents.
+        # Reads and proposals both go through the loader the platform boots
+        # from, so the console cannot accept a document the platform would
+        # refuse.
+        #
+        # The overlay is read through a closure rather than passed as a value:
+        # this service is built once at startup and the active release moves
+        # underneath it every time one is published, so a snapshot captured here
+        # would keep serving the configuration that was live at boot.
+        def _released_agent_modules() -> Mapping[str, Any]:
+            snapshot = getattr(app.state, "return_configuration_snapshot", None)
+            payloads = getattr(snapshot, "domain_payloads", None)
+            modules = payloads.get(AGENT_MODULES_DOMAIN_KEY) if isinstance(payloads, dict) else None
+            return modules if isinstance(modules, Mapping) else {}
+
+        app.state.agent_configuration = AgentConfigurationService(
+            BACKEND_ROOT / "config", overlay=_released_agent_modules
+        )
 
         await _initialize_mongodb(
             settings,
@@ -811,6 +831,12 @@ async def lifespan(
                 governance_activators[ProposalType.GRAPH_SCHEMA] = GraphSchemaProposalActivator(
                     app.state.graph_schema_analyzer_persistence, graph_target
                 )
+            governance_activators[ProposalType.CONFIGURATION] = AgentConfigurationProposalActivator(
+                agents=app.state.agent_configuration,
+                repository=graph_configuration_repository,
+                resources=resources,
+                activator=app.state.runtime_configuration_activator,
+            )
             if resources.mongo is not None:
                 app.state.proposal_kernel = ProposalKernel(
                     SystemStoreProposalStore(analyzer_system_store),

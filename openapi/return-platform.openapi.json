@@ -1202,6 +1202,39 @@
         "title": "APIResponse[AIUsageSummaryView]",
         "type": "object"
       },
+      "APIResponse_AgentConfigurationProposalView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentConfigurationProposalView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[AgentConfigurationProposalView]",
+        "type": "object"
+      },
       "APIResponse_AgentConfigurationView_": {
         "additionalProperties": false,
         "properties": {
@@ -3451,6 +3484,54 @@
         "title": "AddRelationship",
         "type": "object"
       },
+      "AgentConfigurationProposalView": {
+        "additionalProperties": false,
+        "description": "What a `PUT` now answers with: a proposal, not a document.\n\nThe response type changed deliberately and visibly. Answering with the\nedited `AgentConfigurationView` would tell an operator their change had been\napplied, which is precisely what it no longer does -- and a screen that\nbelieves it would never send anyone to the review queue.",
+        "properties": {
+          "affectedKeys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Affectedkeys",
+            "type": "array"
+          },
+          "manifestId": {
+            "title": "Manifestid",
+            "type": "string"
+          },
+          "proposalId": {
+            "title": "Proposalid",
+            "type": "string"
+          },
+          "proposedBy": {
+            "title": "Proposedby",
+            "type": "string"
+          },
+          "risk": {
+            "title": "Risk",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProposalStatus"
+          },
+          "submittedAt": {
+            "format": "date-time",
+            "title": "Submittedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "proposalId",
+          "manifestId",
+          "status",
+          "risk",
+          "affectedKeys",
+          "proposedBy",
+          "submittedAt"
+        ],
+        "title": "AgentConfigurationProposalView",
+        "type": "object"
+      },
       "AgentConfigurationUpdate": {
         "additionalProperties": false,
         "properties": {
@@ -3485,13 +3566,18 @@
           "path": {
             "title": "Path",
             "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
           }
         },
         "required": [
           "manifestId",
           "moduleId",
           "path",
-          "document"
+          "document",
+          "source"
         ],
         "title": "AgentConfigurationView",
         "type": "object"
@@ -3599,6 +3685,10 @@
             "title": "Name",
             "type": "string"
           },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -3610,7 +3700,8 @@
           "name",
           "enabled",
           "status",
-          "configurationVersion"
+          "configurationVersion",
+          "source"
         ],
         "title": "AgentSummary",
         "type": "object"
@@ -12712,7 +12803,7 @@
         ]
       },
       "put": {
-        "description": "Replace one agent's document.\n\nA rejected document comes back as 422 carrying the loader's own reason. The\neditor needs to know *why* it was refused -- \"invalid configuration\" gives\nan operator nothing to correct, and the loader's message names the field.",
+        "description": "Propose a replacement for one agent's document.\n\n202, not 200: the platform has accepted the change for review and has not\nmade it. A rejected document still comes back as 422 carrying the loader's\nown reason -- the editor needs to know *why* it was refused, and \"invalid\nconfiguration\" gives an operator nothing to correct.",
         "operationId": "update_agent_configuration_api_agents__manifest_id__put",
         "parameters": [
           {
@@ -12736,11 +12827,11 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse_AgentConfigurationView_"
+                  "$ref": "#/components/schemas/APIResponse_AgentConfigurationProposalView_"
                 }
               }
             },
