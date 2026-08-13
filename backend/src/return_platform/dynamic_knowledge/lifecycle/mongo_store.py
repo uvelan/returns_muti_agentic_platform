@@ -1,7 +1,8 @@
 """MongoDB-backed stores for the Platform-Mongo-authoritative half of the
 blue/green activation protocol: ActiveRuntimeSnapshot (the one atomic pointer
-every request resolves) and RebuildLease (prevents concurrent rebuilds of the
-same named snapshot). See graph/generation.py for the record shapes and
+every request resolves), RebuildLease (prevents concurrent rebuilds of the same
+named snapshot), and the durable monotonic counter every fencing token is
+allocated from. See graph/generation.py for the record shapes and
 graph/generation_writer.py for the Neo4j-side counterpart.
 """
 
@@ -11,14 +12,27 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
+from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
-from return_platform.dynamic_knowledge.graph.generation import ActiveRuntimeSnapshot, RebuildLease
+from return_platform.dynamic_knowledge.graph.generation import (
+    FENCING_TOKEN_FLOOR,
+    ActiveRuntimeSnapshot,
+    RebuildLease,
+)
 
 ACTIVE_RUNTIME_SNAPSHOTS_COLLECTION = "dynamic_graph_active_snapshots"
 """Platform-Mongo collection holding one document per snapshot_name. Named
 beside the store so the activation writer and the request-path reader cannot
 drift onto different collections."""
+
+REBUILD_LEASES_COLLECTION = "dynamic_graph_rebuild_leases"
+"""Platform-Mongo collection holding one rebuild-lease slot per snapshot_name.
+Named here for the same reason as the snapshot collection: two rebuilders on
+different collection names would both believe they held the lease."""
+
+GENERATION_FENCING_TOKENS_COLLECTION = "dynamic_graph_fencing_tokens"
+"""Platform-Mongo collection holding one counter document per allocation scope."""
 
 
 class ActiveRuntimeSnapshotStore(Protocol):
@@ -31,6 +45,10 @@ class ActiveRuntimeSnapshotStore(Protocol):
         expected_activation_version: int | None,
         new_snapshot: ActiveRuntimeSnapshot,
     ) -> bool: ...
+
+
+class FencingTokenAllocator(Protocol):
+    async def allocate(self, *, scope: str) -> int: ...
 
 
 class RebuildLeaseStore(Protocol):
@@ -91,6 +109,43 @@ class MongoActiveRuntimeSnapshotStore:
         # so `matched_count` is `Any` and the comparison is `Any` too -- the
         # declared `-> bool` was asserting something mypy could not see.
         return bool(result.matched_count == 1)
+
+
+class MongoFencingTokenAllocator:
+    """Strictly increasing fencing tokens from a durable `$inc` counter.
+
+    The one thing this must never do is repeat a value. `find_one_and_update`
+    with `$inc` is atomic on a single document, so concurrent allocators
+    serialize on the server rather than on any coordination between them, and
+    the counter is persisted, so a restarted process cannot re-issue a token an
+    earlier incarnation already used. That durability is the entire difference
+    between a real fence and the constant `1` this replaced -- an in-process
+    counter would reset on deploy and hand a stale writer's token to its
+    successor.
+
+    **One scope per named snapshot, not per generation.** Tokens are compared
+    across the generations belonging to a snapshot (a claim on the newly
+    activated generation must out-rank anything issued for its predecessor), so
+    a per-generation counter restarting at the floor would let a claim on N+1
+    present a *lower* token than one already issued for N.
+    """
+
+    def __init__(self, collection: Any) -> None:
+        self._collection = collection
+
+    async def allocate(self, *, scope: str) -> int:
+        document = await self._collection.find_one_and_update(
+            {"_id": scope},
+            {"$inc": {"next_token": 1}},
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        # upsert + return_document=AFTER always returns a document.
+        counter = int(document["next_token"])
+        # Offset rather than seeded, so a counter document created by an older
+        # build (or by hand) still yields a token above the legacy constant --
+        # seeding only fixes documents that do not exist yet.
+        return FENCING_TOKEN_FLOOR + counter
 
 
 class MongoRebuildLeaseStore:

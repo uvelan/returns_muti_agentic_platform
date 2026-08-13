@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from return_platform.dynamic_knowledge.graph.generation import (
+    LEGACY_FENCING_TOKEN,
     ActiveRuntimeSnapshot,
     GraphGenerationStatus,
     RebuildLease,
@@ -149,6 +150,21 @@ class FakeSyncCoordinator:
         return 10, 5
 
 
+class FakeTokens:
+    """Stands in for `MongoFencingTokenAllocator`: strictly increasing, starting
+    above `LEGACY_FENCING_TOKEN` exactly as the real one does."""
+
+    def __init__(self) -> None:
+        self.issued: list[int] = []
+        self._next = LEGACY_FENCING_TOKEN
+
+    async def allocate(self, *, scope: str) -> int:
+        del scope
+        self._next += 1
+        self.issued.append(self._next)
+        return self._next
+
+
 def _orchestrator(
     *,
     snapshot_store: FakeSnapshotStore | None = None,
@@ -171,6 +187,7 @@ def _orchestrator(
         lease_store=lease_store,
         generation_writer=generation_writer,
         sync_coordinator=sync_coordinator,
+        fencing_tokens=FakeTokens(),
         owner_instance_id="worker-1",
     )
     return orchestrator, snapshot_store, lease_store, generation_writer, sync_coordinator

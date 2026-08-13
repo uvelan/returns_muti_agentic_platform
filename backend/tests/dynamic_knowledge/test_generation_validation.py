@@ -64,6 +64,18 @@ class _Validator:
         )
 
 
+class _CountingTokens:
+    """Strictly increasing, as `MongoFencingTokenAllocator` is."""
+
+    def __init__(self) -> None:
+        self._next = 1
+
+    async def allocate(self, *, scope: str) -> int:
+        del scope
+        self._next += 1
+        return self._next
+
+
 def _schema() -> object:
     return type("_Schema", (), {"configuration_checksum": "fingerprint-1"})()
 
@@ -91,6 +103,7 @@ def _orchestrator(
         lease_store=_FakeRebuildLeaseStore(),  # type: ignore[arg-type]
         generation_writer=writer,  # type: ignore[arg-type]
         sync_coordinator=_QuietSyncCoordinator(),  # type: ignore[arg-type]
+        fencing_tokens=_CountingTokens(),  # type: ignore[arg-type]
         owner_instance_id="test-instance",
         validator=validator,  # type: ignore[arg-type]
         drain_poll_seconds=0.01,

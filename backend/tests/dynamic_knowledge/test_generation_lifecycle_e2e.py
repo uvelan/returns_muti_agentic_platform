@@ -52,6 +52,7 @@ from return_platform.dynamic_knowledge.lifecycle.lease_store import (
 )
 from return_platform.dynamic_knowledge.lifecycle.mongo_store import (
     MongoActiveRuntimeSnapshotStore,
+    MongoFencingTokenAllocator,
     MongoRebuildLeaseStore,
 )
 from return_platform.dynamic_knowledge.lifecycle.neo4j_validator import (
@@ -166,6 +167,7 @@ class _Harness:
         self.generation_leases = MongoGenerationLeaseStore(
             platform_db[f"e2e_gen_leases_{self.suffix}"]
         )
+        self.fencing_tokens = MongoFencingTokenAllocator(platform_db[f"e2e_tokens_{self.suffix}"])
         self.generation_writer = Neo4jGenerationWriter(self.neo4j)
         self.generation_ids: list[str] = []
 
@@ -197,6 +199,7 @@ class _Harness:
             lease_store=self.rebuild_leases,
             generation_writer=self.generation_writer,
             sync_coordinator=self._sync_coordinator(),
+            fencing_tokens=self.fencing_tokens,
             owner_instance_id=f"e2e-{self.suffix}",
             generation_lease_store=self.generation_leases,
             validator=Neo4jGenerationValidator(self.neo4j) if validate else None,
@@ -232,7 +235,7 @@ class _Harness:
     async def cleanup(self) -> None:
         await self.mongo.drop_database(self.source_database)
         platform_db = self.mongo["return_platform"]
-        for name in ("e2e_snapshots", "e2e_rebuild", "e2e_gen_leases"):
+        for name in ("e2e_snapshots", "e2e_rebuild", "e2e_gen_leases", "e2e_tokens"):
             await platform_db.drop_collection(f"{name}_{self.suffix}")
         async with self.neo4j.session() as session:
             for generation_id in self.generation_ids:

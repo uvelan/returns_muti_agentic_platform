@@ -17,15 +17,41 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict, Field
 
 LEGACY_GENERATION_ID: Final = "legacy-live"
-"""The one graph_generation_id used before any real blue/green rebuild has ever
-run for a schema (GenerationLifecycleOrchestrator.build_and_activate isn't wired
-to live traffic yet). Every reader and writer of a not-yet-generation-managed
-graph must agree on this exact literal -- data_platform.graph.sync_service
-MERGEs the real Neo4j GraphGeneration marker under this id; anything resolving
-"the current generation" (e.g. dynamic_knowledge.integration.mongo_store's
-MongoGraphStateProvider) must fall back to this same id, or on-demand writes
-fence-reject against a marker that doesn't exist under the id the reader
-actually pinned."""
+"""The graph_generation_id a graph carries before it has ever been adopted into
+the blue/green protocol.
+
+It is no longer where production permanently lives. `GraphSyncService` now
+resolves the generation it writes into from `ActiveRuntimeSnapshot`, and when no
+snapshot exists yet it *adopts* this generation as activation version 1 (see
+`lifecycle.orchestrator.adopt_existing_generation`) rather than pinning to the
+literal forever. Adoption is what keeps an already-populated graph serving: the
+next full sync builds its replacement, validates it, swaps, drains this one and
+retires it -- the live data is never dropped and never rebuilt in place.
+
+Until that adoption has run for a given deployment, every reader and writer of
+the graph must still agree on this exact literal -- `GraphSyncService` MERGEs
+the Neo4j GraphGeneration marker under this id, and anything resolving "the
+current generation" (e.g. dynamic_knowledge.integration.mongo_store's
+MongoGraphStateProvider) falls back to it, or on-demand writes fence-reject
+against a marker that doesn't exist under the id the reader actually pinned."""
+
+LEGACY_FENCING_TOKEN: Final = 1
+"""The fencing token a legacy marker was created with, and the floor every
+allocated token sits strictly above.
+
+This was a constant in `data_platform.graph.sync_service`, passed as *the*
+fencing token for every write, which is why the fence rejected nothing: a token
+that never changes cannot distinguish an owner from a stale one. It survives
+only as the value already stored on markers created before adoption, and as the
+floor `FENCING_TOKEN_FLOOR` allocates above so the very first real token is high
+enough to fence a writer still holding this one."""
+
+FENCING_TOKEN_FLOOR: Final = LEGACY_FENCING_TOKEN
+"""Allocated fencing tokens start at FENCING_TOKEN_FLOOR + 1.
+
+A counter starting from zero would hand out `1` first, which equals the legacy
+token already written on existing markers -- the first real owner would then be
+indistinguishable from the stale writer it exists to fence off."""
 
 
 class GraphGenerationStatus(StrEnum):

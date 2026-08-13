@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
+from unittest.mock import patch
 
 import pytest
 from bson import ObjectId
@@ -20,12 +21,27 @@ from return_platform.data_platform.graph.sync_service import (
     GraphSyncScope,
     GraphSyncService,
 )
-from return_platform.dynamic_knowledge.graph.generation import LEGACY_GENERATION_ID
+from return_platform.dynamic_knowledge.graph.generation import (
+    LEGACY_FENCING_TOKEN,
+    LEGACY_GENERATION_ID,
+    RebuildLease,
+)
+from return_platform.dynamic_knowledge.graph.generation_writer import Neo4jGenerationWriter
 from return_platform.dynamic_knowledge.graph.neo4j_writer import (
     GenerationFencingError,
     Neo4jDynamicGraphWriter,
 )
 from return_platform.dynamic_knowledge.graph.projector import GenericGraphProjector
+from return_platform.dynamic_knowledge.graph.validation import (
+    GenerationValidationReport,
+    ValidationCheckId,
+    ValidationFinding,
+    ValidationSeverity,
+)
+from return_platform.dynamic_knowledge.lifecycle.handle import DEFAULT_SNAPSHOT_NAME
+from return_platform.dynamic_knowledge.lifecycle.orchestrator import ActivationError
+from return_platform.dynamic_knowledge.schema import ConnectorType
+from return_platform.dynamic_knowledge.sync.adapters import scan_connector_registry
 
 
 class FakeMongoCursor:
@@ -93,14 +109,48 @@ class FakeResult:
 
 
 class FakeTransaction:
+    """An in-memory stand-in for Neo4j that models the GraphGeneration marker.
+
+    It has to model the marker rather than answer statically, because the
+    service now *claims* write ownership before it writes: the claim raises the
+    marker's fencing token and the write then fences against the value the
+    marker actually holds. A fake that answered a fixed token could not tell a
+    successful claim from a rejected one.
+
+    What it still does not model is the write fence's own matching -- that is
+    `fence_matched`, kept as a dial so the failure test can force a rejection.
+    The authoritative version of both is
+    `tests/dynamic_knowledge/test_graph_sync_cutover_real_infra.py`, against a
+    real Neo4j.
+    """
+
     def __init__(self, *, fence_matched: int) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self._fence_matched = fence_matched
+        #: Set when the legacy marker is MERGEd, exactly as production creates it.
+        self.marker_token: int | None = None
+        self.marker_status = "ACTIVE"
 
     async def run(
         self, query: str, parameters: dict[str, Any] | None = None, **kwargs: Any
     ) -> FakeResult:
-        self.calls.append((query, parameters or kwargs))
+        parameters = parameters or kwargs
+        self.calls.append((query, parameters))
+        if query.startswith("MERGE (g:GraphGeneration"):
+            if self.marker_token is None:
+                self.marker_token = int(parameters["fencingToken"])
+                self.marker_status = str(parameters["status"])
+            return FakeResult([])
+        if "SET g.fencing_token = CASE" in query:
+            if self.marker_token is None:
+                return FakeResult([])
+            requested = int(parameters["fencingToken"])
+            self.marker_token = max(self.marker_token, requested)
+            return FakeResult([{"status": self.marker_status, "fencing_token": self.marker_token}])
+        if "MATCH (g:GraphGeneration" in query and "RETURN g.status AS status" in query:
+            if self.marker_token is None:
+                return FakeResult([])
+            return FakeResult([{"status": self.marker_status, "fencing_token": self.marker_token}])
         if "MATCH (g:GraphGeneration" in query and "RETURN count(g)" in query:
             return FakeResult([{"matched": self._fence_matched}])
         if query.startswith("MATCH (r:GraphWriteReceipt"):
@@ -125,8 +175,48 @@ class FakeSession:
     async def execute_write(self, work: Any, **kwargs: Any) -> Any:
         return await work(self._tx, **kwargs)
 
+    async def execute_read(self, work: Any, **kwargs: Any) -> Any:
+        return await work(self._tx, **kwargs)
+
     async def run(self, query: str, **kwargs: Any) -> FakeResult:
         return await self._tx.run(query, kwargs)
+
+
+class FakeSnapshotStore:
+    """`ActiveRuntimeSnapshotStore` over one in-memory slot, with a real CAS."""
+
+    def __init__(self) -> None:
+        self.snapshot: Any = None
+        self.history: list[str] = []
+
+    async def read(self, *, snapshot_name: str) -> Any:
+        del snapshot_name
+        return self.snapshot
+
+    async def compare_and_swap(
+        self, *, snapshot_name: str, expected_activation_version: int | None, new_snapshot: Any
+    ) -> bool:
+        del snapshot_name
+        current = None if self.snapshot is None else self.snapshot.activation_version
+        if current != expected_activation_version:
+            return False
+        self.snapshot = new_snapshot
+        self.history.append(new_snapshot.graph_generation_id)
+        return True
+
+
+class FakeTokens:
+    """Strictly increasing above `LEGACY_FENCING_TOKEN`, as the real allocator is."""
+
+    def __init__(self) -> None:
+        self.issued: list[int] = []
+        self._next = LEGACY_FENCING_TOKEN
+
+    async def allocate(self, *, scope: str) -> int:
+        del scope
+        self._next += 1
+        self.issued.append(self._next)
+        return self._next
 
 
 class FakeDriver:
@@ -231,7 +321,84 @@ def _service_with(tx: FakeTransaction, source_db: FakeDatabase) -> GraphSyncServ
     service._checkpoints = FakeCheckpoints()
     service._writer = Neo4jDynamicGraphWriter(service._driver, database="neo4j")
     service._projector = GenericGraphProjector()
+    # The blue/green half, assembled as production assembles it. The Neo4j-side
+    # writer is the real one over the fake driver; the Mongo-side stores are
+    # in-memory but keep their real semantics (a compare-and-swap that can lose,
+    # a counter that only goes up).
+    service._generation_writer = Neo4jGenerationWriter(service._driver, database="neo4j")
+    service._snapshots = FakeSnapshotStore()
+    service._rebuild_leases = _AlwaysGrantedRebuildLease()
+    service._generation_leases = None
+    service._fencing_tokens = FakeTokens()
+    service._validator = _PassingValidator()
+    service._owner_instance_id = "test-instance"
     return cast(GraphSyncService, service)
+
+
+class _AlwaysGrantedRebuildLease:
+    """The lease is contention control, not part of what these tests assert; its
+    refusal path has its own coverage in `test_lifecycle_orchestrator.py`."""
+
+    def __init__(self) -> None:
+        self.released: list[str] = []
+
+    async def acquire(
+        self,
+        *,
+        snapshot_name: str,
+        graph_generation_id: str,
+        owner_instance_id: str,
+        ttl_seconds: int,
+    ) -> Any:
+        del owner_instance_id, ttl_seconds
+        return RebuildLease(
+            lease_id=f"lease-{graph_generation_id}",
+            snapshot_name=snapshot_name,
+            graph_generation_id=graph_generation_id,
+            owner_instance_id="test-instance",
+            acquired_at=datetime(2026, 8, 7, tzinfo=UTC),
+            expires_at=datetime(2026, 8, 7, 1, tzinfo=UTC),
+        )
+
+    async def release(self, *, snapshot_name: str, lease_id: str) -> None:
+        del snapshot_name
+        self.released.append(lease_id)
+
+
+class _PassingValidator:
+    """Records what it was asked to validate. Deep validation has its own tests
+    (`test_generation_validation.py`) and its own real-Neo4j coverage; what
+    matters here is that the cutover routes the *candidate* generation through
+    it before the swap, never the one that is serving."""
+
+    def __init__(self) -> None:
+        self.validated: list[str] = []
+
+    async def validate(self, *, schema: Any, graph_generation_id: str) -> Any:
+        del schema
+        self.validated.append(graph_generation_id)
+        return GenerationValidationReport(graph_generation_id=graph_generation_id, findings=())
+
+
+class _FailingValidator:
+    def __init__(self) -> None:
+        self.validated: list[str] = []
+
+    async def validate(self, *, schema: Any, graph_generation_id: str) -> Any:
+        del schema
+        self.validated.append(graph_generation_id)
+        return GenerationValidationReport(
+            graph_generation_id=graph_generation_id,
+            findings=(
+                ValidationFinding(
+                    check_id=ValidationCheckId.NODE_LABEL_POPULATED,
+                    severity=ValidationSeverity.ERROR,
+                    subject="ConfiguredAlpha",
+                    observed_count=0,
+                    detail="candidate projected nothing",
+                ),
+            ),
+        )
 
 
 @pytest.mark.asyncio
@@ -457,3 +624,298 @@ async def test_an_incremental_run_names_the_sources_it_could_not_resume() -> Non
 
     assert run.skippedSources == ["shipment_info"]
     assert "shipment_info" not in [source for source, _generation in checkpoints.reads]
+
+
+# --- GRAPH-01: the generation lifecycle carries production traffic ------------
+#
+# What this section can prove with fakes: which path a request takes, what the
+# service resolves and claims, and that a failed candidate never moves the
+# pointer. What it deliberately does NOT claim to prove is the cutover itself --
+# the atomic swap, the drain and the retirement against real stores are in
+# `tests/dynamic_knowledge/test_graph_sync_cutover_real_infra.py`, because a
+# cutover proved by a mock is a cutover proved by nothing.
+
+
+def _without_sqlserver_sources(service: Any) -> None:
+    """Narrow the schema to its MongoDB half.
+
+    `mode=FULL` means every configured source, and the interim schema declares a
+    SQL Server one -- so a full request from this module would try to open a real
+    `pymssql` connection. The mode is what selects the cutover path, not the
+    connector mix, so removing the source keeps these tests about the lifecycle
+    rather than about having a database. Real-infra coverage runs the full source
+    set.
+    """
+    schema = service._schema
+    mongo_only = {
+        source_id: source
+        for source_id, source in schema.sources.items()
+        if source.connector_type is not ConnectorType.MSSQL
+    }
+    dropped = set(schema.sources) - set(mongo_only)
+    entities = {
+        entity_id: entity
+        for entity_id, entity in schema.entities.items()
+        if entity.source_asset_id not in dropped
+    }
+    nodes = {
+        projection_id: node
+        for projection_id, node in schema.graph.nodes.items()
+        if node.entity_id in entities
+    }
+    relationships = {
+        relationship_id: relationship
+        for relationship_id, relationship in schema.graph.relationships.items()
+        if relationship.source_entity_id in entities and relationship.target_entity_id in entities
+    }
+    service._schema = schema.model_copy(
+        update={
+            "sources": mongo_only,
+            "entities": entities,
+            "graph": schema.graph.model_copy(
+                update={"nodes": nodes, "relationships": relationships}
+            ),
+        }
+    )
+    service._releases = FakeReleases(service._schema)
+
+
+def _generation_ids_written(tx: FakeTransaction) -> set[str]:
+    """Every generation a node MERGE/MATCH was scoped to.
+
+    `compile_node_writes` puts the generation in `$generationId` on every
+    statement, so this is the direct answer to "which generation did this run
+    actually touch" -- not an inference from the run ledger, which is what the
+    service reports about itself.
+    """
+    return {
+        str(parameters["generationId"])
+        for query, parameters in tx.calls
+        if "generationId" in parameters and ("MERGE (n:" in query or "MATCH (n:" in query)
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_partial_resync_adopts_the_legacy_generation_instead_of_pinning_to_it() -> None:
+    """The migration path off `legacy-live`, at the first run that needs it.
+
+    The literal is still where an un-adopted deployment's data lives, so the run
+    must write there -- but it must no longer be a permanent pin. Afterwards an
+    ActiveRuntimeSnapshot exists naming that generation, which is what gives the
+    next full sync a predecessor to cut over from, drain and retire rather than
+    activating a new generation beside an orphaned graph.
+    """
+    tx = FakeTransaction(fence_matched=1)
+    service = _service_with(tx, _mongo_source_db())
+
+    run = await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, applySchema=False), actor_id="test"
+    )
+
+    assert run.status == "COMPLETED"
+    assert run.graphGenerationId == LEGACY_GENERATION_ID
+    assert _generation_ids_written(tx) == {LEGACY_GENERATION_ID}
+
+    snapshot = await service._snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)  # type: ignore[attr-defined]
+    assert snapshot is not None, "the legacy generation must be adopted, not merely written to"
+    assert snapshot.graph_generation_id == LEGACY_GENERATION_ID
+    assert snapshot.activation_version == 1
+
+
+@pytest.mark.asyncio
+async def test_adoption_replaces_the_constant_fencing_token_on_the_marker() -> None:
+    """The token stops being `1`, which is the whole reason it fenced nothing.
+
+    The marker is created with the legacy constant, exactly as an existing
+    deployment's already is. Adoption then claims an allocated token, so from
+    that moment a writer still presenting the constant no longer matches the
+    marker -- the equality fence in `compile_generation_fence` starts rejecting
+    it. Every token this run uses must be above the constant, or nothing has
+    actually changed.
+    """
+    tx = FakeTransaction(fence_matched=1)
+    service = _service_with(tx, _mongo_source_db())
+
+    await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, applySchema=False), actor_id="test"
+    )
+
+    assert tx.marker_token is not None
+    assert tx.marker_token > LEGACY_FENCING_TOKEN, "the marker still carries the constant token"
+    issued = service._fencing_tokens.issued  # type: ignore[attr-defined]
+    assert issued, "no fencing token was allocated at all"
+    assert all(token > LEGACY_FENCING_TOKEN for token in issued)
+    assert issued == sorted(issued) and len(set(issued)) == len(issued), "tokens must be monotonic"
+
+    # And the run's writes carried the claimed token, not the constant.
+    fence_tokens = {
+        int(parameters["fencingToken"])
+        for query, parameters in tx.calls
+        if "RETURN count(g) AS matched" in query
+    }
+    assert fence_tokens and LEGACY_FENCING_TOKEN not in fence_tokens
+
+
+@pytest.mark.asyncio
+async def test_a_full_sync_builds_a_new_generation_instead_of_rebuilding_in_place() -> None:
+    """The defect this task exists to remove.
+
+    A full, non-incremental sync used to re-derive the whole projection *into
+    the live generation*, so a reader was free to observe a half-rebuilt graph.
+    It must now build a new generation and swap. Two things prove the change and
+    neither is the service's own report: the candidate is a different generation
+    from the one that was serving, and no node write during the build was scoped
+    to the serving one.
+    """
+    tx = FakeTransaction(fence_matched=1)
+    service = _service_with(tx, _mongo_source_db())
+    _without_sqlserver_sources(service)
+    # Establish a serving generation first, the way a real deployment has one.
+    await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, applySchema=False), actor_id="test"
+    )
+    serving = await service._snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)  # type: ignore[attr-defined]
+    assert serving is not None
+    tx.calls.clear()
+
+    run = await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.FULL, applySchema=False), actor_id="test"
+    )
+
+    assert run.status == "COMPLETED"
+    assert run.graphGenerationId is not None
+    assert run.graphGenerationId != serving.graph_generation_id, "this rebuilt in place"
+    assert serving.graph_generation_id not in _generation_ids_written(tx), (
+        "the build wrote into the generation that was serving; a reader could see it half-built"
+    )
+
+    # The pointer moved atomically, once, to the validated candidate.
+    after = await service._snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)  # type: ignore[attr-defined]
+    assert after is not None
+    assert after.graph_generation_id == run.graphGenerationId
+    assert after.activation_version == serving.activation_version + 1
+    assert service._validator.validated == [run.graphGenerationId]  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_candidate_leaves_the_previous_generation_serving() -> None:
+    """`If N+1 fails at any point, N stays active.`
+
+    Validation is the stage forced here because it is the last one before the
+    swap -- a candidate that fails later than this would be the hardest case to
+    get right. The snapshot must not move, and the run must be recorded FAILED
+    rather than reporting a cutover that did not happen.
+    """
+    tx = FakeTransaction(fence_matched=1)
+    service = _service_with(tx, _mongo_source_db())
+    _without_sqlserver_sources(service)
+    await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, applySchema=False), actor_id="test"
+    )
+    serving = await service._snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)  # type: ignore[attr-defined]
+    assert serving is not None
+    service._validator = _FailingValidator()  # type: ignore[attr-defined]
+
+    with pytest.raises(ActivationError) as caught:
+        await service.sync(
+            GraphSyncRequest(mode=GraphSyncScope.FULL, applySchema=False), actor_id="test"
+        )
+
+    assert caught.value.stage == "VALIDATE"
+    after = await service._snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)  # type: ignore[attr-defined]
+    assert after is not None
+    assert after.graph_generation_id == serving.graph_generation_id, "N stopped serving"
+    assert after.activation_version == serving.activation_version
+    failed = [d for d in service._runs.documents.values() if d["status"] == "FAILED"]  # type: ignore[attr-defined]
+    assert len(failed) == 1 and failed[0]["errorCode"]
+
+
+@pytest.mark.asyncio
+async def test_an_incremental_run_still_updates_the_serving_generation() -> None:
+    """Not everything is a cutover, and turning incremental sync into one would
+    make an operator resuming a few thousand records pay for a full re-projection
+    of every source. An incremental pass keeps writing into what is serving --
+    under a claimed token, not the constant."""
+    checkpoints = RecordingCheckpoints()
+    tx = FakeTransaction(fence_matched=1)
+    service = _service_with(tx, _mongo_source_db())
+    service._checkpoints = checkpoints  # type: ignore[attr-defined]
+
+    run = await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, incremental=True, applySchema=False),
+        actor_id="test",
+    )
+
+    snapshot = await service._snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)  # type: ignore[attr-defined]
+    assert snapshot is not None
+    assert run.graphGenerationId == snapshot.graph_generation_id
+    assert [token for _s, _g, token in checkpoints.writes] == [tx.marker_token]
+    assert tx.marker_token is not None and tx.marker_token > LEGACY_FENCING_TOKEN
+
+
+@pytest.mark.asyncio
+async def test_the_watermark_is_still_captured_before_any_scan_begins() -> None:
+    """Regression guard, not a new property.
+
+    `full_sync` captures every participating source's high watermark before any
+    source's scan starts, and the run ledger's checkpoint semantics depend on
+    it. The rebuild path now reaches `full_sync` through the orchestrator rather
+    than directly, which is exactly the kind of change that could quietly move
+    the capture -- so the ordering is asserted rather than assumed.
+    """
+    order: list[tuple[str, str]] = []
+
+    class _OrderRecordingConnector:
+        def __init__(self, inner: Any) -> None:
+            self._inner = inner
+
+        def capabilities(self) -> Any:
+            return self._inner.capabilities()
+
+        def compare_cursors(self, **kwargs: Any) -> Any:
+            return self._inner.compare_cursors(**kwargs)
+
+        async def capture_high_watermark(self, *, source_asset_id: str) -> Any:
+            order.append(("watermark", source_asset_id))
+            return await self._inner.capture_high_watermark(source_asset_id=source_asset_id)
+
+        async def scan(self, **kwargs: Any) -> Any:
+            order.append(("scan", kwargs["source_asset_id"]))
+            async for page in self._inner.scan(**kwargs):
+                yield page
+
+    tx = FakeTransaction(fence_matched=1)
+    service = _service_with(tx, _mongo_source_db())
+    inner_registry = scan_connector_registry
+    resolved: dict[str, Any] = {}
+
+    def _wrapping_registry(**kwargs: Any) -> Any:
+        registry = inner_registry(**kwargs)
+        original = registry.resolve
+
+        def resolve(source_asset_id: str) -> Any:
+            connector = resolved.get(source_asset_id)
+            if connector is None:
+                connector = _OrderRecordingConnector(original(source_asset_id))
+                resolved[source_asset_id] = connector
+            return connector
+
+        registry.resolve = resolve  # type: ignore[method-assign]
+        return registry
+
+    with patch(
+        "return_platform.data_platform.graph.sync_service.scan_connector_registry",
+        _wrapping_registry,
+    ):
+        await service.sync(
+            GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, applySchema=False),
+            actor_id="test",
+        )
+
+    first_scan = next(index for index, (kind, _) in enumerate(order) if kind == "scan")
+    watermarks_before = [source for kind, source in order[:first_scan] if kind == "watermark"]
+    scanned = {source for kind, source in order if kind == "scan"}
+    assert scanned, "the run scanned nothing, so this proves nothing"
+    assert scanned <= set(watermarks_before), (
+        "a source was scanned before every participating source's watermark was captured"
+    )
