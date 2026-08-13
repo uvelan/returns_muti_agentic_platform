@@ -83,8 +83,11 @@ echo "==> ensuring ${SERVICE} and its dependencies are up"
 # "no such file or directory" that looks like a broken image rather than a
 # mangled argument. The paths here are inside the container and must be passed
 # through untouched. No effect on Linux or macOS, where the variable is unread.
+# No literal `tests/`: `testpaths` in pyproject.toml supplies it when no path is
+# given, and a hardcoded one ahead of "$@" makes a path argument additive rather
+# than narrowing -- asking for one module runs the whole suite plus that module.
 echo "==> running suite (-m '${SELECTOR}')"
-MSYS_NO_PATHCONV=1 "${COMPOSE[@]}" exec -T "${SERVICE}" /opt/venv/bin/python -m pytest tests/ \
+MSYS_NO_PATHCONV=1 "${COMPOSE[@]}" exec -T "${SERVICE}" /opt/venv/bin/python -m pytest \
   -p no:cacheprovider \
   -m "${SELECTOR}" \
   --ignore=tests/test_ai_model_probe_evaluator.py \

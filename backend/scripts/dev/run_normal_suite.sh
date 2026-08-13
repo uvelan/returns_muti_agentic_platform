@@ -118,5 +118,9 @@ export GOOGLE_API_KEY="${GOOGLE_API_KEY:-placeholder-not-a-real-key}"
 
 cd "${BACKEND_ROOT}"
 
+# No literal `tests/` here. `testpaths = ["tests"]` in pyproject.toml already
+# supplies it when no path is given, and hardcoding it *ahead* of "$@" made a
+# path argument additive rather than narrowing: asking for one module ran the
+# whole suite plus that module, which reads as the script ignoring you.
 echo "==> running -m '${SELECTOR}'"
-exec "${PYTHON}" -m pytest tests/ -q -m "${SELECTOR}" "$@"
+exec "${PYTHON}" -m pytest -q -m "${SELECTOR}" "$@"
