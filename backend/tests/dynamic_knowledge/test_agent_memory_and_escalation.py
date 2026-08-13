@@ -16,6 +16,7 @@ see the anchors, and the model can see the conversation.
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -122,6 +123,8 @@ def test_the_turn_context_carries_the_conversation() -> None:
         conversation_id="c1",
         client_turn_id="t1",
         user_message="the chrome one",
+        as_of=datetime(2026, 8, 13, 9, 30, tzinfo=UTC),
+        session_timezone="UTC",
         schema_version="v1",
         graph_generation_id="g1",
         configuration_release_id="r1",

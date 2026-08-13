@@ -244,6 +244,7 @@ async def process_turn(
                     tenant_id=tenant_id,
                     roles=principal.roles,
                     branch_ids=branch_ids,
+                    session_timezone=payload.session_timezone,
                 ),
             ),
         )

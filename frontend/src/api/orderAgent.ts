@@ -63,7 +63,33 @@ export type AgentTurnResult = {
   query_evidence: QueryEvidence[];
   model_provider: string;
   model_name: string;
+  /**
+   * What "now" meant while the turn reasoned, and in whose calendar.
+   *
+   * Returned so a turn that asked about "last week" can be explained afterwards
+   * without guessing when it was asked. Optional because turns committed before
+   * the backend recorded it read back without these fields.
+   */
+  as_of?: string | null;
+  session_timezone?: string | null;
 };
+
+/**
+ * The associate's IANA zone, as the browser reports it.
+ *
+ * Sent with every turn rather than stored once: a laptop that travels changes
+ * zone between conversations, and a stale stored value silently shifts every
+ * "yesterday" the agent resolves. Wrapped because `Intl` can throw in a
+ * sufficiently stripped runtime, and an unavailable zone is a reason for the
+ * backend to fall back to UTC, not a reason to fail the send.
+ */
+function sessionTimezone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /** One row of the history list. Summary only -- turn bodies are not fetched. */
 export type ConversationSummary = {
@@ -109,6 +135,7 @@ export const orderAgentApi = {
           message_id: turnId,
           message: input.message,
           agent_id: input.agentId,
+          session_timezone: sessionTimezone(),
         }),
       },
     );

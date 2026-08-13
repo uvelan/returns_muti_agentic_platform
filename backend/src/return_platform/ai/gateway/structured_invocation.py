@@ -126,6 +126,7 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         payload: Mapping[str, Any],
         size_probe: str,
         log_context: Mapping[str, Any],
+        prompt_addendum: str | None = None,
     ) -> StructuredInvocation[ResponseT]:
         """Send `payload`, returning the parsed `response_model`.
 
@@ -138,6 +139,13 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
 
         `log_context` is merged into every attempt event so each log line carries
         the caller's unit-of-work identifiers.
+
+        `prompt_addendum` is appended *after* the configured system prompt and
+        the response schema. It exists for facts that are true of one request
+        and cannot live in configuration -- the Order Agent's as-of instant is
+        the first -- and it goes last so the stable prefix in front of it stays
+        byte-identical across requests, which is the precondition for the
+        provider-side prompt caching W5.3 enables.
         """
         if len(size_probe.encode("utf-8")) > self._settings.ai_max_payload_bytes:
             raise self._unavailable_error(
@@ -165,6 +173,8 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
             "REQUIRED RESPONSE SCHEMA (Output exactly this JSON structure):\n"
             f"```json\n{schema_str}\n```"
         )
+        if prompt_addendum:
+            full_prompt = f"{full_prompt}\n\n{prompt_addendum}"
         deadline = asyncio.get_running_loop().time() + self._settings.ai_global_timeout_seconds
         attempts = 0
         last_error = "PROVIDER_UNAVAILABLE"

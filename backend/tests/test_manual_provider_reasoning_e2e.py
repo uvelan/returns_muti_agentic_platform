@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -81,6 +82,8 @@ def _context() -> AgentTurnContext:
         conversation_id="conv-manual-1",
         client_turn_id="turn-1",
         user_message="Find order ORD-10001",
+        as_of=datetime(2026, 8, 13, 9, 30, tzinfo=UTC),
+        session_timezone="UTC",
         schema_version="v1",
         graph_generation_id="generation-1",
         configuration_release_id="release-1",

@@ -442,6 +442,12 @@ def _guard_context(schema: ActiveSchema) -> GuardContext:
     )
 
 
+#: A Thursday, mid-morning in New York, chosen so "yesterday" and "last week"
+#: land on different calendar days in the session zone than they do in UTC --
+#: a grounding bug that only shows up across a UTC offset is the likely one.
+TURN_AS_OF = datetime(2026, 8, 13, 2, 15, tzinfo=UTC)
+
+
 def _state(schema: ActiveSchema, message: str) -> dict[str, Any]:
     return {
         "conversation_id": "conv-smoke",
@@ -454,6 +460,8 @@ def _state(schema: ActiveSchema, message: str) -> dict[str, Any]:
         "configuration_release_id": schema.configuration_release_id,
         "policy_version": schema.policy_version,
         "prompt_version": schema.prompt_version,
+        "as_of": TURN_AS_OF.isoformat(),
+        "session_timezone": "America/New_York",
     }
 
 
@@ -830,6 +838,44 @@ async def test_the_turn_context_carries_transcript_and_schema_to_the_model(
     assert first.user_message == "order CW273354"
     assert first.compact_schema, "the model must be told what it may search"
     assert first.graph_generation_id == "gen-smoke"
+
+
+async def test_one_turn_has_exactly_one_now(schema: ActiveSchema) -> None:
+    """W4.7. `_build_context` runs on every node entry, so a clock read inside
+    it would let a turn cite evidence gathered under one "yesterday" in an
+    answer about another. This turn builds its context three times; all three
+    must agree, and all three must agree with the state the turn was pinned to.
+    """
+    replan = AgentAction(
+        business_capability=CAPABILITY,
+        action_type=ActionType.REPLAN,
+        decision_summary="Start again from a different anchor.",
+    )
+    _, model, _ = await _run(
+        schema,
+        "the orders from yesterday",
+        [_search(orderNumbers=["CW273354"]), replan, _respond()],
+    )
+
+    assert len(model.contexts) == 3, "the scenario must exercise more than one context build"
+    as_ofs = {context.as_of for context in model.contexts}
+    assert as_ofs == {TURN_AS_OF}
+    assert {context.session_timezone for context in model.contexts} == {"America/New_York"}
+
+
+async def test_yesterday_reaches_the_model_as_an_absolute_range(schema: ActiveSchema) -> None:
+    """The point of the windows: the model picks one, it does not do calendar
+    arithmetic across a UTC offset. 02:15 UTC on the 13th is still the 12th in
+    New York, so "yesterday" is the 11th there and would be the 12th in UTC."""
+    _, model, _ = await _run(
+        schema, "the orders from yesterday", [_search(orderNumbers=["CW273354"]), _respond()]
+    )
+
+    yesterday = model.contexts[0].resolved_date_windows["yesterday"]
+    assert yesterday == {
+        "start": "2026-08-11T04:00:00Z",
+        "endExclusive": "2026-08-12T04:00:00Z",
+    }
 
 
 async def test_confirming_an_order_creates_a_case_and_returns_its_id(

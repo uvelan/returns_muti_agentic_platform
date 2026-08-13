@@ -56,6 +56,9 @@ from return_platform.dynamic_knowledge.order_agent.state import (
     TRANSCRIPT_LIMIT,
     OrderAgentGraphState,
 )
+from return_platform.dynamic_knowledge.order_agent.temporal_grounding import (
+    normalize_session_timezone,
+)
 from return_platform.dynamic_knowledge.schema import ActiveSchema, GenerationBinding
 from return_platform.platform.reasoning.checkpoint import SystemStoreCheckpointSaver
 from return_platform.platform.reasoning.retention import (
@@ -191,6 +194,42 @@ def _cache_for_generation(
     return cache
 
 
+def _pinned_generation_of(values: dict[str, Any]) -> str | None:
+    """The generation a paused checkpoint was reading, if it names one."""
+    pinned = values.get("graph_generation_id")
+    return pinned if isinstance(pinned, str) and pinned else None
+
+
+def _has_pinned_grounding(values: dict[str, Any] | None) -> bool:
+    if not values:
+        return False
+    as_of = values.get("as_of")
+    return isinstance(as_of, str) and bool(as_of)
+
+
+def _committed_grounding(final_state: dict[str, Any]) -> dict[str, Any]:
+    """The as-of and zone the finished turn actually ran under, for the record.
+
+    Read back off the final state rather than reused from the value pinned at
+    the top of `_run_turn`, because on a resume those two differ: the pinned one
+    is this HTTP request's clock read and the state's is the attempt's. The
+    record must say which the reasoning used, or a replay reconstructs a
+    different question than the one that was answered.
+    """
+    raw = final_state.get("as_of")
+    if not isinstance(raw, str) or not raw:
+        return {}
+    try:
+        as_of = datetime.fromisoformat(raw)
+    except ValueError:
+        return {}
+    zone = final_state.get("session_timezone")
+    return {
+        "as_of": as_of if as_of.tzinfo is not None else as_of.replace(tzinfo=UTC),
+        "session_timezone": normalize_session_timezone(zone if isinstance(zone, str) else None),
+    }
+
+
 class DynamicOrderAgentCoordinator:
     """Owns one compiled Order Discovery reasoning graph and the conversation/
     run-lifecycle bookkeeping around invoking it. All conversational
@@ -293,7 +332,8 @@ class DynamicOrderAgentCoordinator:
         # clarification pause, which can last days and would pin a generation
         # against retirement for the whole time. A resumed turn takes its own
         # lease here.
-        pinned = await self._pinned_generation(resume_thread_id)
+        paused_values = await self._paused_checkpoint_values(resume_thread_id)
+        pinned = _pinned_generation_of(paused_values)
         if pinned is not None and policy.generation_binding is GenerationBinding.STRICT_PINNING:
             # Lease the generation the conversation started on, not whatever is
             # current: leasing "current" would leave the pinned generation
@@ -306,6 +346,7 @@ class DynamicOrderAgentCoordinator:
                     workflow_id=workflow_id,
                     resume_thread_id=resume_thread_id,
                     rebound_from=None,
+                    paused_values=paused_values,
                 )
 
         async with self._generation_handles.acquire_read(self._schema) as handle:
@@ -319,18 +360,24 @@ class DynamicOrderAgentCoordinator:
                 workflow_id=workflow_id,
                 resume_thread_id=resume_thread_id,
                 rebound_from=rebound_from,
+                paused_values=paused_values,
             )
 
-    async def _pinned_generation(self, resume_thread_id: str | None) -> str | None:
-        """The generation the paused turn was reading, from its own checkpoint.
+    async def _paused_checkpoint_values(self, resume_thread_id: str | None) -> dict[str, Any]:
+        """The paused turn's own checkpoint state, or `{}` when there is none.
 
-        Only meaningful on resume. Returns None rather than raising if the
-        checkpoint is gone (swept by abandonment, expired retention): a resumed
-        turn with no checkpoint has nothing to rebind *from*, and the graph
-        invocation will fail on its own terms rather than here.
+        Read once and handed to `_run_turn` rather than fetched per question of
+        it: the resume path needs both the pinned generation and whether the
+        checkpoint predates the turn's as-of, and two `aget_state` calls for one
+        checkpoint invite the two answers to come from different reads.
+
+        Returns `{}` rather than raising if the checkpoint is gone (swept by
+        abandonment, expired retention): a resumed turn with no checkpoint has
+        nothing to rebind *from*, and the graph invocation will fail on its own
+        terms rather than here.
         """
         if resume_thread_id is None:
-            return None
+            return {}
         try:
             snapshot = await self._graph.aget_state(
                 {"configurable": {"thread_id": resume_thread_id}}
@@ -340,10 +387,9 @@ class DynamicOrderAgentCoordinator:
                 "Could not read the paused checkpoint for thread %s; treating the turn as unpinned",
                 resume_thread_id,
             )
-            return None
+            return {}
         values = getattr(snapshot, "values", None) or {}
-        pinned = values.get("graph_generation_id")
-        return pinned if isinstance(pinned, str) and pinned else None
+        return cast("dict[str, Any]", values) if isinstance(values, dict) else {}
 
     async def _run_turn(
         self,
@@ -354,6 +400,7 @@ class DynamicOrderAgentCoordinator:
         workflow_id: str | None,
         resume_thread_id: str | None,
         rebound_from: str | None = None,
+        paused_values: dict[str, Any] | None = None,
     ) -> AgentTurnResult:
         """The turn itself, with its generation already resolved and pinned.
 
@@ -391,6 +438,13 @@ class DynamicOrderAgentCoordinator:
             run_id=run_id, thread_id=thread_id, workflow_id=workflow_id
         )
 
+        # The turn's one clock read. This runs inside a Temporal *activity*
+        # (workflows/order_discovery_activities.py) or directly under FastAPI --
+        # never in a workflow body -- so a real `now()` is allowed here and
+        # nowhere further in. Everything downstream reads it out of graph state.
+        as_of = datetime.now(UTC)
+        session_timezone = normalize_session_timezone(request.session_timezone)
+
         initial_state: OrderAgentGraphState = {
             "conversation_id": request.conversation_id,
             "client_turn_id": request.client_turn_id,
@@ -402,6 +456,8 @@ class DynamicOrderAgentCoordinator:
             "prompt_version": self._schema.prompt_version,
             "agent_id": request.agent_id,
             "run_id": run_id,
+            "as_of": as_of.isoformat(),
+            "session_timezone": session_timezone,
             "requested_schema_entity_ids": (),
             "evidence_refs": (),
             "order_search_cache": _cache_for_generation(
@@ -419,6 +475,18 @@ class DynamicOrderAgentCoordinator:
             "transcript": _stored_transcript(conversation_state),
             "final_response": None,
         }
+
+        # A resumed turn keeps the as-of its attempt started under -- it is the
+        # instant the evidence already in the checkpoint was filtered against,
+        # and moving it would leave that evidence and the next date filter
+        # meaning different days. The back-fill below is only for a checkpoint
+        # written before the field existed, which otherwise resumes into a turn
+        # with no grounding at all.
+        grounding_backfill = (
+            {"as_of": as_of.isoformat(), "session_timezone": session_timezone}
+            if resume_thread_id and not _has_pinned_grounding(paused_values)
+            else {}
+        )
 
         # Resuming feeds the answer into the suspended `interrupt()` and discards
         # `initial_state` entirely -- the paused checkpoint already holds the real
@@ -448,10 +516,15 @@ class DynamicOrderAgentCoordinator:
                 update={
                     "graph_generation_id": graph_generation_id,
                     "order_search_cache": None,
+                    **grounding_backfill,
                 },
             )
         elif resume_thread_id:
-            graph_input = Command(resume=request.message)
+            graph_input = (
+                Command(resume=request.message, update=grounding_backfill)
+                if grounding_backfill
+                else Command(resume=request.message)
+            )
         else:
             graph_input = initial_state
         try:
@@ -497,6 +570,10 @@ class DynamicOrderAgentCoordinator:
                 model_name=final_state["last_model"],
                 pending_clarification_thread_id=thread_id,
                 case_id=final_state.get("case_id"),
+                # From the final state, not from `as_of` above: a resumed turn
+                # reasons under the grounding its checkpoint carries, and the
+                # record has to say what was actually used.
+                **_committed_grounding(final_state),
             )
             return await self._conversations.commit_turn(
                 request=request,
@@ -542,6 +619,7 @@ class DynamicOrderAgentCoordinator:
             model_provider=final_state["last_provider"],
             model_name=final_state["last_model"],
             case_id=final_state.get("case_id"),
+            **_committed_grounding(final_state),
         )
         return await self._conversations.commit_turn(
             request=request,

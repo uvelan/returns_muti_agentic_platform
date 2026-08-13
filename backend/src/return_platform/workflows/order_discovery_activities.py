@@ -69,6 +69,7 @@ class OrderDiscoveryActivities:
             message_id=request.message_id,
             message=request.message,
             agent_id=request.agent_id,
+            session_timezone=request.session_timezone,
         )
         try:
             result = await self._coordinator.process_turn(

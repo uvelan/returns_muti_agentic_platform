@@ -27,6 +27,9 @@ from return_platform.dynamic_knowledge.order_agent.contracts import (
     AgentTurnContext,
     ModelInvocationResult,
 )
+from return_platform.dynamic_knowledge.order_agent.temporal_grounding import (
+    temporal_grounding_prompt,
+)
 
 logger = logging.getLogger("return_platform.dynamic_knowledge.model_gateway")
 
@@ -141,6 +144,13 @@ class RoutePoolReasoningModelGateway:
                 "client_turn_id": context.client_turn_id,
                 "mode": mode,
             },
+            # The turn's as-of has to be *stated*, not merely present somewhere
+            # inside `contextJson`. A model that has to find the date in a
+            # sorted JSON blob to know what "yesterday" means will sometimes not
+            # look, and the packaged task prompt cannot carry it because it is
+            # one immutable string per configuration release and this changes
+            # every turn.
+            prompt_addendum=temporal_grounding_prompt(context.as_of, context.session_timezone),
         )
         return ModelInvocationResult(
             action=invocation.value,

@@ -3552,9 +3552,13 @@ export interface components {
             message: string;
             /** Message Id */
             message_id: string;
+            /** Session Timezone */
+            session_timezone?: string | null;
         };
         /** AgentTurnResult */
         AgentTurnResult: {
+            /** As Of */
+            as_of?: string | null;
             /** Case Id */
             case_id?: string | null;
             /** Client Turn Id */
@@ -3574,6 +3578,8 @@ export interface components {
             /** Query Evidence */
             query_evidence: components["schemas"]["QueryEvidence"][];
             response: components["schemas"]["StructuredAgentResponse"];
+            /** Session Timezone */
+            session_timezone?: string | null;
         };
         /** AnalysisSessionView */
         AnalysisSessionView: {
