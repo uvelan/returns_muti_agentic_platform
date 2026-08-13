@@ -86,6 +86,14 @@ sources:
       database: return_platform
       name: handling_units
     incremental_cursor_field: source_updated_at
+  source_bays:
+    source_asset_id: source_bays
+    connector_type: MSSQL
+    connection_ref: vault://data-sources/platform-sqlserver
+    object_ref:
+      namespace: platform
+      name: bay_configuration
+    incremental_cursor_field: updated_at
 entities:
   customer:
     entity_id: customer
@@ -3964,6 +3972,619 @@ entities:
           masking: null
     natural_key:
     - handling_unit_id
+  bay:
+    entity_id: bay
+    description: 'bay, from bay_configuration in source_bays, keyed on bay_id. Compiled from the analyzer''s
+      inspection of that object: approximately 6 rows, 18 declared column(s), 2 declared index(es). Every
+      field below reads a column the source''s own catalogue declares, and the capabilities follow from
+      the indexes over it.'
+    source_asset_id: source_bays
+    fields:
+      active:
+        field_id: active
+        description: ''
+        physical_path:
+        - active
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: active
+        data_type: BOOLEAN
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EQUALS
+          - EXACT
+          aggregations: []
+        permissions:
+          searchable_by: []
+          displayable_by:
+          - '*'
+          on_demand_sync_by: []
+          masking: null
+      bay_id:
+        field_id: bay_id
+        description: ''
+        physical_path:
+        - bay_id
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: bay_id
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: true
+          operators:
+          - EQUALS
+          - EXACT
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+      bay_name:
+        field_id: bay_name
+        description: ''
+        physical_path:
+        - bay_name
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: bay_name
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators: []
+          aggregations: []
+        permissions:
+          searchable_by: []
+          displayable_by:
+          - '*'
+          on_demand_sync_by: []
+          masking: null
+      bay_type:
+        field_id: bay_type
+        description: ''
+        physical_path:
+        - bay_type
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: bay_type
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators: []
+          aggregations: []
+        permissions:
+          searchable_by: []
+          displayable_by:
+          - '*'
+          on_demand_sync_by: []
+          masking: null
+      branch_id:
+        field_id: branch_id
+        description: ''
+        physical_path:
+        - branch_id
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: branch_id
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators: []
+          aggregations: []
+        permissions:
+          searchable_by: []
+          displayable_by:
+          - '*'
+          on_demand_sync_by: []
+          masking: null
+      capacity_unit:
+        field_id: capacity_unit
+        description: ''
+        physical_path:
+        - capacity_unit
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: capacity_unit
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators: []
+          aggregations: []
+        permissions:
+          searchable_by: []
+          displayable_by:
+          - '*'
+          on_demand_sync_by: []
+          masking: null
+      hazardous_allowed:
+        field_id: hazardous_allowed
+        description: ''
+        physical_path:
+        - hazardous_allowed
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: hazardous_allowed
+        data_type: BOOLEAN
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators: []
+          aggregations: []
+        permissions:
+          searchable_by: []
+          displayable_by:
+          - '*'
+          on_demand_sync_by: []
+          masking: null
+      max_handling_unit_count:
+        field_id: max_handling_unit_count
+        description: ''
+        physical_path:
+        - max_handling_unit_count
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: max_handling_unit_count
+        data_type: INTEGER
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators: []
+          aggregations: []
+        permissions:
+          searchable_by: []
+          displayable_by:
+          - '*'
+          on_demand_sync_by: []
+          masking: null
+      max_package_count:
+        field_id: max_package_count
+        description: ''
+        physical_path:
+        - max_package_count
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: max_package_count
+        data_type: INTEGER
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators: []
+          aggregations: []
+        permissions:
+          searchable_by: []
+          displayable_by:
+          - '*'
+          on_demand_sync_by: []
+          masking: null
+      max_pallet_count:
+        field_id: max_pallet_count
+        description: ''
+        physical_path:
+        - max_pallet_count
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: max_pallet_count
+        data_type: INTEGER
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators: []
+          aggregations: []
+        permissions:
+          searchable_by: []
+          displayable_by:
+          - '*'
+          on_demand_sync_by: []
+          masking: null
+      overflow_bay_id:
+        field_id: overflow_bay_id
+        description: ''
+        physical_path:
+        - overflow_bay_id
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: overflow_bay_id
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators: []
+          aggregations: []
+        permissions:
+          searchable_by: []
+          displayable_by:
+          - '*'
+          on_demand_sync_by: []
+          masking: null
+      oversized_allowed:
+        field_id: oversized_allowed
+        description: ''
+        physical_path:
+        - oversized_allowed
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: oversized_allowed
+        data_type: BOOLEAN
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators: []
+          aggregations: []
+        permissions:
+          searchable_by: []
+          displayable_by:
+          - '*'
+          on_demand_sync_by: []
+          masking: null
+      priority:
+        field_id: priority
+        description: ''
+        physical_path:
+        - priority
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: priority
+        data_type: INTEGER
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EQUALS
+          - EXACT
+          aggregations: []
+        permissions:
+          searchable_by: []
+          displayable_by:
+          - '*'
+          on_demand_sync_by: []
+          masking: null
+      row_version_v2:
+        field_id: row_version_v2
+        description: ''
+        physical_path:
+        - row_version_v2
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: row_version_v2
+        data_type: INTEGER
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators: []
+          aggregations: []
+        permissions:
+          searchable_by: []
+          displayable_by:
+          - '*'
+          on_demand_sync_by: []
+          masking: null
+      supported_product_types:
+        field_id: supported_product_types
+        description: ''
+        physical_path:
+        - supported_product_types
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: supported_product_types
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators: []
+          aggregations: []
+        permissions:
+          searchable_by: []
+          displayable_by:
+          - '*'
+          on_demand_sync_by: []
+          masking: null
+      supported_shipping_paths:
+        field_id: supported_shipping_paths
+        description: ''
+        physical_path:
+        - supported_shipping_paths
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: supported_shipping_paths
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators: []
+          aggregations: []
+        permissions:
+          searchable_by: []
+          displayable_by:
+          - '*'
+          on_demand_sync_by: []
+          masking: null
+      updated_at:
+        field_id: updated_at
+        description: ''
+        physical_path:
+        - updated_at
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: updated_at
+        data_type: DATETIME
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - BETWEEN
+          - GT
+          - GTE
+          - LT
+          - LTE
+          aggregations: []
+        permissions:
+          searchable_by: []
+          displayable_by:
+          - '*'
+          on_demand_sync_by: []
+          masking: null
+      warehouse_id:
+        field_id: warehouse_id
+        description: ''
+        physical_path:
+        - warehouse_id
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: warehouse_id
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: true
+          operators:
+          - EQUALS
+          - EXACT
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+    natural_key:
+    - bay_id
+    strong_anchors:
+      exact_bay_id:
+        anchor_id: exact_bay_id
+        fields:
+        - field_id: bay_id
+          allowed_operators:
+          - EXACT
+          - EQUALS
+          required: true
+        minimum_fields_present: 1
+        maximum_expected_matches: 1
+        on_demand_sync_allowed: true
+    source_contract_status: VERIFIED
+    source_access: CONNECTED_SYNC
+    deletion_policy: HARD_DELETE
+    record_path: []
+    explode: false
+    where: []
+    distinct: false
+    key_resolution: null
+    ownership_policy: null
+  warehouse:
+    entity_id: warehouse
+    description: 'warehouse, from bay_configuration in source_bays, keyed on warehouse_id. Compiled from
+      the analyzer''s inspection of that object: approximately 6 rows, 18 declared column(s), 2 declared
+      index(es). Every field below reads a column the source''s own catalogue declares, and the capabilities
+      follow from the indexes over it.'
+    source_asset_id: source_bays
+    fields:
+      branch_id:
+        field_id: branch_id
+        description: ''
+        physical_path:
+        - branch_id
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: branch_id
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators: []
+          aggregations: []
+        permissions:
+          searchable_by: []
+          displayable_by:
+          - '*'
+          on_demand_sync_by: []
+          masking: null
+      updated_at:
+        field_id: updated_at
+        description: ''
+        physical_path:
+        - updated_at
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: updated_at
+        data_type: DATETIME
+        nullable: false
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - BETWEEN
+          - GT
+          - GTE
+          - LT
+          - LTE
+          aggregations: []
+        permissions:
+          searchable_by: []
+          displayable_by:
+          - '*'
+          on_demand_sync_by: []
+          masking: null
+      warehouse_id:
+        field_id: warehouse_id
+        description: ''
+        physical_path:
+        - warehouse_id
+        path_origin: CURRENT_RECORD
+        derive: null
+        graph_property: warehouse_id
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: true
+          operators:
+          - EQUALS
+          - EXACT
+          aggregations: []
+        permissions:
+          searchable_by:
+          - '*'
+          displayable_by:
+          - '*'
+          on_demand_sync_by:
+          - '*'
+          masking: null
+    natural_key:
+    - warehouse_id
+    strong_anchors:
+      exact_warehouse_id:
+        anchor_id: exact_warehouse_id
+        fields:
+        - field_id: warehouse_id
+          allowed_operators:
+          - EXACT
+          - EQUALS
+          required: true
+        minimum_fields_present: 1
+        maximum_expected_matches: 1
+        on_demand_sync_allowed: true
+    source_contract_status: VERIFIED
+    source_access: CONNECTED_SYNC
+    deletion_policy: HARD_DELETE
+    record_path: []
+    explode: false
+    where: []
+    distinct: false
+    key_resolution: null
+    ownership_policy: null
 graph:
   database: neo4j
   nodes:
@@ -4178,6 +4799,39 @@ graph:
       - shipping_instruction_id
       - created_at
       - source_updated_at
+    bay:
+      projection_id: bay
+      entity_id: bay
+      label: Bay
+      key_fields:
+      - bay_id
+      property_fields:
+      - active
+      - bay_name
+      - bay_type
+      - branch_id
+      - capacity_unit
+      - hazardous_allowed
+      - max_handling_unit_count
+      - max_package_count
+      - max_pallet_count
+      - overflow_bay_id
+      - oversized_allowed
+      - priority
+      - row_version_v2
+      - supported_product_types
+      - supported_shipping_paths
+      - updated_at
+      - warehouse_id
+    warehouse:
+      projection_id: warehouse
+      entity_id: warehouse
+      label: Warehouse
+      key_fields:
+      - warehouse_id
+      property_fields:
+      - branch_id
+      - updated_at
   relationships:
     customer_placed_order:
       relationship_id: customer_placed_order
@@ -4339,6 +4993,20 @@ graph:
       # session is a state the store permits, and a cardinality bound would turn
       # it into a failed sync rather than a visible oddity in the graph.
       cardinality: MANY_TO_MANY
+    warehouse_HAS_BAY_bay:
+      relationship_id: warehouse_HAS_BAY_bay
+      relationship_type: HAS_BAY
+      source_entity_id: warehouse
+      target_entity_id: bay
+      source_match_fields:
+      - warehouse_id
+      target_match_fields:
+      - warehouse_id
+      property_fields: []
+      access: CONNECTED_SYNC
+      cardinality: ONE_TO_MANY
+      maximum_targets_per_source: null
+      maximum_sources_per_target: 1
 agent_policies:
   order-discovery-agent:
     agent_id: order-discovery-agent
@@ -4359,6 +5027,8 @@ agent_policies:
     - order_line
     - product
     - shipment
+    - bay
+    - warehouse
     # The return side. Projecting these into the graph is not enough on its own:
     # SchemaQueryGuard refuses any plan whose start or traversal entity is not
     # named here, and Neo4jKnowledgeGateway.compact_schema builds the entity and
@@ -4376,4 +5046,4 @@ agent_policies:
     max_clarifications: 3
     max_replans: 2
     max_targeted_syncs_per_turn: 3
-configuration_checksum: 1a9c7915613309b756395964ebb009d9c95f2d93551b42d6ac35a199a287b106
+configuration_checksum: 56b4ff4771786e7068ff74cfd08276f1ff551e31614da49a541cebd1e5c691aa

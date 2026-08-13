@@ -53,13 +53,20 @@ never be confused with real customer data.
 
 ## The warehouse structure is provisional
 
-**The active schema has no warehouse entity and no warehouse source.**
-Warehouses exist only as identifiers on other records — `sell_warehouse_id`,
-`ship_from_warehouse_id` and `inventory_warehouse_id` on an order, and bay and
-warehouse ids on a return handling unit. There is no declared shape to generate
-against, and nothing reads a warehouse document today.
+**Still provisional, and the schema no longer generates against this.** W2.4 added
+`warehouse` and `bay` entities, and they are bound to
+`platform.bay_configuration` in SQL Server — **not** to the `warehouseMaster`
+collection below. That collection is not in `return_source` and never was, so an
+entity declared against it would have carried physical paths that resolve on no
+document; the analyzer was pointed at the one warehouse identity this platform
+can actually observe, which is `warehouse_id` on the bay master.
 
-What the generator writes to `warehouseMaster` is therefore **invented for this
+The consequence for this generator: `warehouseMaster` is written and **nothing
+reads it**. The warehouse ids it mints do not join the graph's `Warehouse` nodes,
+which come from the bay table. Either wire the two together or stop writing it;
+leaving it is a corpus that looks like it feeds something.
+
+What the generator writes to `warehouseMaster` remains **invented for this
 project's needs and not derived from any real Ferguson structure**:
 
 ```json
@@ -80,12 +87,15 @@ It exists so the warehouse ids scattered across orders resolve to something with
 a name and a location, and so return-side work has a master to point at. Treat
 the field names as placeholders.
 
-When a real structure arrives, two things follow: add a `source_warehouses`
-asset and a warehouse entity to the active schema (which means a new
-configuration release), and reconcile these field names with the real ones. The
-bay master proper lives in SQL Server, which is why `return_handling_unit`
-carries bay and warehouse ids as plain properties rather than relationships to a
-warehouse node.
+When a real warehouse master arrives it is a **rebinding plus a re-analysis**,
+not an edit: point a source binding at it, re-run
+`backend/scripts/add_warehouse_bay_entities.py` against it, and let the compiler
+produce the entity from what the source declares. Reconciling these field names
+with the real ones is part of that, and the placeholder names above are why.
+
+`return_handling_unit` still carries bay and warehouse ids as plain properties
+rather than as relationships. Making them edges is a schema migration touching
+existing nodes — destructive in D8's classification — and W2.4 is additive.
 
 ## After generating
 

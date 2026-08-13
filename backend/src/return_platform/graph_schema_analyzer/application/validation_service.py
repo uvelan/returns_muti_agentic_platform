@@ -45,8 +45,17 @@ logger = logging.getLogger(__name__)
 # Which declared source types a graph property type may be drawn from. Narrow on
 # purpose: a silent string->integer coercion at sync time is a data corruption
 # that surfaces months later, so the mapping has to be declared, not inferred.
+#
+# The Unicode SQL Server spellings are here for the same reason the ASCII ones
+# are: `nvarchar` is what every string column of `platform.bay_configuration`
+# declares, and without them `property_type_for_source_type` answered None and
+# re-analysis reported those columns as "could not be typed and are left out" --
+# a silently narrower entity than the source, which is the failure this table
+# exists to prevent rather than cause.
 _COMPATIBLE_SOURCE_TYPES: Mapping[PropertyType, frozenset[str]] = {
-    PropertyType.STRING: frozenset({"string", "str", "text", "varchar", "char", "uuid"}),
+    PropertyType.STRING: frozenset(
+        {"string", "str", "text", "varchar", "char", "uuid", "nvarchar", "nchar", "ntext"}
+    ),
     PropertyType.INTEGER: frozenset({"int", "integer", "long", "bigint", "smallint"}),
     PropertyType.FLOAT: frozenset({"float", "double", "decimal", "numeric", "real"}),
     PropertyType.BOOLEAN: frozenset({"bool", "boolean", "bit"}),
