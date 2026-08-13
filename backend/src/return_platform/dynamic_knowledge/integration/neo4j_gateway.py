@@ -10,7 +10,7 @@ from neo4j import READ_ACCESS, AsyncDriver
 from neo4j.spatial import Point
 from neo4j.time import Date, DateTime, Duration, Time
 
-from return_platform.dynamic_knowledge.schema import ActiveSchema
+from return_platform.dynamic_knowledge.schema import ActiveSchema, FieldDefinition
 
 _PROHIBITED = re.compile(
     r"\b(CREATE|MERGE|SET|DELETE|DETACH|DROP|REMOVE|LOAD\s+CSV|CALL|GRANT|DENY|REVOKE)\b",
@@ -51,6 +51,52 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
+def _selectivity_of(field: FieldDefinition) -> dict[str, Any]:
+    """W4.8: what the analyzer measured about how well this field narrows.
+
+    Merged into the field entry rather than nested under its own key so it reads
+    as more properties of the field, alongside `searchable` and `operators` --
+    which is what it is. A model deciding which clarifying question is worth
+    asking needs it in the same glance as the capability that makes the question
+    askable at all.
+
+    **Omitted entirely when nothing profiled the field.** Emitting
+    `"identifierLikelihood": "UNKNOWN"` on every field of a hand-authored
+    descriptor would spend context on eleven entities' worth of "we do not know",
+    and a model reading a stated UNKNOWN tends to treat it as a finding rather
+    than as silence. Absence is the honest encoding of "not measured".
+
+    **`sampledRows` and `approximateRowCount` are emitted with the numbers they
+    qualify.** `approximateDistinct: 40` is a strong narrowing signal over a
+    50-row table and a weak one over a million rows sampled 50 deep. A consumer
+    that cannot tell those apart is not ranking by selectivity, it is ranking by
+    coincidence -- so the basis is not optional here even though it costs tokens.
+
+    Nothing in this method orders anything. It reports evidence and leaves the
+    ranking to the reasoning step, because a question order hardcoded here would
+    be the same guess this step exists to replace, just written down.
+    """
+    selectivity = field.selectivity
+    if selectivity is None:
+        return {}
+    reported: dict[str, Any] = {
+        "nullRate": round(selectivity.null_rate, 4),
+        "identifierLikelihood": selectivity.identifier_likelihood.value,
+        "sampledRows": selectivity.sampled_rows,
+    }
+    if selectivity.approximate_distinct is not None:
+        reported["approximateDistinct"] = selectivity.approximate_distinct
+    if selectivity.approximate_row_count is not None:
+        reported["approximateRowCount"] = selectivity.approximate_row_count
+    ratio = selectivity.distinct_ratio
+    if ratio is not None:
+        # The derived number a ranker actually compares across fields, rounded
+        # because four decimal places of a fifty-row sample is precision the
+        # sample does not have.
+        reported["distinctRatio"] = round(ratio, 4)
+    return reported
+
+
 class Neo4jKnowledgeGateway:
     def __init__(self, driver: AsyncDriver, *, database: str) -> None:
         self._driver = driver
@@ -72,6 +118,7 @@ class Neo4jKnowledgeGateway:
                             "distinct": field.capabilities.distinct,
                             "aggregatable": field.capabilities.aggregatable,
                             "operators": sorted(field.capabilities.operators),
+                            **_selectivity_of(field),
                         }
                         for field_id, field in schema.entities[entity_id].fields.items()
                     },

@@ -154,6 +154,84 @@ class FieldPermissions(BaseModel):
     masking: str | None = None
 
 
+class IdentifierLikelihood(StrEnum):
+    """How strongly the evidence says a field identifies one record.
+
+    Graded rather than boolean, because the two ways of knowing are not the same
+    claim and collapsing them would be a lie in the safe-looking direction. A
+    unique index is the *source* guaranteeing uniqueness over every row that
+    exists. "Distinct in all fifty rows we sampled" is evidence about fifty rows,
+    and the difference matters to whoever ranks a question by it: one answer
+    narrows to a single record by construction, the other might narrow to two
+    hundred.
+
+    `UNKNOWN` is not a polite `UNLIKELY`. It means nothing profiled this field,
+    and a consumer that treated it as low selectivity would be ranking on the
+    absence of evidence.
+    """
+
+    DECLARED_UNIQUE = "DECLARED_UNIQUE"
+    LIKELY = "LIKELY"
+    POSSIBLE = "POSSIBLE"
+    UNLIKELY = "UNLIKELY"
+    UNKNOWN = "UNKNOWN"
+
+
+class FieldSelectivity(BaseModel):
+    """What the analyzer's `profile` observed about how well a field narrows.
+
+    **The basis travels with the numbers, and that is the whole design.**
+    `approximate_distinct=40` means one thing over 50 sampled rows of a 50-row
+    table and something entirely different over 50 sampled rows of a million.
+    A ranking that cannot tell those apart is not a ranking, so `sampled_rows`
+    and `approximate_row_count` are fields here rather than context the caller is
+    trusted to remember.
+
+    Every number is a statement about the sample. Nothing here is a promise about
+    the object except `DECLARED_UNIQUE`, which comes from the source's own index
+    rather than from counting.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Rows the profile was computed from. Zero is possible and meaningful: an
+    #: empty object was profiled and nothing was learned.
+    sampled_rows: int = Field(ge=0)
+    #: The object's size, when the source reports one. `None` leaves
+    #: `sample_coverage` undefined rather than assuming the sample was the whole.
+    approximate_row_count: int | None = Field(default=None, ge=0)
+    null_rate: float = Field(ge=0.0, le=1.0)
+    #: `None` where distinctness could not be counted -- a Mongo field holding
+    #: sub-documents, say. Deliberately not zero: a wrong selectivity estimate
+    #: ranks confidently on nothing, which is worse than a missing one.
+    approximate_distinct: int | None = Field(default=None, ge=0)
+    identifier_likelihood: IdentifierLikelihood = IdentifierLikelihood.UNKNOWN
+
+    @property
+    def distinct_ratio(self) -> float | None:
+        """Distinct values per sampled row: 1.0 is a candidate key, 0.02 is a
+        status column. Derived rather than stored so it cannot disagree with the
+        two numbers it comes from."""
+        if self.approximate_distinct is None or self.sampled_rows == 0:
+            return None
+        return self.approximate_distinct / self.sampled_rows
+
+    @property
+    def sample_coverage(self) -> float | None:
+        """How much of the object the sample saw, capped at 1.0.
+
+        The number that separates "40 distinct in a sample" from "40 distinct,
+        full stop". Capped because an estimated row count can come back below
+        the rows actually read, and a coverage above 1.0 would read as an error
+        rather than as the estimate being approximate.
+        """
+        if self.approximate_row_count is None:
+            return None
+        if self.approximate_row_count == 0:
+            return 1.0
+        return min(1.0, self.sampled_rows / self.approximate_row_count)
+
+
 class PathOrigin(StrEnum):
     """Where a field's value is read from during a nested explosion (see EntityDefinition.explode)."""
 
@@ -253,6 +331,13 @@ class FieldDefinition(BaseModel):
     nullable: bool = True
     capabilities: FieldCapabilities = Field(default_factory=FieldCapabilities)
     permissions: FieldPermissions = Field(default_factory=FieldPermissions)
+    #: `None` means "nothing profiled this field", which is the honest state for
+    #: every hand-authored descriptor and for an entity compiled without a source
+    #: observation. Defaulting it to an all-zero `FieldSelectivity` would state
+    #: that a field was measured and found to be useless at narrowing, and a
+    #: consumer ranking on it would demote exactly the fields nobody has looked
+    #: at yet.
+    selectivity: FieldSelectivity | None = None
 
     @model_validator(mode="after")
     def validate_path(self) -> FieldDefinition:

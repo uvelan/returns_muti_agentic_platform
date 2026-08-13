@@ -47,6 +47,7 @@ from return_platform.bootstrap.adapters.analyzer_source_observation import (
     SourceObservation,
     observed_capabilities,
     observed_permissions,
+    observed_selectivity,
     observed_strong_anchors,
 )
 from return_platform.dynamic_knowledge.schema import (
@@ -430,6 +431,13 @@ def _field(
         nullable=bool(observation.nullable(column)),
         capabilities=capabilities,
         permissions=observed_permissions(capabilities),
+        # W4.8. `capabilities` says what the source's access paths *permit* being
+        # asked of this column; selectivity says what asking would be worth. They
+        # come from different evidence -- indexes and declared types for one,
+        # counted rows for the other -- and a field can easily be searchable and
+        # useless at narrowing. Carrying only the first is what left ranked
+        # elicitation to a model guessing over a catalogue with no statistics.
+        selectivity=observed_selectivity(observation, column=column),
     )
 
 

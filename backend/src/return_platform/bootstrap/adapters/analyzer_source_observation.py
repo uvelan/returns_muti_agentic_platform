@@ -36,7 +36,9 @@ from return_platform.dynamic_knowledge.schema import (
     AnchorFieldDefinition,
     FieldCapabilities,
     FieldPermissions,
+    FieldSelectivity,
     FieldType,
+    IdentifierLikelihood,
     StrongAnchorDefinition,
 )
 from return_platform.graph_schema_analyzer.domain.source_snapshot import (
@@ -44,6 +46,7 @@ from return_platform.graph_schema_analyzer.domain.source_snapshot import (
     FieldMetadata,
 )
 from return_platform.graph_schema_analyzer.ports.source_port import (
+    FieldProfile,
     IndexDescription,
     ObjectDescription,
     ObjectProfile,
@@ -54,6 +57,7 @@ __all__ = [
     "dataset_metadata_of",
     "observed_capabilities",
     "observed_permissions",
+    "observed_selectivity",
     "observed_strong_anchors",
 ]
 
@@ -183,6 +187,91 @@ def observed_capabilities(
     if data_type in _TEMPORAL:
         return FieldCapabilities(filterable=True, displayable=True, operators=_RANGE)
     return FieldCapabilities(displayable=True)
+
+
+def observed_selectivity(observation: SourceObservation, *, column: str) -> FieldSelectivity | None:
+    """How well this column narrows a search, as the profile measured it (W4.8).
+
+    `None` when nothing profiled the column -- no profile was taken, or the
+    profile does not mention it. That is a different statement from "measured and
+    found unselective", and the model is entitled to tell them apart: ranking a
+    never-measured field level with a status flag would push a perfectly good
+    identifier to the bottom of the questions worth asking.
+
+    The row count comes from the *description*, not the profile, when the profile
+    does not carry one. The description is what the source's catalogue reports
+    for the object as a whole, and it is the denominator that turns "48 distinct"
+    into a coverage claim.
+    """
+    profile = observation.profile
+    if profile is None:
+        return None
+    field = next((item for item in profile.fields if item.field_name == column), None)
+    if field is None:
+        return None
+    return FieldSelectivity(
+        sampled_rows=profile.sampled_rows,
+        approximate_row_count=(
+            profile.approximate_row_count
+            if profile.approximate_row_count is not None
+            else observation.description.approximate_row_count
+        ),
+        null_rate=field.null_rate,
+        approximate_distinct=field.approximate_distinct,
+        identifier_likelihood=_identifier_likelihood(observation, column=column, field=field),
+    )
+
+
+def _identifier_likelihood(
+    observation: SourceObservation, *, column: str, field: FieldProfile
+) -> IdentifierLikelihood:
+    """Grade the two kinds of evidence separately, strongest first.
+
+    A unique index on the column alone outranks anything counting can establish:
+    it is the source promising one row per value, over every row, forever. Only
+    when there is no such index does the sample get a say -- and then what it can
+    say depends on how much of the object it saw. Distinct in every row of a
+    sample that covered the whole object is as good as counted; distinct in every
+    row of fifty out of a million is a hypothesis worth ranking above a column
+    that already repeated, and no more than that.
+
+    `identifier_candidate` is deliberately not passed through as-is. It is a
+    boolean about a sample, and the whole point of W4.8 is that a consumer
+    comparing fields across sources cannot rank honestly on a boolean whose basis
+    it cannot see.
+    """
+    if any(index.unique and index.fields == (column,) for index in observation.indexes):
+        return IdentifierLikelihood.DECLARED_UNIQUE
+    profile = observation.profile
+    if profile is None or profile.sampled_rows == 0 or field.approximate_distinct is None:
+        # A profile over no rows, or one that could not count distinctness,
+        # leaves `identifier_candidate` at False for want of evidence rather
+        # than because of it. Reporting that as UNLIKELY would turn "we did not
+        # look" into "we looked and it is poor".
+        return IdentifierLikelihood.UNKNOWN
+    if not field.identifier_candidate:
+        return IdentifierLikelihood.UNLIKELY
+    if _sample_covered_everything(observation):
+        return IdentifierLikelihood.LIKELY
+    return IdentifierLikelihood.POSSIBLE
+
+
+def _sample_covered_everything(observation: SourceObservation) -> bool:
+    """Whether the profile read as many rows as the object is reported to hold.
+
+    Requires a reported count: without one there is no denominator, and
+    assuming the sample was exhaustive is precisely the over-claim `sampled_rows`
+    was added to prevent.
+    """
+    profile = observation.profile
+    if profile is None:
+        return False
+    total = (
+        profile.approximate_row_count
+        if profile.approximate_row_count is not None
+        else observation.description.approximate_row_count
+    )
+    return total is not None and profile.sampled_rows >= total
 
 
 def observed_permissions(capabilities: FieldCapabilities) -> FieldPermissions:
