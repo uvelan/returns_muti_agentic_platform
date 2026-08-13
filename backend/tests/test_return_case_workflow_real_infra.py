@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
+from datetime import datetime, timedelta
 from typing import Any
 
 import pytest
@@ -34,6 +35,8 @@ from return_platform.workflows.return_case_workflow import (
     RecordCaseStatusInput,
     RecordSupportOutcomeInput,
     RequestBayAssignmentInput,
+    ResolveBusinessDeadlineInput,
+    ResolvedBusinessDeadline,
     ReturnCaseTimings,
     ReturnCaseWorkflow,
     ReturnCaseWorkflowInput,
@@ -66,6 +69,12 @@ class _Probe:
         #: What `request_bay_assignment` answers with. None until a scenario
         #: sets one -- see the activity below.
         self.bay_notice: BayResultNotice | None = None
+        #: When set, every business deadline resolves this many seconds after
+        #: the instant it was asked from, whatever duration was requested --
+        #: which is what a calendar does when the desk is shut. None means the
+        #: requested duration is used unchanged, i.e. wall clock.
+        self.deadline_seconds: float | None = None
+        self.deadline_requests: list[ResolveBusinessDeadlineInput] = []
         self.sync_should_fail = False
         self.graph_generation_id = "gen-under-test"
 
@@ -87,6 +96,22 @@ class _Probe:
         # must go on treating "the activity said nothing" as "wait for a
         # signal, then proceed" rather than as a result.
         return self.bay_notice
+
+    @activity.defn(name="resolve_business_deadline")
+    async def resolve_business_deadline(
+        self, request: ResolveBusinessDeadlineInput
+    ) -> ResolvedBusinessDeadline:
+        self._record("resolve_business_deadline")
+        self.deadline_requests.append(request)
+        seconds = (
+            request.working_seconds if self.deadline_seconds is None else self.deadline_seconds
+        )
+        return ResolvedBusinessDeadline(
+            instant_iso=(
+                datetime.fromisoformat(request.from_iso) + timedelta(seconds=seconds)
+            ).isoformat(),
+            calendar_applied=self.deadline_seconds is not None,
+        )
 
     @activity.defn(name="draft_support_request")
     async def draft_support_request(self, request: DraftSupportRequestInput) -> str:
@@ -140,6 +165,7 @@ class _Probe:
     def all(self) -> tuple[Any, ...]:
         return (
             self.record_case_status,
+            self.resolve_business_deadline,
             self.request_bay_assignment,
             self.draft_support_request,
             self.open_support_work_item,
@@ -552,3 +578,53 @@ async def test_cancelling_stops_the_case_without_asking_support() -> None:
 
     assert outcome.status == "CANCELLED"
     assert "open_support_work_item" not in probe.calls
+
+
+async def test_the_wait_counts_business_time_not_wall_clock() -> None:
+    """SLA-01 at the workflow boundary, and the Friday-evening case in miniature.
+
+    The reminder interval is one second, so wall-clock arithmetic would nudge
+    Support immediately. The calendar says the desk is shut for an hour, and
+    the workflow must honour the instant the activity returned rather than the
+    duration it asked about -- which is the whole of what was broken: the
+    duration was always right and nothing ever converted it.
+    """
+    client = await Client.connect(_TEMPORAL_TARGET)
+    probe = _Probe()
+    probe.deadline_seconds = 3600.0
+    queue, handle = await _start(
+        client,
+        probe,
+        _case_input(
+            timings=_timings(
+                bay_wait_seconds=0,
+                support_response_wait_seconds=7200,
+                reminder_interval_seconds=1,
+            )
+        ),
+    )
+
+    async with Worker(
+        client, task_queue=queue, workflows=(ReturnCaseWorkflow,), activities=probe.all()
+    ):
+        await probe.reached("open_support_work_item", within_seconds=20)
+        # Long enough that a one-second wall-clock interval would have fired
+        # several times over.
+        await asyncio.sleep(5)
+        state = await handle.query(ReturnCaseWorkflow.execution_state)
+        assert state.reminders_sent == 0, "a shut desk was nudged anyway"
+        assert "send_support_reminder" not in probe.calls
+
+        await handle.signal(
+            ReturnCaseWorkflow.support_response,
+            SupportResponseNotice(
+                work_item_id="wi-1", records=(SupportReturnRecord(return_reference="RMA-1"),)
+            ),
+        )
+        outcome = await handle.result()
+
+    assert outcome.reminders_sent == 0
+    # The support wait and the reminder cadence both went through the calendar,
+    # carrying the configured calendar id rather than a hardcoded one.
+    assert [request.working_seconds for request in probe.deadline_requests][:2] == [7200, 1]
+    assert {request.business_calendar_id for request in probe.deadline_requests} == {"default"}

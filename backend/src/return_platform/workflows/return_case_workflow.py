@@ -28,7 +28,7 @@ not in the graph is one no agent can tell an associate about.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Final
 
@@ -44,6 +44,8 @@ __all__ = [
     "RecordCaseStatusInput",
     "RecordSupportOutcomeInput",
     "RequestBayAssignmentInput",
+    "ResolveBusinessDeadlineInput",
+    "ResolvedBusinessDeadline",
     "ReturnCaseOutcome",
     "ReturnCaseState",
     "ReturnCaseTimings",
@@ -148,6 +150,11 @@ class ReturnCaseWorkflowInput:
     resumed_status: str | None = None
     resumed_work_item_id: str | None = None
     reminders_sent: int = 0
+    #: The support deadline, once resolved. Carried across `continue_as_new`
+    #: for the same reason `reminders_sent` is: recomputing it on the far side
+    #: would grant a fresh full wait every time history was reset, and a case
+    #: that resets often would never reach its cap.
+    resumed_support_deadline_iso: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,6 +244,38 @@ class RecordCaseStatusInput:
 class RequestBayAssignmentInput:
     case_id: str
     tenant_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class ResolveBusinessDeadlineInput:
+    """Ask for an instant `working_seconds` of working time after `from_iso`.
+
+    The calendar is named, not carried: a corrected holiday list has to reach a
+    case that is already waiting, which is the one thing here that legitimately
+    differs from the pinned `ReturnCaseTimings`. Moving a *duration* under a
+    live return would make an operator's countdown jump; correcting the days
+    the warehouse is shut is fixing the answer to a question already asked.
+    """
+
+    from_iso: str
+    working_seconds: int
+    business_calendar_id: str
+    timezone: str
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedBusinessDeadline:
+    """When the wait expires, and whether a calendar decided it.
+
+    `calendar_applied` is false when no calendar matches the id -- the instant
+    is then plain wall clock, which is what the platform did before SLA-01. It
+    is reported rather than assumed so a release that forgets to declare its
+    calendar shows up as a case fact instead of as reminders arriving at
+    midnight.
+    """
+
+    instant_iso: str
+    calendar_applied: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -337,6 +376,8 @@ class _Mutable:
     return_references: list[str] = field(default_factory=list)
     parked_reason: str | None = None
     graph_generation_id: str | None = None
+    #: The resolved support deadline, kept so `continue_as_new` carries it.
+    support_deadline_iso: str | None = None
 
 
 @workflow.defn(name="return-platform-return-case-v1")
@@ -528,6 +569,37 @@ class ReturnCaseWorkflow:
         self._state.work_item_id = work_item_id
         await self._set_status(ReturnCaseStatus.AWAITING_SUPPORT)
 
+    async def _business_deadline(self, timings: ReturnCaseTimings, working_seconds: int) -> datetime:
+        """`workflow.now()` plus that many *working* seconds (SLA-01, C8).
+
+        The arithmetic is an activity, not a local computation, and that is the
+        determinism boundary rather than a preference. Resolving a zone reads
+        the tz database -- `SubmitOrderDiscoveryTurnCommand` already documents
+        why that must never happen in a workflow body, "a determinism hazard
+        the moment the tz database on the worker changes" -- and the holiday
+        list is configuration, which is IO. Both live on the activity side; the
+        workflow receives one absolute instant, which its history records and a
+        replay returns unchanged.
+        """
+        resolved: ResolvedBusinessDeadline = await workflow.execute_activity(
+            "resolve_business_deadline",
+            ResolveBusinessDeadlineInput(
+                from_iso=workflow.now().isoformat(),
+                working_seconds=working_seconds,
+                business_calendar_id=timings.business_calendar_id,
+                timezone=timings.timezone,
+            ),
+            result_type=ResolvedBusinessDeadline,
+            start_to_close_timeout=_PERSIST_TIMEOUT,
+            retry_policy=_PERSIST_RETRY,
+        )
+        if not resolved.calendar_applied:
+            workflow.logger.warning(
+                "business calendar %s is not configured; the wait is wall-clock",
+                timings.business_calendar_id,
+            )
+        return datetime.fromisoformat(resolved.instant_iso)
+
     async def _await_support(self, timings: ReturnCaseTimings) -> None:
         """Wait, remind, wait -- until Support answers or the reminders run out.
 
@@ -535,13 +607,34 @@ class ReturnCaseWorkflow:
         cadence is the reminder interval; the overall deadline is the Support
         wait, and reaching either one first is meaningful, so both are honoured
         rather than collapsed into one number.
+
+        Both are **working** durations now (SLA-01). They were wall clock, and
+        the configuration had said otherwise since it was written: a return
+        raised at 16:30 on a Friday with an eight-hour wait, two-hour reminders
+        and a cap of three chased Support at 18:30, 20:30 and 22:30 into an
+        empty queue and parked itself at 00:30 on Saturday, having spent every
+        one of its reminders while nobody was there. The durable-timer
+        machinery below is unchanged; only the instants it counts to moved.
         """
-        deadline = workflow.now() + timedelta(seconds=timings.support_response_wait_seconds)
+        resumed = self._require_input().resumed_support_deadline_iso
+        deadline = (
+            datetime.fromisoformat(resumed)
+            if resumed is not None
+            else await self._business_deadline(timings, timings.support_response_wait_seconds)
+        )
+        self._state.support_deadline_iso = deadline.isoformat()
         while self._state.support is None and self._state.cancellation is None:
             remaining = deadline - workflow.now()
             if remaining <= timedelta(0):
                 return
-            interval = timedelta(seconds=timings.reminder_interval_seconds)
+            # The next reminder is a working interval from now, not a
+            # wall-clock one: on a Friday evening the next nudge is Monday
+            # morning, and the three the cap allows are three the recipient
+            # will actually be present for.
+            next_reminder = await self._business_deadline(
+                timings, timings.reminder_interval_seconds
+            )
+            interval = max(next_reminder - workflow.now(), timedelta(0))
             try:
                 await workflow.wait_condition(
                     lambda: self._state.support is not None or self._state.cancellation is not None,
@@ -722,6 +815,7 @@ class ReturnCaseWorkflow:
             resumed_status=self._state.status,
             resumed_work_item_id=self._state.work_item_id,
             reminders_sent=self._state.reminders_sent,
+            resumed_support_deadline_iso=self._state.support_deadline_iso,
         )
 
     def _outcome(self) -> ReturnCaseOutcome:

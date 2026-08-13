@@ -14,11 +14,19 @@ idempotency key generated inside would be new each time -- which for
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Any, Protocol
 
 from temporalio import activity
 
+from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
+from return_platform.operations.business_calendar import (
+    BusinessCalendar,
+    WorkingPeriod,
+    advance_business_time,
+)
 from return_platform.operations.models import FactAcquisition, FactChannel
 from return_platform.operations.repository import OperationalRepository
 from return_platform.workflows.return_case_workflow import (
@@ -28,6 +36,8 @@ from return_platform.workflows.return_case_workflow import (
     RecordCaseStatusInput,
     RecordSupportOutcomeInput,
     RequestBayAssignmentInput,
+    ResolveBusinessDeadlineInput,
+    ResolvedBusinessDeadline,
     SendSupportReminderInput,
     SynchronizeReturnRecordsInput,
 )
@@ -105,12 +115,18 @@ class ReturnCaseActivities:
         drafter: SupportDraftPort | None = None,
         graph_sync: ReturnRecordGraphSyncPort | None = None,
         bay_placement: CaseBayPlacementPort | None = None,
+        configuration: Callable[[], ReturnPlatformConfiguration | None] | None = None,
     ) -> None:
         self._repository = repository
         self._support = support_service
         self._drafter = drafter
         self._graph_sync = graph_sync
         self._bay_placement = bay_placement
+        # A callable, not a value: Track E's activation loop replaces the
+        # process's configuration in place, and an activity that captured the
+        # release it started with would go on using a holiday list a release
+        # has since corrected.
+        self._configuration = configuration
 
     @activity.defn(name="record_case_status")
     async def record_case_status(self, request: RecordCaseStatusInput) -> None:
@@ -229,6 +245,79 @@ class ReturnCaseActivities:
                     extra={"case_id": case_id, "fact_name": name},
                     exc_info=True,
                 )
+
+    @activity.defn(name="resolve_business_deadline")
+    async def resolve_business_deadline(
+        self, request: ResolveBusinessDeadlineInput
+    ) -> ResolvedBusinessDeadline:
+        """Business-time arithmetic, on the side of the boundary that may do IO.
+
+        The workflow may not resolve a timezone or read a holiday list -- one
+        touches the tz database and the other is configuration, and both are
+        determinism hazards in a replayed body. So the whole calculation lives
+        here and the workflow receives one absolute instant, which its history
+        records.
+
+        The calendar is looked up per call rather than captured, matching how
+        every other live-configuration read in this process works: a corrected
+        holiday list reaches a case that is already waiting. Durations stay
+        pinned on the workflow input, because moving one under a live return
+        would make an operator's countdown jump; correcting which days the
+        warehouse is shut is fixing the answer to a question already asked.
+
+        No calendar for the id is not an error. It falls back to wall clock --
+        exactly what the platform did before SLA-01 -- and says so, so a release
+        that forgot to declare its calendar is visible rather than silently
+        chasing Support at midnight.
+        """
+        start = datetime.fromisoformat(request.from_iso)
+        calendar = self._business_calendar(request.business_calendar_id, request.timezone)
+        if calendar is None:
+            logger.warning(
+                "business_calendar_not_configured",
+                extra={"business_calendar_id": request.business_calendar_id},
+            )
+            return ResolvedBusinessDeadline(
+                instant_iso=(start + timedelta(seconds=request.working_seconds)).isoformat(),
+                calendar_applied=False,
+            )
+        return ResolvedBusinessDeadline(
+            instant_iso=advance_business_time(
+                calendar, start, request.working_seconds
+            ).isoformat(),
+            calendar_applied=True,
+        )
+
+    def _business_calendar(self, calendar_id: str, fallback_timezone: str) -> BusinessCalendar | None:
+        """The declared calendar for this id, as the arithmetic wants it.
+
+        `None` when nothing declares it. Deliberately no default Mon-Fri: a
+        calendar the platform invented would be wrong for most deployments and
+        wrong invisibly, which is worse than the wall-clock behaviour this
+        replaces.
+        """
+        configuration = self._configuration() if self._configuration is not None else None
+        if configuration is None:
+            return None
+        for declared in configuration.business_calendars:
+            if declared.calendar_id != calendar_id:
+                continue
+            return BusinessCalendar(
+                calendar_id=declared.calendar_id,
+                # The calendar's own zone wins; the case's timing block carries
+                # one only as a fallback for a calendar that declares none.
+                timezone=declared.timezone or fallback_timezone,
+                working_periods=tuple(
+                    WorkingPeriod(
+                        weekday=period.weekday,
+                        start_minute=period.start_minute,
+                        end_minute=period.end_minute,
+                    )
+                    for period in declared.working_periods
+                ),
+                holidays=frozenset(declared.holidays),
+            )
+        return None
 
     @activity.defn(name="draft_support_request")
     async def draft_support_request(self, request: DraftSupportRequestInput) -> str:

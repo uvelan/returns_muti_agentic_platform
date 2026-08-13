@@ -49,6 +49,7 @@ def create_return_workflow_worker(
         registered = (
             *registered,
             case_activities.record_case_status,
+            case_activities.resolve_business_deadline,
             case_activities.request_bay_assignment,
             case_activities.draft_support_request,
             case_activities.open_support_work_item,

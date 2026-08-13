@@ -138,6 +138,13 @@ async def _run() -> None:
                 # cannot hold, because it moves with the clock.
                 live_capacity=SQLBusinessStateRepository(settings),
             ),
+            # SLA-01: the business calendar the support wait and the reminder
+            # cadence are counted against. Read per call through the activated
+            # state rather than captured, so a corrected holiday list reaches a
+            # case already waiting without a restart. `activation` is bound
+            # below and this closure is only ever called from a running
+            # activity, which is well after `worker.run()` starts.
+            configuration=lambda: activation.state.return_configuration.configuration,
         )
         worker = create_return_workflow_worker(
             temporal, repository, case_activities=case_activities
