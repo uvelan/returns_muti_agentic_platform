@@ -16,7 +16,9 @@ make the removal a comment.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from typing import Any
 
 from return_platform.agents.contracts import (
@@ -34,6 +36,8 @@ from return_platform.operations.warehouse.observations import (
     WarehouseBayObservationPort,
     WarehouseObservation,
 )
+
+logger = logging.getLogger("return_platform.operations.warehouse.service")
 
 
 def normalize_method(value: str | None) -> NormalizedReturnMethod:
@@ -252,7 +256,31 @@ class WarehousePlacementService:
                 return_method=return_method,
                 product_type=product_type,
             )
-        observation = await self._observations.observe(warehouse_id)
+        try:
+            observation = await self._observations.observe(warehouse_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:  # noqa: BLE001 - best_effort by declared policy
+            # The port raises only when the graph cannot be read at all, and this
+            # is where that becomes a *state* rather than a 500. Bay placement is
+            # `best_effort`: the case must never park over it, and an operator
+            # reading `WAREHOUSE_UNAVAILABLE:CONNECTIONREFUSEDERROR` on the
+            # recommendation knows both that no bay was offered and why. Letting
+            # it propagate would take the endpoint down over a stage the policy
+            # says may be skipped.
+            logger.warning(
+                "warehouse_bay_observation_failed",
+                extra={"warehouse_id": warehouse_id, "error_code": type(error).__name__},
+                exc_info=True,
+            )
+            return (
+                WarehouseObservation(
+                    warehouse_reference=warehouse_id,
+                    evidence=BayEvidence.UNAVAILABLE,
+                    unavailable_reason=type(error).__name__.upper(),
+                ),
+                [],
+            )
         if observation.evidence is not BayEvidence.OBSERVED:
             return observation, []
         eligible = [

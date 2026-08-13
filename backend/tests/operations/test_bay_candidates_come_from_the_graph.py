@@ -136,6 +136,35 @@ async def test_an_unreadable_graph_yields_no_candidates_rather_than_a_sql_fallba
 
 
 @pytest.mark.asyncio
+async def test_a_graph_outage_becomes_a_reading_rather_than_a_failed_request() -> None:
+    """The step's Failure condition: bay is `best_effort` and never parks the case.
+
+    `GraphWarehouseBayObservations.observe` raises when the graph cannot be read
+    at all -- reporting ABSENT on an outage would look like data. Somebody has to
+    own the policy that turns that into a state, and it is this layer: letting it
+    propagate would 500 the bay-recommendation endpoint over a stage the policy
+    says may be skipped.
+    """
+
+    class _Broken:
+        async def observe(self, warehouse_reference: str | None) -> WarehouseObservation:
+            raise ConnectionRefusedError("bolt connection refused")
+
+    from return_platform.operations.warehouse.service import WarehousePlacementService
+
+    service = object.__new__(WarehousePlacementService)
+    service._sql = _RefusingSql()  # type: ignore[attr-defined]
+    service._observations = _Broken()  # type: ignore[attr-defined]
+
+    observation, candidates = await _candidates(service, warehouse_id="WH-CHENNAI-01")
+
+    assert candidates == []
+    assert observation is not None
+    assert observation.evidence is BayEvidence.UNAVAILABLE
+    assert observation.evidence_reference == "WAREHOUSE_UNAVAILABLE:CONNECTIONREFUSEDERROR"
+
+
+@pytest.mark.asyncio
 async def test_observed_bays_are_filtered_and_ordered_the_way_the_sql_query_was() -> None:
     """Eligibility and ordering move with the read, not away from it.
 
