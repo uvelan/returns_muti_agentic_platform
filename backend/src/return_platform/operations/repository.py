@@ -985,6 +985,62 @@ class OperationalRepository:
         )
         return [cast(dict[str, Any], document) async for document in cursor]
 
+    async def bind_case_workflow(self, case_id: str, *, workflow_id: str) -> bool:
+        """Record the durable execution that owns this case. Idempotent.
+
+        Deliberately not `update_case(..., expected_version=)`: the writer is
+        the confirmation that has just started the workflow, and it holds no
+        version -- while the workflow it started is already writing statuses
+        against the same document. An optimistic-concurrency round trip here
+        would lose that race routinely and report a link failure for a case
+        that is running perfectly well.
+
+        `workflowId: None` in the filter is what makes it write once. A second
+        call with the same id matches nothing, finds the id already recorded
+        and reports success; a call with a *different* id for a case that has
+        one is a broken invariant (the id is derived from the case, so two
+        cannot exist) and raises rather than silently repointing the case at
+        another execution.
+        """
+        result = await self.cases.update_one(
+            {"caseId": case_id, "workflowId": None},
+            {"$set": {"workflowId": workflow_id, "updatedAt": utc_now()}, "$inc": {"version": 1}},
+        )
+        if result.modified_count == 1:
+            return True
+        existing = await self.cases.find_one({"caseId": case_id}, {"workflowId": 1})
+        if existing is None:
+            raise KeyError(case_id)
+        recorded = existing.get("workflowId")
+        if recorded == workflow_id:
+            return False
+        raise ConcurrencyConflictError(case_id)
+
+    async def list_cases_without_workflow(
+        self, *, created_before: datetime, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """Confirmed cases whose durable execution was never recorded.
+
+        The queue `return_case_recovery` drains. Terminal cases are excluded:
+        only `ReturnCaseWorkflow` sets `CLOSED` or `CANCELLED`, so one that
+        reached either has had its workflow whatever the link says, and
+        starting a fresh execution for it would reopen a finished return.
+        """
+        cursor = (
+            self.cases.find(
+                {
+                    "workflowId": None,
+                    "status": {
+                        "$nin": [CaseStatus.CLOSED.value, CaseStatus.CANCELLED.value],
+                    },
+                    "createdAt": {"$lt": created_before},
+                }
+            )
+            .sort("createdAt", ASCENDING)
+            .limit(limit)
+        )
+        return [cast(dict[str, Any], document) async for document in cursor]
+
     async def update_case(
         self, case_id: str, updates: dict[str, Any], *, expected_version: int
     ) -> dict[str, Any]:

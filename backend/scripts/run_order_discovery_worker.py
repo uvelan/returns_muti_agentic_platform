@@ -49,6 +49,12 @@ async def _run() -> None:
             await source_mongo.admin.command("ping")
         await neo4j_driver.verify_connectivity()
 
+        # Connected before the coordinator rather than after it: this is the
+        # process that runs CONFIRM_ORDER, and confirmation now starts the
+        # case's `ReturnCaseWorkflow` (WF-01), so the client is a dependency of
+        # the coordinator instead of something only the worker needs.
+        temporal = await Client.connect(settings.temporal_target)
+
         system_store, envelope_encryptor = await bootstrap_system_store(settings, platform_mongo)
         # This is the process that actually runs MANUAL reasoning turns, and it
         # already has a SystemStore before routes are built -- so MANUAL resolves
@@ -80,11 +86,15 @@ async def _run() -> None:
             # which is how an agent-initiated write to the graph stayed
             # invisible to operators.
             targeted_sync_runs=MongoTargetedSyncRunLedger(platform_mongo, settings.mongo_database),
+            temporal_client=temporal,
+            # Pinned onto every case this process confirms. Read from the
+            # release the process resolved at startup, so a case carries the
+            # timings that were active when it was confirmed.
+            return_case_timings=runtime.return_configuration.configuration.return_case,
         )
         schema = load_active_schema(settings.dynamic_knowledge_schema_path)
         activities = OrderDiscoveryActivities(coordinator=coordinator, schema=schema)
 
-        temporal = await Client.connect(settings.temporal_target)
         worker = create_order_discovery_worker(temporal, activities)
         operational_repository = OperationalRepository(platform_mongo, settings)
         instance_id = f"{socket.gethostname()}-{uuid.uuid4().hex[:8]}"

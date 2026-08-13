@@ -18,10 +18,12 @@ from __future__ import annotations
 
 from neo4j import AsyncDriver
 from pymongo import AsyncMongoClient
+from temporalio.client import Client
 
 from return_platform.ai.gateway.telemetry import RepositoryAIAttemptRecorder
 from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
 from return_platform.ai_gateway.routing import AIRoutePool
+from return_platform.configuration.return_configuration import ReturnCaseTimingConfiguration
 from return_platform.configuration.settings import Settings
 from return_platform.dynamic_knowledge.integration.case_store import RepositoryCaseStore
 from return_platform.dynamic_knowledge.integration.model_gateway import (
@@ -51,6 +53,7 @@ from return_platform.operations.repository import OperationalRepository
 from return_platform.platform.reasoning.evidence_store import QueryEvidenceStore
 from return_platform.platform.secrets.envelope import EnvelopeEncryptor
 from return_platform.platform.system_store.repository import SystemStore
+from return_platform.workflows.return_case_launcher import TemporalCaseWorkflowLauncher
 
 
 def dynamic_order_agent_enabled(settings: Settings) -> bool:
@@ -70,6 +73,8 @@ async def build_dynamic_order_agent_runtime(
     system_store: SystemStore,
     reasoning_encryptor: EnvelopeEncryptor,
     targeted_sync_runs: TargetedSyncRunLedger | None = None,
+    temporal_client: Client,
+    return_case_timings: ReturnCaseTimingConfiguration,
 ) -> DynamicOrderAgentCoordinator:
     # The published release if the analyzer has activated one, else the file.
     # This is the line that makes approving a schema in the console change what
@@ -127,6 +132,19 @@ async def build_dynamic_order_agent_runtime(
         # owns the platform Mongo client, and the agent must not be handed the
         # repository itself -- only the one-method port over it.
         case_store=RepositoryCaseStore(operational_repository),
+        # The other half of that write, and the reason WF-01 existed: a case
+        # was committed here and its `ReturnCaseWorkflow` was started nowhere,
+        # so Support's RMA signalled an execution that had never been created.
+        # Supplied unconditionally -- a coordinator that can create cases and
+        # cannot start their workflows is the broken configuration, not a
+        # supported one, and `confirm_order` refuses before writing anything
+        # when this is absent.
+        case_workflow_launcher=TemporalCaseWorkflowLauncher(
+            client=temporal_client,
+            repository=operational_repository,
+            timings=return_case_timings,
+            task_queue=settings.return_workflow_task_queue,
+        ),
         active_snapshot_store=graph.active_snapshot_store,
     )
     return coordinator
