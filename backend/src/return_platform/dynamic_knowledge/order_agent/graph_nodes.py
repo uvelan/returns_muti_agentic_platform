@@ -162,17 +162,21 @@ class CaseStore(Protocol):
     ) -> ConfirmedCase: ...
 
 
-@dataclass(frozen=True, slots=True)
-class StartedCaseWorkflow:
-    """The durable execution that owns a case, and who started it.
+class CaseWorkflowStart(Protocol):
+    """What a launcher reports back, described rather than imported.
 
-    Mirrors `ConfirmedCase`: `already_running` is how a first confirmation is
-    told apart from a retried or simultaneous one, and it is the assertion that
-    proves a second execution was not created for the same case.
+    Structural on purpose. The concrete value is
+    `workflows.return_case_launcher.StartedCaseWorkflow`, and naming that type
+    here would drag `temporalio` into the reasoning module for the sake of two
+    attributes. Mirrors `ConfirmedCase`: `already_running` is how a first
+    confirmation is told apart from a retried or simultaneous one.
     """
 
-    workflow_id: str
-    already_running: bool
+    @property
+    def workflow_id(self) -> str: ...
+
+    @property
+    def already_running(self) -> bool: ...
 
 
 class CaseWorkflowLauncher(Protocol):
@@ -193,7 +197,7 @@ class CaseWorkflowLauncher(Protocol):
         principal_id: str,
         conversation_id: str,
         configuration_release_id: str,
-    ) -> StartedCaseWorkflow: ...
+    ) -> CaseWorkflowStart: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -1289,9 +1293,9 @@ __all__ = [
     "NODE_NAMES",
     "CaseStore",
     "CaseWorkflowLauncher",
+    "CaseWorkflowStart",
     "ConfirmedCase",
     "GraphDependencies",
-    "StartedCaseWorkflow",
     "TurnRuntimeContext",
     "make_clarify_node",
     "make_confirm_order_node",

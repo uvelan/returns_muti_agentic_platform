@@ -86,7 +86,6 @@ from return_platform.dynamic_knowledge.order_agent.graph import build_order_agen
 from return_platform.dynamic_knowledge.order_agent.graph_nodes import (
     ConfirmedCase,
     GraphDependencies,
-    StartedCaseWorkflow,
     TurnRuntimeContext,
 )
 from return_platform.dynamic_knowledge.order_agent.state import CandidateSet
@@ -98,6 +97,7 @@ from return_platform.dynamic_knowledge.schema import (
 )
 from return_platform.source_connectors.compilation import compile_source_read
 from return_platform.source_connectors.contracts import RawSourceDocument, RawSourcePage
+from return_platform.workflows.return_case_launcher import StartedCaseWorkflow
 from return_platform.workflows.return_case_workflow import return_case_workflow_id
 
 pytestmark = pytest.mark.asyncio
