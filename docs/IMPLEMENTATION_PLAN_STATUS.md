@@ -369,9 +369,254 @@ Likewise `SyncControlPage.test.tsx`'s "does not call out a healthy run" failed o
 line: `readRun` is mocked to the *targeted* run (5 writes), so the detail pane never rendered the
 `300` the test waited for, and its assertion had never once executed.
 
-## Gate A — not run
+## Gate A — deferred to a Linux environment
 
-The 19 steps are in the plan. Nothing is deleted before it, so Wave 3 is blocked.
+The 19 steps are in the plan. Nothing is deleted before it, so Wave 3 is still blocked.
+
+**Gate A was not attempted-and-failed. It is deferred.** Testing moves to Linux; the run on
+Windows was stopped by decision partway through, not by a failure. Everything below the
+"verified" line is **untested, not passing**, and must not be read as a partial pass.
+
+Two backend runs happened on 2026-08-13 before stopping. Neither reached its own summary: the
+first was killed by `pytest --timeout` at 50%, the second was stopped deliberately at 43%. So
+there is still **no complete backend suite tally**, and none should be quoted.
+
+### The "hang" signature is not a hang — and three runs were probably killed while healthy
+
+This is the finding that matters most, because a false belief about it is why Gate A had never
+been run at all.
+
+The signature on record — no output for tens of minutes, near-zero CPU — was read as a deadlock
+three times. It is not. It is the *expected* shape of an IO-bound real-infra suite. Measured
+from the **server** side rather than the client, with MongoDB's `currentOp` sampled three times
+at 15s intervals while the run sat at 10 minutes elapsed and 27s of CPU:
+
+* the active namespace advanced on every sample — `case_aggregate_test_…document_artifacts` →
+  `…return_configuration_snapshots` → `case_support_test_…case_facts` → `…support_work_items`.
+  Different test databases, different collections: forward progress through modules.
+* the operations in flight were `createIndexes` against **per-test databases**, seconds each.
+  Every real-infra test creates a database, builds the full index set, and drops it.
+* zero test databases remained afterwards, so teardown works.
+
+The client is idle because the server is building indexes. Low CPU is therefore evidence of
+nothing. **Three earlier runs were almost certainly killed while healthy.**
+
+The "no output for ~50 minutes" is most likely stdout block-buffering — pytest does not
+line-buffer when it is not attached to a TTY, so a redirected run shows nothing and then flushes
+in a block. **Flagged as strong inference, not proof:** it was not verified against any specific
+killed run. Both runs here set `PYTHONUNBUFFERED=1` and produced continuous output, which is
+consistent with it but does not establish it. Set `PYTHONUNBUFFERED=1` (or `-s`) on any
+redirected run so this cannot recur.
+
+**A separate, genuine wedge did occur, and it is not the same thing.** It must not be folded
+into the paragraph above, because the fix for one is not the fix for the other. Run 1 stopped
+dead at 50% and `pytest --timeout=300 --timeout-method=thread` dumped the stack, so this one is
+captured rather than inferred. Its cause is below. What is *not* claimed: that any of the three
+earlier runs hit it. There is no evidence either way, and the currentOp finding above makes the
+healthy-kill explanation the more likely one for those.
+
+### The wedge that was real: a crashed SQL Server that keeps its port open
+
+**Mechanism, demonstrated end to end.**
+
+1. `sqlservr` inside `return-multi-agent-platform-sqlserver-1` died mid-run with a fatal
+   scheduler assertion:
+
+   ```
+   This program has encountered a fatal error and cannot continue running at Thu Aug 13 07:41:41 2026
+       Reason: 0x00000004
+      Message: ASSERT: Expression=((seenByMonitor) <(NonYieldThreshold))
+               File=LibOS\Windows\Kernel\SQLPal\common\dk\sos\src\sosschedmon.cpp Line=202
+      Process: 212 - sqlservr
+   Capturing a dump of 212
+   ```
+
+2. The crash does **not** stop the container. PID 1 is `launch_sqlservr.sh`, which stays alive
+   while the dump is written (`ps` showed PID 212 in state `tl` — stopped, multi-threaded, under
+   the dump handler, next to a 299 MB `core.sqlservr.8_13_2026_7_41_42.212`). So the container
+   never exits, `restart: unless-stopped` never fires, and the compose healthcheck — 12 retries
+   at 10s — still reported `healthy` well after the server stopped answering.
+
+3. The listening socket therefore stays open. A client gets a successful TCP connect and then
+   silence. `sqlcmd` from inside the container names it exactly:
+
+   ```
+   Unable to complete login process due to delay in prelogin response.
+   ```
+
+4. `pytest --timeout=300 --timeout-method=thread` caught the stack in the one call that matters:
+
+   ```
+   File "backend\tests\source_connectors\conftest.py", line 71, in _sqlserver_database_exists
+       request.getfixturevalue("sqlserver_test_database")
+   File "backend\tests\source_connectors\conftest.py", line 41, in sqlserver_test_database
+       with pymssql.connect(
+   +++++++++++++++++++++++++++++++++++ Timeout +++++++++++++++++++++++++++++++++++
+   ```
+
+**Why `login_timeout=10` did not save it, proven rather than assumed.** The fixture already
+passed `login_timeout=10, timeout=10`. Those bound *reaching* the server and *running a
+statement*; neither bounds waiting for the prelogin reply. Reproduced away from SQL Server
+entirely, with a socket that accepts and never writes a byte:
+
+```
+--- test 1: raw pymssql.connect with login_timeout=10, observed for 40s
+RESULT_1=STILL_BLOCKED_after_40.0s
+--- test 2: the conftest 30s deadline
+RESULT_2=DEADLINE_FIRED_after_30.0s
+```
+
+Four times the declared `login_timeout`, still blocked. That is the mechanism: an autouse,
+function-scoped fixture that opens a connection before **every** test in
+`tests/source_connectors/` blocks forever, on a process consuming no CPU, so the suite stops
+dead with no output and no failure. Observed here at 50%, on 58.3s of CPU that then never moved.
+
+Note the trap: this produces *exactly* the same client-side signature as the healthy IO-bound
+suite described above. Elapsed time and CPU cannot tell them apart, which is why the earlier
+attempts were unreadable and why a per-test `--timeout` is the thing that settles it. Do not use
+this section to re-diagnose the earlier runs; use `--timeout` on the next one.
+
+**Fixed** in `tests/source_connectors/conftest.py`: the connect runs on a worker thread bounded
+by a 30s wall-clock deadline outside the driver, and the timeout raises a message naming the
+real condition. This is not a test relaxation — the tests still require a working SQL Server and
+still fail without one. It converts "the entire suite stops" into "this package fails, by name,
+and the run reaches its own summary".
+
+**This has happened at least twice.** `/var/opt/mssql/log/` also holds
+`core.sqlservr.08_12_2026_06_08_21.43` with the *identical* assertion at `sosschedmon.cpp:202`
+on 2026-08-12. That is the same day as earlier suite attempts, which is suggestive and nothing
+more — the core file records a crash, not which run was affected by it, and the healthy-kill
+explanation above remains the more likely account of those runs.
+
+**What is _not_ diagnosed: why SQL Server crashes.** A non-yielding-scheduler assertion under
+`MSSQL_MEMORY_LIMIT_MB=3072` in a 4 GB container is consistent with resource starvation under
+suite load, but that is a guess and is written here as one. Two crashes in two days under the
+same workload is the fact; the cause is not established, and no attempt was made to reproduce it
+(deliberately — repeated-iteration runs are forbidden and would be the obvious way to try).
+
+**Operational note.** `docker restart` on the crashed container left it wedged in startup for
+6+ minutes, spinning CPU, never writing an errorlog. `docker stop -t 60` followed by
+`docker start` recovered it in 65 seconds. That is recorded because the first thing anyone will
+reach for is the one that does not work.
+
+### The Temporal hypothesis is refuted, not merely unconfirmed
+
+The suspicion on record was that `test_return_workflow_concurrency.py` leaves a workflow or
+worker wedged. It does not, and the evidence is direct:
+
+* `temporal task-queue describe` on `return-platform-order-discovery-v1` reports
+  `ApproximateBacklogCount 0` for both workflow and activity tasks, and no pollers. Nothing
+  stale is waiting to be dispatched to a worker a test starts.
+* The workflow tests build **per-test** task queues (`test-order-discovery-<hex>`), so they
+  cannot pick up anything from the production queue in the first place.
+* The hang reproduced in a module that touches neither Temporal nor a workflow.
+
+**A real defect was found while refuting it, though.** The server holds **135 leaked `Running`
+workflows** (133 `return-platform-order-discovery-v1`, 2 throwaway reasoning workflows), the
+oldest 19 hours old, and the count rose to 137 during a single suite run. They are idle rather
+than dangerous — each is parked on a `startToFireTimeout` of `604800s`, seven days, which is why
+they generate no task-queue load — but nothing ever terminates them and every run adds more.
+`api/order_agent.py` builds the id as `order-discovery-{conversation_id}`; the tests use fresh
+UUIDs, so they leak instead of colliding.
+
+Worth knowing before Gate A's business path is attempted: `order_agent.py` does
+`start_workflow(...)` and, on `WorkflowAlreadyStartedError`, attaches to the existing handle and
+calls `execute_update`. `execute_update` waits for completion indefinitely, and the app's
+lifespan creates a Temporal **client only** — never a worker. So driving the agent surface with
+no `order-discovery-worker` polling that queue is a second, independent way to hang, and the
+`containerized-app` compose profile that provides that worker was not running.
+
+### Acceptance categories from §10
+
+**How far the runs got.** Run 1 covered roughly the first half of the collection in test order —
+`agents` through `source_connectors` — before the SQL Server wedge killed it at 50%. Run 2,
+with Vault enabled, was stopped at 43%. Neither reached `tests/` root modules or `tests/v2`.
+Anything below marked *verified* means "every test in that area that ran, passed"; it does not
+mean the category is closed, and **no category should be treated as passing until the Linux
+run**.
+
+| Category | Verdict |
+|---|---|
+| **Business** | **not verified.** The end-to-end path needs the `containerized-app` profile (backend, `order-discovery-worker`, `return-workflow-worker`, frontend) running against real infrastructure. Only the seven infrastructure containers were up; no worker polls the production task queue, so the discovery → `CONFIRM_ORDER` → case → workflow path could not be driven at all. Component-level coverage passing is not the same claim |
+| **Graph** | **partly exercised.** Order, return, shipment and warehouse reads through the graph, targeted on-demand sync and sync-failure visibility passed against real MongoDB and Neo4j in both runs. One genuine red remains in this area — see below |
+| **Configuration** | **partly exercised.** Approved draft → runtime schema with no file edit, and a source rebinding through configuration alone, both passed against real infrastructure (`tests/operations/test_source_dataset_binding_real_infra.py`). Worker reload without a process restart is **not verified** — no worker was running |
+| **Governance** | **not reached.** The modules sit past where both runs stopped |
+| **Security** | **partly exercised.** `tests/security`, `tests/configuration` and the tenant-isolation real-infra modules ran clean in run 1. Vault is now genuinely exercised — see below. Source-side DDL/DML refusal ran clean; the provider-boundary PII checks did not all run |
+| **Architecture** | **two genuine reds**, both guard trips rather than runtime drift; see below. The W0.6 frozen-runtime import tests and the cross-agent import rules passed |
+| **Reliability** | **not verified.** Worker restart losing no waits needs a worker. "No unexplained flaky test remains" is still false: `test_return_workflow_concurrency.py::test_a_second_completion_sees_the_first_ones_state` remains undiagnosed and was deliberately not investigated here, because diagnosing it means repeated runs |
+| **Release** | **not verified.** No dependency or image scanner exists in the repository to run; this needs CI |
+
+**Verified independently of the suite, and these do stand:** `ruff format --check`, `ruff check`
+and `mypy --strict` are all clean on `src tests scripts` / 507 source files; the frontend is
+clean on `npm run lint`, `npm run typecheck` and `npx vitest run` (18 files, 168 tests);
+`scripts/check_openapi_drift.py` now exits 0 (it did not at the start — see the commit); and the
+W0.7 discovery smoke net's 24 tests passed in both runs.
+
+### Vault: unblocked mid-run, and it changes the result
+
+Vault was sealed when this run started and was unsealed by the user partway through
+(`/v1/sys/seal-status` → `sealed=false`, confirmed directly here, not taken on report).
+
+The seal is only half the gate: `.env` carries `PLATFORM_VAULT_ENABLED=false`, which is a
+separate switch, so the credential tests still fail with `Vault must be enabled in production`
+until the process overrides it. With `PLATFORM_VAULT_ENABLED=true` and `PLATFORM_VAULT_TOKEN_FILE`
+pointed at `.vault-local/return-platform.token` as process environment,
+`tests/configuration/test_ai_credentials_must_be_vault_references.py` goes from **5 failed to 12
+passed**, verified here independently. `.env` was deliberately not edited: the API and worker
+read it and the flag's permanent value is not this run's decision.
+
+### Two architecture guards have been red and unseen
+
+Neither is new, and neither had been recorded — because the suite has never before reached the
+point of reporting them. Both trip on the same cause: legitimate Wave 1/2 routers were added and
+the guards that count them were not updated in the same commit, which is exactly what both
+guards' own comments ask for.
+
+```
+AssertionError: a new return-domain router appeared; new endpoints belong on the canonical
+/api/returns surface: {'return_history.py': '/api/return-history'}
+
+AssertionError: 28 routers are mounted, expected 22; if Wave F deleted one, update this
+number in the same commit
+```
+
+The six routers added since `944cb82` (F2, the reading that set 22) are
+`agent_configuration`, `cases`, `return_history`, `source_bindings`, `schema_releases` and
+`graph_sync` — W1.8, W2.1/W2.3, W2.2, W2.5/W2.6 and W2.8 respectively.
+
+**Deliberately left red.** Bumping 22 to 28 and adding `return_history.py` to
+`_KNOWN_RETURN_ROUTERS` would take ninety seconds and would erase the question the first guard
+exists to force: whether `/api/return-history` should be a surface of its own or belong under
+the canonical `/api/returns`. `return_history.py` argues its own case in its module docstring —
+it is a graph *traversal* read, built on the same `LogicalQueryPlan`, `SchemaQueryGuard` and
+`CypherCompiler` as the agent, so it is not a second graph read path — but that is an
+architectural decision, not a test-maintenance chore, and it is not one to make silently during
+a gate run. The second guard's number should be updated in whichever commit settles the first.
+
+### One graph red, reproduced and not diagnosed
+
+`tests/dynamic_knowledge/test_return_side_sync_real_infra.py::test_the_case_reaches_the_order_it_was_raised_against`
+failed in **both** runs, at the same point, so it is deterministic rather than flaky. Every other
+test in that module passed, including `test_the_platform_store_is_actually_read`, so the Stage B
+cross-store machinery is reaching the platform database; it is specifically the
+`ReturnCase -[:COVERS_ORDER]-> SalesOrder` join that returns the wrong rows.
+
+**Not diagnosed.** The assertion text was never captured: run 1 was killed by `--timeout` before
+pytest printed its FAILURES section, and run 2 was stopped for the same reason. The module builds
+throwaway uuid-suffixed databases and seeds exactly one `salesInv` header, so the obvious
+candidates — leftover state, or the real `return_source` sample data — are both ruled out by
+construction. This is the first thing to pick up on Linux; running that one module prints the
+assertion in seconds.
+
+### Tooling note
+
+`pytest-timeout` is what made the wedge legible, and it is **not in
+`backend/pyproject.toml`** — it was `pip install`ed into the venv for these runs. Whoever sets up
+the Linux environment should add it to the dev dependency group; without a per-test timeout the
+next unreadable run is unreadable in exactly the same way.
+
+Not done here on purpose: adding it means regenerating `poetry.lock`, which is not a change to
+make blind at the end of a session that is being wrapped up.
 
 ## Wave 3 — blocked on Gate A
 
