@@ -121,6 +121,31 @@ class Settings(BaseSettings):
     sqlserver_password: SecretStr = Field(min_length=1)
     sqlserver_database: str = Field(min_length=1)
 
+    # Bounds on the authoritative SQL Server write path.
+    #
+    # The Mongo, Neo4j and Valkey drivers each own a connection pool; `pymssql`
+    # owns nothing, so every business operation opened and tore down its own
+    # connection and nothing capped how many existed at once. Under load the
+    # ceiling was whatever the caller's concurrency happened to be, and SQL
+    # Server answers that with `Login failed` once its own limit is reached --
+    # a write failure whose cause is invisible from the application side.
+    #
+    # `max_size` is the hard ceiling on live connections per process, not a
+    # target: the pool creates connections only on demand and reaps them again.
+    # `acquire_timeout` is what a caller waits for a free connection before
+    # failing; it must fire rather than let a saturated pool convert into an
+    # unbounded queue. `idle_timeout` is how long an unused connection is kept
+    # before the reaper closes it, so a burst does not hold server resources
+    # for the rest of the process lifetime.
+    #
+    # Login and statement timeouts are deliberately *not* new keys: the pool
+    # uses `dependency_connect_timeout_seconds` for login (the same key
+    # `configuration/cli/apply_sql_migrations.py` already uses for it) and
+    # `operation_timeout_seconds` for the statement timeout.
+    sqlserver_pool_max_size: int = Field(default=8, ge=1, le=128)
+    sqlserver_pool_acquire_timeout_seconds: float = Field(default=5.0, gt=0.0, le=60.0)
+    sqlserver_pool_idle_timeout_seconds: float = Field(default=300.0, ge=1.0, le=3_600.0)
+
     graph_evidence_collection: str = Field(
         default="graph_evidence_runs",
         min_length=1,
