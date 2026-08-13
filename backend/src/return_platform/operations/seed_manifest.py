@@ -35,6 +35,15 @@ def _seed_manifest_path() -> Path:
 
 SEED_MANIFEST_PATH: Final = _seed_manifest_path()
 
+#: The four upstream datasets the domain seed fills, named as the shipped
+#: configuration names them (`ActiveSchema.sources`), not as the collections
+#: they resolve to. These are the stable half of the shape/binding split: a
+#: collection rename changes `object_ref.name` and leaves these untouched.
+SOURCE_SALES_DATASET: Final = "source_sales"
+SOURCE_CUSTOMERS_DATASET: Final = "source_customers"
+SOURCE_SHIPMENTS_DATASET: Final = "source_shipments"
+SOURCE_PRODUCTS_DATASET: Final = "source_products"
+
 
 def _load_seed_configuration() -> dict[str, Any]:
     with SEED_MANIFEST_PATH.open(encoding="utf-8") as stream:
@@ -311,7 +320,15 @@ def materialize_domain_seed(
     evidence_hmac_key: str,
     record_limit: int | None = None,
 ) -> dict[str, Sequence[dict[str, Any]]]:
-    """Materialize the HLD source collections with coherent cross-collection keys."""
+    """Materialize the HLD source datasets with coherent cross-collection keys.
+
+    Keyed by *dataset* -- the configured source asset id -- and not by the
+    collection each one happens to live in today. The manifest decides what
+    documents a dataset contains; where they are written is a binding, and the
+    caller resolves it. Keying on `salesInv` made this function a second, silent
+    declaration of that binding, so a collection rename that configuration
+    accepted would have written the new documents to the old name.
+    """
     counts = effective_seed_counts(record_limit)
     digest = manifest_digest(seed_version, evidence_hmac_key, record_limit)
     selected_customers = SEED_CUSTOMERS[: counts["customers"]]
@@ -465,8 +482,8 @@ def materialize_domain_seed(
     )
 
     return {
-        "customerOutboundCDM": customers,
-        "lkpSearchProduct": products,
-        "salesInv": sales_inventory,
-        "shipmentInfo": shipments,
+        SOURCE_CUSTOMERS_DATASET: customers,
+        SOURCE_PRODUCTS_DATASET: products,
+        SOURCE_SALES_DATASET: sales_inventory,
+        SOURCE_SHIPMENTS_DATASET: shipments,
     }
