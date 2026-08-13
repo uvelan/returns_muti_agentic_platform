@@ -43,6 +43,7 @@ from return_platform.dynamic_knowledge.integration.targeted_sync import (
 )
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_support.service import ReturnSupportService
+from return_platform.operations.sql_business_state import SQLBusinessStateRepository
 from return_platform.operations.warehouse.case_placement import CaseBayPlacement
 from return_platform.workflows.persistence import ReturnSessionRepository
 from return_platform.workflows.return_case_activities import ReturnCaseActivities
@@ -131,6 +132,11 @@ async def _run() -> None:
                 configuration=runtime.return_configuration.configuration,
                 observations=GraphWarehouseBayObservations.from_access(graph),
                 order_observations=GraphOrderPlacementObservations.from_access(graph),
+                # BAY-02: the live reservation aggregate, from the same table
+                # the transactional reservation locks. Bay configuration still
+                # comes from the graph -- this is the one figure a graph node
+                # cannot hold, because it moves with the clock.
+                live_capacity=SQLBusinessStateRepository(settings),
             ),
         )
         worker = create_return_workflow_worker(

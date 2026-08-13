@@ -27,15 +27,50 @@ collapsing them is how the SQL predicate above stayed unnoticed.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Protocol
 
 __all__ = [
     "BayEvidence",
+    "CapacityEvidence",
+    "LiveBayCapacityPort",
     "WarehouseBayObservationPort",
     "WarehouseObservation",
 ]
+
+
+class CapacityEvidence(StrEnum):
+    """Which capacity figure a recommendation was ranked on (BAY-02).
+
+    LIVE      the bay's declared maximum less the sum of its unexpired
+              reservations, read from the table the transactional reservation
+              locks. A bay already reserved to its limit is not offered.
+    DECLARED  the declared maximum only. The live figure could not be read, or
+              no reader is configured, so a bay may be recommended that is in
+              fact full and the reservation will refuse it.
+
+    Kept on the recommendation rather than folded away because the two carry
+    different odds of the reservation succeeding, and an operator seeing a
+    string of refusals needs to be able to tell which reading produced them.
+    """
+
+    LIVE = "LIVE"
+    DECLARED = "DECLARED"
+
+
+class LiveBayCapacityPort(Protocol):
+    """The one reading the graph provably cannot serve.
+
+    An aggregate over unexpired reservations, evaluated at the instant of the
+    query -- it moves with the clock rather than with any source write. See
+    `WarehouseObservation` on why that keeps it out of the graph, and
+    `SQLBusinessStateRepository.reserved_capacity_by_bay` on why reading it is
+    not the source bypass W2.7 removed.
+    """
+
+    async def reserved_capacity_by_bay(self, bay_ids: Sequence[str]) -> dict[str, int]: ...
 
 
 class BayEvidence(StrEnum):

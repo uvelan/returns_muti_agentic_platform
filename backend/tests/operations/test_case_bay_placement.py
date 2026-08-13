@@ -458,6 +458,186 @@ async def test_placement_refuses_a_case_that_does_not_exist(
 
 
 # ---------------------------------------------------------------------------
+# BAY-02: ranking on what is free, not on what the bay was built to hold
+# ---------------------------------------------------------------------------
+
+
+class FakeLiveCapacity:
+    """The reservation aggregate, as `bay_reservation` would answer it.
+
+    Modelled as a real ledger rather than a fixed dict: `reserve` is what the
+    transactional write does, so the concurrency scenario below can take
+    capacity between two recommendations exactly as a competing return would.
+    """
+
+    def __init__(self, reserved: dict[str, int] | None = None, *, error: Exception | None = None):
+        self.reserved = dict(reserved or {})
+        self._error = error
+        self.queries: list[list[str]] = []
+
+    async def reserved_capacity_by_bay(self, bay_ids: Any) -> dict[str, int]:
+        self.queries.append([str(item) for item in bay_ids])
+        if self._error is not None:
+            raise self._error
+        return dict(self.reserved)
+
+    def reserve(self, bay_id: str, capacity: int) -> None:
+        self.reserved[bay_id] = self.reserved.get(bay_id, 0) + capacity
+
+
+async def test_a_bay_reserved_to_its_limit_is_not_recommended(
+    production_configuration: ReturnPlatformConfiguration,
+) -> None:
+    """BAY-02, stated as the defect it is.
+
+    The graph holds `max_handling_unit_count` and cannot hold the reservation
+    aggregate -- it moves with the clock, not with any source write. Ranking on
+    the declared maximum alone offers a full bay, and the transaction then
+    refuses it.
+    """
+    repository = FakeCaseRepository(
+        {
+            FACT_WAREHOUSE: WAREHOUSE,
+            FACT_PHYSICAL_STATUS: RECEIVED,
+            FACT_REQUIRED_CAPACITY: 3,
+        }
+    )
+    observations = FakeObservations(
+        _observed(_bay("B-1", capacity=4, priority=1), _bay("B-2", capacity=10, priority=2))
+    )
+    # B-1 is the tightest fit on paper and has two units left in reality.
+    live = FakeLiveCapacity({"B-1": 2})
+
+    result = await CaseBayPlacement(
+        repository=repository,
+        configuration=production_configuration,
+        observations=observations,
+        live_capacity=live,
+    ).recommend(CASE_ID)
+
+    assert live.queries == [["B-1", "B-2"]]
+    assert result.bay_reference == "B-2", "the bay that can actually take the return"
+    assert result.capacity_evidence == "LIVE"
+    assert result.eligible_bay_ids == ("B-2",), "the full bay is not merely ranked lower"
+
+
+async def test_concurrent_returns_are_not_all_sent_to_the_same_bay(
+    production_configuration: ReturnPlatformConfiguration,
+) -> None:
+    """The reservation churn BAY-02 names, and the evidence it is gone.
+
+    Three returns arrive against a warehouse with three bays. Each takes the
+    capacity it was recommended, exactly as `reserve_and_assign_handling_unit`
+    would. Ranking on declared maxima gives all three the same tightest fit and
+    the transaction refuses two of them; ranking on live capacity spreads them.
+
+    This does not replace the reservation's lock -- two requests can still
+    choose the same bay between the read and the write, and the transaction is
+    still the only thing holding a lock over the decision. What it removes is
+    every return being pointed at one bay that is already full.
+    """
+    live = FakeLiveCapacity()
+    observations = FakeObservations(
+        _observed(
+            _bay("B-1", capacity=4, priority=1),
+            _bay("B-2", capacity=5, priority=2),
+            _bay("B-3", capacity=6, priority=3),
+        )
+    )
+
+    chosen: list[str | None] = []
+    for _ in range(3):
+        repository = FakeCaseRepository(
+            {
+                FACT_WAREHOUSE: WAREHOUSE,
+                FACT_PHYSICAL_STATUS: RECEIVED,
+                FACT_REQUIRED_CAPACITY: 4,
+            }
+        )
+        result = await CaseBayPlacement(
+            repository=repository,
+            configuration=production_configuration,
+            observations=observations,
+            live_capacity=live,
+        ).recommend(CASE_ID)
+        chosen.append(result.bay_reference)
+        if result.bay_reference is not None:
+            live.reserve(result.bay_reference, 4)
+
+    assert chosen == ["B-1", "B-2", "B-3"], "each return went to capacity that still existed"
+    assert len(set(chosen)) == 3
+
+
+async def test_a_fourth_return_is_refused_rather_than_promised_a_full_bay(
+    production_configuration: ReturnPlatformConfiguration,
+) -> None:
+    """When the estate is genuinely full, the honest answer is no bay."""
+    live = FakeLiveCapacity({"B-1": 4, "B-2": 5})
+    observations = FakeObservations(
+        _observed(_bay("B-1", capacity=4, priority=1), _bay("B-2", capacity=5, priority=2))
+    )
+    repository = FakeCaseRepository(
+        {
+            FACT_WAREHOUSE: WAREHOUSE,
+            FACT_PHYSICAL_STATUS: RECEIVED,
+            FACT_REQUIRED_CAPACITY: 2,
+        }
+    )
+
+    result = await CaseBayPlacement(
+        repository=repository,
+        configuration=production_configuration,
+        observations=observations,
+        live_capacity=live,
+    ).recommend(CASE_ID)
+
+    assert result.bay_reference is None
+    assert result.reason == "NO_ELIGIBLE_BAY"
+    assert result.capacity_evidence == "LIVE"
+
+
+async def test_an_unreadable_reservation_ledger_degrades_and_says_so(
+    production_configuration: ReturnPlatformConfiguration,
+) -> None:
+    """Best-effort, again: SQL being down must not remove bay placement.
+
+    The recommendation falls back to the declared maximum and reports
+    `DECLARED`, so a reservation that is later refused is explicable rather
+    than mysterious. Silently degrading would make the two readings
+    indistinguishable, which is the whole reason this field exists.
+    """
+    repository = FakeCaseRepository(
+        {FACT_WAREHOUSE: WAREHOUSE, FACT_PHYSICAL_STATUS: RECEIVED}
+    )
+    observations = FakeObservations(_observed(_bay("B-1", capacity=4)))
+    live = FakeLiveCapacity(error=ConnectionError("sql server is unreachable"))
+
+    result = await CaseBayPlacement(
+        repository=repository,
+        configuration=production_configuration,
+        observations=observations,
+        live_capacity=live,
+    ).recommend(CASE_ID)
+
+    assert result.bay_reference == "B-1"
+    assert result.capacity_evidence == "DECLARED"
+
+
+async def test_without_a_capacity_reader_the_ranking_says_it_used_the_maximum(
+    production_configuration: ReturnPlatformConfiguration,
+) -> None:
+    repository = FakeCaseRepository(
+        {FACT_WAREHOUSE: WAREHOUSE, FACT_PHYSICAL_STATUS: RECEIVED}
+    )
+
+    result = await _placement(
+        production_configuration, repository, FakeObservations(_observed(_bay("B-1", capacity=4)))
+    ).recommend(CASE_ID)
+
+    assert result.capacity_evidence == "DECLARED"
+
+
+# ---------------------------------------------------------------------------
 # The activity the workflow actually runs
 # ---------------------------------------------------------------------------
 

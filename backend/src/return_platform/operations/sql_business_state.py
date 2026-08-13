@@ -642,6 +642,59 @@ class SQLBusinessStateRepository:
 
         return await self._run(operation)
 
+    async def reserved_capacity_by_bay(self, bay_ids: Sequence[str]) -> dict[str, int]:
+        """Live reserved capacity per bay, from the table the reservation locks.
+
+        The one figure the graph provably cannot hold (BAY-02). Bay
+        configuration is a source read that R2 forbids on an agent path and
+        W2.7 moved to the graph; this is not that. It is an aggregate over
+        *unexpired platform reservations*, evaluated at the instant of the
+        query -- it changes with the clock rather than with any source write,
+        so no sync however targeted makes a graph node current for it, and
+        `WarehouseObservation` says so in as many words.
+
+        Deliberately returns nothing but the aggregate. Selecting a
+        configuration column here would reintroduce the bypass by the back
+        door, and the caller already has configuration from the graph.
+
+        The same predicate `reserve_and_assign_handling_unit` uses under
+        `HOLDLOCK`, so the recommendation is filtered by the figure the
+        reservation will be tested against rather than by a different one.
+        This does not replace that lock: it is a read, several returns can
+        still choose the same bay between it and the write, and the
+        transaction remains the only place holding a lock over the decision.
+        What it removes is every return being pointed at one bay that is
+        already full.
+        """
+        unique = sorted({str(bay_id) for bay_id in bay_ids if str(bay_id)})
+        if not unique:
+            return {}
+
+        def operation() -> dict[str, int]:
+            placeholders = ", ".join(["%s"] * len(unique))
+            with self._read() as connection:
+                with connection.cursor(as_dict=True) as cursor:
+                    cursor.execute(
+                        f"""
+                        SELECT reservation.bay_id,
+                               SUM(reservation.reserved_capacity) AS reserved_capacity
+                        FROM platform.bay_reservation AS reservation
+                        WHERE reservation.bay_id IN ({placeholders})
+                          AND reservation.status IN ('RESERVED','ASSIGNED')
+                          AND reservation.expires_at > SYSUTCDATETIME()
+                        GROUP BY reservation.bay_id;
+                        """,
+                        tuple(unique),
+                    )
+                    rows = cursor.fetchall() or []
+            return {
+                str(row["bay_id"]): int(row.get("reserved_capacity") or 0)
+                for row in rows
+                if row.get("bay_id")
+            }
+
+        return await self._run(operation)
+
     async def reserve_and_assign_handling_unit(
         self,
         session: ReturnSessionView,

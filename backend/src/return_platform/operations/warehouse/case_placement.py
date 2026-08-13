@@ -52,6 +52,8 @@ from return_platform.agents.registry import AgentRegistry
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 from return_platform.operations.warehouse.observations import (
     BayEvidence,
+    CapacityEvidence,
+    LiveBayCapacityPort,
     WarehouseBayObservationPort,
     WarehouseObservation,
 )
@@ -182,6 +184,10 @@ class CaseBayRecommendation:
     evidence_reference: str | None
     graph_generation_id: str | None
     eligible_bay_ids: tuple[str, ...] = ()
+    #: Which capacity figure the ranking weighed (BAY-02). `DECLARED` means the
+    #: live reservation aggregate could not be read, so the chosen bay may
+    #: already be full and the reservation may refuse it.
+    capacity_evidence: str = CapacityEvidence.DECLARED.value
 
     @property
     def recommended(self) -> bool:
@@ -198,11 +204,13 @@ class CaseBayPlacement:
         configuration: ReturnPlatformConfiguration,
         observations: WarehouseBayObservationPort | None = None,
         order_observations: OrderPlacementObservationPort | None = None,
+        live_capacity: LiveBayCapacityPort | None = None,
     ) -> None:
         self._repository = repository
         self._configuration = configuration
         self._observations = observations
         self._order_observations = order_observations
+        self._live_capacity = live_capacity
         self._agent = AgentRegistry.build(configuration).bay_assignment
 
     async def recommend(self, case_id: str) -> CaseBayRecommendation:
@@ -247,7 +255,7 @@ class CaseBayPlacement:
             facts.get(FACT_REQUIRED_CAPACITY), DEFAULT_REQUIRED_CAPACITY
         )
 
-        observation, raw_candidates = await observe_eligible_bays(
+        observation, raw_candidates, capacity_evidence = await observe_eligible_bays(
             observations=self._observations,
             # Never the SQL bypass. The session path keeps it for deployments
             # that predate the targeted-graph stack; the case path is new and
@@ -257,6 +265,10 @@ class CaseBayPlacement:
             warehouse_id=warehouse_reference,
             return_method=return_method.value,
             product_type=product_type,
+            # BAY-02. Without this the agent ranks on the bay's declared
+            # maximum and every concurrent return is pointed at the same
+            # tightest fit, which the reservation then refuses for all but one.
+            live_capacity=self._live_capacity,
         )
         assessment = self._agent.assess(
             BayAssessmentRequest(
@@ -285,6 +297,7 @@ class CaseBayPlacement:
             observation=observation,
             raw_candidates=raw_candidates,
             warehouse_reference=warehouse_reference,
+            capacity_evidence=capacity_evidence,
         )
         await self._record(case_id, assessment, required_capacity, physical_status)
         return recommendation
@@ -328,6 +341,7 @@ class CaseBayPlacement:
         observation: WarehouseObservation | None,
         raw_candidates: list[dict[str, Any]],
         warehouse_reference: str | None,
+        capacity_evidence: CapacityEvidence,
     ) -> CaseBayRecommendation:
         bay_reference = assessment.recommendedBayId
         candidate = next(
@@ -376,6 +390,7 @@ class CaseBayPlacement:
                 observation.graph_generation_id if observation is not None else None
             ),
             eligible_bay_ids=tuple(assessment.eligibleBayIds),
+            capacity_evidence=capacity_evidence.value,
         )
 
     async def _record(

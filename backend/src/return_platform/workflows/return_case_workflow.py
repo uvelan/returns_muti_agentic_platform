@@ -181,6 +181,11 @@ class BayResultNotice:
     #: uses -- `WAREHOUSE_OBSERVED:<generation>:<count>` and its two siblings.
     evidence_reference: str | None = None
     graph_generation_id: str | None = None
+    #: `LIVE` when the ranking weighed each bay's declared maximum less its
+    #: unexpired reservations; `DECLARED` when only the maximum was available
+    #: (BAY-02). The two carry different odds of the reservation succeeding, so
+    #: an operator seeing refusals can tell which reading produced them.
+    capacity_evidence: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -181,6 +181,7 @@ class ReturnCaseActivities:
             explanation=recommendation.explanation,
             evidence_reference=recommendation.evidence_reference,
             graph_generation_id=recommendation.graph_generation_id,
+            capacity_evidence=recommendation.capacity_evidence,
         )
         await self._record_bay_facts(request.case_id, notice)
         return notice
@@ -206,6 +207,7 @@ class ReturnCaseActivities:
             ("bay_confidence_millionths", notice.confidence_millionths),
             ("bay_reason", notice.reason),
             ("bay_evidence_reference", notice.evidence_reference),
+            ("bay_capacity_evidence", notice.capacity_evidence),
         )
         for name, value in values:
             if value is None:
