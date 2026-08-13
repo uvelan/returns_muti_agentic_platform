@@ -1,47 +1,52 @@
-"""The one provider-agnostic structured-output execution path.
+"""The structured-output *response contract*. The execution is not here.
 
 `AIGatewayService.evaluate` is the *decision* path: its parser requires exactly
 `{decision, explanation, confidenceMillionths}`, so it cannot carry a richer
 typed result. Everything that needs a real pydantic model back from a model call
-runs through here instead -- and there is deliberately only one such place, so
-routing, failover, rate limits, circuit breakers, tier escalation, safety
-inspection and attempt logging are shared rather than reimplemented per caller
-(design doc, "Both adapters wrap the same gateway").
+runs through here instead.
 
-What varies between callers is only the three things `invoke()` takes: the
-payload to send, the response model to parse back, and the log fields that
-identify the caller's unit of work. What does not vary -- and therefore lives
-here -- is the retry/deadline/escalation machinery around them.
+**What changed, and why it matters.** This module used to own a second copy of
+the provider execution machinery -- its own candidate loop, its own failover
+bookkeeping, its own attempt telemetry, its own `provider.generate` call. It
+shared the route *pool* with the decision path, which made the two look like one
+path in a diagram and behave like two in production: interception was wired to
+the decision path's loop and therefore absent from this one, and redaction had
+to be remembered separately here (it was not, for a long time). All of that now
+lives in `final_dispatch.FinalDispatcher`, which is the single boundary every AI
+request crosses.
 
-This module knows nothing about order agents or schema analysis. Callers own
-their own payload construction and their own result types; adding a third caller
-should not require editing this file.
+What is left here is the part that is genuinely about *structured output*: the
+response schema travels in the prompt as well as in the provider's native field,
+the response is parsed into a caller-supplied pydantic model, and exhaustion
+raises rather than returning a fabricated result. Callers own their payload and
+their result type; adding a third caller should not require editing this file.
 """
 
 from __future__ import annotations
 
-import asyncio
-import hashlib
 import json
 import logging
-import time
-from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel
 
-from return_platform.ai.gateway.redaction import redact_payload
+from return_platform.ai.gateway.final_dispatch import (
+    ALLOW_ALL,
+    DispatchDecision,
+    DispatchObserver,
+    DispatchRequest,
+    FinalDispatcher,
+    InterceptionPolicy,
+)
 from return_platform.ai.gateway.telemetry import (
-    AIAttemptRecord,
     AIAttemptRecorder,
     InvocationCorrelation,
     payload_digest,
 )
-from return_platform.ai.providers import ProviderError, ProviderRequest, ProviderResponse
+from return_platform.ai.providers import ProviderError, ProviderResponse
 from return_platform.ai.providers.schema_cleaner import clean_gemini_schema
 from return_platform.ai.routing.routes import AIRoute
 from return_platform.ai.routing.selection import AIRoutePool
@@ -50,8 +55,7 @@ from return_platform.ai.routing.tasks import (
     ModelTier,
     TaskConfiguration,
 )
-from return_platform.ai.safety import SafetyStatus
-from return_platform.ai.safety.inspection import inspect_input, inspect_output
+from return_platform.ai.safety.inspection import inspect_input
 from return_platform.configuration.settings import Settings
 
 __all__ = [
@@ -83,8 +87,170 @@ class StructuredInvocation[ResponseT: BaseModel]:
     completion_tokens: int
 
 
+class _InvokerObserver(DispatchObserver):
+    """The invoker's logging, kept out of the dispatch boundary.
+
+    Every line carries the caller's unit-of-work identifiers, which is why this
+    is per-invocation state rather than something the dispatcher could own: the
+    boundary is shared by callers whose log context is different.
+    """
+
+    def __init__(
+        self,
+        *,
+        logger: logging.Logger,
+        event_prefix: str,
+        task_id: str,
+        log_context: Mapping[str, Any],
+    ) -> None:
+        self._logger = logger
+        self._prefix = event_prefix
+        self._task_id = task_id
+        self._context = dict(log_context)
+
+    def _extra(self, **fields: Any) -> dict[str, Any]:
+        return {**self._context, "task_id": self._task_id, **fields}
+
+    async def on_route_skipped(self, *, route: AIRoute, attempt: int, reason: str) -> None:
+        del attempt
+        self._logger.info(
+            f"{self._prefix}_model_attempt_skipped",
+            extra=self._extra(
+                provider=route.provider_name,
+                model=route.model,
+                credential_id=route.credential_id,
+                reason=reason,
+            ),
+        )
+
+    async def on_attempt_started(self, *, route: AIRoute, attempt: int) -> None:
+        self._logger.info(
+            f"{self._prefix}_model_attempt_started",
+            extra=self._extra(
+                attempt=attempt,
+                tier=route.tier.value,
+                provider=route.provider_name,
+                model=route.model,
+                credential_id=route.credential_id,
+            ),
+        )
+
+    async def on_attempt_succeeded(
+        self, *, route: AIRoute, attempt: int, response: ProviderResponse, latency_ms: int
+    ) -> None:
+        del response
+        self._logger.info(
+            f"{self._prefix}_model_attempt_succeeded",
+            extra=self._extra(
+                attempt=attempt,
+                tier=route.tier.value,
+                provider=route.provider_name,
+                model=route.model,
+                credential_id=route.credential_id,
+                latency_ms=latency_ms,
+            ),
+        )
+
+    async def on_attempt_failed(
+        self,
+        *,
+        route: AIRoute,
+        attempt: int,
+        error_code: str,
+        latency_ms: int,
+        error: BaseException | None,
+    ) -> None:
+        # Classified by exception *type*, not by error code: a provider may
+        # legitimately report `PROVIDER_UNAVAILABLE`, and treating that as an
+        # unexpected error would attach a traceback to ordinary failover.
+        if isinstance(error, (ValueError, TypeError)):
+            # The reason was being thrown away with the exception. A Pydantic
+            # `ValidationError` names the field path, the expected type and what
+            # arrived instead -- which is the difference between "the model is
+            # chatty" (already handled by the brace-span fallback in
+            # `parse_structured_response`) and "the schema and the model
+            # disagree about a field", which no amount of retrying will fix.
+            # Logged as text rather than as the payload: Pydantic's message
+            # carries field names and types, never the values.
+            self._logger.warning(
+                f"{self._prefix}_response_invalid provider=%s model=%s error_type=%s detail=%s",
+                route.provider_name,
+                route.model,
+                type(error).__name__,
+                str(error)[:2000],
+                extra=self._extra(
+                    provider=route.provider_name,
+                    model=route.model,
+                    error_type=type(error).__name__,
+                ),
+            )
+        elif error is not None and not isinstance(error, (ProviderError, TimeoutError)):
+            # Unexpected provider/transport failure: the failover loop keeps
+            # moving, but the traceback must not be silently lost.
+            self._logger.exception(
+                f"{self._prefix}_model_attempt_unexpected_error provider=%s model=%s error=%s",
+                route.provider_name,
+                route.model,
+                error_code,
+                extra=self._extra(provider=route.provider_name, model=route.model),
+                exc_info=error,
+            )
+        self._logger.warning(
+            (
+                f"{self._prefix}_model_attempt_failed "
+                "attempt=%d tier=%s provider=%s model=%s error=%s latency_ms=%d"
+            ),
+            attempt,
+            route.tier.value,
+            route.provider_name,
+            route.model,
+            error_code,
+            latency_ms,
+            extra=self._extra(
+                attempt=attempt,
+                tier=route.tier.value,
+                provider=route.provider_name,
+                model=route.model,
+                credential_id=route.credential_id,
+                error_code=error_code,
+                latency_ms=latency_ms,
+            ),
+        )
+
+    async def on_tier_escalation(self, *, attempts: int, last_error: str) -> None:
+        self._logger.warning(
+            f"{self._prefix}_tier_escalation_started",
+            extra=self._extra(standard_attempts=attempts, standard_last_error=last_error),
+        )
+
+    async def on_exhausted(
+        self, *, attempts: int, last_error: str, breakdown: Mapping[str, int]
+    ) -> None:
+        # Exhaustion was previously silent: the loop returned and the only trace
+        # was N separate attempt lines a reader had to count and correlate. A
+        # turn that dies here is the caller's whole failure, so it says so once,
+        # with the tally of *why* -- the same error repeated N times and N
+        # different errors are very different diagnoses.
+        self._logger.warning(
+            f"{self._prefix}_model_attempts_exhausted attempts=%d last_error=%s breakdown=%s",
+            attempts,
+            last_error,
+            ", ".join(f"{code}x{count}" for code, count in sorted(breakdown.items())),
+            extra=self._extra(
+                attempts=attempts, error_code=last_error, failure_summary=dict(breakdown)
+            ),
+        )
+
+    async def on_record_failed(self, *, trace_id: str, error: BaseException) -> None:
+        del error
+        self._logger.exception(
+            f"{self._prefix}_attempt_record_failed",
+            extra={"task_id": self._task_id, "trace_id": trace_id},
+        )
+
+
 class StructuredOutputInvoker[ResponseT: BaseModel]:
-    """Runs one structured-output task over the shared route pool.
+    """Runs one structured-output task through the shared dispatch boundary.
 
     One instance is bound to one configured task and one response model, so the
     tier/provider checks below happen once at construction rather than on every
@@ -108,6 +274,8 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
             StructuredInvocationUnavailable
         ),
         recorder: AIAttemptRecorder | None = None,
+        interception: InterceptionPolicy = ALLOW_ALL,
+        dispatcher: FinalDispatcher | None = None,
     ) -> None:
         task = configuration.tasks.get(task_id)
         if task is None:
@@ -118,7 +286,6 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
             raise RuntimeError(f"AI task {task_id!r} must not permit the simulator provider")
         self._settings = settings
         self._configuration = configuration
-        self._route_pool = route_pool
         self._task_id = task_id
         self._task: TaskConfiguration = task
         self._response_model = response_model
@@ -126,16 +293,25 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         self._event_prefix = event_prefix
         self._subject = subject
         self._unavailable_error = unavailable_error
-        # Optional at construction, and a process that leaves it unset records
-        # nothing -- which is the state this path was already in, not a
-        # regression. `runtime_factory` supplies one for the Order Agent; a test
-        # that does not care about telemetry omits it rather than being made to
-        # build a Mongo client.
-        self._recorder = recorder
+        # A caller may pass a dispatcher it already owns, so one process has one
+        # boundary rather than one per invoker. Constructing a default keeps
+        # every existing call site working; it still shares the route pool,
+        # which is where the state that must not fork actually lives.
+        self._dispatcher = dispatcher or FinalDispatcher(
+            settings=settings,
+            configuration=configuration,
+            route_pool=route_pool,
+            recorder=recorder,
+            interception=interception,
+        )
 
     @property
     def task(self) -> TaskConfiguration:
         return self._task
+
+    @property
+    def dispatcher(self) -> FinalDispatcher:
+        return self._dispatcher
 
     async def invoke(
         self,
@@ -162,8 +338,8 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         the response schema. It exists for facts that are true of one request
         and cannot live in configuration -- the Order Agent's as-of instant is
         the first -- and it goes last so the stable prefix in front of it stays
-        byte-identical across requests, which is the precondition for the
-        provider-side prompt caching W5.3 enables.
+        byte-identical across requests, which is the precondition for
+        provider-side prompt caching.
 
         `correlation` is which piece of business work this call serves. It is
         recorded, never sent: it does not enter the payload, the prompt or the
@@ -196,425 +372,78 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         request_digest = payload_digest(full_prompt, dict(payload))
 
         safety = inspect_input(dict(payload))
+        observer = _InvokerObserver(
+            logger=self._logger,
+            event_prefix=self._event_prefix,
+            task_id=self._task_id,
+            log_context=log_context,
+        )
+        request = DispatchRequest(
+            task_id=self._task_id,
+            task=self._task,
+            system_prompt=full_prompt,
+            payload=payload,
+            request_digest=request_digest,
+            estimated_tokens=max(1, len(size_probe) // 4),
+            correlation=correlation,
+            safety_status=safety.status.value,
+            max_output_tokens=self._task.maximumOutputTokens,
+            temperature=0.0,
+            response_schema=self._response_model.model_json_schema(),
+            allow_tier_escalation=self._task.allowTierEscalation,
+        )
+
         if not safety.allowed:
             # Recorded, not merely raised. A request the safety inspector
             # rejected never reaches a provider, so without this row the only
             # evidence that it happened at all is a log line.
-            await self._record(
+            await self._dispatcher.record_attempt(
                 trace_id=trace_id,
-                correlation=correlation,
+                request=request,
                 route=None,
                 attempt_number=0,
                 status="SAFETY_BLOCKED",
                 selection_reason="INPUT_SAFETY_REJECTED",
-                safety_status=safety.status.value,
-                latency_ms=0,
-                response=None,
-                request_digest=request_digest,
-                response_digest=None,
                 error_code=safety.status.value,
-                fallback_reason=None,
+                observer=observer,
             )
             raise self._unavailable_error(f"{self._subject} input rejected: {safety.status.value}")
 
-        estimated_tokens = max(1, len(size_probe) // 4)
-        candidates = await self._route_pool.candidates(self._task, task_id=self._task_id)
-        if not candidates and not self._task.allowTierEscalation:
+        outcome = await self._dispatcher.dispatch(
+            request,
+            trace_id=trace_id,
+            validate=lambda response: parse_structured_response(
+                response.text, self._response_model
+            ),
+            observer=observer,
+        )
+
+        if outcome.decision is not DispatchDecision.ALLOW_PROVIDER:
+            # A reasoning loop must not be handed a fabricated answer, so a
+            # policy refusal raises like every other unavailability rather than
+            # returning something the caller would act on.
             raise self._unavailable_error(
-                f"No healthy {self._task.tier.value} route is available for {self._task_id}"
+                f"{self._subject} was not dispatched: {outcome.decision.value}"
+                f"{f' ({outcome.reason})' if outcome.reason else ''}"
+            )
+        if outcome.value is None or outcome.response is None or outcome.route is None:
+            summary = ",".join(
+                f"{error_code}:{count}"
+                for error_code, count in sorted(outcome.failure_summary.items())
+            )
+            raise self._unavailable_error(
+                f"All {self._task_id} routes and lightweight fallbacks failed; "
+                f"attempts={outcome.attempts}; last_error={outcome.last_error}; "
+                f"failures={summary or 'none'}"
             )
 
-        deadline = asyncio.get_running_loop().time() + self._settings.ai_global_timeout_seconds
-        attempts = 0
-        last_error = "PROVIDER_UNAVAILABLE"
-        failure_summary: Counter[str] = Counter()
-
-        result, attempts, last_error = await self._attempt_routes(
-            candidates,
-            payload=payload,
-            full_prompt=full_prompt,
-            estimated_tokens=estimated_tokens,
-            deadline=deadline,
-            attempts=attempts,
-            last_error=last_error,
-            failure_summary=failure_summary,
-            log_context=log_context,
-            trace_id=trace_id,
-            correlation=correlation,
-            request_digest=request_digest,
-            fallback_reason=None,
+        return StructuredInvocation(
+            value=outcome.value,
+            provider=outcome.route.provider_name,
+            model=outcome.route.model,
+            prompt_tokens=max(0, int(outcome.response.input_tokens or 0)),
+            completion_tokens=max(0, int(outcome.response.output_tokens or 0)),
         )
-        if result is not None:
-            return result
-
-        if self._task.allowTierEscalation:
-            lightweight_task = self._task.model_copy(update={"tier": ModelTier.LIGHTWEIGHT})
-            lightweight_candidates = await self._route_pool.candidates(
-                lightweight_task,
-                task_id=self._task_id,
-            )
-            if lightweight_candidates:
-                self._logger.warning(
-                    f"{self._event_prefix}_tier_escalation_started",
-                    extra={
-                        **log_context,
-                        "task_id": self._task_id,
-                        "standard_attempts": attempts,
-                        "standard_last_error": last_error,
-                    },
-                )
-                result, attempts, last_error = await self._attempt_routes(
-                    lightweight_candidates,
-                    payload=payload,
-                    full_prompt=full_prompt,
-                    estimated_tokens=estimated_tokens,
-                    deadline=deadline,
-                    attempts=attempts,
-                    last_error=last_error,
-                    failure_summary=failure_summary,
-                    log_context=log_context,
-                    trace_id=trace_id,
-                    correlation=correlation,
-                    request_digest=request_digest,
-                    # Every attempt below this line is the escalation, and the
-                    # reason it happened is the error that exhausted STANDARD.
-                    fallback_reason=last_error,
-                )
-                if result is not None:
-                    return result
-
-        summary = ",".join(
-            f"{error_code}:{count}" for error_code, count in sorted(failure_summary.items())
-        )
-        raise self._unavailable_error(
-            f"All {self._task_id} routes and lightweight fallbacks failed; "
-            f"attempts={attempts}; last_error={last_error}; failures={summary or 'none'}"
-        )
-
-    async def _record(
-        self,
-        *,
-        trace_id: str,
-        correlation: InvocationCorrelation,
-        route: AIRoute | None,
-        attempt_number: int,
-        status: str,
-        selection_reason: str,
-        safety_status: str,
-        latency_ms: int,
-        response: ProviderResponse | None,
-        request_digest: str,
-        response_digest: str | None,
-        error_code: str | None,
-        fallback_reason: str | None,
-    ) -> None:
-        """Write one attempt, priced, or do nothing if no sink is configured.
-
-        Costed here rather than at read time (W4.11): the rate that applied is
-        the one in the release this process is running, and re-deriving it later
-        would re-cost every historical attempt the next time a vendor moved a
-        price.
-
-        A recorder failure must not fail the associate's turn -- telemetry is
-        not the work. It is logged loudly instead, because a silently absent
-        metrics stream is how a cost report comes to cover a third of traffic
-        and nobody notices for a quarter.
-        """
-        if self._recorder is None:
-            return
-        input_tokens = max(0, int(response.input_tokens or 0)) if response else 0
-        cached_input_tokens = response.cached_input_tokens if response else None
-        output_tokens = max(0, int(response.output_tokens or 0)) if response else 0
-        cost = self._configuration.pricing.estimate(
-            provider=route.provider_name if route else None,
-            model=route.model if route else None,
-            at=datetime.now(UTC),
-            input_tokens=input_tokens,
-            cached_input_tokens=max(0, int(cached_input_tokens or 0)),
-            output_tokens=output_tokens,
-        )
-        record = AIAttemptRecord(
-            trace_id=trace_id,
-            task_id=self._task_id,
-            prompt_version=self._task.promptVersion,
-            attempt_number=attempt_number,
-            status=status,
-            configured_tier=self._task.tier.value,
-            selected_tier=route.tier.value if route else None,
-            provider=route.provider_name if route else None,
-            model=route.model if route else None,
-            credential_id=route.credential_id if route else None,
-            route_id=route.route_id if route else None,
-            selection_reason=selection_reason,
-            fallback_used=fallback_reason is not None,
-            fallback_reason=fallback_reason,
-            safety_status=safety_status,
-            latency_ms=latency_ms,
-            rate_limit_wait_ms=0,
-            input_tokens=input_tokens,
-            cached_input_tokens=cached_input_tokens,
-            output_tokens=output_tokens,
-            total_tokens=(max(0, int(response.total_tokens or 0)) if response else 0)
-            or (input_tokens + output_tokens),
-            cost=cost,
-            correlation=correlation,
-            request_digest=request_digest,
-            response_digest=response_digest,
-            error_code=error_code,
-        )
-        try:
-            await self._recorder.record(record)
-        except Exception:
-            self._logger.exception(
-                f"{self._event_prefix}_attempt_record_failed",
-                extra={"task_id": self._task_id, "trace_id": trace_id},
-            )
-
-    async def _attempt_routes(
-        self,
-        candidates: tuple[AIRoute, ...],
-        *,
-        payload: Mapping[str, Any],
-        full_prompt: str,
-        estimated_tokens: int,
-        deadline: float,
-        attempts: int,
-        last_error: str,
-        failure_summary: Counter[str],
-        log_context: Mapping[str, Any],
-        trace_id: str,
-        correlation: InvocationCorrelation,
-        request_digest: str,
-        fallback_reason: str | None,
-    ) -> tuple[StructuredInvocation[ResponseT] | None, int, str]:
-        for route in candidates:
-            for _ in range(self._configuration.retry.maximumAttemptsPerRoute):
-                if attempts >= self._configuration.retry.maximumTotalAttempts:
-                    return None, attempts, last_error
-                remaining = deadline - asyncio.get_running_loop().time()
-                if remaining <= 0:
-                    last_error = "TIMEOUT"
-                    failure_summary[last_error] += 1
-                    return None, attempts, last_error
-                acquired = await self._route_pool.try_acquire(
-                    route,
-                    estimated_tokens=estimated_tokens,
-                )
-                if not acquired.acquired:
-                    last_error = acquired.reason
-                    self._logger.info(
-                        f"{self._event_prefix}_model_attempt_skipped",
-                        extra={
-                            **log_context,
-                            "task_id": self._task_id,
-                            "provider": route.provider_name,
-                            "model": route.model,
-                            "credential_id": route.credential_id,
-                            "reason": acquired.reason,
-                        },
-                    )
-                    continue
-                attempts += 1
-                started = time.monotonic()
-                self._logger.info(
-                    f"{self._event_prefix}_model_attempt_started",
-                    extra={
-                        **log_context,
-                        "task_id": self._task_id,
-                        "attempt": attempts,
-                        "tier": route.tier.value,
-                        "provider": route.provider_name,
-                        "model": route.model,
-                        "credential_id": route.credential_id,
-                    },
-                )
-                try:
-                    response = await asyncio.wait_for(
-                        route.provider.generate(
-                            ProviderRequest(
-                                system_prompt=full_prompt,
-                                # Redacted here, at the last point before the
-                                # request leaves the platform. This path had no
-                                # redaction of any kind -- not even the gateway's
-                                # top-level key scan -- and it is the one the
-                                # Order Agent uses, so every graph row it had
-                                # retrieved travelled inside `contextJson`.
-                                user_payload=redact_payload(dict(payload)),
-                                max_output_tokens=self._task.maximumOutputTokens,
-                                temperature=0.0,
-                                response_schema=self._response_model.model_json_schema(),
-                            )
-                        ),
-                        timeout=min(self._settings.ai_timeout_seconds, remaining),
-                    )
-                    output_safety = inspect_output(response.text)
-                    if not output_safety.allowed:
-                        raise ProviderError("POLICY_BLOCKED")
-                    value = parse_structured_response(response.text, self._response_model)
-                    await self._route_pool.record_success(route)
-                    self._logger.info(
-                        f"{self._event_prefix}_model_attempt_succeeded",
-                        extra={
-                            **log_context,
-                            "task_id": self._task_id,
-                            "attempt": attempts,
-                            "tier": route.tier.value,
-                            "provider": route.provider_name,
-                            "model": route.model,
-                            "credential_id": route.credential_id,
-                            "latency_ms": max(
-                                0,
-                                int((time.monotonic() - started) * 1_000),
-                            ),
-                        },
-                    )
-                    await self._record(
-                        trace_id=trace_id,
-                        correlation=correlation,
-                        route=route,
-                        attempt_number=attempts,
-                        status="SUCCESS",
-                        selection_reason="HEALTHY_ROUTE_SELECTED",
-                        safety_status=output_safety.status.value,
-                        latency_ms=max(0, int((time.monotonic() - started) * 1_000)),
-                        response=response,
-                        request_digest=request_digest,
-                        response_digest=hashlib.sha256(response.text.encode("utf-8")).hexdigest(),
-                        error_code=None,
-                        fallback_reason=fallback_reason,
-                    )
-                    return (
-                        StructuredInvocation(
-                            value=value,
-                            provider=route.provider_name,
-                            model=route.model,
-                            prompt_tokens=max(0, int(response.input_tokens or 0)),
-                            completion_tokens=max(0, int(response.output_tokens or 0)),
-                        ),
-                        attempts,
-                        last_error,
-                    )
-                except TimeoutError:
-                    last_error = "TIMEOUT"
-                    await self._route_pool.record_failure(route, last_error)
-                except ProviderError as exc:
-                    last_error = exc.code
-                    await self._route_pool.record_failure(route, last_error)
-                except (ValueError, TypeError) as exc:
-                    last_error = "RESPONSE_INVALID"
-                    # The reason was being thrown away with the exception. A
-                    # Pydantic `ValidationError` names the field path, the
-                    # expected type and what arrived instead -- which is the
-                    # difference between "the model is chatty" (already handled
-                    # by the brace-span fallback in `parse_structured_response`)
-                    # and "the schema and the model disagree about a field",
-                    # which no amount of retrying will fix. Logged as text
-                    # rather than as the payload: Pydantic's message carries
-                    # field names and types, never the values, so this stays on
-                    # the safe side of the provider boundary.
-                    self._logger.warning(
-                        (
-                            f"{self._event_prefix}_response_invalid "
-                            "provider=%s model=%s error_type=%s detail=%s"
-                        ),
-                        route.provider_name,
-                        route.model,
-                        type(exc).__name__,
-                        str(exc)[:2000],
-                        extra={
-                            **log_context,
-                            "task_id": self._task_id,
-                            "provider": route.provider_name,
-                            "model": route.model,
-                            "error_type": type(exc).__name__,
-                        },
-                    )
-                    await self._route_pool.record_failure(route, last_error)
-                except Exception:
-                    # Unexpected provider/transport failure: keep the failover loop
-                    # moving to the next route, but log the full traceback so it's
-                    # not silently lost.
-                    last_error = "PROVIDER_UNAVAILABLE"
-                    self._logger.exception(
-                        (
-                            f"{self._event_prefix}_model_attempt_unexpected_error "
-                            "provider=%s model=%s error=%s"
-                        ),
-                        route.provider_name,
-                        route.model,
-                        last_error,
-                        extra={
-                            **log_context,
-                            "task_id": self._task_id,
-                            "provider": route.provider_name,
-                            "model": route.model,
-                        },
-                    )
-                    await self._route_pool.record_failure(route, last_error)
-                finally:
-                    await self._route_pool.release(route)
-                failure_summary[last_error] += 1
-                await self._record(
-                    trace_id=trace_id,
-                    correlation=correlation,
-                    route=route,
-                    attempt_number=attempts,
-                    status="FAILED",
-                    selection_reason="HEALTHY_ROUTE_SELECTED",
-                    safety_status=SafetyStatus.SAFE.value,
-                    latency_ms=max(0, int((time.monotonic() - started) * 1_000)),
-                    response=None,
-                    request_digest=request_digest,
-                    response_digest=None,
-                    error_code=last_error,
-                    fallback_reason=fallback_reason,
-                )
-                self._logger.warning(
-                    (
-                        f"{self._event_prefix}_model_attempt_failed "
-                        "attempt=%d tier=%s provider=%s model=%s error=%s latency_ms=%d"
-                    ),
-                    attempts,
-                    route.tier.value,
-                    route.provider_name,
-                    route.model,
-                    last_error,
-                    max(0, int((time.monotonic() - started) * 1_000)),
-                    extra={
-                        **log_context,
-                        "task_id": self._task_id,
-                        "attempt": attempts,
-                        "tier": route.tier.value,
-                        "provider": route.provider_name,
-                        "model": route.model,
-                        "credential_id": route.credential_id,
-                        "error_code": last_error,
-                        "latency_ms": max(
-                            0,
-                            int((time.monotonic() - started) * 1_000),
-                        ),
-                    },
-                )
-        # Exhaustion was previously silent: the loop returned `None` and the only
-        # trace was N separate attempt lines that a reader had to count and
-        # correlate themselves. A turn that dies here is the caller's whole
-        # failure, so it says so once, with the tally of *why* -- the same error
-        # repeated N times and N different errors are very different diagnoses,
-        # and `failure_summary` already distinguishes them.
-        self._logger.warning(
-            f"{self._event_prefix}_model_attempts_exhausted attempts=%d last_error=%s breakdown=%s",
-            attempts,
-            last_error,
-            ", ".join(f"{code}x{count}" for code, count in sorted(failure_summary.items())),
-            extra={
-                **log_context,
-                "task_id": self._task_id,
-                "attempts": attempts,
-                "error_code": last_error,
-                "failure_summary": dict(failure_summary),
-            },
-        )
-        return None, attempts, last_error
 
 
 def parse_structured_response[ResponseT: BaseModel](text: str, model: type[ResponseT]) -> ResponseT:
@@ -623,7 +452,7 @@ def parse_structured_response[ResponseT: BaseModel](text: str, model: type[Respo
     Providers that ignore the response-schema hint still tend to return correct
     JSON inside a Markdown fence or with a sentence around it, so a brace-span
     fallback recovers a response that would otherwise be discarded as invalid.
-    Raises `ValueError`/`TypeError` on failure, which the attempt loop maps to
+    Raises `ValueError`/`TypeError` on failure, which the dispatch loop maps to
     `RESPONSE_INVALID` and retries on the next route.
     """
     value = text.strip()

@@ -1,27 +1,50 @@
-"""Task-bound, observable, rate-limited, provider/model/key failover AI Gateway."""
+"""The eligibility *decision* contract, over the shared dispatch boundary.
+
+This module owns what is specific to the decision path: the task input
+allowlist, the `{decision, explanation, confidenceMillionths}` response
+contract, the persistent `AITrace` an operator inspects, the per-session quota,
+and the deterministic manual-review answer its callers must always receive.
+
+It no longer owns a provider execution loop. Route selection, failover, retry,
+recursive redaction, the `provider.generate` call, pricing and attempt telemetry
+all live in `final_dispatch.FinalDispatcher`, which is the single boundary every
+AI request crosses -- including the structured-output path this one used to run
+beside rather than through.
+
+**Interception moved without changing behaviour.** The `interceptMode` gate that
+used to be an `if` in the middle of this function is now
+`GatewaySettingsInterceptionPolicy`, consulted by the dispatcher before it looks
+at a route. That is the same decision at the same point in the sequence; what
+changed is that it is now the boundary's decision rather than this caller's, so
+a second caller cannot reach a provider without one.
+"""
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
-import random
-import time
-import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Any, Protocol
 
-from return_platform.ai.gateway.redaction import redact_payload
-from return_platform.ai.gateway.telemetry import AIAttemptRecord, InvocationCorrelation
+from return_platform.ai.gateway.final_dispatch import (
+    DispatchDecision,
+    DispatchObserver,
+    DispatchRequest,
+    FinalDispatcher,
+    InterceptionPolicy,
+    InterceptionVerdict,
+)
+from return_platform.ai.gateway.telemetry import (
+    InvocationCorrelation,
+    RepositoryAIAttemptRecorder,
+)
 from return_platform.ai.pricing import AICostEstimate
-from return_platform.ai.providers import ProviderError, ProviderRequest
+from return_platform.ai.providers import ProviderError, ProviderResponse
 from return_platform.ai.routing.routes import AIRoute, build_routes
 from return_platform.ai.routing.selection import AIRoutePool
 from return_platform.ai.routing.tasks import (
     AIGatewayConfiguration,
     LoadedAIGatewayConfiguration,
-    ModelTier,
     TaskConfiguration,
     load_ai_gateway_configuration,
 )
@@ -54,9 +77,9 @@ class GatewayEvaluation:
 def _priced_trace_fields(cost: AICostEstimate) -> dict[str, Any]:
     """One estimate, spread across the trace's four pricing columns.
 
-    Written once rather than at each update site so a future column cannot be
-    added to the record and forgotten at one of them, which is how the trace and
-    its own attempt rows would come to disagree about what a call cost.
+    The estimate is the dispatcher's -- the same object it writes to the attempt
+    row -- rather than a second call to the catalog, so the trace and its own
+    attempts cannot disagree about what a call cost.
     """
     return {
         "estimatedCostMicros": cost.amount_micros,
@@ -72,6 +95,112 @@ class _PayloadPolicyError(ValueError):
         super().__init__(message)
 
 
+class GatewaySettingsInterceptionPolicy(InterceptionPolicy):
+    """Holds a request for a human when the operator has enabled interception.
+
+    Reads the same `AIGatewaySettingsView.interceptMode` the AI Control Center
+    writes, and honours the same exemption: an explicitly forced provider is a
+    replay or a comparison an operator has already chosen to run, so holding it
+    again would deadlock the console against itself.
+    """
+
+    def __init__(self, repository: AIGatewayRepository) -> None:
+        self._repository = repository
+
+    async def decide(self, request: DispatchRequest) -> InterceptionVerdict:
+        settings = await self._repository.get_ai_settings()
+        if getattr(settings, "interceptMode", False) and request.force_provider is None:
+            return InterceptionVerdict(
+                decision=DispatchDecision.HUMAN_RESPONSE,
+                reason=AIRequestStatus.INTERCEPTION_PENDING.value,
+            )
+        return InterceptionVerdict(decision=DispatchDecision.ALLOW_PROVIDER)
+
+
+class _TraceObserver(DispatchObserver):
+    """Keeps the persistent `AITrace` in step with the attempt loop.
+
+    The trace is the decision path's operator-facing contract -- the thing the
+    AI Control Center reads -- and it must record each state transition as it
+    happens rather than one summary at the end, because an operator looking at a
+    hung request needs to see which provider it is hung on.
+    """
+
+    def __init__(self, repository: AIGatewayRepository, trace: AITraceView) -> None:
+        self._repository = repository
+        self.trace = trace
+
+    async def _update(self, updates: dict[str, Any], *, versioned: bool = False) -> None:
+        self.trace = await self._repository.update_ai_trace(
+            self.trace.id,
+            updates,
+            expected_version=self.trace.version if versioned else None,
+        )
+
+    async def on_attempt_started(self, *, route: AIRoute, attempt: int) -> None:
+        await self._update(
+            {
+                "status": AIRequestStatus.DISPATCHED.value,
+                "provider": route.provider_name,
+                "model": route.model,
+                "credentialId": route.credential_id,
+                "routeId": route.route_id,
+                "selectedTier": route.tier.value,
+                "selectionReason": "HEALTHY_ROUTE_SELECTED",
+                "attempts": attempt,
+                "errorCode": None,
+            }
+        )
+
+    async def on_response(
+        self,
+        *,
+        route: AIRoute,
+        attempt: int,
+        response: ProviderResponse,
+        latency_ms: int,
+        cost: AICostEstimate,
+    ) -> None:
+        del route, attempt
+        await self._update(
+            {
+                "status": AIRequestStatus.RESPONSE_RECEIVED.value,
+                "responseText": response.text,
+                "responseDigest": hashlib.sha256(response.text.encode("utf-8")).hexdigest(),
+                "latencyMs": latency_ms,
+                "inputTokens": response.input_tokens,
+                "cachedInputTokens": response.cached_input_tokens,
+                "outputTokens": response.output_tokens,
+                "totalTokens": response.total_tokens,
+                **_priced_trace_fields(cost),
+            }
+        )
+
+    async def on_attempt_succeeded(
+        self, *, route: AIRoute, attempt: int, response: ProviderResponse, latency_ms: int
+    ) -> None:
+        del route, attempt, response, latency_ms
+        await self._update({"status": AIRequestStatus.RESPONSE_VALIDATED.value}, versioned=True)
+
+    async def on_attempt_failed(
+        self,
+        *,
+        route: AIRoute,
+        attempt: int,
+        error_code: str,
+        latency_ms: int,
+        error: BaseException | None,
+    ) -> None:
+        del route, latency_ms, error
+        await self._update(
+            {
+                "status": AIGatewayService._trace_status_for_error(error_code).value,
+                "errorCode": error_code,
+                "attempts": attempt,
+            }
+        )
+
+
 class AIGatewayService:
     def __init__(
         self,
@@ -80,6 +209,7 @@ class AIGatewayService:
         *,
         loaded_configuration: LoadedAIGatewayConfiguration | None = None,
         route_pool: AIRoutePool | None = None,
+        dispatcher: FinalDispatcher | None = None,
     ) -> None:
         self._repository = repository
         self._settings = settings
@@ -94,6 +224,20 @@ class AIGatewayService:
         self._loaded_configuration = loaded_configuration
         self._configuration: AIGatewayConfiguration = self._loaded_configuration.configuration
         self._route_pool = route_pool or AIRoutePool(build_routes(settings), self._configuration)
+        # A repository that cannot store attempts records none, which is the
+        # state a caller passing a minimal stand-in was already in.
+        recorder = (
+            RepositoryAIAttemptRecorder(repository)
+            if callable(getattr(repository, "insert_ai_attempt_metric", None))
+            else None
+        )
+        self._dispatcher = dispatcher or FinalDispatcher(
+            settings=settings,
+            configuration=self._configuration,
+            route_pool=self._route_pool,
+            recorder=recorder,
+            interception=GatewaySettingsInterceptionPolicy(repository),
+        )
 
     @property
     def route_pool(self) -> AIRoutePool:
@@ -102,6 +246,10 @@ class AIGatewayService:
     @property
     def configuration(self) -> AIGatewayConfiguration:
         return self._configuration
+
+    @property
+    def dispatcher(self) -> FinalDispatcher:
+        return self._dispatcher
 
     @staticmethod
     def _digest(system_prompt: str, payload: dict[str, Any]) -> str:
@@ -218,89 +366,11 @@ class AIGatewayService:
             raise ProviderError("POLICY_BLOCKED")
         return decision, explanation.strip(), confidence
 
-    async def _attempt_metric(
-        self,
-        *,
-        trace_id: str,
-        session_id: str | None,
-        task_id: str,
-        configured_tier: ModelTier,
-        selected_tier: ModelTier | None,
-        route: AIRoute | None,
-        attempt_number: int,
-        selection_reason: str,
-        status: str,
-        fallback_used: bool,
-        safety: SafetyInspection,
-        latency_ms: int,
-        rate_limit_wait_ms: int,
-        input_tokens: int,
-        output_tokens: int,
-        total_tokens: int,
-        request_digest: str,
-        response_digest: str | None,
-        error_code: str | None,
-        cached_input_tokens: int | None = None,
-        fallback_reason: str | None = None,
-        prompt_version: str = "",
-    ) -> None:
-        method = getattr(self._repository, "insert_ai_attempt_metric", None)
-        if not callable(method):
-            return
-        # Priced here, at the moment of the attempt, against the release's own
-        # catalog -- not derived when a dashboard is opened. A cost recomputed
-        # at read time silently rewrites every historical figure the day a
-        # vendor changes a rate.
-        cost = self._configuration.pricing.estimate(
-            provider=route.provider_name if route else None,
-            model=route.model if route else None,
-            at=datetime.now(UTC),
-            input_tokens=input_tokens,
-            cached_input_tokens=cached_input_tokens or 0,
-            output_tokens=output_tokens,
-        )
-        # Built through the shared record so this path and `structured_invocation`
-        # write the same columns under the same names. Two hand-written dict
-        # literals for one collection is how a metrics query silently comes to
-        # cover only half the traffic.
-        record = AIAttemptRecord(
-            trace_id=trace_id,
-            task_id=task_id,
-            prompt_version=prompt_version,
-            attempt_number=attempt_number,
-            status=status,
-            configured_tier=configured_tier.value,
-            selected_tier=selected_tier.value if selected_tier else None,
-            provider=route.provider_name if route else None,
-            model=route.model if route else None,
-            credential_id=route.credential_id if route else None,
-            route_id=route.route_id if route else None,
-            selection_reason=selection_reason,
-            fallback_used=fallback_used,
-            fallback_reason=fallback_reason,
-            safety_status=safety.status.value,
-            latency_ms=latency_ms,
-            rate_limit_wait_ms=rate_limit_wait_ms,
-            input_tokens=input_tokens,
-            cached_input_tokens=cached_input_tokens,
-            output_tokens=output_tokens,
-            total_tokens=total_tokens,
-            cost=cost,
-            # This path serves the eligibility decision, which is scoped to a
-            # session rather than a conversation or a case. The other three ids
-            # are genuinely absent here, and are recorded as absent.
-            correlation=InvocationCorrelation(session_id=session_id),
-            request_digest=request_digest,
-            response_digest=response_digest,
-            error_code=error_code,
-        )
-        await method({"_id": str(uuid.uuid4()), **record.to_document()})
-
     async def _manual_review(
         self,
         trace: AITraceView,
         *,
-        task_id: str,
+        request: DispatchRequest,
         task: TaskConfiguration,
         status: AIRequestStatus,
         error_code: str,
@@ -308,6 +378,11 @@ class AIGatewayService:
         safety: SafetyInspection,
         attempts: int = 0,
     ) -> GatewayEvaluation:
+        """The deterministic answer this path's callers must always receive.
+
+        `evaluate` is a business decision, so it cannot raise the way the
+        structured path does: a caller with no outcome would have to invent one.
+        """
         fallback_text = json.dumps(
             {
                 "decision": AIDecision.REVIEW_REQUIRED.value,
@@ -337,28 +412,21 @@ class AIGatewayService:
                 "errorCode": error_code,
             },
         )
-        await self._attempt_metric(
+        # Recorded through the dispatcher's single writer even though no
+        # provider ran: an attempt that never left the platform is still an
+        # attempt, and a second writer is how one collection comes to hold two
+        # column vocabularies.
+        await self._dispatcher.record_attempt(
             trace_id=trace.id,
-            session_id=trace.sessionId,
-            task_id=task_id,
-            configured_tier=task.tier,
-            selected_tier=task.tier,
+            request=request,
             route=None,
             attempt_number=attempts,
-            selection_reason="DETERMINISTIC_FALLBACK",
             status="SAFETY_BLOCKED" if not safety.allowed else "FALLBACK",
-            fallback_used=True,
-            safety=safety,
-            latency_ms=0,
-            rate_limit_wait_ms=0,
-            input_tokens=0,
-            output_tokens=0,
-            total_tokens=0,
-            request_digest=trace.requestDigest,
+            selection_reason="DETERMINISTIC_FALLBACK",
+            safety_status=safety.status.value,
             response_digest=trace.responseDigest,
             error_code=error_code,
             fallback_reason=error_code,
-            prompt_version=task.promptVersion,
         )
         return GatewayEvaluation(trace=trace, pending_interception=False)
 
@@ -398,13 +466,14 @@ class AIGatewayService:
         except _PayloadPolicyError as error:
             safety = inspect_input(candidate)
             empty_payload: dict[str, Any] = {}
+            digest = self._digest(prompt, empty_payload)
             trace = await self._repository.create_ai_trace(
                 session_id=session_id,
                 status=AIRequestStatus.CREATED,
                 prompt_version=task.promptVersion,
                 redacted_input=empty_payload,
                 system_prompt=prompt,
-                request_digest=self._digest(prompt, empty_payload),
+                request_digest=digest,
                 original_request_digest=original_request_digest,
                 task_id=task_id,
                 configured_tier=task.tier.value,
@@ -413,7 +482,16 @@ class AIGatewayService:
             )
             return await self._manual_review(
                 trace,
-                task_id=task_id,
+                request=self._dispatch_request(
+                    task_id=task_id,
+                    task=task,
+                    prompt=prompt,
+                    payload=empty_payload,
+                    digest=digest,
+                    safety=safety,
+                    session_id=session_id,
+                    force_provider=force_provider,
+                ),
                 task=task,
                 status=error.code,
                 error_code=safety.status.value if not safety.allowed else error.code.value,
@@ -445,8 +523,38 @@ class AIGatewayService:
             {"status": AIRequestStatus.POLICY_CHECKED.value},
             expected_version=trace.version,
         )
-        gateway_settings = await self._repository.get_ai_settings()
-        if gateway_settings.interceptMode and force_provider is None:
+
+        # The quota is a precondition of *dispatching*, not of asking: a request
+        # a human intercepted must not have spent the session's budget, because
+        # the operator's answer is not a provider call.
+        quota_bucket = f"session:{session_id}" if session_id is not None else "standalone"
+
+        async def quota() -> str | None:
+            if await self._repository.consume_ai_quota(quota_bucket):
+                return None
+            return AIRequestStatus.RATE_LIMITED.value
+
+        request = self._dispatch_request(
+            task_id=task_id,
+            task=task,
+            prompt=prompt,
+            payload=payload,
+            digest=digest,
+            safety=safety,
+            session_id=session_id,
+            force_provider=force_provider,
+            precondition=quota,
+        )
+        observer = _TraceObserver(self._repository, trace)
+        outcome = await self._dispatcher.dispatch(
+            request,
+            trace_id=trace.id,
+            validate=lambda response: self._parse_response(response.text),
+            observer=observer,
+        )
+        trace = observer.trace
+
+        if outcome.decision is DispatchDecision.HUMAN_RESPONSE:
             trace = await self._repository.update_ai_trace(
                 trace.id,
                 {"status": AIRequestStatus.INTERCEPTION_PENDING.value},
@@ -454,239 +562,73 @@ class AIGatewayService:
             )
             return GatewayEvaluation(trace=trace, pending_interception=True)
 
-        quota_bucket = f"session:{session_id}" if session_id is not None else "standalone"
-        if not await self._repository.consume_ai_quota(quota_bucket):
+        if outcome.decision is DispatchDecision.REJECT:
             return await self._manual_review(
                 trace,
-                task_id=task_id,
+                request=request,
                 task=task,
                 status=AIRequestStatus.RATE_LIMITED,
-                error_code=AIRequestStatus.RATE_LIMITED.value,
+                error_code=outcome.reason or AIRequestStatus.RATE_LIMITED.value,
                 explanation="AI session quota was exhausted; manual review is required.",
                 safety=safety,
             )
 
-        normalized_force = force_provider.strip().upper() if force_provider else None
-        candidates = await self._route_pool.candidates(
-            task,
-            task_id=task_id,
-            force_provider=normalized_force,
+        if outcome.value is None:
+            return await self._manual_review(
+                trace,
+                request=request,
+                task=task,
+                status=AIRequestStatus.DECISION_PERSISTED,
+                error_code=outcome.last_error or AIRequestStatus.PROVIDER_UNAVAILABLE.value,
+                explanation=(
+                    "All permitted AI routes were unavailable, rate-limited, unsafe, or returned "
+                    "an untrusted response; manual review is required."
+                ),
+                safety=safety,
+                attempts=outcome.attempts,
+            )
+
+        decision, explanation, confidence = outcome.value
+        trace = await self._repository.update_ai_trace(
+            trace.id,
+            {
+                "status": AIRequestStatus.DECISION_PERSISTED.value,
+                "decision": decision.value,
+                "explanation": explanation,
+                "confidenceMillionths": confidence,
+                "fallbackUsed": False,
+                "errorCode": None,
+            },
         )
-        attempts = 0
-        last_error = AIRequestStatus.PROVIDER_UNAVAILABLE.value
-        deadline = time.monotonic() + self._settings.ai_global_timeout_seconds
-        estimated_tokens = max(1, len(json.dumps(payload, sort_keys=True)) // 4)
+        return GatewayEvaluation(trace=trace, pending_interception=False)
 
-        for route in candidates:
-            for route_attempt in range(self._configuration.retry.maximumAttemptsPerRoute):
-                if attempts >= self._configuration.retry.maximumTotalAttempts:
-                    break
-                if time.monotonic() >= deadline:
-                    last_error = AIRequestStatus.TIMEOUT.value
-                    break
-                acquired = await self._route_pool.try_acquire(
-                    route,
-                    estimated_tokens=estimated_tokens,
-                )
-                if not acquired.acquired:
-                    await self._attempt_metric(
-                        trace_id=trace.id,
-                        session_id=session_id,
-                        task_id=task_id,
-                        configured_tier=task.tier,
-                        selected_tier=route.tier,
-                        route=route,
-                        attempt_number=attempts,
-                        selection_reason=acquired.reason,
-                        status="SKIPPED",
-                        fallback_used=False,
-                        safety=safety,
-                        latency_ms=0,
-                        rate_limit_wait_ms=0,
-                        input_tokens=0,
-                        output_tokens=0,
-                        total_tokens=0,
-                        request_digest=digest,
-                        response_digest=None,
-                        error_code=acquired.reason,
-                        prompt_version=task.promptVersion,
-                    )
-                    break
-
-                attempts += 1
-                started = time.monotonic()
-                trace = await self._repository.update_ai_trace(
-                    trace.id,
-                    {
-                        "status": AIRequestStatus.DISPATCHED.value,
-                        "provider": route.provider_name,
-                        "model": route.model,
-                        "credentialId": route.credential_id,
-                        "routeId": route.route_id,
-                        "selectedTier": route.tier.value,
-                        "selectionReason": "HEALTHY_ROUTE_SELECTED",
-                        "attempts": attempts,
-                        "errorCode": None,
-                    },
-                )
-                try:
-                    remaining = max(0.05, deadline - time.monotonic())
-                    response = await asyncio.wait_for(
-                        route.provider.generate(
-                            ProviderRequest(
-                                prompt,
-                                # `_redact_and_validate` already rejected a
-                                # sensitive *top-level key*. This catches the
-                                # same policy applied to values nested inside
-                                # containers and inside JSON-encoded strings,
-                                # which that check cannot see.
-                                redact_payload(payload),
-                                max_output_tokens=task.maximumOutputTokens,
-                                temperature=0.0,
-                            )
-                        ),
-                        timeout=min(self._settings.ai_timeout_seconds, remaining),
-                    )
-                    latency = max(0, int((time.monotonic() - started) * 1000))
-                    response_digest = hashlib.sha256(response.text.encode("utf-8")).hexdigest()
-                    trace = await self._repository.update_ai_trace(
-                        trace.id,
-                        {
-                            "status": AIRequestStatus.RESPONSE_RECEIVED.value,
-                            "responseText": response.text,
-                            "responseDigest": response_digest,
-                            "latencyMs": latency,
-                            "inputTokens": response.input_tokens,
-                            "cachedInputTokens": response.cached_input_tokens,
-                            "outputTokens": response.output_tokens,
-                            "totalTokens": response.total_tokens,
-                            **_priced_trace_fields(
-                                self._configuration.pricing.estimate(
-                                    provider=route.provider_name,
-                                    model=route.model,
-                                    at=datetime.now(UTC),
-                                    input_tokens=int(response.input_tokens or 0),
-                                    cached_input_tokens=int(response.cached_input_tokens or 0),
-                                    output_tokens=int(response.output_tokens or 0),
-                                )
-                            ),
-                        },
-                    )
-                    decision, explanation, confidence = self._parse_response(response.text)
-                    trace = await self._repository.update_ai_trace(
-                        trace.id,
-                        {"status": AIRequestStatus.RESPONSE_VALIDATED.value},
-                        expected_version=trace.version,
-                    )
-                    trace = await self._repository.update_ai_trace(
-                        trace.id,
-                        {
-                            "status": AIRequestStatus.DECISION_PERSISTED.value,
-                            "decision": decision.value,
-                            "explanation": explanation,
-                            "confidenceMillionths": confidence,
-                            "fallbackUsed": False,
-                            "errorCode": None,
-                        },
-                    )
-                    await self._route_pool.record_success(route)
-                    await self._attempt_metric(
-                        trace_id=trace.id,
-                        session_id=session_id,
-                        task_id=task_id,
-                        configured_tier=task.tier,
-                        selected_tier=route.tier,
-                        route=route,
-                        attempt_number=attempts,
-                        selection_reason="HEALTHY_ROUTE_SELECTED",
-                        status="SUCCESS",
-                        fallback_used=False,
-                        safety=safety,
-                        latency_ms=latency,
-                        rate_limit_wait_ms=0,
-                        input_tokens=int(response.input_tokens or 0),
-                        cached_input_tokens=response.cached_input_tokens,
-                        output_tokens=int(response.output_tokens or 0),
-                        total_tokens=int(
-                            response.total_tokens
-                            or int(response.input_tokens or 0) + int(response.output_tokens or 0)
-                        ),
-                        request_digest=digest,
-                        response_digest=response_digest,
-                        error_code=None,
-                        prompt_version=task.promptVersion,
-                    )
-                    return GatewayEvaluation(trace=trace, pending_interception=False)
-                except TimeoutError:
-                    last_error = AIRequestStatus.TIMEOUT.value
-                except ProviderError as error:
-                    last_error = error.code
-                except Exception as error:  # Defensive provider boundary.
-                    last_error = type(error).__name__
-                finally:
-                    await self._route_pool.release(route)
-
-                latency = max(0, int((time.monotonic() - started) * 1000))
-                await self._route_pool.record_failure(route, last_error)
-                trace = await self._repository.update_ai_trace(
-                    trace.id,
-                    {
-                        "status": self._trace_status_for_error(last_error).value,
-                        "errorCode": last_error,
-                        "attempts": attempts,
-                    },
-                )
-                await self._attempt_metric(
-                    trace_id=trace.id,
-                    session_id=session_id,
-                    task_id=task_id,
-                    configured_tier=task.tier,
-                    selected_tier=route.tier,
-                    route=route,
-                    attempt_number=attempts,
-                    selection_reason="ROUTE_FAILED",
-                    status="FAILED",
-                    fallback_used=False,
-                    safety=safety,
-                    latency_ms=latency,
-                    rate_limit_wait_ms=0,
-                    input_tokens=0,
-                    output_tokens=0,
-                    total_tokens=0,
-                    request_digest=digest,
-                    response_digest=None,
-                    error_code=last_error,
-                    prompt_version=task.promptVersion,
-                )
-                if last_error in {
-                    AIRequestStatus.AUTH_FAILED.value,
-                    AIRequestStatus.RATE_LIMITED.value,
-                    AIRequestStatus.POLICY_BLOCKED.value,
-                    AIRequestStatus.RESPONSE_INVALID.value,
-                }:
-                    break
-                if route_attempt + 1 < self._configuration.retry.maximumAttemptsPerRoute:
-                    base_ms = min(
-                        self._configuration.retry.maximumBackoffMilliseconds,
-                        self._configuration.retry.initialBackoffMilliseconds * (2**route_attempt),
-                    )
-                    jitter = (
-                        random.randint(0, max(1, base_ms // 4))
-                        if self._configuration.retry.jitter
-                        else 0
-                    )
-                    await asyncio.sleep((base_ms + jitter) / 1000)
-
-        return await self._manual_review(
-            trace,
+    def _dispatch_request(
+        self,
+        *,
+        task_id: str,
+        task: TaskConfiguration,
+        prompt: str,
+        payload: dict[str, Any],
+        digest: str,
+        safety: SafetyInspection,
+        session_id: str | None,
+        force_provider: str | None,
+        precondition: Any = None,
+    ) -> DispatchRequest:
+        return DispatchRequest(
             task_id=task_id,
             task=task,
-            status=AIRequestStatus.DECISION_PERSISTED,
-            error_code=last_error,
-            explanation=(
-                "All permitted AI routes were unavailable, rate-limited, unsafe, or returned an "
-                "untrusted response; manual review is required."
-            ),
-            safety=safety,
-            attempts=attempts,
+            system_prompt=prompt,
+            payload=payload,
+            request_digest=digest,
+            estimated_tokens=max(1, len(json.dumps(payload, sort_keys=True)) // 4),
+            # This path serves the eligibility decision, which is scoped to a
+            # session rather than a conversation or a case. The other three ids
+            # are genuinely absent here, and are recorded as absent.
+            correlation=InvocationCorrelation(session_id=session_id),
+            safety_status=safety.status.value,
+            max_output_tokens=task.maximumOutputTokens,
+            temperature=0.0,
+            force_provider=force_provider,
+            precondition=precondition,
         )
