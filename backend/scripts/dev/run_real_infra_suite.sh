@@ -26,8 +26,14 @@
 # The selection below is what fetches them back.
 #
 #   suite 1+2  bash backend/scripts/dev/run_normal_suite.sh   (host, no infra)
-#   suite 3    this script
+#   suite 3    this script, or `run_normal_suite.sh live_infra` on the host
 #   suite 4    cd frontend && npm run test:e2e
+#
+# The host route is not a lesser one: Compose publishes every datastore, and
+# `test_settings` reaches them on localhost with `directConnection=true`. Use
+# this script when the answer has to come from inside the network -- an
+# in-network address, a Linux-only driver path, or a host result and a container
+# result that disagree.
 #
 # REAL_INFRA_SELECTOR overrides the selection. `REAL_INFRA_SELECTOR='not browser'`
 # runs everything in-network, which is worth doing when a host result and a
