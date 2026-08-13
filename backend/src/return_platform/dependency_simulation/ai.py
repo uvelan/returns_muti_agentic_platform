@@ -1,28 +1,60 @@
-"""Optional lightweight AI enrichment with mandatory deterministic fallback."""
+"""Optional lightweight AI enrichment with mandatory deterministic fallback.
+
+The narrative is wording only -- the deterministic operation facts are already
+final before this module is asked anything, and every failure path returns the
+template. That is why this path may fail freely and must never block a
+simulation.
+
+**It no longer owns a provider loop.** This was the third copy of the
+platform's provider execution machinery: its own candidate loop, its own
+failover bookkeeping, its own attempt rows, its own `provider.generate` call.
+Being a copy is what made it the only path with *no* redaction at all -- the
+recursive redactor was added to the other two loops individually, and a third
+loop nobody was looking at simply did not get it. Route selection, failover,
+retry, redaction, the dispatch itself and the interception decision now come
+from `ai.gateway.final_dispatch.FinalDispatcher`.
+
+What stays here is the simulator's own contract: the `{message, summary,
+nextAction}` response shape, and the `SimulationAIUsageMetric` row that the
+simulator console reads and that `aiMetricId` links a narrative to. That row is
+domain reporting over the simulator's own configured price table, which is not
+the AI gateway's released pricing catalog; see the module note on `_cost`.
+"""
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
-import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from return_platform.ai_gateway.configuration import (
+from return_platform.ai.gateway.final_dispatch import (
+    DispatchObserver,
+    DispatchRequest,
+    FinalDispatcher,
+)
+from return_platform.ai.providers import ProviderResponse
+from return_platform.ai.routing.routes import AIRoute, build_routes
+from return_platform.ai.routing.selection import AIRoutePool
+from return_platform.ai.routing.tasks import (
     LoadedAIGatewayConfiguration,
+    ModelTier,
+    TaskConfiguration,
     load_ai_gateway_configuration,
 )
-from return_platform.ai_gateway.providers import ProviderError, ProviderRequest
-from return_platform.ai_gateway.routing import AIRoutePool, build_routes
-from return_platform.ai_gateway.safety import inspect_input, inspect_output
+from return_platform.ai.safety import inspect_input, inspect_output
 from return_platform.configuration.settings import Settings
 from return_platform.dependency_simulation.configuration import DependencySimulationConfiguration
 from return_platform.dependency_simulation.models import DependencyKind, SimulationNarrative
 from return_platform.dependency_simulation.repository import SimulationRepository
 from return_platform.dependency_simulation.templates import default_narrative
+
+#: What the original loop reported when no lightweight route was configured at
+#: all. Kept as a distinct code because "nothing to try" and "everything tried
+#: and failed" are different operator problems.
+_NO_ROUTE = "NO_CONFIGURED_LIGHTWEIGHT_ROUTE"
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +73,7 @@ class SimulationNarrativeService:
         *,
         loaded_ai_gateway: LoadedAIGatewayConfiguration | None = None,
         route_pool: AIRoutePool | None = None,
+        dispatcher: FinalDispatcher | None = None,
     ) -> None:
         self._repository = repository
         self._settings = settings
@@ -55,12 +88,35 @@ class SimulationNarrativeService:
             )
         loaded = loaded_ai_gateway
         self._gateway_configuration = loaded.configuration
-        self._task = self._gateway_configuration.tasks[configuration.ai.taskId]
-        if self._task.tier.value != "LIGHTWEIGHT" or self._task.allowTierEscalation:
+        # Validated at wiring time so a misconfigured task fails on startup, and
+        # re-read per call by `_active_task` so an activated release applies.
+        startup_task = self._gateway_configuration.tasks[configuration.ai.taskId]
+        if startup_task.tier.value != "LIGHTWEIGHT" or startup_task.allowTierEscalation:
             raise ValueError("Dependency simulator narratives must remain lightweight-only.")
         self._route_pool = route_pool or AIRoutePool(
             build_routes(settings), self._gateway_configuration
         )
+        # No `AIAttemptRecorder`: the simulator has never written to the
+        # platform's `ai_usage_attempts` collection and giving it one here would
+        # mix simulated traffic into real cost reporting. Its own metric rows
+        # are written by the observer below.
+        self._dispatcher = dispatcher or FinalDispatcher(
+            settings=settings,
+            route_pool=self._route_pool,
+        )
+
+    def _active_task(self) -> TaskConfiguration | None:
+        """The narrative task as currently released, or nothing usable.
+
+        Returns `None` rather than raising when the release has removed the task
+        or moved it off the lightweight tier: the narrative is optional wording
+        and must never block a simulation, so an unusable configuration falls
+        back to the deterministic template like any other failure.
+        """
+        task = self._dispatcher.task(self._configuration.ai.taskId)
+        if task is None or task.tier.value != "LIGHTWEIGHT" or task.allowTierEscalation:
+            return None
+        return task
 
     @staticmethod
     def _digest(value: object) -> str:
@@ -93,6 +149,20 @@ class SimulationNarrativeService:
         )
 
     def _cost(self, provider: str, input_tokens: int, output_tokens: int) -> int:
+        """The simulator's own report figure, over its own configured rates.
+
+        Deliberately *not* the AI gateway's released pricing catalog: this row
+        describes simulated traffic and is summed into `SimulationAISummary`,
+        which the platform's real cost reporting must not include.
+
+        It still carries the defect the gateway's catalog was built to remove --
+        an unpriced provider reports `0` rather than "unknown" -- because
+        `SimulationAIUsageMetric.estimatedCostMicrousd` is `int Field(ge=0)` and
+        is summed unconditionally in `repository.py`. Making it honest means
+        making that field nullable, teaching the two summaries to exclude and
+        count unknown rows, and regenerating the frontend contract. Tracked as
+        an external item; not fixable from inside the AI dispatch boundary.
+        """
         pricing = self._configuration.ai.pricingMicrousdPerMillionTokens.get(provider)
         if pricing is None:
             return 0
@@ -134,7 +204,9 @@ class SimulationNarrativeService:
                 "model": model,
                 "credentialId": credential_id,
                 "routeId": route_id,
-                "modelTier": self._task.tier.value,
+                # The tier this service is constrained to. `_active_task` refuses
+                # anything else, so a released change cannot move it silently.
+                "modelTier": ModelTier.LIGHTWEIGHT.value,
                 "selectionReason": selection_reason,
                 "status": status,
                 "fallbackUsed": fallback_used,
@@ -244,122 +316,63 @@ class SimulationNarrativeService:
                 status="SKIPPED",
             )
 
-        system_prompt = self._task.systemPrompt
-        candidates = await self._route_pool.candidates(self._task)
-        allowed = set(self._configuration.ai.providerOrder)
-        candidates = tuple(route for route in candidates if route.provider_name in allowed)
-        last_error = "NO_CONFIGURED_LIGHTWEIGHT_ROUTE"
-        attempt = 0
-        estimated_tokens = max(1, len(json.dumps(request_payload, sort_keys=True)) // 4)
-
-        for route in candidates:
-            if attempt >= self._gateway_configuration.retry.maximumTotalAttempts:
-                break
-            acquired = await self._route_pool.try_acquire(route, estimated_tokens=estimated_tokens)
-            if not acquired.acquired:
-                await self._metric(
-                    operation_id=operation_id,
-                    session_id=session_id,
-                    dependency=dependency,
-                    operation=operation,
-                    provider=route.provider_name,
-                    model=route.model,
-                    credential_id=route.credential_id,
-                    route_id=route.route_id,
-                    selection_reason=acquired.reason,
-                    status="SKIPPED",
-                    fallback_used=False,
-                    attempt=attempt,
-                    latency_ms=0,
-                    input_tokens=0,
-                    output_tokens=0,
-                    total_tokens=0,
-                    request_digest=request_digest,
-                    response_digest=None,
-                    error_code=acquired.reason,
-                )
-                continue
-            attempt += 1
-            started = time.monotonic()
-            try:
-                response = await asyncio.wait_for(
-                    route.provider.generate(
-                        ProviderRequest(
-                            system_prompt,
-                            request_payload,
-                            max_output_tokens=min(
-                                self._configuration.ai.maxOutputTokens,
-                                self._task.maximumOutputTokens,
-                            ),
-                            temperature=self._configuration.ai.temperature,
-                        )
-                    ),
-                    timeout=min(
-                        self._configuration.ai.timeoutSeconds,
-                        self._settings.ai_timeout_seconds,
-                    ),
-                )
-                narrative = self._parse(response.text, fallback)
-                latency = max(0, int((time.monotonic() - started) * 1_000))
-                input_tokens = int(response.input_tokens or 0)
-                output_tokens = int(response.output_tokens or 0)
-                total_tokens = int(response.total_tokens or input_tokens + output_tokens)
-                await self._route_pool.record_success(route)
-                metric_id = await self._metric(
-                    operation_id=operation_id,
-                    session_id=session_id,
-                    dependency=dependency,
-                    operation=operation,
-                    provider=response.provider,
-                    model=response.model,
-                    credential_id=route.credential_id,
-                    route_id=route.route_id,
-                    selection_reason="LIGHTWEIGHT_ROUTE_SELECTED",
-                    status="SUCCESS",
-                    fallback_used=False,
-                    attempt=attempt,
-                    latency_ms=latency,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    total_tokens=total_tokens,
-                    request_digest=request_digest,
-                    response_digest=self._digest(response.text),
-                    error_code=None,
-                )
-                return NarrativeResult(narrative.model_copy(update={"aiMetricId": metric_id}))
-            except TimeoutError:
-                last_error = "TIMEOUT"
-            except (ProviderError, ValueError, TypeError, json.JSONDecodeError) as error:
-                last_error = str(getattr(error, "code", type(error).__name__))
-            except Exception:  # Defensive boundary: AI must never block simulation.
-                last_error = "PROVIDER_UNAVAILABLE"
-            finally:
-                await self._route_pool.release(route)
-
-            latency = max(0, int((time.monotonic() - started) * 1_000))
-            await self._route_pool.record_failure(route, last_error)
-            await self._metric(
+        task = self._active_task()
+        if task is None:
+            return await self._fallback(
                 operation_id=operation_id,
                 session_id=session_id,
                 dependency=dependency,
                 operation=operation,
-                provider=route.provider_name,
-                model=route.model,
-                credential_id=route.credential_id,
-                route_id=route.route_id,
-                selection_reason="LIGHTWEIGHT_ROUTE_FAILED",
-                status="FAILED",
-                fallback_used=False,
-                attempt=attempt,
-                latency_ms=latency,
-                input_tokens=0,
-                output_tokens=0,
-                total_tokens=0,
+                fallback=fallback,
                 request_digest=request_digest,
-                response_digest=None,
-                error_code=last_error[:128],
+                error_code="TASK_NOT_CONFIGURED",
+                attempt=0,
+                status="SKIPPED",
             )
 
+        observer = _NarrativeObserver(
+            service=self,
+            operation_id=operation_id,
+            session_id=session_id,
+            dependency=dependency,
+            operation=operation,
+            request_digest=request_digest,
+        )
+        outcome = await self._dispatcher.dispatch(
+            DispatchRequest(
+                task_id=self._configuration.ai.taskId,
+                task=task,
+                system_prompt=task.systemPrompt,
+                payload=request_payload,
+                request_digest=request_digest,
+                estimated_tokens=max(1, len(json.dumps(request_payload, sort_keys=True)) // 4),
+                safety_status=safety.status.value,
+                max_output_tokens=min(
+                    self._configuration.ai.maxOutputTokens,
+                    task.maximumOutputTokens,
+                ),
+                temperature=self._configuration.ai.temperature,
+                # The simulator's narrative is optional work behind a user
+                # request, so it holds a route for less time than the platform's
+                # global ceiling allows.
+                attempt_timeout_seconds=self._configuration.ai.timeoutSeconds,
+                provider_allowlist=frozenset(self._configuration.ai.providerOrder),
+            ),
+            trace_id=operation_id,
+            validate=lambda response: self._parse(response.text, fallback),
+            observer=observer,
+        )
+
+        if outcome.value is not None and observer.metric_id is not None:
+            return NarrativeResult(
+                outcome.value.model_copy(update={"aiMetricId": observer.metric_id})
+            )
+
+        # "Nothing to try" and "everything tried and failed" are different
+        # operator problems, so an empty candidate set keeps its own code.
+        error_code = (
+            outcome.last_error if outcome.attempts or outcome.failure_summary else _NO_ROUTE
+        )
         return await self._fallback(
             operation_id=operation_id,
             session_id=session_id,
@@ -367,6 +380,114 @@ class SimulationNarrativeService:
             operation=operation,
             fallback=fallback,
             request_digest=request_digest,
-            error_code=last_error[:128],
+            error_code=(error_code or _NO_ROUTE)[:128],
+            attempt=outcome.attempts,
+        )
+
+
+class _NarrativeObserver(DispatchObserver):
+    """Writes the simulator's own metric rows around the shared dispatch.
+
+    `metric_id` is read back by `generate` because `SimulationNarrative.
+    aiMetricId` links a narrative to the row that describes how it was
+    produced -- the one piece of the old loop that genuinely had to survive the
+    consolidation.
+    """
+
+    def __init__(
+        self,
+        *,
+        service: SimulationNarrativeService,
+        operation_id: str,
+        session_id: str,
+        dependency: DependencyKind,
+        operation: str,
+        request_digest: str,
+    ) -> None:
+        self._service = service
+        self._operation_id = operation_id
+        self._session_id = session_id
+        self._dependency = dependency
+        self._operation = operation
+        self._request_digest = request_digest
+        self.metric_id: str | None = None
+
+    async def _write(self, **fields: Any) -> str:
+        return await self._service._metric(
+            operation_id=self._operation_id,
+            session_id=self._session_id,
+            dependency=self._dependency,
+            operation=self._operation,
+            request_digest=self._request_digest,
+            **fields,
+        )
+
+    async def on_route_skipped(self, *, route: AIRoute, attempt: int, reason: str) -> None:
+        await self._write(
+            provider=route.provider_name,
+            model=route.model,
+            credential_id=route.credential_id,
+            route_id=route.route_id,
+            selection_reason=reason,
+            status="SKIPPED",
+            fallback_used=False,
             attempt=attempt,
+            latency_ms=0,
+            input_tokens=0,
+            output_tokens=0,
+            total_tokens=0,
+            response_digest=None,
+            error_code=reason,
+        )
+
+    async def on_attempt_succeeded(
+        self, *, route: AIRoute, attempt: int, response: ProviderResponse, latency_ms: int
+    ) -> None:
+        input_tokens = int(response.input_tokens or 0)
+        output_tokens = int(response.output_tokens or 0)
+        self.metric_id = await self._write(
+            # The provider that *answered*, not the one the route names. A
+            # durable interception a human answered reports MANUAL, and this row
+            # must say so rather than crediting the model it replaced.
+            provider=response.provider,
+            model=response.model,
+            credential_id=route.credential_id,
+            route_id=route.route_id,
+            selection_reason="LIGHTWEIGHT_ROUTE_SELECTED",
+            status="SUCCESS",
+            fallback_used=False,
+            attempt=attempt,
+            latency_ms=latency_ms,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=int(response.total_tokens or input_tokens + output_tokens),
+            response_digest=SimulationNarrativeService._digest(response.text),
+            error_code=None,
+        )
+
+    async def on_attempt_failed(
+        self,
+        *,
+        route: AIRoute,
+        attempt: int,
+        error_code: str,
+        latency_ms: int,
+        error: BaseException | None,
+    ) -> None:
+        del error
+        await self._write(
+            provider=route.provider_name,
+            model=route.model,
+            credential_id=route.credential_id,
+            route_id=route.route_id,
+            selection_reason="LIGHTWEIGHT_ROUTE_FAILED",
+            status="FAILED",
+            fallback_used=False,
+            attempt=attempt,
+            latency_ms=latency_ms,
+            input_tokens=0,
+            output_tokens=0,
+            total_tokens=0,
+            response_digest=None,
+            error_code=error_code[:128],
         )

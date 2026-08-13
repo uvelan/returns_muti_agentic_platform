@@ -396,7 +396,13 @@ async def test_order_agent_fails_over_to_next_provider_and_logs_attempts(
 
     assert calls == ["GOOGLE", "NVIDIA"]
     assert result.provider == "NVIDIA"
-    assert "order_agent_model_attempt_failed" in caplog.messages
+    # Prefix match, not equality: the failure line carries %-formatted detail
+    # (attempt, tier, provider, model, error, latency) and `caplog.messages`
+    # holds the *rendered* message, so an equality check could never match it.
+    # It never did -- this assertion had been failing since it was written.
+    assert any(
+        message.startswith("order_agent_model_attempt_failed") for message in caplog.messages
+    ), caplog.messages
     assert "order_agent_model_attempt_succeeded" in caplog.messages
 
 
