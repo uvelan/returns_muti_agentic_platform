@@ -123,9 +123,12 @@ class FakeTemporalServer:
         self.start_attempts: list[str] = []
         self.task_queues: list[str] = []
         self.start_failure: Exception | None = None
-        #: When set, every start awaits it before touching the registry, so a
-        #: test can hold two starts inside the same window on purpose.
+        #: When set, every start waits here before touching the registry, and
+        #: the gate opens only once `hold_until_attempts` starts have arrived.
+        #: That is what puts two confirmations inside the same window on
+        #: purpose rather than hoping the scheduler interleaves them.
         self.gate: asyncio.Event | None = None
+        self.hold_until_attempts = 0
 
     async def start_workflow(
         self,
@@ -141,6 +144,8 @@ class FakeTemporalServer:
         if self.start_failure is not None:
             raise self.start_failure
         if self.gate is not None:
+            if len(self.start_attempts) >= self.hold_until_attempts:
+                self.gate.set()
             await self.gate.wait()
         if id in self.executions:
             raise WorkflowAlreadyStartedError(id, "return-platform-return-case-v1")
@@ -520,16 +525,11 @@ async def test_two_simultaneous_confirmations_converge_on_one_case_and_one_workf
     # Hold both starts open until both have been attempted, so the second one
     # cannot simply arrive after the first has finished registering.
     server.gate = asyncio.Event()
+    server.hold_until_attempts = 2
 
-    async def release_when_both_arrive() -> None:
-        while len(server.start_attempts) < 2:
-            await asyncio.sleep(0)
-        server.gate.set()  # type: ignore[union-attr]
-
-    first, second, _ = await asyncio.gather(
+    first, second = await asyncio.gather(
         _confirm_turn(schema, repository, server),
         _confirm_turn(schema, repository, server),
-        release_when_both_arrive(),
     )
 
     assert first["case_id"] == second["case_id"]

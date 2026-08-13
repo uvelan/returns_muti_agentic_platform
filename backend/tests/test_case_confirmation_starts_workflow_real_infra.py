@@ -51,6 +51,8 @@ from return_platform.configuration.settings import (
 )
 from return_platform.dynamic_knowledge.api.order_agent import (
     DynamicOrderAgentRuntime,
+)
+from return_platform.dynamic_knowledge.api.order_agent import (
     router as order_agent_router,
 )
 from return_platform.dynamic_knowledge.config_loader import load_active_schema
