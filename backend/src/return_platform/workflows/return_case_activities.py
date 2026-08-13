@@ -15,24 +15,36 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Any, Protocol
 
 from temporalio import activity
 
+from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
+from return_platform.operations.business_calendar import (
+    BusinessCalendar,
+    WorkingPeriod,
+    advance_business_time,
+)
 from return_platform.operations.models import FactAcquisition, FactChannel
 from return_platform.operations.repository import OperationalRepository
 from return_platform.workflows.return_case_workflow import (
+    BayResultNotice,
     DraftSupportRequestInput,
     OpenSupportWorkItemInput,
     RecordCaseStatusInput,
     RecordSupportOutcomeInput,
     RequestBayAssignmentInput,
+    ResolveBusinessDeadlineInput,
+    ResolvedBusinessDeadline,
     SendSupportReminderInput,
     SynchronizeReturnRecordsInput,
 )
 
 __all__ = [
+    "CaseBayPlacementPort",
     "ReturnCaseActivities",
     "ReturnRecordGraphSyncPort",
     "ReturnRecordStorePort",
@@ -94,6 +106,22 @@ class ReturnRecordStorePort(Protocol):
     ) -> tuple[str, ...]: ...  # pragma: no cover
 
 
+class CaseBayPlacementPort(Protocol):
+    """The one method the bay activity needs from placement.
+
+    Structural, so `workflows` does not import the agent registry or the
+    warehouse observation stack to ask for a bay. The implementation is
+    `operations/warehouse/case_placement.py::CaseBayPlacement`, which is the
+    session engine re-keyed -- not a second one.
+
+    It must not raise for "no bay": a state comes back as a recommendation
+    carrying its reason. It may raise when placement could not be attempted at
+    all, and the workflow's `ActivityError` branch records `REQUEST_FAILED`.
+    """
+
+    async def recommend(self, case_id: str) -> Any: ...
+
+
 class ReturnCaseActivities:
     """Narrow injected surface: one repository, one support service, one drafter."""
 
@@ -105,12 +133,20 @@ class ReturnCaseActivities:
         drafter: SupportDraftPort | None = None,
         graph_sync: ReturnRecordGraphSyncPort | None = None,
         return_store: ReturnRecordStorePort | None = None,
+        bay_placement: CaseBayPlacementPort | None = None,
+        configuration: Callable[[], ReturnPlatformConfiguration | None] | None = None,
     ) -> None:
         self._repository = repository
         self._support = support_service
         self._drafter = drafter
         self._graph_sync = graph_sync
         self._return_store = return_store
+        self._bay_placement = bay_placement
+        # A callable, not a value: Track E's activation loop replaces the
+        # process's configuration in place, and an activity that captured the
+        # release it started with would go on using a holiday list a release
+        # has since corrected.
+        self._configuration = configuration
 
     @activity.defn(name="record_case_status")
     async def record_case_status(self, request: RecordCaseStatusInput) -> None:
@@ -135,13 +171,22 @@ class ReturnCaseActivities:
             )
 
     @activity.defn(name="request_bay_assignment")
-    async def request_bay_assignment(self, request: RequestBayAssignmentInput) -> None:
-        """Ask for a bay. Best-effort by policy, so this records and returns.
+    async def request_bay_assignment(
+        self, request: RequestBayAssignmentInput
+    ) -> BayResultNotice:
+        """Recommend a bay for this case, and answer with the whole result.
+
+        This was the BAY-01 defect in one method: it appended a single
+        `bay_assignment_requested` fact and returned nothing. It queried no
+        graph, consulted no bay, computed no confidence and resolved no
+        location -- and the workflow then waited the full bay window for a
+        signal nothing sent. "Bay is best-effort" was true; there was simply
+        nothing to be best-effort about.
 
         Deliberately does not raise on "no bay available": that is a state, not
-        a failure, and the workflow's own timeout covers a request that never
-        gets answered. It raises only when the *request* could not be made,
-        which is what the workflow's `ActivityError` branch is for.
+        a failure, and it comes back as a notice whose `reason` says which
+        state. It raises only when the *request* could not be made, which is
+        what the workflow's `ActivityError` branch is for.
         """
         await self._repository.append_case_fact(
             fact_id=f"bay-requested-{request.case_id}",
@@ -153,6 +198,146 @@ class ReturnCaseActivities:
             acquisition_method=FactAcquisition.DERIVED,
             source_path="RETURN_CASE_WORKFLOW",
         )
+        if self._bay_placement is None:
+            # Named, not silent. A worker registered without placement gives
+            # every case the same empty bay, and a reason an operator can grep
+            # for is the difference between a misconfiguration and a mystery.
+            return BayResultNotice(
+                warehouse_reference=None,
+                bay_reference=None,
+                reason="BAY_PLACEMENT_NOT_CONFIGURED",
+            )
+        recommendation = await self._bay_placement.recommend(request.case_id)
+        notice = BayResultNotice(
+            warehouse_reference=recommendation.warehouse_reference,
+            bay_reference=recommendation.bay_reference,
+            reason=recommendation.reason,
+            return_location=recommendation.return_location,
+            confidence_millionths=recommendation.confidence_millionths,
+            explanation=recommendation.explanation,
+            evidence_reference=recommendation.evidence_reference,
+            graph_generation_id=recommendation.graph_generation_id,
+            capacity_evidence=recommendation.capacity_evidence,
+        )
+        await self._record_bay_facts(request.case_id, notice)
+        return notice
+
+    async def _record_bay_facts(self, case_id: str, notice: BayResultNotice) -> None:
+        """The recommendation, on the case, where the associate's next turn reads it.
+
+        Facts rather than a case column for the reason every other placement
+        output is a fact: the agent's turn context is built from the fact
+        projection, so writing them here is what lets Order Discovery tell the
+        associate where the goods are going without a second query.
+
+        `fact_id` is derived from the case and the fact name, so a bay result
+        that arrives twice -- a retry, a replay, a late signal followed by a
+        recommendation -- rewrites one fact instead of appending a second
+        opinion. Best-effort like everything else on this path: a fact that
+        could not be written never invalidates the recommendation itself.
+        """
+        values: tuple[tuple[str, Any], ...] = (
+            ("bay_warehouse_reference", notice.warehouse_reference),
+            ("bay_reference", notice.bay_reference),
+            ("bay_return_location", notice.return_location),
+            ("bay_confidence_millionths", notice.confidence_millionths),
+            ("bay_reason", notice.reason),
+            ("bay_evidence_reference", notice.evidence_reference),
+            ("bay_capacity_evidence", notice.capacity_evidence),
+        )
+        for name, value in values:
+            if value is None:
+                continue
+            try:
+                await self._repository.append_case_fact(
+                    fact_id=f"{name}-{case_id}",
+                    case_id=case_id,
+                    fact_name=name,
+                    value=value,
+                    agent_id="bay-assignment-agent",
+                    channel=FactChannel.SYSTEM,
+                    acquisition_method=FactAcquisition.DERIVED,
+                    source_path="RETURN_CASE_WORKFLOW",
+                )
+            except Exception:  # noqa: BLE001 - advisory, like the bay itself
+                logger.warning(
+                    "bay_fact_not_recorded",
+                    extra={"case_id": case_id, "fact_name": name},
+                    exc_info=True,
+                )
+
+    @activity.defn(name="resolve_business_deadline")
+    async def resolve_business_deadline(
+        self, request: ResolveBusinessDeadlineInput
+    ) -> ResolvedBusinessDeadline:
+        """Business-time arithmetic, on the side of the boundary that may do IO.
+
+        The workflow may not resolve a timezone or read a holiday list -- one
+        touches the tz database and the other is configuration, and both are
+        determinism hazards in a replayed body. So the whole calculation lives
+        here and the workflow receives one absolute instant, which its history
+        records.
+
+        The calendar is looked up per call rather than captured, matching how
+        every other live-configuration read in this process works: a corrected
+        holiday list reaches a case that is already waiting. Durations stay
+        pinned on the workflow input, because moving one under a live return
+        would make an operator's countdown jump; correcting which days the
+        warehouse is shut is fixing the answer to a question already asked.
+
+        No calendar for the id is not an error. It falls back to wall clock --
+        exactly what the platform did before SLA-01 -- and says so, so a release
+        that forgot to declare its calendar is visible rather than silently
+        chasing Support at midnight.
+        """
+        start = datetime.fromisoformat(request.from_iso)
+        calendar = self._business_calendar(request.business_calendar_id, request.timezone)
+        if calendar is None:
+            logger.warning(
+                "business_calendar_not_configured",
+                extra={"business_calendar_id": request.business_calendar_id},
+            )
+            return ResolvedBusinessDeadline(
+                instant_iso=(start + timedelta(seconds=request.working_seconds)).isoformat(),
+                calendar_applied=False,
+            )
+        return ResolvedBusinessDeadline(
+            instant_iso=advance_business_time(
+                calendar, start, request.working_seconds
+            ).isoformat(),
+            calendar_applied=True,
+        )
+
+    def _business_calendar(self, calendar_id: str, fallback_timezone: str) -> BusinessCalendar | None:
+        """The declared calendar for this id, as the arithmetic wants it.
+
+        `None` when nothing declares it. Deliberately no default Mon-Fri: a
+        calendar the platform invented would be wrong for most deployments and
+        wrong invisibly, which is worse than the wall-clock behaviour this
+        replaces.
+        """
+        configuration = self._configuration() if self._configuration is not None else None
+        if configuration is None:
+            return None
+        for declared in configuration.business_calendars:
+            if declared.calendar_id != calendar_id:
+                continue
+            return BusinessCalendar(
+                calendar_id=declared.calendar_id,
+                # The calendar's own zone wins; the case's timing block carries
+                # one only as a fallback for a calendar that declares none.
+                timezone=declared.timezone or fallback_timezone,
+                working_periods=tuple(
+                    WorkingPeriod(
+                        weekday=period.weekday,
+                        start_minute=period.start_minute,
+                        end_minute=period.end_minute,
+                    )
+                    for period in declared.working_periods
+                ),
+                holidays=frozenset(declared.holidays),
+            )
+        return None
 
     @activity.defn(name="draft_support_request")
     async def draft_support_request(self, request: DraftSupportRequestInput) -> str:

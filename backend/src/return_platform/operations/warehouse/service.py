@@ -33,6 +33,8 @@ from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
 from return_platform.operations.warehouse.observations import (
     BayEvidence,
+    CapacityEvidence,
+    LiveBayCapacityPort,
     WarehouseBayObservationPort,
     WarehouseObservation,
 )
@@ -130,6 +132,137 @@ def _candidate_of(row: dict[str, Any], return_method: str) -> dict[str, Any]:
         "supportsOversized": _flag(row.get("oversized_allowed")),
         "supportedReturnMethods": [return_method],
     }
+
+
+async def _apply_live_capacity(
+    candidates: list[dict[str, Any]],
+    live_capacity: LiveBayCapacityPort | None,
+) -> CapacityEvidence:
+    """Replace each bay's declared maximum with what is actually free (BAY-02).
+
+    The graph holds `max_handling_unit_count`; it cannot hold the reservation
+    aggregate, so ranking on the graph figure alone offers every concurrent
+    return the same tightest-fit bay and lets the transaction refuse all but
+    one of them. That is the reservation churn BAY-02 names.
+
+    Best-effort like the rest of placement: a live read that fails leaves the
+    declared figures in place and reports `DECLARED`, so a SQL outage degrades
+    the recommendation's odds rather than removing bay placement entirely. The
+    caller carries that verdict onto the result, because an operator watching
+    reservations get refused has to be able to tell which reading produced
+    them.
+    """
+    if live_capacity is None or not candidates:
+        return CapacityEvidence.DECLARED
+    try:
+        reserved = await live_capacity.reserved_capacity_by_bay(
+            [str(item["bayId"]) for item in candidates]
+        )
+    except asyncio.CancelledError:
+        raise
+    except Exception as error:  # noqa: BLE001 - best_effort by declared policy
+        logger.warning(
+            "live_bay_capacity_unavailable",
+            extra={"error_code": type(error).__name__},
+            exc_info=True,
+        )
+        return CapacityEvidence.DECLARED
+    for item in candidates:
+        taken = int(reserved.get(str(item["bayId"]), 0))
+        item["capacityAvailable"] = max(0, int(item["capacityAvailable"]) - taken)
+    return CapacityEvidence.LIVE
+
+
+async def observe_eligible_bays(
+    *,
+    observations: WarehouseBayObservationPort | None,
+    sql: SQLBusinessStateRepository | None,
+    warehouse_id: str | None,
+    return_method: str,
+    product_type: str,
+    live_capacity: LiveBayCapacityPort | None = None,
+) -> tuple[WarehouseObservation | None, list[dict[str, Any]], CapacityEvidence]:
+    """Bay configuration for one warehouse, from the graph where there is one.
+
+    Lifted out of `WarehousePlacementService._candidates` unchanged when the
+    case flow needed the same reading (BAY-01). The session path and the case
+    path differ only in how they *arrive* at a warehouse reference; what
+    counts as an eligible bay for a return method and a product type is one
+    answer, and two copies of it would drift.
+
+    With no observation port configured this is the pre-W2.7 SQL read, so a
+    deployment that has not yet built the targeted-graph stack keeps working.
+    With one, the graph is the only source consulted: an `ABSENT` or
+    `UNAVAILABLE` reading yields no candidates and the agent reports no
+    eligible bay, which is the honest answer and the one the `best_effort`
+    policy is written for.
+    """
+    if observations is None:
+        if sql is None:
+            # Neither source. Not "no bay" -- nothing was consulted, and a
+            # caller must not read this as an empty warehouse.
+            return (
+                WarehouseObservation(
+                    warehouse_reference=warehouse_id,
+                    evidence=BayEvidence.UNAVAILABLE,
+                    unavailable_reason="NO_PLACEMENT_SOURCE",
+                ),
+                [],
+                CapacityEvidence.DECLARED,
+            )
+        # The pre-W2.7 read already subtracts unexpired reservations in the
+        # same statement, so its capacity is live by construction.
+        return (
+            None,
+            await sql.list_bay_candidates(
+                warehouse_id=warehouse_id,
+                return_method=return_method,
+                product_type=product_type,
+            ),
+            CapacityEvidence.LIVE,
+        )
+    try:
+        observation = await observations.observe(warehouse_id)
+    except asyncio.CancelledError:
+        raise
+    except Exception as error:  # noqa: BLE001 - best_effort by declared policy
+        # The port raises only when the graph cannot be read at all, and this
+        # is where that becomes a *state* rather than a 500. Bay placement is
+        # `best_effort`: the case must never park over it, and an operator
+        # reading `WAREHOUSE_UNAVAILABLE:CONNECTIONREFUSEDERROR` on the
+        # recommendation knows both that no bay was offered and why. Letting
+        # it propagate would take the endpoint down over a stage the policy
+        # says may be skipped.
+        logger.warning(
+            "warehouse_bay_observation_failed",
+            extra={"warehouse_id": warehouse_id, "error_code": type(error).__name__},
+            exc_info=True,
+        )
+        return (
+            WarehouseObservation(
+                warehouse_reference=warehouse_id,
+                evidence=BayEvidence.UNAVAILABLE,
+                unavailable_reason=type(error).__name__.upper(),
+            ),
+            [],
+            CapacityEvidence.DECLARED,
+        )
+    if observation.evidence is not BayEvidence.OBSERVED:
+        return observation, [], CapacityEvidence.DECLARED
+    eligible = [
+        _candidate_of(row, return_method)
+        for row in observation.candidates
+        if _permits(_string_list(row.get("supported_shipping_paths")), return_method)
+        and _supports_product(_string_list(row.get("supported_product_types")), product_type)
+    ]
+    # The same order the SQL query returned: priority ascending, then bay id.
+    # The agent ranks on capability and capacity, and a stable order is what
+    # makes two identical requests produce the same recommendation.
+    ordered = sorted(eligible, key=lambda item: (item["priority"], item["bayId"]))
+    # After eligibility and before ranking: the agent must weigh what is free,
+    # not what the bay was built to hold.
+    capacity_evidence = await _apply_live_capacity(ordered, live_capacity)
+    return observation, ordered, capacity_evidence
 
 
 class WarehousePlacementService:
@@ -241,58 +374,20 @@ class WarehousePlacementService:
         return_method: str,
         product_type: str,
     ) -> tuple[WarehouseObservation | None, list[dict[str, Any]]]:
-        """Bay configuration for one warehouse, from the graph where there is one.
-
-        With no observation port configured this is the pre-W2.7 SQL read, so a
-        deployment that has not yet built the targeted-graph stack keeps working.
-        With one, the graph is the only source consulted: an `ABSENT` or
-        `UNAVAILABLE` reading yields no candidates and the agent reports no
-        eligible bay, which is the honest answer and the one the `best_effort`
-        policy is written for.
-        """
-        if self._observations is None:
-            return None, await self._sql.list_bay_candidates(
-                warehouse_id=warehouse_id,
-                return_method=return_method,
-                product_type=product_type,
-            )
-        try:
-            observation = await self._observations.observe(warehouse_id)
-        except asyncio.CancelledError:
-            raise
-        except Exception as error:  # noqa: BLE001 - best_effort by declared policy
-            # The port raises only when the graph cannot be read at all, and this
-            # is where that becomes a *state* rather than a 500. Bay placement is
-            # `best_effort`: the case must never park over it, and an operator
-            # reading `WAREHOUSE_UNAVAILABLE:CONNECTIONREFUSEDERROR` on the
-            # recommendation knows both that no bay was offered and why. Letting
-            # it propagate would take the endpoint down over a stage the policy
-            # says may be skipped.
-            logger.warning(
-                "warehouse_bay_observation_failed",
-                extra={"warehouse_id": warehouse_id, "error_code": type(error).__name__},
-                exc_info=True,
-            )
-            return (
-                WarehouseObservation(
-                    warehouse_reference=warehouse_id,
-                    evidence=BayEvidence.UNAVAILABLE,
-                    unavailable_reason=type(error).__name__.upper(),
-                ),
-                [],
-            )
-        if observation.evidence is not BayEvidence.OBSERVED:
-            return observation, []
-        eligible = [
-            _candidate_of(row, return_method)
-            for row in observation.candidates
-            if _permits(_string_list(row.get("supported_shipping_paths")), return_method)
-            and _supports_product(_string_list(row.get("supported_product_types")), product_type)
-        ]
-        # The same order the SQL query returned: priority ascending, then bay id.
-        # The agent ranks on capability and capacity, and a stable order is what
-        # makes two identical requests produce the same recommendation.
-        return observation, sorted(eligible, key=lambda item: (item["priority"], item["bayId"]))
+        """This session's warehouse, read through the shared bay pipeline."""
+        observation, candidates, _ = await observe_eligible_bays(
+            observations=self._observations,
+            sql=self._sql,
+            warehouse_id=warehouse_id,
+            return_method=return_method,
+            product_type=product_type,
+            # The same repository that will take the reservation, so the
+            # ranking is filtered by the figure the reservation is tested
+            # against. Only used on the graph path -- `list_bay_candidates`
+            # subtracts reservations in its own statement.
+            live_capacity=self._sql,
+        )
+        return observation, candidates
 
     async def assign(
         self,

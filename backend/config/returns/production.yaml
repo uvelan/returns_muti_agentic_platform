@@ -584,6 +584,34 @@ return_case:
   business_calendar_id: default
   timezone: UTC
 
+# When the support desk is open. Declared, never assumed: there is no Mon-Fri
+# anywhere in the code that reads this, so a deployment whose desk works
+# Saturdays adds a Saturday period and gets one, and a 24/7 operation declares
+# every day 0..1440 and gets wall-clock behaviour back exactly.
+#
+# `weekday` is Monday-0. `end_minute` is exclusive, so 1020 is 17:00 and 1440
+# is midnight at the end of the day.
+business_calendars:
+  - calendar_id: default
+    # The desk's own zone. `return_case.timezone` is only a fallback for a
+    # calendar that declares none -- a holiday has to fall on the same day for
+    # every reader whatever zone the worker computing it runs in.
+    timezone: America/New_York
+    working_periods:
+      - { weekday: 0, start_minute: 540, end_minute: 1020 }
+      - { weekday: 1, start_minute: 540, end_minute: 1020 }
+      - { weekday: 2, start_minute: 540, end_minute: 1020 }
+      - { weekday: 3, start_minute: 540, end_minute: 1020 }
+      - { weekday: 4, start_minute: 540, end_minute: 1020 }
+    # Whole non-working days in the calendar's own zone. Extend per year; an
+    # empty list is legitimate and means the weekly pattern is the whole story.
+    holidays:
+      - 2026-01-01
+      - 2026-07-03
+      - 2026-11-26
+      - 2026-11-27
+      - 2026-12-25
+
 
 integrations:
   omc_return_create:

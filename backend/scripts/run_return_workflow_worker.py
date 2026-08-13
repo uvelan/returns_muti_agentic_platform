@@ -31,6 +31,12 @@ from return_platform.configuration.runtime_activation import (
 from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
 from return_platform.configuration.runtime_loader import resolve_process_configuration
 from return_platform.data_platform.graph.sync_service import MongoTargetedSyncRunLedger
+from return_platform.dynamic_knowledge.integration.bay_observations import (
+    GraphWarehouseBayObservations,
+)
+from return_platform.dynamic_knowledge.integration.order_placement_observations import (
+    GraphOrderPlacementObservations,
+)
 from return_platform.dynamic_knowledge.integration.return_record_sync import GraphReturnRecordSync
 from return_platform.dynamic_knowledge.integration.targeted_sync import (
     build_targeted_graph_access,
@@ -38,6 +44,7 @@ from return_platform.dynamic_knowledge.integration.targeted_sync import (
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_support.service import ReturnSupportService
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
+from return_platform.operations.warehouse.case_placement import CaseBayPlacement
 from return_platform.workflows.persistence import ReturnSessionRepository
 from return_platform.workflows.return_case_activities import ReturnCaseActivities
 from return_platform.workflows.return_case_launcher import TemporalCaseWorkflowLauncher
@@ -106,6 +113,11 @@ async def _run() -> None:
             # mechanism.
             targeted_sync_runs=MongoTargetedSyncRunLedger(mongo, settings.mongo_database),
         )
+        # One repository for both consumers below. RMA-01 needs it as the
+        # authoritative return store; BAY-02 needs it for the live reservation
+        # aggregate. It resolves the process-wide bounded pool per operation, so
+        # a single instance opens no connection until something actually writes.
+        sql_business_state = SQLBusinessStateRepository(settings)
         case_activities = ReturnCaseActivities(
             repository=operational_repository,
             support_service=ReturnSupportService(
@@ -115,16 +127,35 @@ async def _run() -> None:
                 operational_repository=operational_repository,
             ),
             graph_sync=GraphReturnRecordSync.from_access(graph),
-            # RMA-01. The authoritative SQL return store. Constructed here rather
-            # than inside the activity because this is the process that owns
-            # `ReturnCaseWorkflow`, and because the repository resolves the
-            # process-wide bounded pool per operation -- so building it now opens
-            # no connection until the first RMA is actually persisted.
-            #
-            # Without this the activity raises rather than silently writing only
-            # to MongoDB, which is the same fail-loud stance `synchronize_return_records`
-            # takes about its graph port.
-            return_store=SQLBusinessStateRepository(settings),
+            # RMA-01. The authoritative SQL return store. Wired here because this
+            # is the process that owns `ReturnCaseWorkflow`. Without it the
+            # activity raises rather than silently writing only to MongoDB --
+            # the same fail-loud stance `synchronize_return_records` takes about
+            # its graph port.
+            return_store=sql_business_state,
+            # BAY-01. `WarehousePlacementService` was graph-oriented, real and
+            # keyed by session, so the case flow -- which has no session --
+            # never called it and `request_bay_assignment` acknowledged a
+            # request nothing served. Same observation port, same ranking
+            # agent, re-keyed onto the case.
+            bay_placement=CaseBayPlacement(
+                repository=operational_repository,
+                configuration=runtime.return_configuration.configuration,
+                observations=GraphWarehouseBayObservations.from_access(graph),
+                order_observations=GraphOrderPlacementObservations.from_access(graph),
+                # BAY-02: the live reservation aggregate, from the same table
+                # the transactional reservation locks. Bay configuration still
+                # comes from the graph -- this is the one figure a graph node
+                # cannot hold, because it moves with the clock.
+                live_capacity=sql_business_state,
+            ),
+            # SLA-01: the business calendar the support wait and the reminder
+            # cadence are counted against. Read per call through the activated
+            # state rather than captured, so a corrected holiday list reaches a
+            # case already waiting without a restart. `activation` is bound
+            # below and this closure is only ever called from a running
+            # activity, which is well after `worker.run()` starts.
+            configuration=lambda: activation.state.return_configuration.configuration,
         )
         worker = create_return_workflow_worker(
             temporal, repository, case_activities=case_activities

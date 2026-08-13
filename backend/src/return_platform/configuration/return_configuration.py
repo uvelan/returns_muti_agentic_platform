@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import date
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -285,6 +286,48 @@ class BayConfiguration(StrictConfigModel):
     eligible_statuses: tuple[NonBlank, ...] = Field(min_length=1)
 
 
+class BusinessWorkingPeriodConfiguration(StrictConfigModel):
+    """One span of working time on one weekday, in the calendar's own zone.
+
+    `weekday` is Monday-0, matching `date.weekday()`. `end_minute` is exclusive
+    and may be 1440 -- midnight at the end of the day -- so two consecutive
+    whole days join into one continuous span rather than leaving a zero-length
+    seam between them.
+    """
+
+    weekday: int = Field(ge=0, le=6)
+    start_minute: int = Field(ge=0, le=1439)
+    end_minute: int = Field(ge=1, le=1440)
+
+    @model_validator(mode="after")
+    def validate_span(self) -> BusinessWorkingPeriodConfiguration:
+        if self.start_minute >= self.end_minute:
+            raise ValueError("a working period must start before it ends")
+        return self
+
+
+class BusinessCalendarConfiguration(StrictConfigModel):
+    """When a calendar is open, declared rather than assumed (C8).
+
+    There is no Mon-Fri anywhere in the code that reads this. A deployment
+    whose warehouse works Saturdays declares a Saturday period and gets one; a
+    24/7 operation declares every weekday whole and gets wall-clock behaviour
+    back exactly. `holidays` are whole non-working days in this calendar's own
+    zone, so a holiday falls on the same day for every reader regardless of
+    where the worker computing it happens to run.
+
+    A calendar with no working periods at all is rejected here rather than at
+    use: a case whose deadline can never arrive is a case nobody is ever told
+    about, and the configuration release is the last place that can still be
+    refused cheaply.
+    """
+
+    calendar_id: NonBlank
+    timezone: NonBlank = "UTC"
+    working_periods: tuple[BusinessWorkingPeriodConfiguration, ...] = Field(min_length=1)
+    holidays: tuple[date, ...] = ()
+
+
 class ReturnCaseTimingConfiguration(StrictConfigModel):
     """How long the case waits, and how often it chases.
 
@@ -293,9 +336,24 @@ class ReturnCaseTimingConfiguration(StrictConfigModel):
     lifetime -- an in-flight return must not have its deadline moved underneath
     it -- so a change applies to new cases.
 
-    Support durations are business-calendar durations. Eight hours means eight
-    *working* hours, which over a weekend is a different wall-clock instant
-    entirely; `business_calendar_id` names the calendar that decides.
+    `support_response_wait_seconds` and `reminder_interval_seconds` are
+    **business-calendar durations**. Eight hours means eight *working* hours,
+    which over a weekend is a different wall-clock instant entirely;
+    `business_calendar_id` names the calendar in `business_calendars` that
+    decides, and `timezone` is the fallback zone used when that calendar does
+    not declare one.
+
+    Both were documented this way long before anything read them: the workflow
+    computed `workflow.now() + timedelta(seconds=...)`, so a return raised at
+    16:30 on a Friday chased Support at 18:30, 20:30 and 22:30 into an empty
+    queue and parked itself at 00:30 on Saturday. The arithmetic now runs in
+    `resolve_business_deadline` against the configured calendar. A calendar
+    that declares every day whole restores the old behaviour exactly, which is
+    what a 24/7 operation should configure.
+
+    `bay_wait_seconds` is deliberately NOT a business duration. It bounds dead
+    time on the critical path while an associate waits, and stretching it
+    across a weekend would leave a live conversation hanging.
     """
 
     # Bay is advisory and sits in front of every return, so this is dead time
@@ -583,6 +641,11 @@ class ReturnPlatformConfiguration(StrictConfigModel):
     return_case: ReturnCaseTimingConfiguration = Field(
         default_factory=ReturnCaseTimingConfiguration
     )
+    # Defaulted empty so an existing release without the block still loads. An
+    # empty set is not a silent Mon-Fri: `resolve_business_deadline` falls back
+    # to wall clock and says so on the case, which is the behaviour that was
+    # there before and is now visible rather than assumed.
+    business_calendars: tuple[BusinessCalendarConfiguration, ...] = ()
     integrations: IntegrationConfiguration
     extensions: ExtensionConfiguration
     runtime_integrations: RuntimeIntegrationsConfiguration = Field(
