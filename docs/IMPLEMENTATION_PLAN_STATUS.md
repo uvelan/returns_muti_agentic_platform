@@ -503,6 +503,13 @@ Not scheduled, and it came at the cost of Wave 2's tail. Recorded so the ledger 
   file generated on Linux. Harmless until someone commits it. Hash the normalized text, or write
   the evidence to `tmp_path`.
 
+  **Resolved.** The checksum moved to the normalized text in `4116915`, and the test no longer
+  writes at all: it now *asserts* the committed inventory matches what the registry would produce,
+  so registry drift fails the gate instead of being silently absorbed. `AIG1_EVIDENCE_WRITE=1`
+  regenerates it deliberately, mirroring `scripts/check_openapi_drift.py --write`. Checking rather
+  than relocating to `tmp_path` was the choice because the file is referenced review evidence whose
+  whole value is that something verifies it.
+
 ### The concurrency flake: not diagnosed, and not fixed
 
 `test_return_workflow_concurrency.py::test_a_second_completion_sees_the_first_ones_state` remains

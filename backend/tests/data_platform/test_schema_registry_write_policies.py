@@ -1,8 +1,31 @@
+"""AIG1 gate: the registry's write policies, and the committed evidence for them.
+
+`docs/evidence/.../aig1/asset_policy_inventory.json` is committed review evidence,
+so this test **checks** it rather than writing it. It used to write it on every
+run, unconditionally and after the assertions, which cost both of the things the
+artefact exists for:
+
+* the evidence was never verified -- the test asserted on the registry, then
+  overwrote the file with whatever the registry currently said and passed either
+  way, so it tracked drift silently instead of reporting it; and
+* every run of `tests/data_platform/` dirtied a tracked file, which makes
+  `git status` untrustworthy during unrelated work and invites the churn into
+  somebody else's commit.
+
+Set `AIG1_EVIDENCE_WRITE=1` to regenerate it deliberately. That is the same
+check-by-default shape, for the same reason, as `scripts/check_openapi_drift.py
+--write`, whose own docstring records why a gate must not repair what it detects.
+"""
+
 import hashlib
 import json
+import os
 from pathlib import Path
 
 from return_platform.data_platform.schema_registry import load_schema_registry
+
+#: Regenerate the committed inventory instead of asserting against it.
+_WRITE_EVIDENCE = os.environ.get("AIG1_EVIDENCE_WRITE") == "1"
 
 
 def test_schema_registry_write_policies() -> None:
@@ -90,12 +113,31 @@ def test_schema_registry_write_policies() -> None:
     }
 
     evidence_dir = project_root / "docs" / "evidence" / "ai_studio_operational_generation" / "aig1"
-    evidence_dir.mkdir(parents=True, exist_ok=True)
-
-    # `newline=""` so the LF that `json.dumps` emits is written as an LF. Plain
-    # `write_text` opens in text mode, which on Windows translates every one to
-    # CRLF -- the second, independent reason this committed artefact came back
-    # modified after a run that changed nothing.
     inventory_path = evidence_dir / "asset_policy_inventory.json"
-    with inventory_path.open("w", encoding="utf-8", newline="") as handle:
-        handle.write(json.dumps(inventory, indent=2))
+    rendered = json.dumps(inventory, indent=2)
+
+    if _WRITE_EVIDENCE:
+        evidence_dir.mkdir(parents=True, exist_ok=True)
+        # `newline=""` so the LF that `json.dumps` emits is written as an LF.
+        # Plain `write_text` opens in text mode, which on Windows translates
+        # every one to CRLF -- one of the two reasons this committed artefact
+        # came back modified after a run that changed nothing.
+        with inventory_path.open("w", encoding="utf-8", newline="") as handle:
+            handle.write(rendered)
+        return
+
+    refresh = (
+        "AIG1_EVIDENCE_WRITE=1 pytest tests/data_platform/test_schema_registry_write_policies.py"
+    )
+    assert inventory_path.is_file(), (
+        f"Committed AIG1 evidence is missing: {inventory_path}. Regenerate with `{refresh}`."
+    )
+
+    # The other reason for the phantom diffs was the checksum, which used to be
+    # taken over the registry's raw bytes; normalizing here too keeps a CRLF
+    # checkout from failing the gate over line endings nobody chose.
+    committed = inventory_path.read_text(encoding="utf-8").replace("\r\n", "\n")
+    assert committed == rendered, (
+        "Committed AIG1 evidence is stale -- the schema registry has changed since it was "
+        f"generated. Review the difference, then regenerate with `{refresh}`."
+    )
