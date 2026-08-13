@@ -29,12 +29,13 @@ to the search. They are ordinary passes now.
 
 from __future__ import annotations
 
-import difflib
 import logging
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from return_platform.dynamic_knowledge.fingerprint import sha256_digest
+from return_platform.dynamic_knowledge.knowledge.cypher_compiler import FULLTEXT_SCORE_FIELD
 from return_platform.dynamic_knowledge.knowledge.query_plan import (
     LogicalQueryPlan,
     QueryCondition,
@@ -86,14 +87,83 @@ _DATE_FIELD_ID = "order_date"
 MAX_CACHED_CANDIDATES = 25
 RESULT_PAGE_SIZE = 5
 
-# Neo4j has no built-in edit-distance function (that's an APOC extension, not
-# installed here), so a misspelled name can't be resolved with a single
-# server-side query. Instead, when the exact/partial CONTAINS search for a
-# customer name finds nothing, one bounded, unfiltered batch of customer rows
-# is fetched and scored client-side with difflib — never the whole table, and
-# only as a fallback after the cheap indexed search has already come back empty.
-FUZZY_CUSTOMER_PROBE_LIMIT = 100
-FUZZY_CUSTOMER_MATCH_THRESHOLD = 0.72
+# Misspelled customer names are resolved through the Neo4j full-text index
+# customer_name_search_v2 (created by migration 0013 and verified ONLINE at
+# bootstrap by apply_neo4j_migrations.py). A full-text query with a fuzzy term
+# searches the *complete* customer set server-side and returns matches ranked by
+# score, so the correct customer cannot fall outside a client-side window.
+#
+# This does not require APOC. An earlier implementation fetched an unfiltered
+# batch of rows and scored them with difflib on the assumption that Neo4j had no
+# server-side approximate match; that bounded the search to an arbitrary, unordered
+# subset and could silently miss the correct order at production scale. The index
+# name is configuration (progressive.customer_fulltext_index), not a constant, so
+# an operator can repoint it without a code change.
+#
+# Invariant: candidate limits may bound returned results. They must never bound the
+# searchable corpus.
+
+#: The entity and field the customer full-text index covers. The index itself is
+#: named by configuration; which field it indexes is a property of the schema
+#: (migration 0013 indexes `Customer.customer_name`), so it lives here.
+_CUSTOMER_ENTITY = "customer"
+_CUSTOMER_NAME_FIELD = "customer_name"
+
+#: Words a name extraction may carry through from the associate's sentence.
+#: Dropped before the query is built: "customer Smith" must search for Smith,
+#: not require every customer row to also contain the word "customer".
+#:
+#: `and`, `or` and `not` earn their place twice over. They are noise in a name,
+#: and they are Lucene's boolean keywords -- a name that tokenized to a bare
+#: `OR` would be assembled into a query whose structure the associate typed.
+_NAME_STOP_WORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "customer",
+        "find",
+        "for",
+        "is",
+        "name",
+        "named",
+        "not",
+        "or",
+        "order",
+        "return",
+        "the",
+        "this",
+        "to",
+        "who",
+        "with",
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class CustomerFulltextPolicy:
+    """How the indexed customer-name search is asked and how far down it reads.
+
+    Defaults mirror `ProgressiveDiscoveryConfiguration` so a process that never
+    resolves runtime configuration still behaves the way the configured one
+    does, rather than silently searching differently.
+
+    `candidate_limit` bounds how many *ranked* rows come back. It is not a scan
+    bound: the index has already ranked every customer by the time the limit
+    applies. `relative_score_floor` is the narrowing bound -- a row is kept when
+    its relevance is within that fraction of the best row's, so a clearly-best
+    match is not padded out with four unrelated names just because there was
+    room for them.
+    """
+
+    enabled: bool = True
+    index_name: str = "customer_name_search_v2"
+    max_edit_distance: int = 2
+    one_edit_min_token_length: int = 4
+    two_edit_min_token_length: int = 8
+    candidate_limit: int = MAX_CACHED_CANDIDATES
+    relative_score_floor: float = 0.55
+
 
 # Intent fields that identify *what* was searched for, as opposed to
 # metadata about the search itself (searchMode, confidence, wantsMoreResults).
@@ -463,13 +533,78 @@ def _location_signals(
     return tuple(signals)
 
 
-def build_customer_fuzzy_probe_plan() -> LogicalQueryPlan:
-    """Bounded, unfiltered read used only as a misspelling fallback.
+def _name_tokens(value: str) -> tuple[str, ...]:
+    """The alphanumeric words worth searching for, in order.
 
-    Callers should only issue this after a CONTAINS search for the same
-    customer name(s) has already come back empty — see
-    :func:`fuzzy_match_customers`.
+    Alphanumeric by construction, which is also the injection guard: every
+    Lucene metacharacter (``~ * ? : ^ " ( ) [ ] { } \\ + - && ||``) is dropped
+    before a query string is assembled, so an associate cannot type query syntax
+    into a name field and have it reach the index as syntax. Capped so a pasted
+    paragraph cannot turn into a hundred-clause query.
     """
+    return tuple(
+        token
+        for token in re.findall(r"[A-Za-z0-9]+", value)[:16]
+        if token.lower() not in _NAME_STOP_WORDS and len(token) >= 2
+    )[:8]
+
+
+def _edit_distance_for(token: str, policy: CustomerFulltextPolicy) -> int:
+    """How far a token may be wrong before it stops being the same word.
+
+    Scaled by length for the obvious reason: two edits on a four-letter token
+    reaches most four-letter tokens, and a fuzzy term that matches everything
+    ranks nothing.
+    """
+    if len(token) >= policy.two_edit_min_token_length:
+        return min(policy.max_edit_distance, 2)
+    if len(token) >= policy.one_edit_min_token_length:
+        return min(policy.max_edit_distance, 1)
+    return 0
+
+
+def build_customer_name_query(names: tuple[str, ...], policy: CustomerFulltextPolicy) -> str:
+    """The Lucene query for one or more searched customer names.
+
+    Each token becomes a prefix term OR'd with a fuzzy term: the prefix carries
+    the abbreviation an associate types ("Smi" for Smith), the fuzzy term
+    carries the misspelling ("Jhon" for John). Tokens within one name are
+    AND'ed -- every word the associate gave has to be accounted for, or a
+    surname alone would drag in every customer sharing it -- and separate names
+    are OR'ed, because they are alternatives rather than a compound.
+
+    Returns ``""`` when nothing searchable survives tokenization; callers treat
+    that as "no query to ask" rather than as a query matching everything.
+    """
+    alternatives: list[str] = []
+    for name in dict.fromkeys(names):
+        clauses: list[str] = []
+        for token in _name_tokens(name):
+            edits = _edit_distance_for(token, policy)
+            clauses.append(f"({token}* OR {token}~{edits})" if edits else f"{token}*")
+        if clauses:
+            alternatives.append(" AND ".join(clauses))
+    if not alternatives:
+        return ""
+    if len(alternatives) == 1:
+        return alternatives[0]
+    return " OR ".join(f"({alternative})" for alternative in alternatives)
+
+
+def build_customer_fulltext_plan(
+    names: tuple[str, ...], policy: CustomerFulltextPolicy
+) -> LogicalQueryPlan | None:
+    """A ranked, server-side approximate search over every indexed customer.
+
+    ``None`` when the policy disables it or no searchable token survives, so the
+    caller reports "no misspelling recovery available" rather than issuing a
+    query that would match the whole table.
+    """
+    if not policy.enabled:
+        return None
+    query = build_customer_name_query(names, policy)
+    if not query:
+        return None
     # `account_id`, not `customer_key`. The customer's natural key is
     # (account_id, customer_id); `customer_key` was a surrogate on the earlier
     # synthetic schema and does not exist, which made the guard reject this plan
@@ -477,69 +612,53 @@ def build_customer_fuzzy_probe_plan() -> LogicalQueryPlan:
     # `candidate_key` identifies a customer row by `customer_id`, so the pair is
     # what the caller needs to name the branch the match was found in.
     return LogicalQueryPlan(
-        operation=QueryOperation.SEARCH,
-        start_entity_id="customer",
-        fields=("account_id", "customer_id", "customer_name"),
-        limit=FUZZY_CUSTOMER_PROBE_LIMIT,
+        operation=QueryOperation.FULLTEXT_SEARCH,
+        start_entity_id=_CUSTOMER_ENTITY,
+        fields=("account_id", "customer_id", _CUSTOMER_NAME_FIELD),
+        fulltext_index=policy.index_name,
+        fulltext_field_id=_CUSTOMER_NAME_FIELD,
+        fulltext_query=query,
+        limit=max(1, min(policy.candidate_limit, MAX_CACHED_CANDIDATES)),
     )
 
 
-def _similarity(query: str, candidate: str) -> float:
-    """Whole-string similarity, or the best a window of the query's length gets.
-
-    A plain whole-string ratio punishes the case this fallback exists for.
-    Trade names carry suffixes an associate does not type -- "MELGON HEATING &
-    COOLING" against "melgan heatng" scores 0.667 and falls under the 0.72
-    threshold, even though the next best customer in the same 100-row probe
-    scores 0.370. The distinguishing part matched; the untyped tail diluted it.
-
-    So also slide a window of the query's length across the candidate and keep
-    the best. That recovers the suffix case (0.786 here) without loosening the
-    threshold, which is what keeps 0.370 out. Bounded work: the probe reads at
-    most `FUZZY_CUSTOMER_PROBE_LIMIT` rows and names are short.
-
-    Windows only, never the reverse. Scoring a short query against every
-    substring of a long name would match "smith" into "smithson plumbing" and
-    a dozen others; requiring the *query* to be covered keeps the comparison
-    anchored to what the associate actually typed.
-    """
-    whole = difflib.SequenceMatcher(None, query, candidate).ratio()
-    if len(candidate) <= len(query):
-        return whole
-    windows = (
-        difflib.SequenceMatcher(None, query, candidate[offset : offset + len(query)]).ratio()
-        for offset in range(len(candidate) - len(query) + 1)
-    )
-    return max(whole, max(windows, default=0.0))
-
-
-def fuzzy_match_customers(
-    names: tuple[str, ...],
+def narrow_fulltext_matches(
     rows: list[dict[str, Any]],
     *,
-    threshold: float = FUZZY_CUSTOMER_MATCH_THRESHOLD,
-    limit: int = RESULT_PAGE_SIZE,
-) -> list[dict[str, Any]]:
-    """Score a bounded batch of customer rows against searched name(s) by similarity.
+    policy: CustomerFulltextPolicy,
+) -> list[tuple[dict[str, Any], float]]:
+    """Keep the rows whose relevance is close to the best one's.
 
-    Returns the best-matching rows above ``threshold``, most similar first, capped
-    at ``limit``. Intended purely as a last resort for likely misspellings — an
-    exact or partial (CONTAINS) match should always be tried first.
+    The bound is a score, never a row count. A row-count bound over an ordered
+    result is harmless where a row-count bound over an *unordered* one is the
+    P0 defect this replaced, but it still answers the wrong question: five rows
+    is the right answer when five customers are plausible and the wrong one when
+    only one is. The floor is relative rather than absolute because a Lucene
+    score has no fixed range -- it depends on the query, the corpus and the term
+    frequencies in it, so "at least 2.5" means something different every turn
+    while "within 55% of the best" does not.
+
+    Returns ``(row, score)`` pairs, most relevant first, with the score column
+    removed from the row: it is search metadata, not a property of the customer,
+    and leaving it in the row would put it in the model's context and in the
+    evidence as though the graph had returned it.
     """
-    scored: list[tuple[float, dict[str, Any]]] = []
+    scored: list[tuple[dict[str, Any], float]] = []
     for row in rows:
-        candidate_name = row.get("customer_name")
-        if not isinstance(candidate_name, str) or not candidate_name:
+        raw_score = row.get(FULLTEXT_SCORE_FIELD)
+        if not isinstance(raw_score, (int, float)) or isinstance(raw_score, bool):
             continue
-        normalized_candidate = normalize_string(candidate_name)
-        best_ratio = max(
-            (_similarity(normalize_string(name), normalized_candidate) for name in names if name),
-            default=0.0,
+        score = float(raw_score)
+        if score <= 0.0:
+            continue
+        scored.append(
+            ({key: value for key, value in row.items() if key != FULLTEXT_SCORE_FIELD}, score)
         )
-        if best_ratio >= threshold:
-            scored.append((best_ratio, row))
-    scored.sort(key=lambda item: item[0], reverse=True)
-    return [row for _, row in scored[:limit]]
+    if not scored:
+        return []
+    scored.sort(key=lambda item: item[1], reverse=True)
+    floor = scored[0][1] * policy.relative_score_floor
+    return [(row, score) for row, score in scored if score >= floor]
 
 
 def _date_condition(intent: OrderSearchIntent) -> QueryCondition | None:

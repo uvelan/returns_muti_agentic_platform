@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 from uuid import uuid4
@@ -62,10 +62,11 @@ from return_platform.dynamic_knowledge.order_agent.errors import OrderAgentFailu
 from return_platform.dynamic_knowledge.order_agent.search_strategy import (
     MAX_CACHED_CANDIDATES,
     RESULT_PAGE_SIZE,
-    build_customer_fuzzy_probe_plan,
+    CustomerFulltextPolicy,
+    build_customer_fulltext_plan,
     build_progressive_plans,
     candidate_key,
-    fuzzy_match_customers,
+    narrow_fulltext_matches,
     rank_search_results,
     search_intent_signature,
 )
@@ -232,6 +233,12 @@ class GraphDependencies:
     # that cannot start the case's workflow must not create the case either,
     # because the case would be durable and unreachable.
     case_workflow_launcher: CaseWorkflowLauncher | None = None
+    # Which full-text index the misspelling fallback asks, and how far down its
+    # ranking it reads. Defaulted rather than required so every existing
+    # construction site keeps working; `runtime_factory` supplies the operator's
+    # configured values, which is what makes the index name repointable without
+    # a code change.
+    customer_fulltext: CustomerFulltextPolicy = field(default_factory=CustomerFulltextPolicy)
 
 
 async def _rehydrate_evidence(
@@ -788,10 +795,20 @@ async def _fuzzy_customer_fallback(
 ) -> dict[str, Any]:
     """Best-effort misspelling recovery when an exact/partial name search finds nothing.
 
+    One ranked read of the customer full-text index: every customer is searched
+    server-side and the best matches come back scored, so the correct one cannot
+    sit outside a window the way it could when this fetched an unordered batch
+    and compared strings on the client.
+
     Never blocks or fails the turn if this step itself errors -- the associate is
-    no worse off than the zero-result search that triggered it.
+    no worse off than the zero-result search that triggered it. It does say so in
+    the log, though: a full-text index that is missing or offline degrades every
+    misspelled name to "not found", and that is an infrastructure fault to fix
+    rather than a search that legitimately found nothing.
     """
-    plan = build_customer_fuzzy_probe_plan()
+    plan = build_customer_fulltext_plan(intent.customerNames, deps.customer_fulltext)
+    if plan is None:
+        return ranked
     try:
         deps.schema_guard.validate(guard_context, plan)
         deps.query_safety_guard.validate(plan)
@@ -804,17 +821,19 @@ async def _fuzzy_customer_fallback(
             parameters=compiled.parameters,
         )
     except Exception:
-        logger.debug(
+        logger.warning(
             "order_search_fuzzy_fallback_unavailable",
+            exc_info=True,
             extra={
                 "conversation_id": state["conversation_id"],
                 "client_turn_id": state["client_turn_id"],
+                "fulltext_index": plan.fulltext_index,
             },
         )
         return ranked
 
     rows = raw_result.get("rows", []) if isinstance(raw_result, dict) else []
-    matches = fuzzy_match_customers(intent.customerNames, rows)
+    matches = narrow_fulltext_matches(rows, policy=deps.customer_fulltext)
     if not matches:
         return ranked
 
@@ -824,16 +843,24 @@ async def _fuzzy_customer_fallback(
             "conversation_id": state["conversation_id"],
             "client_turn_id": state["client_turn_id"],
             "match_count": len(matches),
+            "returned_rows": len(rows),
         },
     )
+    # `customer_name_fuzzy` and a score below every confirmed signal, on purpose:
+    # a name the associate half-remembered is a candidate to show, never a fact
+    # to act on. The best match keeps the 0.6 the constant-scored version gave
+    # every hit; the rest are scaled by how far behind it they ranked, so the
+    # order the index computed survives into the candidate set instead of being
+    # flattened into a tie.
+    best_score = matches[0][1]
     candidates = [
         {
             "candidate_id": candidate_key(row),
             "data": row,
-            "score": 0.6,
+            "score": round(0.6 * (score / best_score), 4),
             "matches": ["customer_name_fuzzy"],
         }
-        for row in matches
+        for row, score in matches
     ]
     return {
         "intent": ranked["intent"],

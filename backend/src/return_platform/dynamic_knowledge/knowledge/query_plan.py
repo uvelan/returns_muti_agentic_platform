@@ -25,6 +25,13 @@ class QueryOperation(StrEnum):
     EXISTS = "EXISTS"
     MISSING_VALUE_COUNT = "MISSING_VALUE_COUNT"
     SEMANTIC_SEARCH = "SEMANTIC_SEARCH"
+    #: Server-side approximate match over a full-text index. Distinct from
+    #: SEMANTIC_SEARCH, which is a vector-index operation this platform does not
+    #: have: a full-text index is an ordinary Neo4j index (see migration
+    #: `0013_order_discovery_fulltext_v2.cypher`), needs no APOC, and ranks the
+    #: *whole* labelled set by relevance rather than returning an arbitrary
+    #: window of it.
+    FULLTEXT_SEARCH = "FULLTEXT_SEARCH"
 
 
 class SortDirection(StrEnum):
@@ -72,6 +79,14 @@ class LogicalQueryPlan(BaseModel):
     sort: tuple[QuerySort, ...] = ()
     candidate_set_id: str | None = None
     semantic_query: str | None = None
+    #: FULLTEXT_SEARCH only. The index is named rather than derived because the
+    #: name is operator-owned runtime configuration
+    #: (`discovery.progressive.customer_fulltext_index`), not a property of the
+    #: schema; `fulltext_field_id` is the field it covers, carried so the schema
+    #: guard can check that this principal may search that field at all.
+    fulltext_index: str | None = None
+    fulltext_field_id: str | None = None
+    fulltext_query: str | None = None
     limit: int = Field(default=20, ge=1, le=1000)
 
     @model_validator(mode="after")
@@ -96,4 +111,20 @@ class LogicalQueryPlan(BaseModel):
             and not (self.semantic_query or "").strip()
         ):
             raise ValueError("SEMANTIC_SEARCH requires semantic_query")
+        fulltext_parts = (self.fulltext_index, self.fulltext_field_id, self.fulltext_query)
+        if self.operation is QueryOperation.FULLTEXT_SEARCH:
+            if any(not (part or "").strip() for part in fulltext_parts):
+                raise ValueError(
+                    "FULLTEXT_SEARCH requires fulltext_index, fulltext_field_id and fulltext_query"
+                )
+            if self.traversal:
+                raise ValueError("FULLTEXT_SEARCH starts at the indexed entity and cannot traverse")
+            if self.filters:
+                # The index is the predicate. A WHERE alongside it would read as
+                # a narrowing of the ranked set while actually being applied
+                # after the index's own limit -- which is how a bounded window
+                # reappears under a different name.
+                raise ValueError("FULLTEXT_SEARCH takes its predicate from the index, not filters")
+        elif any(part is not None for part in fulltext_parts):
+            raise ValueError("full-text fields are only valid on a FULLTEXT_SEARCH plan")
         return self

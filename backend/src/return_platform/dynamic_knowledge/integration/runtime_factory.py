@@ -23,7 +23,11 @@ from temporalio.client import Client
 from return_platform.ai.gateway.telemetry import RepositoryAIAttemptRecorder
 from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
 from return_platform.ai_gateway.routing import AIRoutePool
-from return_platform.configuration.return_configuration import ReturnCaseTimingConfiguration
+from return_platform.configuration.return_configuration import (
+    ProgressiveDiscoveryConfiguration,
+    ReturnCaseTimingConfiguration,
+    load_return_configuration,
+)
 from return_platform.configuration.settings import Settings
 from return_platform.dynamic_knowledge.integration.case_store import RepositoryCaseStore
 from return_platform.dynamic_knowledge.integration.model_gateway import (
@@ -49,6 +53,7 @@ from return_platform.dynamic_knowledge.order_agent.conversation_repository impor
     AtomicConversationRepository,
 )
 from return_platform.dynamic_knowledge.order_agent.coordinator import DynamicOrderAgentCoordinator
+from return_platform.dynamic_knowledge.order_agent.search_strategy import CustomerFulltextPolicy
 from return_platform.operations.repository import OperationalRepository
 from return_platform.platform.reasoning.evidence_store import QueryEvidenceStore
 from return_platform.platform.secrets.envelope import EnvelopeEncryptor
@@ -60,6 +65,27 @@ def dynamic_order_agent_enabled(settings: Settings) -> bool:
     """Return whether the dynamic Order Discovery Agent runtime is enabled."""
 
     return settings.dynamic_order_agent_enabled
+
+
+def customer_fulltext_policy(
+    progressive: ProgressiveDiscoveryConfiguration,
+) -> CustomerFulltextPolicy:
+    """Translate the operator's progressive-discovery policy into search terms.
+
+    The one field that must come from here rather than from a constant is the
+    index name: repointing the agent at a rebuilt index has to be a
+    configuration change, not a release. The edit-distance thresholds come along
+    because a misspelling policy that differed between the two discovery paths
+    would mean two different definitions of "close enough" in one product.
+    """
+    return CustomerFulltextPolicy(
+        enabled=progressive.enabled,
+        index_name=progressive.customer_fulltext_index,
+        max_edit_distance=progressive.max_edit_distance,
+        one_edit_min_token_length=progressive.one_edit_min_token_length,
+        two_edit_min_token_length=progressive.two_edit_min_token_length,
+        candidate_limit=progressive.candidate_limit,
+    )
 
 
 async def build_dynamic_order_agent_runtime(
@@ -75,6 +101,7 @@ async def build_dynamic_order_agent_runtime(
     targeted_sync_runs: TargetedSyncRunLedger | None = None,
     temporal_client: Client,
     return_case_timings: ReturnCaseTimingConfiguration,
+    progressive_discovery: ProgressiveDiscoveryConfiguration | None = None,
 ) -> DynamicOrderAgentCoordinator:
     # The published release if the analyzer has activated one, else the file.
     # This is the line that makes approving a schema in the console change what
@@ -99,6 +126,17 @@ async def build_dynamic_order_agent_runtime(
     # a second store for the second dispatch path would make every cost query
     # depend on remembering there are two (W4.12).
     operational_repository = OperationalRepository(platform_mongo, settings)
+
+    # A caller that already resolved the activated release passes it in; a caller
+    # that did not gets the same file the rest of the returns configuration comes
+    # from. Neither path leaves the index name as a code constant, which is the
+    # property that matters: `customer_name_search_v2` is created by a migration
+    # and can be rebuilt under a new name, and the agent has to follow.
+    progressive = progressive_discovery or (
+        load_return_configuration(
+            settings.return_configuration_path
+        ).configuration.discovery.progressive
+    )
 
     coordinator = DynamicOrderAgentCoordinator(
         schema=graph.schema,
@@ -146,5 +184,6 @@ async def build_dynamic_order_agent_runtime(
             task_queue=settings.return_workflow_task_queue,
         ),
         active_snapshot_store=graph.active_snapshot_store,
+        customer_fulltext=customer_fulltext_policy(progressive),
     )
     return coordinator
