@@ -92,13 +92,24 @@ def test_approximate_date_becomes_same_day_between() -> None:
     assert plans[0].filters[0].value == {"from": "2026-07-25", "to": "2026-07-25"}
 
 
-def test_unsupported_signals_do_not_silently_disappear(caplog: pytest.LogCaptureFixture) -> None:
-    """Address/colour have no backing schema field yet - they must be surfaced,
-    not just dropped, so a missing result is diagnosable."""
+def test_an_unsupported_signal_is_logged_and_does_not_take_the_rest_of_the_search_with_it(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Colour is the only signal with no backing field, and it must cost nothing.
+
+    Two failures are in scope. Dropping the colour without a word makes an empty
+    result indistinguishable from "no such order", so the WARNING is what makes
+    it diagnosable. And an intent that mixes an unsupported signal with a
+    supported one must still search on the supported one -- an address given in
+    the same sentence as a colour is the ordinary case, and answering it with
+    nothing because of the colour would be the worse bug of the two.
+    """
     intent = OrderSearchIntent(streetAddresses=("18 Main Street",), colors=("blue",))
     with caplog.at_level("WARNING"):
         plans = build_progressive_plans(intent)
-    assert plans == []
+
+    assert ("contact_point", "address_line1", "CONTAINS") in _fields_asked(plans)
+    assert unsupported_signals(intent) == ("colors",)
     assert any("unsupported" in record.message for record in caplog.records)
 
 

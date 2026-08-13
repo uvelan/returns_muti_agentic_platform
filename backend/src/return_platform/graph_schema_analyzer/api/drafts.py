@@ -316,7 +316,7 @@ async def apply_draft_mutations(
         raise _not_found("draft", draft_id) from exc
     except MutationRejected as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={"code": "MUTATION_REJECTED", "message": str(exc)},
         ) from exc
     except ConcurrentModification as exc:
@@ -457,7 +457,7 @@ async def reanalyze_draft(
         )
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={"code": "SOURCE_NOT_DISCOVERABLE", "message": str(exc)},
         ) from exc
 

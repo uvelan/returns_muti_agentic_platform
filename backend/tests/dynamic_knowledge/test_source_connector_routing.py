@@ -17,6 +17,7 @@ import pytest
 
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 from return_platform.dynamic_knowledge.sync.adapters import scan_connector_registry
+from return_platform.source_connectors.registry import UnreachableSource
 
 
 class _Connector:
@@ -92,11 +93,17 @@ def test_a_type_with_no_connector_is_refused_rather_than_defaulted(
     Refusing loudly is the behaviour that already existed and must survive the
     override path: falling back to whichever connector is registered would read
     a Postgres table's worth of nothing out of MongoDB.
+
+    Asserted on `UnreachableSource` rather than on a bare `ValueError`, because
+    the two registries this consolidated onto one raised different types for the
+    same condition and callers could only catch it by catching everything. The
+    message names the type and what *is* configured: "no connector registered"
+    left an operator to guess which of the two answers was missing.
     """
     registry = scan_connector_registry(
         schema=active_schema,
         mongo_connector=_Connector("mongo"),  # type: ignore[arg-type]
     )
 
-    with pytest.raises(ValueError, match="no connector registered"):
+    with pytest.raises(UnreachableSource, match="no connector of that type is configured"):
         registry.resolve("source_b")

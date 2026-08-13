@@ -57,6 +57,7 @@ from return_platform.configuration.domain.modules import (
     ModulesConfig,
 )
 from return_platform.configuration.domain.platform import PlatformConfig
+from return_platform.configuration.domain.release import ReleaseStatus
 from return_platform.configuration.domain.release_model import RuntimeSnapshot
 from return_platform.configuration.domain.sources import SourceConfigNode, SourcesConfig
 from return_platform.configuration.domain.system_store import (
@@ -84,12 +85,30 @@ def _parse_dependencies(raw_deps: Any) -> list[ModuleDependency]:
     return result
 
 
+class DraftConfigurationRefused(ConfigurationValidationError):
+    """A manifest still marked DRAFT was offered to the runtime.
+
+    Its own error type rather than a bare `ConfigurationValidationError`: the
+    fail-closed payload checks below raise that, and a caller (or a test)
+    catching "the configuration is bad" would otherwise be unable to tell a
+    malformed module from a release nobody has finished.
+    """
+
+
 class LegacyCompatibilityAdapter:
     """Translates the existing config directory into a canonical RuntimeSnapshot.
 
     Uses the manifest as the authoritative source of which files are active.
     Unreferenced YAML files under config/ are NEVER loaded.
     Translation is FAIL-CLOSED — invalid module payloads raise immediately.
+
+    A DRAFT manifest is refused here rather than in `ConfigurationLoader`,
+    because parsing a draft and *serving* one are different acts.
+    `AgentConfigurationService` reads and edits agent modules through the same
+    parser and drafts are its whole subject; a refusal there would take the
+    configuration screen down with it. This method is the one that turns the
+    packaged directory into the snapshot the platform would run on, so this is
+    where "released" has to start meaning something.
     """
 
     def __init__(self, config_dir: Path) -> None:
@@ -99,6 +118,25 @@ class LegacyCompatibilityAdapter:
     def build_canonical_snapshot(self) -> RuntimeSnapshot:
         # 1. Load and validate manifest
         manifest = self._loader.load_manifest()
+        # Before anything in it is read: a DRAFT release has not been through
+        # validation or review, so admitting one means serving whatever an
+        # editor last saved. `status` was parsed into `ReleaseStatus` and then
+        # only copied onto the snapshot for display (`:361`), so the field that
+        # distinguishes "finished" from "someone is still editing this" decided
+        # nothing, and `config/manifest.yaml` shipped as DRAFT accordingly.
+        #
+        # The sibling Neo4j release path already refuses anything short of
+        # RELEASED (`cli/bootstrap_graph_configuration.py:244-247`). This is the
+        # manifest vocabulary's equivalent, placed before a caller exists rather
+        # than after one does -- nothing in `src/` builds a snapshot from the
+        # packaged directory today, and the gap this closes is that wiring one
+        # up would have inherited no status check at all.
+        if manifest.status is ReleaseStatus.DRAFT:
+            raise DraftConfigurationRefused(
+                f"configuration release {manifest.release_id!r} is DRAFT and cannot be "
+                "served; promote it past DRAFT, or read it through a design surface "
+                "instead of the runtime snapshot"
+            )
         loaded_modules = self._loader.load_manifest_entries(manifest)
 
         # 2. Partition by module type

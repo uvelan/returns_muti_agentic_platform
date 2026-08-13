@@ -38,9 +38,9 @@ from return_platform.workflows.order_discovery_workflow import (
 router = APIRouter(prefix="/api/v2/order-agent", tags=["Order Agent"])
 
 _HTTP_STATUS_BY_CODE: dict[str, int] = {
-    "ORDER_AGENT_OUT_OF_SCOPE": status.HTTP_422_UNPROCESSABLE_ENTITY,
+    "ORDER_AGENT_OUT_OF_SCOPE": status.HTTP_422_UNPROCESSABLE_CONTENT,
     "CONVERSATION_VERSION_CONFLICT": status.HTTP_409_CONFLICT,
-    "ORDER_AGENT_QUERY_BUDGET_EXCEEDED": status.HTTP_422_UNPROCESSABLE_ENTITY,
+    "ORDER_AGENT_QUERY_BUDGET_EXCEEDED": status.HTTP_422_UNPROCESSABLE_CONTENT,
 }
 
 
@@ -205,7 +205,7 @@ async def process_turn(
     """
     if payload.conversation_id != conversation_id:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "code": "CONVERSATION_ID_MISMATCH",
                 "message": "Path and payload conversation identifiers must match.",
@@ -262,7 +262,7 @@ async def process_turn(
             outcome.error.code,
             status.HTTP_503_SERVICE_UNAVAILABLE
             if outcome.error.retryable
-            else status.HTTP_422_UNPROCESSABLE_ENTITY,
+            else status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
         raise HTTPException(
             status_code=http_status,

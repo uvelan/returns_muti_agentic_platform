@@ -51,6 +51,44 @@ def _required_environment_variable(
     return value
 
 
+#: Stands in for a model-provider key when none is configured.
+#:
+#: `Settings` requires the AI-gateway fields to be populated for a route pool to
+#: exist at all, so `test_settings` used to demand NVIDIA_API_KEY and
+#: GOOGLE_API_KEY through `_required_environment_variable`. That made index
+#: drift, catalog loading, health probes and the system-store bootstrap -- none
+#: of which reach a provider -- fail at setup on a machine with no model
+#: credentials, and three modules had already responded by copying the fixture
+#: rather than using it, which is a second implementation of settings
+#: construction growing inside the test tree.
+#:
+#: Deliberately not a real-looking value: a test that genuinely dispatches to a
+#: provider must take `live_ai_credentials`, which skips when the real keys are
+#: absent instead of letting this one reach an endpoint and fail as an
+#: authentication error somewhere unrelated.
+_ABSENT_PROVIDER_KEY = "test-placeholder-no-provider-call-expected"
+
+
+def _provider_key(name: str) -> str:
+    return os.getenv(name, "").strip() or _ABSENT_PROVIDER_KEY
+
+
+@pytest.fixture
+def live_ai_credentials() -> None:
+    """Opt in to a test that actually dispatches to a model provider.
+
+    The explicit half of the rule the placeholder above implements: a test that
+    needs a real key says so and is skipped without one, rather than every test
+    in the suite carrying the requirement so that a handful can be satisfied.
+    """
+
+    missing = [
+        name for name in ("NVIDIA_API_KEY", "GOOGLE_API_KEY") if not os.getenv(name, "").strip()
+    ]
+    if missing:
+        pytest.skip(f"no model-provider credentials configured: {', '.join(missing)}")
+
+
 @pytest.fixture
 def empty_catalog_path(
     tmp_path: Path,
@@ -120,8 +158,8 @@ def test_settings(
         nvidia_standard_models=["nvidia/llama-3.3-nemotron-super-49b-v1"],
         google_lightweight_models=["models/gemini-3.5-flash-lite"],
         google_standard_models=["models/gemini-3.6-flash"],
-        nvidia_api_keys=[SecretStr(_required_environment_variable("NVIDIA_API_KEY"))],
-        google_api_keys=[SecretStr(_required_environment_variable("GOOGLE_API_KEY"))],
+        nvidia_api_keys=[SecretStr(_provider_key("NVIDIA_API_KEY"))],
+        google_api_keys=[SecretStr(_provider_key("GOOGLE_API_KEY"))],
         temporal_target=temporal_target,
         ai_timeout_seconds=30.0,
         ai_global_timeout_seconds=120.0,

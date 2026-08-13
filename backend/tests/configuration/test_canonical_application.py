@@ -14,6 +14,7 @@ import yaml
 from pydantic import ValidationError
 
 from return_platform.configuration.application.compatibility import (
+    DraftConfigurationRefused,
     LegacyCompatibilityAdapter,
     build_snapshot_from_legacy_configs,
 )
@@ -35,6 +36,7 @@ from return_platform.configuration.domain.graph import GraphConfig, GraphSchemaN
 from return_platform.configuration.domain.integrations import IntegrationsConfig
 from return_platform.configuration.domain.modules import ModuleConfigNode, ModulesConfig
 from return_platform.configuration.domain.platform import PlatformConfig
+from return_platform.configuration.domain.release import ReleaseStatus
 from return_platform.configuration.domain.release_model import RuntimeSnapshot
 from return_platform.configuration.domain.sources import SourceConfigNode, SourcesConfig
 from return_platform.configuration.domain.system_store import (
@@ -635,11 +637,59 @@ def test_platform_system_store_structures_are_populated_from_manifest():
     assert structures["audit"].physical_name == "platform_audit"
 
 
+def test_a_draft_manifest_is_refused_by_the_runtime_rather_than_served(tmp_path: Path) -> None:
+    """DRAFT means nobody has finished it, and the runtime used to load it anyway.
+
+    `status` was parsed into `ReleaseStatus` and then only copied onto the
+    snapshot for display, so `config/manifest.yaml` shipped as DRAFT and every
+    process booted from it silently. The failure this catches is a half-edited
+    release reaching production with no signal at all -- the platform would come
+    up, serve whatever was last saved, and report itself healthy.
+    """
+    manifest = {
+        "schema_version": "2.0",
+        "release_id": "still-being-edited",
+        "status": "DRAFT",
+        "modules": {},
+    }
+    _write_config(tmp_path, manifest)
+
+    with pytest.raises(DraftConfigurationRefused) as refusal:
+        LegacyCompatibilityAdapter(tmp_path).build_canonical_snapshot()
+
+    assert "still-being-edited" in str(refusal.value)
+
+
+def test_a_draft_is_still_readable_through_the_parser_that_design_surfaces_use(
+    tmp_path: Path,
+) -> None:
+    """The refusal is about serving a draft, not about opening one.
+
+    `AgentConfigurationService` lists and edits agent modules through the same
+    `ConfigurationLoader`, and its entire purpose is drafts. A refusal placed in
+    the parser would have taken the configuration screen down with it.
+    """
+    manifest = {
+        "schema_version": "2.0",
+        "release_id": "still-being-edited",
+        "status": "DRAFT",
+        "modules": {},
+    }
+    _write_config(tmp_path, manifest)
+
+    parsed = ConfigurationLoader(tmp_path).load_manifest()
+
+    assert parsed.status is ReleaseStatus.DRAFT
+
+
 def test_platform_structure_with_invalid_payload_fails_closed(tmp_path: Path):
     manifest = {
         "schema_version": "2.0",
+        # ACTIVE, because the subject is the malformed structure payload. A DRAFT
+        # manifest is now refused before its modules are read, so this would pass
+        # on the release status and never reach what it means to test.
         "release_id": "bad-structure",
-        "status": "DRAFT",
+        "status": "ACTIVE",
         "modules": {"platform.system_store": {"path": "platform/system_store.yaml"}},
     }
     modules = {
@@ -663,7 +713,7 @@ def test_compatibility_translation_fails_closed_on_invalid_agent_schema(tmp_path
     manifest = {
         "schema_version": "2.0",
         "release_id": "fail-closed",
-        "status": "DRAFT",
+        "status": "ACTIVE",
         "modules": {"agent.bad": {"path": "agents/bad.yaml"}},
     }
     modules = {
@@ -683,7 +733,7 @@ def test_compatibility_translation_fails_closed_on_invalid_source_schema(tmp_pat
     manifest = {
         "schema_version": "2.0",
         "release_id": "fail-closed-source",
-        "status": "DRAFT",
+        "status": "ACTIVE",
         "modules": {"source.bad": {"path": "sources/bad.yaml"}},
     }
     modules = {

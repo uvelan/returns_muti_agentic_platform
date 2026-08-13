@@ -1,6 +1,10 @@
 schema_version: "2.0"
 release_id: returns-platform-v2-baseline
-status: DRAFT
+# The packaged baseline is what every process boots from, so it is a release and
+# not a draft. It said DRAFT while the runtime loaded it regardless, which meant
+# the one field that could have distinguished "finished" from "someone is still
+# editing this" carried no weight anywhere.
+status: ACTIVE
 modules:
   agent.return_session_orchestrator:
     path: agents/return_session_orchestrator.yaml

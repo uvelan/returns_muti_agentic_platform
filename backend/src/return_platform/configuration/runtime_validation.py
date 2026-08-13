@@ -101,7 +101,7 @@ def _validate_vault_prefix(reference_uri: str, prefix: str) -> None:
     expected = f"production/{prefix.strip('/')}/"
     if reference.mount_path != "secret" or not reference.vault_path.startswith(expected):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Vault reference must be under vault://secret/{expected}",
         )
 
