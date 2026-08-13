@@ -40,7 +40,12 @@ from return_platform.operations.return_support.service import (
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
 from return_platform.workflows.bay_assignment import build_bay_assignment_result
 from return_platform.workflows.feedback_learning import build_feedback_learning_result
-from return_platform.workflows.fulfillment_tracking import build_fulfillment_tracking_result
+from return_platform.workflows.fulfillment_tracking import (
+    ShipmentEvidence,
+    ShipmentObservation,
+    ShipmentObservationPort,
+    build_fulfillment_tracking_result,
+)
 from return_platform.workflows.return_request import build_return_request_result
 from return_platform.workflows.return_workflow import (
     DEFAULT_STAGE_SEQUENCE,
@@ -128,8 +133,13 @@ class ReturnOrchestrator:
         ai_gateway_configuration: LoadedAIGatewayConfiguration | None = None,
         ai_gateway_route_pool: AIRoutePool | None = None,
         workflow_definition: WorkflowDefinition | None = None,
+        shipment_observations: ShipmentObservationPort | None = None,
     ) -> None:
         self._repository = repository
+        # Optional because a process with no Neo4j driver can still drive a
+        # return -- it just cannot tell a printed label from a collected parcel,
+        # and says so in the evidence rather than guessing.
+        self._shipment_observations = shipment_observations
         self._temporal = temporal
         self._settings = settings
         self._worker_id = worker_id
@@ -246,6 +256,47 @@ class ReturnOrchestrator:
             payload={"failureCode": code, "caseId": support_case.id},
             deduplication_key=f"flow-failed:{session.id}:{code}",
         )
+
+    async def _observe_shipment(
+        self, session: ReturnSessionView, tracking_reference: str | None
+    ) -> ShipmentObservation | None:
+        """Look the shipment up. Never fail the return over it.
+
+        Fulfillment is `best_effort` by declared policy, so every outcome here
+        that is not an observation is recorded and stepped over: the caller
+        degrades to `AWAITING_HANDOFF` and the evidence line says which of the
+        three readings applied. Raising would make a graph outage close a return
+        as FAILED and open a HIGH-priority support case, which is the failure
+        mode this policy exists to prevent.
+        """
+        if tracking_reference is None or self._shipment_observations is None:
+            return None
+        try:
+            return await self._shipment_observations.observe(tracking_reference)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:  # noqa: BLE001 - best_effort by declared policy
+            code = self._failure_code(error)
+            await self._repository.append_event(
+                session.id,
+                event_type="FULFILLMENT_SHIPMENT_LOOKUP_FAILED",
+                actor_type="SYSTEM",
+                actor_id=self._worker_id,
+                payload={"failureCode": code, "trackingReference": tracking_reference},
+                # One event per (session, tracking number, failure kind). A
+                # resumed session retries the lookup, and an unkeyed append
+                # would grow the event log without adding information.
+                deduplication_key=f"shipment-lookup-failed:{session.id}:{code}",
+            )
+            return ShipmentObservation(
+                tracking_reference=tracking_reference,
+                evidence=ShipmentEvidence.UNAVAILABLE,
+                # Unknown: resolution is what failed, or what the failure
+                # happened underneath. Claiming a generation here would put an
+                # id on the audit trail that nothing was read at.
+                graph_generation_id="UNRESOLVED",
+                unavailable_reason=code,
+            )
 
     async def _handle(self, session: ReturnSessionView) -> WorkflowHandle[Any, Any]:
         workflow_id = session.workflowId or f"return-{session.id}"
@@ -622,12 +673,17 @@ class ReturnOrchestrator:
 
         fulfillment_reference = support_result.fulfillment_reference
         tracking_reference = support_result.tracking_reference
+        # W2.6. IO is legal here -- this is an async service, not a Temporal
+        # workflow body -- and `build_fulfillment_tracking_result` stays pure by
+        # receiving the reading rather than performing it.
+        shipment = await self._observe_shipment(session, tracking_reference)
         fulfillment_result = build_fulfillment_tracking_result(
             return_request=_binding_snapshot(return_binding),
             fulfillment_reference=fulfillment_reference,
             tracking_reference=tracking_reference,
             configuration_version=_CONFIGURATION_VERSION,
             observed_at=observed_at,
+            shipment=shipment,
         )
         fulfillment_binding = bind_stage_activity_result(
             WorkflowStage.FULFILLMENT_TRACKING,
@@ -644,6 +700,12 @@ class ReturnOrchestrator:
                     "status": fulfillment_result.status.value,
                     "trackingReference": tracking_reference,
                     "supportTicketReference": support_result.external_reference,
+                    # What the status was concluded from. Without it a reader
+                    # cannot distinguish a return nobody has collected from one
+                    # the platform could not look up.
+                    "shipmentEvidence": shipment.evidence.value if shipment else "NOT_ATTEMPTED",
+                    "shipmentStatus": shipment.current_status if shipment else None,
+                    "graphGenerationId": shipment.graph_generation_id if shipment else None,
                 },
                 updates={"trackingReference": tracking_reference},
             )

@@ -20,7 +20,9 @@ return already waiting on it would be a worse bug than a stale one.
 **Failure policy.** Bay is `best_effort`: its activity is dispatched with a
 retry policy and its failure is recorded and stepped over. Support is on the
 critical path; a failure there parks the case for an operator instead of
-completing it silently.
+completing it silently. The graph sync that follows the return record is
+`blocking` for the same reason Support is: an RMA that exists in the store and
+not in the graph is one no agent can tell an associate about.
 """
 
 from __future__ import annotations
@@ -50,6 +52,7 @@ __all__ = [
     "SendSupportReminderInput",
     "SupportResponseNotice",
     "SupportReturnRecord",
+    "SynchronizeReturnRecordsInput",
     "return_case_workflow_id",
 ]
 
@@ -69,6 +72,10 @@ _PERSIST_TIMEOUT: Final = timedelta(seconds=30)
 # Drafting invokes a model through the shared route pool, which has its own
 # global deadline; this is the outer bound, not the budget.
 _DRAFT_TIMEOUT: Final = timedelta(minutes=5)
+# A record-scoped graph sync is a source read plus a Neo4j write per record, and
+# a case can carry several RMAs. Longer than a Mongo write, far short of the
+# draft budget: this sits on the critical path with the associate waiting.
+_SYNC_TIMEOUT: Final = timedelta(minutes=2)
 
 # Persistence is idempotent (unique keys throughout), so retrying a transient
 # Mongo blip is safe and is the difference between a hiccup and a parked case.
@@ -239,6 +246,20 @@ class RecordSupportOutcomeInput:
 
 
 @dataclass(frozen=True, slots=True)
+class SynchronizeReturnRecordsInput:
+    """Record-scoped, and that is the whole point.
+
+    The ids are the ones `record_support_outcome` was given, so a retry syncs
+    the same records rather than whatever the collection holds by then, and the
+    read the activity compiles matches one document per id instead of scanning
+    every return in the platform.
+    """
+
+    case_id: str
+    return_record_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ReturnCaseOutcome:
     case_id: str
     status: str
@@ -247,6 +268,9 @@ class ReturnCaseOutcome:
     reminders_sent: int
     bay_reference: str | None
     parked_reason: str | None = None
+    #: The generation the return records were committed into. An agent turn
+    #: reading before this is set is reading a graph that does not have them.
+    graph_generation_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -261,6 +285,10 @@ class ReturnCaseState:
     bay_resolved: bool
     support_resolved: bool
     cancelled: bool
+    #: None until the return records are in the graph. An operator watching a
+    #: case that has an RMA and no generation is watching one whose sync has not
+    #: landed, which is a different problem from one still waiting on Support.
+    graph_generation_id: str | None = None
 
 
 @dataclass
@@ -279,6 +307,7 @@ class _Mutable:
     cancellation: CancelCaseCommand | None = None
     return_references: list[str] = field(default_factory=list)
     parked_reason: str | None = None
+    graph_generation_id: str | None = None
 
 
 @workflow.defn(name="return-platform-return-case-v1")
@@ -334,6 +363,7 @@ class ReturnCaseWorkflow:
             bay_resolved=self._state.bay is not None,
             support_resolved=self._state.support is not None,
             cancelled=self._state.cancellation is not None,
+            graph_generation_id=self._state.graph_generation_id,
         )
 
     # --- run ----------------------------------------------------------------
@@ -518,6 +548,7 @@ class ReturnCaseWorkflow:
         support = self._state.support
         if support is None:  # pragma: no cover - guarded by the caller
             return
+        return_record_ids = tuple(str(workflow.uuid4()) for _ in support.records)
         await workflow.execute_activity(
             "record_support_outcome",
             RecordSupportOutcomeInput(
@@ -528,17 +559,75 @@ class ReturnCaseWorkflow:
                 reason=support.reason,
                 # Minted here so a replay reuses them and the activity's
                 # create-if-absent is genuinely idempotent.
-                return_record_ids=tuple(str(workflow.uuid4()) for _ in support.records),
+                return_record_ids=return_record_ids,
             ),
             start_to_close_timeout=_PERSIST_TIMEOUT,
             retry_policy=_PERSIST_RETRY,
         )
         self._state.return_references = [record.return_reference for record in support.records]
+        if not await self._synchronize_return_records(return_record_ids):
+            return
         await self._set_status(
             ReturnCaseStatus.CLOSED if support.rejected else ReturnCaseStatus.RMA_RECEIVED
         )
 
+    async def _synchronize_return_records(self, return_record_ids: tuple[str, ...]) -> bool:
+        """Put the committed records into the graph before any agent reads (W2.5).
+
+        Ordered after `record_support_outcome`, never concurrent with it: the
+        targeted read the activity compiles goes to the platform's own store, so
+        a sync racing the write would read the document as it was before Support
+        answered and project a DRAFT record over the ISSUED one.
+
+        Return Workflow is `blocking`, so this is the one activity here whose
+        failure stops the case. Continuing would leave the RMA in the store,
+        absent from the graph, and Order Discovery telling the associate on their
+        next turn that no return exists -- which is worse than a parked case
+        somebody can see and retry.
+        """
+        workflow_input = self._require_input()
+        if not return_record_ids:
+            # Support rejected the case without issuing anything. Nothing to
+            # project, and a sync of an empty set would fail loudly for no
+            # reason.
+            return True
+        try:
+            generation: str = await workflow.execute_activity(
+                "synchronize_return_records",
+                SynchronizeReturnRecordsInput(
+                    case_id=workflow_input.case_id,
+                    return_record_ids=return_record_ids,
+                ),
+                result_type=str,
+                start_to_close_timeout=_SYNC_TIMEOUT,
+                retry_policy=_PERSIST_RETRY,
+            )
+        except ActivityError:
+            workflow.logger.error(
+                "return record graph sync failed for case %s; parking",
+                workflow_input.case_id,
+            )
+            await self._park_for_graph_sync_failure()
+            return False
+        self._state.graph_generation_id = generation
+        return True
+
     # --- terminal states ------------------------------------------------------
+
+    async def _park_for_graph_sync_failure(self) -> None:
+        """Terminal, and loud.
+
+        `RMA_RECEIVED` is deliberately not set: Support did answer, but the
+        platform cannot honestly claim the case has reached the state an
+        associate would be shown, because the thing an associate is shown is
+        read from the graph. The status stays `AWAITING_SUPPORT` and the parked
+        reason names the real cause, so S2 shows a case needing attention rather
+        than one that looks complete and answers nothing.
+        """
+        self._state.parked_reason = "RETURN_GRAPH_SYNC_FAILED"
+        await self._set_status(
+            ReturnCaseStatus.AWAITING_SUPPORT, fact_value="RETURN_GRAPH_SYNC_FAILED"
+        )
 
     async def _park(self, disposition: str) -> ReturnCaseOutcome:
         reason = "SUPPORT_ESCALATED" if disposition == "ESCALATE" else "SUPPORT_REMINDERS_EXHAUSTED"
@@ -597,4 +686,5 @@ class ReturnCaseWorkflow:
             reminders_sent=self._state.reminders_sent,
             bay_reference=self._state.bay.bay_reference if self._state.bay else None,
             parked_reason=self._state.parked_reason,
+            graph_generation_id=self._state.graph_generation_id,
         )

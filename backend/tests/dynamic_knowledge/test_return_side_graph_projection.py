@@ -269,12 +269,20 @@ def test_the_agent_policy_names_every_return_side_entity(schema: ActiveSchema) -
 
 
 def test_no_return_side_entity_offers_an_on_demand_sync_anchor(schema: ActiveSchema) -> None:
-    """On-demand sync reaches the *upstream* store, not this one.
+    """The *model* cannot ask for these, even though the platform now can.
 
-    `runtime_factory` binds the on-demand connector to `source_mongo_database`,
-    so a strong anchor on a platform-store entity would compile a targeted read
-    against a collection that is not there. The entities stay CONNECTED_SYNC --
-    the batch sync does reach them -- and simply declare no anchors.
+    `StrongAnchorRequest` is the model-facing path, and `StrongAnchorGuard`
+    refuses any entity with no configured anchor -- which is the right answer
+    here: nothing an associate types identifies a return record, so an anchor on
+    one would only ever be a model guess.
+
+    W2.5's record-scoped sync anchors the same entity on a primary key the
+    platform minted moments earlier, through `build_targeted_read_plan`
+    directly. That path resolves the source through the per-source connector
+    override (`targeted_sync.platform_store_source_ids`), so it reaches the
+    platform database rather than the upstream one -- which is what previously
+    made any anchor here pointless, and is asserted in
+    `test_return_record_on_demand_sync.py`.
     """
     for entity_id in sorted(RETURN_ENTITY_IDS):
         entity = schema.entities[entity_id]

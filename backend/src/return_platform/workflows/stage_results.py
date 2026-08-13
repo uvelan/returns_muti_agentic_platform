@@ -397,8 +397,14 @@ def _bind_fulfillment_tracking(
         in {FulfillmentTrackingStatus.AWAITING_HANDOFF, FulfillmentTrackingStatus.IN_TRANSIT}
         and _valid_identifier(result.return_reference)
         and _valid_identifier(result.fulfillment_reference)
+        # A tracking number is necessary for IN_TRANSIT and no longer sufficient.
+        # This clause used to require `tracking_reference is None` for
+        # AWAITING_HANDOFF, which made "we have a number" and "it is moving" the
+        # same statement by construction -- so the builder could not have
+        # concluded otherwise even had it read a shipment. A label printed and
+        # not yet collected is exactly AWAITING_HANDOFF *with* a number.
         and (
-            result.tracking_reference is None
+            result.tracking_reference is None or _valid_identifier(result.tracking_reference)
             if result.status is FulfillmentTrackingStatus.AWAITING_HANDOFF
             else _valid_identifier(result.tracking_reference)
         )
