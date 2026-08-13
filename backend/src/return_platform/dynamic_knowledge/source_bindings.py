@@ -30,7 +30,7 @@ from pydantic import BaseModel, ConfigDict
 
 from return_platform.dynamic_knowledge.schema import ActiveSchema, SourceAssetDefinition
 
-__all__ = ["SourceBinding", "SourceBindingCatalogue", "catalogue_from"]
+__all__ = ["SourceBinding", "SourceBindingCatalogue", "binding_names", "catalogue_from"]
 
 
 class SourceBinding(BaseModel):
@@ -87,23 +87,33 @@ def catalogue_from(
     """
     bindings: dict[str, SourceBinding] = {}
     for asset in baseline.sources.values():
-        for name in _names_of(asset):
+        for name in binding_names(asset):
             bindings[name] = SourceBinding(dataset=name, asset=asset)
     for override in overrides:
         bindings[override.dataset] = override
     return SourceBindingCatalogue(bindings)
 
 
-def _names_of(asset: SourceAssetDefinition) -> tuple[str, ...]:
+def binding_names(asset: SourceAssetDefinition) -> tuple[str, ...]:
     """The names this asset answers to.
 
     Its id, and the object-reference values that identify the object itself --
     a collection or table name. Deliberately not every value: a database name
     is shared by every asset in it, and binding a draft to "return_source"
     would resolve to whichever asset happened to be last.
+
+    A relational object also answers to its qualified `namespace.name`, which is
+    what the analyzer's own inspection port reports it as -- `platform.
+    bay_configuration`, not `bay_configuration`. Without it a draft built from
+    what the analyzer saw could not be compiled against the source the analyzer
+    saw it in, which is the one name guaranteed to be unambiguous: two schemas
+    may each hold a `bay_configuration`.
     """
     names = [asset.source_asset_id]
+    namespace = asset.object_ref.get("namespace")
     for key, value in asset.object_ref.items():
         if key in {"name", "collection", "table", "view"} and value:
             names.append(value)
+            if namespace:
+                names.append(f"{namespace}.{value}")
     return tuple(names)

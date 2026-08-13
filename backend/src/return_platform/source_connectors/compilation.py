@@ -183,6 +183,21 @@ def compile_source_read(schema: ActiveSchema, plan: LogicalTargetedReadPlan) -> 
         if table is None:
             raise ValueError("SQL source object_ref requires name")
         validate_graph_identifier(table)
+        # The schema the table lives in, and it is not optional in practice.
+        # `SqlServerSourceScanConnector._resolve` has always required
+        # `object_ref.namespace` for a scheduled scan and refuses a source that
+        # omits it, while this branch composed an unqualified `FROM "table"` --
+        # so a targeted read of any source outside the connection's default
+        # schema failed with `Invalid object name`. Nothing noticed because every
+        # source the descriptor carried until W2.4 was MongoDB. Left unqualified
+        # where the source declares none, which is the `dbo` case and how the
+        # server already resolves it.
+        namespace = source.object_ref.get("namespace")
+        if namespace:
+            validate_graph_identifier(namespace)
+            qualified = f'"{namespace}"."{table}"'
+        else:
+            qualified = f'"{table}"'
         columns: list[str] = []
         for projected_path in projected_paths:
             if len(projected_path) != 1:
@@ -215,7 +230,10 @@ def compile_source_read(schema: ActiveSchema, plan: LogicalTargetedReadPlan) -> 
         limit = "TOP (:limit) " if source.connector_type is ConnectorType.MSSQL else ""
         suffix = "" if source.connector_type is ConnectorType.MSSQL else " LIMIT :limit"
         parameters["limit"] = plan.maximum_rows
-        statement = f'SELECT {limit}{", ".join(columns)} FROM "{table}" WHERE {" AND ".join(sql_where)}{suffix}'
+        statement = (
+            f"SELECT {limit}{', '.join(columns)} FROM {qualified} "
+            f"WHERE {' AND '.join(sql_where)}{suffix}"
+        )
         return CompiledSourceRead(
             connector_type=source.connector_type,
             statement=statement,

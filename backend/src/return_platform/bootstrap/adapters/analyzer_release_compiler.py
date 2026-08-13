@@ -43,9 +43,16 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
+from return_platform.bootstrap.adapters.analyzer_source_observation import (
+    SourceObservation,
+    observed_capabilities,
+    observed_permissions,
+    observed_strong_anchors,
+)
 from return_platform.dynamic_knowledge.schema import (
     ActiveSchema,
     EntityDefinition,
+    EntitySourceAccess,
     FieldDefinition,
     FieldType,
     GraphDefinition,
@@ -53,6 +60,8 @@ from return_platform.dynamic_knowledge.schema import (
     RelationshipCardinality,
     RelationshipProjection,
     SourceAssetDefinition,
+    SourceContractStatus,
+    maximum_relationship_access,
 )
 from return_platform.dynamic_knowledge.source_bindings import (
     SourceBindingCatalogue,
@@ -92,6 +101,7 @@ def compile_active_schema(
     *,
     baseline: ActiveSchema,
     bindings: SourceBindingCatalogue | None = None,
+    observations: Mapping[str, SourceObservation] | None = None,
     configuration_release_id: str,
     schema_version: str,
     approved_by: str,
@@ -108,8 +118,19 @@ def compile_active_schema(
     to what the baseline itself reaches -- the state of an installation that
     has never rebound anything -- so the argument is a widening, not a new
     requirement.
+
+    `observations` -- keyed by the dataset name the draft's entities cite -- is
+    what the analyzer's inspection port saw in each source. Supplying one is what
+    lets a compiled entity be *readable*: nullability, per-field capabilities,
+    permissions and strong anchors all follow from the source's declared types
+    and indexes (`analyzer_source_observation`). Without one the compiler has
+    only the authoring form, which says nothing about any of that, so the entity
+    is marked `UNVERIFIED` -- an honest statement that nothing checked its paths
+    against a source, and previously the one thing the compiler asserted without
+    evidence.
     """
     catalogue = catalogue_from(baseline) if bindings is None else bindings
+    observed = dict(observations or {})
     shape_entities: Mapping[str, Mapping[str, Any]] = shape.get("entities") or {}
     shape_relationships: Sequence[Mapping[str, Any]] = shape.get("relationships") or ()
     if not shape_entities:
@@ -120,14 +141,22 @@ def compile_active_schema(
     used_sources: dict[str, SourceAssetDefinition] = {}
 
     for label, entity in sorted(shape_entities.items()):
-        definition, source = _entity(label, entity, bindings=catalogue)
+        definition, source = _entity(
+            label, entity, bindings=catalogue, observation=observed.get(_dataset_of(entity))
+        )
         entities[label] = definition
         used_sources[definition.source_asset_id] = source
         identifiers = tuple(str(name) for name in entity.get("identifier_properties") or ())
         nodes[label] = NodeProjection(
             projection_id=label,
             entity_id=label,
-            label=label,
+            # The graph label, which is not the entity id. The runtime keeps them
+            # apart -- `sales_order` is projected as `SalesOrder` -- and the
+            # authoring form has one name for both, so the label is derived by a
+            # stated rule rather than left as whatever the draft happened to type.
+            # Pascal-casing is identity for a label already in that form, so
+            # every existing draft compiles to exactly what it did before.
+            label=_graph_label(label),
             key_fields=identifiers,
             # Everything that is not a key. Listing keys twice would project the
             # same property under two headings, and the writer treats key and
@@ -190,17 +219,51 @@ def release_checksum(schema: ActiveSchema) -> str:
     ).hexdigest()
 
 
+def _dataset_of(entity: Mapping[str, Any]) -> str:
+    return str(entity.get("source_dataset") or "")
+
+
+def _record_path(source_field: str, *, dataset: str) -> tuple[str, ...]:
+    """The path into a record, with the dataset's own qualifier removed.
+
+    Only that prefix. A dotted `customer.address` is a path inside a document and
+    stripping anything else would address the wrong thing.
+    """
+    prefix = f"{dataset}."
+    trimmed = (
+        source_field[len(prefix) :] if dataset and source_field.startswith(prefix) else source_field
+    )
+    return tuple(trimmed.split("."))
+
+
+def _graph_label(label: str) -> str:
+    """`warehouse` -> `Warehouse`, `OrderLine` -> `OrderLine`.
+
+    Underscore-separated parts are joined and each part's first letter is
+    upper-cased; everything else is left alone, so a label already written in the
+    graph's convention passes through untouched.
+    """
+    return "".join(part[:1].upper() + part[1:] for part in label.split("_") if part)
+
+
 def _entity(
-    label: str, entity: Mapping[str, Any], *, bindings: SourceBindingCatalogue
+    label: str,
+    entity: Mapping[str, Any],
+    *,
+    bindings: SourceBindingCatalogue,
+    observation: SourceObservation | None,
 ) -> tuple[EntityDefinition, SourceAssetDefinition]:
-    dataset = str(entity.get("source_dataset") or "")
+    dataset = _dataset_of(entity)
     source = _source(dataset, bindings=bindings)
 
     properties: Mapping[str, Mapping[str, Any]] = entity.get("properties") or {}
     if not properties:
         raise ReleaseCompilationError(f"entity {label!r} has no properties to project")
 
-    fields = {name: _field(label, name, spec) for name, spec in sorted(properties.items())}
+    fields = {
+        name: _field(label, name, spec, dataset=dataset, observation=observation)
+        for name, spec in sorted(properties.items())
+    }
 
     identifiers = tuple(str(name) for name in entity.get("identifier_properties") or ())
     if not identifiers:
@@ -229,15 +292,104 @@ def _entity(
     return (
         EntityDefinition(
             entity_id=label,
+            # Provenance, not prose. The authoring form carries no description --
+            # `rationale` on a command is documentation the design says nothing
+            # interprets -- so writing anything *about* the entity here would be
+            # this compiler inventing meaning. What it can state is what it saw:
+            # which object, how many rows the catalogue reported, what the key is.
+            # `compact_schema` puts this in front of the model, and an entity with
+            # an empty description arrives there unusable.
+            description=_provenance(label, source, identifiers, observation),
             source_asset_id=source.source_asset_id,
             fields=fields,
             natural_key=identifiers,
+            strong_anchors=(
+                {}
+                if observation is None
+                else observed_strong_anchors(
+                    observation,
+                    columns_by_field=_columns_of(fields, observation),
+                    natural_key=identifiers,
+                    capabilities={field_id: item.capabilities for field_id, item in fields.items()},
+                )
+            ),
+            # The one claim the compiler used to make with no evidence at all:
+            # `SourceContractStatus` defaults to VERIFIED on the model, so an
+            # entity compiled from an authoring form nobody had checked against a
+            # source arrived declaring its paths confirmed -- and, since
+            # `EntityDefinition` refuses `CONNECTED_SYNC` on an unverified
+            # contract, arrived permitted to sync from a source nothing had read.
+            # The two move together, which is the coupling the model already
+            # enforces in the other direction.
+            source_contract_status=(
+                SourceContractStatus.UNVERIFIED
+                if observation is None
+                else SourceContractStatus.VERIFIED
+            ),
+            source_access=(
+                EntitySourceAccess.SEED_ONLY
+                if observation is None
+                else EntitySourceAccess.CONNECTED_SYNC
+            ),
         ),
         source,
     )
 
 
-def _field(label: str, name: str, spec: Mapping[str, Any]) -> FieldDefinition:
+def _provenance(
+    label: str,
+    source: SourceAssetDefinition,
+    identifiers: tuple[str, ...],
+    observation: SourceObservation | None,
+) -> str:
+    object_name = source.object_ref.get("name") or source.source_asset_id
+    key = ", ".join(identifiers)
+    if observation is None:
+        return (
+            f"{label}, from {object_name} in {source.source_asset_id}, keyed on {key}. "
+            "Compiled from an approved draft with no source observation, so its field "
+            "paths are UNVERIFIED: nothing has checked them against the source."
+        )
+    rows = observation.description.approximate_row_count
+    counted = "an unreported number of" if rows is None else f"approximately {rows}"
+    return (
+        f"{label}, from {object_name} in {source.source_asset_id}, keyed on {key}. "
+        f"Compiled from the analyzer's inspection of that object: {counted} rows, "
+        f"{len(observation.description.fields)} declared column(s), "
+        f"{len(observation.indexes)} declared index(es). Every field below reads a column "
+        "the source's own catalogue declares, and the capabilities follow from the indexes "
+        "over it."
+    )
+
+
+def _columns_of(
+    fields: Mapping[str, FieldDefinition], observation: SourceObservation
+) -> dict[str, str]:
+    """Field id -> the source column it reads, for the flat fields only.
+
+    A nested `physical_path` addresses a position inside a document, and an
+    object description reports the keys at the top of one. Matching the joined
+    path against a field name would compare `customer.address` to nothing and
+    silently answer "no such column", so only single-segment paths are offered
+    here -- which is every column of a relational source and the top level of a
+    document one.
+    """
+    columns: dict[str, str] = {}
+    for field_id, definition in fields.items():
+        path = definition.physical_path
+        if path is not None and len(path) == 1 and observation.declared_type(path[0]) is not None:
+            columns[field_id] = path[0]
+    return columns
+
+
+def _field(
+    label: str,
+    name: str,
+    spec: Mapping[str, Any],
+    *,
+    dataset: str,
+    observation: SourceObservation | None,
+) -> FieldDefinition:
     declared = str(spec.get("type") or "")
     data_type = _PROPERTY_TYPES.get(declared)
     if data_type is None:
@@ -245,14 +397,39 @@ def _field(label: str, name: str, spec: Mapping[str, Any]) -> FieldDefinition:
     source_field = str(spec.get("source_field") or "")
     if not source_field:
         raise ReleaseCompilationError(f"property {label}.{name} is not mapped to a source field")
+    # `a.b.c` in the authoring form is a path into the record, which is what the
+    # runtime's physical_path means. A dotted name and a nested path are the same
+    # statement said two ways -- *except* for a leading dataset qualifier, which
+    # is not part of any record.
+    #
+    # `ReanalysisService` writes `source_field` as `<dataset>.<column>`, and
+    # `_field_of` there strips that prefix before comparing. This did not, so
+    # every property a re-analysis proposed compiled to a path beginning with the
+    # collection or table name -- `salesInv.trkNum`, `platform.bay_configuration.
+    # bay_id` -- which resolves on no document and projects null forever. The two
+    # halves of the same convention now agree.
+    physical_path = _record_path(source_field, dataset=dataset)
+    column = physical_path[0] if len(physical_path) == 1 else None
+    if observation is None or column is None or observation.declared_type(column) is None:
+        return FieldDefinition(
+            field_id=name,
+            physical_path=physical_path,
+            graph_property=name,
+            data_type=data_type,
+        )
+    capabilities = observed_capabilities(observation, column=column, data_type=data_type)
     return FieldDefinition(
         field_id=name,
-        # `a.b.c` in the authoring form is a path into the record, which is what
-        # the runtime's physical_path means. A dotted name and a nested path are
-        # the same statement said two ways.
-        physical_path=tuple(source_field.split(".")),
+        physical_path=physical_path,
         graph_property=name,
         data_type=data_type,
+        # `nullable` defaults to True on the model, which is the safe reading
+        # when nothing is known. The catalogue does know, and a NOT NULL column
+        # declared nullable makes every consumer treat a guaranteed value as
+        # optional.
+        nullable=bool(observation.nullable(column)),
+        capabilities=capabilities,
+        permissions=observed_permissions(capabilities),
     )
 
 
@@ -308,6 +485,15 @@ def _relationship(
         target_entity_id=to_label,
         source_match_fields=source_fields,
         target_match_fields=target_fields,
+        # Capped by its endpoints rather than left at the model's
+        # `CONNECTED_SYNC` default. An edge between two seed-only entities that
+        # declared a connected sync fails the schema's own cross-validation, so
+        # this is what lets an unobserved addition compile at all -- and, more to
+        # the point, an edge cannot claim to be formed by a sync that neither of
+        # the things it joins is permitted to run.
+        access=maximum_relationship_access(
+            entities[from_label].source_access, entities[to_label].source_access
+        ),
         cardinality=cardinality,
         maximum_targets_per_source=(
             1
