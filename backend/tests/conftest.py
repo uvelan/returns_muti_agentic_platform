@@ -173,9 +173,36 @@ def _required_environment_variable(
 #: authentication error somewhere unrelated.
 _ABSENT_PROVIDER_KEY = "test-placeholder-no-provider-call-expected"
 
+#: Every stand-in string that means "there is no key here".
+#:
+#: Two of them, because two places already export one. The runner scripts and
+#: `compose.yaml`'s `diagnostics` service set `NVIDIA_API_KEY` and
+#: `GOOGLE_API_KEY` to `placeholder-not-a-real-key` so that `Settings` can build
+#: a route pool; `_ABSENT_PROVIDER_KEY` above is what this file substitutes when
+#: neither is set at all. `live_ai_credentials` used to ask only whether the
+#: variables were non-empty, and a placeholder is non-empty -- so in exactly the
+#: environments that export one it reported credentials present and let the test
+#: through.
+#:
+#: `test_order_agent_rest.py` is what that cost. Forty scenarios entered the
+#: application lifespan expecting a model response that could never arrive,
+#: blocked, and took the run with them. The live runner answered by excluding
+#: the file by name, which hid the fixture's blind spot rather than closing it.
+_PLACEHOLDER_PROVIDER_KEYS = frozenset(
+    {
+        _ABSENT_PROVIDER_KEY,
+        "placeholder-not-a-real-key",
+    }
+)
+
 
 def _provider_key(name: str) -> str:
     return os.getenv(name, "").strip() or _ABSENT_PROVIDER_KEY
+
+
+def _has_real_provider_key(name: str) -> bool:
+    value = os.getenv(name, "").strip()
+    return bool(value) and value not in _PLACEHOLDER_PROVIDER_KEYS
 
 
 @pytest.fixture
@@ -185,10 +212,15 @@ def live_ai_credentials() -> None:
     The explicit half of the rule the placeholder above implements: a test that
     needs a real key says so and is skipped without one, rather than every test
     in the suite carrying the requirement so that a handful can be satisfied.
+
+    "Without one" has to include a placeholder. A test that dispatches to a
+    provider on a fake key does not fail as a missing credential -- it blocks,
+    or it fails as an authentication error in a module that has nothing to do
+    with what is under test.
     """
 
     missing = [
-        name for name in ("NVIDIA_API_KEY", "GOOGLE_API_KEY") if not os.getenv(name, "").strip()
+        name for name in ("NVIDIA_API_KEY", "GOOGLE_API_KEY") if not _has_real_provider_key(name)
     ]
     if missing:
         pytest.skip(f"no model-provider credentials configured: {', '.join(missing)}")

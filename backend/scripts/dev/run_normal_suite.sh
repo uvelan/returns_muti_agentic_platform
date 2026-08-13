@@ -43,8 +43,9 @@
 #   AI keys     `Settings` needs the gateway fields populated for a route pool
 #               to exist. Placeholders satisfy that; nothing outside suite 3
 #               dispatches to a provider, and a test that does takes
-#               `live_ai_credentials` and skips without real ones. Never write a
-#               key into `.env`.
+#               `live_ai_credentials`, which counts a placeholder as no key and
+#               skips with a reason. Export real keys to run those. Never write
+#               a key into `.env`.
 #
 # Exported placeholders are for those two variables and *nothing else*. It is
 # tempting to export GRAPH_PASSWORD, VALKEY_PASSWORD, MSSQL_SA_PASSWORD,
