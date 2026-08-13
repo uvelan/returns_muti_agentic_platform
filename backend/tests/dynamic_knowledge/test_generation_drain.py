@@ -169,9 +169,9 @@ class _CountingTokens:
     def __init__(self) -> None:
         self._next = 1
 
-    async def allocate(self, *, scope: str) -> int:
+    async def allocate(self, *, scope: str, floor: int = 0) -> int:
         del scope
-        self._next += 1
+        self._next = max(self._next, floor) + 1
         return self._next
 
 

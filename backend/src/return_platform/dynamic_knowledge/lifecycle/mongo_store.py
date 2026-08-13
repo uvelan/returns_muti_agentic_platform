@@ -48,7 +48,7 @@ class ActiveRuntimeSnapshotStore(Protocol):
 
 
 class FencingTokenAllocator(Protocol):
-    async def allocate(self, *, scope: str) -> int: ...
+    async def allocate(self, *, scope: str, floor: int = 0) -> int: ...
 
 
 class RebuildLeaseStore(Protocol):
@@ -133,7 +133,33 @@ class MongoFencingTokenAllocator:
     def __init__(self, collection: Any) -> None:
         self._collection = collection
 
-    async def allocate(self, *, scope: str) -> int:
+    async def allocate(self, *, scope: str, floor: int = 0) -> int:
+        """The next token for `scope`, guaranteed to exceed `floor`.
+
+        The counter lives in Platform Mongo while the token it authorizes is
+        written to a marker in Neo4j, so the two can start out of step: a graph
+        adopted from outside this counter's history, or a platform database
+        restored from a backup older than the graph. Every claim would then lose
+        to the marker forever -- fail-closed, but permanently stuck.
+
+        `floor` is how the one place that can observe both raises the counter
+        past what the marker already holds. It is deliberately not applied on
+        the ordinary claim path: catching up to a token someone else is holding
+        is indistinguishable from a stale writer overtaking its successor, which
+        is the exact thing this fence exists to stop. Only adoption -- which has
+        just established that the generation is unowned and serving -- may do it.
+
+        Two writes rather than one: MongoDB rejects `$max` and `$inc` on the same
+        field in a single update. Both are idempotent and the `$inc` still
+        serializes concurrent allocators, so the result is strictly increasing
+        either way.
+        """
+        if floor > FENCING_TOKEN_FLOOR:
+            await self._collection.update_one(
+                {"_id": scope},
+                {"$max": {"next_token": floor - FENCING_TOKEN_FLOOR}},
+                upsert=True,
+            )
         document = await self._collection.find_one_and_update(
             {"_id": scope},
             {"$inc": {"next_token": 1}},

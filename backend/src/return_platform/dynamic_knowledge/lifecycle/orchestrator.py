@@ -481,7 +481,12 @@ async def adopt_existing_generation(
             stage="ADOPT",
         )
 
-    token = await fencing_tokens.allocate(scope=snapshot_name)
+    # `floor`: the marker's token may come from outside this counter's history --
+    # the legacy constant, or a graph older than the platform database in front
+    # of it. Adoption is the one moment that can see both values and is entitled
+    # to reconcile them, having just established that this generation is the one
+    # serving. Without it every subsequent claim loses to the marker forever.
+    token = await fencing_tokens.allocate(scope=snapshot_name, floor=status[1])
     await generation_writer.claim_write_ownership(
         graph_generation_id=graph_generation_id, fencing_token=token
     )

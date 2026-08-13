@@ -31,12 +31,14 @@ allocator is the real one.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import os
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
+from unittest.mock import patch
 from urllib.parse import quote
 
 import pytest
@@ -44,6 +46,7 @@ import pytest_asyncio
 from neo4j import AsyncGraphDatabase
 from pymongo import AsyncMongoClient
 
+from return_platform.data_platform.graph import sync_service as sync_service_module
 from return_platform.data_platform.graph.sync_service import (
     GRAPH_SYNC_RUNS_COLLECTION,
     GraphSyncRequest,
@@ -207,11 +210,21 @@ class _Harness:
         self.snapshots = MongoActiveRuntimeSnapshotStore(self.platform_db[self.snapshot_collection])
         self.generation_leases = MongoGenerationLeaseStore(self.platform_db[self.lease_collection])
         self.fencing_tokens = MongoFencingTokenAllocator(self.platform_db[self.token_collection])
+        #: This test's own stand-in for `legacy-live`.
+        #:
+        #: The real literal is a single shared marker on this Neo4j, and the
+        #: whole point of the migration is that adopting it and cutting over
+        #: leaves it RETIRED *permanently*. One test doing that correctly would
+        #: therefore poison every later one, which would read as a product
+        #: defect rather than as the test isolation problem it is. Patching the
+        #: id keeps each test's legacy generation its own while exercising the
+        #: identical production path -- `_resolve_active_generation` reads this
+        #: module global, and `test_the_patched_legacy_id_is_the_one_production_reads`
+        #: guards that it still does.
+        self.legacy_generation_id = f"legacy-live-{self.suffix}"
         #: Every generation this test touched, so cleanup removes its nodes and
-        #: its marker. `legacy-live` is shared with anything else on this Neo4j,
-        #: so the *marker* is only removed when this test created it.
-        self.generation_ids: list[str] = []
-        self.created_legacy_marker = False
+        #: its marker.
+        self.generation_ids: list[str] = [self.legacy_generation_id]
 
     def service(self, *, observe: Any = None) -> GraphSyncService:
         """The real `GraphSyncService`, wired to this test's own collections."""
@@ -277,13 +290,6 @@ class _Harness:
         found = await self.generation_writer.get_status(graph_generation_id=graph_generation_id)
         return None if found is None else found[0]
 
-    async def track_legacy(self) -> None:
-        """Remember whether this test created the shared `legacy-live` marker, so
-        cleanup does not delete one another environment was already using."""
-        existing = await self.generation_writer.get_status(graph_generation_id=LEGACY_GENERATION_ID)
-        self.created_legacy_marker = existing is None
-        self.generation_ids.append(LEGACY_GENERATION_ID)
-
     async def cleanup(self) -> None:
         await self.mongo.drop_database(self.source_database)
         for name in (
@@ -300,8 +306,6 @@ class _Harness:
                 await session.run(
                     "MATCH (n {graph_generation_id: $gid}) DETACH DELETE n", {"gid": generation_id}
                 )
-                if generation_id == LEGACY_GENERATION_ID and not self.created_legacy_marker:
-                    continue
                 await session.run(
                     "MATCH (g:GraphGeneration {generation_id: $gid}) DETACH DELETE g",
                     {"gid": generation_id},
@@ -313,16 +317,16 @@ class _Harness:
 @pytest_asyncio.fixture
 async def harness(active_schema: ActiveSchema) -> AsyncIterator[_Harness]:
     instance = _Harness(active_schema)
-    try:
-        yield instance
-    finally:
-        await instance.cleanup()
+    with patch.object(sync_service_module, "_LEGACY_GENERATION_ID", instance.legacy_generation_id):
+        try:
+            yield instance
+        finally:
+            await instance.cleanup()
 
 
 async def _establish_serving_generation(harness: _Harness) -> str:
     """Get the harness into the state a real deployment is in before this change:
     data in the graph under an adopted generation, with a snapshot naming it."""
-    await harness.track_legacy()
     service = harness.service()
     run = await service.sync(
         GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, applySchema=False), actor_id="setup"
@@ -346,11 +350,11 @@ async def test_the_legacy_generation_is_adopted_rather_than_orphaned(harness: _H
 
     generation = await _establish_serving_generation(harness)
 
-    assert generation == LEGACY_GENERATION_ID
-    assert await harness.node_count(LEGACY_GENERATION_ID) >= 2
+    assert generation == harness.legacy_generation_id
+    assert await harness.node_count(generation) >= 2
     snapshot = await harness.snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)
     assert snapshot is not None and snapshot.activation_version == 1
-    marker = await harness.generation_writer.get_status(graph_generation_id=LEGACY_GENERATION_ID)
+    marker = await harness.generation_writer.get_status(graph_generation_id=generation)
     assert marker is not None
     assert marker[1] > LEGACY_FENCING_TOKEN, "the marker still carries the constant token"
 
@@ -703,3 +707,17 @@ def test_the_runs_collection_name_is_the_one_production_uses() -> None:
     while the production name is a named constant this file can diverge from
     deliberately rather than by accident."""
     assert GRAPH_SYNC_RUNS_COLLECTION == "graph_sync_runs"
+
+
+def test_the_patched_legacy_id_is_the_one_production_reads() -> None:
+    """The harness substitutes `sync_service._LEGACY_GENERATION_ID` for isolation.
+
+    That is only sound while it is genuinely the value the production path
+    resolves. If `_resolve_active_generation` ever stopped reading this module
+    global -- reading `generation.LEGACY_GENERATION_ID` directly, say -- every
+    test in this file would silently start exercising a shared marker instead of
+    its own, and the isolation would be gone without a single failure.
+    """
+    assert sync_service_module._LEGACY_GENERATION_ID == LEGACY_GENERATION_ID
+    source = inspect.getsource(GraphSyncService._resolve_active_generation)
+    assert "_LEGACY_GENERATION_ID" in source

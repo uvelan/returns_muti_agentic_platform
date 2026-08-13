@@ -212,9 +212,9 @@ class FakeTokens:
         self.issued: list[int] = []
         self._next = LEGACY_FENCING_TOKEN
 
-    async def allocate(self, *, scope: str) -> int:
+    async def allocate(self, *, scope: str, floor: int = 0) -> int:
         del scope
-        self._next += 1
+        self._next = max(self._next, floor) + 1
         self.issued.append(self._next)
         return self._next
 

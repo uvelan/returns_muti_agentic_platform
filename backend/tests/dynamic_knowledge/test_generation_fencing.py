@@ -72,6 +72,15 @@ class _FakeCounterCollection:
             document[field] = int(document.get(field, 0)) + int(amount)
         return dict(document)
 
+    async def update_one(
+        self, filter: dict[str, Any], update: dict[str, Any], **kwargs: Any
+    ) -> None:
+        del kwargs
+        key = str(filter["_id"])
+        document = self.documents.setdefault(key, {"_id": key, "next_token": 0})
+        for field, value in update.get("$max", {}).items():
+            document[field] = max(int(document.get(field, 0)), int(value))
+
 
 @pytest.mark.asyncio
 async def test_the_first_allocated_token_outranks_the_legacy_constant() -> None:
@@ -113,6 +122,39 @@ async def test_a_restarted_allocator_does_not_reissue_a_token() -> None:
     after = await MongoFencingTokenAllocator(collection).allocate(scope=SNAPSHOT)
 
     assert after > max(before)
+
+
+@pytest.mark.asyncio
+async def test_a_floor_lifts_a_counter_that_is_behind_the_marker() -> None:
+    """The counter and the token it authorizes live in different databases.
+
+    Platform Mongo holds the counter; Neo4j holds the marker it stamps. They can
+    start out of step -- a graph adopted from outside this counter's history, a
+    platform database restored older than the graph in front of it -- and every
+    claim would then lose to the marker permanently. The floor is how adoption
+    reconciles them, and it must land strictly above the marker, not merely
+    equal to it: an equal token is the previous owner's token.
+    """
+    allocator = MongoFencingTokenAllocator(_FakeCounterCollection())
+
+    token = await allocator.allocate(scope=SNAPSHOT, floor=97)
+
+    assert token == 98
+    assert await allocator.allocate(scope=SNAPSHOT) > token
+
+
+@pytest.mark.asyncio
+async def test_a_floor_below_the_counter_never_rewinds_it() -> None:
+    """A stale floor must not be able to walk the counter backwards -- that would
+    hand a superseded owner a token it could claim with."""
+    allocator = MongoFencingTokenAllocator(_FakeCounterCollection())
+    for _ in range(10):
+        await allocator.allocate(scope=SNAPSHOT)
+    high = await allocator.allocate(scope=SNAPSHOT)
+
+    after = await allocator.allocate(scope=SNAPSHOT, floor=2)
+
+    assert after > high
 
 
 @pytest.mark.asyncio
@@ -304,6 +346,19 @@ async def _adopt(store: _FakeSnapshotStore, tx: _FakeMarkerTransaction) -> Activ
         configuration_release_id="release-1",
         schema_fingerprint="a" * 64,
     )
+
+
+@pytest.mark.asyncio
+async def test_adoption_outranks_a_marker_the_counter_has_never_seen() -> None:
+    """Adoption is the one step entitled to reconcile the two stores, so it must
+    actually do it: a marker already holding a token above the fresh counter
+    would otherwise reject the adopting owner's own claim."""
+    store = _FakeSnapshotStore()
+    tx = _FakeMarkerTransaction(token=500, status=GraphGenerationStatus.ACTIVE)
+
+    await _adopt(store, tx)
+
+    assert tx.token > 500
 
 
 @pytest.mark.asyncio
