@@ -56,6 +56,56 @@ class ReturnRecordWrite:
 
 
 @dataclass(frozen=True, slots=True)
+class ShipmentUpdate:
+    """One observation of a return shipment's state, scoped to one RMA (T-15, C4).
+
+    `status_at` is the carrier's status timestamp, not the moment we were told.
+    It is the ordering authority: whether an update is newer or stale is decided
+    against it and nothing else, so a late-delivered older event cannot overtake
+    a newer one just by arriving second.
+    """
+
+    return_reference: str
+    tracking_reference: str
+    shipment_status: str
+    status_at: datetime
+    carrier_code: str | None = None
+    tracking_type: str = "PPL"
+    shipment_details: str | None = None
+
+
+#: What `record_shipment_update` did, and it is always exactly one of these.
+#:
+#: The canonical rule, stated once so it cannot drift between call sites:
+#:
+#:   APPLIED  the update's `status_at` is strictly newer than the stored one,
+#:            or the shipment had no state yet. Stored truth advances.
+#:   DUPLICATE the same tracking reference at the same `status_at`. The same
+#:            observation submitted twice. Nothing changes, and that is success.
+#:   STALE    the update's `status_at` is older than the stored one. Rejected.
+#:            Stored truth does NOT regress.
+SHIPMENT_UPDATE_APPLIED = "APPLIED"
+SHIPMENT_UPDATE_DUPLICATE = "DUPLICATE"
+SHIPMENT_UPDATE_STALE = "STALE"
+
+
+@dataclass(frozen=True, slots=True)
+class ShipmentUpdateOutcome:
+    """The result of one shipment update, and the state that is now current."""
+
+    outcome: str
+    return_reference: str
+    tracking_reference: str
+    current_status: str
+    current_status_at: datetime
+    row_version: int
+
+    @property
+    def applied(self) -> bool:
+        return self.outcome == SHIPMENT_UPDATE_APPLIED
+
+
+@dataclass(frozen=True, slots=True)
 class CaseReturnRecordsWrite:
     """Everything one support outcome adds to the authoritative SQL return store.
 
@@ -657,6 +707,144 @@ class SQLBusinessStateRepository:
 
         await self._run(operation)
         return tuple(record.return_record_id for record in write.records)
+
+    async def record_shipment_update(self, update: ShipmentUpdate) -> ShipmentUpdateOutcome:
+        """Apply one RMA-scoped shipment update, idempotently and stale-safely (T-15).
+
+        One statement decides it, inside one transaction: the UPDATE carries
+        `AND %s > event_at`, so whether the stored truth advances is settled by
+        SQL Server under the row lock rather than by a read-then-write this
+        code performs. Two updates racing therefore cannot both believe they
+        are newest -- which is the whole of contract C4's "stale-update safe",
+        and is not something a compare-in-Python version could promise.
+
+        The row identity is derived from the RMA and the tracking reference, so
+        the same shipment resubmitted is the same row. It is never minted, and
+        `UQ_return_tracking_reference` means it could not be anyway.
+        """
+
+        tracking_id = str(
+            uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"return-shipment:{update.return_reference}:{update.tracking_reference}",
+            )
+        )
+
+        def operation() -> ShipmentUpdateOutcome:
+            with self._transaction() as connection:
+                with connection.cursor(as_dict=True) as cursor:
+                    # Take the row's lock before deciding anything. UPDLOCK
+                    # holds it against a concurrent updater and HOLDLOCK holds
+                    # the *range* when the row does not exist yet, so two first
+                    # updates for one shipment cannot both find nothing and
+                    # both insert.
+                    cursor.execute(
+                        """
+                        SELECT event_at FROM dbo.return_tracking WITH (UPDLOCK, HOLDLOCK)
+                        WHERE tracking_id=%s
+                        """,
+                        (tracking_id,),
+                    )
+                    existing = cursor.fetchone()
+
+                    if existing is None:
+                        # First state for this shipment. Creating it IS the
+                        # update being applied -- distinguishing this from "a
+                        # row already stood at this exact timestamp" is why
+                        # existence is checked rather than inferred from
+                        # whether the UPDATE below matched: on a fresh insert
+                        # the stored `event_at` equals the incoming one, which
+                        # is indistinguishable from a duplicate after the fact.
+                        cursor.execute(
+                            """
+                            INSERT INTO dbo.return_tracking (
+                                tracking_id, return_reference, tracking_type, tracking_reference,
+                                carrier_code, tracking_status, event_at, shipment_details
+                            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s);
+                            """,
+                            (
+                                tracking_id,
+                                update.return_reference,
+                                update.tracking_type,
+                                update.tracking_reference,
+                                update.carrier_code,
+                                update.shipment_status,
+                                update.status_at,
+                                update.shipment_details,
+                            ),
+                        )
+                        advanced = 1
+                    else:
+                        # Advance only on a strictly newer status timestamp.
+                        # The comparison is in the WHERE clause, under the lock
+                        # taken above, so the decision is SQL Server's and not
+                        # a read-then-write this code could lose a race on.
+                        cursor.execute(
+                            """
+                            UPDATE dbo.return_tracking
+                            SET tracking_status=%s, carrier_code=%s, shipment_details=%s,
+                                event_at=%s, row_version=row_version+1,
+                                updated_at=SYSUTCDATETIME()
+                            WHERE tracking_id=%s AND %s > event_at;
+                            SELECT @@ROWCOUNT AS applied;
+                            """,
+                            (
+                                update.shipment_status,
+                                update.carrier_code,
+                                update.shipment_details,
+                                update.status_at,
+                                tracking_id,
+                                update.status_at,
+                            ),
+                        )
+                        advanced = int((cursor.fetchone() or {}).get("applied") or 0)
+
+                    cursor.execute(
+                        """
+                        SELECT tracking_status, event_at, row_version
+                        FROM dbo.return_tracking WHERE tracking_id=%s
+                        """,
+                        (tracking_id,),
+                    )
+                    current = cursor.fetchone() or {}
+
+            if advanced:
+                outcome = SHIPMENT_UPDATE_APPLIED
+            elif current.get("event_at") == update.status_at:
+                outcome = SHIPMENT_UPDATE_DUPLICATE
+            else:
+                outcome = SHIPMENT_UPDATE_STALE
+            return ShipmentUpdateOutcome(
+                outcome=outcome,
+                return_reference=update.return_reference,
+                tracking_reference=update.tracking_reference,
+                current_status=str(current.get("tracking_status") or ""),
+                current_status_at=current["event_at"],
+                row_version=int(current.get("row_version") or 1),
+            )
+
+        return await self._run(operation)
+
+    async def read_shipment_state(self, return_reference: str) -> list[dict[str, Any]]:
+        """Every shipment this RMA has, newest status first. RMA-scoped by key."""
+
+        def operation() -> list[dict[str, Any]]:
+            with self._read() as connection:
+                with connection.cursor(as_dict=True) as cursor:
+                    cursor.execute(
+                        """
+                        SELECT tracking_id, return_reference, tracking_type, tracking_reference,
+                               carrier_code, tracking_status, event_at, shipment_details,
+                               row_version
+                        FROM dbo.return_tracking
+                        WHERE return_reference=%s
+                        ORDER BY event_at DESC, tracking_id ASC
+                        """,
+                        (return_reference,),
+                    )
+                    return [dict(row) for row in cursor.fetchall() or []]
+
+        return await self._run(operation)
 
     async def read_case_return_records(self, case_id: str) -> list[dict[str, Any]]:
         """Read back one case's RMAs and their items, record-scoped.
