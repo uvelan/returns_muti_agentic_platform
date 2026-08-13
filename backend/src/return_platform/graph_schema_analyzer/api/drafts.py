@@ -4,6 +4,14 @@ The mutation endpoint accepts the typed command union directly, so FastAPI's own
 request validation is what rejects a malformed or smuggled command -- before any
 analyzer code runs. That is deliberate: the narrowest place to enforce "only
 typed mutations" is the parser.
+
+**Approval and publication carry capability dependencies.** They previously
+carried none: `POST /drafts/{id}/approve` accepted whichever actor the
+authentication middleware had let through, so "an explicit human act" was
+enforced by nothing but the shape of the URL. Both now require the same
+governance capability the shared proposal inbox does -- one grant, because a
+schema approval and a configuration approval are the same decision made about
+different subjects.
 """
 
 from __future__ import annotations
@@ -43,10 +51,44 @@ from return_platform.graph_schema_analyzer.domain.validation_result import (
 from return_platform.graph_schema_analyzer.ports.graph_target_port import GraphTargetPort
 from return_platform.graph_schema_analyzer.ports.source_port import SourceDiscoveryPort
 from return_platform.graph_schema_analyzer.ports.system_store_port import PersistencePort
+from return_platform.platform.governance.errors import ActivationRefused, GovernanceError
+from return_platform.platform.governance.kernel import NoActivatorRegistered, ProposalKernel
+from return_platform.platform.governance.proposal import ProposalStatus, ProposalType
+from return_platform.security.authorization import require_capability
+from return_platform.security.capabilities import (
+    GOVERNANCE_PROPOSAL_ACTIVATE,
+    GOVERNANCE_PROPOSAL_APPROVE,
+)
 
 router = APIRouter(prefix="/api/graph-schema", tags=["Graph Schema Analyzer"])
 
 _Persistence = Annotated[PersistencePort, Depends(resolve_persistence)]
+
+
+def resolve_proposal_kernel(request: Request) -> ProposalKernel:
+    """The shared proposal kernel, attached at startup.
+
+    503 rather than editing a draft with no governance record: a draft that can
+    be mutated, validated and approved while nothing lands in the review queue
+    is precisely the state this module was in before the kernel existed, and it
+    is invisible from the outside.
+    """
+    kernel = getattr(request.app.state, "proposal_kernel", None)
+    if not isinstance(kernel, ProposalKernel):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "GOVERNANCE_UNAVAILABLE",
+                "message": (
+                    "The proposal kernel is not available, so a schema change cannot be "
+                    "recorded for review. Editing is refused rather than done ungoverned."
+                ),
+            },
+        )
+    return kernel
+
+
+_Kernel = Annotated[ProposalKernel, Depends(resolve_proposal_kernel)]
 
 
 def resolve_graph_target(request: Request) -> GraphTargetPort:
@@ -268,8 +310,10 @@ def _draft_shape_view(draft: object) -> DraftShapeView:
     return DraftShapeView.model_validate(draft.shape.model_dump(mode="json"))
 
 
-def _service(persistence: PersistencePort, target: GraphTargetPort) -> DraftService:
-    return DraftService(persistence, ValidationService(target))
+def _service(
+    persistence: PersistencePort, kernel: ProposalKernel, target: GraphTargetPort
+) -> DraftService:
+    return DraftService(persistence, kernel, ValidationService(target))
 
 
 @router.post(
@@ -277,7 +321,7 @@ def _service(persistence: PersistencePort, target: GraphTargetPort) -> DraftServ
     response_model=DraftView,
     status_code=status.HTTP_201_CREATED,
 )
-async def create_draft(analysis_id: str, persistence: _Persistence) -> DraftView:
+async def create_draft(analysis_id: str, persistence: _Persistence, kernel: _Kernel) -> DraftView:
     try:
         await persistence.load_session(analysis_id)
     except UnknownAnalysis as exc:
@@ -291,7 +335,7 @@ async def create_draft(analysis_id: str, persistence: _Persistence) -> DraftView
                 "message": f"analysis {analysis_id} already has draft {existing.draft_id}.",
             },
         )
-    draft = await DraftService(persistence).create_draft(
+    draft = await DraftService(persistence, kernel).create_draft(
         analysis_id=analysis_id, occurred_at=datetime.now(UTC)
     )
     return _draft_view(draft)
@@ -303,10 +347,11 @@ async def apply_draft_mutations(
     payload: ApplyMutationsRequest,
     request: Request,
     persistence: _Persistence,
+    kernel: _Kernel,
 ) -> DraftView:
     """Typed commands only -- the request model is the enforcement point."""
     try:
-        draft, _ = await DraftService(persistence).apply(
+        draft, _ = await DraftService(persistence, kernel).apply(
             draft_id=draft_id,
             commands=payload.mutations,
             author=_actor(request),
@@ -486,11 +531,23 @@ async def reanalyze_draft(
 
 @router.post("/drafts/{draft_id}/validate", response_model=ValidationResultView)
 async def validate_draft(
-    draft_id: str, persistence: _Persistence, target: _GraphTarget
+    draft_id: str,
+    request: Request,
+    persistence: _Persistence,
+    kernel: _Kernel,
+    target: _GraphTarget,
 ) -> ValidationResultView:
+    """Check the draft, and -- when it passes -- put it in front of a reviewer.
+
+    A passing validation now also submits a `GRAPH_SCHEMA` proposal and moves it
+    to REVIEW_PENDING, so a validated schema appears in the one governance inbox
+    alongside configuration and improvement changes. The response is unchanged:
+    the findings are what the analyst came for, and the proposal is visible on
+    `/api/proposals`.
+    """
     try:
-        _, result = await _service(persistence, target).validate(
-            draft_id=draft_id, occurred_at=datetime.now(UTC)
+        _, result, _ = await _service(persistence, kernel, target).validate(
+            draft_id=draft_id, actor=_actor(request), occurred_at=datetime.now(UTC)
         )
     except UnknownAnalysis as exc:
         raise _not_found("draft", draft_id) from exc
@@ -526,12 +583,22 @@ async def approve_draft(
     payload: ApproveRequest,
     request: Request,
     persistence: _Persistence,
+    kernel: _Kernel,
     target: _GraphTarget,
+    approver: str = Depends(require_capability(GOVERNANCE_PROPOSAL_APPROVE)),
 ) -> DraftView:
+    """Accept a validated schema.
+
+    The dependency is the point of this route's existence in W4.3: it had none,
+    so any authenticated caller could approve any draft. The subject comes from
+    the capability check rather than from `_actor`, which falls back to a literal
+    when no principal is present -- a fallback that is right for attributing a
+    write and wrong for recording who signed something off.
+    """
     try:
-        draft, _ = await _service(persistence, target).approve(
+        draft, _ = await _service(persistence, kernel, target).approve(
             draft_id=draft_id,
-            approver=_actor(request),
+            approver=approver,
             occurred_at=datetime.now(UTC),
             note=payload.note,
         )
@@ -547,6 +614,47 @@ async def approve_draft(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "CONCURRENT_MODIFICATION", "message": str(exc)},
         ) from exc
+    except GovernanceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "NOT_APPROVABLE", "message": str(exc)},
+        ) from exc
+    return _draft_view(draft)
+
+
+@router.post("/drafts/{draft_id}/reject", response_model=DraftView)
+async def reject_draft(
+    draft_id: str,
+    payload: ApproveRequest,
+    persistence: _Persistence,
+    kernel: _Kernel,
+    target: _GraphTarget,
+    approver: str = Depends(require_capability(GOVERNANCE_PROPOSAL_APPROVE)),
+) -> DraftView:
+    """Refuse a validated schema, on the record.
+
+    There was no way to say no. `Approval` carried a `REJECTED` status that
+    nothing ever set, so a reviewer who did not want a draft left it VALIDATED
+    and the queue could not tell that from one nobody had looked at yet.
+
+    The draft itself stays VALIDATED: rejecting the *proposal* is a statement
+    about this shape, and the analyst edits and re-validates to make a new one.
+    """
+    try:
+        await _service(persistence, kernel, target).reject(
+            draft_id=draft_id,
+            approver=approver,
+            occurred_at=datetime.now(UTC),
+            note=payload.note,
+        )
+        draft = await persistence.load_draft(draft_id)
+    except UnknownAnalysis as exc:
+        raise _not_found("draft", draft_id) from exc
+    except GovernanceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "NOT_REJECTABLE", "message": str(exc)},
+        ) from exc
     return _draft_view(draft)
 
 
@@ -554,9 +662,9 @@ async def approve_draft(
 async def publish_draft(
     draft_id: str,
     payload: PublishRequest,
-    request: Request,
     persistence: _Persistence,
-    target: _GraphTarget,
+    kernel: _Kernel,
+    approver: str = Depends(require_capability(GOVERNANCE_PROPOSAL_ACTIVATE)),
 ) -> PublishedReleaseView:
     """Turn an approved draft into the schema the platform runs.
 
@@ -565,13 +673,17 @@ async def publish_draft(
     reading a file from the repository -- so an approval changed a document and
     nothing else.
 
-    APPROVED only. A validated draft is a shape someone might accept; a
-    published release is one the platform will reason over, and the human act
-    in between is the whole reason the state machine has three states.
+    **It goes through the kernel's activation step, not around it.** The publish
+    itself is unchanged and still performed by the graph target; what the kernel
+    adds is the re-check before it -- the recorded diff is re-derived from the
+    before/after documents, and the proposal is refused if the two disagree --
+    and the ACTIVATED transition after it, so "this change is live" is recorded
+    in the same place every other governed change records it.
 
     A shape that cannot compile comes back `accepted=false` with the element
     named, not as a 500: which entity was ambiguous is the only useful thing to
-    say, and the analyst is the one who can fix it.
+    say, and the analyst is the one who can fix it. The proposal stays APPROVED
+    in that case, because nothing was activated.
     """
     try:
         draft = await persistence.load_draft(draft_id)
@@ -588,22 +700,52 @@ async def publish_draft(
                 ),
             },
         )
-    try:
-        handle = await target.publish_release(
-            draft=draft.shape.model_dump(mode="json"),
-            draft_id=draft_id,
-            approver=_actor(request),
-            activate=payload.activate,
+    approved = [
+        proposal
+        for proposal in await kernel.list(
+            proposal_type=ProposalType.GRAPH_SCHEMA, subject_id=draft_id, limit=50
         )
+        if proposal.status is ProposalStatus.APPROVED
+    ]
+    if not approved:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "NOT_APPROVED",
+                "message": (
+                    f"draft {draft_id} has no approved proposal; the schema it would publish "
+                    "was never signed off."
+                ),
+            },
+        )
+    try:
+        _, receipt = await kernel.activate(
+            approved[0].proposal_id,
+            actor=approver,
+            occurred_at=datetime.now(UTC),
+            parameters={"activate": payload.activate},
+        )
+    except ActivationRefused as exc:
+        return PublishedReleaseView(
+            configurationReleaseId=exc.reference, accepted=False, detail=exc.detail
+        )
+    except NoActivatorRegistered as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "GRAPH_TARGET_UNAVAILABLE", "message": str(exc)},
+        ) from exc
+    except GovernanceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "NOT_ACTIVATABLE", "message": str(exc)},
+        ) from exc
     except RuntimeError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"code": "RELEASE_STORE_UNAVAILABLE", "message": str(exc)},
         ) from exc
     return PublishedReleaseView(
-        configurationReleaseId=handle.generation_id,
-        accepted=handle.accepted,
-        detail=handle.detail,
+        configurationReleaseId=receipt.reference, accepted=True, detail=receipt.detail
     )
 
 

@@ -183,12 +183,22 @@ payload:
           unique: true
         - name: draft_revision
           fields: [draft_id, revision_id]
-    schema_approvals:
-      physical_name: platform_schema_approvals
+    # One inbox for every kind of change a human signs off: a graph schema
+    # draft, an agent configuration edit, a feedback improvement. This replaces
+    # `schema_approvals`, which recorded that a decision had been made and
+    # nothing about what was decided -- and which only the analyzer could write,
+    # so the other two kinds of change had no approval record at all.
+    governance_proposals:
+      physical_name: platform_governance_proposals
       schema_version: 1
       indexes:
-        - name: approval_id_unique
-          fields: [approval_id]
+        - name: proposal_id_unique
+          fields: [proposal_id]
           unique: true
-        - name: draft_id
-          fields: [draft_id]
+        # The inbox query: everything awaiting a decision, newest first.
+        - name: status_created_at
+          fields: [status, created_at]
+        # "What is live for this subject", which is what stops two reviewers
+        # approving two different futures of the same draft.
+        - name: subject_status
+          fields: [proposal_type, subject_id, status]

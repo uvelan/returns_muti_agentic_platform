@@ -25,6 +25,8 @@ from return_platform.graph_schema_analyzer.domain.source_snapshot import (
 )
 from return_platform.graph_schema_analyzer.ports.graph_target_port import BuildHandle
 from return_platform.graph_schema_analyzer.ports.system_store_port import PersistencePort
+from return_platform.platform.governance.proposal import ProposalStatus, ProposalType
+from tests.governance_doubles import attach_governance
 from tests.graph_schema_analyzer.test_api_routes import InMemoryPersistence
 
 NOW = datetime(2026, 8, 9, 12, 0, tzinfo=UTC)
@@ -89,6 +91,7 @@ def client(persistence: InMemoryPersistence, target: PassingTarget) -> TestClien
     app.include_router(router)
     app.state.graph_schema_analyzer_persistence = persistence
     app.state.graph_schema_analyzer_graph_target = target
+    attach_governance(app, target)
     return TestClient(app)
 
 
@@ -153,7 +156,19 @@ def test_full_mutate_validate_approve_flow(
     )
     assert approved.status_code == 200
     assert approved.json()["status"] == DraftStatus.APPROVED
-    assert persistence.approvals[0].note == "looks right"
+
+    # The decision is a governance proposal now, not an analyzer-private
+    # `Approval` -- so it carries the diff and the evidence the reviewer saw,
+    # and it sits in the same queue as a configuration or improvement change.
+    proposals = list(client.app.state.governance_store.proposals.values())
+    assert [proposal.status for proposal in proposals] == [ProposalStatus.APPROVED]
+    decided = proposals[0]
+    assert decided.proposal_type is ProposalType.GRAPH_SCHEMA
+    assert decided.subject_id == draft_id
+    assert decided.decision_note == "looks right"
+    assert decided.decided_by == "analyst"
+    assert decided.validation_receipt is not None
+    assert "entities.Order.properties.order_id.type" in decided.affected_keys
 
 
 def test_a_mutation_after_validation_returns_the_draft_to_draft(
@@ -236,6 +251,7 @@ def test_validation_is_refused_when_the_graph_target_is_missing(
     app = FastAPI()
     app.include_router(router)
     app.state.graph_schema_analyzer_persistence = persistence
+    attach_governance(app)
     unconfigured = TestClient(app)
     response = unconfigured.post("/api/graph-schema/drafts/whatever/validate")
     assert response.status_code == 503
@@ -323,7 +339,10 @@ def test_an_approved_draft_publishes_to_the_runtime(
     assert response.json()["accepted"] is True
     # Recorded and made live are separate decisions, and the caller's choice is
     # what travels -- not a default the adapter picked.
-    assert target.published == [(draft_id, "anonymous", True)]
+    # The approver is the subject the capability check resolved, not `_actor`'s
+    # "anonymous" fallback -- which is what this route recorded while it had no
+    # authorization dependency at all.
+    assert target.published == [(draft_id, "analyst", True)]
 
 
 def test_publishing_defaults_to_recorded_not_live(
@@ -338,7 +357,7 @@ def test_publishing_defaults_to_recorded_not_live(
 
     client.post(f"/api/graph-schema/drafts/{draft_id}/publish", json={})
 
-    assert target.published == [(draft_id, "anonymous", False)]
+    assert target.published == [(draft_id, "analyst", False)]
 
 
 def test_publishing_an_unknown_draft_is_a_404(client: TestClient) -> None:
