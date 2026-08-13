@@ -119,6 +119,30 @@ class SchemaQueryGuard:
                 raise GuardRejected(
                     "REJECT_UNAUTHORIZED_FIELD", "The field is not available to this role."
                 )
+        if plan.operation is QueryOperation.FULLTEXT_SEARCH:
+            # The index replaces the WHERE clause, so nothing above validated
+            # the field being matched on. Without this a full-text plan could
+            # rank on a field the principal is not allowed to search -- the
+            # search itself is the disclosure, whatever the result columns say.
+            entity = schema.entities.get(plan.start_entity_id)
+            field = (
+                None
+                if entity is None or plan.fulltext_field_id is None
+                else entity.fields.get(plan.fulltext_field_id)
+            )
+            if field is None:
+                raise GuardRejected(
+                    "REJECT_INVALID_SCHEMA_REFERENCE",
+                    "Full-text search references an unknown field.",
+                )
+            if not field.capabilities.searchable:
+                raise GuardRejected(
+                    "REJECT_INVALID_SCHEMA_REFERENCE", "Field is not search-enabled."
+                )
+            if not _roles_allowed(context.principal.roles, field.permissions.searchable_by):
+                raise GuardRejected(
+                    "REJECT_UNAUTHORIZED_FIELD", "The field is not available to this role."
+                )
         target_entity_id = (
             plan.traversal[-1].target_entity_id if plan.traversal else plan.start_entity_id
         )

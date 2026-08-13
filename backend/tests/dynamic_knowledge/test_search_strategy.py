@@ -17,13 +17,19 @@ from return_platform.dynamic_knowledge.knowledge.guards import (
     StrongAnchorGuard,
     StrongAnchorRequest,
 )
-from return_platform.dynamic_knowledge.knowledge.query_plan import LogicalQueryPlan
+from return_platform.dynamic_knowledge.knowledge.cypher_compiler import FULLTEXT_SCORE_FIELD
+from return_platform.dynamic_knowledge.knowledge.query_plan import (
+    LogicalQueryPlan,
+    QueryOperation,
+)
 from return_platform.dynamic_knowledge.order_agent.contracts import OrderSearchIntent
 from return_platform.dynamic_knowledge.order_agent.search_strategy import (
     MAX_CACHED_CANDIDATES,
-    build_customer_fuzzy_probe_plan,
+    CustomerFulltextPolicy,
+    build_customer_fulltext_plan,
+    build_customer_name_query,
     build_progressive_plans,
-    fuzzy_match_customers,
+    narrow_fulltext_matches,
     rank_search_results,
     search_intent_signature,
     unsupported_signals,
@@ -174,50 +180,215 @@ def test_signature_ignores_metadata_but_not_identifying_fields() -> None:
     assert search_intent_signature(base) != search_intent_signature(different_search)
 
 
-# --- fuzzy_match_customers ----------------------------------------------------
+# --- the indexed customer-name query ------------------------------------------
+#
+# What replaced an unfiltered `LIMIT 100` read scored with difflib. The tests
+# below can prove the query asked and the narrowing applied to what comes back;
+# only a real index over a real corpus can prove the row is *found*, which is
+# what test_order_discovery_fulltext_real_infra.py exists for.
 
 
-def test_fuzzy_match_recovers_an_obvious_misspelling() -> None:
-    rows = [
-        {"customer_id": "C1", "customer_name": "John Smith"},
-        {"customer_id": "C2", "customer_name": "Priya Nair"},
-    ]
-    matches = fuzzy_match_customers(("Jhon Smith",), rows)
-    assert [row["customer_id"] for row in matches] == ["C1"]
+def test_a_misspelt_token_is_asked_for_as_a_fuzzy_term() -> None:
+    """The whole point of the index: "Jhon" has to be able to match "John".
+
+    A prefix alone cannot -- the first letter that differs ends the match -- so
+    an abbreviation and a misspelling need different terms, OR'd, per token.
+    """
+    query = build_customer_name_query(("Jhon Smi",), CustomerFulltextPolicy())
+
+    assert query == "(Jhon* OR Jhon~1) AND Smi*"
 
 
-def test_fuzzy_match_rejects_unrelated_names() -> None:
-    rows = [{"customer_id": "C1", "customer_name": "Priya Nair"}]
-    assert fuzzy_match_customers(("Zephyrine Okonkwo",), rows) == []
+def test_a_short_token_is_a_prefix_only() -> None:
+    """Two edits on a three-letter token reaches most three-letter tokens.
+
+    A fuzzy term that matches everything ranks nothing, which is the failure
+    mode that looks like the search working.
+    """
+    assert build_customer_name_query(("Ace",), CustomerFulltextPolicy()) == "Ace*"
 
 
-def test_fuzzy_match_ranks_closest_first_and_respects_limit() -> None:
-    rows = [
-        {"customer_id": "C1", "customer_name": "Jon Smith"},
-        {"customer_id": "C2", "customer_name": "John Smith"},
-        {"customer_id": "C3", "customer_name": "Jonathan Smithson"},
-    ]
-    matches = fuzzy_match_customers(("John Smith",), rows, limit=2)
-    assert len(matches) == 2
-    assert matches[0]["customer_id"] == "C2"  # exact spelling ranks above near-misses
+def test_the_edit_distance_thresholds_come_from_the_policy() -> None:
+    """An operator tightening the misspelling policy has to change the query."""
+    strict = CustomerFulltextPolicy(max_edit_distance=1, two_edit_min_token_length=8)
+
+    assert build_customer_name_query(("Zephyrine",), strict) == "(Zephyrine* OR Zephyrine~1)"
+    assert (
+        build_customer_name_query(("Zephyrine",), CustomerFulltextPolicy())
+        == "(Zephyrine* OR Zephyrine~2)"
+    )
 
 
-# --- build_customer_fuzzy_probe_plan ------------------------------------------
+def test_lucene_syntax_in_a_name_reaches_the_index_as_text_or_not_at_all() -> None:
+    """The name is associate-supplied and goes into a query language.
+
+    Tokenizing on `[A-Za-z0-9]+` is the guard: every operator Lucene understands
+    is dropped before the string is assembled, so `Smith~10 OR *:*` cannot widen
+    the search to the whole index.
+    """
+    query = build_customer_name_query(('Smith~10 OR *:* AND "x"',), CustomerFulltextPolicy())
+
+    assert query == "(Smith* OR Smith~1) AND 10*"
+    assert ":" not in query and '"' not in query and "~10" not in query
 
 
-def test_fuzzy_probe_plan_passes_schema_guard_and_compiles(
+def test_two_names_are_alternatives_and_one_name_is_a_conjunction() -> None:
+    """Two spellings of one customer are alternatives; two words are not.
+
+    AND'ing across separate names would require a customer to be called both
+    things at once; OR'ing within one name would let a common surname alone
+    drag in every customer sharing it.
+    """
+    policy = CustomerFulltextPolicy()
+
+    assert build_customer_name_query(("Acme Plumbing", "Akme"), policy) == (
+        "((Acme* OR Acme~1) AND (Plumbing* OR Plumbing~2)) OR ((Akme* OR Akme~1))"
+    )
+
+
+def test_a_name_with_nothing_searchable_in_it_produces_no_plan() -> None:
+    """"customer" and "order" are the model's words, not the customer's name.
+
+    A query built from them alone would match on the noise; returning no plan
+    reports "no misspelling recovery available" instead.
+    """
+    assert build_customer_name_query(("the customer",), CustomerFulltextPolicy()) == ""
+    assert build_customer_fulltext_plan(("the customer",), CustomerFulltextPolicy()) is None
+
+
+def test_a_disabled_policy_produces_no_plan() -> None:
+    assert (
+        build_customer_fulltext_plan(("Jhon Smi",), CustomerFulltextPolicy(enabled=False)) is None
+    )
+
+
+def test_the_indexed_plan_bounds_returned_rows_and_never_the_corpus(
     production_schema: ActiveSchema,
 ) -> None:
-    """The misspelling fallback issues one unfiltered, bounded read of customers —
-    it must clear the same guard rails as every other plan, not bypass them just
-    because it has no WHERE clause."""
-    plan = build_customer_fuzzy_probe_plan()
+    """The invariant this whole path exists to restore.
+
+    The predecessor of this test asserted `limit == FUZZY_CUSTOMER_PROBE_LIMIT`
+    on an unfiltered, unordered `MATCH (c:Customer) ... LIMIT 100` — it pinned a
+    P0 defect as intended behaviour. What has to be true instead is that the
+    limit applies *after* the server has ranked every customer the index covers:
+    the query is a full-text call, the ordering is not optional, and no WHERE
+    clause narrows the set before the index has scored it.
+    """
+    policy = CustomerFulltextPolicy()
+    plan = build_customer_fulltext_plan(("Jhon Smi",), policy)
+    assert plan is not None
+    assert plan.operation is QueryOperation.FULLTEXT_SEARCH
+    assert plan.fulltext_index == policy.index_name
+    assert plan.filters == ()
+
     guard_context = _guard_context(production_schema)
     SchemaQueryGuard().validate(guard_context, plan)
     QuerySafetyGuard(QuerySafetyPolicy()).validate(plan)
     compiled = CypherCompiler().compile_read(production_schema, plan)
+
     assert compiled.read_only is True
-    assert "WHERE" not in compiled.cypher
+    assert compiled.cypher.startswith("CALL db.index.fulltext.queryNodes(")
+    assert "ORDER BY score DESC" in compiled.cypher
+    # The index name is a parameter, never interpolated: an operator repoints it
+    # in configuration and no Cypher is rewritten.
+    assert policy.index_name not in compiled.cypher
+    assert compiled.parameters["fulltext_index"] == policy.index_name
+
+
+def test_the_index_name_is_not_a_constant(production_schema: ActiveSchema) -> None:
+    """A rebuilt index under a new name must be reachable by configuration alone."""
+    plan = build_customer_fulltext_plan(
+        ("Jhon Smi",), CustomerFulltextPolicy(index_name="customer_name_search_v3")
+    )
+    assert plan is not None
+    compiled = CypherCompiler().compile_read(production_schema, plan)
+
+    assert compiled.parameters["fulltext_index"] == "customer_name_search_v3"
+
+
+def test_a_full_text_plan_is_refused_for_a_field_this_role_cannot_search(
+    production_schema: ActiveSchema,
+) -> None:
+    """The index replaces the WHERE clause, so nothing else validates the field.
+
+    Without the guard branch, a full-text plan would be the one way to rank on a
+    field a principal is not permitted to search — and ranking on it is already
+    the disclosure, whatever the result columns say.
+    """
+    plan = build_customer_fulltext_plan(("Jhon Smi",), CustomerFulltextPolicy())
+    assert plan is not None
+    stranger = GuardContext(
+        schema=production_schema,
+        agent_policy=production_schema.agent_policies["order-discovery-agent"],
+        principal=PrincipalContext(
+            principal_id="assoc-1", tenant_id="tenant-1", roles=frozenset({"associate"})
+        ),
+    )
+    with pytest.raises(GuardRejected) as error:
+        SchemaQueryGuard().validate(
+            stranger, plan.model_copy(update={"fulltext_field_id": "no_such_field"})
+        )
+
+    assert error.value.code == "REJECT_INVALID_SCHEMA_REFERENCE"
+
+
+# --- narrow_fulltext_matches --------------------------------------------------
+
+
+def _row(customer_id: str, score: float) -> dict[str, object]:
+    return {
+        "customer_id": customer_id,
+        "customer_name": f"Customer {customer_id}",
+        FULLTEXT_SCORE_FIELD: score,
+    }
+
+
+def test_narrowing_is_bounded_by_score_and_not_by_row_count() -> None:
+    """Five rows is the right answer when five customers are plausible.
+
+    When one match is clearly better than the rest, padding the list out to a
+    fixed size is how a wrong candidate gets shown next to the right one as
+    though the search were undecided.
+    """
+    narrowed = narrow_fulltext_matches(
+        [_row("C1", 9.0), _row("C2", 8.2), _row("C3", 1.1), _row("C4", 0.4)],
+        policy=CustomerFulltextPolicy(),
+    )
+
+    assert [row["customer_id"] for row, _ in narrowed] == ["C1", "C2"]
+
+
+def test_narrowing_keeps_every_row_that_is_genuinely_competitive() -> None:
+    """No fixed cap: a name shared by eight customers returns eight candidates."""
+    narrowed = narrow_fulltext_matches(
+        [_row(f"C{index}", 9.0) for index in range(8)], policy=CustomerFulltextPolicy()
+    )
+
+    assert len(narrowed) == 8
+
+
+def test_the_relevance_score_does_not_travel_on_as_customer_data() -> None:
+    """It is search metadata. Left in the row it reaches the model's context and
+    the stored evidence as though the graph had returned it as a property."""
+    (row, score), = narrow_fulltext_matches([_row("C1", 4.5)], policy=CustomerFulltextPolicy())
+
+    assert FULLTEXT_SCORE_FIELD not in row
+    assert score == 4.5
+
+
+def test_rows_without_a_usable_score_are_dropped_rather_than_ranked_first() -> None:
+    """A missing score cannot be read as zero or as infinity, so it is read as
+    "this row did not come from the index" and left out."""
+    narrowed = narrow_fulltext_matches(
+        [{"customer_id": "C1", "customer_name": "Acme"}, _row("C2", 3.0)],
+        policy=CustomerFulltextPolicy(),
+    )
+
+    assert [row["customer_id"] for row, _ in narrowed] == ["C2"]
+
+
+def test_nothing_returned_narrows_to_nothing() -> None:
+    assert narrow_fulltext_matches([], policy=CustomerFulltextPolicy()) == []
 
 
 # --- full guard + compiler round-trip against the production schema ---------
@@ -378,21 +549,34 @@ def test_no_strong_anchor_is_inert(production_schema: ActiveSchema) -> None:
     assert inert == []
 
 
-def test_fuzzy_match_survives_a_trade_name_suffix() -> None:
-    """The real failure: a misspelt name plus a suffix nobody types.
+@pytest.mark.parametrize(
+    ("typed", "expected_terms"),
+    (
+        ("melgan heatng", ("melgan~1", "heatng~1")),
+        ("Jhon Smith", ("Jhon~1", "Smith~1")),
+        ("Zephyrine Okonkwo", ("Zephyrine~2", "Okonkwo~1")),
+    ),
+)
+def test_the_misspellings_the_old_probe_handled_are_still_asked_for(
+    typed: str, expected_terms: tuple[str, ...]
+) -> None:
+    """Parity with the difflib fallback that was removed.
 
-    "MELGON HEATING & COOLING" scores 0.667 against "melgan heatng" on a plain
-    whole-string ratio -- under the threshold -- while the next best customer in
-    the same probe scores 0.370. The name matched and the untyped tail diluted
-    it, so the one case the fallback exists for was the case it missed.
+    "MELGON HEATING & COOLING" against "melgan heatng" was the case that
+    justified the client-side scorer: one edit in the name, one in the second
+    word, and a trade-name suffix nobody types. Each of these has to survive as
+    a fuzzy term with at least the edit budget the misspelling needs -- the
+    untyped suffix costs nothing now, because the index matches per token
+    instead of comparing whole strings.
+
+    Term generation is what a unit test can prove. That these terms find the row
+    in a corpus far larger than any window is proven against a real index in
+    test_order_discovery_fulltext_real_infra.py.
     """
-    rows = [
-        {"customer_id": "471565", "customer_name": "MELGON HEATING & COOLING"},
-        {"customer_id": "1379433", "customer_name": "ALLIED GAS"},
-        {"customer_id": "1013086", "customer_name": "THE TANKLESS GUYS"},
-    ]
-    matches = fuzzy_match_customers(("melgan heatng",), rows)
-    assert [row["customer_id"] for row in matches] == ["471565"]
+    query = build_customer_name_query((typed,), CustomerFulltextPolicy())
+
+    for term in expected_terms:
+        assert term in query
 
 
 # ---------------------------------------------------------------------------

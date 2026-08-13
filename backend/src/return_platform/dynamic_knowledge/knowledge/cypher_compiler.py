@@ -18,6 +18,18 @@ class QueryCompilationError(ValueError):
     """Raised when a valid logical plan cannot be compiled safely."""
 
 
+#: The result column a FULLTEXT_SEARCH row carries its server-side relevance in.
+#: Consumers narrow by this rather than by row position -- the whole point of
+#: the operation is that ranking happens over the complete indexed set, so the
+#: score is the only bound that means anything.
+FULLTEXT_SCORE_FIELD = "search_score"
+
+#: The single read-only procedure this compiler is allowed to call. Written out
+#: rather than assembled, so the read boundary in `Neo4jKnowledgeGateway` can
+#: compare against exactly the same literal.
+FULLTEXT_PROCEDURE = "db.index.fulltext.queryNodes"
+
+
 @dataclass(frozen=True, slots=True)
 class CompiledQuery:
     cypher: str
@@ -74,6 +86,8 @@ class CypherCompiler:
     """Compile graph reads and schema-driven projection writes."""
 
     def compile_read(self, schema: ActiveSchema, plan: LogicalQueryPlan) -> CompiledQuery:
+        if plan.operation is QueryOperation.FULLTEXT_SEARCH:
+            return self._compile_fulltext_read(schema, plan)
         aliases: dict[str, str] = {plan.start_entity_id: "n0"}
         start_node = schema.entity_node(plan.start_entity_id)
         match_parts = [f"MATCH (n0:{_quoted(start_node.label)})"]
@@ -155,6 +169,68 @@ class CypherCompiler:
         clauses.append("LIMIT $limit")
         parameters["limit"] = plan.limit
         cypher = "\n".join(clauses)
+        return CompiledQuery(
+            cypher=cypher,
+            parameters=parameters,
+            checksum=sha256_digest({"cypher": cypher, "parameter_names": sorted(parameters)}),
+        )
+
+    def _compile_fulltext_read(self, schema: ActiveSchema, plan: LogicalQueryPlan) -> CompiledQuery:
+        """Compile a ranked approximate search over a full-text index.
+
+        The corpus is every node the index covers; `$limit` bounds how many of
+        the *ranked* rows come back, which is the distinction the whole
+        operation exists for. `ORDER BY score DESC` is emitted unconditionally
+        here rather than through `plan.sort` -- a full-text read whose ordering
+        were optional would be an unordered window again, and that is the defect
+        this replaces.
+
+        The index name is a parameter, never interpolated, and the label
+        predicate is re-asserted from the schema's own node projection: if a
+        caller ever named an index over some other label, this query returns
+        nothing rather than nodes the plan's entity does not describe.
+        """
+        entity = schema.entities.get(plan.start_entity_id)
+        if entity is None:
+            raise QueryCompilationError(f"unknown entity: {plan.start_entity_id}")
+        node = schema.entity_node(plan.start_entity_id)
+        field_id = plan.fulltext_field_id
+        if field_id is None or field_id not in entity.fields:
+            raise QueryCompilationError(
+                f"unknown full-text field {field_id!r} on entity {plan.start_entity_id!r}"
+            )
+        indexed_property = entity.fields[field_id].graph_property
+        selected = plan.fields or tuple(
+            selectable for selectable, field in entity.fields.items() if field.capabilities.displayable
+        )
+        if not selected:
+            raise QueryCompilationError("query has no configured display fields")
+        if FULLTEXT_SCORE_FIELD in selected:
+            raise QueryCompilationError(
+                f"{FULLTEXT_SCORE_FIELD!r} is reserved for the full-text relevance score"
+            )
+        return_items = [
+            f"n0.{_quoted(_field_property(schema, entity.entity_id, selectable))} "
+            f"AS {_quoted(selectable)}"
+            for selectable in selected
+        ]
+        return_items.append(f"score AS {_quoted(FULLTEXT_SCORE_FIELD)}")
+        cypher = "\n".join(
+            (
+                f"CALL {FULLTEXT_PROCEDURE}($fulltext_index, $fulltext_query, {{limit: $limit}})",
+                "YIELD node AS n0, score",
+                "WITH n0, score",
+                f"WHERE n0:{_quoted(node.label)} AND n0.{_quoted(indexed_property)} IS NOT NULL",
+                "RETURN " + ", ".join(return_items),
+                "ORDER BY score DESC",
+                "LIMIT $limit",
+            )
+        )
+        parameters: dict[str, Any] = {
+            "fulltext_index": plan.fulltext_index,
+            "fulltext_query": plan.fulltext_query,
+            "limit": plan.limit,
+        }
         return CompiledQuery(
             cypher=cypher,
             parameters=parameters,

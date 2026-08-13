@@ -10,12 +10,25 @@ from neo4j import READ_ACCESS, AsyncDriver
 from neo4j.spatial import Point
 from neo4j.time import Date, DateTime, Duration, Time
 
+from return_platform.dynamic_knowledge.knowledge.cypher_compiler import FULLTEXT_PROCEDURE
 from return_platform.dynamic_knowledge.schema import ActiveSchema, FieldDefinition
 
 _PROHIBITED = re.compile(
     r"\b(CREATE|MERGE|SET|DELETE|DETACH|DROP|REMOVE|LOAD\s+CSV|CALL|GRANT|DENY|REVOKE)\b",
     re.IGNORECASE,
 )
+
+#: The one procedure call this boundary admits, matched as a literal prefix.
+#:
+#: `CALL` is otherwise prohibited outright, and the ban is worth keeping: an
+#: arbitrary procedure can write, read outside the graph, or reach the file
+#: system. `db.index.fulltext.queryNodes` is a read procedure over an index the
+#: platform itself creates (migration 0013) and is the only server-side
+#: approximate match available without APOC -- the alternative was an unordered
+#: window of rows scored on the client, which could miss the row it was looking
+#: for. Everything after the prefix is still held to the same prohibition, so a
+#: second `CALL` (or any write clause) smuggled into the tail is refused.
+_FULLTEXT_PREFIX = f"CALL {FULLTEXT_PROCEDURE}("
 
 
 def _json_safe(value: Any) -> Any:
@@ -49,6 +62,19 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, Sequence) and not isinstance(value, str):
         return [_json_safe(item) for item in value]
     return value
+
+
+def _is_permitted_read(normalized: str) -> bool:
+    """Whether this compiled query may be executed at all.
+
+    Two shapes only: a plain `MATCH` read, or a full-text query that opens with
+    the single allowlisted read procedure. In the second case the tail after the
+    procedure name is held to the identical prohibition, so the exception buys
+    exactly one `CALL` and nothing else.
+    """
+    if normalized.startswith(_FULLTEXT_PREFIX):
+        return not _PROHIBITED.search(normalized[len(_FULLTEXT_PREFIX) :])
+    return normalized.startswith("MATCH") and not _PROHIBITED.search(normalized)
 
 
 def _selectivity_of(field: FieldDefinition) -> dict[str, Any]:
@@ -185,7 +211,7 @@ class Neo4jKnowledgeGateway:
     ) -> Any:
         del graph_generation_id, plan
         normalized = compiled_cypher.strip()
-        if not normalized.startswith("MATCH") or _PROHIBITED.search(normalized):
+        if not _is_permitted_read(normalized):
             raise ValueError("Only validated read-only Cypher is permitted")
         database = self._database or schema.graph.database
         async with self._driver.session(
