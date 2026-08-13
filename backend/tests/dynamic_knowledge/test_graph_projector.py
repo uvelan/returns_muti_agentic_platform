@@ -18,6 +18,7 @@ def _one_to_many_schema(
     active_schema: ActiveSchema,
     *,
     maximum_targets_per_source: int | None = None,
+    maximum_sources_per_target: int | None = None,
 ) -> ActiveSchema:
     """entity_a (parent, one) -[:a_to_b]-> entity_b (child, many), matching a
     SalesOrder -> OrderLine shape without using Ferguson-specific names."""
@@ -26,6 +27,9 @@ def _one_to_many_schema(
     raw["graph"]["relationships"]["a_to_b"]["cardinality"] = "ONE_TO_MANY"
     raw["graph"]["relationships"]["a_to_b"]["maximum_targets_per_source"] = (
         maximum_targets_per_source
+    )
+    raw["graph"]["relationships"]["a_to_b"]["maximum_sources_per_target"] = (
+        maximum_sources_per_target
     )
     return ActiveSchema.model_validate(raw)
 
@@ -105,6 +109,31 @@ async def test_relationship_mutations_are_deduplicated(active_schema: ActiveSche
     )
     batch = await GenericGraphProjector().project(schema=schema, mutations=mutations)
     assert len(batch.relationship_mutations) == 1
+
+
+@pytest.mark.asyncio
+async def test_one_source_per_target_counts_targets_and_not_the_key_they_share(
+    active_schema: ActiveSchema,
+) -> None:
+    """ONE_TO_MANY means one parent per child, not one child per parent.
+
+    The counter was keyed on the target's *match* value, which every child of one
+    parent shares -- so it incremented once per edge into any of them and raised
+    on the second child, reporting "this target has two sources" about a target
+    that had one. Three shipped relationships carry `maximum_sources_per_target=1`
+    on exactly this shape, including the one joining a case to its RMAs, so a case
+    with two RMAs would have failed its sync.
+    """
+    schema = _one_to_many_schema(active_schema, maximum_sources_per_target=1)
+    mutations = (
+        _upsert("entity_a", "source_a", {"id": "PARENT-1", "name": "n", "count_value": 1}),
+        _upsert("entity_b", "source_b", {"id": "CHILD-1", "parent_id": "PARENT-1"}),
+        _upsert("entity_b", "source_b", {"id": "CHILD-2", "parent_id": "PARENT-1"}),
+    )
+
+    batch = await GenericGraphProjector().project(schema=schema, mutations=mutations)
+
+    assert len(batch.relationship_mutations) == 2
 
 
 @pytest.mark.asyncio
