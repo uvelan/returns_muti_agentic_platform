@@ -43,10 +43,11 @@ def _required_env(name: str) -> str:
 
 
 def _mongo_dsn() -> str:
+    """`directConnection=true` -- see `test_return_record_sync_real_infra._mongo_dsn`."""
     username = quote(_required_env("MONGO_ROOT_USERNAME"), safe="")
     password = quote(_required_env("MONGO_ROOT_PASSWORD"), safe="")
     host = os.getenv("PLATFORM_TEST_MONGO_HOST", "localhost")
-    return f"mongodb://{username}:{password}@{host}:27017/return_platform?authSource=admin"
+    return f"mongodb://{username}:{password}@{host}:27017/return_platform?authSource=admin&directConnection=true"
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")

@@ -60,7 +60,7 @@ def test_settings(
         mongo_dsn=SecretStr(
             f"mongodb://{mongo_username}:{mongo_password}"
             "@localhost:27017/return_platform"
-            "?authSource=admin"
+            "?authSource=admin&directConnection=true"
         ),
         neo4j_uri="bolt://localhost:7687",
         neo4j_user="neo4j",

@@ -158,10 +158,19 @@ def test_settings(
         catalog_path=empty_catalog_path,
         environment="test",
         frontend_cors_origin=AnyHttpUrl("http://localhost:5173"),
+        # `directConnection=true` deliberately. The deployment runs a single-node
+        # replica set that advertises its *container* hostname, so ordinary
+        # topology discovery from the host resolves a name that does not exist
+        # there and every operation times out. A direct connection skips
+        # discovery and works identically from inside the compose network, so
+        # one DSN serves both hosts of `mongo_host` above. Transactions are
+        # unaffected -- the driver allows them against a replica-set primary
+        # whatever the topology type, and `OperationalRepository` and
+        # `ReturnSupportService` both open one.
         mongo_dsn=SecretStr(
             f"mongodb://{mongo_username}:{mongo_password}"
             f"@{mongo_host}:27017/return_platform"
-            "?authSource=admin"
+            "?authSource=admin&directConnection=true"
         ),
         neo4j_uri=neo4j_uri,
         neo4j_user="neo4j",
