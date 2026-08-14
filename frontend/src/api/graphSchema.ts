@@ -14,16 +14,43 @@
 
 import { APIError } from "./client";
 
+/**
+ * `graph_schema_analyzer/domain/analysis_session.py::SessionStatus`, verbatim.
+ *
+ * This list was wrong, and wrong in the way that hurts: it named three statuses
+ * the backend has never emitted -- `AWAITING_CLARIFICATION`, `PROPOSING`,
+ * `AWAITING_REVIEW` -- and omitted `DRAFT`, which is the *only* status a
+ * session is ever created with. So the one status every new analysis actually
+ * carries was untypeable, and three that cannot occur were.
+ *
+ * The generated mirror at `generated/return-platform.d.ts:6688` has always had
+ * the real values, so the app carried two client mirrors that disagreed. This
+ * one is now the same nine names in the same order.
+ *
+ * `READY_FOR_APPROVAL` and `APPROVED` are unreachable on today's transition
+ * table -- nothing drives a session into them -- but they are published enum
+ * members and removing them is a contract change, not a mirror correction.
+ */
 export type SessionStatus =
+  | "DRAFT"
   | "DISCOVERING"
-  | "AWAITING_CLARIFICATION"
-  | "PROPOSING"
-  | "AWAITING_REVIEW"
+  | "ANALYZING"
+  | "NEEDS_CLARIFICATION"
+  | "NEEDS_HUMAN_REVIEW"
+  | "READY_FOR_APPROVAL"
   | "APPROVED"
   | "ABANDONED"
   | "FAILED";
 
-export type DraftStatus = "DRAFT" | "VALIDATED" | "APPROVED" | "SUPERSEDED";
+/**
+ * `graph_schema_analyzer/domain/schema_draft.py::DraftStatus`, verbatim.
+ *
+ * `SUPERSEDED` was invented here. A draft is never superseded in the analyzer's
+ * lifecycle -- a mutation sends a `VALIDATED` draft back to `DRAFT` and the same
+ * draft id carries on -- and the name was borrowed from the *release* lifecycle
+ * in `configuration.ts`, where it is real.
+ */
+export type DraftStatus = "DRAFT" | "VALIDATED" | "APPROVED";
 
 export type Severity = "ERROR" | "WARNING" | "INFO";
 
