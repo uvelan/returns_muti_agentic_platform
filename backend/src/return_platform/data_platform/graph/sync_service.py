@@ -58,7 +58,6 @@ from return_platform.dynamic_knowledge.lifecycle.orchestrator import (
     GenerationLifecycleOrchestrator,
     adopt_existing_generation,
 )
-from return_platform.dynamic_knowledge.release_migration import MigrationPlan, MigrationStrategy
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
     GraphNodeMutation,
     SyncOrigin,
@@ -69,6 +68,7 @@ from return_platform.dynamic_knowledge.on_demand_sync.extraction import (
     GenericSourceRecordExtractor,
     contact_digest_secrets,
 )
+from return_platform.dynamic_knowledge.release_migration import MigrationPlan, MigrationStrategy
 from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore
 from return_platform.dynamic_knowledge.schema import (
     ActiveSchema,
@@ -81,6 +81,7 @@ from return_platform.dynamic_knowledge.sync.adapters import (
 )
 from return_platform.dynamic_knowledge.sync.checkpoint_store import MongoSyncCheckpointStore
 from return_platform.dynamic_knowledge.sync.coordinator import GenericSyncCoordinator
+from return_platform.dynamic_knowledge.sync.run_manifest import SyncRunManifest
 from return_platform.source_connectors.contracts import (
     CursorComparison,
     RawSourcePage,
@@ -171,6 +172,21 @@ class SyncRunRequester(GraphSyncModel):
     anchorFieldIds: list[str]
 
 
+class SourceWatermarkView(GraphSyncModel):
+    """One source's high watermark, as the run fixed it before scanning.
+
+    The cursor is reported as the connector encoded it, not decoded: ordering
+    and meaning belong to the connector that produced it (see
+    `SourceScanConnector.compare_cursors`), and a view that reinterpreted the
+    value would be a second opinion about what the cursor means.
+    """
+
+    sourceAssetId: str
+    cursorType: str
+    encodedValue: str
+    connectorVersion: str
+
+
 class GraphSyncRunView(GraphSyncModel):
     id: str
     mode: str
@@ -204,6 +220,40 @@ class GraphSyncRunView(GraphSyncModel):
     #: alternative is an operator seeing a green run and a source that quietly
     #: never syncs -- exactly the failure this step exists to make visible.
     skippedSources: list[str] = Field(default_factory=list)
+
+    # --- GRAPH-03: what an operator needs to answer "what did this run do" ----
+    #
+    # Every field below is optional and defaulted, because the ledger holds runs
+    # recorded before any of it was captured. A historical run says "not
+    # recorded" by being null; back-filling it with a plausible value would be
+    # inventing evidence about a run nobody observed.
+
+    #: The generation that was serving when the run started. Equal to
+    #: `graphGenerationId` for anything but a cutover; on a cutover it is the
+    #: generation the new one replaced, which is the pair an operator reads.
+    activeGenerationId: str | None = None
+    #: How far the cutover got. On success the last stage reached; on failure the
+    #: stage that failed, which is the difference between "validation rejected
+    #: the candidate" and "we could not get the rebuild lease".
+    cutoverStage: str | None = None
+    #: The status of the generation this run replaced, read after retirement.
+    #: RETIRED means the drain completed; DRAINING means readers were still on
+    #: it when the wait expired and an operator should look.
+    previousGenerationStatus: str | None = None
+    #: The failure, in words. `errorCode` is the exception type and answers
+    #: "what kind"; this answers "why", which for a validation failure is the
+    #: report summary naming the checks that failed.
+    failureReason: str | None = None
+    #: Per-source high watermarks, captured before any scan began. The audited
+    #: strength that was captured and then discarded: the coordinator has always
+    #: reported these to a `RunManifestRecorder` and no implementation existed,
+    #: so "what bound did this run read up to" was unanswerable.
+    sourceWatermarks: list[SourceWatermarkView] = Field(default_factory=list)
+    #: When the source scan finished, and when Stage B relationship
+    #: reconciliation finished. A run that scanned and then died in
+    #: reconciliation looks identical to one that died mid-scan without these.
+    scanCompletedAt: datetime | None = None
+    reconciliationCompletedAt: datetime | None = None
 
 
 GRAPH_SYNC_RUNS_COLLECTION = "graph_sync_runs"
@@ -246,6 +296,13 @@ def sync_run_view(document: dict[str, Any]) -> GraphSyncRunView:
             "requestedBy": document.get("requestedBy"),
             "recordScope": document.get("recordScope", "FULL"),
             "skippedSources": document.get("skippedSources", []),
+            "activeGenerationId": document.get("activeGenerationId"),
+            "cutoverStage": document.get("cutoverStage"),
+            "previousGenerationStatus": document.get("previousGenerationStatus"),
+            "failureReason": document.get("failureReason"),
+            "sourceWatermarks": document.get("sourceWatermarks", []),
+            "scanCompletedAt": document.get("scanCompletedAt"),
+            "reconciliationCompletedAt": document.get("reconciliationCompletedAt"),
         }
     )
 
@@ -323,6 +380,57 @@ class MongoTargetedSyncRunLedger:
         )
 
 
+class _MongoRunManifestRecorder:
+    """The `RunManifestRecorder` that never existed.
+
+    `GenericSyncCoordinator` has always captured every participating source's
+    high watermark before any scan began -- the audited strength -- and always
+    reported it to this port. No implementation was ever constructed, so the
+    watermark was computed, used to bound the scan, and thrown away. "What did
+    this run read up to?" had no answer outside a debugger.
+
+    It writes onto the run's own ledger document rather than into a collection
+    of its own: an operator asking that question is already looking at the run,
+    and a second collection would be a second place to join. `$push` rather than
+    `$set` because a cutover records two manifests -- the build pass and the
+    catch-up pass -- and the catch-up's bounds are the interesting half.
+    """
+
+    def __init__(self, runs: Any, run_id: str) -> None:
+        self._runs = runs
+        self._run_id = run_id
+
+    async def record_watermarks(self, manifest: SyncRunManifest) -> None:
+        await self._runs.update_one(
+            {"_id": self._run_id},
+            {
+                "$push": {
+                    "sourceWatermarks": {
+                        "$each": [
+                            {
+                                "sourceAssetId": record.source_asset_id,
+                                "cursorType": record.captured_watermark.cursor_type,
+                                "encodedValue": record.captured_watermark.encoded_value,
+                                "connectorVersion": record.connector_version,
+                            }
+                            for record in manifest.source_watermarks
+                        ]
+                    }
+                }
+            },
+        )
+
+    async def record_scan_completed(self, sync_run_id: str) -> None:
+        del sync_run_id  # addressed by the ledger run this recorder belongs to
+        await self._runs.update_one({"_id": self._run_id}, {"$set": {"scanCompletedAt": _now()}})
+
+    async def record_reconciliation_completed(self, sync_run_id: str) -> None:
+        del sync_run_id
+        await self._runs.update_one(
+            {"_id": self._run_id}, {"$set": {"reconciliationCompletedAt": _now()}}
+        )
+
+
 def _text(value: Any) -> str | None:
     if value is None:
         return None
@@ -343,6 +451,14 @@ class _SyncOutcome:
     node_writes: int
     relationship_writes: int
     graph_generation_id: str | None
+    #: What was serving when the run began. Same as `graph_generation_id` unless
+    #: this run cut over, in which case the two together are the whole story.
+    active_generation_id: str | None = None
+    #: The last cutover stage reached, and what became of the generation this run
+    #: replaced. Both None for a run that never cut over -- absent rather than
+    #: "N/A", because a null reads as "this run did not do that".
+    cutover_stage: str | None = None
+    previous_generation_status: str | None = None
 
 
 def _is_destructive_rebuild(request: GraphSyncRequest, scope: frozenset[str] | None) -> bool:
@@ -679,19 +795,36 @@ class GraphSyncService:
                     "relationshipWrites": outcome.relationship_writes,
                     "constraintsApplied": constraints,
                     "graphGenerationId": outcome.graph_generation_id,
+                    "activeGenerationId": outcome.active_generation_id,
+                    "cutoverStage": outcome.cutover_stage,
+                    "previousGenerationStatus": outcome.previous_generation_status,
                     "completedAt": completed,
                 }
             )
+            # `$set` would overwrite the watermarks the recorder pushed onto this
+            # same document while the run was scanning, so they are read back
+            # rather than carried through `document`, which predates them.
             await self._runs.update_one({"_id": run_id}, {"$set": document})
-            return self._view(document)
+            stored = await self._runs.find_one({"_id": run_id})
+            return self._view(stored if stored is not None else document)
         except Exception as error:
             document.update(
                 {
                     "status": "FAILED",
                     "errorCode": type(error).__name__.upper()[:100],
+                    # The type says what kind; this says why. For a validation
+                    # failure it is the report summary naming the checks that
+                    # failed, which is the difference between an operator
+                    # knowing to look at the source data and knowing nothing.
+                    "failureReason": str(error)[:2000] or None,
                     "completedAt": _now(),
                 }
             )
+            if isinstance(error, ActivationError):
+                # Where the cutover stopped. "Someone else holds the rebuild
+                # lease" and "the candidate failed validation" are the same
+                # exception type and completely different operator responses.
+                document["cutoverStage"] = error.stage
             await self._runs.update_one({"_id": run_id}, {"$set": document})
             raise
 
@@ -866,6 +999,7 @@ class GraphSyncService:
             checkpoints=self._checkpoints,
             reconciler=self._writer,
             ownership_reconciler=self._writer,
+            run_recorder=_MongoRunManifestRecorder(self._runs, run_id),
         )
         participating_ids = frozenset(participating)
 
@@ -948,15 +1082,44 @@ class GraphSyncService:
         # generation beside the live graph instead of replacing it, and every
         # node already there would be orphaned under `legacy-live` with nothing
         # left pointing at it.
-        await self._resolve_active_generation()
+        previous = await self._resolve_active_generation()
         snapshot = await orchestrator.build_and_activate(
             schema=self._schema,
             snapshot_name=DEFAULT_SNAPSHOT_NAME,
             configuration_release_id=self._schema.configuration_release_id,
         )
         return _SyncOutcome(
-            scoped.node_writes, scoped.relationship_writes, snapshot.graph_generation_id
+            scoped.node_writes,
+            scoped.relationship_writes,
+            snapshot.graph_generation_id,
+            active_generation_id=previous,
+            # Reached only on success, so the stage is the last one there is.
+            cutover_stage="RETIRE_PREVIOUS",
+            # Read after the fact rather than inferred: retirement is
+            # deliberately best-effort (a stuck drain leaves the generation
+            # DRAINING and does not fail the activation), so the only honest
+            # answer is what the marker actually says now.
+            previous_generation_status=await self._generation_status(previous),
         )
+
+    async def _generation_status(self, graph_generation_id: str) -> str | None:
+        """The marker's status, or None if reading it fails.
+
+        Best-effort by construction: this runs after a cutover has already
+        succeeded and exists only to report drain state. Failing the run here
+        would turn a reporting problem into a false negative for a completed
+        activation.
+        """
+        try:
+            status = await self._generation_writer.get_status(
+                graph_generation_id=graph_generation_id
+            )
+        except Exception:
+            _LOGGER.exception(
+                "Could not read the status of replaced generation %s", graph_generation_id
+            )
+            return None
+        return None if status is None else status[0].value
 
     async def _resolve_active_generation(self) -> str:
         """Which generation is serving, creating and adopting one if none is yet.
