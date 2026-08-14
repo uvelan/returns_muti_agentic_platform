@@ -120,24 +120,24 @@ export type DraftView = {
  */
 export type PropertyShapeView = {
   readonly type: string;
-  readonly source_field: string | null;
-  readonly transformation: string | null;
+  readonly source_field: string;
+  readonly transformation: string;
 };
 
 export type EntityShapeView = {
   readonly label: string;
-  readonly source_dataset: string | null;
+  readonly source_dataset: string;
   readonly properties: Readonly<Record<string, PropertyShapeView>>;
   readonly identifier_properties: readonly string[];
-  readonly ownership: string | null;
-  readonly sync_mode: string | null;
+  readonly ownership: string;
+  readonly sync_mode: string;
 };
 
 export type RelationshipShapeView = {
   readonly relationship_type: string;
   readonly from_label: string;
   readonly to_label: string;
-  readonly cardinality: string | null;
+  readonly cardinality: string;
 };
 
 export type GraphIndexShapeView = {
@@ -274,7 +274,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     try {
       const body: unknown = await response.json();
       if (typeof body === "object" && body !== null && "detail" in body) {
-        detail = String(body.detail);
+        const responseDetail: unknown = body.detail;
+        if (typeof responseDetail === "string") {
+          detail = responseDetail;
+        } else if (
+          typeof responseDetail === "object"
+          && responseDetail !== null
+          && "message" in responseDetail
+          && typeof responseDetail.message === "string"
+        ) {
+          detail = responseDetail.message;
+        }
       }
     } catch {
       // A non-JSON error body is not itself an error worth surfacing; the

@@ -7,12 +7,12 @@ import {
   type AnalysisSessionView,
   type ProposedChangeView,
   type ReanalysisProposalView,
-  type ValidationFindingView,
 } from "../../api/graphSchema";
 import { schemaReleasesApi, type MigrationPlan } from "../../api/schemaReleases";
 import { useCapabilities } from "../../hooks/capabilityContext";
 import { SourceBindingsPanel } from "../data-sources/SourceBindingsPanel";
 import { DomainRail, RailFact, RailNote, RailSection } from "../DomainRail";
+import { SchemaFlow } from "./SchemaFlow";
 
 /**
  * The Graph Schema Analyzer screen (Phase 20).
@@ -90,12 +90,19 @@ export function GraphSchemaPage() {
 
   const selected = analyses.data?.find((a) => a.analysis_id === selectedId) ?? null;
 
+  const moveTabFocus = (index: number) => {
+    const nextIndex = (index + TABS.length) % TABS.length;
+    const next = TABS[nextIndex];
+    setTab(next);
+    document.getElementById("graph-tab-" + next.toLowerCase())?.focus();
+  };
+
   const open = (analyses.data ?? []).filter(
     (analysis) => !TERMINAL_SESSION_STATUSES.includes(analysis.status),
   );
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       {/*
         Where the analyst's work stands. The tabs below belong to a *selected
         draft*, so they are not sections and this is not navigation -- it is the
@@ -131,14 +138,28 @@ export function GraphSchemaPage() {
           )}
         </RailSection>
       </DomainRail>
-      <header>
-        <h1 className="text-2xl font-semibold text-slate-900">Graph Schema Analyzer</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Source-driven schema proposal, validation, and approval.
-        </p>
+      <header className="premium-panel overflow-hidden p-6">
+        <div className="flex items-end justify-between gap-8">
+          <div>
+            <p className="premium-kicker">Knowledge architecture</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-on-surface">
+              Graph Schema Analyzer
+            </h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-on-surface-variant">
+              Inspect source-grounded entities, relationships, mappings, governance,
+              and release readiness in one desktop workspace.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-outline-variant bg-surface-container-low px-4 py-3 text-right">
+            <p className="premium-kicker">Workspace state</p>
+            <p className="mt-1 text-sm font-semibold text-primary">
+              {selected === null ? "Awaiting selection" : selected.status}
+            </p>
+          </div>
+        </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[18rem_1fr_22rem]">
+      <div className="grid min-w-[79rem] grid-cols-[16rem_minmax(42rem,1fr)_19rem] items-start gap-4">
         <SourcesColumn
           analyses={analyses.data ?? []}
           isLoading={analyses.isLoading}
@@ -150,31 +171,57 @@ export function GraphSchemaPage() {
         <CopilotColumn analysis={selected} canWrite={can("graph_schema.draft.write")} />
       </div>
 
-      <section className="rounded-lg border border-slate-200 bg-white">
-        <div role="tablist" aria-label="Draft detail" className="flex gap-1 border-b border-slate-200 px-2">
+      <section className="premium-panel overflow-hidden">
+        <div role="tablist" aria-label="Draft detail" className="flex gap-1 overflow-x-auto border-b border-outline-variant bg-surface-container-low px-3 pt-2">
           {TABS.map((name) => (
             <button
               key={name}
               role="tab"
               type="button"
+              id={"graph-tab-" + name.toLowerCase()}
+              aria-controls={"graph-panel-" + name.toLowerCase()}
               aria-selected={tab === name}
+              tabIndex={tab === name ? 0 : -1}
               onClick={() => { setTab(name); }}
+              onKeyDown={(event) => {
+                const index = TABS.indexOf(name);
+                if (event.key === "ArrowRight") {
+                  event.preventDefault();
+                  moveTabFocus(index + 1);
+                } else if (event.key === "ArrowLeft") {
+                  event.preventDefault();
+                  moveTabFocus(index - 1);
+                } else if (event.key === "Home") {
+                  event.preventDefault();
+                  moveTabFocus(0);
+                } else if (event.key === "End") {
+                  event.preventDefault();
+                  moveTabFocus(TABS.length - 1);
+                }
+              }}
               className={[
-                "px-3 py-2 text-sm font-medium transition",
+                "rounded-t-lg border-x border-t px-3 py-2 text-sm font-medium transition",
                 tab === name
-                  ? "border-b-2 border-slate-900 text-slate-900"
-                  : "text-slate-500 hover:text-slate-800",
+                  ? "border-outline-variant bg-surface-container-lowest text-primary"
+                  : "border-transparent text-on-surface-variant hover:bg-surface-container-high",
               ].join(" ")}
             >
               {name}
             </button>
           ))}
         </div>
-        <div className="p-4">
+        <div
+          id={"graph-panel-" + tab.toLowerCase()}
+          role="tabpanel"
+          aria-labelledby={"graph-tab-" + tab.toLowerCase()}
+          className="p-5"
+        >
           <DetailTab
             tab={tab}
             draftId={selected?.draft_id ?? null}
-            canApprove={can("graph_schema.draft.write")}
+            canWrite={can("graph_schema.draft.write")}
+            canApprove={can("governance.proposal.approve")}
+            canPublish={can("governance.proposal.activate")}
             canActivate={can("graph_schema.generation.activate")}
             onChanged={() => {
               void queryClient.invalidateQueries({ queryKey: ["graph-schema"] });
@@ -200,14 +247,14 @@ function SourcesColumn({
   onSelect: (id: string) => void;
 }) {
   return (
-    <aside className="rounded-lg border border-slate-200 bg-white p-4">
-      <h2 className="text-sm font-semibold text-slate-900">Analyses</h2>
-      {isLoading ? <p className="mt-3 text-sm text-slate-500">Loading...</p> : null}
+    <aside className="premium-panel sticky top-[5.5rem] max-h-[calc(100vh-6.5rem)] overflow-y-auto p-4">
+      <h2 className="text-sm font-semibold text-on-surface">Analyses</h2>
+      {isLoading ? <p className="mt-3 text-sm text-outline">Loading...</p> : null}
       {error ? (
-        <p className="mt-3 text-sm text-red-700">Could not load analyses: {error.message}</p>
+        <p className="mt-3 text-sm text-error">Could not load analyses: {error.message}</p>
       ) : null}
       {!isLoading && !error && analyses.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-600">No analyses yet.</p>
+        <p className="mt-3 text-sm text-on-surface-variant">No analyses yet.</p>
       ) : null}
       <ul className="mt-3 flex flex-col gap-1">
         {analyses.map((analysis) => (
@@ -219,8 +266,8 @@ function SourcesColumn({
               className={[
                 "w-full rounded-md px-3 py-2 text-left text-sm transition",
                 selectedId === analysis.analysis_id
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-700 hover:bg-slate-100",
+                  ? "bg-primary text-on-primary"
+                  : "text-on-surface-variant hover:bg-surface-container-high",
               ].join(" ")}
             >
               <span className="block truncate font-medium">{analysis.analysis_id}</span>
@@ -229,7 +276,7 @@ function SourcesColumn({
           </li>
         ))}
       </ul>
-      <p className="mt-4 text-xs text-slate-500">
+      <p className="mt-4 text-xs text-outline">
         Sources are read-only here. The analyzer never offers a source-side schema change.
       </p>
     </aside>
@@ -240,43 +287,47 @@ function CanvasColumn({ analysis }: { analysis: AnalysisSessionView | null }) {
   const draftId = analysis?.draft_id ?? null;
   const draft = useQuery({
     queryKey: ["graph-schema", "draft", draftId],
-    // `enabled` guarantees a non-null id at call time, but the type system
-    // cannot see that, so the id is narrowed here rather than asserted.
     queryFn: () => graphSchemaApi.getDraft(draftId ?? ""),
     enabled: draftId !== null,
   });
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4">
-      <h2 className="text-sm font-semibold text-slate-900">Graph</h2>
+    <section className="premium-panel min-w-0 p-4">
+      <h2 className="text-sm font-semibold text-on-surface">Graph</h2>
       {analysis === null ? (
-        <p className="mt-3 text-sm text-slate-600">Select an analysis.</p>
-      ) : draft.data ? (
+        <p className="mt-3 text-sm text-on-surface-variant">Select an analysis.</p>
+      ) : draft.isLoading ? (
+        <p className="mt-3 text-sm text-on-surface-variant">Loading draft...</p>
+      ) : draft.error ? (
+        <p role="alert" className="mt-3 text-sm text-error">
+          Could not load draft: {draft.error.message}
+        </p>
+      ) : draft.data !== undefined ? (
         <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
           <div>
-            <dt className="text-slate-500">Entities</dt>
-            <dd className="text-lg font-semibold text-slate-900">{draft.data.entity_count}</dd>
+            <dt className="text-outline">Entities</dt>
+            <dd className="text-lg font-semibold text-on-surface">{draft.data.entity_count}</dd>
           </div>
           <div>
-            <dt className="text-slate-500">Relationships</dt>
-            <dd className="text-lg font-semibold text-slate-900">
+            <dt className="text-outline">Relationships</dt>
+            <dd className="text-lg font-semibold text-on-surface">
               {draft.data.relationship_count}
             </dd>
           </div>
           <div>
-            <dt className="text-slate-500">Revision</dt>
-            <dd className="text-slate-900">{draft.data.current_revision}</dd>
+            <dt className="text-outline">Revision</dt>
+            <dd className="text-on-surface">{draft.data.current_revision}</dd>
           </div>
           <div>
-            <dt className="text-slate-500">Status</dt>
-            <dd className="text-slate-900">{draft.data.status}</dd>
+            <dt className="text-outline">Status</dt>
+            <dd className="text-on-surface">{draft.data.status}</dd>
           </div>
         </dl>
       ) : (
-        <p className="mt-3 text-sm text-slate-600">This analysis has no draft yet.</p>
+        <p className="mt-3 text-sm text-on-surface-variant">This analysis has no draft yet.</p>
       )}
 
-      {draftId !== null ? <ShapeCanvas draftId={draftId} /> : null}
+      {draftId !== null && draft.data !== undefined ? <ShapeCanvas draftId={draftId} /> : null}
     </section>
   );
 }
@@ -302,92 +353,36 @@ function ShapeCanvas({ draftId }: { draftId: string }) {
   });
 
   if (shape.isLoading) {
-    return <p className="mt-4 border-t border-slate-200 pt-4 text-sm text-slate-500">Loading shape...</p>;
+    return (
+      <p className="mt-4 border-t border-outline-variant pt-4 text-sm text-on-surface-variant">
+        Loading shape...
+      </p>
+    );
   }
   if (shape.error) {
     return (
-      <p className="mt-4 border-t border-slate-200 pt-4 text-sm text-red-700">
+      <p
+        role="alert"
+        className="mt-4 rounded-xl border border-error/20 bg-error-container px-3 py-2 text-sm text-on-error-container"
+      >
         {shape.error.message}
       </p>
     );
   }
 
-  const entities = Object.entries(shape.data?.entities ?? {});
-  const relationships = shape.data?.relationships ?? [];
-
-  if (entities.length === 0 && relationships.length === 0) {
-    // An empty shape and a missing draft are different answers; the backend
-    // returns the former rather than 404 precisely so this can say which.
+  if (
+    shape.data !== undefined
+    && Object.keys(shape.data.entities).length === 0
+    && shape.data.relationships.length === 0
+  ) {
     return (
-      <p className="mt-4 border-t border-slate-200 pt-4 text-sm text-slate-600">
+      <p className="mt-4 border-t border-outline-variant pt-4 text-sm text-on-surface-variant">
         This draft has no entities yet.
       </p>
     );
   }
 
-  return (
-    <div className="mt-4 border-t border-slate-200 pt-4">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Entities</h3>
-      <ul className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {entities.map(([label, entity]) => (
-          <li key={label} className="rounded-md border border-slate-200 p-2">
-            <p className="text-sm font-semibold text-slate-900">{label}</p>
-            <p className="text-xs text-slate-500">
-              from {entity.source_dataset ?? "unmapped"}
-              {entity.sync_mode !== null ? ` - ${entity.sync_mode}` : ""}
-            </p>
-            <ul className="mt-1 flex flex-col gap-0.5">
-              {Object.entries(entity.properties).map(([name, property]) => (
-                <li key={name} className="flex justify-between gap-2 text-xs">
-                  <span
-                    className={
-                      // Identifiers carry the entity's identity: which
-                      // properties they are is the first thing a reviewer
-                      // checks, so they are marked rather than buried.
-                      entity.identifier_properties.includes(name)
-                        ? "font-semibold text-slate-900"
-                        : "text-slate-700"
-                    }
-                  >
-                    {name}
-                    {entity.identifier_properties.includes(name) ? " (id)" : ""}
-                  </span>
-                  <span className="text-slate-500">{property.type}</span>
-                </li>
-              ))}
-            </ul>
-          </li>
-        ))}
-      </ul>
-
-      <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-        Relationships
-      </h3>
-      {relationships.length === 0 ? (
-        <p className="mt-1 text-sm text-slate-600">No relationships defined.</p>
-      ) : (
-        <ul className="mt-2 flex flex-col gap-1">
-          {relationships.map((edge) => (
-            <li
-              key={`${edge.from_label}-${edge.relationship_type}-${edge.to_label}`}
-              className="text-sm text-slate-800"
-            >
-              <span className="font-medium">{edge.from_label}</span>
-              {" -["}
-              <span className="font-mono text-xs">{edge.relationship_type}</span>
-              {"]-> "}
-              <span className="font-medium">{edge.to_label}</span>
-              {/* Cardinality is half of what an edge means: two drafts with the
-                  same relationship count can describe entirely different graphs. */}
-              {edge.cardinality !== null ? (
-                <span className="ml-2 text-xs text-slate-500">{edge.cardinality}</span>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
+  return shape.data === undefined ? null : <SchemaFlow key={draftId} shape={shape.data} />;
 }
 
 function CopilotColumn({
@@ -420,20 +415,20 @@ function CopilotColumn({
   const answered = (clarifications.data ?? []).filter((c) => c.answer !== null);
 
   return (
-    <aside className="rounded-lg border border-slate-200 bg-white p-4">
-      <h2 className="text-sm font-semibold text-slate-900">Analyzer Copilot</h2>
+    <aside className="premium-panel sticky top-[5.5rem] max-h-[calc(100vh-6.5rem)] overflow-y-auto p-4">
+      <h2 className="text-sm font-semibold text-on-surface">Analyzer Copilot</h2>
 
       {analysis === null ? (
-        <p className="mt-3 text-sm text-slate-600">Select an analysis.</p>
+        <p className="mt-3 text-sm text-on-surface-variant">Select an analysis.</p>
       ) : (
         <>
           {open.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">No open clarifications.</p>
+            <p className="mt-3 text-sm text-on-surface-variant">No open clarifications.</p>
           ) : null}
 
           {open.map((clarification) => (
             <div key={clarification.clarification_id} className="mt-4">
-              <p className="text-sm text-slate-800">{clarification.question}</p>
+              <p className="text-sm text-on-surface">{clarification.question}</p>
               <textarea
                 aria-label={`Answer: ${clarification.question}`}
                 value={answers[clarification.clarification_id] ?? ""}
@@ -445,7 +440,7 @@ function CopilotColumn({
                 }}
                 disabled={!canWrite}
                 rows={3}
-                className="mt-2 w-full rounded-md border border-slate-300 p-2 text-sm disabled:bg-slate-100"
+                className="mt-2 w-full rounded-md border border-outline-variant p-2 text-sm disabled:bg-surface-container-high"
               />
               <button
                 type="button"
@@ -460,7 +455,7 @@ function CopilotColumn({
                     text: answers[clarification.clarification_id] ?? "",
                   });
                 }}
-                className="mt-2 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+                className="mt-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-on-primary disabled:bg-surface-container-high disabled:text-outline"
               >
                 Submit answer
               </button>
@@ -468,24 +463,24 @@ function CopilotColumn({
           ))}
 
           {answer.error ? (
-            <p className="mt-3 text-sm text-red-700">{answer.error.message}</p>
+            <p className="mt-3 text-sm text-error">{answer.error.message}</p>
           ) : null}
 
           {!canWrite ? (
-            <p className="mt-3 text-xs text-slate-500">
+            <p className="mt-3 text-xs text-outline">
               You have read access only; answering requires graph_schema.draft.write.
             </p>
           ) : null}
 
           {answered.length > 0 ? (
-            <div className="mt-6 border-t border-slate-200 pt-3">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <div className="mt-6 border-t border-outline-variant pt-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-outline">
                 Answered
               </h3>
               <ul className="mt-2 flex flex-col gap-2">
                 {answered.map((clarification) => (
-                  <li key={clarification.clarification_id} className="text-xs text-slate-600">
-                    <p className="text-slate-800">{clarification.question}</p>
+                  <li key={clarification.clarification_id} className="text-xs text-on-surface-variant">
+                    <p className="text-on-surface">{clarification.question}</p>
                     <p className="mt-0.5">{clarification.answer}</p>
                   </li>
                 ))}
@@ -501,19 +496,23 @@ function CopilotColumn({
 function DetailTab({
   tab,
   draftId,
+  canWrite,
   canApprove,
+  canPublish,
   canActivate,
   onChanged,
 }: {
   tab: Tab;
   draftId: string | null;
+  canWrite: boolean;
   canApprove: boolean;
+  canPublish: boolean;
   canActivate: boolean;
   onChanged: () => void;
 }) {
   const unbacked = UNBACKED_TABS[tab];
   if (unbacked) {
-    return <p className="text-sm text-slate-500">{unbacked}</p>;
+    return <p className="text-sm text-outline">{unbacked}</p>;
   }
   // Releases are the platform's, not one analysis's: which schema is live is a
   // fact about the runtime, and it has to be readable before anyone has picked
@@ -522,13 +521,28 @@ function DetailTab({
     return <ReleasesTab canActivate={canActivate} />;
   }
   if (draftId === null) {
-    return <p className="text-sm text-slate-600">Select an analysis with a draft.</p>;
+    return <p className="text-sm text-on-surface-variant">Select an analysis with a draft.</p>;
   }
   switch (tab) {
     case "Validation":
-      return <ValidationTab draftId={draftId} canApprove={canApprove} onChanged={onChanged} />;
+      return (
+        <ValidationTab
+          key={draftId}
+          draftId={draftId}
+          canApprove={canApprove}
+          canPublish={canPublish}
+          onChanged={onChanged}
+        />
+      );
     case "Drift":
-      return <DriftTab draftId={draftId} canApply={canApprove} onChanged={onChanged} />;
+      return (
+        <DriftTab
+          key={draftId}
+          draftId={draftId}
+          canApply={canWrite}
+          onChanged={onChanged}
+        />
+      );
     case "Sources":
       // No capability passed: the panel gates itself on `config.source.rebind`,
       // which is the grant its two routes require. This tab used to hand it
@@ -597,27 +611,27 @@ function DriftTab({
           type="button"
           onClick={() => { reanalyze.mutate(); }}
           disabled={reanalyze.isPending}
-          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-800 disabled:opacity-50"
+          className="rounded-md border border-outline-variant px-3 py-1.5 text-sm font-medium text-on-surface disabled:opacity-50"
         >
           Re-analyse sources
         </button>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-outline">
           Reads metadata only, proposes changes, and applies none of them.
         </p>
       </div>
 
       {reanalyze.error ? (
-        <p className="mt-3 text-sm text-red-700">{reanalyze.error.message}</p>
+        <p className="mt-3 text-sm text-error">{reanalyze.error.message}</p>
       ) : null}
-      {apply.error ? <p className="mt-3 text-sm text-red-700">{apply.error.message}</p> : null}
+      {apply.error ? <p className="mt-3 text-sm text-error">{apply.error.message}</p> : null}
 
       {proposal === null ? null : proposal.changes.length === 0
         && proposal.rebindings.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-700">
+          <p className="mt-4 text-sm text-on-surface-variant">
             The sources look the same as when this draft was designed
             {/* Two captures of the same shape share a content address, which is
                 the actual reason there is nothing to show. */}
-            <span className="block text-xs text-slate-500">
+            <span className="block text-xs text-outline">
               content hash {proposal.to_content_hash.slice(0, 12)} is unchanged.
             </span>
           </p>
@@ -625,7 +639,7 @@ function DriftTab({
           <div className="mt-4 flex flex-col gap-4">
             {proposal.rebindings.length > 0 ? (
               <section>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-outline">
                   Moved, not changed
                 </h3>
                 <ul className="mt-2 flex flex-col gap-2">
@@ -634,16 +648,16 @@ function DriftTab({
                       key={rebinding.dataset}
                       className="rounded-md border border-sky-200 bg-sky-50 p-3 text-sm"
                     >
-                      <p className="font-medium text-slate-900">
+                      <p className="font-medium text-on-surface">
                         {rebinding.dataset}
                         {" -> "}
                         {rebinding.to_dataset}
-                        <span className="ml-2 font-normal text-slate-600">
+                        <span className="ml-2 font-normal text-on-surface-variant">
                           ({rebinding.from_source_id} to {rebinding.to_source_id})
                         </span>
                       </p>
-                      <p className="mt-1 text-slate-700">{rebinding.detail}</p>
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="mt-1 text-on-surface-variant">{rebinding.detail}</p>
+                      <p className="mt-1 text-xs text-outline">
                         Fix this on the Sources tab. Nothing in the graph&apos;s shape changes.
                       </p>
                     </li>
@@ -654,7 +668,7 @@ function DriftTab({
 
             {proposal.changes.length > 0 ? (
               <section>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-outline">
                   Proposed changes
                 </h3>
                 <ul className="mt-2 flex flex-col gap-2">
@@ -662,27 +676,27 @@ function DriftTab({
                     const key = `${change.drift}-${change.element}-${String(index)}`;
                     const isAccepted = accepted.includes(key);
                     return (
-                      <li key={key} className="rounded-md border border-slate-200 p-3 text-sm">
+                      <li key={key} className="rounded-md border border-outline-variant p-3 text-sm">
                         <p className="flex flex-wrap items-baseline gap-2">
-                          <span className="font-mono text-xs text-slate-500">{change.drift}</span>
-                          <span className="font-medium text-slate-900">{change.element}</span>
-                          <span className="text-xs text-slate-500">in {change.dataset}</span>
+                          <span className="font-mono text-xs text-outline">{change.drift}</span>
+                          <span className="font-medium text-on-surface">{change.element}</span>
+                          <span className="text-xs text-outline">in {change.dataset}</span>
                         </p>
-                        <p className="mt-1 text-slate-700">{change.detail}</p>
+                        <p className="mt-1 text-on-surface-variant">{change.detail}</p>
                         {change.mutations.length === 0 ? (
                           <p className="mt-2 text-xs font-medium text-amber-800">
                             Needs your decision -- no command can express this without guessing.
                           </p>
                         ) : (
                           <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <span className="font-mono text-xs text-slate-500">
+                            <span className="font-mono text-xs text-outline">
                               {change.mutations.map((command) => command.kind).join(", ")}
                             </span>
                             <button
                               type="button"
                               disabled={!canApply || isAccepted || apply.isPending}
                               onClick={() => { apply.mutate({ change, key }); }}
-                              className="rounded-md bg-slate-900 px-3 py-1 text-xs font-medium text-white disabled:bg-slate-300"
+                              className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-on-primary disabled:bg-surface-container-high disabled:text-outline"
                             >
                               {isAccepted ? "Applied" : "Accept"}
                             </button>
@@ -697,15 +711,15 @@ function DriftTab({
 
             {proposal.diff.entries.length > 0 ? (
               <section>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-outline">
                   If every proposal is accepted
                 </h3>
                 <ul className="mt-2 flex flex-col gap-1 text-sm">
                   {proposal.diff.entries.map((entry) => (
                     <li key={`${entry.change_type}-${entry.element}`}>
-                      <span className="font-mono text-xs text-slate-500">{entry.change_type}</span>{" "}
-                      <span className="font-medium text-slate-900">{entry.element}</span>
-                      <span className="text-slate-600"> -- {entry.detail}</span>
+                      <span className="font-mono text-xs text-outline">{entry.change_type}</span>{" "}
+                      <span className="font-medium text-on-surface">{entry.element}</span>
+                      <span className="text-on-surface-variant"> -- {entry.detail}</span>
                     </li>
                   ))}
                 </ul>
@@ -715,7 +729,7 @@ function DriftTab({
         )}
 
       {!canApply ? (
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs text-outline">
           You have read access only; accepting a change requires graph_schema.draft.write.
         </p>
       ) : null}
@@ -759,11 +773,11 @@ function ReleasesTab({ canActivate }: { canActivate: boolean }) {
     },
   });
 
-  if (releases.error) return <p className="text-sm text-red-700">{releases.error.message}</p>;
-  if (releases.isPending) return <p className="text-sm text-slate-600">Loading...</p>;
+  if (releases.error) return <p className="text-sm text-error">{releases.error.message}</p>;
+  if (releases.isPending) return <p className="text-sm text-on-surface-variant">Loading...</p>;
   if (releases.data.releases.length === 0) {
     return (
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-on-surface-variant">
         Nothing has been published yet, so the platform is running the schema file shipped with
         it. Publishing an approved draft cuts the first release.
       </p>
@@ -785,8 +799,8 @@ function ReleasesTab({ canActivate }: { canActivate: boolean }) {
               className={[
                 "w-full rounded-md px-3 py-2 text-left text-sm transition",
                 selected === release.configurationReleaseId
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-700 hover:bg-slate-100",
+                  ? "bg-primary text-on-primary"
+                  : "text-on-surface-variant hover:bg-surface-container-high",
               ].join(" ")}
             >
               <span className="block truncate font-medium">
@@ -803,13 +817,13 @@ function ReleasesTab({ canActivate }: { canActivate: boolean }) {
 
       <div>
         {selected === null ? (
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-on-surface-variant">
             Select a release to see what activating it would do to the graph.
           </p>
         ) : plan.isPending ? (
-          <p className="text-sm text-slate-600">Planning...</p>
+          <p className="text-sm text-on-surface-variant">Planning...</p>
         ) : plan.error ? (
-          <p className="text-sm text-red-700">{plan.error.message}</p>
+          <p className="text-sm text-error">{plan.error.message}</p>
         ) : (
           <MigrationPlanPanel
             // The plan activation actually recorded wins over the preview: they
@@ -835,7 +849,7 @@ function ReleasesTab({ canActivate }: { canActivate: boolean }) {
 // change was priced as a rebuild. INCREMENTAL is no longer produced but is kept
 // here because a plan recorded before those classes existed still renders.
 const STRATEGY_TONE: Record<MigrationPlan["strategy"], string> = {
-  NO_CHANGE: "bg-slate-100 text-slate-800",
+  NO_CHANGE: "bg-surface-container-high text-on-surface",
   INCREMENTAL: "bg-emerald-100 text-emerald-900",
   BACKFILL: "bg-emerald-100 text-emerald-900",
   AFFECTED_SCOPE_RESYNC: "bg-sky-100 text-sky-900",
@@ -867,37 +881,37 @@ function MigrationPlanPanel({
         >
           {plan.strategy}
         </span>
-        <span className="text-sm text-slate-600">
+        <span className="text-sm text-on-surface-variant">
           {plan.from_release_id ?? "nothing active"} to {plan.to_release_id}
         </span>
         <button
           type="button"
           onClick={onActivate}
           disabled={!canActivate || isActive || isPending}
-          className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+          className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-on-primary disabled:bg-surface-container-high disabled:text-outline"
         >
           {isActive ? "Live" : "Activate"}
         </button>
       </div>
 
-      {error ? <p className="text-sm text-red-700">{error.message}</p> : null}
+      {error ? <p className="text-sm text-error">{error.message}</p> : null}
       {activated ? (
-        <p className="text-sm font-medium text-slate-900">
+        <p className="text-sm font-medium text-on-surface">
           Activated. This plan is recorded against the release.
         </p>
       ) : null}
       {!canActivate ? (
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-outline">
           You can read this plan; activating requires graph_schema.generation.activate.
         </p>
       ) : null}
 
       {plan.rebuild_reasons.length > 0 ? (
         <section>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-outline">
             Why a full rebuild
           </h3>
-          <ul className="mt-2 list-disc pl-5 text-sm text-slate-700">
+          <ul className="mt-2 list-disc pl-5 text-sm text-on-surface-variant">
             {plan.rebuild_reasons.map((reason) => (
               <li key={reason}>{reason}</li>
             ))}
@@ -921,8 +935,8 @@ function ElementList({ title, items }: { title: string; items: readonly string[]
   if (items.length === 0) return null;
   return (
     <section>
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</h3>
-      <ul className="mt-1 flex flex-col gap-0.5 text-sm text-slate-800">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-outline">{title}</h3>
+      <ul className="mt-1 flex flex-col gap-0.5 text-sm text-on-surface">
         {items.map((item) => (
           <li key={item}>{item}</li>
         ))}
@@ -941,12 +955,12 @@ function ChangeList({
   if (items.length === 0) return null;
   return (
     <section>
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</h3>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-outline">{title}</h3>
       <ul className="mt-1 flex flex-col gap-1 text-sm">
         {items.map((item) => (
           <li key={item.element}>
-            <span className="font-medium text-slate-900">{item.element}</span>
-            <span className="block text-slate-600">{item.detail}</span>
+            <span className="font-medium text-on-surface">{item.element}</span>
+            <span className="block text-on-surface-variant">{item.detail}</span>
           </li>
         ))}
       </ul>
@@ -969,15 +983,15 @@ function ObjectList({
   if (items.length === 0) return null;
   return (
     <section>
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</h3>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-outline">{title}</h3>
       <ul className="mt-1 flex flex-col gap-0.5 text-sm">
         {items.map((item) => (
           <li key={`${item.kind}-${item.label}-${item.properties.join(",")}-${item.detail}`}>
-            <span className="font-medium text-slate-900">{item.label}</span>
-            <span className="text-slate-600"> ({item.properties.join(", ")})</span>
+            <span className="font-medium text-on-surface">{item.label}</span>
+            <span className="text-on-surface-variant"> ({item.properties.join(", ")})</span>
             {/* Derived from identity or asked for in a draft: which family a
                 line belongs to decides who owns fixing it. */}
-            <span className="ml-2 font-mono text-xs text-slate-500">{item.kind}</span>
+            <span className="ml-2 font-mono text-xs text-outline">{item.kind}</span>
           </li>
         ))}
       </ul>
@@ -999,8 +1013,8 @@ function ShapeTab({ draftId, tab }: { draftId: string; tab: Tab }) {
     staleTime: SHAPE_STALE_TIME_MS,
   });
 
-  if (shape.isLoading) return <p className="text-sm text-slate-500">Loading...</p>;
-  if (shape.error) return <p className="text-sm text-red-700">{shape.error.message}</p>;
+  if (shape.isLoading) return <p className="text-sm text-outline">Loading...</p>;
+  if (shape.error) return <p className="text-sm text-error">{shape.error.message}</p>;
 
   const entities = Object.entries(shape.data?.entities ?? {});
 
@@ -1008,26 +1022,26 @@ function ShapeTab({ draftId, tab }: { draftId: string; tab: Tab }) {
     const indexes = shape.data?.graph_indexes ?? [];
     const constraints = shape.data?.graph_constraints ?? [];
     if (indexes.length === 0 && constraints.length === 0) {
-      return <p className="text-sm text-slate-600">No indexes or constraints defined.</p>;
+      return <p className="text-sm text-on-surface-variant">No indexes or constraints defined.</p>;
     }
     return (
       <div className="flex flex-col gap-3 text-sm">
         <ul className="flex flex-col gap-1">
           {indexes.map((index) => (
             <li key={`${index.label}-${index.properties.join(",")}`}>
-              <span className="font-medium text-slate-900">{index.label}</span>
-              <span className="text-slate-600"> ({index.properties.join(", ")})</span>
+              <span className="font-medium text-on-surface">{index.label}</span>
+              <span className="text-on-surface-variant"> ({index.properties.join(", ")})</span>
             </li>
           ))}
         </ul>
         <ul className="flex flex-col gap-1">
           {constraints.map((constraint) => (
             <li key={`${constraint.label}-${constraint.property_name}`}>
-              <span className="font-medium text-slate-900">{constraint.label}</span>
-              <span className="text-slate-600">.{constraint.property_name}</span>
+              <span className="font-medium text-on-surface">{constraint.label}</span>
+              <span className="text-on-surface-variant">.{constraint.property_name}</span>
               {/* Unique and required are separate guarantees; a constraint can
                   be either, both, or neither, so both are stated. */}
-              <span className="ml-2 text-xs text-slate-500">
+              <span className="ml-2 text-xs text-outline">
                 {constraint.unique ? "unique " : ""}
                 {constraint.required ? "required" : ""}
               </span>
@@ -1039,13 +1053,13 @@ function ShapeTab({ draftId, tab }: { draftId: string; tab: Tab }) {
   }
 
   if (entities.length === 0) {
-    return <p className="text-sm text-slate-600">This draft has no entities yet.</p>;
+    return <p className="text-sm text-on-surface-variant">This draft has no entities yet.</p>;
   }
 
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="text-xs uppercase tracking-wide text-slate-500">
+        <thead className="text-xs uppercase tracking-wide text-outline">
           <tr>
             <th className="p-2">Entity</th>
             <th className="p-2">Property</th>
@@ -1057,20 +1071,20 @@ function ShapeTab({ draftId, tab }: { draftId: string; tab: Tab }) {
         <tbody>
           {entities.flatMap(([label, entity]) =>
             Object.entries(entity.properties).map(([name, property]) => (
-              <tr key={`${label}.${name}`} className="border-t border-slate-200">
-                <td className="p-2 text-slate-900">{label}</td>
-                <td className="p-2 text-slate-800">{name}</td>
-                {tab === "Properties" ? <td className="p-2 text-slate-600">{property.type}</td> : null}
+              <tr key={`${label}.${name}`} className="border-t border-outline-variant">
+                <td className="p-2 text-on-surface">{label}</td>
+                <td className="p-2 text-on-surface">{name}</td>
+                {tab === "Properties" ? <td className="p-2 text-on-surface-variant">{property.type}</td> : null}
                 {tab === "Mapping" ? (
-                  <td className="p-2 font-mono text-xs text-slate-600">
+                  <td className="p-2 font-mono text-xs text-on-surface-variant">
                     {/* An unmapped property is a real state -- a derived field,
                         or one a mutation added without a source. Blank would
                         read as missing data. */}
-                    {property.source_field ?? "unmapped"}
+                    {property.source_field}
                   </td>
                 ) : null}
                 {tab === "Mapping" ? (
-                  <td className="p-2 text-slate-600">{property.transformation ?? "NONE"}</td>
+                  <td className="p-2 text-on-surface-variant">{property.transformation}</td>
                 ) : null}
               </tr>
             )),
@@ -1084,121 +1098,131 @@ function ShapeTab({ draftId, tab }: { draftId: string; tab: Tab }) {
 function ValidationTab({
   draftId,
   canApprove,
+  canPublish,
   onChanged,
 }: {
   draftId: string;
   canApprove: boolean;
+  canPublish: boolean;
   onChanged: () => void;
 }) {
-  const [result, setResult] = useState<readonly ValidationFindingView[] | null>(null);
-  const [passed, setPassed] = useState<boolean | null>(null);
-  const [approved, setApproved] = useState(false);
+  const draft = useQuery({
+    queryKey: ["graph-schema", "draft", draftId],
+    queryFn: () => graphSchemaApi.getDraft(draftId),
+    staleTime: SHAPE_STALE_TIME_MS,
+  });
 
   const validate = useMutation({
     mutationFn: () => graphSchemaApi.validateDraft(draftId),
-    onSuccess: (data) => {
-      setResult(data.findings);
-      setPassed(data.passed);
-      onChanged();
-    },
+    onSuccess: onChanged,
   });
 
   const approve = useMutation({
     mutationFn: () => graphSchemaApi.approveDraft(draftId),
-    onSuccess: () => {
-      setApproved(true);
-      onChanged();
-    },
+    onSuccess: onChanged,
   });
 
-  // Publishing is what makes an approved schema the one the platform runs.
-  // Separate from approving because they are separate decisions, and because
-  // a shape can be approved and still fail to compile -- which comes back as
-  // `accepted: false` with the element named, not as an error.
   const publish = useMutation({
     mutationFn: (activate: boolean) => graphSchemaApi.publishDraft(draftId, activate),
     onSuccess: onChanged,
   });
 
+  const lifecyclePending = validate.isPending || approve.isPending || publish.isPending;
+  const draftStatus = draft.data?.status;
+  const validated = draftStatus === "VALIDATED"
+    || (draftStatus === "DRAFT" && validate.data?.passed === true);
+  const approved = approve.isSuccess || draftStatus === "APPROVED";
+  const published = publish.data?.accepted === true;
+  const canValidateDraft = draftStatus === "DRAFT"
+    && validate.data?.passed !== true
+    && !approve.isSuccess;
+  const canApproveDraft = canApprove
+    && validated
+    && !approve.isSuccess;
+  const findings = validate.data?.findings ?? [];
+
   return (
-    <div>
-      <div className="flex gap-2">
+    <div aria-busy={lifecyclePending}>
+      <div className="flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => { validate.mutate(); }}
-          disabled={validate.isPending}
-          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-800 disabled:opacity-50"
+          disabled={!canValidateDraft || lifecyclePending}
+          className="rounded-lg border border-outline-variant px-3 py-1.5 text-sm font-medium text-on-surface disabled:opacity-50"
         >
           Validate
         </button>
         <button
           type="button"
           onClick={() => { approve.mutate(); }}
-          // Approval is gated on a passing validation *and* the capability.
-          // The backend refuses either way; this avoids offering it.
-          disabled={!canApprove || passed !== true || approve.isPending}
-          className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+          disabled={!canApproveDraft || lifecyclePending}
+          className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary disabled:bg-surface-container-high disabled:text-outline"
         >
           Approve
         </button>
         <button
           type="button"
           onClick={() => { publish.mutate(false); }}
-          // Only after an approval in this session. The backend refuses an
-          // unapproved draft either way; offering the button would invite a
-          // 409 that reads like a bug.
-          disabled={!canApprove || !approved || publish.isPending}
-          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-800 disabled:opacity-50"
+          disabled={!canPublish || !approved || published || lifecyclePending}
+          className="rounded-lg border border-outline-variant px-3 py-1.5 text-sm font-medium text-on-surface disabled:opacity-50"
         >
           Publish release
         </button>
         <button
           type="button"
           onClick={() => { publish.mutate(true); }}
-          disabled={!canApprove || !approved || publish.isPending}
-          className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:bg-slate-300"
+          disabled={!canPublish || !approved || published || lifecyclePending}
+          className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary disabled:bg-surface-container-high disabled:text-outline"
         >
           Publish and activate
         </button>
       </div>
 
-      {validate.error ? (
-        <p className="mt-3 text-sm text-red-700">{validate.error.message}</p>
+      {!canApprove ? (
+        <p className="mt-3 text-xs text-outline">
+          Approval requires governance.proposal.approve.
+        </p>
       ) : null}
-      {approve.error ? (
-        <p className="mt-3 text-sm text-red-700">{approve.error.message}</p>
+      {!canPublish ? (
+        <p className="mt-1 text-xs text-outline">
+          Publishing requires governance.proposal.activate.
+        </p>
       ) : null}
-      {publish.error ? (
-        <p className="mt-3 text-sm text-red-700">{publish.error.message}</p>
-      ) : null}
+
+      {draft.error ? <p role="alert" className="mt-3 text-sm text-error">{draft.error.message}</p> : null}
+      {validate.error ? <p role="alert" className="mt-3 text-sm text-error">{validate.error.message}</p> : null}
+      {approve.error ? <p role="alert" className="mt-3 text-sm text-error">{approve.error.message}</p> : null}
+      {publish.error ? <p role="alert" className="mt-3 text-sm text-error">{publish.error.message}</p> : null}
+
       {publish.data ? (
-        // A refused compilation is reported as plainly as a successful one:
-        // "published" and "could not be compiled" are both answers, and only
-        // the second tells the analyst what to change.
         <p
-          className={`mt-3 text-sm ${publish.data.accepted ? "text-slate-900" : "text-red-700"}`}
+          role="status"
+          className={"mt-3 text-sm " + (publish.data.accepted ? "text-on-surface" : "text-error")}
         >
           {publish.data.accepted
-            ? `Released as ${publish.data.configurationReleaseId}${
-                publish.data.detail === "activated" ? " and now live." : "."
-              }`
-            : `Not published: ${publish.data.detail ?? "the shape could not be compiled."}`}
+            ? "Released as " + publish.data.configurationReleaseId
+              + (publish.data.detail === "activated" ? " and now live." : ".")
+            : "Not published: "
+              + (publish.data.detail ?? "the shape could not be compiled.")}
         </p>
       ) : null}
 
-      {passed !== null ? (
-        <p className="mt-3 text-sm font-medium text-slate-900">
-          {passed ? "Validation passed." : "Validation failed."}
+      {validate.data ? (
+        <p role="status" className="mt-3 text-sm font-medium text-on-surface">
+          {validate.data.passed ? "Validation passed." : "Validation failed."}
         </p>
       ) : null}
 
-      {result && result.length > 0 ? (
+      {findings.length > 0 ? (
         <ul className="mt-3 flex flex-col gap-2">
-          {result.map((finding, index) => (
-            <li key={`${finding.check}-${finding.element}-${String(index)}`} className="text-sm">
-              <span className="font-mono text-xs text-slate-500">{finding.severity}</span>{" "}
-              <span className="font-medium text-slate-900">{finding.element}</span>
-              <span className="block text-slate-600">{finding.message}</span>
+          {findings.map((finding, index) => (
+            <li
+              key={finding.check + "-" + finding.element + "-" + String(index)}
+              className="text-sm"
+            >
+              <span className="font-mono text-xs text-outline">{finding.severity}</span>{" "}
+              <span className="font-medium text-on-surface">{finding.element}</span>
+              <span className="block text-on-surface-variant">{finding.message}</span>
             </li>
           ))}
         </ul>
@@ -1213,15 +1237,15 @@ function VersionsTab({ draftId }: { draftId: string }) {
     queryFn: () => graphSchemaApi.listRevisions(draftId),
   });
 
-  if (revisions.isLoading) return <p className="text-sm text-slate-500">Loading...</p>;
+  if (revisions.isLoading) return <p className="text-sm text-outline">Loading...</p>;
   if (revisions.error) {
-    return <p className="text-sm text-red-700">{revisions.error.message}</p>;
+    return <p className="text-sm text-error">{revisions.error.message}</p>;
   }
 
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="text-xs uppercase tracking-wide text-slate-500">
+        <thead className="text-xs uppercase tracking-wide text-outline">
           <tr>
             <th className="py-2 pr-4">Seq</th>
             <th className="py-2 pr-4">Author</th>
@@ -1232,7 +1256,7 @@ function VersionsTab({ draftId }: { draftId: string }) {
         </thead>
         <tbody>
           {(revisions.data ?? []).map((revision) => (
-            <tr key={revision.revision_id} className="border-t border-slate-200">
+            <tr key={revision.revision_id} className="border-t border-outline-variant">
               <td className="py-2 pr-4">{revision.sequence}</td>
               <td className="py-2 pr-4">{revision.author}</td>
               {/* Whether a revision was authored by a model is provenance an

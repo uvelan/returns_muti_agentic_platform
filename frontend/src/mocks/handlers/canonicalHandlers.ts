@@ -936,9 +936,15 @@ export const canonicalHandlers = [
     return HttpResponse.json([
       {
         analysis_id: "an-mock-1",
-        status: "PROPOSED",
-        draft_id: "dr-mock-1",
+        status: "NEEDS_HUMAN_REVIEW",
         source_refs: ["mongo_main"],
+        created_by: "mock-operator",
+        created_at: "2026-08-14T09:00:00Z",
+        updated_at: "2026-08-14T09:05:00Z",
+        version: 1,
+        snapshot_id: "snapshot-mock-1",
+        draft_id: "dr-mock-1",
+        failure_reason: null,
       },
     ]);
   }),
@@ -946,8 +952,11 @@ export const canonicalHandlers = [
     await delay(80);
     return HttpResponse.json({
       draft_id: "dr-mock-1",
+      analysis_id: "an-mock-1",
       status: "DRAFT",
       current_revision: 2,
+      version: 1,
+      validation_result_id: null,
       entity_count: 2,
       relationship_count: 1,
     });
@@ -962,7 +971,7 @@ export const canonicalHandlers = [
           properties: {
             order_id: { type: "STRING", source_field: "order_id", transformation: "NONE" },
             placed_at: { type: "DATETIME", source_field: "created", transformation: "TO_UTC" },
-            total: { type: "FLOAT", source_field: null, transformation: "SUM" },
+            total: { type: "FLOAT", source_field: "line_items.amount", transformation: "SUM" },
           },
           identifier_properties: ["order_id"],
           ownership: "SOURCE",

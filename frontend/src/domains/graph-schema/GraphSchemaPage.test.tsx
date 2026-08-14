@@ -91,10 +91,16 @@ vi.mock("../../hooks/capabilityContext", () => ({
 
 const ANALYSIS = {
   analysis_id: "a1",
-  status: "PROPOSED",
-  draft_id: "d1",
+  status: "NEEDS_HUMAN_REVIEW",
   source_refs: ["mongo_main"],
-};
+  created_by: "operator-1",
+  created_at: "2026-08-14T09:00:00Z",
+  updated_at: "2026-08-14T09:05:00Z",
+  version: 1,
+  snapshot_id: "snapshot-1",
+  draft_id: "d1",
+  failure_reason: null,
+} satisfies GraphSchemaModule.AnalysisSessionView;
 
 const SHAPE = {
   entities: {
@@ -103,7 +109,7 @@ const SHAPE = {
       source_dataset: "orders",
       properties: {
         order_id: { type: "STRING", source_field: "order_id", transformation: "NONE" },
-        total: { type: "FLOAT", source_field: null, transformation: "SUM" },
+        total: { type: "FLOAT", source_field: "line_items.amount", transformation: "SUM" },
       },
       identifier_properties: ["order_id"],
       ownership: "SOURCE",
@@ -122,7 +128,18 @@ const SHAPE = {
   graph_constraints: [
     { label: "Order", property_name: "order_id", unique: true, required: true },
   ],
-};
+} satisfies GraphSchemaModule.DraftShapeView;
+
+const DRAFT = {
+  draft_id: "d1",
+  analysis_id: "a1",
+  status: "DRAFT",
+  current_revision: 3,
+  version: 1,
+  validation_result_id: null,
+  entity_count: 1,
+  relationship_count: 1,
+} satisfies GraphSchemaModule.DraftView;
 
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -139,13 +156,7 @@ describe("Graph schema canvas", () => {
     vi.clearAllMocks();
     mocks.can.mockReturnValue(true);
     mocks.listAnalyses.mockResolvedValue([ANALYSIS]);
-    mocks.getDraft.mockResolvedValue({
-      draft_id: "d1",
-      status: "DRAFT",
-      current_revision: 3,
-      entity_count: 1,
-      relationship_count: 1,
-    });
+    mocks.getDraft.mockResolvedValue(DRAFT);
     mocks.getDraftShape.mockResolvedValue(SHAPE);
     mocks.listRevisions.mockResolvedValue([]);
     mocks.listClarifications.mockResolvedValue([]);
@@ -158,6 +169,56 @@ describe("Graph schema canvas", () => {
     // screen, so an entity label legitimately appears more than once.
     expect(await screen.findAllByText("Order")).not.toHaveLength(0);
     expect(screen.getByText(/from orders/)).toBeInTheDocument();
+  });
+
+  it("shows draft loading and does not fetch shape prematurely", async () => {
+    mocks.getDraft.mockReturnValue(new Promise(() => undefined));
+    await openAnalysis();
+
+    expect(await screen.findByText("Loading draft...")).toBeInTheDocument();
+    expect(mocks.getDraftShape).not.toHaveBeenCalled();
+  });
+
+  it("reports a draft read failure without drawing a contradictory shape", async () => {
+    mocks.getDraft.mockRejectedValue(new Error("draft storage unavailable"));
+    await openAnalysis();
+
+    expect(await screen.findByText(
+      "Could not load draft: draft storage unavailable",
+    )).toBeInTheDocument();
+    expect(screen.queryByText(/no draft yet/i)).toBeNull();
+    expect(mocks.getDraftShape).not.toHaveBeenCalled();
+  });
+
+  it("resets visualization view state when the selected draft changes", async () => {
+    const secondAnalysis = {
+      ...ANALYSIS,
+      analysis_id: "a2",
+      draft_id: "d2",
+      snapshot_id: "snapshot-2",
+    } satisfies GraphSchemaModule.AnalysisSessionView;
+    mocks.listAnalyses.mockResolvedValue([ANALYSIS, secondAnalysis]);
+    mocks.getDraft.mockImplementation((draftId: string) => Promise.resolve({
+      ...DRAFT,
+      draft_id: draftId,
+      analysis_id: draftId === "d1" ? "a1" : "a2",
+    }));
+
+    await openAnalysis();
+    fireEvent.click(await screen.findByRole("button", { name: "Details" }));
+    expect(screen.getByRole("button", { name: "Details" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /a2/ }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Graph" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
   });
 
   it("marks which properties are identifiers", async () => {
@@ -192,13 +253,7 @@ describe("Graph schema tabs backed by the shape", () => {
     vi.clearAllMocks();
     mocks.can.mockReturnValue(true);
     mocks.listAnalyses.mockResolvedValue([ANALYSIS]);
-    mocks.getDraft.mockResolvedValue({
-      draft_id: "d1",
-      status: "DRAFT",
-      current_revision: 3,
-      entity_count: 1,
-      relationship_count: 1,
-    });
+    mocks.getDraft.mockResolvedValue(DRAFT);
     mocks.getDraftShape.mockResolvedValue(SHAPE);
     mocks.listRevisions.mockResolvedValue([]);
     mocks.listClarifications.mockResolvedValue([]);
@@ -211,12 +266,11 @@ describe("Graph schema tabs backed by the shape", () => {
     expect(await screen.findAllByText("FLOAT")).not.toHaveLength(0);
   });
 
-  it("shows an unmapped property as unmapped rather than blank", async () => {
-    // A derived field is a real state; blank would read as missing data.
+  it("shows the published source mapping and transformation", async () => {
     await openAnalysis();
     fireEvent.click(screen.getByRole("tab", { name: "Mapping" }));
 
-    expect(await screen.findByText("unmapped")).toBeInTheDocument();
+    expect(await screen.findByText("line_items.amount")).toBeInTheDocument();
     expect(screen.getByText("SUM")).toBeInTheDocument();
   });
 
@@ -263,13 +317,7 @@ describe("publishing a release", () => {
     vi.clearAllMocks();
     mocks.can.mockReturnValue(true);
     mocks.listAnalyses.mockResolvedValue([ANALYSIS]);
-    mocks.getDraft.mockResolvedValue({
-      draft_id: "d1",
-      status: "DRAFT",
-      current_revision: 3,
-      entity_count: 1,
-      relationship_count: 1,
-    });
+    mocks.getDraft.mockResolvedValue(DRAFT);
     mocks.getDraftShape.mockResolvedValue(SHAPE);
     mocks.listRevisions.mockResolvedValue([]);
     mocks.listClarifications.mockResolvedValue([]);
@@ -292,6 +340,8 @@ describe("publishing a release", () => {
     await openValidation();
     fireEvent.click(screen.getByRole("button", { name: "Validate" }));
     await waitFor(() => { expect(mocks.validateDraft).toHaveBeenCalled(); });
+    await screen.findByText("Validation passed.");
+    expect(screen.getByRole("button", { name: "Validate" })).toBeDisabled();
 
     // Validated is a shape someone might accept, not one to run. The backend
     // refuses either way; offering it would invite a 409 that reads as a bug.
@@ -305,9 +355,13 @@ describe("publishing a release", () => {
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     await waitFor(() => { expect(mocks.approveDraft).toHaveBeenCalled(); });
 
+    expect(screen.getByRole("button", { name: "Validate" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Publish release" }));
 
     await waitFor(() => { expect(mocks.publishDraft).toHaveBeenCalledWith("d1", false); });
+    expect(screen.getByRole("button", { name: "Publish release" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Publish and activate" })).toBeDisabled();
   });
 
   it("reports a refused compilation instead of claiming a release", async () => {
@@ -352,13 +406,7 @@ describe("source bindings", () => {
     vi.clearAllMocks();
     mocks.can.mockReturnValue(true);
     mocks.listAnalyses.mockResolvedValue([ANALYSIS]);
-    mocks.getDraft.mockResolvedValue({
-      draft_id: "d1",
-      status: "DRAFT",
-      current_revision: 3,
-      entity_count: 1,
-      relationship_count: 1,
-    });
+    mocks.getDraft.mockResolvedValue(DRAFT);
     mocks.getDraftShape.mockResolvedValue(SHAPE);
     mocks.listRevisions.mockResolvedValue([]);
     mocks.listClarifications.mockResolvedValue([]);
@@ -470,13 +518,7 @@ describe("re-analysing a drifted source", () => {
     vi.clearAllMocks();
     mocks.can.mockReturnValue(true);
     mocks.listAnalyses.mockResolvedValue([ANALYSIS]);
-    mocks.getDraft.mockResolvedValue({
-      draft_id: "d1",
-      status: "DRAFT",
-      current_revision: 3,
-      entity_count: 1,
-      relationship_count: 1,
-    });
+    mocks.getDraft.mockResolvedValue(DRAFT);
     mocks.getDraftShape.mockResolvedValue(SHAPE);
     mocks.listRevisions.mockResolvedValue([]);
     mocks.listClarifications.mockResolvedValue([]);
@@ -622,13 +664,7 @@ describe("schema releases and migration plans", () => {
     vi.clearAllMocks();
     mocks.can.mockReturnValue(true);
     mocks.listAnalyses.mockResolvedValue([ANALYSIS]);
-    mocks.getDraft.mockResolvedValue({
-      draft_id: "d1",
-      status: "DRAFT",
-      current_revision: 3,
-      entity_count: 1,
-      relationship_count: 1,
-    });
+    mocks.getDraft.mockResolvedValue(DRAFT);
     mocks.getDraftShape.mockResolvedValue(SHAPE);
     mocks.listRevisions.mockResolvedValue([]);
     mocks.listClarifications.mockResolvedValue([]);
@@ -700,5 +736,115 @@ describe("schema releases and migration plans", () => {
     fireEvent.click(await screen.findByRole("tab", { name: "Releases" }));
 
     expect(await screen.findByText(/Nothing has been published yet/)).toBeInTheDocument();
+  });
+});
+
+describe("governed draft lifecycle", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.can.mockReturnValue(true);
+    mocks.listAnalyses.mockResolvedValue([ANALYSIS]);
+    mocks.getDraft.mockResolvedValue(DRAFT);
+    mocks.getDraftShape.mockResolvedValue(SHAPE);
+    mocks.listRevisions.mockResolvedValue([]);
+    mocks.listClarifications.mockResolvedValue([]);
+    mocks.validateDraft.mockResolvedValue({ passed: true, findings: [] });
+    mocks.approveDraft.mockResolvedValue({ draft_id: "d1", status: "APPROVED" });
+    mocks.publishDraft.mockResolvedValue({
+      configurationReleaseId: "release-1",
+      accepted: true,
+      detail: null,
+    });
+  });
+
+  async function openValidation() {
+    await openAnalysis();
+    fireEvent.click(screen.getByRole("tab", { name: "Validation" }));
+    await screen.findByRole("button", { name: "Validate" });
+  }
+
+  it("uses separate approval and publication capabilities", async () => {
+    mocks.can.mockImplementation(
+      (capability: string) => capability !== "governance.proposal.activate",
+    );
+    await openValidation();
+
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await screen.findByText("Validation passed.");
+
+    expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Publish release" })).toBeDisabled();
+    expect(screen.getByText(/Publishing requires governance.proposal.activate/)).toBeInTheDocument();
+  });
+
+  it("enables approval for a reloaded validated draft", async () => {
+    mocks.getDraft.mockResolvedValue({
+      ...DRAFT,
+      status: "VALIDATED",
+      validation_result_id: "validation-1",
+    });
+    mocks.can.mockImplementation(
+      (capability: string) => capability === "governance.proposal.approve",
+    );
+    await openValidation();
+
+    expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Publish release" })).toBeDisabled();
+  });
+
+  it("enables publication for a reloaded approved draft", async () => {
+    mocks.getDraft.mockResolvedValue({
+      ...DRAFT,
+      status: "APPROVED",
+      validation_result_id: "validation-1",
+    });
+    mocks.can.mockReturnValue(true);
+    await openValidation();
+
+    expect(screen.getByRole("button", { name: "Validate" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Publish release" })).toBeEnabled();
+  });
+
+  it("does not carry validation or approval state to another draft", async () => {
+    const secondAnalysis = {
+      ...ANALYSIS,
+      analysis_id: "a2",
+      draft_id: "d2",
+      snapshot_id: "snapshot-2",
+    } satisfies GraphSchemaModule.AnalysisSessionView;
+    mocks.listAnalyses.mockResolvedValue([ANALYSIS, secondAnalysis]);
+    mocks.getDraft.mockImplementation((draftId: string) => Promise.resolve({
+      ...DRAFT,
+      draft_id: draftId,
+      analysis_id: draftId === "d1" ? "a1" : "a2",
+    }));
+
+    await openValidation();
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await screen.findByText("Validation passed.");
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Publish release" })).toBeEnabled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /a2/ }));
+
+    await waitFor(() => {
+      expect(mocks.getDraft).toHaveBeenCalledWith("d2");
+      expect(screen.getByRole("button", { name: "Publish release" })).toBeDisabled();
+    });
+  });
+
+  it("supports roving keyboard navigation across detail tabs", async () => {
+    await openValidation();
+    const validation = screen.getByRole("tab", { name: "Validation" });
+
+    validation.focus();
+    fireEvent.keyDown(validation, { key: "ArrowRight" });
+
+    const drift = screen.getByRole("tab", { name: "Drift" });
+    expect(drift).toHaveAttribute("aria-selected", "true");
+    expect(drift).toHaveFocus();
   });
 });

@@ -1,7 +1,7 @@
-import { expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 
 import type { components } from "./generated/return-platform";
-import type { DraftStatus, SessionStatus } from "./graphSchema";
+import { graphSchemaApi, type DraftStatus, type SessionStatus } from "./graphSchema";
 
 /**
  * The hand-written analyzer mirror must say what the backend says.
@@ -77,4 +77,29 @@ it("asserts the mirrors at the type level too", () => {
   // The values are `true` by construction; referencing them is what keeps
   // `noUnusedLocals` from deleting the compile-time half of this test.
   expect([sessionStatusMatches, draftStatusMatches]).toEqual([true, true]);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+it("surfaces object-shaped FastAPI detail messages", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(
+    JSON.stringify({
+      detail: {
+        code: "DRAFT_CONFLICT",
+        message: "The draft must be validated before approval.",
+      },
+    }),
+    {
+      status: 409,
+      statusText: "Conflict",
+      headers: { "Content-Type": "application/json" },
+    },
+  ));
+
+  await expect(graphSchemaApi.getDraft("draft-1")).rejects.toMatchObject({
+    message: "The draft must be validated before approval.",
+    status: 409,
+  });
 });
