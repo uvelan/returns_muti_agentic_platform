@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   graphSchemaApi,
+  TERMINAL_SESSION_STATUSES,
   type AnalysisSessionView,
   type ProposedChangeView,
   type ReanalysisProposalView,
@@ -11,6 +12,7 @@ import {
 import { schemaReleasesApi, type MigrationPlan } from "../../api/schemaReleases";
 import { useCapabilities } from "../../hooks/capabilityContext";
 import { SourceBindingsPanel } from "../data-sources/SourceBindingsPanel";
+import { DomainRail, RailFact, RailNote, RailSection } from "../DomainRail";
 
 /**
  * The Graph Schema Analyzer screen (Phase 20).
@@ -88,8 +90,47 @@ export function GraphSchemaPage() {
 
   const selected = analyses.data?.find((a) => a.analysis_id === selectedId) ?? null;
 
+  const open = (analyses.data ?? []).filter(
+    (analysis) => !TERMINAL_SESSION_STATUSES.includes(analysis.status),
+  );
+
   return (
     <div className="flex flex-col gap-4">
+      {/*
+        Where the analyst's work stands. The tabs below belong to a *selected
+        draft*, so they are not sections and this is not navigation -- it is the
+        state a reader needs before choosing a tab, including the one thing the
+        tabs cannot show, which is that a session failed and why.
+      */}
+      <DomainRail>
+        <RailSection title="Analyses">
+          {analyses.error !== null ? (
+            <RailNote>The analysis list could not be read.</RailNote>
+          ) : analyses.isLoading ? (
+            <RailNote>Loading...</RailNote>
+          ) : (
+            <>
+              <RailFact label="Total" value={(analyses.data ?? []).length} />
+              <RailFact label="In progress" value={open.length} />
+            </>
+          )}
+        </RailSection>
+        <RailSection title="Selected">
+          {selected === null ? (
+            <RailNote>No analysis is open.</RailNote>
+          ) : (
+            <>
+              <RailFact label="Status" value={selected.status} />
+              <RailFact label="Version" value={selected.version} />
+              <RailFact label="Draft" value={selected.draft_id} />
+              <RailFact label="Snapshot" value={selected.snapshot_id} />
+              {selected.failure_reason === null ? null : (
+                <RailNote>Failed: {selected.failure_reason}</RailNote>
+              )}
+            </>
+          )}
+        </RailSection>
+      </DomainRail>
       <header>
         <h1 className="text-2xl font-semibold text-slate-900">Graph Schema Analyzer</h1>
         <p className="mt-1 text-sm text-slate-600">

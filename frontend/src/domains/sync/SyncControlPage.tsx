@@ -4,6 +4,7 @@ import { Bot, Database, History, Play, UserRound } from "lucide-react";
 
 import { graphSyncApi, type StartSyncInput, type SyncRun } from "../../api/graphSync";
 import { useCapabilities } from "../../hooks/capabilityContext";
+import { DomainRail, RailFact, RailNote, RailSection } from "../DomainRail";
 
 /**
  * S6 -- the sync control screen.
@@ -89,8 +90,42 @@ export function SyncControlPage() {
     );
   }
 
+  // The newest run in whatever the list currently holds. `listRuns` returns
+  // newest first, so this is the head rather than a scan -- and it is the answer
+  // to the only question this domain exists to answer, which is whether the
+  // graph is current.
+  const newest = (runs.data ?? []).at(0) ?? null;
+
   return (
     <div className="grid h-[calc(100vh-3rem)] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+      <DomainRail>
+        <RailSection title="Latest run">
+          {runs.error !== null ? (
+            <RailNote>The run history could not be read.</RailNote>
+          ) : runs.isPending ? (
+            <RailNote>Loading...</RailNote>
+          ) : newest === null ? (
+            <RailNote>
+              {filter === "" ? "No sync has ever run." : "No run matches this filter."}
+            </RailNote>
+          ) : (
+            <>
+              <RailFact label="Status" value={newest.status} />
+              <RailFact label="Mode" value={newest.mode} />
+              {/* FULL and INCREMENTAL both complete green, so a run that is
+                  quietly rescanning production every tick is invisible without
+                  this line. */}
+              <RailFact label="Records" value={newest.recordScope ?? null} />
+              <RailFact label="Started" value={newest.startedAt} />
+              <RailFact label="Finished" value={newest.completedAt} />
+            </>
+          )}
+        </RailSection>
+        <RailSection title="History">
+          <RailFact label="Runs listed" value={runs.isPending ? null : (runs.data ?? []).length} />
+          <RailFact label="Filter" value={filter === "" ? "All modes" : filter} />
+        </RailSection>
+      </DomainRail>
       <RunListPane
         filter={filter}
         onFilterChange={setFilter}

@@ -26,6 +26,7 @@ import {
 } from "../../api/returnHistory";
 import { returnsApi, type ReturnSessionView } from "../../api/returnsDomain";
 import { useCapabilities } from "../../hooks/capabilityContext";
+import { DomainRail, RailFact, RailNote, RailSection } from "../DomainRail";
 
 /**
  * The Return Business Copilot: order discovery by conversation.
@@ -458,6 +459,48 @@ export function ReturnCopilotPage() {
 
   return (
     <div className="grid h-[calc(100vh-3rem)] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,8fr)_minmax(0,7fr)]">
+      {/*
+        The identity of the return in hand, which the three panes cannot hold
+        still: chat scrolls, the middle pane is the agent's current step, and the
+        right pane is whichever candidate is resolved. An associate at a counter
+        who has scrolled up needs the conversation and case ids to stay put.
+      */}
+      <DomainRail>
+        <RailSection title="This return">
+          <RailFact label="Conversation" value={conversationId} />
+          <RailFact label="Case" value={caseId} />
+          <RailFact label="Order" value={confirmedOrder} />
+          {caseId === null ? (
+            <RailNote>
+              Nothing is confirmed yet. A case is raised by the turn that confirms the order.
+            </RailNote>
+          ) : (
+            <>
+              <RailFact label="Status" value={caseDetail.data?.case.status ?? null} />
+              <RailFact
+                label="RMAs"
+                value={caseDetail.data === undefined ? null : caseDetail.data.returnRecords.length}
+              />
+              {caseDetail.data?.returnRecords.length === 0 ? (
+                // The poll in `caseDetail` is running for exactly this, and a
+                // silent wait at a counter reads as a hung screen.
+                <RailNote>Waiting for Support to issue the RMA.</RailNote>
+              ) : null}
+            </>
+          )}
+        </RailSection>
+        <RailSection title="Earlier returns">
+          {historyAnchor === null ? (
+            <RailNote>No candidate is resolved yet.</RailNote>
+          ) : returnHistory.error !== null ? (
+            <RailNote>The return history could not be read.</RailNote>
+          ) : returnHistory.data === undefined ? (
+            <RailNote>Loading...</RailNote>
+          ) : (
+            <RailFact label="On record" value={returnHistory.data.cases.length} />
+          )}
+        </RailSection>
+      </DomainRail>
       <ChatPane
         history={history}
         draft={draft}

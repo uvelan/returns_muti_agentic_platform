@@ -52,6 +52,17 @@ export type SessionStatus =
  */
 export type DraftStatus = "DRAFT" | "VALIDATED" | "APPROVED";
 
+/**
+ * The three statuses a session never leaves, from `_TERMINAL` in
+ * `analysis_session.py`. Declared once here rather than spelled out at each
+ * reader, so a lifecycle change is one edit.
+ */
+export const TERMINAL_SESSION_STATUSES: readonly SessionStatus[] = [
+  "APPROVED",
+  "ABANDONED",
+  "FAILED",
+];
+
 export type Severity = "ERROR" | "WARNING" | "INFO";
 
 export type AnalysisSessionView = {

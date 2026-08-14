@@ -12,6 +12,7 @@ import {
   type ProposalType,
 } from "../../api/proposals";
 import { useCapabilities } from "../../hooks/capabilityContext";
+import { DomainRail, RailFact, RailNote, RailSection } from "../DomainRail";
 
 /**
  * UI-01 -- the Approvals screen.
@@ -121,6 +122,50 @@ export function ApprovalsPage() {
 
   return (
     <div className="grid h-[calc(100vh-3rem)] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+      {/*
+        What the reviewer is currently looking at, and what they may do with it.
+        The type breakdown is over the *fetched* queue rather than a second
+        count query: one inbox for schema drafts, configuration edits and
+        improvements is the kernel's whole design, and the useful question on a
+        mixed queue is what the mix is.
+      */}
+      <DomainRail>
+        <RailSection title="Queue">
+          {queue.error !== null ? (
+            <RailNote>The queue could not be read.</RailNote>
+          ) : queue.isPending ? (
+            <RailNote>Loading...</RailNote>
+          ) : (
+            <>
+              <RailFact label="Status" value={status === "" ? "Any" : status} />
+              <RailFact label="Type" value={type === "" ? "Any" : type} />
+              <RailFact label="Waiting" value={queue.data.length} />
+            </>
+          )}
+        </RailSection>
+        {queue.data === undefined || queue.data.length === 0 ? null : (
+          <RailSection title="By type">
+            {[...new Set(queue.data.map((proposal) => proposal.proposalType))]
+              .sort()
+              .map((proposalType) => (
+                <RailFact
+                  key={proposalType}
+                  label={proposalType}
+                  value={
+                    queue.data.filter((proposal) => proposal.proposalType === proposalType).length
+                  }
+                />
+              ))}
+          </RailSection>
+        )}
+        <RailSection title="You may">
+          {/* Presentation only; the kernel re-checks both server-side. The
+              approve/activate split is real -- approving records a decision and
+              activating applies it -- so naming them separately matters. */}
+          <RailFact label="Approve or reject" value={can("governance.proposal.approve") ? "yes" : "no"} />
+          <RailFact label="Activate" value={can("governance.proposal.activate") ? "yes" : "no"} />
+        </RailSection>
+      </DomainRail>
       <QueuePane
         status={status}
         onStatusChange={(value) => {

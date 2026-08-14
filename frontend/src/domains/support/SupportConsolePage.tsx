@@ -27,6 +27,7 @@ import {
   type SupportWorkItem,
 } from "../../api/support";
 import { useCapabilities } from "../../hooks/capabilityContext";
+import { DomainRail, RailFact, RailNote, RailSection } from "../DomainRail";
 
 /**
  * UI-03 -- the Support console.
@@ -122,6 +123,51 @@ export function SupportConsolePage() {
 
   return (
     <div className="grid h-[calc(100vh-3rem)] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,4fr)_minmax(0,6fr)] xl:grid-cols-[minmax(0,3fr)_minmax(0,5fr)_minmax(0,6fr)]">
+      {/*
+        The deadline and the shape of the open request, which are the two things
+        the panes push off-screen: the SLA sits in the case pane's Channel B
+        block and the RMA count needs scrolling to reach.
+      */}
+      <DomainRail>
+        <RailSection title="Queue">
+          {workItems.error !== null ? (
+            <RailNote>The queue could not be read.</RailNote>
+          ) : workItems.isPending ? (
+            <RailNote>Loading...</RailNote>
+          ) : (
+            <>
+              <RailFact label="Filter" value={queue === "" ? "Open" : queue} />
+              <RailFact label="Waiting" value={workItems.data.length} />
+            </>
+          )}
+        </RailSection>
+        <RailSection title="Open request">
+          {detail.data === undefined ? (
+            <RailNote>Nothing selected.</RailNote>
+          ) : (
+            <>
+              <RailFact label="Status" value={detail.data.status} />
+              {/* The support SLA, named as that. The workflow's own
+                  business-calendar deadline is workflow input and is not
+                  published, so this is not relabelled as it. */}
+              <RailFact label="Support SLA due" value={detail.data.slaDueAt} />
+              <RailFact label="Assigned" value={detail.data.assignedTo} />
+              {caseId === null ? (
+                <RailNote>Session-backed, so it has no case and no RMAs.</RailNote>
+              ) : (
+                <RailFact
+                  label="RMAs"
+                  value={caseDetail.data === undefined ? null : caseDetail.data.returnRecords.length}
+                />
+              )}
+              {caseDetail.data === undefined
+                || caseDetail.data.unassignedItems.length === 0 ? null : (
+                <RailFact label="Lines unassigned" value={caseDetail.data.unassignedItems.length} />
+              )}
+            </>
+          )}
+        </RailSection>
+      </DomainRail>
       <QueuePane
         queue={queue}
         onQueueChange={setQueue}
