@@ -12,6 +12,37 @@ seconds against a business-days SLA, and nothing at all after a restart.
 Activities are probes rather than the real ones. Under test is the workflow's
 own coordination -- ordering, timers, signals, idempotency keys, continuation --
 and pointing it at Mongo would make a slow test of the repository instead.
+
+WHY THIS FILE OWNS ITS EXECUTIONS
+---------------------------------
+It used to fail one test per whole-file run -- a different one each time, all
+of them passing in isolation, reproducible on a pristine tree. That is the
+signature of load rather than of a defect in what is under test, and the load
+was this suite's own litter.
+
+Two leaks, both measured on the shared dev server. Every test opened its own
+`Client.connect` and closed none, so a run left thirteen gRPC connections
+behind. And `_start` began an execution that only some tests ran to completion,
+on a task queue minted fresh per test, and nothing ever terminated the rest --
+so each run added orphaned *running* executions, each holding a task queue the
+matching service goes on carrying. By the time this was diagnosed the `default`
+namespace held **299 executions, 168 of them still Running**, several hours old
+and spread across every real-infra module in the suite. A workflow task on a
+queue nobody polls is not free, and the accumulated cost lands on whichever
+test happens to be waiting when the server is slowest. Hence a different test
+each run.
+
+So: one client for the module, and every execution terminated after the test
+that started it. A run now leaves nothing Running behind, measured rather than
+assumed.
+
+**A dedicated namespace was tried and rejected on evidence.** It is the obvious
+isolation, and on this server it made every test in the file five to sixteen
+times slower -- 3.5s to 47s for the duplicate-response case, 1.1s to 18s for
+cancellation -- turning an occasional timeout into a reliable one. Whatever a
+freshly registered namespace costs here, it costs more than the contention it
+avoids. Left recorded so the next person does not spend the same afternoon
+finding out.
 """
 
 from __future__ import annotations
@@ -19,10 +50,12 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
+from collections.abc import AsyncIterator
 from datetime import datetime, timedelta
 from typing import Any
 
 import pytest
+import pytest_asyncio
 from temporalio import activity
 from temporalio.client import Client
 from temporalio.worker import Worker
@@ -46,7 +79,8 @@ from return_platform.workflows.return_case_workflow import (
     SynchronizeReturnRecordsInput,
 )
 
-pytestmark = pytest.mark.asyncio
+#: Module-scoped loop, so one client can serve every test in the file.
+pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 _TEMPORAL_TARGET = os.getenv("PLATFORM_TEST_TEMPORAL_TARGET", "localhost:7233")
 
@@ -202,18 +236,54 @@ def _case_input(**overrides: Any) -> ReturnCaseWorkflowInput:
     return ReturnCaseWorkflowInput(**base)
 
 
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def client() -> AsyncIterator[Client]:
+    """One client for the whole module.
+
+    One rather than thirteen because none of the thirteen was ever closed, and
+    a gRPC connection per test is thirteen live connections by the end of a run
+    in a process that is also starting and stopping thirteen workers.
+    """
+    yield await Client.connect(_TEMPORAL_TARGET)
+
+
+@pytest_asyncio.fixture(autouse=True, loop_scope="module")
+async def _terminate_started_executions() -> AsyncIterator[None]:
+    """Leave no execution running behind a test.
+
+    The tests that end in `await handle.result()` close their own; the ones
+    that assert on a *waiting* case do not, and a failing test never reaches
+    its assertions at all. Without this each run left orphans on the server,
+    and 168 of them were what made this file flaky.
+    """
+    _STARTED.clear()
+    yield
+    for handle in _STARTED:
+        try:
+            await handle.terminate("test cleanup")
+        except Exception:  # noqa: BLE001 - already closed, or never started
+            pass
+    _STARTED.clear()
+
+
+#: Handles started by `_start` during the current test.
+_STARTED: list[Any] = []
+
+
 async def _start(client: Client, probe: _Probe, workflow_input: ReturnCaseWorkflowInput) -> Any:
+    del probe
     queue = f"test-return-case-{uuid.uuid4().hex[:8]}"
-    return queue, await client.start_workflow(
+    handle = await client.start_workflow(
         ReturnCaseWorkflow.run,
         workflow_input,
         id=f"test-return-case-{uuid.uuid4().hex[:8]}",
         task_queue=queue,
     )
+    _STARTED.append(handle)
+    return queue, handle
 
 
-async def test_the_case_completes_when_support_answers() -> None:
-    client = await Client.connect(_TEMPORAL_TARGET)
+async def test_the_case_completes_when_support_answers(client: Client) -> None:
     probe = _Probe()
     queue, handle = await _start(client, probe, _case_input())
 
@@ -237,14 +307,13 @@ async def test_the_case_completes_when_support_answers() -> None:
     assert probe.calls.index("request_bay_assignment") < probe.calls.index("open_support_work_item")
 
 
-async def test_the_support_wait_survives_a_worker_restart() -> None:
+async def test_the_support_wait_survives_a_worker_restart(client: Client) -> None:
     """The step this workflow exists for.
 
     The worker is stopped while the case is waiting on Support and started
     again. If the wait lived in a coroutine it would be gone; because it is a
     Temporal timer, the case is still waiting and still answerable.
     """
-    client = await Client.connect(_TEMPORAL_TARGET)
     probe = _Probe()
     queue, handle = await _start(
         client, probe, _case_input(timings=_timings(support_response_wait_seconds=300))
@@ -287,9 +356,8 @@ async def test_the_support_wait_survives_a_worker_restart() -> None:
     assert "open_support_work_item" not in resumed.calls
 
 
-async def test_reminders_fire_on_the_configured_cadence_and_then_park() -> None:
+async def test_reminders_fire_on_the_configured_cadence_and_then_park(client: Client) -> None:
     """A cap with no terminal branch leaves a case waiting forever, unseen."""
-    client = await Client.connect(_TEMPORAL_TARGET)
     probe = _Probe()
     queue, handle = await _start(
         client,
@@ -314,9 +382,8 @@ async def test_reminders_fire_on_the_configured_cadence_and_then_park() -> None:
     assert len(set(probe.reminder_keys)) == 2
 
 
-async def test_a_bay_failure_does_not_stop_the_return() -> None:
+async def test_a_bay_failure_does_not_stop_the_return(client: Client) -> None:
     """Bay is best-effort. `orchestrator._handle` used to let it fail the case."""
-    client = await Client.connect(_TEMPORAL_TARGET)
     probe = _Probe()
     probe.bay_should_fail = True
     queue, handle = await _start(client, probe, _case_input())
@@ -337,9 +404,8 @@ async def test_a_bay_failure_does_not_stop_the_return() -> None:
     assert outcome.bay_reference is None
 
 
-async def test_a_bay_result_arriving_before_the_wait_is_kept() -> None:
+async def test_a_bay_result_arriving_before_the_wait_is_kept(client: Client) -> None:
     """Signals can land before the workflow reaches the wait for them."""
-    client = await Client.connect(_TEMPORAL_TARGET)
     probe = _Probe()
     queue, handle = await _start(client, probe, _case_input(timings=_timings(bay_wait_seconds=30)))
 
@@ -363,7 +429,7 @@ async def test_a_bay_result_arriving_before_the_wait_is_kept() -> None:
     assert outcome.bay_reference == "BAY-7"
 
 
-async def test_the_bay_activity_answers_and_no_signal_is_needed() -> None:
+async def test_the_bay_activity_answers_and_no_signal_is_needed(client: Client) -> None:
     """BAY-01's connection, at the workflow boundary.
 
     `request_bay_assignment` used to return nothing, so every case waited out
@@ -374,7 +440,6 @@ async def test_the_bay_activity_answers_and_no_signal_is_needed() -> None:
     `bay_wait_seconds` is 30 here and the test does not take 30 seconds: that
     is the assertion. A workflow still waiting for a signal would.
     """
-    client = await Client.connect(_TEMPORAL_TARGET)
     probe = _Probe()
     probe.bay_notice = BayResultNotice(
         warehouse_reference="WH-1",
@@ -406,14 +471,13 @@ async def test_the_bay_activity_answers_and_no_signal_is_needed() -> None:
     assert outcome.bay_reference == "BAY-9"
 
 
-async def test_a_signal_that_won_the_race_is_not_overwritten_by_the_activity() -> None:
+async def test_a_signal_that_won_the_race_is_not_overwritten_by_the_activity(client: Client) -> None:
     """First answer wins, as `bay_result` already decided it.
 
     Both an early signal and the activity's own result are now possible for one
     case. If the activity overwrote what the signal had already established,
     the case's bay would depend on scheduling.
     """
-    client = await Client.connect(_TEMPORAL_TARGET)
     probe = _Probe()
     probe.bay_notice = BayResultNotice(warehouse_reference="WH-2", bay_reference="BAY-LATE")
     queue, handle = await _start(client, probe, _case_input(timings=_timings(bay_wait_seconds=30)))
@@ -437,9 +501,8 @@ async def test_a_signal_that_won_the_race_is_not_overwritten_by_the_activity() -
     assert outcome.bay_reference == "BAY-FIRST"
 
 
-async def test_a_duplicate_support_response_does_not_issue_a_second_set_of_rmas() -> None:
+async def test_a_duplicate_support_response_does_not_issue_a_second_set_of_rmas(client: Client) -> None:
     """Support clicking send twice, or a transport redelivering."""
-    client = await Client.connect(_TEMPORAL_TARGET)
     probe = _Probe()
     queue, handle = await _start(client, probe, _case_input())
 
@@ -461,7 +524,7 @@ async def test_a_duplicate_support_response_does_not_issue_a_second_set_of_rmas(
     assert len(probe.outcomes) == 1
 
 
-async def test_the_rma_reaches_the_graph_before_the_case_reports_it_received() -> None:
+async def test_the_rma_reaches_the_graph_before_the_case_reports_it_received(client: Client) -> None:
     """W2.5. The RMA is written to Mongo and then to the graph, in that order.
 
     The agent answering the associate's next turn reads the graph. Reporting
@@ -471,7 +534,6 @@ async def test_the_rma_reaches_the_graph_before_the_case_reports_it_received() -
     The sync is record-scoped: the ids are the ones `record_support_outcome`
     was given, not a request to re-sync the collection.
     """
-    client = await Client.connect(_TEMPORAL_TARGET)
     probe = _Probe()
     queue, handle = await _start(client, probe, _case_input())
 
@@ -503,7 +565,7 @@ async def test_the_rma_reaches_the_graph_before_the_case_reports_it_received() -
     assert len(probe.syncs[0].return_record_ids) == 2
 
 
-async def test_a_graph_sync_failure_parks_the_case_loudly() -> None:
+async def test_a_graph_sync_failure_parks_the_case_loudly(client: Client) -> None:
     """Return Workflow is `blocking`, so this failure is not stepped over.
 
     The RMA exists in the platform store and in no graph any agent reads. A case
@@ -511,7 +573,6 @@ async def test_a_graph_sync_failure_parks_the_case_loudly() -> None:
     associate on their next turn that no return exists -- worse than a parked
     case somebody can see and retry.
     """
-    client = await Client.connect(_TEMPORAL_TARGET)
     probe = _Probe()
     probe.sync_should_fail = True
     queue, handle = await _start(client, probe, _case_input())
@@ -536,13 +597,12 @@ async def test_a_graph_sync_failure_parks_the_case_loudly() -> None:
     assert "RETURN_GRAPH_SYNC_FAILED" in probe.statuses or outcome.status == "AWAITING_SUPPORT"
 
 
-async def test_a_rejected_return_needs_no_graph_sync() -> None:
+async def test_a_rejected_return_needs_no_graph_sync(client: Client) -> None:
     """Support declining issues no RMA, so there is nothing to project.
 
     Syncing an empty record set would fail loudly for no reason and park a case
     that reached a legitimate terminal state.
     """
-    client = await Client.connect(_TEMPORAL_TARGET)
     probe = _Probe()
     queue, handle = await _start(client, probe, _case_input())
 
@@ -562,8 +622,7 @@ async def test_a_rejected_return_needs_no_graph_sync() -> None:
     assert "synchronize_return_records" not in probe.calls
 
 
-async def test_cancelling_stops_the_case_without_asking_support() -> None:
-    client = await Client.connect(_TEMPORAL_TARGET)
+async def test_cancelling_stops_the_case_without_asking_support(client: Client) -> None:
     probe = _Probe()
     queue, handle = await _start(client, probe, _case_input(timings=_timings(bay_wait_seconds=30)))
 
@@ -580,7 +639,7 @@ async def test_cancelling_stops_the_case_without_asking_support() -> None:
     assert "open_support_work_item" not in probe.calls
 
 
-async def test_the_wait_counts_business_time_not_wall_clock() -> None:
+async def test_the_wait_counts_business_time_not_wall_clock(client: Client) -> None:
     """SLA-01 at the workflow boundary, and the Friday-evening case in miniature.
 
     The reminder interval is one second, so wall-clock arithmetic would nudge
@@ -589,7 +648,6 @@ async def test_the_wait_counts_business_time_not_wall_clock() -> None:
     duration it asked about -- which is the whole of what was broken: the
     duration was always right and nothing ever converted it.
     """
-    client = await Client.connect(_TEMPORAL_TARGET)
     probe = _Probe()
     probe.deadline_seconds = 3600.0
     queue, handle = await _start(
