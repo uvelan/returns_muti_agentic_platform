@@ -140,6 +140,15 @@ def resolve_source_discovery(request: Request) -> SourceDiscoveryPort:
 
 _Sources = Annotated[SourceDiscoveryPort, Depends(resolve_source_discovery)]
 
+#: Declare one of these ahead of `_Persistence`, `_Kernel` and `_GraphTarget`,
+#: never after them. FastAPI resolves a handler's dependencies in parameter
+#: order, and every one of those three answers 503 when its collaborator is not
+#: composed -- so a grant declared last let an unauthorized caller read the
+#: composition state of this process off the status code. `Annotated` rather
+#: than `= Depends(...)` because a defaulted parameter cannot come first.
+_Decider = Annotated[str, Depends(require_capability(GOVERNANCE_PROPOSAL_APPROVE))]
+_Publisher = Annotated[str, Depends(require_capability(GOVERNANCE_PROPOSAL_ACTIVATE))]
+
 
 class ApplyMutationsRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -582,10 +591,10 @@ async def approve_draft(
     draft_id: str,
     payload: ApproveRequest,
     request: Request,
+    approver: _Decider,
     persistence: _Persistence,
     kernel: _Kernel,
     target: _GraphTarget,
-    approver: str = Depends(require_capability(GOVERNANCE_PROPOSAL_APPROVE)),
 ) -> DraftView:
     """Accept a validated schema.
 
@@ -626,10 +635,10 @@ async def approve_draft(
 async def reject_draft(
     draft_id: str,
     payload: ApproveRequest,
+    approver: _Decider,
     persistence: _Persistence,
     kernel: _Kernel,
     target: _GraphTarget,
-    approver: str = Depends(require_capability(GOVERNANCE_PROPOSAL_APPROVE)),
 ) -> DraftView:
     """Refuse a validated schema, on the record.
 
@@ -662,9 +671,9 @@ async def reject_draft(
 async def publish_draft(
     draft_id: str,
     payload: PublishRequest,
+    approver: _Publisher,
     persistence: _Persistence,
     kernel: _Kernel,
-    approver: str = Depends(require_capability(GOVERNANCE_PROPOSAL_ACTIVATE)),
 ) -> PublishedReleaseView:
     """Turn an approved draft into the schema the platform runs.
 
