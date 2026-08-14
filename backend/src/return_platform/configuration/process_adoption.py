@@ -76,12 +76,20 @@ their heartbeats use -- not new names invented here. The API process is in the
 set because it holds its own snapshot and serves reads from it; a release
 adopted by every worker and not by the API is exactly as split as the reverse.
 
-`data-job-worker` is deliberately absent even though `compose.yaml` deploys it:
-`scripts/run_data_job_worker.py` imports `return_platform.data_console`, which
-does not exist in this repository, so the container cannot start. Listing a
-class that can never report would make every release permanently not-live and
-turn a real signal into one operators learn to ignore. Add it here the moment
-that import resolves.
+`housekeeping-worker` is deliberately absent even though `compose.yaml` deploys
+it. It is not required *because it is not always deployed*: two of its three
+reclaimers are hard-gated to development and test, so a production deployment has
+a real reason to run it and a real reason not to, and a deployment that chose not
+to would sit at ACTIVATING forever with nothing wrong. The rule generalises --
+a class belongs here only if every deployment runs it -- and the cost of getting
+it wrong is not a missing signal but a false one operators learn to ignore.
+
+`data-job-worker` used to occupy this paragraph for a worse reason: it was in
+`compose.yaml` and could not start at all, because `scripts/run_data_job_worker.py`
+imported the deleted `return_platform.data_console`. The script and its service
+are now gone. The lesson it left is why `housekeeping-worker`'s entry point is
+covered by tests that import it and construct its cycle: being deployed is not
+evidence a process runs.
 """
 
 

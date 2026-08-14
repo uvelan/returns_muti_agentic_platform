@@ -550,6 +550,103 @@ class ReturnCaseTimingConfiguration(StrictConfigModel):
     timezone: NonBlank = "UTC"
 
 
+class TemporalReclamationConfiguration(StrictConfigModel):
+    """Which stranded Temporal executions housekeeping may terminate.
+
+    `reclaimable_task_queue_prefixes` is a **positive** test and the only thing
+    that makes an execution a candidate. It is validated against the queues this
+    deployment's workers actually poll (see
+    `housekeeping.temporal_executions.TemporalExecutionReclaimer`), and a prefix
+    that would match one of them is refused at construction -- so no release can
+    express "reap the production queue", however it is written.
+
+    `minimum_age_seconds` is a floor on how long an execution must have been
+    running before it is considered stranded. It is NOT what makes reclamation
+    safe -- `ReturnCaseWorkflow` legitimately runs for days -- it only keeps a
+    suite that is running right now from having its own executions removed from
+    under it.
+    """
+
+    enabled: bool = True
+    #: Every suite that starts an execution names an ephemeral queue: the
+    #: `test-return-case-<uuid>`, `test-order-discovery-<uuid>`,
+    #: `test-return-concurrency-<uuid>`, `test-return-rejection-<uuid>` and
+    #: `reasoning-*-test-<uuid>` queues in `backend/tests`. No deployed worker
+    #: polls any of them, which is why an execution left on one can never make
+    #: progress again.
+    reclaimable_task_queue_prefixes: tuple[NonBlank, ...] = ("test-", "reasoning-")
+    minimum_age_seconds: int = Field(default=3_600, ge=300)
+    batch_limit: int = Field(default=500, ge=1, le=10_000)
+
+
+class GraphGenerationReclamationConfiguration(StrictConfigModel):
+    """When a RETIRED graph generation's nodes may finally be removed.
+
+    Retirement is status-only by design (C9): every compiled read and write is
+    generation-scoped, so a retired generation is unreachable rather than
+    deleted. That is safe and it is also why generations accumulate without
+    bound -- 212 `GraphGeneration` markers on this deployment -- which is what
+    this reclaims.
+
+    `retention_seconds` runs from the moment housekeeping first *observed* the
+    generation eligible, not from its `created_at`. A generation that served for
+    a month and retired a minute ago has an ancient `created_at`, so a
+    creation-based window would delete it immediately and give late readers no
+    grace at all.
+    """
+
+    enabled: bool = True
+    retention_seconds: int = Field(default=86_400, ge=300)
+    #: Generations reclaimed per pass. Small: each one is a bounded series of
+    #: delete batches, and a pass that tried to clear a backlog in one go would
+    #: hold Neo4j for the whole interval.
+    batch_limit: int = Field(default=5, ge=1, le=1_000)
+    #: Nodes per `DETACH DELETE`. A whole generation in one transaction is how a
+    #: cleanup runs the page cache out of memory.
+    node_delete_batch_size: int = Field(default=1_000, ge=100, le=50_000)
+
+
+class ProbeDatabaseReclamationConfiguration(StrictConfigModel):
+    """Which SQL Server databases housekeeping may drop.
+
+    Test suites create `return_case_probe`, `return_pool_probe`,
+    `return_shipment_probe`, `return_shipment_graph_probe`,
+    `return_shipment_concurrency_probe` and never drop them. The suffix is a
+    positive test, and the application's own databases are refused against it at
+    construction, so no release can name one.
+    """
+
+    enabled: bool = True
+    name_suffixes: tuple[NonBlank, ...] = ("_probe",)
+    minimum_age_seconds: int = Field(default=3_600, ge=300)
+    batch_limit: int = Field(default=50, ge=1, le=500)
+
+
+class HousekeepingConfiguration(StrictConfigModel):
+    """Operational debris reclamation, on a schedule.
+
+    Every window here is configuration rather than a constant because the right
+    value differs by deployment: a CI box wants a retention measured in hours, a
+    staging environment wants days, and neither should require a code change.
+
+    What is *not* configuration is which resources are reclaimable at all. Those
+    rules are structural (see the `housekeeping` package) precisely because a
+    configuration mistake must not be able to reach a live return.
+    """
+
+    enabled: bool = True
+    interval_seconds: int = Field(default=900, ge=30, le=86_400)
+    temporal_executions: TemporalReclamationConfiguration = Field(
+        default_factory=TemporalReclamationConfiguration
+    )
+    graph_generations: GraphGenerationReclamationConfiguration = Field(
+        default_factory=GraphGenerationReclamationConfiguration
+    )
+    probe_databases: ProbeDatabaseReclamationConfiguration = Field(
+        default_factory=ProbeDatabaseReclamationConfiguration
+    )
+
+
 class IntegrationTopicConfiguration(StrictConfigModel):
     enabled: bool
     topic: NonBlank
@@ -826,6 +923,10 @@ class ReturnPlatformConfiguration(StrictConfigModel):
     # to wall clock and says so on the case, which is the behaviour that was
     # there before and is now visible rather than assumed.
     business_calendars: tuple[BusinessCalendarConfiguration, ...] = ()
+    # Defaulted so an existing release without the block still loads. The
+    # defaults are conservative windows, and the reclaimers they drive are
+    # structurally unable to reach a live return whatever this block says.
+    housekeeping: HousekeepingConfiguration = Field(default_factory=HousekeepingConfiguration)
     integrations: IntegrationConfiguration
     extensions: ExtensionConfiguration
     runtime_integrations: RuntimeIntegrationsConfiguration = Field(
