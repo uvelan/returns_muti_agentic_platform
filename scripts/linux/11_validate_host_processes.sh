@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
-for name in backend frontend worker-temporal worker-orchestrator worker-outbox worker-jobs \
-  worker-integration-outbox; do
+# Mirrors 09_start_workers.sh. worker-jobs went with the dead data-job-worker;
+# worker-discovery is required for adoption to reach LIVE.
+for name in backend frontend worker-temporal worker-discovery worker-orchestrator \
+  worker-outbox worker-integration-outbox; do
   pid_file="$PID_DIR/${name}.pid"
   [[ -s "$pid_file" ]] || {
     echo "Missing PID file for $name." >&2

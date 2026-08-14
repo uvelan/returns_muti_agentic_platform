@@ -83,9 +83,9 @@ processes=(
   backend
   frontend
   worker-temporal
+  worker-discovery
   worker-orchestrator
   worker-outbox
-  worker-jobs
   worker-integration-outbox
 )
 while true; do

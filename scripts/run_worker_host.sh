@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKER="${1:-}"
 [[ -n "$WORKER" ]] || {
-  echo "Usage: $0 {temporal|orchestrator|outbox|jobs|integration-outbox} [--validate-ai]" >&2
+  echo "Usage: $0 {temporal|discovery|orchestrator|outbox|integration-outbox|housekeeping} [--validate-ai]" >&2
   exit 2
 }
 shift
@@ -16,7 +16,7 @@ while (($# > 0)); do
       validate_ai=true
       ;;
     -h|--help)
-      echo "Usage: $0 {temporal|orchestrator|outbox|jobs|integration-outbox} [--validate-ai]"
+      echo "Usage: $0 {temporal|discovery|orchestrator|outbox|integration-outbox|housekeeping} [--validate-ai]"
       exit 0
       ;;
     *)
@@ -36,6 +36,11 @@ fi
 
 case "$WORKER" in
   temporal) SCRIPT=run_return_workflow_worker.py ;;
+  # order-discovery is in REQUIRED_PROCESS_CLASSES: without it
+  # GET /api/config/adoption never reaches LIVE, because a required class
+  # that is never started can never report adoption.
+  discovery) SCRIPT=run_order_discovery_worker.py ;;
+  housekeeping) SCRIPT=run_housekeeping_worker.py ;;
   orchestrator) SCRIPT=run_return_orchestrator.py ;;
   outbox) SCRIPT=run_outbox_publisher.py ;;
   integration-outbox)
@@ -47,7 +52,7 @@ case "$WORKER" in
     exec "$(venv_python)" -m return_platform.workers.integration_outbox
     ;;
   *)
-    echo "Usage: $0 {temporal|orchestrator|outbox|integration-outbox} [--validate-ai]" >&2
+    echo "Usage: $0 {temporal|discovery|orchestrator|outbox|integration-outbox|housekeeping} [--validate-ai]" >&2
     exit 2
     ;;
 esac
