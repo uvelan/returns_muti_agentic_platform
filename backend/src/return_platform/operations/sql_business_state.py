@@ -5,12 +5,16 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
+import logging
+import random
 import uuid
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol, TypeVar
+
+import pymssql
 
 from return_platform.configuration.settings import Settings
 from return_platform.operations.models import ReturnSessionView
@@ -22,6 +26,43 @@ from return_platform.operations.sql_connection_pool import (
 )
 
 T = TypeVar("T")
+
+logger = logging.getLogger("return_platform.operations.sql_business_state")
+
+#: SQL Server's "chosen as a deadlock victim" error number.
+#:
+#: A victim's transaction is rolled back *whole* before the error reaches the
+#: client, so the loser has changed nothing and holds nothing. That is what
+#: makes it distinct from every other SQL error here: it is not a statement
+#: that was wrong, it is a statement that was asked to step aside.
+_DEADLOCK_VICTIM_ERROR = 1205
+
+#: How many times a deadlock victim re-runs before the error is reported.
+#:
+#: Bounded rather than generous. A deadlock is resolved the moment the winner
+#: commits, so the re-run contends with strictly fewer writers than the attempt
+#: that lost; a burst of eight resolves well inside this. A path that still
+#: cannot get through after four attempts is not contending, it is wedged, and
+#: retrying longer converts a fast error into a slow one.
+_DEADLOCK_MAX_ATTEMPTS = 4
+
+#: Base backoff between deadlock re-runs, jittered.
+#:
+#: Jittered because the writers that just deadlocked are, by construction, in
+#: lockstep -- they arrived together and were released together. Re-running
+#: them all after the same fixed pause reproduces the collision that caused the
+#: deadlock instead of resolving it.
+_DEADLOCK_BACKOFF_SECONDS = 0.05
+
+
+def _is_deadlock_victim(error: BaseException) -> bool:
+    """Whether SQL Server rolled this caller back to break a deadlock.
+
+    Matched on the driver's error number rather than on the message, which is
+    localized and carries the process id.
+    """
+    args = getattr(error, "args", ())
+    return bool(args) and args[0] == _DEADLOCK_VICTIM_ERROR
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,6 +290,44 @@ class SQLBusinessStateRepository:
     async def _run(self, operation: Callable[[], T]) -> T:
         async with asyncio.timeout(self._settings.operation_timeout_seconds):
             return await asyncio.to_thread(operation)
+
+    async def _run_retrying_deadlocks(self, operation: Callable[[], T], *, operation_name: str) -> T:
+        """`_run`, re-running the operation when SQL Server picks it as a victim.
+
+        **Only for operations that are idempotent by construction**, which is
+        why it is opt-in per call site rather than folded into `_run` or into
+        the pool's `transaction()`. A blanket retry there would re-run writes
+        whose second application is not a no-op.
+
+        A deadlock victim is not a failed operation. Its transaction is rolled
+        back whole before the error surfaces, so nothing partial persists and
+        the caller's own predicate decides the outcome again from scratch --
+        which for `record_shipment_update` means the re-run observes the row the
+        winner committed and answers DUPLICATE, exactly as a sequential
+        resubmission would.
+
+        Note that this does *not* weaken the locking it retries around.
+        `UPDLOCK, HOLDLOCK` is what makes the APPLIED/DUPLICATE/STALE verdict
+        SQL Server's rather than a read-then-write race's, and the lock
+        conversion it implies is the reason a victim is chosen at all. The
+        contention is correct; only the reporting of it was wrong.
+        """
+        for attempt in range(1, _DEADLOCK_MAX_ATTEMPTS + 1):
+            try:
+                return await self._run(operation)
+            except pymssql.Error as error:
+                if not _is_deadlock_victim(error) or attempt == _DEADLOCK_MAX_ATTEMPTS:
+                    raise
+                logger.info(
+                    "sql_deadlock_victim_retrying",
+                    extra={
+                        "operation": operation_name,
+                        "attempt": attempt,
+                        "max_attempts": _DEADLOCK_MAX_ATTEMPTS,
+                    },
+                )
+                await asyncio.sleep(_DEADLOCK_BACKOFF_SECONDS * attempt * (0.5 + random.random()))
+        raise AssertionError("unreachable: the final attempt either returns or raises")
 
     async def record_return_decision(
         self,
@@ -803,6 +882,17 @@ class SQLBusinessStateRepository:
         a rejected stale update indistinguishable from an accepted one in the
         sync log -- the one place an operator would look to find out whether a
         regressive carrier event had been let through.
+
+        **A deadlock victim is retried, not reported (SHIP-CONC-01).** Taking
+        `UPDLOCK, HOLDLOCK` and then inserting is a lock conversion, and SQL
+        Server resolves a conversion race by rolling one side back whole (error
+        1205). Nothing here retried it, so a genuinely simultaneous duplicate
+        surfaced as a driver error and became an HTTP 500 -- contradicting this
+        path's own documented contract, under which a duplicate is a DUPLICATE
+        200. It was never a correctness fault: the row and its status were
+        right in every observed trial. Only the answer to the loser was wrong,
+        and this operation is idempotent by construction, so the loser can
+        simply ask again.
         """
 
         tracking_id = str(
@@ -905,7 +995,9 @@ class SQLBusinessStateRepository:
                 row_version=int(current.get("row_version") or 1),
             )
 
-        outcome = await self._run(operation)
+        outcome = await self._run_retrying_deadlocks(
+            operation, operation_name="record_shipment_update"
+        )
         if not outcome.applied or self._shipment_graph_sync is None:
             return outcome
         # After the commit, never inside it. The sync reads the authoritative

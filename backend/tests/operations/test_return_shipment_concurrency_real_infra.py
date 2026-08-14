@@ -193,8 +193,12 @@ async def _released_together(count: int, work: Any) -> list[Any]:
     return await asyncio.gather(*(_run(index) for index in range(count)), return_exceptions=True)
 
 
-#: SQL Server's deadlock-victim error. See `test_simultaneous_identical_updates`
-#: below for why it is tolerated here rather than asserted against.
+#: SQL Server's deadlock-victim error.
+#:
+#: No longer tolerated as an outcome -- `record_shipment_update` retries it, so
+#: every writer must now answer. It is still named here because
+#: `test_one_tracking_reference_cannot_be_claimed_by_two_rmas` asserts that the
+#: refusal it expects is the *constraint* and not a deadlock wearing its clothes.
 _DEADLOCK_VICTIM = 1205
 
 
@@ -209,26 +213,27 @@ async def test_simultaneous_identical_updates_apply_at_most_once_and_never_dupli
     """The duplicate-shipment-update row of the matrix, contended.
 
     Eight copies of one carrier observation arrive together. The durable claim
-    is what this asserts: **one row, one APPLIED, and no writer that claims to
-    have applied an observation it did not**. An RMA carrying the same
+    is one part of what this asserts: **one row, one APPLIED, and no writer that
+    claims to have applied an observation it did not**. An RMA carrying the same
     observation twice is a return that looks like two shipments to every
     fulfilment reader, and that is the corruption this must exclude.
 
-    **A deadlock victim is tolerated, and that is a finding rather than a
-    convention.** `record_shipment_update` takes `UPDLOCK, HOLDLOCK` and then
-    inserts, which is a lock-conversion pattern SQL Server resolves by choosing
-    victims (error 1205); the repository has no retry for it and neither does
-    `api/return_shipments.py`, whose only `except` is `ShipmentStateSyncFailed`.
-    So a genuinely simultaneous duplicate answers HTTP 500 instead of the
-    `DUPLICATE` 200 that route's docstring promises. Reported to the
-    Orchestrator as SHIP-CONC-01; it is an application defect and Track I does
-    not fix application logic.
+    The other part is that **every writer gets an answer**. This was
+    SHIP-CONC-01, and this test tolerated a deadlock victim rather than
+    asserting against one until it was fixed. `record_shipment_update` takes
+    `UPDLOCK, HOLDLOCK` and then inserts, which is a lock conversion SQL Server
+    resolves by rolling one side back (error 1205); nothing retried it, so a
+    genuinely simultaneous duplicate answered HTTP 500 instead of the
+    `DUPLICATE` 200 the route's docstring promises. It was never a correctness
+    fault -- one row, correct status, in every trial including the deadlocked
+    ones -- which is precisely why the loser can simply ask again. The
+    repository now retries the victim, so the tolerance is gone and the
+    coin flip with it.
 
-    It is tolerated rather than asserted because it is *intermittent* -- 2 of
-    ~10 eight-way trials in this session, independent of whether the table was
-    empty or populated. Asserting either way round would put a coin flip in the
-    suite, and a flaky gate is worth less than an honest one. What is asserted
-    is everything that held in every trial, deadlocked or not.
+    The locking is deliberately unchanged. `UPDLOCK, HOLDLOCK` is what puts the
+    APPLIED/DUPLICATE/STALE decision inside the UPDATE's WHERE, and weakening it
+    to avoid the deadlock would trade an error-reporting defect for a
+    correctness one.
     """
     rma = _rma()
     update = _update(rma, "IN_TRANSIT", _1400, details="Picked up")
@@ -237,21 +242,21 @@ async def test_simultaneous_identical_updates_apply_at_most_once_and_never_dupli
         CONTENDERS, lambda _: repository.record_shipment_update(update)
     )
     failures = [result for result in results if isinstance(result, BaseException)]
-    unexpected = [error for error in failures if not _is_deadlock(error)]
-    assert not unexpected, f"a duplicate observation failed for an unforeseen reason: {unexpected}"
+    assert not failures, f"a duplicate observation failed instead of answering: {failures}"
 
-    answered = [result for result in results if not isinstance(result, BaseException)]
-    assert answered, "every writer was chosen as a deadlock victim"
-    outcomes = [result.outcome for result in answered]
+    outcomes = [result.outcome for result in results]
     assert outcomes.count(SHIPMENT_UPDATE_APPLIED) == 1, (
         f"{outcomes.count(SHIPMENT_UPDATE_APPLIED)} writers each applied the same observation: "
         f"{outcomes}"
     )
-    # Everything that answered and did not apply must have said so.
-    assert outcomes.count(SHIPMENT_UPDATE_DUPLICATE) == len(answered) - 1
+    # Everything that did not apply must have said DUPLICATE -- the contract the
+    # route publishes, now reachable under genuine contention and not only
+    # sequentially.
+    assert outcomes.count(SHIPMENT_UPDATE_DUPLICATE) == CONTENDERS - 1, outcomes
 
     # The durable claim, which held under every trial including the deadlocked
-    # ones: one row, and the observation recorded exactly as submitted.
+    # ones before the retry existed: one row, and the observation recorded
+    # exactly as submitted.
     state = await repository.read_shipment_state(rma)
     assert len(state) == 1
     assert state[0]["tracking_status"] == "IN_TRANSIT"
@@ -325,17 +330,12 @@ async def test_contended_updates_stay_inside_their_own_rma(
         ),
     )
     failures = [result for result in results if isinstance(result, BaseException)]
-    unexpected = [error for error in failures if not _is_deadlock(error)]
-    assert not unexpected, f"a concurrent update on a distinct RMA failed: {unexpected}"
-    answered = [result for result in results if not isinstance(result, BaseException)]
-    assert all(result.outcome == SHIPMENT_UPDATE_APPLIED for result in answered), [
-        result.outcome for result in answered
+    assert not failures, f"a concurrent update on a distinct RMA failed: {failures}"
+    assert all(result.outcome == SHIPMENT_UPDATE_APPLIED for result in results), [
+        result.outcome for result in results
     ]
 
-    applied = {
-        rmas[index] for index, result in enumerate(results) if not isinstance(result, BaseException)
-    }
-    for rma in applied:
+    for rma in rmas:
         state = await repository.read_shipment_state(rma)
         assert len(state) == 1, f"{rma} did not keep its own shipment row"
         assert state[0]["return_reference"] == rma
