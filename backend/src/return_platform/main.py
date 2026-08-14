@@ -16,11 +16,12 @@ from temporalio.client import Client
 
 from return_platform.ai.interception.store import SystemStoreInterceptionStore
 from return_platform.ai.providers.replay_store import SystemStoreReplayStore
-from return_platform.ai_gateway.configuration import (
+from return_platform.ai.routing.routes import build_routes
+from return_platform.ai.routing.selection import AIRoutePool
+from return_platform.ai.routing.tasks import (
     build_loaded_ai_gateway_configuration,
     load_ai_gateway_configuration,
 )
-from return_platform.ai_gateway.routing import AIRoutePool, build_routes
 from return_platform.api.ai_gateway import router as ai_gateway_router
 from return_platform.api.associate_returns import router as associate_returns_router
 from return_platform.api.canonical_ai import router as canonical_ai_router

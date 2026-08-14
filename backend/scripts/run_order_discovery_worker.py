@@ -19,7 +19,8 @@ from temporalio.client import Client
 
 from return_platform.ai.interception.store import SystemStoreInterceptionStore
 from return_platform.ai.providers.replay_store import SystemStoreReplayStore
-from return_platform.ai_gateway.routing import AIRoutePool, build_routes
+from return_platform.ai.routing.routes import build_routes
+from return_platform.ai.routing.selection import AIRoutePool
 from return_platform.bootstrap.system_store import bootstrap_system_store
 from return_platform.configuration.runtime_activation import (
     ActivationContext,

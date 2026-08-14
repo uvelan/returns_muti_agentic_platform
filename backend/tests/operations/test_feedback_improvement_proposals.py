@@ -294,7 +294,7 @@ async def test_an_approved_improvement_publishes_a_release_and_refreshes_the_run
 ) -> None:
     """Section 7: feedback proposals never activate anything *directly*. They go
     through the release lifecycle, which is what this asserts."""
-    from return_platform.ai_gateway.configuration import load_ai_gateway_configuration
+    from return_platform.ai.routing.tasks import load_ai_gateway_configuration
     from return_platform.dependency_simulation.configuration import (
         load_dependency_simulation_configuration,
     )

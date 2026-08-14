@@ -18,13 +18,14 @@ BACKEND_SRC = ROOT / "backend" / "src"
 if str(BACKEND_SRC) not in sys.path:
     sys.path.insert(0, str(BACKEND_SRC))
 
-from return_platform.ai_gateway.configuration import (  # noqa: E402
+from return_platform.ai.providers import ProviderError, ProviderResponse  # noqa: E402
+from return_platform.ai.routing.routes import AIRoute, build_routes  # noqa: E402
+from return_platform.ai.routing.selection import AIRoutePool  # noqa: E402
+from return_platform.ai.routing.tasks import (  # noqa: E402
     ModelTier,
     load_ai_gateway_configuration,
 )
-from return_platform.ai_gateway.providers import ProviderError, ProviderResponse  # noqa: E402
-from return_platform.ai_gateway.routing import AIRoute, AIRoutePool, build_routes  # noqa: E402
-from return_platform.ai_gateway.safety import SafetyStatus, inspect_input  # noqa: E402
+from return_platform.ai.safety import SafetyStatus, inspect_input  # noqa: E402
 from return_platform.configuration.settings import Settings  # noqa: E402
 from return_platform.dependency_simulation.configuration import (  # noqa: E402
     load_dependency_simulation_configuration,

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from neo4j import AsyncGraphDatabase
 
-from return_platform.ai_gateway.configuration import (
+from return_platform.ai.routing.tasks import (
     LoadedAIGatewayConfiguration,
     build_loaded_ai_gateway_configuration,
     load_ai_gateway_configuration,

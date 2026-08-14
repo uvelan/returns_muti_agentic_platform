@@ -28,7 +28,10 @@ ANALYZER_DIR = (
 FORBIDDEN_PREFIXES = (
     "return_platform.agents",
     "return_platform.ai",
-    "return_platform.ai_gateway",
+    # `return_platform.ai_gateway` was listed here as well while the deprecated
+    # re-export shim existed. `_is_forbidden` matches on package boundaries, so
+    # `return_platform.ai` never covered it -- but the package is now deleted, and
+    # `tests/platform/test_ai_lane_boundary.py` forbids that path repository-wide.
     "return_platform.api",
     "return_platform.business",
     "return_platform.canonical",

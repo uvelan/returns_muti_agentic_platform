@@ -12,8 +12,8 @@ from pymongo import ASCENDING, DESCENDING, AsyncMongoClient, ReplaceOne, ReturnD
 from pymongo.asynchronous.collection import AsyncCollection
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
+from return_platform.ai.gateway.models import AIUsageAttemptView, AIUsageSummaryView
 from return_platform.ai.pricing import AIPricingStatus
-from return_platform.ai_gateway.models import AIUsageAttemptView, AIUsageSummaryView
 from return_platform.configuration.settings import Settings
 from return_platform.dynamic_knowledge.config_loader import resolve_active_schema
 from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore

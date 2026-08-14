@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fastapi import HTTPException, Request
 
-from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
-from return_platform.ai_gateway.routing import AIRoutePool
+from return_platform.ai.routing.selection import AIRoutePool
+from return_platform.ai.routing.tasks import LoadedAIGatewayConfiguration
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
 from return_platform.configuration.snapshot import PinnedConfigurationSnapshot
 from return_platform.operations.associate_flow import AssociateConversationService

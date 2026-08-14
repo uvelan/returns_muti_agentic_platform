@@ -3,7 +3,7 @@ import logging
 
 import httpx
 
-from return_platform.ai_gateway.providers import ProviderRequest, build_providers
+from return_platform.ai.providers import ProviderRequest, build_providers
 from return_platform.configuration.settings import Settings
 
 logging.basicConfig(level=logging.INFO)

@@ -3,13 +3,10 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from return_platform.ai_gateway.configuration import ModelTier, load_ai_gateway_configuration
-from return_platform.ai_gateway.providers import (
-    ProviderError,
-    ProviderRequest,
-    ProviderResponse,
-)
-from return_platform.ai_gateway.routing import AIRoute, AIRoutePool
+from return_platform.ai.providers import ProviderError, ProviderRequest, ProviderResponse
+from return_platform.ai.routing.routes import AIRoute
+from return_platform.ai.routing.selection import AIRoutePool
+from return_platform.ai.routing.tasks import ModelTier, load_ai_gateway_configuration
 from return_platform.configuration.settings import Settings
 from return_platform.dependency_simulation.configuration import (
     load_dependency_simulation_configuration,

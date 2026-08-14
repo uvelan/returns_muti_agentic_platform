@@ -17,12 +17,13 @@ satisfy a rule about dispatch. So the check covers the packages that *invoke*
 reasoning, where a literal really does mean a caller bypassed task-based
 routing.
 
-**One canonical AI package.** `ai_gateway/` is now a deprecated re-export shim
-(see its `__init__`), kept only because ~20 modules outside the AI lane still
-import it and could not be moved in the same commit. New code must not deepen
-that dependency, so the shim is allowed to exist while `ai/` is forbidden from
-importing it -- a cycle back through the deprecated path would make the shim
-permanent.
+**One canonical AI package.** `ai_gateway/` was a deprecated re-export shim,
+kept while ~30 modules outside the AI lane still imported it. Those imports were
+rewritten and the shim deleted, so the rule is now the strong one: *nothing*
+imports `return_platform.ai_gateway`. Checking only that `ai/` does not import
+it -- which is what this file used to assert -- would pass trivially now that
+the package does not exist, and would not notice a re-export layer being
+reintroduced somewhere else.
 """
 
 from __future__ import annotations
@@ -31,7 +32,6 @@ import ast
 from pathlib import Path
 
 _SRC = Path(__file__).resolve().parents[2] / "src" / "return_platform"
-_AI = _SRC / "ai"
 
 #: Provider identifiers. A literal of one of these outside the AI lane means a
 #: caller has chosen a provider instead of naming a task.
@@ -73,26 +73,63 @@ def test_no_provider_or_model_literals_in_the_agent_lane() -> None:
     )
 
 
-def test_the_canonical_ai_package_does_not_import_its_own_deprecated_shim() -> None:
-    """`ai_gateway/` re-exports `ai/`. If `ai/` imported back through it the
-    dependency would be circular in intent -- the shim could never be deleted,
-    which is the entire point of Wave F's import sweep."""
+def test_the_deprecated_shim_package_is_gone() -> None:
+    """The re-export layer itself, not just the rule against importing it.
+
+    A package that reappears is what makes an import sweep have to be done
+    twice: every re-export is a second name for one object, and two names is
+    how the AI lane ended up with three provider dispatch loops.
+    """
+    assert not (_SRC / "ai_gateway").exists(), (
+        "return_platform/ai_gateway/ is back. It was a pure re-export of ai/; a second "
+        "import path for the same objects is what the consolidation removed."
+    )
+
+
+def test_nothing_imports_the_deprecated_ai_gateway_path() -> None:
+    """No module, test or script may import `return_platform.ai_gateway`.
+
+    Scoped to the whole repository rather than to `ai/`. The narrow version --
+    "the canonical package must not import its own shim" -- was the right rule
+    while the shim existed and 30 callers depended on it, but with the package
+    deleted it passes without looking at anything. This one keeps failing for a
+    real reason: a caller that reaches for the old path is a caller about to
+    recreate it.
+    """
+    backend = _SRC.parents[1]
+    roots = (_SRC, backend / "tests", backend / "scripts", backend.parent / "scripts")
     offenders: list[str] = []
-    for path in _AI.rglob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
-                "return_platform.ai_gateway"
-            ):
-                offenders.append(f"{_relative(path)}:{node.lineno}")
-            elif isinstance(node, ast.Import):
-                offenders.extend(
-                    f"{_relative(path)}:{node.lineno}"
-                    for alias in node.names
-                    if alias.name.startswith("return_platform.ai_gateway")
-                )
+    inspected = 0
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*.py"):
+            if "__pycache__" in path.parts:
+                continue
+            inspected += 1
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
+                    "return_platform.ai_gateway"
+                ):
+                    offenders.append(f"{path}:{node.lineno}")
+                elif isinstance(node, ast.Import):
+                    offenders.extend(
+                        f"{path}:{node.lineno}"
+                        for alias in node.names
+                        if alias.name.startswith("return_platform.ai_gateway")
+                    )
+
+    # Self-verifying: if the roots stop resolving this would pass having read
+    # nothing, which is exactly the failure mode it replaced.
+    assert inspected > 500, (
+        f"only {inspected} modules were inspected, so this check is no longer reading "
+        "the source tree it is supposed to guard"
+    )
 
     assert offenders == [], (
-        "the canonical ai/ package imports the deprecated ai_gateway/ shim, which would "
-        "make the shim impossible to delete: " + ", ".join(offenders)
+        "these import the deleted return_platform.ai_gateway re-export path; import the "
+        "canonical module directly (`ai.routing.tasks`, `ai.routing.routes`, "
+        "`ai.routing.selection`, `ai.gateway.models`, `ai.gateway.service`, `ai.safety`, "
+        "`ai.providers`): " + ", ".join(offenders)
     )

@@ -11,9 +11,9 @@ import httpx
 from temporalio.client import Client, WorkflowHandle, WorkflowUpdateFailedError
 from temporalio.exceptions import ApplicationError, WorkflowAlreadyStartedError
 
-from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
-from return_platform.ai_gateway.routing import AIRoutePool
-from return_platform.ai_gateway.service import AIGatewayService
+from return_platform.ai.gateway.service import AIGatewayService
+from return_platform.ai.routing.selection import AIRoutePool
+from return_platform.ai.routing.tasks import LoadedAIGatewayConfiguration
 from return_platform.canonical.operations import ContextSnapshot, WorkflowStage
 from return_platform.configuration.domain.workflow import WorkflowDefinition
 from return_platform.configuration.return_configuration import (
@@ -150,7 +150,7 @@ class ReturnOrchestrator:
             if workflow_definition is not None
             else DEFAULT_STAGE_SEQUENCE
         )
-        from return_platform.ai_gateway.service import AIGatewayRepository
+        from return_platform.ai.gateway.service import AIGatewayRepository
 
         self._ai = AIGatewayService(
             cast(AIGatewayRepository, repository),

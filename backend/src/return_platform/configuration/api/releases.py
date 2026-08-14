@@ -8,10 +8,7 @@ from typing import Any, Final, Literal, cast
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from return_platform.ai_gateway.configuration import (
-    AIGatewayConfiguration,
-    LoadedAIGatewayConfiguration,
-)
+from return_platform.ai.routing.tasks import AIGatewayConfiguration, LoadedAIGatewayConfiguration
 from return_platform.configuration.application.release_promotion import (
     ReleasePromotionError,
     promote_configuration_release,
