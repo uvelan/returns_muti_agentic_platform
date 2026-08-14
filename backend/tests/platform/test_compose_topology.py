@@ -133,6 +133,10 @@ def test_the_app_profile_is_the_services_that_serve_traffic() -> None:
         # Beyond the plan's list, and real -- see the module docstring.
         "order-discovery-worker",
         "integration-outbox-worker",
+        # Also beyond the plan, and its entrypoint is asserted to be importable
+        # and constructible by `tests/housekeeping/` -- which is what the
+        # `data-job-worker` paragraph above says this list is not evidence of.
+        "housekeeping-worker",
     }
 
 

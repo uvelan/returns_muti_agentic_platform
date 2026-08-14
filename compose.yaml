@@ -511,6 +511,20 @@ services:
       valkey:
         condition: service_healthy
 
+  housekeeping-worker:
+    profiles: ["containerized-app"]
+    <<: *backend-base
+    command: ["python", "/app/scripts/run_housekeeping_worker.py"]
+    depends_on:
+      runtime-configuration-init:
+        condition: service_completed_successfully
+      mongodb-rs-init:
+        condition: service_completed_successfully
+      temporal:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+
   frontend:
     profiles: ["containerized-app"]
     image: return-platform-frontend:local

@@ -18,11 +18,21 @@ from return_platform.operations.return_support.providers.factory import (
 
 
 def test_clean_import_no_db_dependencies() -> None:
+    """The provider package must not drag a database driver in on import.
+
+    `sandbox` was in this list until `SandboxReturnSupportProvider` was deleted --
+    it had no caller anywhere in `backend/src`, `scripts`, `compose.yaml` or any
+    configuration, and no `support_ticket_mode` value could select it. This import
+    was the last reference to it in the repository, and it is why "nothing imports
+    it" is necessary and not sufficient: a grep over production code would have
+    reported the module clean to delete and this test would have broken the suite.
+    """
     cmd = [
         sys.executable,
         "-c",
         "import sys\n"
-        "from return_platform.operations.return_support.providers import contracts, factory, sandbox, external\n"
+        "from return_platform.operations.return_support.providers import "
+        "contracts, factory, external\n"
         "if 'pymssql' in sys.modules or 'pymongo' in sys.modules or 'return_platform.operations.models' in sys.modules:\n"
         "    sys.exit(1)\n",
     ]
