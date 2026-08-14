@@ -35,6 +35,7 @@ from return_platform.dynamic_knowledge.integration.order_placement_observations 
     GraphOrderPlacementObservations,
 )
 from return_platform.dynamic_knowledge.integration.return_record_sync import GraphReturnRecordSync
+from return_platform.dynamic_knowledge.integration.shipment_state_sync import GraphShipmentStateSync
 from return_platform.dynamic_knowledge.integration.targeted_sync import (
     build_targeted_graph_access,
 )
@@ -114,7 +115,17 @@ async def _run() -> None:
         # authoritative return store; BAY-02 needs it for the live reservation
         # aggregate. It resolves the process-wide bounded pool per operation, so
         # a single instance opens no connection until something actually writes.
-        sql_business_state = SQLBusinessStateRepository(settings)
+        # SHIP-01 job 2. Without the sync port the repository still writes
+        # `dbo.return_tracking` correctly but returns `graph_generation_id=None`
+        # and tells the graph nothing, so no case ever learns the shipment moved.
+        # Only an APPLIED update syncs -- a DUPLICATE or STALE changed no stored
+        # truth, and spending a targeted sync on one would write the graph a value
+        # it already holds and make a refused stale update indistinguishable from
+        # an accepted one in the sync log.
+        sql_business_state = SQLBusinessStateRepository(
+            settings,
+            shipment_graph_sync=GraphShipmentStateSync.from_access(graph),
+        )
         case_activities = ReturnCaseActivities(
             repository=operational_repository,
             support_service=ReturnSupportService(
