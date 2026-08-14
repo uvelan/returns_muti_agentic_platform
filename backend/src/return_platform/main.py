@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import socket
+import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from typing import Any, cast
@@ -99,11 +101,20 @@ from return_platform.configuration.graph_repository import (
     InMemoryConfigurationGraphRepository,
     Neo4jConfigurationGraphRepository,
 )
+from return_platform.configuration.process_adoption import (
+    API_PROCESS_CLASS,
+    PROCESS_ADOPTIONS_COLLECTION,
+    MongoProcessAdoptionStore,
+)
 from return_platform.configuration.return_configuration import (
     LoadedReturnConfiguration,
     load_return_configuration,
 )
-from return_platform.configuration.runtime_activation import RuntimeConfigurationActivator
+from return_platform.configuration.runtime_activation import (
+    ApplicationAdoptionState,
+    RuntimeConfigurationActivator,
+    run_process_adoption_reporter,
+)
 from return_platform.configuration.runtime_integrations import (
     apply_graph_runtime_configuration,
     verify_runtime_validation_receipts,
@@ -442,6 +453,10 @@ async def lifespan(
         catalog=loaded_catalog,
         schema_registry=schema_registry,
     )
+    # CFG-02 / contract C5. Bound before the block whose `finally` cancels it, so
+    # a startup failure earlier than its creation tears down on the real error
+    # rather than on a NameError raised while cleaning up.
+    adoption_reporter_task: asyncio.Task[None] | None = None
     try:
         await _initialize_neo4j(
             bootstrap_settings,
@@ -586,6 +601,25 @@ async def lifespan(
                 resources.source_mongo,
             )
             await operational_repository.ensure_indexes()
+            # The activation path above is unchanged; this only says out loud
+            # which release the API process ended up on. Without it, "every
+            # required class has adopted" could never include the one process
+            # the operator is looking at while they ask.
+            adoption_store = MongoProcessAdoptionStore(
+                resources.mongo[settings.mongo_database][PROCESS_ADOPTIONS_COLLECTION]
+            )
+            await adoption_store.ensure_indexes()
+            app.state.process_adoption_store = adoption_store
+            adoption_reporter_task = asyncio.create_task(
+                run_process_adoption_reporter(
+                    ApplicationAdoptionState(
+                        process_class=API_PROCESS_CLASS,
+                        instance_id=f"{socket.gethostname()}-{uuid.uuid4().hex[:8]}",
+                        app_state=app.state,
+                    ),
+                    adoption_store,
+                )
+            )
             await operational_repository.persist_return_configuration_snapshot(
                 path=str(return_configuration.path),
                 sha256=return_configuration.sha256,
@@ -912,6 +946,12 @@ async def lifespan(
             app.state.kernel_modules = kernel_modules
             yield
     finally:
+        if adoption_reporter_task is not None:
+            # Cancelled before the Mongo client closes, so a final report cannot
+            # race teardown. The record expires on its own TTL, which is what
+            # makes a stopped API process stop counting towards a live release.
+            adoption_reporter_task.cancel()
+            await asyncio.gather(adoption_reporter_task, return_exceptions=True)
         if hasattr(app.state, "dynamic_order_agent_runtime"):
             del app.state.dynamic_order_agent_runtime
         for analyzer_attribute in (

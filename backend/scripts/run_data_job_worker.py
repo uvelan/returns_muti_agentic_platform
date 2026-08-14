@@ -16,10 +16,7 @@ import uuid
 from pymongo import AsyncMongoClient
 from return_platform.data_console.api.jobs import JobService
 
-from return_platform.configuration.runtime_activation import (
-    build_worker_runtime_activation,
-    run_runtime_activation_loop,
-)
+from return_platform.configuration.runtime_activation import build_worker_runtime_activation
 from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
 from return_platform.configuration.runtime_loader import resolve_process_configuration
 from return_platform.operations.repository import OperationalRepository
@@ -43,7 +40,7 @@ async def _run() -> None:
         mongo=mongo,
     )
     state = activation.state
-    activation_task = asyncio.create_task(run_runtime_activation_loop(activation.activator))
+    activation_tasks = activation.start()
     try:
         await verify_runtime_validation_receipts(
             mongo,
@@ -73,8 +70,9 @@ async def _run() -> None:
                 # process_claimed records a sanitized failure before re-raising.
                 await asyncio.sleep(active.orchestration_poll_seconds)
     finally:
-        activation_task.cancel()
-        await asyncio.gather(activation_task, return_exceptions=True)
+        for task in activation_tasks:
+            task.cancel()
+        await asyncio.gather(*activation_tasks, return_exceptions=True)
         await activation.aclose()
         await mongo.close()
 

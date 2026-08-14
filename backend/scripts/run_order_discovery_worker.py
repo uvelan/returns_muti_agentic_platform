@@ -24,7 +24,6 @@ from return_platform.bootstrap.system_store import bootstrap_system_store
 from return_platform.configuration.runtime_activation import (
     ActivationContext,
     build_worker_runtime_activation,
-    run_runtime_activation_loop,
 )
 from return_platform.configuration.runtime_loader import resolve_process_configuration
 from return_platform.data_platform.graph.sync_service import MongoTargetedSyncRunLedger
@@ -296,14 +295,13 @@ async def _run() -> None:
                 )
                 await asyncio.sleep(max(1.0, state.settings.worker_readiness_ttl_seconds / 3))
 
-        heartbeat_task = asyncio.create_task(heartbeat())
-        activation_task = asyncio.create_task(run_runtime_activation_loop(activation.activator))
+        background = (asyncio.create_task(heartbeat()), *activation.start())
         try:
             await worker.run()
         finally:
-            for task in (heartbeat_task, activation_task):
+            for task in background:
                 task.cancel()
-            await asyncio.gather(heartbeat_task, activation_task, return_exceptions=True)
+            await asyncio.gather(*background, return_exceptions=True)
             await activation.aclose()
     finally:
         await neo4j_driver.close()

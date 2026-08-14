@@ -1,12 +1,22 @@
-"""Run the external-integration outbox worker."""
+"""Run the external-integration outbox worker.
+
+A deployed long-running process (`compose.yaml`), and therefore one that has to
+reconcile configuration and report the release it adopted like the rest (T-16,
+contract C5). It was missed by the first pass because it is a module rather than
+a `scripts/run_*.py` entry point, which is exactly the way a process class goes
+unnoticed -- it is not in the directory anyone looks at.
+"""
 
 from __future__ import annotations
 
 import asyncio
+import socket
+import uuid
 
 import httpx
 from pymongo import AsyncMongoClient
 
+from return_platform.configuration.runtime_activation import build_worker_runtime_activation
 from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
 from return_platform.configuration.runtime_loader import resolve_process_configuration
 from return_platform.dependency_simulation.dispatchers import SimulationTopicDispatcher
@@ -19,6 +29,8 @@ from return_platform.operations.integrations.outbox import (
     IntegrationOutboxDispatcher,
     TopicDispatcher,
 )
+
+_PROCESS_CLASS = "integration-outbox-worker"
 
 
 async def run() -> None:
@@ -96,9 +108,20 @@ async def run() -> None:
                 ),
             )
         worker = IntegrationOutboxDispatcher(client, settings, dispatchers)
+        activation = await build_worker_runtime_activation(
+            runtime=runtime,
+            process_class=_PROCESS_CLASS,
+            instance_id=f"{socket.gethostname()}-{uuid.uuid4().hex[:8]}",
+            mongo=client,
+        )
+        activation_tasks = activation.start()
         try:
             await worker.run_forever()
         finally:
+            for task in activation_tasks:
+                task.cancel()
+            await asyncio.gather(*activation_tasks, return_exceptions=True)
+            await activation.aclose()
             await client.close()
 
 

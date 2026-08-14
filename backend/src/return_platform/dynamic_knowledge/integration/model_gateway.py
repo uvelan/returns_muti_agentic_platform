@@ -22,8 +22,8 @@ from return_platform.ai.gateway.structured_invocation import (
     StructuredInvocationUnavailable,
     StructuredOutputInvoker,
 )
-from return_platform.ai.interception.store import InterceptionStore
 from return_platform.ai.gateway.telemetry import AIAttemptRecorder, InvocationCorrelation
+from return_platform.ai.interception.store import InterceptionStore
 from return_platform.ai.routing.selection import AIRoutePool
 from return_platform.ai.routing.tasks import AIGatewayConfiguration
 from return_platform.configuration.settings import Settings

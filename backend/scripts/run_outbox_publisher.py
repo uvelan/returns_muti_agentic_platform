@@ -14,10 +14,7 @@ from typing import cast
 import redis.asyncio as redis
 from pymongo import AsyncMongoClient
 
-from return_platform.configuration.runtime_activation import (
-    build_worker_runtime_activation,
-    run_runtime_activation_loop,
-)
+from return_platform.configuration.runtime_activation import build_worker_runtime_activation
 from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
 from return_platform.configuration.runtime_loader import resolve_process_configuration
 from return_platform.operations.events import flush_outbox
@@ -49,7 +46,7 @@ async def _run() -> None:
         mongo=mongo,
     )
     state = activation.state
-    activation_task = asyncio.create_task(run_runtime_activation_loop(activation.activator))
+    activation_tasks = activation.start()
     try:
         await verify_runtime_validation_receipts(
             mongo,
@@ -74,8 +71,9 @@ async def _run() -> None:
             if published == 0:
                 await asyncio.sleep(0.5)
     finally:
-        activation_task.cancel()
-        await asyncio.gather(activation_task, return_exceptions=True)
+        for task in activation_tasks:
+            task.cancel()
+        await asyncio.gather(*activation_tasks, return_exceptions=True)
         await activation.aclose()
         await client.aclose()
         await mongo.close()

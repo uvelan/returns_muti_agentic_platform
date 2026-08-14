@@ -17,10 +17,7 @@ from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
 from return_platform.bootstrap.system_store import bootstrap_system_store
-from return_platform.configuration.runtime_activation import (
-    build_worker_runtime_activation,
-    run_runtime_activation_loop,
-)
+from return_platform.configuration.runtime_activation import build_worker_runtime_activation
 from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
 from return_platform.configuration.runtime_loader import resolve_process_configuration
 from return_platform.configuration.settings import Settings
@@ -131,12 +128,13 @@ async def _run() -> None:
             source_mongo=source_mongo,
             neo4j_driver=neo4j_driver,
         )
-        activation_task = asyncio.create_task(run_runtime_activation_loop(activation.activator))
+        activation_tasks = activation.start()
         try:
             await orchestrator.run_forever()
         finally:
-            activation_task.cancel()
-            await asyncio.gather(activation_task, return_exceptions=True)
+            for task in activation_tasks:
+                task.cancel()
+            await asyncio.gather(*activation_tasks, return_exceptions=True)
             await activation.aclose()
     finally:
         await neo4j_driver.close()
