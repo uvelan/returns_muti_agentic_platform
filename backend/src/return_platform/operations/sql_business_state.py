@@ -61,7 +61,7 @@ def _is_deadlock_victim(error: BaseException) -> bool:
     Matched on the driver's error number rather than on the message, which is
     localized and carries the process id.
     """
-    args = getattr(error, "args", ())
+    args: tuple[Any, ...] = getattr(error, "args", ())
     return bool(args) and args[0] == _DEADLOCK_VICTIM_ERROR
 
 
