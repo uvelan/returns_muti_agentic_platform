@@ -52,6 +52,7 @@ def _update(status: str = "IN_TRANSIT") -> ShipmentUpdate:
         tracking_reference=TRACKING,
         shipment_status=status,
         status_at=AT,
+        tracking_type="PPL",
         carrier_code="UPS",
     )
 

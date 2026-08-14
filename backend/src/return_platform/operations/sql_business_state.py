@@ -56,6 +56,21 @@ class ReturnRecordWrite:
     items: tuple[ReturnRecordItemWrite, ...] = ()
 
 
+#: The tracking types `dbo.return_tracking` will accept, mirroring
+#: `CK_return_tracking_type` in `sql_migrations/002_domain_models.sql`.
+#:
+#: **Schema, not configuration.** Which ship-via a parcel travelled under is a
+#: property of that parcel, and the set of them is a database constraint -- an
+#: operator cannot add a seventh through the Control Centre, because the CHECK
+#: would refuse the row. Mirrored in Python only so a bad value is a 422 at the
+#: request boundary instead of a constraint violation surfacing as a 500;
+#: `tests/operations/test_tracking_type_vocabulary_matches_the_schema.py` fails
+#: if the two ever disagree.
+TRACKING_TYPES: frozenset[str] = frozenset(
+    {"PPL", "BOL", "CUSTOMER_SHIP", "NO_LABEL", "DIRECT_VENDOR", "FIELD_SCRAP"}
+)
+
+
 @dataclass(frozen=True, slots=True)
 class ShipmentUpdate:
     """One observation of a return shipment's state, scoped to one RMA (T-15, C4).
@@ -70,8 +85,14 @@ class ShipmentUpdate:
     tracking_reference: str
     shipment_status: str
     status_at: datetime
+    #: Required, not defaulted (CFG-03). It is not configuration -- the vocabulary
+    #: is `CK_return_tracking_type`, a database constraint, and which ship-via a
+    #: parcel travelled under is a property of that parcel rather than of the
+    #: deployment. It is not a default either: `"PPL"` silently filed a BOL
+    #: freight movement as a parcel, and no reader downstream could tell the value
+    #: had been assumed rather than observed.
+    tracking_type: str
     carrier_code: str | None = None
-    tracking_type: str = "PPL"
     shipment_details: str | None = None
 
 

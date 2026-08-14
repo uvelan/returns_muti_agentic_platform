@@ -70,10 +70,14 @@ class ReturnCreateRequest(MutableContract):
     reasonCode: str = Field(min_length=1, max_length=64)
     returnQuantity: int = Field(default=1, ge=1, le=10_000)
     packageCount: int = Field(default=1, ge=1, le=10_000)
-    shippingPathExpectation: str = Field(
-        default="UNKNOWN",
-        pattern=r"^(PPL|BOL|CUSTOMER_SHIP|NO_LABEL|DIRECT_VENDOR|FIELD_SCRAP|PREPAID_PARCEL|BRANCH_UPS|BRANCH_LTL|OFFSITE_PARCEL|OFFSITE_LTL|NO_PHYSICAL_RETURN|CUSTOMER_KEEP|UNKNOWN)$",
-    )
+    #: Checked against `return_policy.normalized_return_methods` in the active
+    #: snapshot, not by a `pattern=` here (CFG-03). A regex is a compile-time
+    #: constant and this vocabulary is operator-owned: the previous fourteen-value
+    #: pattern refused every method an operator added through the Control Centre,
+    #: with a release activated and the configuration saying otherwise. See
+    #: `operations/return_creation_policy.py` for where the check now happens and
+    #: why it is on the request path rather than in a validator.
+    shippingPathExpectation: str = Field(default="UNKNOWN", max_length=64)
     orderSource: str = Field(default="UNKNOWN", max_length=64)
     sourceWebOrderNumber: str | None = Field(default=None, max_length=128)
     trilogieOrderNumber: str | None = Field(default=None, max_length=128)
@@ -81,7 +85,12 @@ class ReturnCreateRequest(MutableContract):
     branchReference: str | None = Field(default=None, max_length=128)
     associateReference: str | None = Field(default=None, max_length=128)
     pickupAssessment: dict[str, Any] | None = None
-    assumptionSetVersion: str = Field(default="FERGUSON-RETURN-ASSUMPTIONS-1.0", max_length=128)
+    #: `None` means "whatever assumption set is in force", and the request path
+    #: stamps it from the active snapshot. A literal default here recorded the
+    #: version that was true when this line was written onto a session the
+    #: platform might be running a different release for -- a fabricated
+    #: provenance, and one that persists.
+    assumptionSetVersion: str | None = Field(default=None, max_length=128)
     notes: str | None = Field(default=None, max_length=2_000)
     channel: str = Field(default="SYSTEM", pattern=r"^(CUSTOMER|ASSOCIATE|SYSTEM)$")
     workflowMode: str = Field(default="PRODUCTION_V2", pattern=r"^(PRODUCTION_V2|LEGACY_V1)$")
@@ -247,7 +256,11 @@ class ReturnSessionView(MutableContract):
     branchReference: str | None = None
     associateReference: str | None = None
     pickupAssessment: dict[str, Any] | None = None
-    assumptionSetVersion: str = "FERGUSON-RETURN-ASSUMPTIONS-1.0"
+    #: What the stored document says, or nothing. The last copy of the literal
+    #: lived here as a read fallback, which meant a session recorded before the
+    #: field existed was reported as having run under an assumption set nobody
+    #: had asserted it ran under.
+    assumptionSetVersion: str | None = None
     productionWorkflowVersion: str | None = None
     returnRequestSnapshotId: str | None = None
     notes: str | None = None

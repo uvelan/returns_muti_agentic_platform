@@ -55,15 +55,12 @@ def _stub(monkeypatch: pytest.MonkeyPatch, store: StubStore) -> None:
     monkeypatch.setattr(module, "_store", lambda request: store)
 
 
-@pytest.fixture
-def client() -> Iterator[TestClient]:
+def _client_for(*role_names: str) -> Iterator[TestClient]:
     app = FastAPI()
 
     @app.middleware("http")
     async def _attach(request: Request, call_next):  # type: ignore[no-untyped-def]
-        request.state.principal = Principal(
-            subject="operator-1", roles=frozenset({r.CONSOLE_ADMIN})
-        )
+        request.state.principal = Principal(subject="operator-1", roles=frozenset(role_names))
         request.state.correlation_id = "test-correlation-id"
         return await call_next(request)
 
@@ -75,6 +72,21 @@ def client() -> Iterator[TestClient]:
     app.state.settings = _Settings()
     with TestClient(app) as made:
         yield made
+
+
+@pytest.fixture
+def client() -> Iterator[TestClient]:
+    yield from _client_for(r.CONSOLE_ADMIN)
+
+
+@pytest.fixture
+def editor_client() -> Iterator[TestClient]:
+    """A `WORKSPACE_EDITOR`, which is the principal the console could not gate.
+
+    It holds `config.source.write` -- the strongest source grant the capability
+    list published -- and is still not admitted here.
+    """
+    yield from _client_for(r.WORKSPACE_EDITOR)
 
 
 def _rebind_payload() -> dict[str, object]:
@@ -145,6 +157,32 @@ def test_clearing_something_never_bound_is_not_an_error(client: TestClient) -> N
 
     assert response.status_code == 200, response.text
     assert response.json()["data"] == {"removed": False}
+
+
+def test_a_source_write_grant_does_not_carry_the_rebind(
+    editor_client: TestClient, store: StubStore
+) -> None:
+    """Where the console's 403 came from, and it is still a 403.
+
+    An editor may propose and may not decide. Repointing a dataset takes effect
+    on the next direct source read with no approval in between, so it sits on the
+    decide side -- and the gate now says that in a vocabulary `/api/principal`
+    publishes, instead of in a role group the UI could not ask about.
+    """
+    rebind = editor_client.put(f"/api/source-bindings/{CONFIGURED_DATASET}", json=_rebind_payload())
+    cleared = editor_client.delete(f"/api/source-bindings/{CONFIGURED_DATASET}")
+
+    assert rebind.status_code == 403, rebind.text
+    assert cleared.status_code == 403, cleared.text
+    assert store.bindings == []
+    assert store.cleared == []
+
+
+def test_the_editor_can_still_read_where_datasets_point(editor_client: TestClient) -> None:
+    """The refusal is scoped to the write. Narrowing the read was never the point."""
+    response = editor_client.get("/api/source-bindings")
+
+    assert response.status_code == 200, response.text
 
 
 def test_a_dataset_configuration_has_never_heard_of_can_be_bound(client: TestClient) -> None:

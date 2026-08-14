@@ -613,6 +613,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/config/sources/{source_id}/assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Configured Source Asset
+         * @description One asset's schema: its fields, ownership, and what may be done to it.
+         *
+         *     `metadata.fields` is the point -- it is the only place the platform publishes
+         *     what columns or keys an asset actually carries, and until this route existed
+         *     it was reachable only through `/data-console/v1/inventory/{engine}/{asset_id}`,
+         *     which Wave F1 unmounted deliberately and
+         *     `test_no_versioned_data_console_path_is_mounted` keeps unmounted. Delegated
+         *     rather than reimplemented, exactly like the two reads above.
+         *
+         *     **Keyed by source, not by engine.** The console navigates from a source to
+         *     its assets, and a source owns a definite set of them; the console handler
+         *     takes an engine because it predates the nesting. Resolving containment here
+         *     means an asset that exists in the registry but does not belong to the named
+         *     source is a 404 rather than a successful read through a path that claims a
+         *     relationship it does not have -- and it makes the engine argument derivable
+         *     from the asset instead of something a caller could get wrong.
+         */
+        get: operations["get_configured_source_asset_api_config_sources__source_id__assets__asset_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/graph-schema/analyses": {
         parameters: {
             query?: never;
@@ -1190,6 +1225,32 @@ export interface paths {
         get: operations["read_return_history_api_return_history_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/return-shipments/{return_reference}/updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Shipment Update
+         * @description Record one carrier observation against one RMA.
+         *
+         *     Idempotent, and safe to retry: the same observation submitted twice answers
+         *     `DUPLICATE` and changes nothing, and an observation older than the stored one
+         *     answers `STALE` and is rejected. Both are 200 -- they are correct outcomes of
+         *     a well-formed request, not client errors, and a caller replaying a carrier
+         *     feed must be able to tell "already knew that" from "your request was wrong".
+         */
+        post: operations["record_shipment_update_api_return_shipments__return_reference__updates_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3366,6 +3427,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[InventoryDetail] */
+        APIResponse_InventoryDetail_: {
+            data?: components["schemas"]["InventoryDetail"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[MigrationPlan] */
         APIResponse_MigrationPlan_: {
             data?: components["schemas"]["MigrationPlan"] | null;
@@ -3441,6 +3508,12 @@ export interface components {
         /** APIResponse[SeedStatusView] */
         APIResponse_SeedStatusView_: {
             data?: components["schemas"]["SeedStatusView"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[ShipmentUpdateResult] */
+        APIResponse_ShipmentUpdateResult_: {
+            data?: components["schemas"]["ShipmentUpdateResult"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -5113,6 +5186,29 @@ export interface components {
             /** Responsetext */
             responseText: string;
         };
+        /** InventoryDetail */
+        InventoryDetail: {
+            /** Assetid */
+            assetId: string;
+            /** Capability */
+            capability: string;
+            /** Engine */
+            engine: string;
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Operations */
+            operations: string[];
+            /** Ownership */
+            ownership: string;
+            /** Recordcount */
+            recordCount: number | null;
+            /** Schemaversion */
+            schemaVersion: string;
+        };
         /** InventoryTotals */
         InventoryTotals: {
             /** Assets */
@@ -5833,11 +5929,8 @@ export interface components {
         ReturnCreateRequest: {
             /** Associatereference */
             associateReference?: string | null;
-            /**
-             * Assumptionsetversion
-             * @default FERGUSON-RETURN-ASSUMPTIONS-1.0
-             */
-            assumptionSetVersion: string;
+            /** Assumptionsetversion */
+            assumptionSetVersion?: string | null;
             /** Branchreference */
             branchReference?: string | null;
             /**
@@ -6232,11 +6325,8 @@ export interface components {
             approvedReturnMethod?: string | null;
             /** Associatereference */
             associateReference?: string | null;
-            /**
-             * Assumptionsetversion
-             * @default FERGUSON-RETURN-ASSUMPTIONS-1.0
-             */
-            assumptionSetVersion: string;
+            /** Assumptionsetversion */
+            assumptionSetVersion?: string | null;
             /** Bayreference */
             bayReference?: string | null;
             /** Branchreference */
@@ -6601,6 +6691,71 @@ export interface components {
          * @enum {string}
          */
         Severity: "ERROR" | "WARNING";
+        /**
+         * ShipmentReadingView
+         * @description What the graph said about the parcel, and who was told.
+         */
+        ShipmentReadingView: {
+            /** Caseid */
+            caseId: string | null;
+            /** Evidence */
+            evidence: string;
+            /** Evidencereference */
+            evidenceReference: string;
+            /** Fulfillmentstatus */
+            fulfillmentStatus: string;
+            /** Graphgenerationid */
+            graphGenerationId: string | null;
+            /** Observedstatus */
+            observedStatus: string | null;
+        };
+        /**
+         * ShipmentUpdateRequest
+         * @description One carrier observation of one return parcel.
+         *
+         *     Every length below is `dbo.return_tracking`'s own column width, so a payload
+         *     this model accepts is a payload the store can hold. Refusing an over-long
+         *     tracking number here is a 422 naming the field; letting it through is a
+         *     truncation or a driver error a caller cannot act on.
+         */
+        ShipmentUpdateRequest: {
+            /** Carriercode */
+            carrierCode?: string | null;
+            /** Shipmentdetails */
+            shipmentDetails?: string | null;
+            /** Shipmentstatus */
+            shipmentStatus: string;
+            /**
+             * Statusat
+             * Format: date-time
+             */
+            statusAt: string;
+            /** Trackingreference */
+            trackingReference: string;
+            /** Trackingtype */
+            trackingType: string;
+        };
+        /** ShipmentUpdateResult */
+        ShipmentUpdateResult: {
+            /** Currentstatus */
+            currentStatus: string;
+            /**
+             * Currentstatusat
+             * Format: date-time
+             */
+            currentStatusAt: string;
+            /** Graphgenerationid */
+            graphGenerationId: string | null;
+            /** Outcome */
+            outcome: string;
+            reading: components["schemas"]["ShipmentReadingView"] | null;
+            /** Returnreference */
+            returnReference: string;
+            /** Rowversion */
+            rowVersion: number;
+            /** Trackingreference */
+            trackingReference: string;
+        };
         /** SimulationAISummary */
         SimulationAISummary: {
             /** Bydependency */
@@ -8052,6 +8207,38 @@ export interface operations {
             };
         };
     };
+    get_configured_source_asset_api_config_sources__source_id__assets__asset_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_InventoryDetail_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_analyses_api_graph_schema_analyses_get: {
         parameters: {
             query?: {
@@ -8944,6 +9131,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_ReturnHistory_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_shipment_update_api_return_shipments__return_reference__updates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                return_reference: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShipmentUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ShipmentUpdateResult_"];
                 };
             };
             /** @description Validation Error */

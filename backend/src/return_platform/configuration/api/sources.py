@@ -214,6 +214,30 @@ def _source_item(
     )
 
 
+def source_definition(request: Request, source_id: str) -> SourceDefinition | None:
+    """One configured source and the assets it owns, or `None` if unknown.
+
+    Public because the canonical `/api/config` router needs to answer "does this
+    asset belong to this source" before it delegates, and containment is the only
+    thing a nested `/sources/{id}/assets/{id}` path claims that the flat
+    inventory read does not.
+
+    Probe-free on purpose: containment is a schema-registry fact, so fanning out
+    four dependency probes to establish it would make a metadata read depend on
+    the health of every datastore in the deployment.
+    """
+    resources = _resources(request)
+    registry = cast(SchemaRegistry, resources.schema_registry)
+    return next(
+        (
+            definition
+            for definition in _definitions(resources, registry)
+            if definition.source_id == source_id
+        ),
+        None,
+    )
+
+
 async def _probed_sources(
     request: Request,
 ) -> tuple[RuntimeResources, tuple[SourceDefinition, ...], list[DependencyProbeResult]]:

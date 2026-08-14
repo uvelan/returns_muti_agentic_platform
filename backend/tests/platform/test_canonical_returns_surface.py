@@ -64,6 +64,22 @@ _KNOWN_RETURN_ROUTERS = {
     # stays where the docstring puts it: Wave F's deletion work, once the
     # canonical surface owns the capability.
     "return_history.py": "/api/return-history",
+    # Also argued for rather than silently admitted. `return_shipments.py` is
+    # SHIP-01's HTTP entry point, and it cannot live on `/api/returns` for a
+    # reason the canonical surface itself establishes: contract C4 makes shipment
+    # state **RMA-scoped**, and `/api/returns/{session_id}` is session-scoped.
+    # `dbo.return_tracking` is keyed on `return_reference` and requires no
+    # `return_record` row at all -- a shipment can legitimately exist for an RMA
+    # no case and no session owns -- so nesting the write under a session would
+    # oblige a caller to supply an identity the store does not need and C3
+    # forbids flattening onto. It is also not a new capability: the whole chain
+    # underneath it (SQL write, APPLIED-only targeted graph sync, fulfilment
+    # read, case facts) already existed with no way in.
+    #
+    # `test_the_canonical_write_surface_is_exactly_these_two_routes` is the
+    # companion guarantee -- this router adds no third way to move a *return*,
+    # only the first way to record a *carrier observation*.
+    "return_shipments.py": "/api/return-shipments",
 }
 
 

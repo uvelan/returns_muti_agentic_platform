@@ -84,6 +84,7 @@ from return_platform.operations.repository import (
     OperationalRepository,
     resolve_operational_repository,
 )
+from return_platform.operations.return_creation_policy import apply_active_return_policy
 from return_platform.operations.return_support.service import ReturnSupportService
 from return_platform.resources import RuntimeResources
 from return_platform.security.authorization import (
@@ -447,6 +448,10 @@ async def create_return(
         )
     if idempotency_key is not None:
         payload = payload.model_copy(update={"idempotencyKey": idempotency_key})
+    # The return method is checked against the running configuration and the
+    # assumption set is stamped from it -- see `return_creation_policy` for why
+    # neither can be a field constraint.
+    payload = apply_active_return_policy(request, payload)
     repository = resolve_operational_repository(request)
     return APIResponse(
         data=await repository.create_return(

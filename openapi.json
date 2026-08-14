@@ -1818,6 +1818,39 @@
         "title": "APIResponse[GraphSyncRunView]",
         "type": "object"
       },
+      "APIResponse_InventoryDetail_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InventoryDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[InventoryDetail]",
+        "type": "object"
+      },
       "APIResponse_MigrationPlan_": {
         "additionalProperties": false,
         "properties": {
@@ -2245,6 +2278,39 @@
           "meta"
         ],
         "title": "APIResponse[SeedStatusView]",
+        "type": "object"
+      },
+      "APIResponse_ShipmentUpdateResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShipmentUpdateResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ShipmentUpdateResult]",
         "type": "object"
       },
       "APIResponse_SimulationE2EResult_": {
@@ -7115,6 +7181,71 @@
         "title": "InterceptionAnswer",
         "type": "object"
       },
+      "InventoryDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "title": "Assetid",
+            "type": "string"
+          },
+          "capability": {
+            "title": "Capability",
+            "type": "string"
+          },
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "operations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Operations",
+            "type": "array"
+          },
+          "ownership": {
+            "title": "Ownership",
+            "type": "string"
+          },
+          "recordCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recordcount"
+          },
+          "schemaVersion": {
+            "title": "Schemaversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId",
+          "engine",
+          "name",
+          "ownership",
+          "capability",
+          "recordCount",
+          "schemaVersion",
+          "operations",
+          "metadata"
+        ],
+        "title": "InventoryDetail",
+        "type": "object"
+      },
       "InventoryTotals": {
         "additionalProperties": false,
         "properties": {
@@ -9012,10 +9143,16 @@
             "title": "Associatereference"
           },
           "assumptionSetVersion": {
-            "default": "FERGUSON-RETURN-ASSUMPTIONS-1.0",
-            "maxLength": 128,
-            "title": "Assumptionsetversion",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assumptionsetversion"
           },
           "branchReference": {
             "anyOf": [
@@ -9165,7 +9302,7 @@
           },
           "shippingPathExpectation": {
             "default": "UNKNOWN",
-            "pattern": "^(PPL|BOL|CUSTOMER_SHIP|NO_LABEL|DIRECT_VENDOR|FIELD_SCRAP|PREPAID_PARCEL|BRANCH_UPS|BRANCH_LTL|OFFSITE_PARCEL|OFFSITE_LTL|NO_PHYSICAL_RETURN|CUSTOMER_KEEP|UNKNOWN)$",
+            "maxLength": 64,
             "title": "Shippingpathexpectation",
             "type": "string"
           },
@@ -10095,9 +10232,15 @@
             "title": "Associatereference"
           },
           "assumptionSetVersion": {
-            "default": "FERGUSON-RETURN-ASSUMPTIONS-1.0",
-            "title": "Assumptionsetversion",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assumptionsetversion"
           },
           "bayReference": {
             "anyOf": [
@@ -11099,6 +11242,189 @@
         ],
         "title": "Severity",
         "type": "string"
+      },
+      "ShipmentReadingView": {
+        "additionalProperties": false,
+        "description": "What the graph said about the parcel, and who was told.",
+        "properties": {
+          "caseId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caseid"
+          },
+          "evidence": {
+            "title": "Evidence",
+            "type": "string"
+          },
+          "evidenceReference": {
+            "title": "Evidencereference",
+            "type": "string"
+          },
+          "fulfillmentStatus": {
+            "title": "Fulfillmentstatus",
+            "type": "string"
+          },
+          "graphGenerationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graphgenerationid"
+          },
+          "observedStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observedstatus"
+          }
+        },
+        "required": [
+          "caseId",
+          "fulfillmentStatus",
+          "evidence",
+          "evidenceReference",
+          "graphGenerationId",
+          "observedStatus"
+        ],
+        "title": "ShipmentReadingView",
+        "type": "object"
+      },
+      "ShipmentUpdateRequest": {
+        "additionalProperties": false,
+        "description": "One carrier observation of one return parcel.\n\nEvery length below is `dbo.return_tracking`'s own column width, so a payload\nthis model accepts is a payload the store can hold. Refusing an over-long\ntracking number here is a 422 naming the field; letting it through is a\ntruncation or a driver error a caller cannot act on.",
+        "properties": {
+          "carrierCode": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carriercode"
+          },
+          "shipmentDetails": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shipmentdetails"
+          },
+          "shipmentStatus": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Shipmentstatus",
+            "type": "string"
+          },
+          "statusAt": {
+            "format": "date-time",
+            "title": "Statusat",
+            "type": "string"
+          },
+          "trackingReference": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Trackingreference",
+            "type": "string"
+          },
+          "trackingType": {
+            "title": "Trackingtype",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trackingReference",
+          "shipmentStatus",
+          "statusAt",
+          "trackingType"
+        ],
+        "title": "ShipmentUpdateRequest",
+        "type": "object"
+      },
+      "ShipmentUpdateResult": {
+        "additionalProperties": false,
+        "properties": {
+          "currentStatus": {
+            "title": "Currentstatus",
+            "type": "string"
+          },
+          "currentStatusAt": {
+            "format": "date-time",
+            "title": "Currentstatusat",
+            "type": "string"
+          },
+          "graphGenerationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graphgenerationid"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "reading": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShipmentReadingView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "returnReference": {
+            "title": "Returnreference",
+            "type": "string"
+          },
+          "rowVersion": {
+            "title": "Rowversion",
+            "type": "integer"
+          },
+          "trackingReference": {
+            "title": "Trackingreference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "returnReference",
+          "trackingReference",
+          "currentStatus",
+          "currentStatusAt",
+          "rowVersion",
+          "graphGenerationId",
+          "reading"
+        ],
+        "title": "ShipmentUpdateResult",
+        "type": "object"
       },
       "SimulationAISummary": {
         "additionalProperties": false,
@@ -14078,6 +14404,58 @@
         ]
       }
     },
+    "/api/config/sources/{source_id}/assets/{asset_id}": {
+      "get": {
+        "description": "One asset's schema: its fields, ownership, and what may be done to it.\n\n`metadata.fields` is the point -- it is the only place the platform publishes\nwhat columns or keys an asset actually carries, and until this route existed\nit was reachable only through `/data-console/v1/inventory/{engine}/{asset_id}`,\nwhich Wave F1 unmounted deliberately and\n`test_no_versioned_data_console_path_is_mounted` keeps unmounted. Delegated\nrather than reimplemented, exactly like the two reads above.\n\n**Keyed by source, not by engine.** The console navigates from a source to\nits assets, and a source owns a definite set of them; the console handler\ntakes an engine because it predates the nesting. Resolving containment here\nmeans an asset that exists in the registry but does not belong to the named\nsource is a 404 rather than a successful read through a path that claims a\nrelationship it does not have -- and it makes the engine argument derivable\nfrom the asset instead of something a caller could get wrong.",
+        "operationId": "get_configured_source_asset_api_config_sources__source_id__assets__asset_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_InventoryDetail_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Configured Source Asset",
+        "tags": [
+          "Configuration"
+        ]
+      }
+    },
     "/api/graph-schema/analyses": {
       "get": {
         "operationId": "list_analyses_api_graph_schema_analyses_get",
@@ -15485,6 +15863,61 @@
         "summary": "Read Return History",
         "tags": [
           "Return History"
+        ]
+      }
+    },
+    "/api/return-shipments/{return_reference}/updates": {
+      "post": {
+        "description": "Record one carrier observation against one RMA.\n\nIdempotent, and safe to retry: the same observation submitted twice answers\n`DUPLICATE` and changes nothing, and an observation older than the stored one\nanswers `STALE` and is rejected. Both are 200 -- they are correct outcomes of\na well-formed request, not client errors, and a caller replaying a carrier\nfeed must be able to tell \"already knew that\" from \"your request was wrong\".",
+        "operationId": "record_shipment_update_api_return_shipments__return_reference__updates_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "return_reference",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Return Reference",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShipmentUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ShipmentUpdateResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Shipment Update",
+        "tags": [
+          "Return Shipments"
         ]
       }
     },

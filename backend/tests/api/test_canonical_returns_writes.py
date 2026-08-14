@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -40,6 +41,7 @@ from temporalio.service import RPCError, RPCStatusCode
 
 from return_platform.api import canonical_returns
 from return_platform.api.canonical_returns import router
+from return_platform.configuration.return_configuration import load_return_configuration
 from return_platform.operations.models import ReturnSessionView
 from return_platform.security import roles as r
 from return_platform.security.principal import Principal
@@ -143,6 +145,14 @@ def _client(
         canonical_returns, "resolve_production_coordinator", lambda request: coordinator
     )
     app.include_router(router)
+    # The real shipped configuration, not a stub. `create_return` now resolves
+    # the return-method vocabulary and the assumption set from the snapshot the
+    # process is serving (CFG-03), so a test app without one is a process that
+    # cannot validate -- and stubbing the policy would let the routes pass
+    # against a vocabulary the deployment does not have.
+    app.state.return_configuration = load_return_configuration(
+        Path("config/returns/production.yaml")
+    )
     with TestClient(app, raise_server_exceptions=False) as client:
         yield client
 

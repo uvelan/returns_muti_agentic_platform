@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from collections.abc import Collection
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any, Final, cast
@@ -154,14 +155,6 @@ class SupportActionRequest(SupportModel):
     externalTicketReference: str | None = Field(default=None, max_length=256)
 
 
-#: Shipping instruction types whose issuance also tenders a BOL. Recorded here
-#: rather than inline in the router: the set decides both what the caller is
-#: authorized for and what is actually recorded, and those two must be the same
-#: answer.
-_BOL_TENDERING_INSTRUCTION_TYPES: Final = frozenset(
-    {"LTL", "BOL", "BRANCH_LTL", "OFFSITE_LTL", "HEAVY_TRUCK_PICKUP"}
-)
-
 #: Support actions that record a production workflow event, and which one.
 #: Actions absent from this map are support-queue bookkeeping and touch no
 #: workflow state.
@@ -180,21 +173,34 @@ _PRODUCTION_EVENT_FOR_ACTION: Final[dict[SupportAction, ProductionReturnEventTyp
 
 def production_events_for_support_action(
     request: SupportActionRequest,
+    *,
+    bol_tendering_instruction_types: Collection[str],
 ) -> tuple[ProductionReturnEventType, ...]:
     """Every production workflow event this support action will record.
 
-    In recording order, and derived from the request alone -- no service call,
-    no database read -- so a caller can be authorized for the whole act before
-    anything is mutated. `RECORD_SHIPPING_INSTRUCTIONS` with an LTL/BOL
-    instruction type produces *two* events, which is the case that made
-    per-event authorization inside the handler unsafe.
+    In recording order, and derived from the request and the active policy alone
+    -- no service call, no database read -- so a caller can be authorized for the
+    whole act before anything is mutated. `RECORD_SHIPPING_INSTRUCTIONS` with a
+    BOL-tendering instruction type produces *two* events, which is the case that
+    made per-event authorization inside the handler unsafe.
+
+    `bol_tendering_instruction_types` is `return_policy.bol_tendering_instruction_types`
+    from the snapshot the process is serving, passed in rather than read here so
+    this stays a pure function of its inputs and so the caller cannot compute the
+    authorization set from one policy and the recorded set from another.
+
+    Keyword-only and required: the previous hardcoded set answered "does not
+    tender a BOL" for every instruction type it had not been told about, so an
+    operator adding a freight return method through the Control Centre would have
+    dropped a production event with nothing failing.
     """
     primary = _PRODUCTION_EVENT_FOR_ACTION.get(request.action)
     if primary is None:
         return ()
+    tendering = {value.upper() for value in bol_tendering_instruction_types}
     if (
         request.action is SupportAction.RECORD_SHIPPING_INSTRUCTIONS
-        and (request.shippingInstructionType or "").upper() in _BOL_TENDERING_INSTRUCTION_TYPES
+        and (request.shippingInstructionType or "").upper() in tendering
     ):
         return (primary, ProductionReturnEventType.BOL_TENDERED)
     return (primary,)
