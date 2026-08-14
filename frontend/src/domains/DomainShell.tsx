@@ -1,49 +1,15 @@
 import { Link, Route, Router, Switch, useLocation } from "wouter";
-import { lazy, Suspense, type ComponentType, type ReactNode } from "react";
+import { Suspense, useState, type ReactNode } from "react";
 import { ArrowLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { useCapabilities } from "../hooks/capabilityContext";
 import { DOMAINS, domainForPath, LANDING_PATH, type DomainDefinition } from "./registry";
 import { DomainLanding } from "./DomainLanding";
+import { DOMAIN_SCREENS } from "./domainScreens";
+import { RailSlotProvider } from "./railSlot";
 import { PlatformLanding } from "./PlatformLanding";
 import { useRailCollapsed } from "./useRailCollapsed";
 
-/**
- * Domains whose screen is built. The rest fall back to `DomainLanding` until
- * their phase lands, so adding a screen is one entry here rather than an edit
- * to the routing below.
- */
-const DOMAIN_SCREENS: Partial<Record<string, ComponentType>> = {
-  "/graph-schema": lazy(() =>
-    import("./graph-schema/GraphSchemaPage").then((m) => ({ default: m.GraphSchemaPage })),
-  ),
-  "/ai": lazy(() =>
-    import("./ai/AiControlCenterPage").then((m) => ({ default: m.AiControlCenterPage })),
-  ),
-  "/returns": lazy(() =>
-    import("./returns/ReturnCopilotPage").then((m) => ({ default: m.ReturnCopilotPage })),
-  ),
-  "/support": lazy(() =>
-    import("./support/SupportConsolePage").then((m) => ({ default: m.SupportConsolePage })),
-  ),
-  "/config": lazy(() =>
-    import("./config/ConfigurationPage").then((m) => ({ default: m.ConfigurationPage })),
-  ),
-  "/operations": lazy(() =>
-    import("./operations/ReturnsOperationsPage").then((m) => ({
-      default: m.ReturnsOperationsPage,
-    })),
-  ),
-  "/sync": lazy(() =>
-    import("./sync/SyncControlPage").then((m) => ({ default: m.SyncControlPage })),
-  ),
-  "/approvals": lazy(() =>
-    import("./approvals/ApprovalsPage").then((m) => ({ default: m.ApprovalsPage })),
-  ),
-  "/data-sources": lazy(() =>
-    import("./data-sources/DataSourcesPage").then((m) => ({ default: m.DataSourcesPage })),
-  ),
-};
 
 /**
  * The platform shell.
@@ -176,13 +142,17 @@ function LandingFrame({ children }: { children: ReactNode }) {
 function DomainFrame({ domain, children }: { domain: DomainDefinition; children: ReactNode }) {
   const { principal } = useCapabilities();
   const [collapsed, toggle] = useRailCollapsed();
+  // Captured through state rather than a ref so the portal re-renders once the
+  // element exists: a ref set during commit would leave the first paint empty
+  // and never invalidate.
+  const [railSlot, setRailSlot] = useState<HTMLElement | null>(null);
   const Icon = domain.icon;
 
   return (
     <div className="flex min-h-screen bg-surface">
       <aside
         id="domain-rail"
-        className={`flex shrink-0 flex-col bg-rail-surface transition-[width] duration-150 ${collapsed ? "w-14" : "w-64"}`}
+        className={`flex shrink-0 flex-col overflow-y-auto bg-rail-surface transition-[width] duration-150 ${collapsed ? "w-14" : "w-64"}`}
       >
         <RailHeader collapsed={collapsed} onToggle={toggle} />
         <div
@@ -214,8 +184,17 @@ function DomainFrame({ domain, children }: { domain: DomainDefinition; children:
           for reclaiming width on the copilot, which has no sections at all.
         */}
         {collapsed ? null : <DomainSectionNav domain={domain} />}
+        {/*
+          The contextual slot. Filled by the screen through `DomainRail`, which
+          is why it carries no fallback: a rail block describing what is on
+          screen can only come from the screen, and a shell-authored default
+          would be the shared navigation panel this replaced.
+        */}
+        {collapsed ? null : <div ref={setRailSlot} className="flex flex-col" />}
       </aside>
-      <main className="flex-1 overflow-x-auto p-6">{children}</main>
+      <main className="flex-1 overflow-x-auto p-6">
+        <RailSlotProvider value={collapsed ? null : railSlot}>{children}</RailSlotProvider>
+      </main>
     </div>
   );
 }

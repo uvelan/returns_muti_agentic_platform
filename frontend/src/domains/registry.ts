@@ -101,6 +101,17 @@ export const CONFIG_SECTIONS = [
   "Audit",
 ] as const;
 
+/**
+ * Two sections, because there are two units of work here and neither is a view
+ * over the other.
+ *
+ * A **case** is the canonical one: one confirmation identity, N RMAs, its own
+ * durable workflow. A **return session** is the older session-scoped record with
+ * its own event endpoint. Selecting between them changes what the screen *is*,
+ * which is the test for a section rather than an on-screen filter.
+ */
+export const OPERATIONS_SECTIONS = ["Cases", "Return sessions"] as const;
+
 export const AI_SECTIONS = [
   "Overview",
   "Requests",
@@ -223,8 +234,8 @@ export const DOMAINS: readonly DomainDefinition[] = [
   {
     path: "/operations",
     name: "Operations",
-    description: "Return queues and timelines; generations and workers to come.",
-    purpose: "Work the return queues, and see whether the platform is healthy.",
+    description: "Cases and return sessions: what each is waiting on, and what may be done about it.",
+    purpose: "Find out why a return is not moving, and who has to act.",
     icon: Activity,
     // No `operations.*` capability exists yet. Gated on the runtime read
     // rather than on an invented one: a capability the backend never grants
@@ -232,12 +243,13 @@ export const DOMAINS: readonly DomainDefinition[] = [
     // as work-in-progress. It gets its own capability when the API lands.
     requires: "config.runtime.read",
     screenPhase: 22,
-    // The returns-operations half is backed and built. What is left of the
-    // platform-health half -- graph generations, workers, outbox -- has no API,
-    // so the badge stays until it does. Sync runs left this list when they got
-    // one; they are the `/sync` domain above.
-    status: "NO BACKEND YET",
-    sections: [],
+    // The badge is gone: both sections are backed. Cases reads `/api/cases`,
+    // `/api/config/adoption` and the support surface; return sessions read
+    // `/api/returns`. The platform-health half -- graph generations, workers,
+    // outbox -- still has no API, so this domain no longer promises it: a badge
+    // saying "no backend" over two working screens would be the same lie in the
+    // other direction.
+    sections: sections(OPERATIONS_SECTIONS),
   },
 ];
 

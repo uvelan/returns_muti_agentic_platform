@@ -42,6 +42,16 @@ export type CaseReturnRecord = {
   items: CaseReturnItem[];
 };
 
+/**
+ * One observation about a case, with how it was obtained.
+ *
+ * **This log is the case's audit history.** `/api/config/audit` is
+ * platform-scoped and records promotions and source edits, not case events, so
+ * the only case-scoped trail the backend publishes is this one -- and it is a
+ * good one: append-only, attributed to the agent that wrote it, carrying the
+ * channel it arrived on, whether it was OBSERVED or DERIVED, the source system
+ * and path, and the fact it supersedes when it corrects one.
+ */
 export type CaseFact = {
   factId: string;
   caseId: string;
@@ -50,10 +60,14 @@ export type CaseFact = {
   agentId: string;
   channel: string;
   acquisitionMethod: string;
+  turnId: string | null;
   sourceSystem: string | null;
   sourcePath: string | null;
   observedAt: string;
   recordedAt: string;
+  /** Set when this fact corrects an earlier one, which is never overwritten. */
+  supersedesFactId: string | null;
+  correlationId: string | null;
 };
 
 export type CaseSummary = {

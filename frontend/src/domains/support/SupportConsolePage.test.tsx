@@ -117,10 +117,13 @@ function fact(name: string, value: unknown): CaseFact {
     agentId: "bay-assignment-agent",
     channel: "SYSTEM",
     acquisitionMethod: "DERIVED",
+    turnId: null,
     sourceSystem: null,
     sourcePath: "RETURN_CASE_WORKFLOW",
     observedAt: "2026-08-11T00:00:00Z",
     recordedAt: "2026-08-11T00:00:00Z",
+    supersedesFactId: null,
+    correlationId: null,
   };
 }
 
