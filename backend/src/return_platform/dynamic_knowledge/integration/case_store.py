@@ -88,6 +88,7 @@ class RepositoryCaseStore:
         confirmation: OrderConfirmation,
         configuration_release_id: str,
         graph_generation_id: str,
+        observed_facts: tuple[dict[str, Any], ...] = (),
     ) -> ConfirmedCase:
         """Obtain the case for this confirmation, creating it at most once.
 
@@ -149,4 +150,53 @@ class RepositoryCaseStore:
                     turn_id=conversation_id,
                     source_path="ORDER_CONFIRMATION",
                 )
+            await self._append_observed(case_id, observed_facts)
         return ConfirmedCase(case_id=str(created["caseId"]), already_existed=already_existed)
+
+    async def _append_observed(
+        self, case_id: str, observed_facts: tuple[dict[str, Any], ...]
+    ) -> None:
+        """Write what the associate stated before the case existed.
+
+        Written only on the turn that creates the case, alongside the
+        confirmation facts: `append_case_fact` is append-only, so flushing the
+        same conversation's facts again on a retried confirmation would leave
+        the log claiming the associate stated the reason twice.
+
+        Each fact keeps the turn and the message it was captured in. Stamping
+        them with this turn's identity would be quicker and would be a lie --
+        the record would say every fact was established at confirmation, which
+        is precisely the record that hides a reason having been re-asked in
+        between. `acquisition_method` distinguishes what someone said from what
+        was computed from it, which is what a later agent reads to decide
+        whether a fact is worth re-asking at all.
+        """
+        for entry in observed_facts:
+            name = entry.get("name")
+            if not isinstance(name, str) or not name:
+                continue
+            if entry.get("status") not in {None, "USABLE", "CONFIRMATION_REQUIRED"}:
+                # Conflicting, invalid, ambiguous or stale. The conversation
+                # still owes the associate a question about it, so it is not yet
+                # something the case knows.
+                continue
+            acquisition = (
+                FactAcquisition.DERIVED
+                if entry.get("acquisition") == "DERIVED"
+                else FactAcquisition.STATED
+            )
+            await self._repository.append_case_fact(
+                fact_id=str(uuid.uuid4()),
+                case_id=case_id,
+                fact_name=name,
+                value=entry.get("value"),
+                agent_id="order-discovery-agent",
+                channel=FactChannel.CHANNEL_A,
+                acquisition_method=acquisition,
+                turn_id=str(entry.get("turnId") or ""),
+                source_path=(
+                    f"CONVERSATION_MESSAGE:{entry['sourceMessageId']}"
+                    if entry.get("sourceMessageId")
+                    else "CONVERSATION_MESSAGE"
+                ),
+            )

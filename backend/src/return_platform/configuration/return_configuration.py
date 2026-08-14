@@ -346,6 +346,19 @@ class SmartQuestion(StrictConfigModel):
     field_group: NonBlank
     anchor_type: NonBlank | None = None
     candidate_field: NonBlank | None = None
+    #: How long an answer to this question stays good for. `None` -- the
+    #: default -- means it does not go stale: a return reason stated on Monday
+    #: is still the return reason on Tuesday, and re-asking it would be the
+    #: defect, not the safeguard. Set it only where the answer is genuinely
+    #: perishable.
+    answer_ttl_seconds: int | None = Field(default=None, ge=1, le=31_536_000)
+    #: Whether an answer must be read back and confirmed before it is acted on,
+    #: however clearly it was stated. The one legitimate reason to raise a
+    #: question the associate has already answered.
+    confirmation_required: bool = False
+    #: A stated value failing this is captured but marked invalid, so the agent
+    #: asks again for a reason it can name rather than silently ignoring it.
+    validation_pattern: str | None = None
 
 
 class SmartQuestionGoal(StrictConfigModel):

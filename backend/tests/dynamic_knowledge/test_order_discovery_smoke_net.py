@@ -278,8 +278,13 @@ class RecordingCaseStore:
         confirmation: OrderConfirmation,
         configuration_release_id: str,
         graph_generation_id: str,
+        observed_facts: tuple[dict[str, object], ...] = (),
     ) -> ConfirmedCase:
         del principal_id, branch_ids, configuration_release_id, graph_generation_id
+        # Recorded rather than ignored: what the associate stated before the case
+        # existed is flushed here, and a double that dropped it would let a
+        # regression in that flush pass unnoticed.
+        self.observed_facts = observed_facts
         key = confirmation.idempotency_key(tenant_id=tenant_id, conversation_id=conversation_id)
         self.confirmations.append(key)
         existing = self._by_key.get(key)

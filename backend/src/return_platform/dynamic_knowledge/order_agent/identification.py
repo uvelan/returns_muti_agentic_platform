@@ -36,7 +36,7 @@ from dataclasses import field as dataclass_field
 from enum import StrEnum
 from typing import Any
 
-from return_platform.dynamic_knowledge.schema import ActiveSchema
+from return_platform.dynamic_knowledge.schema import ActiveSchema, IdentifierLikelihood
 
 #: Strategies that are ordinary schema operators, mapped straight onto a
 #: `QueryCondition.operator`. `FULLTEXT` is the exception and is handled as its
@@ -106,6 +106,12 @@ class ResolvedSearch:
     only_when_nothing_found: bool = False
     match_label: str = ""
     deferred_score_ceiling: float = 0.6
+    #: What the analyzer measured about how well this property narrows, carried
+    #: from the schema at resolve time. `None` means nothing profiled it -- which
+    #: is not the same as "profiled and found useless", and the planner is
+    #: required to tell those apart rather than rank on the absence of evidence.
+    distinct_ratio: float | None = None
+    identifier_likelihood: str = IdentifierLikelihood.UNKNOWN.value
 
     @property
     def label(self) -> str:
@@ -390,6 +396,16 @@ def _resolve_search(
             only_when_nothing_found=search.only_when_nothing_found,
             match_label=search.match_label or "",
             deferred_score_ceiling=search.deferred_score_ceiling_millionths / 1_000_000,
+            distinct_ratio=(
+                definition.selectivity.distinct_ratio
+                if definition.selectivity is not None
+                else None
+            ),
+            identifier_likelihood=(
+                definition.selectivity.identifier_likelihood.value
+                if definition.selectivity is not None
+                else IdentifierLikelihood.UNKNOWN.value
+            ),
         ),
         None,
     )

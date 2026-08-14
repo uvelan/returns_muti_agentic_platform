@@ -46,6 +46,9 @@ from return_platform.dynamic_knowledge.order_agent.identification import (
     apply_value_form,
     normalize_value,
 )
+from return_platform.dynamic_knowledge.order_agent.planner import (
+    order_searches_by_discrimination,
+)
 
 logger = logging.getLogger("return_platform.dynamic_knowledge.order_agent.search_strategy")
 
@@ -241,7 +244,15 @@ def build_search_program(
             extra={"fields": parsed.invalid_signals},
         )
 
-    return SearchProgram(parsed=parsed, primary=tuple(primary), deferred=tuple(deferred))
+    # Most discriminating first (DISC-03). Only observable when the per-turn
+    # query budget truncates the set -- which is precisely the case where the
+    # order decides whether the one pass that could have answered the associate
+    # ever ran.
+    return SearchProgram(
+        parsed=parsed,
+        primary=order_searches_by_discrimination(primary, catalogue),
+        deferred=tuple(deferred),
+    )
 
 
 def _condition_for(search: ResolvedSearch, value: Any) -> QueryCondition:
