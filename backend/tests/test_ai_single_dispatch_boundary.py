@@ -31,6 +31,7 @@ way.
 from __future__ import annotations
 
 import ast
+import json
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -49,11 +50,17 @@ from return_platform.ai.gateway.final_dispatch import (
     InterceptionPolicy,
     InterceptionVerdict,
 )
+from return_platform.ai.gateway.interception_policy import build_interception_policy
 from return_platform.ai.gateway.redaction import REDACTED
 from return_platform.ai.gateway.service import AIGatewayService
 from return_platform.ai.gateway.structured_invocation import (
     StructuredInvocationUnavailable,
     StructuredOutputInvoker,
+)
+from return_platform.ai.interception.records import (
+    Interception,
+    InterceptionStatus,
+    ResumeCommand,
 )
 from return_platform.ai.pricing import AIPricingStatus
 from return_platform.ai.providers import ProviderError, ProviderRequest, ProviderResponse
@@ -661,6 +668,146 @@ async def test_the_boundary_can_hold_a_structured_invocation_before_any_provider
 
     assert policy.asked == [_structured_task_id(loaded.configuration)]
     assert provider.requests == [], "an intercepted request must never reach a provider"
+
+
+class _RecordingInterceptionStore:
+    """The subset of `InterceptionStore` that `DurableInterceptionPolicy` calls.
+
+    Keeps what it was handed verbatim rather than sealing it: the claim under
+    test is about the bytes the *policy* passed to persistence, and encrypting
+    them here would hide exactly the thing being compared. The real store's
+    sealing, compare-and-set transitions and metadata allowlist are exercised
+    against Mongo in `test_durable_interception_real_infra.py`.
+    """
+
+    def __init__(self) -> None:
+        self.records: dict[str, Interception] = {}
+        self.payloads: dict[str, dict[str, Any]] = {}
+
+    async def open(
+        self,
+        *,
+        interception_id: str,
+        task_id: str,
+        request_payload: Any,
+        resume: ResumeCommand,
+        expires_at: datetime,
+    ) -> Interception:
+        record = Interception(
+            interception_id=interception_id,
+            task_id=task_id,
+            status=InterceptionStatus.PENDING,
+            resume=resume,
+            created_at=datetime.now(UTC),
+            expires_at=expires_at,
+        )
+        self.records[interception_id] = record
+        self.payloads[interception_id] = dict(request_payload)
+        return record
+
+    async def get(self, interception_id: str) -> Interception | None:
+        return self.records.get(interception_id)
+
+    async def request_payload(self, interception_id: str) -> dict[str, Any] | None:
+        return self.payloads.get(interception_id)
+
+    async def allow(self, *, interception_id: str, allowed_by: str) -> Interception:
+        record = self.records[interception_id]
+        approved = Interception(
+            interception_id=record.interception_id,
+            task_id=record.task_id,
+            status=InterceptionStatus.ALLOWED,
+            resume=record.resume,
+            created_at=record.created_at,
+            expires_at=record.expires_at,
+            answered_at=datetime.now(UTC),
+            answered_by=allowed_by,
+        )
+        self.records[interception_id] = approved
+        return approved
+
+    # The rest of the contract is not on the path this file tests, and a
+    # half-implementation would be a worse answer than none: the transitions have
+    # compare-and-set semantics that only the real store can honour, and they are
+    # exercised in `test_ai_interception_covers_every_path.py`.
+    async def answer(
+        self, *, interception_id: str, response_text: str, answered_by: str
+    ) -> Interception:
+        raise NotImplementedError
+
+    async def cancel(self, *, interception_id: str, status: InterceptionStatus) -> None:
+        raise NotImplementedError
+
+    async def list_pending(self, *, limit: int = 100) -> list[Interception]:
+        return [
+            record
+            for record in self.records.values()
+            if record.status is InterceptionStatus.PENDING
+        ][:limit]
+
+
+class _InterceptionOn:
+    async def get_ai_settings(self) -> Any:
+        class _View:
+            interceptMode = True
+
+        return _View()
+
+
+@pytest.mark.asyncio
+async def test_the_held_request_is_never_richer_than_what_the_provider_receives() -> None:
+    """The single-boundary property stated as an equality rather than as an order.
+
+    `test_the_recursive_redactor_runs_before_the_interception_decision` asserts
+    the *source* order, which is a proxy: it reads line positions and cannot see
+    control flow, so a redaction call moved inside a branch would still satisfy
+    it. This asserts the consequence directly, at both sinks, on one payload.
+
+    They are the same payload only because redaction happens once, above both. If
+    it moved back to `ProviderRequest` construction -- where it lived until AI-01
+    -- the persisted copy would carry `jane@example.test` and the dispatched copy
+    would not, and an operator console would be the richer of the two readers of
+    a customer's data. That is the inversion this equality makes impossible to
+    reintroduce quietly.
+    """
+    loaded = load_ai_gateway_configuration(CONFIG)
+    provider = _CapturingProvider("GOOGLE", "model-standard", _STRUCTURED_TEXT)
+    pool = _CountingPool((_route(provider, ModelTier.STANDARD),), loaded.configuration)
+    store = _RecordingInterceptionStore()
+    invoker = _invoker(
+        loaded.configuration,
+        pool,
+        interception=build_interception_policy(
+            store=store, settings_source=_InterceptionOn(), subject="test"
+        ),
+    )
+    payload = {
+        "mode": "DECIDE",
+        "contextJson": '{"rows":[{"customer_email":"jane@example.test","orderId":"SO-9"}]}',
+    }
+
+    # Held: nothing dispatched, one record persisted.
+    with pytest.raises(StructuredInvocationUnavailable, match="HUMAN_RESPONSE"):
+        await invoker.invoke(payload=dict(payload), size_probe="small", log_context={})
+    assert provider.requests == []
+    persisted = dict(next(iter(store.payloads.values()))["payload"])
+
+    # Approved, then resumed. Same payload, therefore the same derived id,
+    # therefore the same interception -- which is now ALLOWED.
+    held = await store.list_pending()
+    await store.allow(interception_id=held[0].interception_id, allowed_by="operator-1")
+    await invoker.invoke(payload=dict(payload), size_probe="small", log_context={})
+
+    dispatched = dict(provider.requests[-1].user_payload)
+    assert persisted == dispatched, (
+        "the interception store and the provider disagree about what was sent: "
+        f"held={persisted} dispatched={dispatched}"
+    )
+    # And neither is the raw payload -- an equality between two unredacted copies
+    # would satisfy the line above while leaking from both sinks at once.
+    assert "jane@example.test" not in json.dumps(persisted)
+    assert REDACTED in json.dumps(persisted)
+    assert "SO-9" in json.dumps(persisted)
 
 
 @pytest.mark.asyncio
