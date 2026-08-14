@@ -90,10 +90,11 @@ break the business flow.
 The conversation is durable and multi-turn, hosted on Temporal
 (`OrderDiscoveryWorkflow`). Each turn is one activity.
 
-A `CandidateSet` is cached with a 30-minute TTL and carries the conversation
-version. A stale candidate card is rejected on candidate-set id, expiry, or
-conversation version — three independent checks, because a card can be stale in
-three different ways.
+A `CandidateSet` is cached for `candidate_ttl_seconds` — default **900s (15
+minutes)**, range 60–3,600 — and carries the conversation version. A stale
+candidate card is rejected on candidate-set id, expiry, or conversation version:
+three independent checks, because a card can be stale in three different ways and
+any one alone leaves a hole.
 
 ## Confirmation
 

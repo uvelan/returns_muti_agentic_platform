@@ -142,8 +142,8 @@ copilot finds nothing. The screen names the cause and the fix.
 - Read from: **source** MongoDB and **source** SQL Server, read-only, in bounded
   batches.
 
-Cypher is parameterized and identifiers are allowlisted. SQL reads use bounded
-bulk batches (`GRAPH_SYNC_BATCH_SIZE`, 1,000-row default).
+Cypher is parameterized and identifiers are allowlisted. Reads use bounded bulk
+batches — `PLATFORM_GRAPH_SYNC_BATCH_SIZE`, default **250**, range 1–5,000.
 
 ## Audit effects
 
@@ -159,12 +159,11 @@ triggers record the principal.
 | `sources`, `data_assets` | What can be synced | Hot |
 | `graph` constraints/indexes | What a run applies when `applySchema` is set | Hot |
 | Active schema release | The mapping a run projects through | Applied at activation |
-| `GRAPH_SYNC_BATCH_SIZE` (env) | SQL read batch size | Restart |
+| `PLATFORM_GRAPH_SYNC_BATCH_SIZE` (env) | Page size per source-asset scan; default 250 | Restart |
 
 ## Known constraints
 
 - No cancel for an in-progress run.
 - No per-asset scheduling from this screen; schedules are configuration.
 - No graph browser. Verifying content means querying Neo4j directly.
-- Progressive plan fan-out is serial (PERF-01) — see
-  [`../optimization/README.md`](../optimization/README.md).
+- No per-run cost or duration estimate before triggering.
