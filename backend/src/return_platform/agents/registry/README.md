@@ -1,6 +1,6 @@
 # agents/registry
 
-The single place that constructs and resolves all six agents. Replaces two prior,
+The single place that constructs all six agents. Replaces two prior,
 never-reconciled registries:
 
 - `agents.registry.ReturnAgentRegistry` — a frozen dataclass with no configuration
@@ -11,21 +11,17 @@ never-reconciled registries:
   descriptor to something executable. Deleted; zero call sites referenced it.
 
 `AgentRegistry.build(configuration)` constructs all six agents from one
-`ReturnPlatformConfiguration`, exactly like `ReturnAgentRegistry` did. Two access
-patterns are both supported, deliberately:
+`ReturnPlatformConfiguration`, exactly like `ReturnAgentRegistry` did. There is one
+access pattern, by typed attribute:
 
 ```python
 registry = AgentRegistry.build(configuration)
-
-# A caller that already knows which agent it needs keeps full static typing:
 registry.order_discovery.assess(request)
-
-# A caller that only has an agent_id (Temporal orchestration, in a later phase)
-# resolves dynamically instead:
-registry.resolve("order_discovery")          # -> AgentPlugin[Any, Any]
-registry.descriptor("order_discovery")        # -> AgentDescriptor
-registry.all_descriptors()                    # -> tuple[AgentDescriptor, ...]
 ```
 
-`resolve()` raises `UnknownAgentId` for anything outside the six configured agents —
-there is no silent fallback.
+`resolve(agent_id)`, `descriptor(agent_id)`, `all_descriptors()` and `UnknownAgentId`
+were removed under AGT-02. They served an `agent_id`-keyed dispatch path that no
+production caller ever used and that could not carry all six agents — the canonical
+`ReturnCaseWorkflow` drives named Temporal activities, not agents by id. A caller that
+genuinely has only an id has no agent to type-check against, which is the problem the
+typed attributes exist to avoid.

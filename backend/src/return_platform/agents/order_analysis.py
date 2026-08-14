@@ -7,11 +7,9 @@ from typing import Any
 
 from return_platform.agents.contracts import (
     AgentDecisionView,
-    AgentExecutionContext,
     OrderAnalysisAssessment,
     OrderAnalysisRequest,
 )
-from return_platform.agents.contracts.descriptor import AgentDescriptor
 from return_platform.ai_gateway.service import AIGatewayService
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 
@@ -22,29 +20,6 @@ class OrderAnalysisAgent:
     def __init__(self, configuration: ReturnPlatformConfiguration) -> None:
         self._root = configuration
         self._config = configuration.agents["order_analysis"]
-
-    @property
-    def descriptor(self) -> AgentDescriptor:
-        return AgentDescriptor.from_configuration("order_analysis", self._config)
-
-    async def execute(
-        self, request: OrderAnalysisRequest, context: AgentExecutionContext
-    ) -> OrderAnalysisAssessment:
-        """Not yet wired for generic dispatch.
-
-        `analyze()` needs a concrete AIGatewayService, and AgentExecutionContext
-        deliberately carries no `.ai` field (design R2a) -- the intended path is
-        resolving an AgentAiPort from `context.capabilities`, but no adapter under
-        bootstrap/adapters/ publishes CapabilityName.AI_INVOCATION for agents yet.
-        Call `analyze()`/`disambiguate()` directly (as every current caller does)
-        until that publication exists.
-        """
-        del request, context
-        raise NotImplementedError(
-            "OrderAnalysisAgent.execute() requires an AgentAiPort published under "
-            "CapabilityName.AI_INVOCATION, which no adapter provides yet. "
-            "Call analyze()/disambiguate() directly instead."
-        )
 
     async def analyze(
         self, request: OrderAnalysisRequest, ai_gateway: AIGatewayService

@@ -36,8 +36,8 @@ returned).
 version, capabilities) plus `discovery.*` (anchor weights, conflict penalty, ambiguity
 gap, web order pattern) and `clarification_policy.*` (which fields to ask about).
 
-**Extension/replacement.** Resolve via `AgentRegistry.build(configuration).order_discovery`
-or `AgentRegistry.resolve("order_discovery")`; a different implementation only needs to
-satisfy `AgentPlugin[DiscoveryAssessmentRequest, DiscoveryAssessment]`.
+**Extension/replacement.** Reach it via
+`AgentRegistry.build(configuration).order_discovery`; a different implementation only
+needs to accept a `DiscoveryAssessmentRequest` and return a `DiscoveryAssessment`.
 
 **This agent does not directly invoke another agent.**

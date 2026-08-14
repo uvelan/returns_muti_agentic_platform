@@ -22,10 +22,12 @@
 # not through AgentRegistry. None of the six Phase-5 agents has a clean 1:1
 # request-shape mapping to any of these stages today (verified: the closest
 # candidate, ReturnWorkflowAgent, needs per-line item detail -- quantities,
-# attachments -- that ReturnSessionView doesn't carry). See
-# `config/workflows/example_agent_dispatch.yaml` for a real, tested
-# AGENT-handler resolution instead, which does not overstate this workflow's
-# current wiring.
+# attachments -- that ReturnSessionView doesn't carry).
+#
+# ACTIVITY is now the only handler type there is. The `AGENT` type, and the
+# `example_agent_dispatch.yaml` fixture that was its only declarer, were
+# removed under AGT-02: agent_id-keyed dispatch had no production caller and
+# could not carry every agent.
 #
 # `ReturnOrchestrator` does not yet resolve this module through a pinned
 # RuntimeConfigurationView -- it still constructs its other dependencies

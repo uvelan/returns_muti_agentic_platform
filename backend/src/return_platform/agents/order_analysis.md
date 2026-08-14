@@ -23,7 +23,7 @@ Temporal orchestration).
 **Prompt / policy / AI route.** The only one of the six agents that calls AI today.
 `analyze()` calls `AI_ROUTE: ORDER_CANDIDATE_ANALYSIS_V1`; `disambiguate()` calls a
 second, related route, `ORDER_CANDIDATE_DISAMBIGUATION_V1` — not yet expressible as a
-second `ai_route_ref` on the descriptor, since the config shape carries one primary
+second `ai_route_ref`, since the config shape carries one primary
 route per agent (`ai_route_ref: ORDER_CANDIDATE_ANALYSIS_V1` in
 `config/returns/production.yaml`). Both routes are real, wired entries in
 `config/ai_gateway.yaml`.
@@ -40,13 +40,14 @@ explanation text and continues.
 
 **Configuration.** `agents.order_analysis` in `config/returns/production.yaml`.
 
-**Extension/replacement.** Resolve via
-`AgentRegistry.build(configuration).order_analysis`. `execute()` exists to satisfy
-`AgentPlugin` but raises `NotImplementedError` today: it needs an `AgentAiPort`
-resolved from `AgentExecutionContext.capabilities`, and no adapter under
-`bootstrap/adapters/` publishes `CapabilityName.AI_INVOCATION` for agents yet. Call
-`analyze()`/`disambiguate()` directly with an `AIGatewayService`, exactly as every
-current caller (`operations/associate_flow.py`) already does, until that publication
-exists.
+**Extension/replacement.** Reach it via
+`AgentRegistry.build(configuration).order_analysis`, then call
+`analyze()`/`disambiguate()` with an `AIGatewayService`, exactly as its only caller
+(`operations/associate_flow.py`) does. This agent is why the generic
+`AgentPlugin.execute()` path was removed rather than completed (AGT-02): it needs an
+`AgentAiPort` resolved from `AgentExecutionContext.capabilities`, no adapter under
+`bootstrap/adapters/` publishes `CapabilityName.AI_INVOCATION`, and passing the gateway
+as an explicit parameter is what the callers already did and what keeps the agent from
+reaching for the gateway itself.
 
 **This agent does not directly invoke another agent.**
