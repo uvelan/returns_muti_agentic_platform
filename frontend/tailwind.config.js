@@ -80,6 +80,10 @@ export default {
         // wrongly in a proportional face.
         mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
+      boxShadow: {
+        panel: "0 18px 45px -28px rgb(11 31 28 / 0.42), 0 2px 8px rgb(11 31 28 / 0.05)",
+        float: "0 22px 60px -32px rgb(0 78 71 / 0.38)",
+      },
     },
   },
   plugins: [],

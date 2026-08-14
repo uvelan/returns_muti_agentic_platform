@@ -14,6 +14,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AgentsSection } from "./AgentsSection";
+import { CapabilityContext } from "../../hooks/capabilityContext";
 
 const mocks = vi.hoisted(() => ({ list: vi.fn(), read: vi.fn(), save: vi.fn() }));
 
@@ -21,10 +22,32 @@ vi.mock("../../api/agentConfig", () => ({
   agentConfigApi: { list: mocks.list, read: mocks.read, save: mocks.save },
 }));
 
-function wrapper({ children }: { children: ReactNode }) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+function makeWrapper(canWrite: boolean) {
+  return function TestWrapper({ children }: { children: ReactNode }) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return (
+      <QueryClientProvider client={client}>
+        <CapabilityContext.Provider
+          value={{
+            principal: undefined,
+            isLoading: false,
+            isUnauthenticated: false,
+            error: null,
+            can: (capability) =>
+              canWrite && capability === "governance.proposal.write",
+            canAny: (...capabilities) =>
+              canWrite && capabilities.includes("governance.proposal.write"),
+          }}
+        >
+          {children}
+        </CapabilityContext.Provider>
+      </QueryClientProvider>
+    );
+  };
 }
+
+const wrapper = makeWrapper(true);
+const readOnlyWrapper = makeWrapper(false);
 
 const DOCUMENT = {
   module_id: "agent.order_discovery",
@@ -47,6 +70,7 @@ beforeEach(() => {
       enabled: true,
       status: "DRAFT",
       configurationVersion: "2.0.0",
+      source: "RELEASE",
     },
   ]);
   mocks.read.mockReset().mockResolvedValue({
@@ -54,15 +78,17 @@ beforeEach(() => {
     moduleId: "agent.order_discovery",
     path: "agents/order_discovery.yaml",
     document: DOCUMENT,
+    source: "RELEASE",
   });
-  mocks.save.mockReset().mockImplementation((_id: string, document: unknown) =>
-    Promise.resolve({
-      manifestId: "agent.order_discovery",
-      moduleId: "agent.order_discovery",
-      path: "agents/order_discovery.yaml",
-      document,
-    }),
-  );
+  mocks.save.mockReset().mockResolvedValue({
+    proposalId: "proposal-agent-1",
+    manifestId: "agent.order_discovery",
+    status: "REVIEW_PENDING",
+    risk: "MEDIUM",
+    affectedKeys: ["agent.order_discovery"],
+    proposedBy: "operator",
+    submittedAt: "2026-08-14T00:00:00Z",
+  });
 });
 
 describe("agent configuration", () => {
@@ -70,7 +96,109 @@ describe("agent configuration", () => {
     render(<AgentsSection />, { wrapper });
     expect(await screen.findByDisplayValue("Order Discovery Agent")).toBeInTheDocument();
     expect(screen.getByText("agents/order_discovery.yaml")).toBeInTheDocument();
+    expect(screen.getAllByText("Active release")).toHaveLength(2);
   });
+  it("renders a genuinely read-only editor without proposal-write access", async () => {
+    render(<AgentsSection />, { wrapper: readOnlyWrapper });
+    expect(await screen.findByDisplayValue("Order Discovery Agent")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Submit for review" })).toBeDisabled();
+    expect(screen.getByText(/Read-only access/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    expect(screen.getByLabelText("Agent configuration JSON")).toHaveAttribute("readonly");
+  });
+
+  it("keeps an unsaved draft when agent switching is cancelled", async () => {
+    mocks.list.mockResolvedValue([
+      {
+        manifestId: "agent.order_discovery",
+        moduleId: "agent.order_discovery",
+        name: "Order Discovery Agent",
+        enabled: true,
+        status: "DRAFT",
+        configurationVersion: "2.0.0",
+        source: "RELEASE",
+      },
+      {
+        manifestId: "agent.second",
+        moduleId: "agent.second",
+        name: "Second Agent",
+        enabled: false,
+        status: "DRAFT",
+        configurationVersion: "1.0.0",
+        source: "PACKAGED_BASELINE",
+      },
+    ]);
+    mocks.read.mockImplementation((manifestId: string) =>
+      Promise.resolve(manifestId === "agent.second" ? {
+        manifestId,
+        moduleId: manifestId,
+        path: "agents/second.yaml",
+        source: "PACKAGED_BASELINE",
+        document: {
+          ...DOCUMENT,
+          module_id: manifestId,
+          payload: { ...DOCUMENT.payload, name: "Second Agent" },
+        },
+      } : {
+        manifestId,
+        moduleId: manifestId,
+        path: "agents/order_discovery.yaml",
+        source: "RELEASE",
+        document: DOCUMENT,
+      }),
+    );
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<AgentsSection />, { wrapper });
+    const name = await screen.findByDisplayValue("Order Discovery Agent");
+    fireEvent.change(name, { target: { value: "Unsaved agent name" } });
+    fireEvent.click(screen.getByRole("button", { name: /Second Agent/ }));
+
+    expect(confirm).toHaveBeenCalled();
+    expect(screen.getByDisplayValue("Unsaved agent name")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Second Agent")).not.toBeInTheDocument();
+    confirm.mockRestore();
+  });
+  it("requires confirmation before Reset discards a draft", async () => {
+    const confirm = vi.spyOn(window, "confirm")
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+    render(<AgentsSection />, { wrapper });
+    const name = await screen.findByDisplayValue("Order Discovery Agent");
+    fireEvent.change(name, { target: { value: "Unsaved agent name" } });
+
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    const reset = screen.getByRole("button", { name: "Reset" });
+    fireEvent.click(reset);
+    expect(screen.getByDisplayValue("Unsaved agent name")).toBeInTheDocument();
+
+    fireEvent.click(reset);
+    expect(screen.getByDisplayValue("Order Discovery Agent")).toBeInTheDocument();
+    expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit for review" })).toBeDisabled();
+    confirm.mockRestore();
+  });
+
+  it("restores the editor URL when Back or Forward discard is cancelled", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<AgentsSection />, { wrapper });
+    const name = await screen.findByDisplayValue("Order Discovery Agent");
+    const protectedUrl = window.location.href;
+    fireEvent.change(name, { target: { value: "Unsaved agent name" } });
+    await waitFor(() => {
+      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    });
+
+    window.history.pushState(null, "", "/another-workspace");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+
+    expect(confirm).toHaveBeenCalled();
+    expect(window.location.href).toBe(protectedUrl);
+    expect(screen.getByDisplayValue("Unsaved agent name")).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+
 
   it("renders nested objects and arrays, not just the top level", async () => {
     // These payloads nest objects inside arrays inside objects. An editor that
@@ -86,8 +214,11 @@ describe("agent configuration", () => {
   it("writes a nested edit to that field and nothing else", async () => {
     render(<AgentsSection />, { wrapper });
     const field = await screen.findByDisplayValue("rank_candidates");
+    const submit = screen.getByRole("button", { name: "Submit for review" });
+    expect(submit).toBeDisabled();
     fireEvent.change(field, { target: { value: "rank_orders" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
 
     await waitFor(() => {
       expect(mocks.save).toHaveBeenCalledTimes(1);
@@ -96,6 +227,27 @@ describe("agent configuration", () => {
     expect(saved.payload.capabilities).toEqual(["rank_orders", "normalize_evidence"]);
     expect(saved.payload.name).toBe("Order Discovery Agent");
     expect(saved.module_id).toBe("agent.order_discovery");
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "The active configuration has not changed",
+    );
+    expect(screen.getByRole("link", { name: "Open Approvals" })).toHaveAttribute("href", "/approvals");
+    expect(submit).toBeDisabled();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    fireEvent.change(screen.getByDisplayValue("rank_orders"), {
+      target: { value: "rank_orders_v2" },
+    });
+    expect(submit).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+    expect(screen.getByDisplayValue("rank_orders")).toBeInTheDocument();
+    expect(submit).toBeDisabled();
+
+    fireEvent.change(screen.getByDisplayValue("rank_orders"), {
+      target: { value: "rank_candidates" },
+    });
+    expect(submit).toBeDisabled();
+    expect(mocks.save).toHaveBeenCalledTimes(1);
+    confirm.mockRestore();
+
   });
 
   it("edits the same document as JSON", async () => {
@@ -106,13 +258,29 @@ describe("agent configuration", () => {
     const editor = screen.getByLabelText("Agent configuration JSON");
     const edited = { ...DOCUMENT, payload: { ...DOCUMENT.payload, enabled: false } };
     fireEvent.change(editor, { target: { value: JSON.stringify(edited) } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
 
     await waitFor(() => {
       expect(mocks.save).toHaveBeenCalledTimes(1);
     });
     const [, saved] = mocks.save.mock.calls[0] as [string, typeof DOCUMENT];
     expect(saved.payload.enabled).toBe(false);
+  });
+
+  it("preserves a JSON edit when opening synchronized split view", async () => {
+    render(<AgentsSection />, { wrapper });
+    await screen.findByDisplayValue("Order Discovery Agent");
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+
+    const edited = { ...DOCUMENT, payload: { ...DOCUMENT.payload, name: "Edited in JSON" } };
+    const source = JSON.stringify(edited);
+    fireEvent.change(screen.getByLabelText("Agent configuration JSON"), {
+      target: { value: source },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Split" }));
+
+    expect(screen.getByLabelText("Agent configuration JSON")).toHaveValue(source);
+    expect(screen.getByDisplayValue("Edited in JSON")).toBeInTheDocument();
   });
 
   it("refuses to leave JSON mode rather than silently discarding a broken edit", async () => {
@@ -124,12 +292,26 @@ describe("agent configuration", () => {
     fireEvent.change(screen.getByLabelText("Agent configuration JSON"), {
       target: { value: "{ not json" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Form" }));
+    fireEvent.click(screen.getByRole("button", { name: "Key-value" }));
 
     expect(screen.getByRole("alert")).toBeInTheDocument();
     // Still in JSON mode, with the text intact.
     expect(screen.getByLabelText("Agent configuration JSON")).toHaveValue("{ not json");
     expect(mocks.save).not.toHaveBeenCalled();
+  });
+
+  it("refuses split view while JSON is invalid", async () => {
+    render(<AgentsSection />, { wrapper });
+    await screen.findByDisplayValue("Order Discovery Agent");
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    fireEvent.change(screen.getByLabelText("Agent configuration JSON"), {
+      target: { value: "{ still not json" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Split" }));
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByLabelText("Agent configuration JSON")).toHaveValue("{ still not json");
+    expect(screen.getByRole("button", { name: "Split" })).toHaveAttribute("aria-pressed", "false");
   });
 
   it("will not save text that is not JSON", async () => {
@@ -139,7 +321,7 @@ describe("agent configuration", () => {
     fireEvent.change(screen.getByLabelText("Agent configuration JSON"), {
       target: { value: "[1, 2, 3]" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent("must be an object");
     expect(mocks.save).not.toHaveBeenCalled();
@@ -155,7 +337,7 @@ describe("agent configuration", () => {
     render(<AgentsSection />, { wrapper });
     const field = await screen.findByDisplayValue("Order Discovery Agent");
     fireEvent.change(field, { target: { value: "Renamed" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("declares module_id 'agent.other'");
   });
@@ -164,6 +346,28 @@ describe("agent configuration", () => {
     mocks.list.mockRejectedValue(new Error("Agent configuration is not available."));
     render(<AgentsSection />, { wrapper });
     expect(await screen.findByRole("alert")).toHaveTextContent("not available");
+  });
+
+  it("adds a typed property inside a nested child object", async () => {
+    render(<AgentsSection />, { wrapper });
+    const keyFields = await screen.findAllByLabelText("New property key");
+    const typeFields = screen.getAllByLabelText("New property type");
+    const addButtons = screen.getAllByRole("button", { name: "Add property" });
+
+    fireEvent.change(keyFields[0], { target: { value: "query_timeout" } });
+    fireEvent.change(typeFields[0], { target: { value: "number" } });
+    fireEvent.click(addButtons[0]);
+    fireEvent.change(screen.getByDisplayValue("0"), { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
+
+    await waitFor(() => {
+      expect(mocks.save).toHaveBeenCalledTimes(1);
+    });
+    const [, saved] = mocks.save.mock.calls[0] as [
+      string,
+      typeof DOCUMENT & { payload: { limits: { query_timeout: number } } },
+    ];
+    expect(saved.payload.limits.query_timeout).toBe(30);
   });
 
   it("adds a list entry shaped like the existing ones", async () => {
@@ -177,7 +381,7 @@ describe("agent configuration", () => {
     });
     render(<AgentsSection />, { wrapper });
     fireEvent.click(await screen.findByRole("button", { name: "Add" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
 
     await waitFor(() => {
       expect(mocks.save).toHaveBeenCalledTimes(1);

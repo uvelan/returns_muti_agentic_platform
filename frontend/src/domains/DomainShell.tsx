@@ -1,14 +1,23 @@
 import { Link, Route, Router, Switch, useLocation } from "wouter";
 import { Suspense, useState, type ReactNode } from "react";
-import { ArrowLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronRight,
+  Command,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ShieldCheck,
+} from "lucide-react";
 
 import { useCapabilities } from "../hooks/capabilityContext";
+import { useRuntimeConfig } from "../hooks/useRuntimeConfig";
 import { DOMAINS, domainForPath, LANDING_PATH, type DomainDefinition } from "./registry";
 import { DomainLanding } from "./DomainLanding";
 import { DOMAIN_SCREENS } from "./domainScreens";
 import { RailSlotProvider } from "./railSlot";
 import { PlatformLanding } from "./PlatformLanding";
 import { useRailCollapsed } from "./useRailCollapsed";
+import { useDomainSection } from "./useDomainSection";
 
 
 /**
@@ -134,13 +143,15 @@ function Forbidden({ domain }: { domain: DomainDefinition }) {
 function LandingFrame({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-surface">
-      <main className="px-6 py-10">{children}</main>
+      <main className="px-10 py-10">{children}</main>
     </div>
   );
 }
 
 function DomainFrame({ domain, children }: { domain: DomainDefinition; children: ReactNode }) {
   const { principal } = useCapabilities();
+  const runtimeConfig = useRuntimeConfig();
+  const activeSectionLabel = useDomainSection(domain);
   const [collapsed, toggle] = useRailCollapsed();
   // Captured through state rather than a ref so the portal re-renders once the
   // element exists: a ref set during commit would leave the first paint empty
@@ -152,14 +163,17 @@ function DomainFrame({ domain, children }: { domain: DomainDefinition; children:
     <div className="flex min-h-screen bg-surface">
       <aside
         id="domain-rail"
-        className={`flex shrink-0 flex-col overflow-y-auto bg-rail-surface transition-[width] duration-150 ${collapsed ? "w-14" : "w-64"}`}
+        className={`sticky top-0 flex h-screen shrink-0 flex-col overflow-y-auto border-r border-white/10 bg-rail-surface shadow-2xl shadow-black/10 transition-[width] duration-200 ${collapsed ? "w-16" : "w-72"}`}
       >
         <RailHeader collapsed={collapsed} onToggle={toggle} />
         <div
-          className={`flex items-start gap-3 border-y border-white/10 py-4 ${collapsed ? "justify-center px-0" : "px-4"}`}
+          className={`flex items-start gap-3 border-y border-white/10 py-5 ${collapsed ? "justify-center px-0" : "px-4"}`}
         >
-          <span className="mt-0.5 text-inverse-primary" title={collapsed ? domain.name : undefined}>
-            <Icon size={20} />
+          <span
+            className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-inverse-primary ring-1 ring-inset ring-white/10"
+            title={collapsed ? domain.name : undefined}
+          >
+            <Icon size={19} />
           </span>
           {collapsed ? null : (
             <span className="min-w-0">
@@ -191,10 +205,47 @@ function DomainFrame({ domain, children }: { domain: DomainDefinition; children:
           would be the shared navigation panel this replaced.
         */}
         {collapsed ? null : <div ref={setRailSlot} className="flex flex-col" />}
+        {collapsed ? null : (
+          <div className="mt-auto border-t border-white/10 px-4 py-4">
+            <div className="flex items-center gap-2 text-[11px] leading-relaxed text-rail-on-surface/50">
+              <ShieldCheck size={14} className="shrink-0 text-inverse-primary/70" />
+              <span>Actions remain capability-gated and audited.</span>
+            </div>
+          </div>
+        )}
       </aside>
-      <main className="flex-1 overflow-x-auto p-6">
-        <RailSlotProvider value={collapsed ? null : railSlot}>{children}</RailSlotProvider>
-      </main>
+      <div className="min-w-0 flex-1">
+        <header className="sticky top-0 z-20 flex h-[4.5rem] items-center justify-between gap-6 border-b border-outline-variant/70 bg-surface/95 px-7 backdrop-blur">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-outline">
+              <span>Returns Intelligence Platform</span>
+              <ChevronRight size={13} aria-hidden="true" />
+              <span className="truncate text-on-surface-variant">{domain.name}</span>
+              {activeSectionLabel === "" ? null : (
+                <>
+                  <ChevronRight size={13} aria-hidden="true" />
+                  <span className="truncate text-primary">{activeSectionLabel}</span>
+                </>
+              )}
+            </div>
+            <p className="mt-1 truncate text-sm text-on-surface-variant">{domain.description}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            <span className="hidden items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant xl:flex" title={runtimeConfig?.releaseId}>
+              <Command size={13} aria-hidden="true" />
+              {runtimeConfig?.environment ?? "Environment unknown"}
+            </span>
+            {principal === undefined ? null : (
+              <span className="max-w-64 truncate rounded-full bg-secondary-container px-3 py-1.5 text-xs font-medium text-on-secondary-container" title={principal.subject}>
+                {principal.subject}
+              </span>
+            )}
+          </div>
+        </header>
+        <main className="min-w-0 overflow-x-auto p-7">
+          <RailSlotProvider value={collapsed ? null : railSlot}>{children}</RailSlotProvider>
+        </main>
+      </div>
     </div>
   );
 }

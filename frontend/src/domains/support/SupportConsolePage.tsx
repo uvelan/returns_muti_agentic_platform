@@ -122,7 +122,7 @@ export function SupportConsolePage() {
   }
 
   return (
-    <div className="grid h-[calc(100vh-3rem)] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,4fr)_minmax(0,6fr)] xl:grid-cols-[minmax(0,3fr)_minmax(0,5fr)_minmax(0,6fr)]">
+    <div className="grid h-[calc(100vh-8rem)] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,4fr)_minmax(0,6fr)] xl:grid-cols-[minmax(0,3fr)_minmax(0,5fr)_minmax(0,6fr)]">
       {/*
         The deadline and the shape of the open request, which are the two things
         the panes push off-screen: the SLA sits in the case pane's Channel B

@@ -21,6 +21,7 @@ export type AgentSummary = {
   enabled: boolean;
   status: string;
   configurationVersion: string;
+  source: string;
 };
 
 export type AgentConfiguration = {
@@ -28,6 +29,17 @@ export type AgentConfiguration = {
   moduleId: string;
   path: string;
   document: Record<string, unknown>;
+  source: string;
+};
+
+export type AgentConfigurationProposal = {
+  proposalId: string;
+  manifestId: string;
+  status: string;
+  risk: string;
+  affectedKeys: string[];
+  proposedBy: string;
+  submittedAt: string;
 };
 
 export const agentConfigApi = {
@@ -44,8 +56,11 @@ export const agentConfigApi = {
     return response.data;
   },
 
-  async save(manifestId: string, document: Record<string, unknown>): Promise<AgentConfiguration> {
-    const response = await apiClient<AgentConfiguration>(
+  async save(
+    manifestId: string,
+    document: Record<string, unknown>,
+  ): Promise<AgentConfigurationProposal> {
+    const response = await apiClient<AgentConfigurationProposal>(
       `/api/agents/${encodeURIComponent(manifestId)}`,
       {
         method: "PUT",
@@ -53,7 +68,7 @@ export const agentConfigApi = {
         body: JSON.stringify({ document }),
       },
     );
-    if (!response.data) throw new Error("The agent configuration could not be saved.");
+    if (!response.data) throw new Error("The agent configuration proposal could not be submitted.");
     return response.data;
   },
 };

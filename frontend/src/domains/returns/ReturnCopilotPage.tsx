@@ -458,7 +458,7 @@ export function ReturnCopilotPage() {
   }
 
   return (
-    <div className="grid h-[calc(100vh-3rem)] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,8fr)_minmax(0,7fr)]">
+    <div className="grid h-[calc(100vh-8rem)] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,8fr)_minmax(0,7fr)]">
       {/*
         The identity of the return in hand, which the three panes cannot hold
         still: chat scrolls, the middle pane is the agent's current step, and the

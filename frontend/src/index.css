@@ -21,17 +21,20 @@
   }
 
   html {
-    min-width: 320px;
+    min-width: 1280px;
     min-height: 100%;
     background-color: theme("colors.surface");
   }
 
   body {
-    min-width: 320px;
+    min-width: 1280px;
     min-height: 100vh;
     margin: 0;
 
     @apply bg-surface text-on-surface antialiased;
+    background-image:
+      radial-gradient(circle at 92% 4%, rgb(197 230 225 / 0.42), transparent 24rem),
+      linear-gradient(180deg, #f7faf8 0%, #f3f7f5 100%);
   }
 
   #root {
@@ -41,4 +44,38 @@
   ::selection {
     @apply bg-secondary-container text-on-surface;
   }
+
+  :focus-visible {
+    outline: 2px solid theme("colors.primary");
+    outline-offset: 2px;
+  }
+
+  * {
+    scrollbar-color: theme("colors.outline-variant") transparent;
+    scrollbar-width: thin;
+  }
+}
+
+@layer components {
+  .premium-panel {
+    @apply rounded-2xl border border-outline-variant/80 bg-surface-container-lowest shadow-sm;
+  }
+
+  .premium-kicker {
+    @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-outline;
+  }
+
+  .premium-field {
+    @apply rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15;
+  }
+  /* Lift the existing domain panels into one visual system without changing
+     their data, state machines, or accessible structure. */
+  .rounded-lg.border.border-slate-200.bg-white,
+  .rounded-lg.border.border-outline-variant.bg-surface-container-lowest {
+    border-radius: 1rem;
+    border-color: rgb(190 201 198 / 0.78);
+    background-color: theme("colors.surface-container-lowest");
+    box-shadow: 0 18px 45px -32px rgb(11 31 28 / 0.34), 0 1px 3px rgb(11 31 28 / 0.06);
+  }
+
 }

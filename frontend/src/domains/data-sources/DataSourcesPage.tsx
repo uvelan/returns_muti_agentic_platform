@@ -73,7 +73,7 @@ export function DataSourcesPage() {
   const unhealthy = all.filter((source) => source.health !== "HEALTHY");
 
   return (
-    <div className="grid h-[calc(100vh-3rem)] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+    <div className="grid h-[calc(100vh-8rem)] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
       {/*
         The reachability answer, which is the reason this screen gets opened.
         Counted from the list already fetched, and stated as unknown when the

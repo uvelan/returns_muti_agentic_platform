@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { ArrowUpRight, ShieldCheck, Sparkles } from "lucide-react";
 
 import { useCapabilities } from "../hooks/capabilityContext";
 import { DOMAINS } from "./registry";
@@ -26,30 +27,58 @@ export function PlatformLanding() {
   const visible = DOMAINS.filter((domain) => can(domain.requires));
 
   return (
-    <section aria-labelledby="landing-heading" className="mx-auto max-w-5xl">
-      <header>
-        <h1 id="landing-heading" className="text-3xl font-semibold text-on-surface">
-          Returns Platform
-        </h1>
-        <p className="mt-2 text-sm text-on-surface-variant">
-          {principal ? (
-            <>
-              Signed in as <span className="font-medium text-on-surface">{principal.subject}</span>.
-              You have access to {visible.length} of {DOMAINS.length} domains.
-            </>
-          ) : (
-            "Choose a domain to begin."
-          )}
-        </p>
+    <section aria-labelledby="landing-heading" className="mx-auto max-w-7xl">
+      <header className="relative overflow-hidden rounded-3xl bg-rail-surface px-10 py-9 text-rail-on-surface shadow-2xl shadow-primary/10">
+        <div className="absolute -right-24 -top-28 size-80 rounded-full bg-primary/25 blur-3xl" aria-hidden="true" />
+        <div className="absolute bottom-0 right-64 size-44 rounded-full bg-inverse-primary/10 blur-2xl" aria-hidden="true" />
+        <div className="relative grid grid-cols-[minmax(0,1fr)_22rem] items-end gap-12">
+          <div>
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-inverse-primary">
+              <Sparkles size={13} aria-hidden="true" />
+              Returns intelligence workspace
+            </span>
+            <h1 id="landing-heading" className="mt-5 max-w-3xl text-4xl font-semibold tracking-tight text-white">
+              Returns Platform
+            </h1>
+            <p className="mt-3 max-w-2xl text-base leading-7 text-rail-on-surface/70">
+              Move from customer intent to resolution with governed AI, connected operations,
+              and clear human decision points.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur">
+            <p className="flex items-center gap-2 text-xs font-semibold text-inverse-primary">
+              <ShieldCheck size={15} aria-hidden="true" />
+              Secure operator session
+            </p>
+            <p className="mt-3 truncate text-sm font-medium text-white" title={principal?.subject}>
+              {principal?.subject ?? "Authenticated operator"}
+            </p>
+            <p className="mt-1 text-xs text-rail-on-surface/60">
+              {visible.length} of {DOMAINS.length} workspaces available through your capabilities.
+            </p>
+          </div>
+        </div>
       </header>
 
+      <div className="mb-4 mt-9 flex items-end justify-between">
+        <div>
+          <p className="premium-kicker">Your access</p>
+          <h2 className="mt-1 text-xl font-semibold tracking-tight text-on-surface">
+            Choose a workspace
+          </h2>
+        </div>
+        <p className="text-xs text-on-surface-variant">
+          Each workspace keeps actions capability-gated and auditable.
+        </p>
+      </div>
+
       {visible.length === 0 ? (
-        <p className="mt-8 text-sm text-on-surface-variant">
+        <div className="premium-panel flex min-h-48 items-center justify-center px-8 text-sm text-on-surface-variant">
           Your account has not been granted access to any platform domain. Ask an
           administrator to review your roles.
-        </p>
+        </div>
       ) : (
-        <ul className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid grid-cols-4 gap-4">
           {visible.map((domain) => {
             const Icon = domain.icon;
             const pending = domain.status !== undefined;
@@ -57,26 +86,29 @@ export function PlatformLanding() {
               <li key={domain.path}>
                 <Link
                   href={domain.path}
-                  className="group flex h-full flex-col rounded-xl border border-outline-variant bg-surface-container-lowest p-5 transition hover:border-primary hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  className="group flex h-full min-h-64 flex-col rounded-2xl border border-outline-variant/80 bg-surface-container-lowest p-5 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-panel"
                 >
                   <span className="flex items-start justify-between gap-3">
-                    <span className="flex size-10 items-center justify-center rounded-lg bg-secondary-container text-primary">
-                      <Icon size={20} />
+                    <span className="flex size-11 items-center justify-center rounded-xl bg-secondary-container text-primary ring-1 ring-inset ring-primary/10">
+                      <Icon size={20} aria-hidden="true" />
                     </span>
                     {pending ? (
-                      <span className="rounded-full bg-tertiary-container px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-on-tertiary-container">
+                      <span className="rounded-full bg-tertiary-container px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-on-tertiary-container">
                         {domain.status}
                       </span>
-                    ) : null}
+                    ) : (
+                      <ArrowUpRight size={17} className="text-outline transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
+                    )}
                   </span>
-
-                  <span className="mt-4 block text-base font-semibold text-on-surface group-hover:text-primary">
+                  <span className="mt-5 block text-base font-semibold text-on-surface transition group-hover:text-primary">
                     {domain.name}
                   </span>
-                  <span className="mt-1 block text-sm text-on-surface-variant">
+                  <span className="mt-2 block text-sm leading-6 text-on-surface-variant">
                     {domain.purpose}
                   </span>
-                  <span className="mt-3 block text-xs text-outline">{domain.description}</span>
+                  <span className="mt-auto border-t border-outline-variant/70 pt-4 text-xs leading-5 text-outline">
+                    {domain.description}
+                  </span>
                 </Link>
               </li>
             );

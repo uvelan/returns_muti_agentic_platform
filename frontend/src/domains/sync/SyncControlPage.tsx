@@ -97,7 +97,7 @@ export function SyncControlPage() {
   const newest = (runs.data ?? []).at(0) ?? null;
 
   return (
-    <div className="grid h-[calc(100vh-3rem)] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+    <div className="grid h-[calc(100vh-8rem)] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
       <DomainRail>
         <RailSection title="Latest run">
           {runs.error !== null ? (

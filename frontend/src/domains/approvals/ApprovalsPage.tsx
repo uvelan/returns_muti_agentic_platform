@@ -121,7 +121,7 @@ export function ApprovalsPage() {
   }
 
   return (
-    <div className="grid h-[calc(100vh-3rem)] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+    <div className="grid h-[calc(100vh-8rem)] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
       {/*
         What the reviewer is currently looking at, and what they may do with it.
         The type breakdown is over the *fetched* queue rather than a second
