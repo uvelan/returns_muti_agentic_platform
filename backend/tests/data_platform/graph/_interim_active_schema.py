@@ -1,16 +1,36 @@
-"""Interim dynamic_knowledge ActiveSchema for sync_service.py's current domain.
+"""A hand-built ActiveSchema, kept only as test input.
 
-FROZEN -- superseded by the configured descriptor at
-``config/dynamic_knowledge/active-schema.return-order.yaml``.
+This was ``data_platform/graph/interim_active_schema.py``: production code that
+``sync_service.py`` stopped calling when it moved to
+``load_active_schema(settings.dynamic_knowledge_schema_path)``. It then sat in
+the shipped package for 36 KB with zero importers under ``backend/src``, which
+is what the audit records.
 
-``sync_service.py`` stopped calling this and now loads the configured schema, so
-the only remaining callers are this module's own tests. It is a *second* source
-binding written in Python -- four collection names and the database name
-``return_source`` as literals -- which is precisely the coupling the source
-binding work removes.
+It is not deleted, because it is not unused -- it is *input data* for two tests
+that exercise live production machinery:
 
-**Do not import this from production code.**
-``tests/test_frozen_modules_gain_no_new_callers.py`` enforces that.
+``test_interim_active_schema.py``
+    drives ``GenericSourceRecordExtractor``, ``GenericGraphProjector``,
+    ``compile_relationship_reconciliation``, ``required_node_constraints`` and
+    ``required_relationship_indexes`` over a realistically shaped schema.
+``test_sync_service_pipeline.py``
+    is the end-to-end ``GraphSyncService.sync()`` test, and ``GraphSyncService``
+    is very much live (``main.py:557``).
+
+The second one is written against *these* source ids -- ``sales_inventory`` and
+``customer_outbound`` -- and feeds ``customerOutboundCDM``/``salesInv``
+documents shaped for the field paths below. The shipped descriptor names its
+sources ``source_sales``/``source_customers`` and has the corrected field paths
+this module's notes describe as a later cutover, so pointing that test at the
+shipped YAML would not be a rename; it would need new fixture documents and
+would quietly turn its run-count assertions into assertions about nothing.
+
+So the schema moved to the test tree rather than being rewritten away. Being
+here is the enforcement that used to be a ``FROZEN`` entry in
+``tests/test_frozen_modules_gain_no_new_callers.py``: production cannot import
+it, because it is not on the production path at all.
+
+Everything below is unchanged from the frozen original.
 
 
 This is a bridge, not the destination: it matches sync_service.py's CURRENT

@@ -15,7 +15,8 @@ from unittest.mock import patch
 import pytest
 from bson import ObjectId
 
-from return_platform.data_platform.graph.interim_active_schema import build_interim_active_schema
+from _interim_active_schema import build_interim_active_schema
+
 from return_platform.data_platform.graph.sync_service import (
     GraphSyncRequest,
     GraphSyncScope,

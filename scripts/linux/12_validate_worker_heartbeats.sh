@@ -15,7 +15,6 @@ expected = {
     "return-workflow-worker",
     "return-orchestrator",
     "outbox-publisher",
-    "data-job-worker",
 }
 healthy = {card.get("id") for card in workers if card.get("status") == "HEALTHY"}
 missing = sorted(expected - healthy)

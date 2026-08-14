@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][ValidateSet("temporal","orchestrator","outbox","jobs","integration-outbox")][string]$Worker)
+param([Parameter(Mandatory=$true)][ValidateSet("temporal","orchestrator","outbox","integration-outbox")][string]$Worker)
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 . (Join-Path $Root "scripts\vault\export_runtime_vault_env.ps1")
@@ -6,7 +6,6 @@ $Scripts = @{
   temporal = "run_return_workflow_worker.py"
   orchestrator = "run_return_orchestrator.py"
   outbox = "run_outbox_publisher.py"
-  jobs = "run_data_job_worker.py"
 }
 Push-Location (Join-Path $Root "backend")
 try {

@@ -4,7 +4,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from return_platform.data_platform.graph.interim_active_schema import build_interim_active_schema
+from _interim_active_schema import build_interim_active_schema
+
 from return_platform.dynamic_knowledge.graph.constraints import (
     required_node_constraints,
     required_relationship_indexes,
