@@ -104,9 +104,10 @@ heartbeats use — not new names invented for adoption.
 reads from it. A release adopted by every worker and not by the API is exactly as
 split as the reverse.
 
-**`data-job-worker` is deliberately absent.** `compose.yaml` deployed it, but
-`scripts/run_data_job_worker.py` imported `return_platform.data_console`, which
-does not exist in this repository, so the container could never start. Listing a
+**`data-job-worker` is deliberately absent.** `compose.yaml` deployed it, but its
+launcher (`scripts/run_data_job_worker.py`, since deleted) imported
+`return_platform.data_console`, which does not exist in this repository, so the
+container could never start. Listing a
 class that can never report would make every release permanently not-live and
 turn a real signal into one operators learn to ignore. (The dead worker and its
 compose entry were subsequently removed; the note stands as the rule for adding a

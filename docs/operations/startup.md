@@ -147,7 +147,7 @@ Plus the `api` process. Those six are `REQUIRED_PROCESS_CLASSES` — the set a
 release must reach before `GET /api/config/adoption` reports `LIVE`.
 
 `data-job-worker` **no longer exists.** It was deployed by `compose.yaml` and could
-never start: `scripts/run_data_job_worker.py` imported
+never start: its launcher (`scripts/run_data_job_worker.py`, since deleted) imported
 `return_platform.data_console`, which does not exist in this repository. It is
 deliberately absent from `REQUIRED_PROCESS_CLASSES` for the same reason — listing a
 class that can never report would make every release permanently not-live and turn

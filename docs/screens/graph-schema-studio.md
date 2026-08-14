@@ -165,7 +165,7 @@ Graph migrations are checksum-tracked in `ConfigurationMigration` nodes.
 | `sources` and `data_assets` | Which sources an analysis may read | Hot |
 | Masking / retention policy | What is sampled and how it is tokenized. **Host-supplied through `masking_port`** — a second application composing this analyzer brings its own | Composition-level |
 | `AI_GATEWAY` routes | Which model reasons over the samples | Hot |
-| `graph` constraints/indexes | What a schema requires, derived by `graph/constraints.py` | Applied at activation |
+| `graph` constraints/indexes | What a schema requires, derived by `dynamic_knowledge/graph/constraints.py` | Applied at activation |
 
 ## Known constraints
 
