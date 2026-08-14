@@ -41,6 +41,12 @@ from return_platform.configuration.graph_repository import (
     InMemoryConfigurationGraphRepository,
     Neo4jConfigurationGraphRepository,
 )
+from return_platform.configuration.process_adoption import (
+    PROCESS_ADOPTIONS_COLLECTION,
+    MongoProcessAdoptionStore,
+    ProcessAdoptionStore,
+    adoption_record_from_snapshot,
+)
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
 from return_platform.configuration.runtime_integrations import (
     apply_graph_runtime_configuration,
@@ -472,6 +478,86 @@ async def run_runtime_activation_loop(
         await asyncio.sleep(interval_seconds)
 
 
+class AdoptionReportingState(Protocol):
+    """The three things a report is derived from.
+
+    Read-only, and structural, so the FastAPI process can report through its own
+    `app.state` without being given a second place to hold the snapshot it is
+    already serving from.
+    """
+
+    @property
+    def process_class(self) -> str: ...
+
+    @property
+    def instance_id(self) -> str: ...
+
+    @property
+    def return_configuration_snapshot(self) -> PinnedConfigurationSnapshot | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ApplicationAdoptionState:
+    """The API process's identity, reading its release off the live app state.
+
+    A snapshot copied in here would be the release the process had when the
+    reporter started, which is the one thing the report must never be.
+    """
+
+    process_class: str
+    instance_id: str
+    app_state: Any
+
+    @property
+    def return_configuration_snapshot(self) -> PinnedConfigurationSnapshot | None:
+        value = getattr(self.app_state, "return_configuration_snapshot", None)
+        return value if isinstance(value, PinnedConfigurationSnapshot) else None
+
+
+async def run_process_adoption_reporter(
+    state: AdoptionReportingState,
+    store: ProcessAdoptionStore,
+    *,
+    interval_seconds: float = 5.0,
+) -> None:
+    """Say, repeatedly, which release this process is actually serving (C5).
+
+    Repeatedly rather than once per activation, because the report has to expire.
+    A process that adopted a release and then died must stop counting towards
+    that release being live, and the only way silence reads as absence is if
+    presence has to be restated.
+
+    The release is read off the snapshot the process is serving, so there is no
+    way for the reported release and the served release to diverge. A failure
+    here is logged and retried: a process that cannot reach Mongo for a moment
+    is behind on saying what it runs, which is not a reason to stop running it.
+    """
+
+    while True:
+        try:
+            snapshot = state.return_configuration_snapshot
+            if snapshot is not None:
+                await store.report(
+                    adoption_record_from_snapshot(
+                        process_class=state.process_class,
+                        instance_id=state.instance_id,
+                        snapshot=snapshot,
+                    ),
+                    ttl_seconds=max(1, int(interval_seconds)),
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                "runtime_configuration_adoption_report_failed",
+                extra={
+                    "error_type": type(exc).__name__,
+                    "process_class": state.process_class,
+                },
+            )
+        await asyncio.sleep(interval_seconds)
+
+
 @dataclass(frozen=True, slots=True)
 class WorkerRuntimeActivation:
     """A worker's activator, the state it activates into, and its own driver."""
@@ -479,6 +565,36 @@ class WorkerRuntimeActivation:
     state: ProcessRuntimeState
     activator: RuntimeConfigurationActivator
     owned_driver: AsyncDriver | None
+    adoption_store: ProcessAdoptionStore | None = None
+    refresh_interval_seconds: float = 5.0
+
+    def start(self) -> tuple[asyncio.Task[None], ...]:
+        """Start reconciling and reporting. Both, or the process is half-wired.
+
+        A process that adopts without reporting cannot be told apart from one
+        that never adopted, and a release would sit at ACTIVATING forever with
+        nothing wrong. Started together so a worker cannot wire one and forget
+        the other.
+        """
+
+        tasks: list[asyncio.Task[None]] = [
+            asyncio.create_task(
+                run_runtime_activation_loop(
+                    self.activator, interval_seconds=self.refresh_interval_seconds
+                )
+            )
+        ]
+        if self.adoption_store is not None:
+            tasks.append(
+                asyncio.create_task(
+                    run_process_adoption_reporter(
+                        self.state,
+                        self.adoption_store,
+                        interval_seconds=self.refresh_interval_seconds,
+                    )
+                )
+            )
+        return tuple(tasks)
 
     async def aclose(self) -> None:
         """Close only a driver this helper opened; a supplied one is the caller's."""
@@ -547,6 +663,13 @@ async def build_worker_runtime_activation(
         mongo=mongo,
         source_mongo=source_mongo,
     )
+    adoption_store: ProcessAdoptionStore | None = None
+    if mongo is not None:
+        store = MongoProcessAdoptionStore(
+            mongo[settings.mongo_database][PROCESS_ADOPTIONS_COLLECTION]
+        )
+        await store.ensure_indexes()
+        adoption_store = store
     activator = RuntimeConfigurationActivator(
         app_state=state,
         repository=repository,
@@ -560,4 +683,10 @@ async def build_worker_runtime_activation(
         refresh_interval_seconds=refresh_interval_seconds,
         participants=participants,
     )
-    return WorkerRuntimeActivation(state=state, activator=activator, owned_driver=owned_driver)
+    return WorkerRuntimeActivation(
+        state=state,
+        activator=activator,
+        owned_driver=owned_driver,
+        adoption_store=adoption_store,
+        refresh_interval_seconds=refresh_interval_seconds,
+    )

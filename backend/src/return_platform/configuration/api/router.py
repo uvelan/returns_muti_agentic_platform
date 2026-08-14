@@ -42,6 +42,10 @@ from return_platform.configuration.api.secrets import redact_secret_values
 from return_platform.configuration.api.sources import SourceDetail, SourceItem
 from return_platform.configuration.api.sources import get_source as console_get_source
 from return_platform.configuration.api.sources import get_sources as console_get_sources
+from return_platform.configuration.process_adoption import (
+    MongoProcessAdoptionStore,
+    evaluate_release_adoption,
+)
 from return_platform.security.authorization import require_read_roles, require_write_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
@@ -79,6 +83,41 @@ async def get_runtime_configuration(
             detail="Runtime configuration is not loaded",
         )
     return _ok(request, snapshot.model_dump(mode="json"))
+
+
+@router.get("/adoption", response_model=APIResponse[dict[str, Any]])
+async def get_release_adoption(
+    request: Request,
+    _user_id: str = Depends(require_read_roles),
+) -> APIResponse[Any]:
+    """`ACTIVATED != LIVE` -- which processes are actually running the release.
+
+    Promoting a release moves the graph pointer and nothing else; the API
+    process, the workers and the model the Order Agent calls each adopt on their
+    own poll. Until every required process class has reported the activated
+    revision the platform is running two releases at once, and this is the
+    endpoint that says so rather than leaving an operator to assume otherwise.
+
+    Activated is read from the graph, not from `app.state`: this process is one
+    of the adopters, so answering from its own snapshot would make it
+    structurally unable to report itself as behind.
+    """
+    repository = resolve_configuration_repository(request)
+    store = getattr(request.app.state, "process_adoption_store", None)
+    if not isinstance(store, MongoProcessAdoptionStore):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Process adoption reporting is unavailable",
+        )
+    active_release = await repository.get_active_release()
+    state = evaluate_release_adoption(
+        activated_release_id=active_release.release_id if active_release is not None else None,
+        activated_head_revision=(
+            await repository.get_head_revision() if active_release is not None else None
+        ),
+        records=await store.list_live(),
+    )
+    return _ok(request, state.model_dump(mode="json"))
 
 
 # --- releases ---------------------------------------------------------------

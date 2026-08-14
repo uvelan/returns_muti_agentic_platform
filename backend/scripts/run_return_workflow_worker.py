@@ -24,10 +24,7 @@ from neo4j import AsyncGraphDatabase
 from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
-from return_platform.configuration.runtime_activation import (
-    build_worker_runtime_activation,
-    run_runtime_activation_loop,
-)
+from return_platform.configuration.runtime_activation import build_worker_runtime_activation
 from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
 from return_platform.configuration.runtime_loader import resolve_process_configuration
 from return_platform.data_platform.graph.sync_service import MongoTargetedSyncRunLedger
@@ -201,8 +198,7 @@ async def _run() -> None:
 
         heartbeat_task = asyncio.create_task(heartbeat())
         recovery_task = asyncio.create_task(case_recovery.run_forever())
-        activation_task = asyncio.create_task(run_runtime_activation_loop(activation.activator))
-        background = (heartbeat_task, recovery_task, activation_task)
+        background = (heartbeat_task, recovery_task, *activation.start())
         try:
             await worker.run()
         finally:

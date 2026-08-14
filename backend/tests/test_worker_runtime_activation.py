@@ -882,7 +882,10 @@ def test_every_deployed_worker_runs_the_reconciler() -> None:
         assert "build_worker_runtime_activation" in called, (
             f"{name} never builds a runtime activator; its configuration freezes at startup"
         )
-        assert "run_runtime_activation_loop" in called, (
+        # `WorkerRuntimeActivation.start()` launches the reconcile loop and the
+        # adoption reporter together (CFG-02); a worker that builds an activator
+        # and never starts it has one that nothing calls `refresh()` on.
+        assert "start" in called, (
             f"{name} builds an activator and never drives it; nothing calls refresh()"
         )
 
