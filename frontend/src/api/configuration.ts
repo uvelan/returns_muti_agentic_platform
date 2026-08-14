@@ -69,7 +69,6 @@ export type ConfigurationRelease = {
 
 export type RuntimeSnapshot = Readonly<Record<string, unknown>>;
 
-export type ConfiguredSource = Readonly<Record<string, unknown>>;
 export type AuditRecord = Readonly<Record<string, unknown>>;
 
 async function unwrap<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -85,7 +84,10 @@ export const configApi = {
   releases: () => unwrap<ConfigurationRelease[]>("/api/config/releases"),
   release: (releaseId: string) =>
     unwrap<ConfigurationRelease>(`/api/config/releases/${releaseId}`),
-  sources: () => unwrap<ConfiguredSource[]>("/api/config/sources"),
+  // `/api/config/sources` is not here. It moved to `api/dataSources.ts`, typed
+  // against `SourceItem` / `SourceDetail`, when Data Sources stopped being a
+  // configuration tab -- one untyped `Record<string, unknown>` reader for it
+  // was what made the old tab a JSON viewer instead of a screen.
   audit: () => unwrap<AuditRecord[]>("/api/config/audit"),
 
   /**

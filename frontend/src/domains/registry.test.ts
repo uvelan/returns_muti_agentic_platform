@@ -1,18 +1,29 @@
 import { describe, expect, it } from "vitest";
 
-import { DOMAINS, DOMAIN_PATHS, isDomainPath, LANDING_PATH } from "./registry";
+import { CONFIG_SECTIONS, DOMAINS, DOMAIN_PATHS, isDomainPath, LANDING_PATH } from "./registry";
 
 describe("the domain registry", () => {
   it("declares exactly the canonical domains", () => {
     expect([...DOMAIN_PATHS].sort()).toEqual([
       "/ai",
+      "/approvals",
       "/config",
+      "/data-sources",
       "/graph-schema",
       "/operations",
       "/returns",
       "/support",
       "/sync",
     ]);
+  });
+
+  it("keeps Data Sources a domain rather than a configuration section", () => {
+    // It was a `/config` tab, which made the platform's whole source surface a
+    // nested selection inside a screen about releases. Asserted from both ends
+    // so restoring the tab -- and thereby giving the platform two source
+    // screens -- fails here rather than in review.
+    expect(DOMAIN_PATHS).toContain("/data-sources");
+    expect([...CONFIG_SECTIONS]).not.toContain("Data Sources");
   });
 
   it("treats the launcher as in-shell, and it is not itself a domain", () => {
@@ -47,8 +58,14 @@ describe("the domain registry", () => {
     // reason: the capability they would want does not exist yet, and gating on
     // an invented one the backend never grants would hide the domain from
     // everyone. Operations has no backend of its own; Support is a distinct
-    // *role* that has no `support.*` capability to be granted. Both are named
-    // so that a third, accidental collision still fails.
+    // *role* that has no `support.*` capability to be granted.
+    //
+    // The third is different and is not a workaround. Data Sources and Source
+    // Sync both ask `config.source.read` because both are literally the
+    // question that capability names -- "may this person see how the platform
+    // reads its sources". Splitting it would mean inventing a capability the
+    // backend does not grant in order to express a distinction nobody has.
+    // All three are named so a fourth, accidental collision still fails.
     const shared = new Map<string, string[]>();
     for (const domain of DOMAINS) {
       shared.set(domain.requires, [...(shared.get(domain.requires) ?? []), domain.path]);
@@ -62,6 +79,7 @@ describe("the domain registry", () => {
 
     expect(collisions).toEqual([
       "config.runtime.read: /config, /operations",
+      "config.source.read: /data-sources, /sync",
       "returns.session.read: /returns, /support",
     ]);
   });

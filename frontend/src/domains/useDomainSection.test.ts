@@ -19,7 +19,15 @@ describe("the section a domain screen renders", () => {
 
   it("comes from the URL", () => {
     expect(at("/config/releases")).toBe("Releases");
-    expect(at("/config/data-sources")).toBe("Data Sources");
+    expect(at("/config/integrations")).toBe("Integrations");
+  });
+
+  it("does not resurrect the section Data Sources used to be", () => {
+    // It is the `/data-sources` domain now. A bookmark to the old tab lands on
+    // the first section rather than on a blank body, which is the same fallback
+    // any renamed slug gets -- there is nothing special about this one except
+    // that it is the slug people will actually still have saved.
+    expect(at("/config/data-sources")).toBe("Overview");
   });
 
   it("falls back to the first section at the bare domain path", () => {

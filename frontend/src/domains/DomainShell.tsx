@@ -37,6 +37,12 @@ const DOMAIN_SCREENS: Partial<Record<string, ComponentType>> = {
   "/sync": lazy(() =>
     import("./sync/SyncControlPage").then((m) => ({ default: m.SyncControlPage })),
   ),
+  "/approvals": lazy(() =>
+    import("./approvals/ApprovalsPage").then((m) => ({ default: m.ApprovalsPage })),
+  ),
+  "/data-sources": lazy(() =>
+    import("./data-sources/DataSourcesPage").then((m) => ({ default: m.DataSourcesPage })),
+  ),
 };
 
 /**

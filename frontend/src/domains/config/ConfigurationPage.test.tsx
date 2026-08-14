@@ -195,14 +195,18 @@ describe("Configuration tabs D3 backed", () => {
     mocks.audit.mockResolvedValue([{ action: "PROMOTE_RELEASE" }]);
   });
 
-  it("reads sources through the canonical route", async () => {
+  it("no longer serves data sources, and does not read them", async () => {
+    // Data Sources is the `/data-sources` domain now. The old slug is a stale
+    // bookmark: `useDomainSection` resolves an unrecognised one to the first
+    // section, so it lands on Overview rather than on a blank screen -- and
+    // nothing here calls the sources route any more, which is what stops this
+    // screen from being a second, worse source viewer.
     goToSection("/config", "data-sources");
     render(<ConfigurationPage />, { wrapper });
 
-    await waitFor(() => {
-      expect(mocks.sources).toHaveBeenCalled();
-    });
-    expect(await screen.findByText(/mongo_main/)).toBeInTheDocument();
+    await screen.findByText("Runtime snapshot");
+    expect(mocks.sources).not.toHaveBeenCalled();
+    expect(screen.queryByText(/mongo_main/)).toBeNull();
   });
 
   it("reads audit through the canonical route", async () => {
