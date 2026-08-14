@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+from return_platform.configuration.return_configuration import load_return_configuration
 from return_platform.operations.production_event_authorization import (
     PLATFORM_SERVICE_ROLES,
     ROLES_ALLOWED_TO_RECORD,
@@ -51,6 +52,27 @@ def _support_action(action: SupportAction, **overrides: object) -> SupportAction
         expectedVersion=1,
         reason="because the test says so",
         **overrides,  # type: ignore[arg-type]
+    )
+
+
+#: The operator's answer, read from the configuration the platform boots from
+#: rather than restated here. CFG-03 moved this vocabulary out of Python because
+#: it varies with the return-method catalogue; a test carrying its own copy would
+#: pass while the shipped configuration said something else.
+_CONFIGURED_BOL_TYPES = load_return_configuration(
+    Path("config/returns/production.yaml")
+).configuration.return_policy.bol_tendering_instruction_types
+
+
+def _planned(
+    action: SupportAction,
+    *,
+    bol_types: tuple[str, ...] | None = None,
+    **overrides: object,
+) -> tuple[ProductionReturnEventType, ...]:
+    return production_events_for_support_action(
+        _support_action(action, **overrides),
+        bol_tendering_instruction_types=(_CONFIGURED_BOL_TYPES if bol_types is None else bol_types),
     )
 
 
@@ -171,9 +193,7 @@ def test_return_support_may_tender_a_bol() -> None:
 
 
 def test_recording_ltl_shipping_instructions_emits_two_events() -> None:
-    planned = production_events_for_support_action(
-        _support_action(SupportAction.RECORD_SHIPPING_INSTRUCTIONS, shippingInstructionType="LTL")
-    )
+    planned = _planned(SupportAction.RECORD_SHIPPING_INSTRUCTIONS, shippingInstructionType="LTL")
     assert planned == (
         ProductionReturnEventType.SHIPPING_INSTRUCTIONS_ISSUED,
         ProductionReturnEventType.BOL_TENDERED,
@@ -181,27 +201,60 @@ def test_recording_ltl_shipping_instructions_emits_two_events() -> None:
 
 
 def test_recording_parcel_shipping_instructions_emits_one() -> None:
-    planned = production_events_for_support_action(
-        _support_action(
-            SupportAction.RECORD_SHIPPING_INSTRUCTIONS, shippingInstructionType="PARCEL"
-        )
-    )
+    planned = _planned(SupportAction.RECORD_SHIPPING_INSTRUCTIONS, shippingInstructionType="PARCEL")
     assert planned == (ProductionReturnEventType.SHIPPING_INSTRUCTIONS_ISSUED,)
 
 
 def test_instruction_type_matching_is_case_insensitive() -> None:
     """The router lower-cased nothing and upper-cased once; a mixed-case value
     from a client must not decide whether a BOL is tendered."""
-    planned = production_events_for_support_action(
-        _support_action(
-            SupportAction.RECORD_SHIPPING_INSTRUCTIONS, shippingInstructionType="Branch_Ltl"
-        )
+    planned = _planned(
+        SupportAction.RECORD_SHIPPING_INSTRUCTIONS, shippingInstructionType="Branch_Ltl"
     )
     assert ProductionReturnEventType.BOL_TENDERED in planned
 
 
+def test_a_freight_method_the_operator_adds_tenders_a_bol() -> None:
+    """CFG-03. The set was a frozenset in `return_support/service.py`.
+
+    So an operator adding a freight return method through the Control Centre got
+    a release, an activated snapshot, and no `BOL_TENDERED` event -- the
+    authorization check and the recording both consulted a Python constant that
+    had never heard of it, and nothing failed to say so.
+    """
+    planned = _planned(
+        SupportAction.RECORD_SHIPPING_INSTRUCTIONS,
+        bol_types=(*_CONFIGURED_BOL_TYPES, "OFFSITE_FREIGHT"),
+        shippingInstructionType="OFFSITE_FREIGHT",
+    )
+    assert ProductionReturnEventType.BOL_TENDERED in planned
+
+
+def test_a_freight_method_the_operator_removes_stops_tendering_one() -> None:
+    """Both directions, because the check and the act read one list.
+
+    A policy that could only grow would leave a withdrawn instruction type still
+    emitting a production event the operator has said it does not produce.
+    """
+    planned = _planned(
+        SupportAction.RECORD_SHIPPING_INSTRUCTIONS,
+        bol_types=("BOL",),
+        shippingInstructionType="LTL",
+    )
+    assert planned == (ProductionReturnEventType.SHIPPING_INSTRUCTIONS_ISSUED,)
+
+
+def test_the_bol_vocabulary_is_no_longer_a_python_constant() -> None:
+    """The realistic regression is someone reintroducing the frozenset as a
+    fallback for an absent policy, which restores the silent drop it replaced."""
+    source = (_SRC / "operations" / "return_support" / "service.py").read_text(encoding="utf-8")
+
+    assert "_BOL_TENDERING_INSTRUCTION_TYPES" not in source
+    assert "HEAVY_TRUCK_PICKUP" not in source
+
+
 def test_a_bookkeeping_action_records_no_workflow_event() -> None:
-    assert production_events_for_support_action(_support_action(SupportAction.ASSIGN)) == ()
+    assert _planned(SupportAction.ASSIGN) == ()
 
 
 def test_unauthorized_events_for_reports_only_the_refused_ones() -> None:

@@ -402,6 +402,20 @@ class ReturnPolicyConfiguration(StrictConfigModel):
     photo_required_reason_codes: tuple[NonBlank, ...]
     supported_product_presence: tuple[NonBlank, ...] = Field(min_length=1)
     normalized_return_methods: tuple[NonBlank, ...] = Field(min_length=1)
+    #: Which shipping instruction types tender a bill of lading, and therefore
+    #: make `RECORD_SHIPPING_INSTRUCTIONS` emit `BOL_TENDERED` as well as
+    #: `SHIPPING_INSTRUCTIONS_ISSUED`.
+    #:
+    #: Configuration because it varies with the method catalogue above: an
+    #: operator who adds a freight return method through the Control Centre has
+    #: decided something about whether it tenders a BOL, and a hardcoded set
+    #: would answer "no" for every method it had never heard of -- silently
+    #: dropping a production event rather than failing.
+    #:
+    #: No Python default. A fallback here would be the same hardcoded vocabulary
+    #: in a second place, reachable exactly when the operator's answer is
+    #: missing, which is when guessing is least defensible.
+    bol_tendering_instruction_types: tuple[NonBlank, ...]
     rga_required_product_resolutions: tuple[NonBlank, ...]
     heavy_pickup_required_fields: tuple[NonBlank, ...] = Field(min_length=1)
     branch_staging: BranchStagingConfiguration

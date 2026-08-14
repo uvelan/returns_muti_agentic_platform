@@ -9143,10 +9143,16 @@
             "title": "Associatereference"
           },
           "assumptionSetVersion": {
-            "default": "FERGUSON-RETURN-ASSUMPTIONS-1.0",
-            "maxLength": 128,
-            "title": "Assumptionsetversion",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assumptionsetversion"
           },
           "branchReference": {
             "anyOf": [
@@ -9296,7 +9302,7 @@
           },
           "shippingPathExpectation": {
             "default": "UNKNOWN",
-            "pattern": "^(PPL|BOL|CUSTOMER_SHIP|NO_LABEL|DIRECT_VENDOR|FIELD_SCRAP|PREPAID_PARCEL|BRANCH_UPS|BRANCH_LTL|OFFSITE_PARCEL|OFFSITE_LTL|NO_PHYSICAL_RETURN|CUSTOMER_KEEP|UNKNOWN)$",
+            "maxLength": 64,
             "title": "Shippingpathexpectation",
             "type": "string"
           },
@@ -10226,9 +10232,15 @@
             "title": "Associatereference"
           },
           "assumptionSetVersion": {
-            "default": "FERGUSON-RETURN-ASSUMPTIONS-1.0",
-            "title": "Assumptionsetversion",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assumptionsetversion"
           },
           "bayReference": {
             "anyOf": [

@@ -173,11 +173,26 @@ async def apply_action(
     actor: str = Depends(require_support_roles),
 ) -> APIResponse[SupportWorkItemView]:
     roles = actor_roles(request)
-    #: Every workflow event this action will record, derived from the payload
-    #: alone so the whole set can be authorized before the work item is mutated.
-    #: A 403 raised after `apply_action` would leave the support record advanced
-    #: and the workflow un-signalled.
-    planned_events = production_events_for_support_action(payload)
+    #: Every workflow event this action will record, derived from the payload and
+    #: the active policy so the whole set can be authorized before the work item
+    #: is mutated. A 403 raised after `apply_action` would leave the support
+    #: record advanced and the workflow un-signalled.
+    #:
+    #: Resolved once, here, and reused for the recording below -- the same
+    #: `planned_events` tuple decides both, so the check and the act cannot read
+    #: different policies even if a release lands mid-request. An absent
+    #: configuration yields no BOL event *and* skips the whole recording block
+    #: further down, so the two stay consistent rather than one half acting on a
+    #: policy the other could not read.
+    loaded = getattr(request.app.state, "return_configuration", None)
+    planned_events = production_events_for_support_action(
+        payload,
+        bol_tendering_instruction_types=(
+            loaded.configuration.return_policy.bol_tendering_instruction_types
+            if isinstance(loaded, LoadedReturnConfiguration)
+            else ()
+        ),
+    )
     refused = unauthorized_events_for(event_types=planned_events, actor_roles=roles)
     if refused:
         raise HTTPException(
@@ -200,7 +215,6 @@ async def apply_action(
         raise HTTPException(status_code=422, detail=str(error)) from error
     event_type = planned_events[0] if planned_events else None
     resources = getattr(request.app.state, "resources", None)
-    loaded = getattr(request.app.state, "return_configuration", None)
     if (
         event_type is not None
         # A case thread has no session, so there is no session-scoped

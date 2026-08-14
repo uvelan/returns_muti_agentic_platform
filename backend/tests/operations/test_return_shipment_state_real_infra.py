@@ -163,6 +163,9 @@ def _update(
         tracking_reference=tracking or f"TRK-{rma}",
         shipment_status=status,
         status_at=at,
+        # Stated rather than defaulted: `tracking_type` lost its `"PPL"` default in
+        # CFG-03 because a ship-via is observed, never assumed.
+        tracking_type="PPL",
         carrier_code="UPS",
         shipment_details=details,
     )

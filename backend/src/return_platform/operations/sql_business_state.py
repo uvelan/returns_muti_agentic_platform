@@ -85,8 +85,14 @@ class ShipmentUpdate:
     tracking_reference: str
     shipment_status: str
     status_at: datetime
+    #: Required, not defaulted (CFG-03). It is not configuration -- the vocabulary
+    #: is `CK_return_tracking_type`, a database constraint, and which ship-via a
+    #: parcel travelled under is a property of that parcel rather than of the
+    #: deployment. It is not a default either: `"PPL"` silently filed a BOL
+    #: freight movement as a parcel, and no reader downstream could tell the value
+    #: had been assumed rather than observed.
+    tracking_type: str
     carrier_code: str | None = None
-    tracking_type: str = "PPL"
     shipment_details: str | None = None
 
 

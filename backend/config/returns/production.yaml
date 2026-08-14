@@ -836,6 +836,21 @@ return_policy:
     - NO_PHYSICAL_RETURN
     - CUSTOMER_KEEP
     - UNKNOWN
+  # Which shipping instruction types tender a bill of lading. Recording
+  # shipping instructions of one of these types emits BOL_TENDERED alongside
+  # SHIPPING_INSTRUCTIONS_ISSUED, and the same set decides what the acting role
+  # has to be authorized for -- the check and the act read one list.
+  #
+  # Carries both the instruction-type vocabulary Support uses (LTL, BOL,
+  # HEAVY_TRUCK_PICKUP) and the normalized return methods above that are
+  # freight (BRANCH_LTL, OFFSITE_LTL), because `shippingInstructionType` is
+  # populated from either.
+  bol_tendering_instruction_types:
+    - LTL
+    - BOL
+    - BRANCH_LTL
+    - OFFSITE_LTL
+    - HEAVY_TRUCK_PICKUP
   rga_required_product_resolutions:
     - RTV
   heavy_pickup_required_fields:

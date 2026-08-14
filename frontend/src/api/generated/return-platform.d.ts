@@ -5929,11 +5929,8 @@ export interface components {
         ReturnCreateRequest: {
             /** Associatereference */
             associateReference?: string | null;
-            /**
-             * Assumptionsetversion
-             * @default FERGUSON-RETURN-ASSUMPTIONS-1.0
-             */
-            assumptionSetVersion: string;
+            /** Assumptionsetversion */
+            assumptionSetVersion?: string | null;
             /** Branchreference */
             branchReference?: string | null;
             /**
@@ -6328,11 +6325,8 @@ export interface components {
             approvedReturnMethod?: string | null;
             /** Associatereference */
             associateReference?: string | null;
-            /**
-             * Assumptionsetversion
-             * @default FERGUSON-RETURN-ASSUMPTIONS-1.0
-             */
-            assumptionSetVersion: string;
+            /** Assumptionsetversion */
+            assumptionSetVersion?: string | null;
             /** Bayreference */
             bayReference?: string | null;
             /** Branchreference */
