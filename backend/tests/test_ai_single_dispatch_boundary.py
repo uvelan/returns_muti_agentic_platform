@@ -1098,7 +1098,7 @@ async def _reasoning_prefix_probe() -> tuple[list[str], list[str]]:
             graph_generation_id="generation-1",
             configuration_release_id="release-1",
             policy_version="p1",
-            prompt_version="dynamic-order-agent-reasoning-v12",
+            prompt_version="dynamic-order-agent-reasoning-v13",
             compact_schema={"entities": {"sales_order": {"fields": {}}}},
             conversation_state={},
             transcript=tuple({"role": "associate", "text": f"m{i}"} for i in range(turn)),
@@ -1194,4 +1194,72 @@ async def test_no_per_turn_value_is_copied_into_the_system_prompt() -> None:
     assert addendum_at > _shared_prefix_length(prompts) - 32, (
         "the turn's as-of instant has moved out of the trailing addendum and "
         "into the body of the prompt"
+    )
+
+
+# --------------------------------------------------------------------------
+# The prompt and the payload have to agree about names
+# --------------------------------------------------------------------------
+
+
+def test_every_context_path_the_prompt_names_exists_in_the_turn_context() -> None:
+    """The reasoning prompt navigates `contextJson` by path, and nothing checked
+    that the paths were real.
+
+    `ORDER_AGENT_REASONING_V1` names six blocks -- the compact schema's strong
+    anchors, the captured facts, the suggested discriminators, the transcript,
+    the identification catalogue and the order-search cache -- and the model can
+    only follow an instruction to a block it can find. `AgentTurnContext`
+    declares no alias generator and `model_gateway` dumps it with
+    `model_dump(mode="json")` and no `by_alias`, so every top-level key in
+    `contextJson` is the field name verbatim, in snake_case.
+
+    This found one: the prompt said `contextJson.conversationState.orderSearchCache`
+    while the field is `conversation_state`, so the paragraph teaching the agent
+    to serve "show next" from the cached page pointed at a key that is not in the
+    document. The camelCase names elsewhere in the prompt are legitimate -- they
+    are dict keys built inside `compact_schema` and `orderSearchCache`, not model
+    fields -- which is exactly why a reader does not catch this by eye.
+    """
+    import re
+
+    from return_platform.dynamic_knowledge.order_agent.contracts import AgentTurnContext
+
+    task = load_ai_gateway_configuration(CONFIG).configuration.tasks["ORDER_AGENT_REASONING_V1"]
+    named = {
+        match.split(".")[1]
+        for match in re.findall(r"contextJson\.[A-Za-z_][A-Za-z0-9_.]*", task.systemPrompt)
+    }
+
+    # Liveness: the prompt genuinely does navigate by path, so a regex that
+    # stopped matching would otherwise leave this passing on an empty set.
+    assert len(named) >= 5, f"the contextJson path scan found only {named}"
+
+    unknown = sorted(name for name in named if name not in AgentTurnContext.model_fields)
+    assert unknown == [], (
+        f"the reasoning prompt sends the model to contextJson keys that do not "
+        f"exist: {unknown}. Available: {sorted(AgentTurnContext.model_fields)}"
+    )
+
+
+def test_the_prompt_names_the_catalogue_that_makes_a_new_field_reachable() -> None:
+    """C6's model-facing half, stated in the prompt rather than left to inference.
+
+    Adding the tenth identification field requires zero Python edits, and it
+    requires zero *prompt* edits because the field describes itself to the model
+    through `contextJson.identification_fields` -- intent key, label, aliases,
+    whether any search can use it, and how much it is worth asking for.
+
+    That worked, and the prompt had never mentioned the block. It enumerated this
+    deployment's shipped signal names in prose instead, so a newly configured
+    field reached the model as an unannounced entry in an unnamed part of the
+    context and was used by inference. Naming the block, and saying it wins over
+    the enumerated names, is what makes the guarantee something the model was
+    told rather than something it worked out.
+    """
+    task = load_ai_gateway_configuration(CONFIG).configuration.tasks["ORDER_AGENT_REASONING_V1"]
+    assert "contextJson.identification_fields" in task.systemPrompt
+    assert "intentKey" in task.systemPrompt, (
+        "the prompt names the catalogue but not the key the model must populate "
+        "from it, which is the half that turns it into an instruction"
     )
