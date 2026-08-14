@@ -429,8 +429,15 @@ services:
     profiles: ["containerized-app"]
     <<: *backend-base
     command: ["uvicorn", "return_platform.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+    # Overridable for the same reason as Neo4j's: WinNAT/Hyper-V reserves TCP
+    # ranges dynamically and the set GROWS. On this dev host it reached
+    # 7979-8078, which contains 8000, so `--profile containerized-app` failed to
+    # start the API with "An attempt was made to access a socket in a way
+    # forbidden by its access permissions". Set BACKEND_PORT in a local `.env`.
+    # Only the host mapping moves -- the container listens on 8000, the
+    # healthcheck probes 8000, and the frontend proxies to http://backend:8000.
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
     depends_on:
       runtime-configuration-init:
         condition: service_completed_successfully
