@@ -1818,6 +1818,39 @@
         "title": "APIResponse[GraphSyncRunView]",
         "type": "object"
       },
+      "APIResponse_InventoryDetail_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InventoryDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[InventoryDetail]",
+        "type": "object"
+      },
       "APIResponse_MigrationPlan_": {
         "additionalProperties": false,
         "properties": {
@@ -7146,6 +7179,71 @@
           "responseText"
         ],
         "title": "InterceptionAnswer",
+        "type": "object"
+      },
+      "InventoryDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "title": "Assetid",
+            "type": "string"
+          },
+          "capability": {
+            "title": "Capability",
+            "type": "string"
+          },
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "operations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Operations",
+            "type": "array"
+          },
+          "ownership": {
+            "title": "Ownership",
+            "type": "string"
+          },
+          "recordCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recordcount"
+          },
+          "schemaVersion": {
+            "title": "Schemaversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId",
+          "engine",
+          "name",
+          "ownership",
+          "capability",
+          "recordCount",
+          "schemaVersion",
+          "operations",
+          "metadata"
+        ],
+        "title": "InventoryDetail",
         "type": "object"
       },
       "InventoryTotals": {
@@ -14289,6 +14387,58 @@
           }
         },
         "summary": "Get Configured Source",
+        "tags": [
+          "Configuration"
+        ]
+      }
+    },
+    "/api/config/sources/{source_id}/assets/{asset_id}": {
+      "get": {
+        "description": "One asset's schema: its fields, ownership, and what may be done to it.\n\n`metadata.fields` is the point -- it is the only place the platform publishes\nwhat columns or keys an asset actually carries, and until this route existed\nit was reachable only through `/data-console/v1/inventory/{engine}/{asset_id}`,\nwhich Wave F1 unmounted deliberately and\n`test_no_versioned_data_console_path_is_mounted` keeps unmounted. Delegated\nrather than reimplemented, exactly like the two reads above.\n\n**Keyed by source, not by engine.** The console navigates from a source to\nits assets, and a source owns a definite set of them; the console handler\ntakes an engine because it predates the nesting. Resolving containment here\nmeans an asset that exists in the registry but does not belong to the named\nsource is a 404 rather than a successful read through a path that claims a\nrelationship it does not have -- and it makes the engine argument derivable\nfrom the asset instead of something a caller could get wrong.",
+        "operationId": "get_configured_source_asset_api_config_sources__source_id__assets__asset_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_InventoryDetail_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Configured Source Asset",
         "tags": [
           "Configuration"
         ]

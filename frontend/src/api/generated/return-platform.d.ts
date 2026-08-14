@@ -613,6 +613,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/config/sources/{source_id}/assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Configured Source Asset
+         * @description One asset's schema: its fields, ownership, and what may be done to it.
+         *
+         *     `metadata.fields` is the point -- it is the only place the platform publishes
+         *     what columns or keys an asset actually carries, and until this route existed
+         *     it was reachable only through `/data-console/v1/inventory/{engine}/{asset_id}`,
+         *     which Wave F1 unmounted deliberately and
+         *     `test_no_versioned_data_console_path_is_mounted` keeps unmounted. Delegated
+         *     rather than reimplemented, exactly like the two reads above.
+         *
+         *     **Keyed by source, not by engine.** The console navigates from a source to
+         *     its assets, and a source owns a definite set of them; the console handler
+         *     takes an engine because it predates the nesting. Resolving containment here
+         *     means an asset that exists in the registry but does not belong to the named
+         *     source is a 404 rather than a successful read through a path that claims a
+         *     relationship it does not have -- and it makes the engine argument derivable
+         *     from the asset instead of something a caller could get wrong.
+         */
+        get: operations["get_configured_source_asset_api_config_sources__source_id__assets__asset_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/graph-schema/analyses": {
         parameters: {
             query?: never;
@@ -3392,6 +3427,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[InventoryDetail] */
+        APIResponse_InventoryDetail_: {
+            data?: components["schemas"]["InventoryDetail"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[MigrationPlan] */
         APIResponse_MigrationPlan_: {
             data?: components["schemas"]["MigrationPlan"] | null;
@@ -5144,6 +5185,29 @@ export interface components {
         InterceptionAnswer: {
             /** Responsetext */
             responseText: string;
+        };
+        /** InventoryDetail */
+        InventoryDetail: {
+            /** Assetid */
+            assetId: string;
+            /** Capability */
+            capability: string;
+            /** Engine */
+            engine: string;
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Operations */
+            operations: string[];
+            /** Ownership */
+            ownership: string;
+            /** Recordcount */
+            recordCount: number | null;
+            /** Schemaversion */
+            schemaVersion: string;
         };
         /** InventoryTotals */
         InventoryTotals: {
@@ -8136,6 +8200,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_SourceDetail_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_configured_source_asset_api_config_sources__source_id__assets__asset_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_InventoryDetail_"];
                 };
             };
             /** @description Validation Error */

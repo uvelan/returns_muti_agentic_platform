@@ -39,14 +39,27 @@ from return_platform.configuration.api.releases import (
     promote_release_status as console_promote_release_status,
 )
 from return_platform.configuration.api.secrets import redact_secret_values
-from return_platform.configuration.api.sources import SourceDetail, SourceItem
+from return_platform.configuration.api.sources import (
+    InventoryDetail,
+    SourceDetail,
+    SourceItem,
+    source_definition,
+)
+from return_platform.configuration.api.sources import (
+    get_inventory_detail as console_get_inventory_detail,
+)
 from return_platform.configuration.api.sources import get_source as console_get_source
 from return_platform.configuration.api.sources import get_sources as console_get_sources
 from return_platform.configuration.process_adoption import (
     MongoProcessAdoptionStore,
     evaluate_release_adoption,
 )
-from return_platform.security.authorization import require_read_roles, require_write_roles
+from return_platform.security import capabilities
+from return_platform.security.authorization import (
+    require_capability,
+    require_read_roles,
+    require_write_roles,
+)
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 router = APIRouter(prefix="/api/config", tags=["Configuration"])
@@ -242,6 +255,58 @@ async def get_configured_source(
     _user_id: str = Depends(require_read_roles),
 ) -> APIResponse[Any]:
     return await console_get_source(source_id, request, _user_id)
+
+
+@router.get(
+    "/sources/{source_id}/assets/{asset_id}",
+    response_model=APIResponse[InventoryDetail],
+)
+async def get_configured_source_asset(
+    source_id: str,
+    asset_id: str,
+    request: Request,
+    # `config.source.read`, not `require_read_roles`. This is a new surface, so
+    # `require_capability` is the canonical dependency, and the capability maps
+    # to the console roles rather than to every principal that may read a return
+    # -- which is right for a read that hands back a source asset's whole field
+    # list. The two `/sources` reads above are older and still on the role group;
+    # narrowing them is a change to a shipped contract and belongs with whoever
+    # owns that consolidation.
+    _user_id: str = Depends(require_capability(capabilities.CONFIG_SOURCE_READ)),
+) -> APIResponse[Any]:
+    """One asset's schema: its fields, ownership, and what may be done to it.
+
+    `metadata.fields` is the point -- it is the only place the platform publishes
+    what columns or keys an asset actually carries, and until this route existed
+    it was reachable only through `/data-console/v1/inventory/{engine}/{asset_id}`,
+    which Wave F1 unmounted deliberately and
+    `test_no_versioned_data_console_path_is_mounted` keeps unmounted. Delegated
+    rather than reimplemented, exactly like the two reads above.
+
+    **Keyed by source, not by engine.** The console navigates from a source to
+    its assets, and a source owns a definite set of them; the console handler
+    takes an engine because it predates the nesting. Resolving containment here
+    means an asset that exists in the registry but does not belong to the named
+    source is a 404 rather than a successful read through a path that claims a
+    relationship it does not have -- and it makes the engine argument derivable
+    from the asset instead of something a caller could get wrong.
+    """
+    definition = source_definition(request, source_id)
+    if definition is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "SOURCE_NOT_FOUND", "message": f"No configured source {source_id!r}."},
+        )
+    asset = next((item for item in definition.assets if item.asset_id == asset_id), None)
+    if asset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "ASSET_NOT_IN_SOURCE",
+                "message": f"Source {source_id!r} does not own asset {asset_id!r}.",
+            },
+        )
+    return await console_get_inventory_detail(asset.engine, asset_id, request, _user_id)
 
 
 @router.get("/audit", response_model=APIResponse[list[AuditLog]])
