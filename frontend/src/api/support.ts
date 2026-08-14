@@ -52,11 +52,20 @@ export type SupportActionInput = {
   trackingNumbers?: string[];
 };
 
+/**
+ * One RMA as Support is issuing it -- `return_support.py::ReturnOutcomeRecord`.
+ *
+ * Every optional field here is a property of *this RMA*, not of the case, which
+ * is contract C3 and is why they are on the record: one reply can issue several
+ * RMAs with different labels going to different places.
+ */
 export type ReturnOutcomeRecordInput = {
   returnReference: string;
   trackingReference?: string;
   labelReference?: string;
   returnLocation?: string;
+  shippingInstructionReference?: string;
+  /** The order lines this RMA covers. The other half of "N RMAs, N items". */
   orderLineReferences?: string[];
 };
 
