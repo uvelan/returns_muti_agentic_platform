@@ -14,7 +14,22 @@ import { apiClient } from "./client";
  * rebuild is now owed is the consequence of the act and not a footnote to it.
  */
 
-export type MigrationStrategy = "NO_CHANGE" | "INCREMENTAL" | "FULL_REBUILD";
+/**
+ * Mirrors `dynamic_knowledge/release_migration.py::MigrationStrategy`.
+ *
+ * `BACKFILL` and `AFFECTED_SCOPE_RESYNC` are the two cheap tiers GRAPH-02 added:
+ * before them every mapping change bought a complete rebuild, and a re-pointed
+ * property was not seen as a change at all. `INCREMENTAL` is retained because
+ * plans recorded before those classes existed must still deserialize -- the
+ * planner no longer produces it, so a value read back is history, not a new
+ * decision.
+ */
+export type MigrationStrategy =
+  | "NO_CHANGE"
+  | "INCREMENTAL"
+  | "BACKFILL"
+  | "AFFECTED_SCOPE_RESYNC"
+  | "FULL_REBUILD";
 
 export type GraphObjectKind =
   | "NODE_KEY_CONSTRAINT"
@@ -48,7 +63,7 @@ export type MigrationPlan = {
   readonly relationships_changed: readonly ElementChange[];
   readonly objects_to_create: readonly GraphObject[];
   readonly objects_to_drop: readonly GraphObject[];
-  /** Why a rebuild is required. Empty for NO_CHANGE and INCREMENTAL. */
+  /** Why a rebuild is required. Empty unless the strategy is FULL_REBUILD. */
   readonly rebuild_reasons: readonly string[];
 };
 

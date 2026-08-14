@@ -32,11 +32,12 @@ export interface paths {
         get: operations["get_agent_configuration_api_agents__manifest_id__get"];
         /**
          * Update Agent Configuration
-         * @description Replace one agent's document.
+         * @description Propose a replacement for one agent's document.
          *
-         *     A rejected document comes back as 422 carrying the loader's own reason. The
-         *     editor needs to know *why* it was refused -- "invalid configuration" gives
-         *     an operator nothing to correct, and the loader's message names the field.
+         *     202, not 200: the platform has accepted the change for review and has not
+         *     made it. A rejected document still comes back as 422 carrying the loader's
+         *     own reason -- the editor needs to know *why* it was refused, and "invalid
+         *     configuration" gives an operator nothing to correct.
          */
         put: operations["update_agent_configuration_api_agents__manifest_id__put"];
         post?: never;
@@ -71,6 +72,40 @@ export interface paths {
         get: operations["list_interceptions_api_ai_interceptions_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/interceptions/{interception_id}/allow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Allow Interception
+         * @description Approve the held request unchanged: let the model answer it after all.
+         *
+         *     The third outcome, and until AI-01 the missing one. An operator could
+         *     substitute a human answer or kill the request; "I have read this and it may
+         *     proceed" had no representation, so interception could only ever divert
+         *     traffic, never approve it -- which makes turning it on in production a choice
+         *     between inspecting nothing and hand-answering everything.
+         *
+         *     Same capability as answering, deliberately: approving a request that carries
+         *     a customer's data is an act on that data, not a lesser read.
+         *
+         *     Like `answer`, this only transitions the record. The resume dispatcher turns
+         *     an `ALLOWED` interception into a resume command exactly as it does an
+         *     `ANSWERED` one, and the resumed dispatch finds `ALLOW_PROVIDER` waiting for
+         *     it. The provider is called once, after the approval, and not before.
+         */
+        post: operations["allow_interception_api_ai_interceptions__interception_id__allow_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -364,6 +399,36 @@ export interface paths {
          *     that no caller learns of a case that is not theirs.
          */
         get: operations["get_case_api_cases__case_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config/adoption": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Release Adoption
+         * @description `ACTIVATED != LIVE` -- which processes are actually running the release.
+         *
+         *     Promoting a release moves the graph pointer and nothing else; the API
+         *     process, the workers and the model the Order Agent calls each adopt on their
+         *     own poll. Until every required process class has reported the activated
+         *     revision the platform is running two releases at once, and this is the
+         *     endpoint that says so rather than leaving an operator to assume otherwise.
+         *
+         *     Activated is read from the graph, not from `app.state`: this process is one
+         *     of the adopters, so answering from its own snapshot would make it
+         *     structurally unable to report itself as behind.
+         */
+        get: operations["get_release_adoption_api_config_adoption_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -698,7 +763,16 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve Draft */
+        /**
+         * Approve Draft
+         * @description Accept a validated schema.
+         *
+         *     The dependency is the point of this route's existence in W4.3: it had none,
+         *     so any authenticated caller could approve any draft. The subject comes from
+         *     the capability check rather than from `_actor`, which falls back to a literal
+         *     when no principal is present -- a fallback that is right for attributing a
+         *     write and wrong for recording who signed something off.
+         */
         post: operations["approve_draft_api_graph_schema_drafts__draft_id__approve_post"];
         delete?: never;
         options?: never;
@@ -744,13 +818,17 @@ export interface paths {
          *     reading a file from the repository -- so an approval changed a document and
          *     nothing else.
          *
-         *     APPROVED only. A validated draft is a shape someone might accept; a
-         *     published release is one the platform will reason over, and the human act
-         *     in between is the whole reason the state machine has three states.
+         *     **It goes through the kernel's activation step, not around it.** The publish
+         *     itself is unchanged and still performed by the graph target; what the kernel
+         *     adds is the re-check before it -- the recorded diff is re-derived from the
+         *     before/after documents, and the proposal is refused if the two disagree --
+         *     and the ACTIVATED transition after it, so "this change is live" is recorded
+         *     in the same place every other governed change records it.
          *
          *     A shape that cannot compile comes back `accepted=false` with the element
          *     named, not as a 500: which entity was ambiguous is the only useful thing to
-         *     say, and the analyst is the one who can fix it.
+         *     say, and the analyst is the one who can fix it. The proposal stays APPROVED
+         *     in that case, because nothing was activated.
          */
         post: operations["publish_draft_api_graph_schema_drafts__draft_id__publish_post"];
         delete?: never;
@@ -791,6 +869,33 @@ export interface paths {
          *     new id would grow the collection with every poll.
          */
         post: operations["reanalyze_draft_api_graph_schema_drafts__draft_id__reanalysis_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-schema/drafts/{draft_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Draft
+         * @description Refuse a validated schema, on the record.
+         *
+         *     There was no way to say no. `Approval` carried a `REJECTED` status that
+         *     nothing ever set, so a reviewer who did not want a draft left it VALIDATED
+         *     and the queue could not tell that from one nobody had looked at yet.
+         *
+         *     The draft itself stays VALIDATED: rejecting the *proposal* is a statement
+         *     about this shape, and the analyst edits and re-validates to make a new one.
+         */
+        post: operations["reject_draft_api_graph_schema_drafts__draft_id__reject_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -877,7 +982,16 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Validate Draft */
+        /**
+         * Validate Draft
+         * @description Check the draft, and -- when it passes -- put it in front of a reviewer.
+         *
+         *     A passing validation now also submits a `GRAPH_SCHEMA` proposal and moves it
+         *     to REVIEW_PENDING, so a validated schema appears in the one governance inbox
+         *     alongside configuration and improvement changes. The response is unchanged:
+         *     the findings are what the analyst came for, and the proposal is visible on
+         *     `/api/proposals`.
+         */
         post: operations["validate_draft_api_graph_schema_drafts__draft_id__validate_post"];
         delete?: never;
         options?: never;
@@ -952,6 +1066,99 @@ export interface paths {
         get: operations["get_principal_api_principal_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Proposals */
+        get: operations["list_proposals_api_proposals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/proposals/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Proposal */
+        get: operations["get_proposal_api_proposals__proposal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/proposals/{proposal_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate Proposal
+         * @description Carry an approved change into the runtime.
+         *
+         *     Separate from approval, and separately granted. Approving says the change is
+         *     right; activating says now is the moment -- and on this platform that second
+         *     act publishes a configuration release, which is not a decision the reviewer
+         *     of a wording change should be making by side effect.
+         */
+        post: operations["activate_proposal_api_proposals__proposal_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/proposals/{proposal_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Proposal */
+        post: operations["approve_proposal_api_proposals__proposal_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/proposals/{proposal_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Proposal */
+        post: operations["reject_proposal_api_proposals__proposal_id__reject_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3081,6 +3288,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[AgentConfigurationProposalView] */
+        APIResponse_AgentConfigurationProposalView_: {
+            data?: components["schemas"]["AgentConfigurationProposalView"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[AgentConfigurationView] */
         APIResponse_AgentConfigurationView_: {
             data?: components["schemas"]["AgentConfigurationView"] | null;
@@ -3162,6 +3375,12 @@ export interface components {
         /** APIResponse[PrincipalView] */
         APIResponse_PrincipalView_: {
             data?: components["schemas"]["PrincipalView"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[ProposalDetailView] */
+        APIResponse_ProposalDetailView_: {
+            data?: components["schemas"]["ProposalDetailView"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -3383,6 +3602,13 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[list[ProposalSummaryView]] */
+        APIResponse_list_ProposalSummaryView__: {
+            /** Data */
+            data?: components["schemas"]["ProposalSummaryView"][] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[list[ReturnSessionView]] */
         APIResponse_list_ReturnSessionView__: {
             /** Data */
@@ -3454,6 +3680,13 @@ export interface components {
             }[] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** ActivationRequest */
+        ActivationRequest: {
+            /** Parameters */
+            parameters?: {
+                [key: string]: unknown;
+            };
         };
         /** AddEntity */
         AddEntity: {
@@ -3583,6 +3816,33 @@ export interface components {
              */
             to_properties: string[];
         };
+        /**
+         * AgentConfigurationProposalView
+         * @description What a `PUT` now answers with: a proposal, not a document.
+         *
+         *     The response type changed deliberately and visibly. Answering with the
+         *     edited `AgentConfigurationView` would tell an operator their change had been
+         *     applied, which is precisely what it no longer does -- and a screen that
+         *     believes it would never send anyone to the review queue.
+         */
+        AgentConfigurationProposalView: {
+            /** Affectedkeys */
+            affectedKeys: string[];
+            /** Manifestid */
+            manifestId: string;
+            /** Proposalid */
+            proposalId: string;
+            /** Proposedby */
+            proposedBy: string;
+            /** Risk */
+            risk: string;
+            status: components["schemas"]["ProposalStatus"];
+            /**
+             * Submittedat
+             * Format: date-time
+             */
+            submittedAt: string;
+        };
         /** AgentConfigurationUpdate */
         AgentConfigurationUpdate: {
             /** Document */
@@ -3602,6 +3862,8 @@ export interface components {
             moduleId: string;
             /** Path */
             path: string;
+            /** Source */
+            source: string;
         };
         /** AgentDecisionView */
         AgentDecisionView: {
@@ -3650,6 +3912,8 @@ export interface components {
             moduleId: string;
             /** Name */
             name: string;
+            /** Source */
+            source: string;
             /** Status */
             status: string;
         };
@@ -4402,6 +4666,11 @@ export interface components {
             /** Supportdraft */
             supportDraft: string;
         };
+        /** DecisionRequest */
+        DecisionRequest: {
+            /** Note */
+            note?: string | null;
+        };
         /**
          * DependencyKind
          * @enum {string}
@@ -4573,6 +4842,8 @@ export interface components {
         DriftKind: "DATASET_ADDED" | "DATASET_REMOVED" | "FIELD_ADDED" | "FIELD_REMOVED" | "FIELD_TYPE_CHANGED";
         /** ElementChange */
         ElementChange: {
+            /** @default DESTRUCTIVE */
+            change_class: components["schemas"]["SchemaChangeClass"];
             /** Detail */
             detail: string;
             /** Element */
@@ -4765,14 +5036,20 @@ export interface components {
         };
         /** GraphSyncRunView */
         GraphSyncRunView: {
+            /** Activegenerationid */
+            activeGenerationId?: string | null;
             /** Completedat */
             completedAt?: string | null;
             /** Configurationdigest */
             configurationDigest: string;
             /** Constraintsapplied */
             constraintsApplied: string[];
+            /** Cutoverstage */
+            cutoverStage?: string | null;
             /** Errorcode */
             errorCode?: string | null;
+            /** Failurereason */
+            failureReason?: string | null;
             /** Graphgenerationid */
             graphGenerationId?: string | null;
             /** Id */
@@ -4781,6 +5058,10 @@ export interface components {
             mode: string;
             /** Nodewrites */
             nodeWrites: number;
+            /** Previousgenerationstatus */
+            previousGenerationStatus?: string | null;
+            /** Reconciliationcompletedat */
+            reconciliationCompletedAt?: string | null;
             /**
              * Recordscope
              * @default FULL
@@ -4792,6 +5073,8 @@ export interface components {
             /** Requestdigest */
             requestDigest?: string | null;
             requestedBy?: components["schemas"]["SyncRunRequester"] | null;
+            /** Scancompletedat */
+            scanCompletedAt?: string | null;
             /** Schemaversion */
             schemaVersion: string;
             /** Skippedsources */
@@ -4800,6 +5083,8 @@ export interface components {
             sourceCounts: {
                 [key: string]: number;
             };
+            /** Sourcewatermarks */
+            sourceWatermarks?: components["schemas"]["SourceWatermarkView"][];
             /**
              * Startedat
              * Format: date-time
@@ -4844,6 +5129,13 @@ export interface components {
          *     graph to migrate, only one to build.
          */
         MigrationPlan: {
+            /**
+             * Affected Source Asset Ids
+             * @default []
+             */
+            affected_source_asset_ids: string[];
+            /** @default DESTRUCTIVE */
+            change_class: components["schemas"]["SchemaChangeClass"];
             /** From Release Id */
             from_release_id: string | null;
             /**
@@ -4891,6 +5183,11 @@ export interface components {
              * @default []
              */
             relationships_removed: string[];
+            /**
+             * Resync Reasons
+             * @default []
+             */
+            resync_reasons: string[];
             strategy: components["schemas"]["MigrationStrategy"];
             /** To Release Id */
             to_release_id: string;
@@ -4899,7 +5196,7 @@ export interface components {
          * MigrationStrategy
          * @enum {string}
          */
-        MigrationStrategy: "NO_CHANGE" | "INCREMENTAL" | "FULL_REBUILD";
+        MigrationStrategy: "NO_CHANGE" | "INCREMENTAL" | "BACKFILL" | "AFFECTED_SCOPE_RESYNC" | "FULL_REBUILD";
         /**
          * ModelTier
          * @enum {string}
@@ -5128,6 +5425,107 @@ export interface components {
          * @enum {string}
          */
         PropertyType: "STRING" | "INTEGER" | "FLOAT" | "BOOLEAN" | "DATE" | "DATETIME";
+        /** ProposalDetailView */
+        ProposalDetailView: {
+            /** Activationreference */
+            activationReference: string | null;
+            /** Affectedkeys */
+            affectedKeys: string[];
+            /** After */
+            after: {
+                [key: string]: unknown;
+            };
+            /** Before */
+            before: {
+                [key: string]: unknown;
+            };
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Decidedby */
+            decidedBy: string | null;
+            /** Decisionnote */
+            decisionNote: string | null;
+            /** Diff */
+            diff: {
+                [key: string]: unknown;
+            }[];
+            /** Evidence */
+            evidence: string[];
+            /** Evidencedigest */
+            evidenceDigest: string;
+            /** History */
+            history: {
+                [key: string]: unknown;
+            }[];
+            /** Proposalid */
+            proposalId: string;
+            proposalType: components["schemas"]["ProposalType"];
+            /** Proposedby */
+            proposedBy: string;
+            /** Risk */
+            risk: string;
+            status: components["schemas"]["ProposalStatus"];
+            /** Subjectid */
+            subjectId: string;
+            /** Title */
+            title: string;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+            /** Validationreceipt */
+            validationReceipt: string | null;
+        };
+        /**
+         * ProposalStatus
+         * @enum {string}
+         */
+        ProposalStatus: "DRAFT" | "VALIDATED" | "REVIEW_PENDING" | "APPROVED" | "REJECTED" | "ACTIVATED" | "SUPERSEDED";
+        /**
+         * ProposalSummaryView
+         * @description What a queue row needs. Deliberately without `before`/`after`.
+         *
+         *     A proposal's documents are unbounded -- a graph schema is the whole shape --
+         *     and putting them inline would make listing the inbox pay for a payload only
+         *     the detail screen reads.
+         */
+        ProposalSummaryView: {
+            /** Affectedkeys */
+            affectedKeys: string[];
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Decidedby */
+            decidedBy: string | null;
+            /** Proposalid */
+            proposalId: string;
+            proposalType: components["schemas"]["ProposalType"];
+            /** Proposedby */
+            proposedBy: string;
+            /** Risk */
+            risk: string;
+            status: components["schemas"]["ProposalStatus"];
+            /** Subjectid */
+            subjectId: string;
+            /** Title */
+            title: string;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+        };
+        /**
+         * ProposalType
+         * @enum {string}
+         */
+        ProposalType: "GRAPH_SCHEMA" | "IMPROVEMENT" | "CONFIGURATION";
         /**
          * ProposedChange
          * @description One thing that drifted, and what to do about it.
@@ -6094,6 +6492,16 @@ export interface components {
          * @enum {string}
          */
         SampleClassification: "NONE" | "REDACTED" | "ENCRYPTED";
+        /**
+         * SchemaChangeClass
+         * @description How much of the existing graph a change invalidates.
+         *
+         *     Ordered: `_RANK` below turns a set of observed changes into the single
+         *     verdict for the release, which is always the most severe one present. A plan
+         *     is only as safe as its worst element.
+         * @enum {string}
+         */
+        SchemaChangeClass: "NONE" | "ADDITIVE" | "COMPATIBLE" | "DESTRUCTIVE";
         /** SchemaDiff */
         SchemaDiff: {
             /** Entries */
@@ -6579,6 +6987,25 @@ export interface components {
             /** Ownership */
             ownership: string;
         };
+        /**
+         * SourceWatermarkView
+         * @description One source's high watermark, as the run fixed it before scanning.
+         *
+         *     The cursor is reported as the connector encoded it, not decoded: ordering
+         *     and meaning belong to the connector that produced it (see
+         *     `SourceScanConnector.compare_cursors`), and a view that reinterpreted the
+         *     value would be a second opinion about what the cursor means.
+         */
+        SourceWatermarkView: {
+            /** Connectorversion */
+            connectorVersion: string;
+            /** Cursortype */
+            cursorType: string;
+            /** Encodedvalue */
+            encodedValue: string;
+            /** Sourceassetid */
+            sourceAssetId: string;
+        };
         /** StartAssociateConversationRequest */
         StartAssociateConversationRequest: {
             anchorType: components["schemas"]["AnchorType"];
@@ -6993,12 +7420,12 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["APIResponse_AgentConfigurationView_"];
+                    "application/json": components["schemas"]["APIResponse_AgentConfigurationProposalView_"];
                 };
             };
             /** @description Validation Error */
@@ -7028,6 +7455,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_list_dict_str__Any___"];
+                };
+            };
+        };
+    };
+    allow_interception_api_ai_interceptions__interception_id__allow_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interception_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -7351,6 +7809,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_release_adoption_api_config_adoption_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
                 };
             };
         };
@@ -7997,6 +8475,41 @@ export interface operations {
             };
         };
     };
+    reject_draft_api_graph_schema_drafts__draft_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_revisions_api_graph_schema_drafts__draft_id__revisions_get: {
         parameters: {
             query?: never;
@@ -8234,6 +8747,176 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_PrincipalView_"];
+                };
+            };
+        };
+    };
+    list_proposals_api_proposals_get: {
+        parameters: {
+            query?: {
+                type?: components["schemas"]["ProposalType"] | null;
+                status?: components["schemas"]["ProposalStatus"] | null;
+                subjectId?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_ProposalSummaryView__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_proposal_api_proposals__proposal_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ProposalDetailView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_proposal_api_proposals__proposal_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ProposalDetailView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_proposal_api_proposals__proposal_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ProposalDetailView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_proposal_api_proposals__proposal_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ProposalDetailView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -785,9 +785,16 @@ function ReleasesTab({ canActivate }: { canActivate: boolean }) {
   );
 }
 
+// Tone tracks cost to the operator, not severity: the two cheap tiers read as
+// routine, a full rebuild reads as something to plan for. BACKFILL and
+// AFFECTED_SCOPE_RESYNC are GRAPH-02's additions -- before them every mapping
+// change was priced as a rebuild. INCREMENTAL is no longer produced but is kept
+// here because a plan recorded before those classes existed still renders.
 const STRATEGY_TONE: Record<MigrationPlan["strategy"], string> = {
   NO_CHANGE: "bg-slate-100 text-slate-800",
   INCREMENTAL: "bg-emerald-100 text-emerald-900",
+  BACKFILL: "bg-emerald-100 text-emerald-900",
+  AFFECTED_SCOPE_RESYNC: "bg-sky-100 text-sky-900",
   FULL_REBUILD: "bg-amber-100 text-amber-900",
 };
 

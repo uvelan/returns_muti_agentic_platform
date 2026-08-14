@@ -6396,6 +6396,10 @@
       "ElementChange": {
         "additionalProperties": false,
         "properties": {
+          "change_class": {
+            "$ref": "#/components/schemas/SchemaChangeClass",
+            "default": "DESTRUCTIVE"
+          },
           "detail": {
             "title": "Detail",
             "type": "string"
@@ -6852,6 +6856,17 @@
       "GraphSyncRunView": {
         "additionalProperties": false,
         "properties": {
+          "activeGenerationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activegenerationid"
+          },
           "completedAt": {
             "anyOf": [
               {
@@ -6875,6 +6890,17 @@
             "title": "Constraintsapplied",
             "type": "array"
           },
+          "cutoverStage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutoverstage"
+          },
           "errorCode": {
             "anyOf": [
               {
@@ -6885,6 +6911,17 @@
               }
             ],
             "title": "Errorcode"
+          },
+          "failureReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failurereason"
           },
           "graphGenerationId": {
             "anyOf": [
@@ -6909,6 +6946,29 @@
             "minimum": 0.0,
             "title": "Nodewrites",
             "type": "integer"
+          },
+          "previousGenerationStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previousgenerationstatus"
+          },
+          "reconciliationCompletedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciliationcompletedat"
           },
           "recordScope": {
             "default": "FULL",
@@ -6945,6 +7005,18 @@
               }
             ]
           },
+          "scanCompletedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scancompletedat"
+          },
           "schemaVersion": {
             "title": "Schemaversion",
             "type": "string"
@@ -6962,6 +7034,13 @@
             },
             "title": "Sourcecounts",
             "type": "object"
+          },
+          "sourceWatermarks": {
+            "items": {
+              "$ref": "#/components/schemas/SourceWatermarkView"
+            },
+            "title": "Sourcewatermarks",
+            "type": "array"
           },
           "startedAt": {
             "format": "date-time",
@@ -7066,6 +7145,18 @@
         "additionalProperties": false,
         "description": "What activating `to_release_id` does to the graph.\n\n`from_release_id` is None when nothing is active yet, which is the state\nevery installation starts in and is always a FULL_REBUILD -- there is no\ngraph to migrate, only one to build.",
         "properties": {
+          "affected_source_asset_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Affected Source Asset Ids",
+            "type": "array"
+          },
+          "change_class": {
+            "$ref": "#/components/schemas/SchemaChangeClass",
+            "default": "DESTRUCTIVE"
+          },
           "from_release_id": {
             "anyOf": [
               {
@@ -7149,6 +7240,14 @@
             "title": "Relationships Removed",
             "type": "array"
           },
+          "resync_reasons": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Resync Reasons",
+            "type": "array"
+          },
           "strategy": {
             "$ref": "#/components/schemas/MigrationStrategy"
           },
@@ -7169,6 +7268,8 @@
         "enum": [
           "NO_CHANGE",
           "INCREMENTAL",
+          "BACKFILL",
+          "AFFECTED_SCOPE_RESYNC",
           "FULL_REBUILD"
         ],
         "title": "MigrationStrategy",
@@ -10695,6 +10796,17 @@
         "title": "SampleClassification",
         "type": "string"
       },
+      "SchemaChangeClass": {
+        "description": "How much of the existing graph a change invalidates.\n\nOrdered: `_RANK` below turns a set of observed changes into the single\nverdict for the release, which is always the most severe one present. A plan\nis only as safe as its worst element.",
+        "enum": [
+          "NONE",
+          "ADDITIVE",
+          "COMPATIBLE",
+          "DESTRUCTIVE"
+        ],
+        "title": "SchemaChangeClass",
+        "type": "string"
+      },
       "SchemaDiff": {
         "additionalProperties": false,
         "properties": {
@@ -11922,6 +12034,36 @@
         "title": "SourceItem",
         "type": "object"
       },
+      "SourceWatermarkView": {
+        "additionalProperties": false,
+        "description": "One source's high watermark, as the run fixed it before scanning.\n\nThe cursor is reported as the connector encoded it, not decoded: ordering\nand meaning belong to the connector that produced it (see\n`SourceScanConnector.compare_cursors`), and a view that reinterpreted the\nvalue would be a second opinion about what the cursor means.",
+        "properties": {
+          "connectorVersion": {
+            "title": "Connectorversion",
+            "type": "string"
+          },
+          "cursorType": {
+            "title": "Cursortype",
+            "type": "string"
+          },
+          "encodedValue": {
+            "title": "Encodedvalue",
+            "type": "string"
+          },
+          "sourceAssetId": {
+            "title": "Sourceassetid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceAssetId",
+          "cursorType",
+          "encodedValue",
+          "connectorVersion"
+        ],
+        "title": "SourceWatermarkView",
+        "type": "object"
+      },
       "StartAssociateConversationRequest": {
         "additionalProperties": false,
         "properties": {
@@ -13098,6 +13240,49 @@
         ]
       }
     },
+    "/api/ai/interceptions/{interception_id}/allow": {
+      "post": {
+        "description": "Approve the held request unchanged: let the model answer it after all.\n\nThe third outcome, and until AI-01 the missing one. An operator could\nsubstitute a human answer or kill the request; \"I have read this and it may\nproceed\" had no representation, so interception could only ever divert\ntraffic, never approve it -- which makes turning it on in production a choice\nbetween inspecting nothing and hand-answering everything.\n\nSame capability as answering, deliberately: approving a request that carries\na customer's data is an act on that data, not a lesser read.\n\nLike `answer`, this only transitions the record. The resume dispatcher turns\nan `ALLOWED` interception into a resume command exactly as it does an\n`ANSWERED` one, and the resumed dispatch finds `ALLOW_PROVIDER` waiting for\nit. The provider is called once, after the approval, and not before.",
+        "operationId": "allow_interception_api_ai_interceptions__interception_id__allow_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interception_id",
+            "required": true,
+            "schema": {
+              "title": "Interception Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Allow Interception",
+        "tags": [
+          "AI Control Center"
+        ]
+      }
+    },
     "/api/ai/interceptions/{interception_id}/answer": {
       "post": {
         "description": "Record a human answer to a held request.\n\nThe store's `answer` is a conditional write filtered on `PENDING`, so two\noperators answering at once produce one winner and one 409 -- never a silent\noverwrite of somebody's text. That is the store's guarantee; this surface\nonly has to report it honestly.\n\n**Answering does not resume the workflow here.** It transitions the\ninterception, and `InterceptionResumeDispatcher` turns answered records into\nresume commands, which the reasoning resume worker delivers as Temporal\nsignals. Doing the enqueue inline would put a cross-collection write on the\nrequest path and lose the at-least-once replay that makes the bridge safe.",
@@ -13578,6 +13763,28 @@
         "summary": "Get Case",
         "tags": [
           "Cases"
+        ]
+      }
+    },
+    "/api/config/adoption": {
+      "get": {
+        "description": "`ACTIVATED != LIVE` -- which processes are actually running the release.\n\nPromoting a release moves the graph pointer and nothing else; the API\nprocess, the workers and the model the Order Agent calls each adopt on their\nown poll. Until every required process class has reported the activated\nrevision the platform is running two releases at once, and this is the\nendpoint that says so rather than leaving an operator to assume otherwise.\n\nActivated is read from the graph, not from `app.state`: this process is one\nof the adopters, so answering from its own snapshot would make it\nstructurally unable to report itself as behind.",
+        "operationId": "get_release_adoption_api_config_adoption_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Release Adoption",
+        "tags": [
+          "Configuration"
         ]
       }
     },

@@ -1389,6 +1389,39 @@
         "title": "APIResponse[AIUsageSummaryView]",
         "type": "object"
       },
+      "APIResponse_AgentConfigurationProposalView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentConfigurationProposalView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[AgentConfigurationProposalView]",
+        "type": "object"
+      },
       "APIResponse_AgentConfigurationView_": {
         "additionalProperties": false,
         "properties": {
@@ -1849,6 +1882,39 @@
           "meta"
         ],
         "title": "APIResponse[PrincipalView]",
+        "type": "object"
+      },
+      "APIResponse_ProposalDetailView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProposalDetailView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ProposalDetailView]",
         "type": "object"
       },
       "APIResponse_ReleaseListView_": {
@@ -2965,6 +3031,43 @@
         "title": "APIResponse[list[OutboxView]]",
         "type": "object"
       },
+      "APIResponse_list_ProposalSummaryView__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ProposalSummaryView"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[list[ProposalSummaryView]]",
+        "type": "object"
+      },
       "APIResponse_list_ReturnSessionView__": {
         "additionalProperties": false,
         "properties": {
@@ -3336,6 +3439,18 @@
         "title": "APIResponse[list[dict[str, Any]]]",
         "type": "object"
       },
+      "ActivationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          }
+        },
+        "title": "ActivationRequest",
+        "type": "object"
+      },
       "AddEntity": {
         "additionalProperties": false,
         "properties": {
@@ -3556,6 +3671,54 @@
         "title": "AddRelationship",
         "type": "object"
       },
+      "AgentConfigurationProposalView": {
+        "additionalProperties": false,
+        "description": "What a `PUT` now answers with: a proposal, not a document.\n\nThe response type changed deliberately and visibly. Answering with the\nedited `AgentConfigurationView` would tell an operator their change had been\napplied, which is precisely what it no longer does -- and a screen that\nbelieves it would never send anyone to the review queue.",
+        "properties": {
+          "affectedKeys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Affectedkeys",
+            "type": "array"
+          },
+          "manifestId": {
+            "title": "Manifestid",
+            "type": "string"
+          },
+          "proposalId": {
+            "title": "Proposalid",
+            "type": "string"
+          },
+          "proposedBy": {
+            "title": "Proposedby",
+            "type": "string"
+          },
+          "risk": {
+            "title": "Risk",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProposalStatus"
+          },
+          "submittedAt": {
+            "format": "date-time",
+            "title": "Submittedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "proposalId",
+          "manifestId",
+          "status",
+          "risk",
+          "affectedKeys",
+          "proposedBy",
+          "submittedAt"
+        ],
+        "title": "AgentConfigurationProposalView",
+        "type": "object"
+      },
       "AgentConfigurationUpdate": {
         "additionalProperties": false,
         "properties": {
@@ -3590,13 +3753,18 @@
           "path": {
             "title": "Path",
             "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
           }
         },
         "required": [
           "manifestId",
           "moduleId",
           "path",
-          "document"
+          "document",
+          "source"
         ],
         "title": "AgentConfigurationView",
         "type": "object"
@@ -3704,6 +3872,10 @@
             "title": "Name",
             "type": "string"
           },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -3715,7 +3887,8 @@
           "name",
           "enabled",
           "status",
-          "configurationVersion"
+          "configurationVersion",
+          "source"
         ],
         "title": "AgentSummary",
         "type": "object"
@@ -5765,6 +5938,25 @@
         "title": "CreateSupportWorkItemRequest",
         "type": "object"
       },
+      "DecisionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "DecisionRequest",
+        "type": "object"
+      },
       "DependencyKind": {
         "enum": [
           "OMC",
@@ -6204,6 +6396,10 @@
       "ElementChange": {
         "additionalProperties": false,
         "properties": {
+          "change_class": {
+            "$ref": "#/components/schemas/SchemaChangeClass",
+            "default": "DESTRUCTIVE"
+          },
           "detail": {
             "title": "Detail",
             "type": "string"
@@ -6660,6 +6856,17 @@
       "GraphSyncRunView": {
         "additionalProperties": false,
         "properties": {
+          "activeGenerationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activegenerationid"
+          },
           "completedAt": {
             "anyOf": [
               {
@@ -6683,6 +6890,17 @@
             "title": "Constraintsapplied",
             "type": "array"
           },
+          "cutoverStage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutoverstage"
+          },
           "errorCode": {
             "anyOf": [
               {
@@ -6693,6 +6911,17 @@
               }
             ],
             "title": "Errorcode"
+          },
+          "failureReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failurereason"
           },
           "graphGenerationId": {
             "anyOf": [
@@ -6717,6 +6946,29 @@
             "minimum": 0.0,
             "title": "Nodewrites",
             "type": "integer"
+          },
+          "previousGenerationStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previousgenerationstatus"
+          },
+          "reconciliationCompletedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciliationcompletedat"
           },
           "recordScope": {
             "default": "FULL",
@@ -6753,6 +7005,18 @@
               }
             ]
           },
+          "scanCompletedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scancompletedat"
+          },
           "schemaVersion": {
             "title": "Schemaversion",
             "type": "string"
@@ -6770,6 +7034,13 @@
             },
             "title": "Sourcecounts",
             "type": "object"
+          },
+          "sourceWatermarks": {
+            "items": {
+              "$ref": "#/components/schemas/SourceWatermarkView"
+            },
+            "title": "Sourcewatermarks",
+            "type": "array"
           },
           "startedAt": {
             "format": "date-time",
@@ -6874,6 +7145,18 @@
         "additionalProperties": false,
         "description": "What activating `to_release_id` does to the graph.\n\n`from_release_id` is None when nothing is active yet, which is the state\nevery installation starts in and is always a FULL_REBUILD -- there is no\ngraph to migrate, only one to build.",
         "properties": {
+          "affected_source_asset_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Affected Source Asset Ids",
+            "type": "array"
+          },
+          "change_class": {
+            "$ref": "#/components/schemas/SchemaChangeClass",
+            "default": "DESTRUCTIVE"
+          },
           "from_release_id": {
             "anyOf": [
               {
@@ -6957,6 +7240,14 @@
             "title": "Relationships Removed",
             "type": "array"
           },
+          "resync_reasons": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Resync Reasons",
+            "type": "array"
+          },
           "strategy": {
             "$ref": "#/components/schemas/MigrationStrategy"
           },
@@ -6977,6 +7268,8 @@
         "enum": [
           "NO_CHANGE",
           "INCREMENTAL",
+          "BACKFILL",
+          "AFFECTED_SCOPE_RESYNC",
           "FULL_REBUILD"
         ],
         "title": "MigrationStrategy",
@@ -7701,6 +7994,256 @@
           "DATETIME"
         ],
         "title": "PropertyType",
+        "type": "string"
+      },
+      "ProposalDetailView": {
+        "additionalProperties": false,
+        "properties": {
+          "activationReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activationreference"
+          },
+          "affectedKeys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Affectedkeys",
+            "type": "array"
+          },
+          "after": {
+            "additionalProperties": true,
+            "title": "After",
+            "type": "object"
+          },
+          "before": {
+            "additionalProperties": true,
+            "title": "Before",
+            "type": "object"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "decidedBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decidedby"
+          },
+          "decisionNote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decisionnote"
+          },
+          "diff": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Diff",
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidenceDigest": {
+            "title": "Evidencedigest",
+            "type": "string"
+          },
+          "history": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "proposalId": {
+            "title": "Proposalid",
+            "type": "string"
+          },
+          "proposalType": {
+            "$ref": "#/components/schemas/ProposalType"
+          },
+          "proposedBy": {
+            "title": "Proposedby",
+            "type": "string"
+          },
+          "risk": {
+            "title": "Risk",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProposalStatus"
+          },
+          "subjectId": {
+            "title": "Subjectid",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          },
+          "validationReceipt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validationreceipt"
+          }
+        },
+        "required": [
+          "proposalId",
+          "proposalType",
+          "subjectId",
+          "title",
+          "status",
+          "risk",
+          "affectedKeys",
+          "proposedBy",
+          "decidedBy",
+          "createdAt",
+          "updatedAt",
+          "before",
+          "after",
+          "diff",
+          "evidence",
+          "evidenceDigest",
+          "validationReceipt",
+          "decisionNote",
+          "activationReference",
+          "history"
+        ],
+        "title": "ProposalDetailView",
+        "type": "object"
+      },
+      "ProposalStatus": {
+        "enum": [
+          "DRAFT",
+          "VALIDATED",
+          "REVIEW_PENDING",
+          "APPROVED",
+          "REJECTED",
+          "ACTIVATED",
+          "SUPERSEDED"
+        ],
+        "title": "ProposalStatus",
+        "type": "string"
+      },
+      "ProposalSummaryView": {
+        "additionalProperties": false,
+        "description": "What a queue row needs. Deliberately without `before`/`after`.\n\nA proposal's documents are unbounded -- a graph schema is the whole shape --\nand putting them inline would make listing the inbox pay for a payload only\nthe detail screen reads.",
+        "properties": {
+          "affectedKeys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Affectedkeys",
+            "type": "array"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "decidedBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decidedby"
+          },
+          "proposalId": {
+            "title": "Proposalid",
+            "type": "string"
+          },
+          "proposalType": {
+            "$ref": "#/components/schemas/ProposalType"
+          },
+          "proposedBy": {
+            "title": "Proposedby",
+            "type": "string"
+          },
+          "risk": {
+            "title": "Risk",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProposalStatus"
+          },
+          "subjectId": {
+            "title": "Subjectid",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "proposalId",
+          "proposalType",
+          "subjectId",
+          "title",
+          "status",
+          "risk",
+          "affectedKeys",
+          "proposedBy",
+          "decidedBy",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "ProposalSummaryView",
+        "type": "object"
+      },
+      "ProposalType": {
+        "enum": [
+          "GRAPH_SCHEMA",
+          "IMPROVEMENT",
+          "CONFIGURATION"
+        ],
+        "title": "ProposalType",
         "type": "string"
       },
       "ProposedChange": {
@@ -10253,6 +10796,17 @@
         "title": "SampleClassification",
         "type": "string"
       },
+      "SchemaChangeClass": {
+        "description": "How much of the existing graph a change invalidates.\n\nOrdered: `_RANK` below turns a set of observed changes into the single\nverdict for the release, which is always the most severe one present. A plan\nis only as safe as its worst element.",
+        "enum": [
+          "NONE",
+          "ADDITIVE",
+          "COMPATIBLE",
+          "DESTRUCTIVE"
+        ],
+        "title": "SchemaChangeClass",
+        "type": "string"
+      },
       "SchemaDiff": {
         "additionalProperties": false,
         "properties": {
@@ -11480,6 +12034,36 @@
         "title": "SourceItem",
         "type": "object"
       },
+      "SourceWatermarkView": {
+        "additionalProperties": false,
+        "description": "One source's high watermark, as the run fixed it before scanning.\n\nThe cursor is reported as the connector encoded it, not decoded: ordering\nand meaning belong to the connector that produced it (see\n`SourceScanConnector.compare_cursors`), and a view that reinterpreted the\nvalue would be a second opinion about what the cursor means.",
+        "properties": {
+          "connectorVersion": {
+            "title": "Connectorversion",
+            "type": "string"
+          },
+          "cursorType": {
+            "title": "Cursortype",
+            "type": "string"
+          },
+          "encodedValue": {
+            "title": "Encodedvalue",
+            "type": "string"
+          },
+          "sourceAssetId": {
+            "title": "Sourceassetid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceAssetId",
+          "cursorType",
+          "encodedValue",
+          "connectorVersion"
+        ],
+        "title": "SourceWatermarkView",
+        "type": "object"
+      },
       "StartAssociateConversationRequest": {
         "additionalProperties": false,
         "properties": {
@@ -12583,7 +13167,7 @@
         ]
       },
       "put": {
-        "description": "Replace one agent's document.\n\nA rejected document comes back as 422 carrying the loader's own reason. The\neditor needs to know *why* it was refused -- \"invalid configuration\" gives\nan operator nothing to correct, and the loader's message names the field.",
+        "description": "Propose a replacement for one agent's document.\n\n202, not 200: the platform has accepted the change for review and has not\nmade it. A rejected document still comes back as 422 carrying the loader's\nown reason -- the editor needs to know *why* it was refused, and \"invalid\nconfiguration\" gives an operator nothing to correct.",
         "operationId": "update_agent_configuration_api_agents__manifest_id__put",
         "parameters": [
           {
@@ -12607,11 +13191,11 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse_AgentConfigurationView_"
+                  "$ref": "#/components/schemas/APIResponse_AgentConfigurationProposalView_"
                 }
               }
             },
@@ -12651,6 +13235,49 @@
           }
         },
         "summary": "List Interceptions",
+        "tags": [
+          "AI Control Center"
+        ]
+      }
+    },
+    "/api/ai/interceptions/{interception_id}/allow": {
+      "post": {
+        "description": "Approve the held request unchanged: let the model answer it after all.\n\nThe third outcome, and until AI-01 the missing one. An operator could\nsubstitute a human answer or kill the request; \"I have read this and it may\nproceed\" had no representation, so interception could only ever divert\ntraffic, never approve it -- which makes turning it on in production a choice\nbetween inspecting nothing and hand-answering everything.\n\nSame capability as answering, deliberately: approving a request that carries\na customer's data is an act on that data, not a lesser read.\n\nLike `answer`, this only transitions the record. The resume dispatcher turns\nan `ALLOWED` interception into a resume command exactly as it does an\n`ANSWERED` one, and the resumed dispatch finds `ALLOW_PROVIDER` waiting for\nit. The provider is called once, after the approval, and not before.",
+        "operationId": "allow_interception_api_ai_interceptions__interception_id__allow_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "interception_id",
+            "required": true,
+            "schema": {
+              "title": "Interception Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Allow Interception",
         "tags": [
           "AI Control Center"
         ]
@@ -13136,6 +13763,28 @@
         "summary": "Get Case",
         "tags": [
           "Cases"
+        ]
+      }
+    },
+    "/api/config/adoption": {
+      "get": {
+        "description": "`ACTIVATED != LIVE` -- which processes are actually running the release.\n\nPromoting a release moves the graph pointer and nothing else; the API\nprocess, the workers and the model the Order Agent calls each adopt on their\nown poll. Until every required process class has reported the activated\nrevision the platform is running two releases at once, and this is the\nendpoint that says so rather than leaving an operator to assume otherwise.\n\nActivated is read from the graph, not from `app.state`: this process is one\nof the adopters, so answering from its own snapshot would make it\nstructurally unable to report itself as behind.",
+        "operationId": "get_release_adoption_api_config_adoption_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Release Adoption",
+        "tags": [
+          "Configuration"
         ]
       }
     },
@@ -13853,6 +14502,7 @@
     },
     "/api/graph-schema/drafts/{draft_id}/approve": {
       "post": {
+        "description": "Accept a validated schema.\n\nThe dependency is the point of this route's existence in W4.3: it had none,\nso any authenticated caller could approve any draft. The subject comes from\nthe capability check rather than from `_actor`, which falls back to a literal\nwhen no principal is present -- a fallback that is right for attributing a\nwrite and wrong for recording who signed something off.",
         "operationId": "approve_draft_api_graph_schema_drafts__draft_id__approve_post",
         "parameters": [
           {
@@ -13958,7 +14608,7 @@
     },
     "/api/graph-schema/drafts/{draft_id}/publish": {
       "post": {
-        "description": "Turn an approved draft into the schema the platform runs.\n\nThe step that closes the analyzer's loop. Until this existed a draft could\nbe discovered, edited, validated and approved, and the runtime went on\nreading a file from the repository -- so an approval changed a document and\nnothing else.\n\nAPPROVED only. A validated draft is a shape someone might accept; a\npublished release is one the platform will reason over, and the human act\nin between is the whole reason the state machine has three states.\n\nA shape that cannot compile comes back `accepted=false` with the element\nnamed, not as a 500: which entity was ambiguous is the only useful thing to\nsay, and the analyst is the one who can fix it.",
+        "description": "Turn an approved draft into the schema the platform runs.\n\nThe step that closes the analyzer's loop. Until this existed a draft could\nbe discovered, edited, validated and approved, and the runtime went on\nreading a file from the repository -- so an approval changed a document and\nnothing else.\n\n**It goes through the kernel's activation step, not around it.** The publish\nitself is unchanged and still performed by the graph target; what the kernel\nadds is the re-check before it -- the recorded diff is re-derived from the\nbefore/after documents, and the proposal is refused if the two disagree --\nand the ACTIVATED transition after it, so \"this change is live\" is recorded\nin the same place every other governed change records it.\n\nA shape that cannot compile comes back `accepted=false` with the element\nnamed, not as a 500: which entity was ambiguous is the only useful thing to\nsay, and the analyst is the one who can fix it. The proposal stays APPROVED\nin that case, because nothing was activated.",
         "operationId": "publish_draft_api_graph_schema_drafts__draft_id__publish_post",
         "parameters": [
           {
@@ -14047,6 +14697,59 @@
           }
         },
         "summary": "Reanalyze Draft",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-schema/drafts/{draft_id}/reject": {
+      "post": {
+        "description": "Refuse a validated schema, on the record.\n\nThere was no way to say no. `Approval` carried a `REJECTED` status that\nnothing ever set, so a reviewer who did not want a draft left it VALIDATED\nand the queue could not tell that from one nobody had looked at yet.\n\nThe draft itself stays VALIDATED: rejecting the *proposal* is a statement\nabout this shape, and the analyst edits and re-validates to make a new one.",
+        "operationId": "reject_draft_api_graph_schema_drafts__draft_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Draft",
         "tags": [
           "Graph Schema Analyzer"
         ]
@@ -14195,6 +14898,7 @@
     },
     "/api/graph-schema/drafts/{draft_id}/validate": {
       "post": {
+        "description": "Check the draft, and -- when it passes -- put it in front of a reviewer.\n\nA passing validation now also submits a `GRAPH_SCHEMA` proposal and moves it\nto REVIEW_PENDING, so a validated schema appears in the one governance inbox\nalongside configuration and improvement changes. The response is unchanged:\nthe findings are what the analyst came for, and the proposal is visible on\n`/api/proposals`.",
         "operationId": "validate_draft_api_graph_schema_drafts__draft_id__validate_post",
         "parameters": [
           {
@@ -14398,6 +15102,298 @@
         "summary": "The calling principal, its roles, and its capabilities",
         "tags": [
           "Principal"
+        ]
+      }
+    },
+    "/api/proposals": {
+      "get": {
+        "operationId": "list_proposals_api_proposals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProposalType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProposalStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "subjectId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Subjectid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_ProposalSummaryView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Proposals",
+        "tags": [
+          "Governance"
+        ]
+      }
+    },
+    "/api/proposals/{proposal_id}": {
+      "get": {
+        "operationId": "get_proposal_api_proposals__proposal_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ProposalDetailView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Proposal",
+        "tags": [
+          "Governance"
+        ]
+      }
+    },
+    "/api/proposals/{proposal_id}/activate": {
+      "post": {
+        "description": "Carry an approved change into the runtime.\n\nSeparate from approval, and separately granted. Approving says the change is\nright; activating says now is the moment -- and on this platform that second\nact publishes a configuration release, which is not a decision the reviewer\nof a wording change should be making by side effect.",
+        "operationId": "activate_proposal_api_proposals__proposal_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ProposalDetailView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activate Proposal",
+        "tags": [
+          "Governance"
+        ]
+      }
+    },
+    "/api/proposals/{proposal_id}/approve": {
+      "post": {
+        "operationId": "approve_proposal_api_proposals__proposal_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ProposalDetailView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Proposal",
+        "tags": [
+          "Governance"
+        ]
+      }
+    },
+    "/api/proposals/{proposal_id}/reject": {
+      "post": {
+        "operationId": "reject_proposal_api_proposals__proposal_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ProposalDetailView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Proposal",
+        "tags": [
+          "Governance"
         ]
       }
     },
