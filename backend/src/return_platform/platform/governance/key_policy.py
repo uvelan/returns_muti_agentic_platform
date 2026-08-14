@@ -80,6 +80,11 @@ FORBIDDEN_PROPOSAL_KEY_PATTERNS: tuple[str, ...] = (
     "graph.schema.*",
     "graph.identities.*",
     "graph.source_bindings.*",
+    # Kept although no such configuration field exists any more (AGT-01 removed
+    # it as decorative -- failure handling is control flow in the workflow, not
+    # a per-agent value). A deny pattern that matches nothing costs nothing and
+    # fails closed; dropping an entry from this list is the only direction that
+    # can widen what a proposal may edit.
     "agent.failure_policy.*",
     "ai.provider_credentials.*",
     "ai.allowed_hosts.*",

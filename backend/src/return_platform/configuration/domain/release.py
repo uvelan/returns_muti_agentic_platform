@@ -4,25 +4,29 @@ from enum import StrEnum
 
 
 class ReleaseStatus(StrEnum):
-    """Status vocabulary of a configuration *manifest*, not of the live lifecycle.
+    """Whether a configuration *manifest* is finished. Not a promotion lifecycle.
 
-    Wave D3 retired the Mongo release lifecycle these values were designed for,
-    and `APPROVED`/`ACTIVE` no longer name any state the platform transitions
-    through. The enum survives because the manifest pipeline still parses a
-    `status` field with it (`application/loader.py`) and `ConfigurationRelease`
-    carries it as provenance.
+    Two values, because two is what the manifest has to distinguish:
+    `LegacyCompatibilityAdapter.build_canonical_snapshot` refuses DRAFT and
+    serves anything else, and the packaged manifest declares ACTIVE. Those are
+    the only values `ConfigurationLoader` has ever parsed out of a real file.
+
+    `VALIDATED`, `APPROVED` and `SUPERSEDED` used to be members too. They were
+    the vocabulary of `RELEASE_SERVICE_TRANSITIONS` (DRAFT -> VALIDATED ->
+    APPROVED), which went with `ReleaseService` in Wave D3; no module declared
+    them, nothing transitioned to them, and the docstring here had to warn
+    readers not to reach for this enum to model a promotion. The warning is
+    unnecessary now that there is no promotion vocabulary left to reach for --
+    and the names are gone from the place they were most dangerous, which is
+    that three of them collide with the live lifecycle below while meaning
+    something different.
 
     **The live lifecycle is `graph_repository.RELEASE_TRANSITIONS`** --
-    DRAFT → VALIDATED → RELEASED → SUPERSEDED → ARCHIVED, in Neo4j. Do not reach
-    for this enum to model a promotion; the two vocabularies overlap on three
-    names and mean different things.
-
-    (`RELEASE_SERVICE_TRANSITIONS` lived here and went with `ReleaseService`. It
-    described DRAFT → VALIDATED → APPROVED, which nothing performs any more.)
+    DRAFT -> VALIDATED -> RELEASED -> SUPERSEDED -> ARCHIVED, in Neo4j. That one
+    is a promotion, it is enforced by `transition_allowed`, and it is a separate
+    vocabulary on purpose: a manifest on disk and a release in the graph are
+    different things with different states.
     """
 
     DRAFT = "DRAFT"
-    VALIDATED = "VALIDATED"
-    APPROVED = "APPROVED"
     ACTIVE = "ACTIVE"
-    SUPERSEDED = "SUPERSEDED"

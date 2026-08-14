@@ -1,8 +1,8 @@
 # agents
 
-The six independent business agents and the one registry that constructs and
-resolves them. See `contracts/README.md` for the shared plugin contract these agents
-implement, and `registry/README.md` for how they're constructed and resolved.
+The six independent business agents and the one registry that constructs them. See
+`contracts/README.md` for the shapes they share, and `registry/README.md` for how
+they're constructed.
 
 ## The six agents
 
@@ -33,14 +33,21 @@ Two things are true of every one of them and are not repeated per-README:
   reach for it itself. `tests/agents/test_no_cross_agent_imports.py` and
   `tests/agents/test_context_has_no_module_fields.py` keep both invariants enforced.
 
-## What's not here yet
+## How an agent is called
 
-`AgentPlugin.execute()` exists on every agent (satisfying the plugin contract), but
-`context.capabilities` has no published `AgentAiPort`/`KnowledgePort` provider yet — no
-`bootstrap/adapters/` module binds one. `OrderAnalysisAgent.execute()` raises
-`NotImplementedError` for this reason; every other agent's `execute()` works today
-because it never needed a capability, just a thin async wrapper around its existing
-`assess()`. Real callers keep using `.assess()`/`.analyze()`/`.disambiguate()` directly,
-exactly as they did before this contract existed — `execute()` becomes load-bearing
-once a later phase adds Temporal orchestration that resolves agents generically by
-`agent_id` instead of by import.
+By name, on a concrete instance: `.assess()`, or `.analyze()`/`.disambiguate()` for
+Order Analysis. Each takes and returns that agent's own strongly-typed request and
+result, so a caller is type-checked against the agent it actually invokes.
+
+There is deliberately no generic `execute(request, context)` and no
+`registry.resolve(agent_id)` (AGT-02). Both existed, and neither was ever used: every
+production caller reached for a concrete agent, `execute()` was a thin async wrapper
+around `assess()` on five of the six, and on the sixth it could not be written at all
+— `OrderAnalysisAgent` needs an `AIGatewayService`, `AgentExecutionContext` carries no
+`.ai` by design, and no `bootstrap/adapters/` module publishes an `AgentAiPort` under
+`CapabilityName.AI_INVOCATION` for it to resolve one from. It raised
+`NotImplementedError` instead. A dispatch path that cannot carry the one agent that
+most needs it is not a dispatch path, so it is gone rather than left as a promise.
+
+The same removal took `WorkflowStageHandlerType.AGENT` with it: a configured stage can
+only be `ACTIVITY`, because that is the only kind anything can execute.

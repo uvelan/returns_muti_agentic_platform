@@ -36,7 +36,6 @@ from typing import Any
 
 from return_platform.configuration.domain.errors import ConfigurationValidationError
 from return_platform.configuration.domain.release_model import RuntimeSnapshot
-from return_platform.configuration.domain.workflow import WorkflowStageHandlerType
 
 # Read-only access modes per the platform contract
 _READ_ONLY_ACCESS_MODES = {"READ_ONLY", "read_only", "readonly"}
@@ -286,8 +285,6 @@ class ConfigurationValidator:
         snapshot: RuntimeSnapshot,
         errors: list[str],
     ) -> None:
-        agent_ids = set(snapshot.agents.agents.keys()) if snapshot.agents.agents else set()
-
         wf_ids: set[str] = set()
         for wf_id, workflow in (snapshot.workflow.workflow or {}).items():
             # Duplicate workflow IDs
@@ -303,27 +300,15 @@ class ConfigurationValidator:
                     errors.append(f"workflow: workflow '{wf_id}' contains an empty stage ID")
                     continue
 
-                # §3.6 — Do NOT treat stage name as agent ID.
-                # Only structured handlers trigger agent resolution.
+                # §3.6 — A stage name is a business state name, never an agent
+                # ID. There is no agent-reference check below it any more: with
+                # the AGENT handler type gone (AGT-02), `WorkflowStageHandler`
+                # names no agent for this to resolve.
                 if stage_id in stage_ids:
                     errors.append(
                         f"workflow: workflow '{wf_id}' has duplicate stage ID '{stage_id}'"
                     )
                 stage_ids.add(stage_id)
-
-            # §3.6 — Structured handler validation
-            # If a stage carries handler.type == AGENT, validate the agent ref.
-            for stage in workflow.stages or []:
-                if isinstance(stage, str):
-                    continue
-                handler = stage.handler
-                if handler is not None and handler.type == WorkflowStageHandlerType.AGENT:
-                    handler_agent = handler.agent
-                    if handler_agent and handler_agent not in agent_ids:
-                        errors.append(
-                            f"workflow: workflow '{wf_id}' stage handler "
-                            f"references unknown agent '{handler_agent}'"
-                        )
 
     # ------------------------------------------------------------------
     # §3.7 — Graph → source references

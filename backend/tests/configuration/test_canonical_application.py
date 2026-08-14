@@ -682,6 +682,43 @@ def test_a_draft_is_still_readable_through_the_parser_that_design_surfaces_use(
     assert parsed.status is ReleaseStatus.DRAFT
 
 
+@pytest.mark.parametrize("retired", ["VALIDATED", "APPROVED", "SUPERSEDED"])
+def test_a_retired_promotion_status_is_refused_at_the_parser(tmp_path: Path, retired: str) -> None:
+    """The manifest vocabulary no longer answers promotion questions (GOV-01).
+
+    `ReleaseStatus` used to carry VALIDATED/APPROVED/SUPERSEDED from the retired
+    `RELEASE_SERVICE_TRANSITIONS` path. Nothing declared them and nothing moved
+    to them, but three of them are also names in the *live* Neo4j lifecycle
+    (`graph_repository.RELEASE_TRANSITIONS`) where they mean something else --
+    so a manifest saying `status: VALIDATED` read as a promoted release and was
+    served, when in fact no one had promoted anything.
+
+    Now it fails at the parser, naming the value, which is where whoever wrote it
+    is still looking. Two manifest states remain and they are the two the runtime
+    actually distinguishes: DRAFT is refused, ACTIVE is served.
+    """
+    manifest = {
+        "schema_version": "2.0",
+        "release_id": "promoted-by-nobody",
+        "status": retired,
+        "modules": {},
+    }
+    _write_config(tmp_path, manifest)
+
+    with pytest.raises(ValueError, match="not a valid ReleaseStatus"):
+        ConfigurationLoader(tmp_path).load_manifest()
+
+
+def test_the_two_manifest_statuses_are_the_two_the_runtime_tells_apart() -> None:
+    """Stated as a set so a third value is a deliberate edit, not a drift.
+
+    Every additional member is another way for a manifest to claim a state the
+    snapshot builder has no branch for -- which is how VALIDATED came to mean
+    "serve it" by default.
+    """
+    assert {status.value for status in ReleaseStatus} == {"DRAFT", "ACTIVE"}
+
+
 def test_platform_structure_with_invalid_payload_fails_closed(tmp_path: Path):
     manifest = {
         "schema_version": "2.0",

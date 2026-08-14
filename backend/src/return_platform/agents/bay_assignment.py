@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from return_platform.agents.contracts import (
     AgentDecisionView,
-    AgentExecutionContext,
     BayAssessment,
     BayAssessmentRequest,
 )
-from return_platform.agents.contracts.descriptor import AgentDescriptor
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 
 
@@ -39,16 +37,6 @@ class BayAssignmentAgent:
     def __init__(self, configuration: ReturnPlatformConfiguration) -> None:
         self._root = configuration
         self._config = configuration.agents["bay_assignment"]
-
-    @property
-    def descriptor(self) -> AgentDescriptor:
-        return AgentDescriptor.from_configuration("bay_assignment", self._config)
-
-    async def execute(
-        self, request: BayAssessmentRequest, context: AgentExecutionContext
-    ) -> BayAssessment:
-        del context
-        return self.assess(request)
 
     def assess(self, request: BayAssessmentRequest) -> BayAssessment:
         if (
