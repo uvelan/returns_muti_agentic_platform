@@ -112,3 +112,99 @@ def test_domain_layer_performs_no_io() -> None:
             if _is_forbidden(imported, disallowed):
                 violations.append((path.name, imported))
     assert not violations, f"analyzer domain/ must stay pure; found: {violations}"
+
+
+# --- ANZ-01: composable by an application that is not this one ---------------
+#
+# The test above permits `platform` and `security` as "cross-cutting
+# infrastructure the analyzer is permitted to use directly", which is the right
+# rule for a module living inside this host and the wrong one for the question
+# both audits actually asked: could a *second* application compose this?
+#
+# A second application has no `return_platform.platform` and no
+# `return_platform.security`. So the rings below the composition root have to
+# reach the host only through ports. `api/`, `persistence/` and `module.py` are
+# exempt by design -- they are this host's composition root, and a second
+# application writes its own. `composition.py` is exempt because it is the seam:
+# it is where the default bindings live, and having exactly one such place is
+# the point.
+
+#: Rings that must be composable without this host.
+PORTABLE_RINGS = ("domain", "reasoning", "ports", "application")
+
+HOST_PREFIXES = ("return_platform.platform", "return_platform.security")
+
+#: The one remaining host coupling below the composition root, named rather than
+#: silently permitted.
+#:
+#: `draft_service` drives `ProposalKernel` -- this platform's approval lifecycle
+#: -- and governance is deliberately not among the interfaces either audit
+#: enumerated for portability (source connectors, graph target, AI gateway,
+#: scope policy, masking policy, configuration, persistence). It is also on the
+#: program's explicit preserve list, so wrapping it in a port is a change to
+#: make on purpose rather than as a side effect of a packaging task.
+#:
+#: Listed as a single file, not a prefix: a *second* module reaching for
+#: governance would fail this test, which is the behaviour worth having.
+KNOWN_HOST_COUPLINGS = frozenset({"application/draft_service.py"})
+
+
+def test_the_portable_rings_reach_the_host_only_through_ports() -> None:
+    """The finding both audits scored: the analyzer core is independent, but its
+    packaging was not -- a host could supply sources, a graph target, an AI
+    gateway and persistence, and still had no way to supply its own masking or
+    its own retention scope, because the application layer constructed this
+    platform's implementations directly."""
+    violations: list[tuple[str, str]] = []
+    for ring in PORTABLE_RINGS:
+        for path in sorted((ANALYZER_DIR / ring).rglob("*.py")):
+            relative = f"{ring}/{path.name}"
+            if relative in KNOWN_HOST_COUPLINGS:
+                continue
+            for imported in _imported_modules(path):
+                if _is_forbidden(imported, HOST_PREFIXES):
+                    violations.append((relative, imported))
+    assert not violations, (
+        "these rings must be composable by an application that does not have this "
+        f"host's platform or security packages; found: {violations}. If a new host "
+        "dependency is genuinely needed, declare it as a Protocol in ports/ and bind "
+        "the default in composition.py."
+    )
+
+
+def test_every_known_host_coupling_is_still_real() -> None:
+    """An exemption that stops being needed has to stop existing.
+
+    Without this, `KNOWN_HOST_COUPLINGS` is a place a future coupling can hide:
+    a file listed there is unchecked forever, including after someone removes
+    the very import it was listed for.
+    """
+    stale = [
+        relative
+        for relative in sorted(KNOWN_HOST_COUPLINGS)
+        if not any(
+            _is_forbidden(imported, HOST_PREFIXES)
+            for imported in _imported_modules(ANALYZER_DIR / relative)
+        )
+    ]
+    assert not stale, f"these no longer couple to the host; drop the exemption: {stale}"
+
+
+def test_the_composition_seam_is_the_only_default_host_binding() -> None:
+    """Defaults are allowed to exist -- composing inside this platform should stay
+    a one-liner -- but only in one place. Two seams would mean a host that
+    replaced one still inherited the other without being told."""
+    seam = ANALYZER_DIR / "composition.py"
+    assert seam.exists(), "the composition contract ANZ-01 asks for is missing"
+    assert "redaction" in seam.read_text(encoding="utf-8"), (
+        "composition.py must be where the masking and scope defaults are bound"
+    )
+
+    leaked = [
+        f"{ring}/{path.name}"
+        for ring in PORTABLE_RINGS
+        for path in sorted((ANALYZER_DIR / ring).rglob("*.py"))
+        if "platform.redaction" in path.read_text(encoding="utf-8")
+        and f"{ring}/{path.name}" not in {"ports/masking_port.py"}
+    ]
+    assert not leaked, f"a default host binding leaked outside composition.py: {leaked}"

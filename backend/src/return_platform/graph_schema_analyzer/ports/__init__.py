@@ -17,6 +17,12 @@ from __future__ import annotations
 
 from return_platform.graph_schema_analyzer.ports.audit_port import AnalyzerAuditPort
 from return_platform.graph_schema_analyzer.ports.graph_target_port import GraphTargetPort
+from return_platform.graph_schema_analyzer.ports.masking_port import (
+    PayloadRedactionPort,
+    RedactionPolicyFactory,
+    SampleMaskerFactory,
+    SampleMaskingPort,
+)
 from return_platform.graph_schema_analyzer.ports.source_port import (
     DiscoveredDataset,
     SourceDiscoveryPort,
@@ -27,6 +33,10 @@ __all__ = [
     "AnalyzerAuditPort",
     "DiscoveredDataset",
     "GraphTargetPort",
+    "PayloadRedactionPort",
     "PersistencePort",
+    "RedactionPolicyFactory",
+    "SampleMaskerFactory",
+    "SampleMaskingPort",
     "SourceDiscoveryPort",
 ]

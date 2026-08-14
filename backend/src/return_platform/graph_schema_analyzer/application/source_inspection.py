@@ -34,8 +34,10 @@ from typing import Any
 from return_platform.graph_schema_analyzer.application.sample_masking import (
     build_masked_source_inspection,
 )
+from return_platform.graph_schema_analyzer.composition import default_sample_masker
 from return_platform.graph_schema_analyzer.domain.errors import ScopeViolation
 from return_platform.graph_schema_analyzer.domain.source_scope import InspectionScope
+from return_platform.graph_schema_analyzer.ports.masking_port import SampleMaskingPort
 from return_platform.graph_schema_analyzer.ports.source_port import (
     IndexDescription,
     ObjectDescription,
@@ -45,7 +47,6 @@ from return_platform.graph_schema_analyzer.ports.source_port import (
     SourceObjectRef,
     SourceValidation,
 )
-from return_platform.platform.redaction.sample_masking import SampleMasker
 
 __all__ = ["ScopedSourceInspection", "build_scoped_source_inspection"]
 
@@ -196,7 +197,7 @@ def build_scoped_source_inspection(
     inspection: SourceInspectionPort,
     *,
     scope: InspectionScope,
-    masker: SampleMasker | None = None,
+    masker: SampleMaskingPort | None = None,
 ) -> SourceInspectionPort:
     """Typed factory, and the reason it exists is not decoration.
 
@@ -214,5 +215,5 @@ def build_scoped_source_inspection(
     """
     return build_masked_source_inspection(
         ScopedSourceInspection(inspection, scope=scope),
-        masker=SampleMasker() if masker is None else masker,
+        masker=default_sample_masker() if masker is None else masker,
     )

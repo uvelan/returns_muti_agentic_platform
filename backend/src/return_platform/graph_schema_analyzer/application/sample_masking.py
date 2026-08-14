@@ -51,6 +51,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from return_platform.graph_schema_analyzer.ports.masking_port import SampleMaskingPort
 from return_platform.graph_schema_analyzer.ports.source_port import (
     IndexDescription,
     ObjectDescription,
@@ -60,7 +61,6 @@ from return_platform.graph_schema_analyzer.ports.source_port import (
     SourceObjectRef,
     SourceValidation,
 )
-from return_platform.platform.redaction.sample_masking import SampleMasker
 
 __all__ = ["MaskedSourceInspection", "build_masked_source_inspection"]
 
@@ -74,7 +74,7 @@ class MaskedSourceInspection:
     is exactly how a new value-bearing method would ship unmasked.
     """
 
-    def __init__(self, inspection: SourceInspectionPort, *, masker: SampleMasker) -> None:
+    def __init__(self, inspection: SourceInspectionPort, *, masker: SampleMaskingPort) -> None:
         self._inspection = inspection
         self._masker = masker
 
@@ -122,7 +122,7 @@ class MaskedSourceInspection:
 
 
 def build_masked_source_inspection(
-    inspection: SourceInspectionPort, *, masker: SampleMasker
+    inspection: SourceInspectionPort, *, masker: SampleMaskingPort
 ) -> SourceInspectionPort:
     """Typed factory. The annotation is what makes mypy prove the wrapper still
     satisfies the port, so a method added to `SourceInspectionPort` cannot be

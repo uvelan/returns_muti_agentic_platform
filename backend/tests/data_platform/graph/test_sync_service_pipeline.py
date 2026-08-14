@@ -20,6 +20,7 @@ from return_platform.data_platform.graph.sync_service import (
     GraphSyncRequest,
     GraphSyncScope,
     GraphSyncService,
+    sync_run_view,
 )
 from return_platform.dynamic_knowledge.graph.generation import (
     LEGACY_FENCING_TOKEN,
@@ -40,6 +41,11 @@ from return_platform.dynamic_knowledge.graph.validation import (
 )
 from return_platform.dynamic_knowledge.lifecycle.handle import DEFAULT_SNAPSHOT_NAME
 from return_platform.dynamic_knowledge.lifecycle.orchestrator import ActivationError
+from return_platform.dynamic_knowledge.release_migration import (
+    MigrationPlan,
+    MigrationStrategy,
+    SchemaChangeClass,
+)
 from return_platform.dynamic_knowledge.schema import ConnectorType
 from return_platform.dynamic_knowledge.sync.adapters import scan_connector_registry
 
@@ -229,6 +235,14 @@ class FakeDriver:
 
 
 class FakeRuns:
+    """The run ledger, with the two operators the service actually uses.
+
+    `$push` is not decoration: the manifest recorder appends watermarks to the
+    same document the run's own `$set` later updates, and a fake that only
+    understood `$set` would let a change that dropped the watermarks pass here
+    while losing them in production.
+    """
+
     def __init__(self) -> None:
         self.documents: dict[str, dict[str, Any]] = {}
 
@@ -236,7 +250,18 @@ class FakeRuns:
         self.documents[document["_id"]] = dict(document)
 
     async def update_one(self, query: dict[str, Any], update: dict[str, Any]) -> None:
-        self.documents[query["_id"]].update(update["$set"])
+        document = self.documents[query["_id"]]
+        document.update(update.get("$set", {}))
+        for field, value in update.get("$push", {}).items():
+            target = document.setdefault(field, [])
+            if isinstance(value, dict) and "$each" in value:
+                target.extend(value["$each"])
+            else:
+                target.append(value)
+
+    async def find_one(self, query: dict[str, Any]) -> dict[str, Any] | None:
+        document = self.documents.get(query["_id"])
+        return None if document is None else dict(document)
 
     async def create_index(self, *args: Any, **kwargs: Any) -> None:
         return None
@@ -919,3 +944,248 @@ async def test_the_watermark_is_still_captured_before_any_scan_begins() -> None:
     assert scanned <= set(watermarks_before), (
         "a source was scanned before every participating source's watermark was captured"
     )
+
+
+# --- GRAPH-02: a classified change reaches the execution it earned ------------
+#
+# The classifier had no executor: `plan_migration` recorded a verdict and
+# nothing acted on it. These prove each class lands on a different real path,
+# and -- the part that would be easy to get wrong -- that the two cheap tiers do
+# NOT go through the cutover just because they run in FULL mode.
+
+
+def _plan(strategy: MigrationStrategy, **updates: Any) -> MigrationPlan:
+    return MigrationPlan(
+        from_release_id="release-1",
+        to_release_id="release-2",
+        strategy=strategy,
+        **updates,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_destructive_plan_runs_the_generation_cutover() -> None:
+    tx = FakeTransaction(fence_matched=1)
+    service = _service_with(tx, _mongo_source_db())
+    _without_sqlserver_sources(service)
+    await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, applySchema=False), actor_id="setup"
+    )
+    serving = await service._snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)  # type: ignore[attr-defined]
+    assert serving is not None
+
+    run = await service.apply_migration_plan(
+        _plan(MigrationStrategy.FULL_REBUILD, change_class=SchemaChangeClass.DESTRUCTIVE),
+        actor_id="operator",
+    )
+
+    assert run is not None
+    assert run.graphGenerationId != serving.graph_generation_id, "no cutover happened"
+    after = await service._snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)  # type: ignore[attr-defined]
+    assert after is not None and after.activation_version == serving.activation_version + 1
+
+
+@pytest.mark.asyncio
+async def test_a_compatible_plan_resyncs_only_the_affected_sources_in_place() -> None:
+    """The tier that did not exist. It must correct values inside the generation
+    that is serving -- not cut over, and not touch sources the change never
+    reached."""
+    tx = FakeTransaction(fence_matched=1)
+    service = _service_with(tx, _mongo_source_db())
+    _without_sqlserver_sources(service)
+    await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, applySchema=False), actor_id="setup"
+    )
+    serving = await service._snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)  # type: ignore[attr-defined]
+    assert serving is not None
+
+    run = await service.apply_migration_plan(
+        _plan(
+            MigrationStrategy.AFFECTED_SCOPE_RESYNC,
+            change_class=SchemaChangeClass.COMPATIBLE,
+            affected_source_asset_ids=("customer_outbound",),
+        ),
+        actor_id="operator",
+    )
+
+    assert run is not None
+    assert run.graphGenerationId == serving.graph_generation_id, "a resync must not cut over"
+    after = await service._snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)  # type: ignore[attr-defined]
+    assert after is not None and after.activation_version == serving.activation_version
+    # Only the named source was read.
+    assert set(run.sourceCounts) <= {"customer_outbound"}
+
+
+@pytest.mark.asyncio
+async def test_an_additive_plan_backfills_the_affected_sources() -> None:
+    tx = FakeTransaction(fence_matched=1)
+    service = _service_with(tx, _mongo_source_db())
+    _without_sqlserver_sources(service)
+    await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, applySchema=False), actor_id="setup"
+    )
+    serving = await service._snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)  # type: ignore[attr-defined]
+    assert serving is not None
+
+    run = await service.apply_migration_plan(
+        _plan(
+            MigrationStrategy.BACKFILL,
+            change_class=SchemaChangeClass.ADDITIVE,
+            affected_source_asset_ids=("customer_outbound",),
+        ),
+        actor_id="operator",
+    )
+
+    assert run is not None
+    assert run.graphGenerationId == serving.graph_generation_id
+    # A backfill is a *full* scan of a narrow scope, never an incremental pass:
+    # the records that need the new property are exactly the ones that did not
+    # change, and a checkpointed run would skip every one of them.
+    assert run.recordScope == "FULL"
+
+
+@pytest.mark.asyncio
+async def test_a_no_change_plan_runs_nothing_at_all() -> None:
+    """An empty run in the ledger would be a migration an operator has to explain."""
+    service = _service_with(FakeTransaction(fence_matched=1), _mongo_source_db())
+
+    assert (
+        await service.apply_migration_plan(
+            _plan(MigrationStrategy.NO_CHANGE, change_class=SchemaChangeClass.NONE), actor_id="op"
+        )
+        is None
+    )
+    assert service._runs.documents == {}  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_a_legacy_incremental_plan_is_not_re_judged() -> None:
+    """INCREMENTAL only appears on plans recorded before the change classes
+    existed. Deriving a strategy for one now would be inventing a judgement for
+    a migration that already happened."""
+    service = _service_with(FakeTransaction(fence_matched=1), _mongo_source_db())
+
+    assert (
+        await service.apply_migration_plan(_plan(MigrationStrategy.INCREMENTAL), actor_id="op")
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_cheap_plan_with_no_scope_is_refused_rather_than_run_empty() -> None:
+    """Scope is what makes the cheap tiers cheap. Without it the run would read
+    nothing, complete green, and report a migration as performed."""
+    service = _service_with(FakeTransaction(fence_matched=1), _mongo_source_db())
+
+    with pytest.raises(ValueError, match="names no affected sources"):
+        await service.apply_migration_plan(
+            _plan(
+                MigrationStrategy.AFFECTED_SCOPE_RESYNC,
+                change_class=SchemaChangeClass.COMPATIBLE,
+            ),
+            actor_id="op",
+        )
+
+
+# --- GRAPH-03: the run ledger answers what an operator has to ask -------------
+#
+# Nothing here is a new surface. `GET /api/graph-sync/runs/{id}` already served
+# `GraphSyncRunView`; these are the fields it could not carry, and the reason it
+# could not is that they were never recorded. The watermark is the sharpest
+# case: `GenericSyncCoordinator` has always reported it to a
+# `RunManifestRecorder` and no implementation of that protocol existed
+# anywhere, so the bound each run read up to was computed and discarded.
+
+
+@pytest.mark.asyncio
+async def test_a_run_records_the_watermark_it_bounded_itself_with() -> None:
+    tx = FakeTransaction(fence_matched=1)
+    service = _service_with(tx, _mongo_source_db())
+
+    run = await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, applySchema=False), actor_id="test"
+    )
+
+    assert run.sourceWatermarks, "the run reported no watermark at all"
+    recorded = {watermark.sourceAssetId for watermark in run.sourceWatermarks}
+    assert "customer_outbound" in recorded
+    one = next(w for w in run.sourceWatermarks if w.sourceAssetId == "customer_outbound")
+    assert one.cursorType and one.encodedValue
+    # Reported as the connector encoded it. Decoding here would be a second
+    # opinion about what the cursor means.
+    assert one.connectorVersion
+    assert run.scanCompletedAt is not None
+    assert run.reconciliationCompletedAt is not None
+
+
+@pytest.mark.asyncio
+async def test_a_cutover_run_names_both_generations_and_the_drain_outcome() -> None:
+    """The pair is the story. `graphGenerationId` alone says what is serving now
+    and leaves "what did it replace, and did that finish draining" unanswerable
+    -- which is the question after a cutover."""
+    tx = FakeTransaction(fence_matched=1)
+    service = _service_with(tx, _mongo_source_db())
+    _without_sqlserver_sources(service)
+    await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, applySchema=False), actor_id="setup"
+    )
+    serving = await service._snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)  # type: ignore[attr-defined]
+    assert serving is not None
+
+    run = await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.FULL, applySchema=False), actor_id="operator"
+    )
+
+    assert run.activeGenerationId == serving.graph_generation_id
+    assert run.graphGenerationId != run.activeGenerationId
+    assert run.cutoverStage == "RETIRE_PREVIOUS"
+    assert run.previousGenerationStatus is not None
+
+
+@pytest.mark.asyncio
+async def test_a_failed_cutover_records_the_stage_and_the_reason() -> None:
+    """`errorCode` is the exception type. "ACTIVATIONERROR" is the same string
+    whether the rebuild lease was held elsewhere or validation rejected the
+    candidate, and those are completely different operator responses."""
+    tx = FakeTransaction(fence_matched=1)
+    service = _service_with(tx, _mongo_source_db())
+    _without_sqlserver_sources(service)
+    await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, applySchema=False), actor_id="setup"
+    )
+    service._validator = _FailingValidator()  # type: ignore[attr-defined]
+
+    with pytest.raises(ActivationError):
+        await service.sync(
+            GraphSyncRequest(mode=GraphSyncScope.FULL, applySchema=False), actor_id="operator"
+        )
+
+    failed = next(d for d in service._runs.documents.values() if d["status"] == "FAILED")  # type: ignore[attr-defined]
+    assert failed["cutoverStage"] == "VALIDATE"
+    assert failed["failureReason"]
+    assert "NODE_LABEL_POPULATED" in failed["failureReason"]
+
+
+@pytest.mark.asyncio
+async def test_the_ledger_still_reads_a_run_recorded_before_any_of_this() -> None:
+    """The collection holds runs from before these fields existed. A view that
+    could not read one would make the history unreadable at exactly the moment
+    an operator went looking for it."""
+    legacy = {
+        "_id": "run-legacy",
+        "mode": "FULL",
+        "status": "COMPLETED",
+        "schemaVersion": "2026.08.1",
+        "configurationDigest": "d" * 64,
+        "startedBy": "scheduler",
+        "startedAt": datetime(2026, 8, 1, tzinfo=UTC),
+    }
+
+    view = sync_run_view(legacy)
+
+    assert view.sourceWatermarks == []
+    assert view.activeGenerationId is None
+    assert view.cutoverStage is None
+    assert view.previousGenerationStatus is None
+    assert view.failureReason is None
+    assert view.scanCompletedAt is None

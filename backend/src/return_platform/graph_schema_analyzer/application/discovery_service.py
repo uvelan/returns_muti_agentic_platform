@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
+from return_platform.graph_schema_analyzer.composition import default_redaction_policy
 from return_platform.graph_schema_analyzer.domain.errors import ClassificationViolation
 from return_platform.graph_schema_analyzer.domain.sampling_policy import SamplingPolicy
 from return_platform.graph_schema_analyzer.domain.source_snapshot import (
@@ -36,7 +37,6 @@ from return_platform.graph_schema_analyzer.ports.source_port import (
     DiscoveredDataset,
     SourceDiscoveryPort,
 )
-from return_platform.platform.redaction.allowlist import AllowlistRedactor
 
 __all__ = ["DiscoveryOutcome", "DiscoveryService"]
 
@@ -148,7 +148,10 @@ class DiscoveryService:
             return None
         rows = list(dataset.sample_rows)
         if policy.retention_classification is SampleClassification.REDACTED:
-            redactor = AllowlistRedactor(policy.retention_allowlist)
+            # Through the composition seam, not the host class: which fields may
+            # be retained at all is policy a second application decides for its
+            # own data (see `ports/masking_port.py`).
+            redactor = default_redaction_policy(policy.retention_allowlist)
             return [dict(redactor.redact(row)) for row in rows]
         return [dict(row) for row in rows]
 
