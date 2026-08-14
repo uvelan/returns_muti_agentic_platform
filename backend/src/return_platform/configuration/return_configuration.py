@@ -30,11 +30,16 @@ class AgentConfiguration(StrictConfigModel):
     prompt_ref: NonBlank | None = None
     policy_ref: NonBlank | None = None
     ai_route_ref: NonBlank | None = None
-    # Whether the case parks when this agent fails, or carries on without it.
-    # Declared per agent rather than inferred from the stage, because the same
-    # stage can be required for one deployment and advisory for another --
-    # a branch with no warehouse has no bay to assign.
-    failure_policy: Literal["blocking", "best_effort"] = "blocking"
+    # There is deliberately no `failure_policy` here. What happens when a step
+    # fails is not a per-agent setting: it is decided by the workflow phase that
+    # calls it, in code, and it has to be, because the two directions are
+    # different control flow rather than different values. `ReturnCaseWorkflow`
+    # absorbs a failed bay request into a `REQUEST_FAILED` result and continues
+    # (`_gather_bay`), absorbs an unavailable support drafter into the
+    # deterministic template (`_open_support`, and again inside the activity
+    # itself), and parks the case on a graph-sync failure
+    # (`_park_for_graph_sync_failure`). A configured value could not have
+    # produced any of those; it could only have contradicted them.
     timeout_seconds: float = Field(default=30.0, gt=0.0)
     retry_max_attempts: int = Field(default=3, ge=1)
     max_concurrency: int = Field(default=10, ge=1)
