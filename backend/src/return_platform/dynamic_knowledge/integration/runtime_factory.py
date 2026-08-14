@@ -22,8 +22,8 @@ from temporalio.client import Client
 
 from return_platform.ai.gateway.telemetry import RepositoryAIAttemptRecorder
 from return_platform.ai.interception.store import SystemStoreInterceptionStore
-from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
-from return_platform.ai_gateway.routing import AIRoutePool
+from return_platform.ai.routing.selection import AIRoutePool
+from return_platform.ai.routing.tasks import LoadedAIGatewayConfiguration
 from return_platform.configuration.return_configuration import (
     DiscoveryConfiguration,
     ProgressiveDiscoveryConfiguration,

@@ -46,9 +46,9 @@ from return_platform.agents.contracts import (
     ReturnWorkflowAssessmentRequest,
 )
 from return_platform.agents.registry import AgentRegistry
-from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
-from return_platform.ai_gateway.routing import AIRoutePool
-from return_platform.ai_gateway.service import AIGatewayRepository, AIGatewayService
+from return_platform.ai.gateway.service import AIGatewayRepository, AIGatewayService
+from return_platform.ai.routing.selection import AIRoutePool
+from return_platform.ai.routing.tasks import LoadedAIGatewayConfiguration
 from return_platform.configuration.return_configuration import (
     ReturnPlatformConfiguration,
     load_return_configuration,

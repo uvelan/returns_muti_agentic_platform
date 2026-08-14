@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from return_platform.ai_gateway.configuration import AIGatewayConfiguration
+from return_platform.ai.routing.tasks import AIGatewayConfiguration
 from return_platform.configuration.graph_repository import (
     ConfigurationGraphRepository,
     compute_release_checksum,

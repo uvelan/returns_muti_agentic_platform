@@ -9,7 +9,7 @@ import json
 
 from neo4j import AsyncGraphDatabase
 
-from return_platform.ai_gateway.configuration import (
+from return_platform.ai.routing.tasks import (
     LoadedAIGatewayConfiguration,
     load_ai_gateway_configuration,
 )

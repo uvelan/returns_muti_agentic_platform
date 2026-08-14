@@ -31,11 +31,12 @@ from pymongo import AsyncMongoClient
 
 from return_platform.ai.interception.store import InterceptionStore
 from return_platform.ai.providers.replay import ReplayStore
-from return_platform.ai_gateway.configuration import (
+from return_platform.ai.routing.routes import build_routes
+from return_platform.ai.routing.selection import AIRoutePool
+from return_platform.ai.routing.tasks import (
     LoadedAIGatewayConfiguration,
     build_loaded_ai_gateway_configuration,
 )
-from return_platform.ai_gateway.routing import AIRoutePool, build_routes
 from return_platform.configuration.graph_repository import (
     ConfigurationGraphRepository,
     InMemoryConfigurationGraphRepository,

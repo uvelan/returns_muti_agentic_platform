@@ -17,7 +17,7 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
-from return_platform.ai_gateway.configuration import load_ai_gateway_configuration
+from return_platform.ai.routing.tasks import load_ai_gateway_configuration
 from return_platform.bootstrap.adapters.governance_agent_configuration import (
     AgentConfigurationProposalActivator,
 )

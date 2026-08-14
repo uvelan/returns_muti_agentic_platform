@@ -8,7 +8,7 @@ from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from return_platform.ai_gateway.models import (
+from return_platform.ai.gateway.models import (
     AIRouteHealthView,
     AISafetyTestRequest,
     AISafetyTestResponse,
@@ -16,8 +16,8 @@ from return_platform.ai_gateway.models import (
     AIUsageAttemptView,
     AIUsageSummaryView,
 )
-from return_platform.ai_gateway.safety import inspect_input
-from return_platform.ai_gateway.service import AIGatewayService
+from return_platform.ai.gateway.service import AIGatewayService
+from return_platform.ai.safety import inspect_input
 from return_platform.operations.models import (
     AICompareRequest,
     AIGatewaySettingsUpdate,
@@ -47,7 +47,7 @@ def _gateway(request: Request, repository: OperationalRepository) -> AIGatewaySe
     # OperationalRepository.create_ai_trace uses explicit kwargs (more specific than the
     # AIGatewayRepository protocol's **kwargs: Any). The cast is safe: all callers pass
     # named arguments that OperationalRepository accepts.
-    from return_platform.ai_gateway.service import AIGatewayRepository
+    from return_platform.ai.gateway.service import AIGatewayRepository
 
     return AIGatewayService(
         cast(AIGatewayRepository, repository),

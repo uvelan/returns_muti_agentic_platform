@@ -10,7 +10,7 @@ from return_platform.agents.contracts import (
     OrderAnalysisAssessment,
     OrderAnalysisRequest,
 )
-from return_platform.ai_gateway.service import AIGatewayService
+from return_platform.ai.gateway.service import AIGatewayService
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 
 

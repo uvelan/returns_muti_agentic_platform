@@ -29,7 +29,7 @@ import pytest_asyncio
 from pydantic import SecretStr
 
 from return_platform.ai.routing.selection import AIRoutePool
-from return_platform.ai_gateway.configuration import (
+from return_platform.ai.routing.tasks import (
     LoadedAIGatewayConfiguration,
     load_ai_gateway_configuration,
 )
@@ -149,7 +149,9 @@ def _provider_release(
     return ReturnPlatformConfiguration.model_validate(payload)
 
 
-def _moved_valkey_release(configuration: ReturnPlatformConfiguration) -> ReturnPlatformConfiguration:
+def _moved_valkey_release(
+    configuration: ReturnPlatformConfiguration,
+) -> ReturnPlatformConfiguration:
     """A release that moves an infrastructure endpoint a live process is on.
 
     `valkey_port` is one of the settings the activator refuses to swap under a
@@ -189,7 +191,9 @@ async def _publish(
         (AI_GATEWAY_DOMAIN_KEY, ai_gateway.configuration.model_dump(mode="json")),
         (DEPENDENCY_SIMULATION_DOMAIN_KEY, dependency_simulation_payload),
     ):
-        await repo.save_draft_domain(release_id, domain_key, payload, actor_id="configuration-admin")
+        await repo.save_draft_domain(
+            release_id, domain_key, payload, actor_id="configuration-admin"
+        )
     await repo.promote_release(release_id, "VALIDATED", actor_id="configuration-admin")
     await repo.promote_release(
         release_id,
@@ -422,9 +426,7 @@ async def test_activation_re_resolves_vault_and_a_route_cannot_exist_without_it(
 
     await harness.publish(
         "release-anthropic",
-        _provider_release(
-            harness.baseline, provider_key="ANTHROPIC", model_id="claude-sonnet-4-5"
-        ),
+        _provider_release(harness.baseline, provider_key="ANTHROPIC", model_id="claude-sonnet-4-5"),
     )
     await harness.activator.refresh()
 
@@ -462,9 +464,7 @@ async def test_the_poll_guard_still_holds(
 
     await harness.publish(
         "release-anthropic",
-        _provider_release(
-            harness.baseline, provider_key="ANTHROPIC", model_id="claude-sonnet-4-5"
-        ),
+        _provider_release(harness.baseline, provider_key="ANTHROPIC", model_id="claude-sonnet-4-5"),
     )
     # Publishing reads the head itself; only the refreshes after this point are
     # the subject.
@@ -501,9 +501,7 @@ async def test_the_activation_loop_drives_the_same_reconciler(harness: _Harness)
 
     await harness.publish(
         "release-anthropic",
-        _provider_release(
-            harness.baseline, provider_key="ANTHROPIC", model_id="claude-sonnet-4-5"
-        ),
+        _provider_release(harness.baseline, provider_key="ANTHROPIC", model_id="claude-sonnet-4-5"),
     )
     task = asyncio.create_task(run_runtime_activation_loop(harness.activator, interval_seconds=0))
     try:
@@ -768,9 +766,7 @@ async def test_the_reconciler_reaches_the_participant_through_refresh(
     # that come from there rather than from the schema.
     await harness.publish(
         "release-anthropic",
-        _provider_release(
-            harness.baseline, provider_key="ANTHROPIC", model_id="claude-sonnet-4-5"
-        ),
+        _provider_release(harness.baseline, provider_key="ANTHROPIC", model_id="claude-sonnet-4-5"),
     )
     await activator.refresh()
     assert cast(_RecordingCoordinator, activities.runtime.coordinator).label == "schema-release-2"

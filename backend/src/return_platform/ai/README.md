@@ -139,11 +139,19 @@ from `provider.configured` — never from a code branch on environment.
   source samples use the six-block framing: system policy, module policy, task, source
   metadata, untrusted sample, user requirements.
 
-## Deprecated import path
+## There is one import path
 
-`return_platform.ai_gateway` still exists as a pure re-export layer because roughly twenty
-modules outside this lane still import it, two of which are owned by other lanes. New code
-imports `return_platform.ai`. See `docs/execution/d1-d2-ai.md`.
+`return_platform.ai_gateway` was a pure re-export layer, kept while ~30 modules outside this
+lane still imported it. Those imports were rewritten to the canonical modules and the shim
+was deleted, so `return_platform.ai` is the only way in.
+
+`ai_gateway.routing` did not map onto one module: it re-exported `AIRoute`/`build_routes`
+from `routing/routes.py` and the pool types from `routing/selection.py`. Callers import from
+whichever of the two they actually need. `routing/__init__.py` stays free of re-exports for
+the reason its own docstring gives — `tasks` is imported by both `routes` and `selection`,
+so a package-level re-export would make importing `tasks` pull in the whole subpackage.
+
+`tests/platform/test_ai_lane_boundary.py` fails if the old path is imported anywhere.
 
 ## Not built yet
 

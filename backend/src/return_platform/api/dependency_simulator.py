@@ -6,7 +6,7 @@ from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
-from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
+from return_platform.ai.routing.tasks import LoadedAIGatewayConfiguration
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
 from return_platform.dependency_simulation.configuration import (
     LoadedDependencySimulationConfiguration,

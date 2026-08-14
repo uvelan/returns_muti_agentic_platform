@@ -27,7 +27,7 @@ from typing import Any, Literal
 
 from pymongo import AsyncMongoClient
 
-from return_platform.ai_gateway.configuration import AIGatewayConfiguration
+from return_platform.ai.routing.tasks import AIGatewayConfiguration
 from return_platform.configuration.graph_repository import (
     ConfigurationGraphRepository,
     ConfigurationReleaseNode,

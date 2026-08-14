@@ -15,6 +15,14 @@ Reading requires the governance read capability; deciding requires the approval
 one; activating requires the activation one. `require_write_roles` would have
 been enough to mount this, and would have said that anyone who can edit anything
 may approve everything.
+
+**The capability parameter comes first in every signature.** FastAPI resolves a
+handler's dependencies in the order its parameters are declared, so a `_Kernel`
+declared ahead of the grant made `resolve_proposal_kernel` the first gate: an
+anonymous caller got 503 GOVERNANCE_UNAVAILABLE and thereby learned whether
+governance is composed in this process. The grants are therefore spelled as
+`Annotated` aliases -- an `= Depends(...)` default cannot precede a parameter
+that has none, so the syntax was quietly enforcing the wrong order.
 """
 
 from __future__ import annotations
@@ -68,6 +76,12 @@ def resolve_proposal_kernel(request: Request) -> ProposalKernel:
 
 
 _Kernel = Annotated[ProposalKernel, Depends(resolve_proposal_kernel)]
+
+#: Declare one of these ahead of `_Kernel`, never after it. See the module
+#: docstring: ordering is what makes authorization the first gate.
+_Reader = Annotated[str, Depends(require_capability(GOVERNANCE_PROPOSAL_READ))]
+_Decider = Annotated[str, Depends(require_capability(GOVERNANCE_PROPOSAL_APPROVE))]
+_Activator = Annotated[str, Depends(require_capability(GOVERNANCE_PROPOSAL_ACTIVATE))]
 
 
 def _meta(request: Request) -> ResponseMeta:
@@ -201,12 +215,12 @@ def _governance_error(exc: GovernanceError) -> HTTPException:
 @router.get("", response_model=APIResponse[list[ProposalSummaryView]])
 async def list_proposals(
     request: Request,
+    _user_id: _Reader,
     kernel: _Kernel,
     proposal_type: Annotated[ProposalType | None, Query(alias="type")] = None,
     proposal_status: Annotated[ProposalStatus | None, Query(alias="status")] = None,
     subject_id: Annotated[str | None, Query(alias="subjectId")] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    _user_id: str = Depends(require_capability(GOVERNANCE_PROPOSAL_READ)),
 ) -> APIResponse[Sequence[ProposalSummaryView]]:
     proposals = await kernel.list(
         proposal_type=proposal_type,
@@ -221,8 +235,8 @@ async def list_proposals(
 async def get_proposal(
     proposal_id: str,
     request: Request,
+    _user_id: _Reader,
     kernel: _Kernel,
-    _user_id: str = Depends(require_capability(GOVERNANCE_PROPOSAL_READ)),
 ) -> APIResponse[ProposalDetailView]:
     try:
         proposal = await kernel.get(proposal_id)
@@ -236,8 +250,8 @@ async def approve_proposal(
     proposal_id: str,
     payload: DecisionRequest,
     request: Request,
+    actor: _Decider,
     kernel: _Kernel,
-    actor: str = Depends(require_capability(GOVERNANCE_PROPOSAL_APPROVE)),
 ) -> APIResponse[ProposalDetailView]:
     try:
         proposal = await kernel.approve(
@@ -253,8 +267,8 @@ async def reject_proposal(
     proposal_id: str,
     payload: DecisionRequest,
     request: Request,
+    actor: _Decider,
     kernel: _Kernel,
-    actor: str = Depends(require_capability(GOVERNANCE_PROPOSAL_APPROVE)),
 ) -> APIResponse[ProposalDetailView]:
     try:
         proposal = await kernel.reject(
@@ -270,8 +284,8 @@ async def activate_proposal(
     proposal_id: str,
     payload: ActivationRequest,
     request: Request,
+    actor: _Activator,
     kernel: _Kernel,
-    actor: str = Depends(require_capability(GOVERNANCE_PROPOSAL_ACTIVATE)),
 ) -> APIResponse[ProposalDetailView]:
     """Carry an approved change into the runtime.
 

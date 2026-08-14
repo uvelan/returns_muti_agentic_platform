@@ -187,19 +187,74 @@ async def test_a_viewer_cannot_activate() -> None:
     assert activator.calls == []
 
 
-def test_the_inbox_reports_its_own_absence_rather_than_500(admin_client: TestClient) -> None:
+def _app_without_kernel(roles: frozenset[str] | None) -> FastAPI:
+    """The router mounted in a process where the kernel was never composed.
+
+    `roles is None` means no principal at all -- what an unauthenticated caller
+    reaching the route looks like once the authentication middleware has
+    declined to attach one.
+    """
     app = FastAPI()
     app.include_router(router)
 
     @app.middleware("http")
     async def _principal(request: Request, call_next: Any) -> Response:
-        request.state.principal = Principal(subject="operator", roles=frozenset({r.CONSOLE_ADMIN}))
+        if roles is not None:
+            request.state.principal = Principal(subject="operator", roles=roles)
         response: Response = await call_next(request)
         return response
 
-    response = TestClient(app).get("/api/proposals")
+    return app
+
+
+def test_the_inbox_reports_its_own_absence_rather_than_500() -> None:
+    response = TestClient(_app_without_kernel(frozenset({r.CONSOLE_ADMIN}))).get("/api/proposals")
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "GOVERNANCE_UNAVAILABLE"
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        ("get", "/api/proposals", None),
+        ("get", "/api/proposals/proposal-1", None),
+        ("post", "/api/proposals/proposal-1/approve", {}),
+        ("post", "/api/proposals/proposal-1/reject", {}),
+        ("post", "/api/proposals/proposal-1/activate", {}),
+    ],
+)
+def test_an_unauthenticated_caller_learns_nothing_about_the_kernel(
+    method: str, path: str, body: dict[str, Any] | None
+) -> None:
+    """Authorization is the *first* gate, not a later one.
+
+    The kernel is missing here, so every one of these routes could answer 503
+    GOVERNANCE_UNAVAILABLE -- and that answer tells an anonymous caller whether
+    governance is composed in this process, which is a fact about the deployment
+    they have not earned. FastAPI resolves parameter dependencies in signature
+    order, so this is decided purely by where the capability dependency sits.
+    """
+    client = TestClient(_app_without_kernel(None))
+    response = client.request(method, path, json=body)
+    assert response.status_code == 401, response.text
+    assert "GOVERNANCE_UNAVAILABLE" not in response.text
+
+
+@pytest.mark.parametrize(
+    ("roles", "path", "body"),
+    [
+        (frozenset({r.WORKSPACE_EDITOR}), "/api/proposals/proposal-1/approve", {}),
+        (frozenset({r.WORKSPACE_EDITOR}), "/api/proposals/proposal-1/reject", {}),
+        (frozenset({r.CONSOLE_VIEWER}), "/api/proposals/proposal-1/activate", {}),
+    ],
+)
+def test_a_caller_without_the_grant_learns_nothing_about_the_kernel(
+    roles: frozenset[str], path: str, body: dict[str, Any]
+) -> None:
+    """Same gate, one step further in: authenticated but not granted."""
+    response = TestClient(_app_without_kernel(roles)).post(path, json=body)
+    assert response.status_code == 403, response.text
+    assert "GOVERNANCE_UNAVAILABLE" not in response.text
 
 
 def test_an_unknown_proposal_is_a_404(admin_client: TestClient) -> None:
