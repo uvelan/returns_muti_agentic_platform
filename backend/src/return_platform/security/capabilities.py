@@ -45,6 +45,24 @@ CONFIG_RELEASE_READ: Final = "config.release.read"
 CONFIG_RELEASE_PROMOTE: Final = "config.release.promote"
 CONFIG_SOURCE_READ: Final = "config.source.read"
 CONFIG_SOURCE_WRITE: Final = "config.source.write"
+#: Repointing a dataset at different infrastructure -- `PUT`/`DELETE
+#: /api/source-bindings/{dataset}`.
+#:
+#: **Separate from `config.source.write`, and deliberately narrower.** A resync
+#: re-reads where the platform already reads; a rebind decides where it reads
+#: production data from at all, takes effect on the next direct source read with
+#: no approval in between, and is not the act of an operator with rights over one
+#: return. `api/graph_sync.py` states that distinction explicitly at the resync
+#: route, and this is the other half of it.
+#:
+#: **This changes no policy.** Only `ALL_CAPABILITIES` carries it, so the
+#: principals who hold it are exactly `roles.ADMIN_ROLES` -- the set the two
+#: routes already enforced through `require_admin_roles`. What it changes is
+#: whether the gate is *expressible*: the console decides what to offer from
+#: `/api/principal`'s capability list, no capability mirrored `ADMIN_ROLES`, and
+#: a UI that cannot ask therefore had to offer Rebind to a `WORKSPACE_EDITOR`
+#: who would receive a 403.
+CONFIG_SOURCE_REBIND: Final = "config.source.rebind"
 
 # Graph Schema Analyzer domain -- `/api/graph-schema`.
 GRAPH_SCHEMA_DRAFT_READ: Final = "graph_schema.draft.read"
@@ -82,6 +100,7 @@ ALL_CAPABILITIES: Final = frozenset(
         CONFIG_RELEASE_PROMOTE,
         CONFIG_SOURCE_READ,
         CONFIG_SOURCE_WRITE,
+        CONFIG_SOURCE_REBIND,
         GRAPH_SCHEMA_DRAFT_READ,
         GRAPH_SCHEMA_DRAFT_WRITE,
         GRAPH_SCHEMA_GENERATION_ACTIVATE,
@@ -123,6 +142,10 @@ _ROLE_CAPABILITIES: Final[dict[str, frozenset[str]]] = {
     # An editor may propose and may not decide. That split is the reason the
     # approval capability exists at all: before it, `POST /drafts/{id}/approve`
     # carried no dependency and accepted any actor the middleware had let in.
+    #
+    # `CONFIG_SOURCE_REBIND` is on the "decide" side and so is absent here: a
+    # rebinding is not a proposal anybody approves, it repoints production reads
+    # on the next request.
     r.WORKSPACE_EDITOR: _READ_ONLY_EVERYWHERE
     | {CONFIG_SOURCE_WRITE, GRAPH_SCHEMA_DRAFT_WRITE, GOVERNANCE_PROPOSAL_WRITE},
     r.RETURN_ASSOCIATE: frozenset({RETURNS_SESSION_READ, RETURNS_SESSION_WRITE}),

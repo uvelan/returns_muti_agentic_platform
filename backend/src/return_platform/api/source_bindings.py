@@ -40,7 +40,8 @@ from return_platform.dynamic_knowledge.config_loader import load_active_schema
 from return_platform.dynamic_knowledge.schema import SourceAssetDefinition
 from return_platform.dynamic_knowledge.source_binding_store import SourceBindingStore
 from return_platform.dynamic_knowledge.source_bindings import SourceBinding, catalogue_from
-from return_platform.security.authorization import require_admin_roles, require_read_roles
+from return_platform.security import capabilities
+from return_platform.security.authorization import require_capability, require_read_roles
 from return_platform.security.principal import Principal
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
@@ -134,10 +135,18 @@ async def rebind(
     dataset: str,
     payload: RebindRequest,
     request: Request,
-    # Admin, not general write. Repointing a dataset decides where the platform
-    # reads production data from, and it is not an act an operator with rights
-    # over one return should be able to make.
-    _actor_id: str = Depends(require_admin_roles),
+    # Still admin, and now sayable. Repointing a dataset decides where the
+    # platform reads production data from, and it is not an act an operator with
+    # rights over one return should be able to make -- `config.source.rebind` is
+    # granted to `ADMIN_ROLES` and to nobody else, so the set of principals this
+    # admits is byte-identical to the one `require_admin_roles` admitted.
+    #
+    # What changes is that the console can now ask. It decides what to offer from
+    # `/api/principal`'s capability list, and no capability mirrored
+    # `ADMIN_ROLES`, so the only way to render this button was to offer it to a
+    # `WORKSPACE_EDITOR` holding `config.source.write` and let them discover the
+    # 403 -- which is the failure the capability layer exists to prevent.
+    _actor_id: str = Depends(require_capability(capabilities.CONFIG_SOURCE_REBIND)),
 ) -> APIResponse[SourceBindingView]:
     """Point a dataset somewhere else.
 
@@ -172,7 +181,11 @@ async def rebind(
 async def clear_override(
     dataset: str,
     request: Request,
-    _actor_id: str = Depends(require_admin_roles),
+    # The same gate as the rebind above, because it is the same decision made in
+    # the other direction: clearing an override repoints the dataset back at
+    # whatever configuration says, which is as much a change of where production
+    # data is read from as setting one.
+    _actor_id: str = Depends(require_capability(capabilities.CONFIG_SOURCE_REBIND)),
 ) -> APIResponse[dict[str, bool]]:
     """Return a dataset to whatever the configured schema says."""
     removed = await _store(request).clear(dataset)

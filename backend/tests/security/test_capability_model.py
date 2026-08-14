@@ -119,6 +119,38 @@ def test_replay_read_is_not_bundled_into_ordinary_read_access() -> None:
         assert caps.AI_REPLAY_READ not in granted
 
 
+def test_rebinding_a_dataset_is_granted_to_exactly_the_admin_roles() -> None:
+    """The gate moved from a role group to a capability and admitted nobody new.
+
+    `PUT`/`DELETE /api/source-bindings/{dataset}` enforced `ADMIN_ROLES` through
+    `require_admin_roles`, which the console could not ask about: it decides what
+    to offer from `/api/principal`'s capability list and no capability mirrored
+    that role group, so the only renderable option was to offer Rebind to a
+    `WORKSPACE_EDITOR` and let them find the 403.
+
+    Asserted as set equality rather than "admin has it": the whole claim of that
+    change is that it is expressibility and not privilege, and a later grant to
+    an editor would quietly make it a privilege change.
+    """
+    holders = {
+        role
+        for role in r.ALL_ROLES
+        if caps.CONFIG_SOURCE_REBIND in caps.capabilities_for_roles([role])
+    }
+    assert holders == set(r.ADMIN_ROLES)
+
+
+def test_rebinding_is_a_stronger_grant_than_resyncing() -> None:
+    """A resync re-reads where the platform already reads; a rebind moves it.
+
+    `api/graph_sync.py` states that distinction at the resync route, and an
+    editor holding `config.source.write` must not inherit the rebind with it.
+    """
+    editor = caps.capabilities_for_roles([r.WORKSPACE_EDITOR])
+    assert caps.CONFIG_SOURCE_WRITE in editor
+    assert caps.CONFIG_SOURCE_REBIND not in editor
+
+
 def test_service_account_cannot_exercise_operator_judgment() -> None:
     """The platform's own calls must not promote, activate, or answer for a human."""
     granted = caps.capabilities_for_roles([r.RETURN_PLATFORM_SERVICE])
