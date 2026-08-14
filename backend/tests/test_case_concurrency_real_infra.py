@@ -691,18 +691,6 @@ async def test_a_concurrent_bay_recommendation_leaves_one_value_per_fact(
         await _purge(repository, (case_id,))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "BAY-CONC-01, reported to the Orchestrator. `request_bay_assignment` appends "
-        "`bay_assignment_requested` with the derived id `bay-requested-<case_id>` and "
-        "`append_case_fact` is `insert_one` against a unique `factId` index, so the "
-        "second attempt raises DuplicateKeyError *before* reaching placement. "
-        "`_BEST_EFFORT_RETRY` is `maximum_attempts=2`, which means the one retry the "
-        "policy grants can never succeed. Application defect; Track I does not fix "
-        "application logic. Remove this marker when the append is made idempotent."
-    ),
-)
 async def test_the_bay_activity_is_idempotent_under_the_retry_its_policy_grants(
     repository: OperationalRepository,
 ) -> None:
@@ -712,6 +700,14 @@ async def test_the_bay_activity_is_idempotent_under_the_retry_its_policy_grants(
     Temporal retries with identical input, and that attempt must be able to
     reach placement -- otherwise `maximum_attempts=2` buys nothing and a
     momentary warehouse blip costs the case its bay permanently.
+
+    This was BAY-CONC-01, and it xfailed here until the append was fixed.
+    `request_bay_assignment` wrote `bay_assignment_requested` under the derived
+    id `bay-requested-<case_id>` with `append_case_fact`, which is `insert_one`
+    against a unique `factId` index -- so the second attempt raised
+    `DuplicateKeyError` *before* reaching placement and the one retry the policy
+    grants could never succeed. The log is still insert-only; the append now
+    goes through `_append_fact_once`, which recognises its own previous attempt.
     """
     from return_platform.workflows.return_case_workflow import RequestBayAssignmentInput
 
@@ -729,6 +725,19 @@ async def test_the_bay_activity_is_idempotent_under_the_retry_its_policy_grants(
         notice = await activities.request_bay_assignment(request)
         assert notice.bay_reference == "BAY-7"
         assert placement.calls == 2, "the retry never reached placement"
+
+        # The marker fact is recorded once, not twice: absorbing the duplicate
+        # must not have turned the insert-only log into an append-twice one.
+        facts = await repository.list_case_facts(case_id)
+        markers = [fact for fact in facts if str(fact["factName"]) == "bay_assignment_requested"]
+        assert len(markers) == 1, f"the retry appended a second marker fact: {markers}"
+
+        # And the recommendation the retry finally obtained is the one on the
+        # case -- a retry that reached placement but recorded nothing would
+        # leave the associate reading no bay at all.
+        projected = await repository.latest_case_facts(case_id)
+        assert projected["bay_reference"]["value"] == "BAY-7"
+        assert projected["bay_return_location"]["value"] == "WH-1/BAY-7"
     finally:
         await _purge(repository, (case_id,))
 

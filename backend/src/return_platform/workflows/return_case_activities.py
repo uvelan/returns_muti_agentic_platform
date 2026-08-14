@@ -9,6 +9,13 @@ Each activity is idempotent on a key the *workflow* supplies, not one minted
 here. A Temporal retry re-runs the activity with identical input, and an
 idempotency key generated inside would be new each time -- which for
 `send_support_reminder` means a second message to a human.
+
+The same derivation is what makes case facts safe to re-append, and it is why
+every append below goes through `_append_fact_once`. The fact log is
+insert-only against a unique `factId` on purpose, so a derived id that arrives
+a second time raises rather than overwrites -- and an activity that let that
+raise would fail its own retry on the record of the previous attempt, before
+reaching whatever it was retried to do.
 """
 
 from __future__ import annotations
@@ -20,6 +27,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Protocol
 
+from pymongo.errors import DuplicateKeyError
 from temporalio import activity
 
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
@@ -148,6 +156,44 @@ class ReturnCaseActivities:
         # has since corrected.
         self._configuration = configuration
 
+    async def _append_fact_once(self, **fact: Any) -> bool:
+        """Append one derived-id fact, treating an existing one as already done.
+
+        `append_case_fact` is `insert_one` against a unique `factId`, and that
+        is deliberate -- it is what makes the log a log rather than a mutable
+        row, and nothing here weakens it. But every `fact_id` on this path is
+        *derived* from identifiers the workflow supplies, so a second arrival
+        under the same id is not new information: it is the same observation
+        about the same case, and the record of it is already durable.
+
+        Insert-only therefore had the retry semantics inverted. Every activity
+        below runs under a `RetryPolicy`, and a retry re-runs the whole body
+        with identical input; a `DuplicateKeyError` on a fact the previous
+        attempt already committed would fail the attempt *before* it reached
+        the work it was retried for. `request_bay_assignment` is where that bit
+        hardest -- its `bay_assignment_requested` marker is written before
+        placement is even asked, so attempt two could never get past it and
+        `_BEST_EFFORT_RETRY`'s one retry bought nothing at all.
+
+        Returns whether this call was the one that wrote the fact, so a caller
+        that cares can tell "recorded" from "was already recorded". Only a
+        duplicate is absorbed: any other write failure still raises, because
+        that one is a fact the log genuinely does not hold.
+        """
+        try:
+            await self._repository.append_case_fact(**fact)
+        except DuplicateKeyError:
+            logger.debug(
+                "case_fact_already_recorded",
+                extra={
+                    "case_id": fact.get("case_id"),
+                    "fact_id": fact.get("fact_id"),
+                    "fact_name": fact.get("fact_name"),
+                },
+            )
+            return False
+        return True
+
     @activity.defn(name="record_case_status")
     async def record_case_status(self, request: RecordCaseStatusInput) -> None:
         case = await self._repository.get_case(request.case_id)
@@ -159,7 +205,11 @@ class ReturnCaseActivities:
             expected_version=int(case["version"]),
         )
         if request.fact_name is not None and request.fact_id is not None:
-            await self._repository.append_case_fact(
+            # `_append_fact_once`, because `fact_id` comes from the workflow and
+            # is therefore identical on every retry: a write that committed and
+            # whose acknowledgement was lost must not poison all five attempts
+            # `_PERSIST_RETRY` grants.
+            await self._append_fact_once(
                 fact_id=request.fact_id,
                 case_id=request.case_id,
                 fact_name=request.fact_name,
@@ -187,8 +237,16 @@ class ReturnCaseActivities:
         a failure, and it comes back as a notice whose `reason` says which
         state. It raises only when the *request* could not be made, which is
         what the workflow's `ActivityError` branch is for.
+
+        The marker fact is appended through `_append_fact_once` and not
+        directly. It is written before placement is asked, its id is derived
+        from the case alone, and the log is insert-only -- so a direct append
+        raised `DuplicateKeyError` on attempt two and the activity died before
+        reaching `recommend`. `_BEST_EFFORT_RETRY` grants exactly one retry,
+        which meant the only retry the policy allows could never succeed and a
+        momentary warehouse blip cost the case its bay permanently (BAY-CONC-01).
         """
-        await self._repository.append_case_fact(
+        await self._append_fact_once(
             fact_id=f"bay-requested-{request.case_id}",
             case_id=request.case_id,
             fact_name="bay_assignment_requested",
@@ -232,8 +290,19 @@ class ReturnCaseActivities:
 
         `fact_id` is derived from the case and the fact name, so a bay result
         that arrives twice -- a retry, a replay, a late signal followed by a
-        recommendation -- rewrites one fact instead of appending a second
-        opinion. Best-effort like everything else on this path: a fact that
+        recommendation -- leaves one fact per name instead of a second opinion
+        the projection would then resolve by whichever write happened to land
+        last. That is contract C2's "one coherent bay result" made durable
+        rather than hoped for.
+
+        It does not *rewrite* that fact, and the docstring used to say it did.
+        The log is insert-only, so the first coherent result for a case wins
+        and every later arrival under the same id is a no-op -- which is the
+        honest reading of an append-only log with a derived id, and is why the
+        duplicate is recognised here rather than surfacing as a warning with a
+        stack trace for something entirely expected.
+
+        Best-effort like everything else on this path: a fact that genuinely
         could not be written never invalidates the recommendation itself.
         """
         values: tuple[tuple[str, Any], ...] = (
@@ -249,7 +318,7 @@ class ReturnCaseActivities:
             if value is None:
                 continue
             try:
-                await self._repository.append_case_fact(
+                await self._append_fact_once(
                     fact_id=f"{name}-{case_id}",
                     case_id=case_id,
                     fact_name=name,
@@ -458,7 +527,7 @@ class ReturnCaseActivities:
             # writing the RMA here is what makes it appear in the associate's
             # *original* conversation on their next turn -- no new chat, no
             # client-side join, no poll.
-            await self._repository.append_case_fact(
+            await self._append_fact_once(
                 fact_id=f"rma-{record_id}",
                 case_id=request.case_id,
                 fact_name="return_reference",
@@ -476,7 +545,7 @@ class ReturnCaseActivities:
             ):
                 if value is None:
                     continue
-                await self._repository.append_case_fact(
+                await self._append_fact_once(
                     fact_id=f"{name}-{record_id}",
                     case_id=request.case_id,
                     fact_name=name,
@@ -607,9 +676,10 @@ class ReturnCaseActivities:
         # A fact rather than a case column: which generation answered a case is
         # provenance, and `case_facts` is where provenance that must survive a
         # later correction lives. `fact_id` is derived from the case and the
-        # generation, so an activity retry after a partial failure rewrites the
-        # same fact instead of appending a second one.
-        await self._repository.append_case_fact(
+        # generation, so an activity retry that lands in the same generation
+        # finds the fact already recorded and moves on instead of failing on
+        # the unique `factId` -- the log stays insert-only either way.
+        await self._append_fact_once(
             fact_id=f"return-graph-generation-{request.case_id}-{outcome.graph_generation_id}",
             case_id=request.case_id,
             fact_name="return_graph_generation_id",
