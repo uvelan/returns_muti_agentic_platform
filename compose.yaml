@@ -271,9 +271,24 @@ services:
       NEO4J_server_memory_heap_max__size: 1G
       NEO4J_server_memory_pagecache_size: 512M
       NEO4J_server_config_strict__validation_enabled: "false"
+    # Host ports are overridable because Windows can make the defaults
+    # unbindable. WinNAT/Hyper-V reserves TCP ranges dynamically, and on at
+    # least one dev host it took 7454-7553 and 7679-7778 -- which contain both
+    # of these -- after which Docker refuses the mapping with "An attempt was
+    # made to access a socket in a way forbidden by its access permissions".
+    # A container created before the reservation keeps working, so this surfaces
+    # only on the next recreate, which makes it look unrelated to networking.
+    #
+    # `net stop winnat && net start winnat` from an elevated prompt releases the
+    # ranges, but they can be taken again. Setting NEO4J_BOLT_PORT (and, if
+    # needed, NEO4J_HTTP_PORT) in a local `.env` is the fix that needs no
+    # elevation and survives a reboot. Defaults are unchanged, so no other
+    # environment is affected. Host-run tests read the Bolt address from
+    # PLATFORM_TEST_NEO4J_URI (tests/conftest.py); in-network consumers use
+    # bolt://neo4j:7687 and are unaffected either way.
     ports:
-      - "127.0.0.1:7474:7474"
-      - "127.0.0.1:7687:7687"
+      - "127.0.0.1:${NEO4J_HTTP_PORT:-7474}:7474"
+      - "127.0.0.1:${NEO4J_BOLT_PORT:-7687}:7687"
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
