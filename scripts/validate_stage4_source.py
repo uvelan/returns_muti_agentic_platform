@@ -44,7 +44,6 @@ REQUIRED_COMPOSE_SERVICES = {
     "return-workflow-worker",
     "return-orchestrator",
     "outbox-publisher",
-    "data-job-worker",
     "frontend",
 }
 APP_PROFILE_SERVICES = {
@@ -52,7 +51,6 @@ APP_PROFILE_SERVICES = {
     "return-workflow-worker",
     "return-orchestrator",
     "outbox-publisher",
-    "data-job-worker",
     "frontend",
 }
 REQUIRED_MONGO_COLLECTIONS = {

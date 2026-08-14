@@ -88,7 +88,6 @@ _DEPLOYED_WORKERS = (
     "run_return_workflow_worker.py",
     "run_return_orchestrator.py",
     "run_outbox_publisher.py",
-    "run_data_job_worker.py",
 )
 
 

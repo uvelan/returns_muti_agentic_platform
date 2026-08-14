@@ -84,7 +84,6 @@ async def _cards(request: Request) -> list[dict[str, Any]]:
         "return-workflow-worker",
         "return-orchestrator",
         "outbox-publisher",
-        "data-job-worker",
     ):
         heartbeat = await repository.get_heartbeat(worker)
         last_seen = heartbeat.get("lastSeenAt") if heartbeat else None

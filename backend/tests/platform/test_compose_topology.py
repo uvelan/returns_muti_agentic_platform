@@ -7,12 +7,20 @@ who forgets the flag. Neither shows up in a test suite.
 
 **The `containerized-app` list here is deliberately longer than the plan's.**
 The plan names backend, return-workflow-worker, return-orchestrator,
-outbox-publisher and frontend. Three more exist and run:
-`order-discovery-worker` (built in Wave C3, after the plan was written),
-`data-job-worker` and `integration-outbox-worker`. All three have real
-entrypoints. Deleting working services to match a list that predates them is the
-mistake this programme has caught repeatedly; they are listed here instead, so
-the divergence from the plan is recorded rather than accidental.
+outbox-publisher and frontend. Two more exist and run:
+`order-discovery-worker` (built in Wave C3, after the plan was written) and
+`integration-outbox-worker`. Both have real entrypoints. Deleting working
+services to match a list that predates them is the mistake this programme has
+caught repeatedly; they are listed here instead, so the divergence from the plan
+is recorded rather than accidental.
+
+`data-job-worker` was a third such service and this docstring used to vouch for
+it in the same breath -- "all three have real entrypoints". That was false by
+the time it was written: `scripts/run_data_job_worker.py` imported
+`return_platform.data_console.api.jobs`, and the whole `data_console` package
+was deleted in 8a0d81a/007326f, so the container raised ImportError on every
+start. Being listed here is not evidence a service works; it is evidence
+somebody put it in compose. The service and its script are now gone.
 """
 
 from __future__ import annotations
@@ -124,7 +132,6 @@ def test_the_app_profile_is_the_services_that_serve_traffic() -> None:
         "frontend",
         # Beyond the plan's list, and real -- see the module docstring.
         "order-discovery-worker",
-        "data-job-worker",
         "integration-outbox-worker",
     }
 

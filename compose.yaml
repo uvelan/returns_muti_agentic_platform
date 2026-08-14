@@ -484,16 +484,6 @@ services:
       valkey:
         condition: service_healthy
 
-  data-job-worker:
-    profiles: ["containerized-app"]
-    <<: *backend-base
-    command: ["python", "/app/scripts/run_data_job_worker.py"]
-    depends_on:
-      runtime-configuration-init:
-        condition: service_completed_successfully
-      mongodb-rs-init:
-        condition: service_completed_successfully
-
   integration-outbox-worker:
     profiles: ["containerized-app"]
     <<: *backend-base

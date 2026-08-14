@@ -38,7 +38,6 @@ case "$WORKER" in
   temporal) SCRIPT=run_return_workflow_worker.py ;;
   orchestrator) SCRIPT=run_return_orchestrator.py ;;
   outbox) SCRIPT=run_outbox_publisher.py ;;
-  jobs) SCRIPT=run_data_job_worker.py ;;
   integration-outbox)
     cd "$ROOT/backend"
     export PYTHONPATH="$ROOT/backend/src${PYTHONPATH:+:$PYTHONPATH}"
@@ -48,7 +47,7 @@ case "$WORKER" in
     exec "$(venv_python)" -m return_platform.workers.integration_outbox
     ;;
   *)
-    echo "Usage: $0 {temporal|orchestrator|outbox|jobs|integration-outbox} [--validate-ai]" >&2
+    echo "Usage: $0 {temporal|orchestrator|outbox|integration-outbox} [--validate-ai]" >&2
     exit 2
     ;;
 esac
