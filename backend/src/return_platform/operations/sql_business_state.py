@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import uuid
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, TypeVar
+from typing import Any, Protocol, TypeVar
 
 from return_platform.configuration.settings import Settings
 from return_platform.operations.models import ReturnSessionView
@@ -90,6 +91,41 @@ SHIPMENT_UPDATE_STALE = "STALE"
 
 
 @dataclass(frozen=True, slots=True)
+class ShipmentGraphSyncOutcome:
+    """What an RMA-scoped shipment sync committed, as the writer needs to see it.
+
+    Mirrors `workflows.return_case_activities.ReturnRecordSyncOutcome` rather
+    than introducing a second shape: both answer "the projection committed, and
+    into which generation", and a caller should not have to learn two vocabularies
+    for one fact.
+    """
+
+    graph_generation_id: str
+    synchronized_tracking_references: tuple[str, ...]
+    nodes_written: int
+
+
+class ShipmentGraphSyncPort(Protocol):
+    """The one method the shipment write path needs from the targeted-sync stack.
+
+    Structural, so `operations` neither imports `dynamic_knowledge` nor learns
+    what a generation lease is; the adapter is
+    `dynamic_knowledge/integration/shipment_state_sync.py`. It must raise rather
+    than return on failure, exactly as `ReturnRecordGraphSyncPort` does -- the
+    caller has already committed the authoritative row, and a port that reported
+    partial success would leave the decision in the wrong place.
+
+    Scoped by `return_reference` and not by case: contract C4 makes shipment
+    state RMA-scoped, and one RMA legitimately carries several tracking numbers
+    (a split return), which is why the anchored set is a tuple.
+    """
+
+    async def synchronize_shipments(
+        self, *, return_reference: str, tracking_references: tuple[str, ...]
+    ) -> ShipmentGraphSyncOutcome: ...
+
+
+@dataclass(frozen=True, slots=True)
 class ShipmentUpdateOutcome:
     """The result of one shipment update, and the state that is now current."""
 
@@ -99,6 +135,12 @@ class ShipmentUpdateOutcome:
     current_status: str
     current_status_at: datetime
     row_version: int
+    #: The generation this shipment was projected into, set only when the update
+    #: was APPLIED and a sync port was configured. `None` means either that the
+    #: update changed no stored truth -- and `outcome` says which of DUPLICATE
+    #: and STALE -- or that this process holds no sync port. A failed sync is
+    #: never `None`: it raises.
+    graph_generation_id: str | None = None
 
     @property
     def applied(self) -> bool:
@@ -133,9 +175,21 @@ class SQLBusinessStateRepository:
     bounded, observable failure instead of an unbounded one.
     """
 
-    def __init__(self, settings: Settings, *, pool: SQLConnectionPool | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        pool: SQLConnectionPool | None = None,
+        shipment_graph_sync: ShipmentGraphSyncPort | None = None,
+    ) -> None:
         self._settings = settings
         self._pool_override = pool
+        # Optional because most processes holding this repository never record a
+        # shipment update -- `api/seed.py` and `api/warehouse_placement.py`
+        # construct it per request for reads and reservations. A process that
+        # DOES record shipment updates supplies it; `record_shipment_update`
+        # reports its absence on the outcome rather than pretending it synced.
+        self._shipment_graph_sync = shipment_graph_sync
 
     def _pool(self) -> SQLConnectionPool:
         """Resolve the process-wide pool for this configuration.
@@ -721,6 +775,13 @@ class SQLBusinessStateRepository:
         The row identity is derived from the RMA and the tracking reference, so
         the same shipment resubmitted is the same row. It is never minted, and
         `UQ_return_tracking_reference` means it could not be anyway.
+
+        **The graph sync hangs off APPLIED and nothing else.** A DUPLICATE or a
+        STALE update changed no stored truth, so syncing on either would spend a
+        targeted sync writing the graph a value it already holds, and would make
+        a rejected stale update indistinguishable from an accepted one in the
+        sync log -- the one place an operator would look to find out whether a
+        regressive carrier event had been let through.
         """
 
         tracking_id = str(
@@ -823,7 +884,25 @@ class SQLBusinessStateRepository:
                 row_version=int(current.get("row_version") or 1),
             )
 
-        return await self._run(operation)
+        outcome = await self._run(operation)
+        if not outcome.applied or self._shipment_graph_sync is None:
+            return outcome
+        # After the commit, never inside it. The sync reads the authoritative
+        # store, so running it while the transaction was open would either read
+        # the pre-update row or block on the lock this connection holds.
+        #
+        # Raises rather than swallowing, exactly as the RMA sync does: a
+        # shipment the platform has accepted and the graph has never heard of is
+        # a return that reads as AWAITING_HANDOFF to every agent, which is the
+        # failure this step exists to close. It is also recoverable -- the
+        # fulfilment read performs its own targeted sync before reading, and the
+        # scheduled sync covers the rest -- so failing here costs a retry rather
+        # than the update.
+        sync = await self._shipment_graph_sync.synchronize_shipments(
+            return_reference=update.return_reference,
+            tracking_references=(update.tracking_reference,),
+        )
+        return dataclasses.replace(outcome, graph_generation_id=sync.graph_generation_id)
 
     async def read_shipment_state(self, return_reference: str) -> list[dict[str, Any]]:
         """Every shipment this RMA has, newest status first. RMA-scoped by key."""
@@ -843,6 +922,34 @@ class SQLBusinessStateRepository:
                         (return_reference,),
                     )
                     return [dict(row) for row in cursor.fetchall() or []]
+
+        return await self._run(operation)
+
+    async def read_return_record_by_reference(self, return_reference: str) -> dict[str, Any] | None:
+        """Which case owns this RMA, and what fulfilment identity the RMA carries.
+
+        The reverse of `read_case_return_records`, and the read a shipment update
+        needs: an update names an RMA, and the associate is looking at a case.
+        Answered from the authoritative SQL store rather than from the MongoDB
+        projection because `UQ_return_record_reference` is what makes the answer
+        singular -- the projection has no such constraint, so a duplicated
+        document there would silently pick a case.
+        """
+
+        def operation() -> dict[str, Any] | None:
+            with self._read() as connection:
+                with connection.cursor(as_dict=True) as cursor:
+                    cursor.execute(
+                        """
+                        SELECT return_record_id, case_id, return_reference, label_reference,
+                               tracking_reference, return_location, record_status, row_version
+                        FROM dbo.return_record
+                        WHERE return_reference=%s
+                        """,
+                        (return_reference,),
+                    )
+                    row = cursor.fetchone()
+                    return dict(row) if row else None
 
         return await self._run(operation)
 

@@ -13,8 +13,16 @@ the three it was lands in `evidence_references` so a reader can tell "we looked
 and there is nothing" from "we could not look".
 
 Still a pure function. The observation is passed in because reading the graph is
-IO and this is called from a Temporal-adjacent path; `operations/orchestrator.py`
-does the looking.
+IO and this is called from a Temporal-adjacent path; the caller does the looking
+-- `operations/orchestrator.py` on the legacy session path, and
+`operations/return_shipment_state.py` on the canonical case path.
+
+Two callers, one rule. The session path needs the whole stage result because it
+binds the deterministic evidence chain (eligibility -> return request ->
+fulfillment); the case path has no eligibility stage and must not fabricate one,
+so it takes `fulfillment_status_for_shipment` and `shipment_evidence_reference`
+directly. Both therefore reach `IN_TRANSIT` by the same test, which is the point
+of extracting them.
 """
 
 from dataclasses import dataclass
@@ -37,6 +45,8 @@ __all__ = [
     "ShipmentObservation",
     "ShipmentObservationPort",
     "build_fulfillment_tracking_result",
+    "fulfillment_status_for_shipment",
+    "shipment_evidence_reference",
 ]
 
 
@@ -97,11 +107,16 @@ class ShipmentObservationPort(Protocol):
     async def observe(self, tracking_reference: str) -> ShipmentObservation: ...
 
 
-def _shipment_evidence_reference(observation: ShipmentObservation | None) -> str:
+def shipment_evidence_reference(observation: ShipmentObservation | None) -> str:
     """One audit string per possible reading of the shipment evidence.
 
     Reference strings are validated as identifiers (no whitespace, no control
     characters), so every component here is a code rather than prose.
+
+    Public because the canonical case flow records the same reading as a case
+    fact (`operations/return_shipment_state.py`). Two encodings of "what the
+    graph said about this parcel" is how a legacy stage result and a case fact
+    start disagreeing about the same shipment.
     """
     if observation is None:
         return "SHIPMENT_UNAVAILABLE:NOT_ATTEMPTED"
@@ -113,6 +128,28 @@ def _shipment_evidence_reference(observation: ShipmentObservation | None) -> str
     if observation.evidence is ShipmentEvidence.ABSENT:
         return f"SHIPMENT_ABSENT:{observation.graph_generation_id}"
     return f"SHIPMENT_UNAVAILABLE:{observation.unavailable_reason or 'UNKNOWN'}"
+
+
+def fulfillment_status_for_shipment(
+    observation: ShipmentObservation | None,
+) -> FulfillmentTrackingStatus:
+    """The one rule that turns a shipment reading into a fulfillment state.
+
+    `IN_TRANSIT` requires a shipment *observed* against the tracking number.
+    Neither "the graph holds no such shipment" nor "the graph could not be read"
+    is evidence that anything moved, so both stay `AWAITING_HANDOFF` -- which of
+    the three it was survives on the evidence reference, not on the status.
+
+    Extracted so the legacy session stage result and the canonical case flow
+    apply the same rule rather than two copies of it: a divergence here would
+    show up as one screen calling a return collected while the other calls it
+    waiting, with no way to tell which is wrong.
+    """
+    return (
+        FulfillmentTrackingStatus.IN_TRANSIT
+        if observation is not None and observation.evidence is ShipmentEvidence.OBSERVED
+        else FulfillmentTrackingStatus.AWAITING_HANDOFF
+    )
 
 
 def build_fulfillment_tracking_result(
@@ -147,14 +184,10 @@ def build_fulfillment_tracking_result(
         else:
             if shipment is not None and shipment.tracking_reference != tracking_reference:
                 raise ValueError("Shipment observation does not match the tracking reference.")
-            status = (
-                FulfillmentTrackingStatus.IN_TRANSIT
-                if shipment is not None and shipment.evidence is ShipmentEvidence.OBSERVED
-                else FulfillmentTrackingStatus.AWAITING_HANDOFF
-            )
+            status = fulfillment_status_for_shipment(shipment)
             evidence_references = (
                 *evidence_references,
-                _shipment_evidence_reference(shipment),
+                shipment_evidence_reference(shipment),
             )
     else:
         if fulfillment_reference is not None or tracking_reference is not None:
