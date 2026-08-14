@@ -64,6 +64,7 @@ from return_platform.ai.interception.records import (
 )
 from return_platform.ai.pricing import AIPricingStatus
 from return_platform.ai.providers import ProviderError, ProviderRequest, ProviderResponse
+from return_platform.ai.providers.schema_cleaner import clean_gemini_schema
 from return_platform.ai.routing.routes import AIRoute
 from return_platform.ai.routing.selection import AIRoutePool
 from return_platform.ai.routing.tasks import ModelTier, load_ai_gateway_configuration
@@ -974,3 +975,223 @@ def test_an_ungated_path_is_stated_rather_than_defaulted() -> None:
         interception=final_dispatch_module.ALLOW_ALL,
     )
     assert dispatcher.interception is final_dispatch_module.ALLOW_ALL
+
+
+# --------------------------------------------------------------------------
+# PERF-03: the cacheable prefix, and what makes it cacheable
+# --------------------------------------------------------------------------
+#
+# The canonical STANDARD route is Gemini Flash with NVIDIA Nemotron behind it,
+# and neither adapter sends a caching directive: what that route offers is
+# *automatic prefix caching*, which is earned rather than requested. The whole of
+# the requirement is therefore one structural property -- everything stable comes
+# first, byte-identical, and nothing per-turn gets in front of it.
+#
+# It is currently satisfied, and by a convention nothing enforced. `invoke`
+# appends `prompt_addendum` after the system prompt and the response schema, and
+# its docstring says why; a single edit moving the turn's as-of instant ahead of
+# them would make every request's first bytes differ from the last and no test
+# would notice, because a cache miss is invisible from inside the process.
+#
+# Measured on this tree, driving `RoutePoolReasoningModelGateway.decide` with the
+# packaged active schema (`config/dynamic_knowledge/active-schema.return-order.yaml`,
+# `order-discovery-agent`, 12 entities / 149 fields) over three turns of one
+# conversation:
+#
+#   system_prompt                     21,933 chars   (identical for all 3 turns
+#                                                     up to char 21,066 ~5,266
+#                                                     tokens; the divergence is
+#                                                     inside the temporal
+#                                                     addendum, which is last)
+#   user_payload                     ~45,000 chars   grows with the transcript
+#   total per turn                   ~67,000 chars  ~16,750 tokens
+#   stable share                            ~31 %
+#
+# The audit's P-7 direction names "the invariant schema prefix, which dominates
+# contextJson". It does dominate -- `compact_schema` is 39,776 of the ~45,000
+# payload chars -- but it is not a *prefix*. `contextJson` is dumped with
+# `sort_keys=True`, and the first key that changes between turns is `as_of`, at
+# position 1 of 25; `compact_schema` is at position 7, behind it. So those ~9,900
+# tokens sit after the first differing byte and no prefix cache can reach them.
+# Moving them in front would mean either dropping `sort_keys=True` -- which is
+# what makes `request_digest`, and therefore the derived interception id, stable
+# for identical content -- or hoisting `compact_schema` out of `contextJson` in
+# `dynamic_knowledge/integration/model_gateway.py` and rewording the prompt that
+# reads `contextJson.compact_schema.strongAnchors`. Neither is an AI-gateway
+# change.
+#
+# An *explicit* cache (Gemini `cachedContents`, Anthropic `cache_control`) is
+# refused for a separate and harder reason: a handle is provider-scoped, and one
+# invocation may traverse GOOGLE -> NVIDIA -> OPENAI -> ANTHROPIC -> OLLAMA
+# inside a single `dispatch` failover loop. Carrying one on `ProviderRequest`
+# would make the shared outbound contract provider-specific, which is AI-02 run
+# backwards. And nothing in `contextJson` may be cached at all: it carries the
+# transcript, captured facts and retrieved graph rows.
+#
+# What is left is worth guarding, and that is what these two tests do.
+
+
+def _shared_prefix_length(prompts: list[str]) -> int:
+    """How many leading characters every request has in common.
+
+    This is the quantity a provider matches on, so it is the quantity the tests
+    assert -- not "are the prompts equal", which they are not and must not be.
+    """
+    shortest = min(len(prompt) for prompt in prompts)
+    shared = 0
+    while shared < shortest and len({prompt[shared] for prompt in prompts}) == 1:
+        shared += 1
+    return shared
+
+
+async def _reasoning_prefix_probe() -> tuple[list[str], list[str]]:
+    """Three turns and all three call modes, through the real Order Agent gateway.
+
+    Driven through `RoutePoolReasoningModelGateway` rather than through
+    `StructuredOutputInvoker` directly because the invoker is not the thing that
+    could break this: the caller is. It is the caller that decides what is a
+    prompt addendum and what is payload, and a per-turn value promoted into the
+    prompt is the regression being guarded against.
+    """
+    from return_platform.dynamic_knowledge.integration.model_gateway import (
+        RoutePoolReasoningModelGateway,
+    )
+    from return_platform.dynamic_knowledge.order_agent.contracts import AgentTurnContext
+
+    loaded = load_ai_gateway_configuration(CONFIG)
+    action = json.dumps(
+        {
+            "business_capability": "order-discovery",
+            "action_type": "CLARIFY",
+            "decision_summary": "One more detail needed.",
+            "response": {
+                "status": "NEEDS_CLARIFICATION",
+                "business_capability": "order-discovery",
+                "statements": [],
+                "suggestions": [],
+                "requested_input": "Which order?",
+            },
+        }
+    )
+    provider = _CapturingProvider("GOOGLE", "models/gemini-3.6-flash", action)
+    pool = _CountingPool((_route(provider, ModelTier.STANDARD),), loaded.configuration)
+    gateway = RoutePoolReasoningModelGateway(
+        settings=_settings(),
+        configuration=loaded.configuration,
+        route_pool=pool,
+    )
+
+    def context(turn: int) -> AgentTurnContext:
+        return AgentTurnContext(
+            conversation_id="conv-1",
+            client_turn_id=f"turn-{turn}",
+            agent_id="order-discovery-agent",
+            # Deliberately not a plausible utterance: the prompt itself quotes
+            # "the damaged red pump from order CW273354" as a worked example, and
+            # a canary that collides with prompt text tests nothing.
+            user_message=f"canary-utterance-{turn}",
+            # Every one of these differs per turn, which is the point: none of
+            # them may appear before the end of the stable prefix.
+            as_of=datetime(2026, 8, 14, 9, 30 + turn, tzinfo=UTC),
+            session_timezone="America/Chicago",
+            schema_version="v1",
+            graph_generation_id="generation-1",
+            configuration_release_id="release-1",
+            policy_version="p1",
+            prompt_version="dynamic-order-agent-reasoning-v12",
+            compact_schema={"entities": {"sales_order": {"fields": {}}}},
+            conversation_state={},
+            transcript=tuple({"role": "associate", "text": f"m{i}"} for i in range(turn)),
+        )
+
+    for turn in (1, 2, 3):
+        await gateway.decide(context(turn))
+    # The correction modes carry their extra material in the payload; if one of
+    # them ever put it in the prompt the prefix would fork by call mode and only
+    # two thirds of the traffic would ever hit a cache.
+    await gateway.correct_action(
+        context=context(4), invalid_action=None, validation_error="bad statement_type"
+    )
+
+    return [request.system_prompt for request in provider.requests], [
+        json.dumps(request.user_payload) for request in provider.requests
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_cacheable_prefix_is_byte_identical_across_turns_and_modes() -> None:
+    """The precondition for automatic prefix caching, asserted on the wire.
+
+    Not "the prompt is the same" -- it is not, the temporal addendum changes
+    every turn -- but "the same leading bytes", which is what a provider matches
+    on. The length floor is deliberate: without it the test would pass on a
+    single shared newline, which is technically a common prefix and worth
+    nothing.
+    """
+    prompts, _ = await _reasoning_prefix_probe()
+    assert len(prompts) == 4
+    assert len(set(prompts)) > 1, (
+        "every prompt is identical, so a shared-prefix measurement over them "
+        "would be measuring nothing"
+    )
+
+    from return_platform.dynamic_knowledge.order_agent.contracts import AgentAction
+
+    shared = _shared_prefix_length(prompts)
+    task = load_ai_gateway_configuration(CONFIG).configuration.tasks["ORDER_AGENT_REASONING_V1"]
+    schema_block = len(
+        "\n\nREQUIRED RESPONSE SCHEMA (Output exactly this JSON structure):\n```json\n"
+        + json.dumps(clean_gemini_schema(AgentAction.model_json_schema()))
+        + "\n```"
+    )
+
+    assert prompts[0].startswith(task.systemPrompt), (
+        "the configured prompt is no longer the first thing on the wire"
+    )
+    # Compared against the *computed* stable head rather than a magic number, so
+    # the assertion follows an ordinary prompt or schema edit and still fails on
+    # a structural one. Both pieces are stable for a release; anything wedged
+    # between them truncates the cacheable region to wherever it landed.
+    assert shared >= len(task.systemPrompt) + schema_block, (
+        f"only {shared} leading chars are shared across turns, short of the "
+        f"{len(task.systemPrompt) + schema_block}-char stable head (prompt + "
+        "response schema) -- something per-turn has been moved in front of or "
+        "inside it, and everything after that point is uncacheable"
+    )
+
+
+@pytest.mark.asyncio
+async def test_no_per_turn_value_is_copied_into_the_system_prompt() -> None:
+    """The other half, and the one a shared-prefix measurement cannot express.
+
+    A cross-turn comparison can never find a per-turn value *in* the shared
+    prefix -- by construction, a value that varies is where the prefix ends. What
+    it cannot see is a per-turn value copied into the prompt at all, which is the
+    regression that actually gets written: the model keeps missing something in
+    `contextJson`, so someone promotes it into the system prompt, and the
+    divergence point moves from the end of a 21,000-char prefix to wherever they
+    put it. So this asserts over the whole prompt, not over the common part.
+
+    The as-of instant is the single deliberate exception. It is in the prompt
+    because a model that has to find "now" inside a sorted JSON blob will
+    sometimes not look, and it is *last* for exactly the reason this file is
+    about.
+    """
+    prompts, payloads = await _reasoning_prefix_probe()
+
+    for per_turn in ("turn-1", "canary-utterance-1", "bad statement_type"):
+        assert per_turn not in prompts[0] and per_turn not in prompts[-1], (
+            f"the per-turn value {per_turn!r} has been copied into the system "
+            "prompt; the cacheable prefix now ends where it appears"
+        )
+    # ...and it really is being sent, in the payload, where it belongs. Without
+    # this the assertions above would hold for a request that carried nothing.
+    assert "canary-utterance-1" in payloads[0]
+    assert "bad statement_type" in payloads[-1]
+
+    # The exception, pinned at both ends: present, and after the stable head.
+    addendum_at = prompts[0].index("2026-08-14T09:31")
+    assert addendum_at > _shared_prefix_length(prompts) - 32, (
+        "the turn's as-of instant has moved out of the trailing addendum and "
+        "into the body of the prompt"
+    )
