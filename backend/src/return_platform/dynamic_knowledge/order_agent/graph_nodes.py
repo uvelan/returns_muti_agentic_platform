@@ -59,6 +59,7 @@ from return_platform.dynamic_knowledge.order_agent.contracts import (
 )
 from return_platform.dynamic_knowledge.order_agent.errors import OrderAgentFailure
 from return_platform.dynamic_knowledge.order_agent.identification import IdentificationCatalogue
+from return_platform.dynamic_knowledge.order_agent.planner import rank_discriminators
 from return_platform.dynamic_knowledge.order_agent.search_strategy import (
     MAX_CACHED_CANDIDATES,
     RESULT_PAGE_SIZE,
@@ -78,6 +79,10 @@ from return_platform.dynamic_knowledge.order_agent.temporal_grounding import (
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
 logger = logging.getLogger("return_platform.dynamic_knowledge.order_agent.graph_nodes")
+
+#: Fields of a search intent that describe the search rather than the
+#: customer. Everything else on an intent is a configured signal.
+_SEARCH_METADATA_KEYS = frozenset({"searchMode", "confidence", "wantsMoreResults"})
 
 _OUT_OF_SCOPE_MESSAGE = (
     "That's outside what I can help with here — I'm set up for order "
@@ -293,6 +298,7 @@ async def _build_context(deps: GraphDependencies, state: dict[str, Any]) -> Agen
         # model learns the key to populate from here, not from the packaged
         # prompt, which is one immutable string per configuration release.
         identification_fields=tuple(deps.identification.describe()),
+        suggested_discriminators=_next_discriminators(deps, order_search_cache, evidence),
         conversation_state=(
             {"orderSearchCache": order_search_cache} if order_search_cache is not None else {}
         ),
@@ -300,6 +306,49 @@ async def _build_context(deps: GraphDependencies, state: dict[str, Any]) -> Agen
         schema_details=schema_details,
         case_facts=await _case_facts(deps, state.get("case_id")),
     )
+
+
+def _next_discriminators(
+    deps: GraphDependencies,
+    order_search_cache: Any,
+    evidence: Sequence[QueryEvidence],
+) -> tuple[dict[str, Any], ...]:
+    """Rank what to ask for next against the candidates actually on the table.
+
+    Read from the evidence this turn already rehydrated rather than from a new
+    query or from checkpointed state. Both alternatives were worse: re-querying
+    would spend a graph read on ranking a question the turn already has the
+    answers for, and caching the candidate rows in `order_search_cache` would
+    put customer data into every checkpoint to save an in-memory lookup.
+
+    Empty before any search has run. There is nothing to discriminate between
+    yet, and a ranking derived from no evidence would dress the configured
+    question order up as a measurement.
+    """
+    if not isinstance(order_search_cache, dict):
+        return ()
+    intent_values = order_search_cache.get("intent")
+    if not isinstance(intent_values, dict):
+        return ()
+    parsed = deps.identification.parse(
+        {key: value for key, value in intent_values.items() if key not in _SEARCH_METADATA_KEYS}
+    )
+    reference = order_search_cache.get("evidenceRef")
+    candidates: list[dict[str, Any]] = []
+    for item in evidence:
+        if item.query_execution_id != reference:
+            continue
+        found = item.result.get("candidates") if isinstance(item.result, dict) else None
+        if isinstance(found, list):
+            candidates = [entry for entry in found if isinstance(entry, dict)]
+        break
+    ranked = rank_discriminators(
+        deps.identification,
+        parsed,
+        candidates=candidates,
+        result_count=order_search_cache.get("totalFound"),
+    )
+    return tuple(item.describe() for item in ranked)
 
 
 def _pinned_grounding(state: dict[str, Any]) -> tuple[datetime, str]:

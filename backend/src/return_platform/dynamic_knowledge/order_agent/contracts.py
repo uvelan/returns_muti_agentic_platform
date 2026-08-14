@@ -220,6 +220,14 @@ class AgentTurnContext(BaseModel):
     # whole defect. An operator adding a field to `discovery.identification_fields`
     # has it described to the model on the very next turn.
     identification_fields: tuple[dict[str, Any], ...] = ()
+    # The signals worth asking for next, best first, each with the reasoning and
+    # the evidence class behind it (DISC-03). Recomputed every turn from the
+    # candidates actually in front of the associate, so it answers "what is
+    # discriminating *now*" rather than restating a fixed question order.
+    #
+    # Evidence, not instruction: `clarification_policy.field_selection_owner` is
+    # `LLM` and stays that way. The model is given the ranking and picks.
+    suggested_discriminators: tuple[dict[str, Any], ...] = ()
     conversation_state: dict[str, Any]
     query_evidence: tuple[QueryEvidence, ...] = ()
     schema_details: dict[str, Any] = Field(default_factory=dict)
