@@ -175,9 +175,7 @@ class FakeCaseRepository:
         return self.cases.get(case_id) if case_id is not None else None
 
     async def latest_case_facts(self, case_id: str) -> dict[str, dict[str, Any]]:
-        return {
-            fact["fact_name"]: fact for fact in self.facts if fact["case_id"] == case_id
-        }
+        return {fact["fact_name"]: fact for fact in self.facts if fact["case_id"] == case_id}
 
     async def create_case(self, **fields: Any) -> dict[str, Any]:
         # Yield first, then decide-and-write atomically: the interleaving point

@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-
 from _interim_active_schema import build_interim_active_schema
 
 from return_platform.dynamic_knowledge.graph.constraints import (

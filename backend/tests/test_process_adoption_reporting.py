@@ -121,9 +121,7 @@ def test_a_class_still_on_the_previous_release_is_not_adopted() -> None:
     """Behind is not the same as absent, and both block LIVE."""
 
     records = _all_adopted()
-    records[0] = _record(
-        records[0].process_class, release_id="release-1", head_revision=1
-    )
+    records[0] = _record(records[0].process_class, release_id="release-1", head_revision=1)
 
     state = _state(records)
 

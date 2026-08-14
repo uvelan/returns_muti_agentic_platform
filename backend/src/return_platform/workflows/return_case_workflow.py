@@ -569,7 +569,9 @@ class ReturnCaseWorkflow:
         self._state.work_item_id = work_item_id
         await self._set_status(ReturnCaseStatus.AWAITING_SUPPORT)
 
-    async def _business_deadline(self, timings: ReturnCaseTimings, working_seconds: int) -> datetime:
+    async def _business_deadline(
+        self, timings: ReturnCaseTimings, working_seconds: int
+    ) -> datetime:
         """`workflow.now()` plus that many *working* seconds (SLA-01, C8).
 
         The arithmetic is an activity, not a local computation, and that is the

@@ -251,9 +251,7 @@ class CaseBayPlacement:
         warehouse_reference = await self._warehouse_reference(case, facts)
         return_method = normalize_method(_text(facts.get(FACT_RETURN_METHOD)))
         product_type = _text(facts.get(FACT_PRODUCT_TYPE)) or "STANDARD"
-        required_capacity = _int_fact(
-            facts.get(FACT_REQUIRED_CAPACITY), DEFAULT_REQUIRED_CAPACITY
-        )
+        required_capacity = _int_fact(facts.get(FACT_REQUIRED_CAPACITY), DEFAULT_REQUIRED_CAPACITY)
 
         observation, raw_candidates, capacity_evidence = await observe_eligible_bays(
             observations=self._observations,
@@ -302,9 +300,7 @@ class CaseBayPlacement:
         await self._record(case_id, assessment, required_capacity, physical_status)
         return recommendation
 
-    async def _warehouse_reference(
-        self, case: dict[str, Any], facts: dict[str, Any]
-    ) -> str | None:
+    async def _warehouse_reference(self, case: dict[str, Any], facts: dict[str, Any]) -> str | None:
         """The case's processing warehouse, from the case or from its order.
 
         An explicitly recorded fact wins: somebody stating where this return is

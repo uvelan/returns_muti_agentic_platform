@@ -221,9 +221,7 @@ class ReturnCaseActivities:
             )
 
     @activity.defn(name="request_bay_assignment")
-    async def request_bay_assignment(
-        self, request: RequestBayAssignmentInput
-    ) -> BayResultNotice:
+    async def request_bay_assignment(self, request: RequestBayAssignmentInput) -> BayResultNotice:
         """Recommend a bay for this case, and answer with the whole result.
 
         This was the BAY-01 defect in one method: it appended a single
@@ -371,13 +369,13 @@ class ReturnCaseActivities:
                 calendar_applied=False,
             )
         return ResolvedBusinessDeadline(
-            instant_iso=advance_business_time(
-                calendar, start, request.working_seconds
-            ).isoformat(),
+            instant_iso=advance_business_time(calendar, start, request.working_seconds).isoformat(),
             calendar_applied=True,
         )
 
-    def _business_calendar(self, calendar_id: str, fallback_timezone: str) -> BusinessCalendar | None:
+    def _business_calendar(
+        self, calendar_id: str, fallback_timezone: str
+    ) -> BusinessCalendar | None:
         """The declared calendar for this id, as the arithmetic wants it.
 
         `None` when nothing declares it. Deliberately no default Mon-Fri: a

@@ -157,9 +157,7 @@ class Neo4jGenerationWriter:
             )
         status, observed = row
         if observed != fencing_token:
-            raise StaleFencingToken(
-                graph_generation_id, requested=fencing_token, observed=observed
-            )
+            raise StaleFencingToken(graph_generation_id, requested=fencing_token, observed=observed)
         return status, observed
 
     async def get_status(

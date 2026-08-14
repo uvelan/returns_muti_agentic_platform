@@ -42,9 +42,7 @@ SCANNER = Path(__file__).resolve().parent / "scan_secrets.py"
 # outcome, so the constant is named for what it stands in for instead.
 FAKE_NVIDIA = "nvapi" + "-" + ("Z9y8x7w6v5u4t3s2r1q0" * 2) + "pOnMlKjIhG"
 FAKE_GOOGLE = "AIza" + "Sy" + ("B7f3K2m9Qw1eR4tY6uI8oP0aS2dF5gH1j" * 2)[:33]
-FAKE_INFRA_CREDENTIAL = (
-    "Jq7!vZ2m" + "Xr9%tL4w" + "Ns6^yH1b" + "Ke8*cV3d" + "Pu5&gT0a"
-)
+FAKE_INFRA_CREDENTIAL = "Jq7!vZ2m" + "Xr9%tL4w" + "Ns6^yH1b" + "Ke8*cV3d" + "Pu5&gT0a"
 
 assert len(FAKE_GOOGLE) == 39, len(FAKE_GOOGLE)
 assert len(FAKE_NVIDIA) >= 26, len(FAKE_NVIDIA)
@@ -56,7 +54,8 @@ failures: list[str] = []
 def run_scanner(*args: str) -> tuple[int, str]:
     result = subprocess.run(
         [sys.executable, str(SCANNER), *args],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
     )
     return result.returncode, result.stdout.decode("utf-8", "replace")
 
@@ -70,8 +69,12 @@ def check(name: str, condition: bool, detail: str = "") -> None:
 
 
 def git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", "-C", str(repo), *args], check=True,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 def new_repo(root: Path) -> Path:
@@ -93,33 +96,46 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         repo = new_repo(root)
-        base = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
-                              check=True, stdout=subprocess.PIPE
-                              ).stdout.decode().strip()
+        base = (
+            subprocess.run(
+                ["git", "-C", str(repo), "rev-parse", "HEAD"],
+                check=True,
+                stdout=subprocess.PIPE,
+            )
+            .stdout.decode()
+            .strip()
+        )
 
         # ---------------------------------------------------------------
         # 1. A provider key in a new commit must fail the range gate, and
         #    the log must not contain it.
         # ---------------------------------------------------------------
         (repo / "config.py").write_text(
-            f'NVIDIA_KEY = "{FAKE_NVIDIA}"\n', encoding="utf-8")
+            f'NVIDIA_KEY = "{FAKE_NVIDIA}"\n', encoding="utf-8"
+        )
         git(repo, "add", "-A")
         git(repo, "commit", "-qm", "plant a provider key")
 
-        code, out = run_scanner("--repo", str(repo), "--mode", "range",
-                                "--range", f"{base}..HEAD", "--no-allowlist")
-        check("range mode blocks a planted NVIDIA key", code == 1,
-              f"exit={code}")
+        code, out = run_scanner(
+            "--repo",
+            str(repo),
+            "--mode",
+            "range",
+            "--range",
+            f"{base}..HEAD",
+            "--no-allowlist",
+        )
+        check("range mode blocks a planted NVIDIA key", code == 1, f"exit={code}")
         check("range mode names the rule", "nvidia-api-key" in out)
         check("range mode does NOT print the value", FAKE_NVIDIA not in out)
 
         # ---------------------------------------------------------------
         # 2. Same key, working-tree gate.
         # ---------------------------------------------------------------
-        code, out = run_scanner("--repo", str(repo), "--mode", "worktree",
-                                "--no-allowlist")
-        check("worktree mode blocks a planted provider key", code == 1,
-              f"exit={code}")
+        code, out = run_scanner(
+            "--repo", str(repo), "--mode", "worktree", "--no-allowlist"
+        )
+        check("worktree mode blocks a planted provider key", code == 1, f"exit={code}")
         check("worktree mode does NOT print the value", FAKE_NVIDIA not in out)
 
         # ---------------------------------------------------------------
@@ -132,11 +148,12 @@ def main() -> int:
         (repo / "config.py").unlink()
         git(repo, "add", "-A")
         (repo / ".env").write_text(
-            f"MSSQL_SA_PASSWORD={FAKE_INFRA_CREDENTIAL}\n", encoding="utf-8")
-        code, out = run_scanner("--repo", str(repo), "--mode", "worktree",
-                                "--no-allowlist")
-        check("an untracked local .env is out of scope", code == 0,
-              f"exit={code}")
+            f"MSSQL_SA_PASSWORD={FAKE_INFRA_CREDENTIAL}\n", encoding="utf-8"
+        )
+        code, out = run_scanner(
+            "--repo", str(repo), "--mode", "worktree", "--no-allowlist"
+        )
+        check("an untracked local .env is out of scope", code == 0, f"exit={code}")
         (repo / ".env").unlink()
 
         # ---------------------------------------------------------------
@@ -145,12 +162,15 @@ def main() -> int:
         #    six compose credentials leaked unnoticed.
         # ---------------------------------------------------------------
         (repo / "stack.env").write_text(
-            f"MSSQL_SA_PASSWORD={FAKE_INFRA_CREDENTIAL}\n", encoding="utf-8")
+            f"MSSQL_SA_PASSWORD={FAKE_INFRA_CREDENTIAL}\n", encoding="utf-8"
+        )
         git(repo, "add", "-A")
-        code, out = run_scanner("--repo", str(repo), "--mode", "worktree",
-                                "--no-allowlist")
-        check("worktree mode blocks a shapeless infra password", code == 1,
-              f"exit={code}")
+        code, out = run_scanner(
+            "--repo", str(repo), "--mode", "worktree", "--no-allowlist"
+        )
+        check(
+            "worktree mode blocks a shapeless infra password", code == 1, f"exit={code}"
+        )
         check("infra password is NOT printed", FAKE_INFRA_CREDENTIAL not in out)
 
         # ---------------------------------------------------------------
@@ -164,63 +184,79 @@ def main() -> int:
             "VALKEY_PASSWORD=\n"
             "PLATFORM_NVIDIA_API_KEYS=[]\n"
             "PLATFORM_SUPPORT_TICKET_API_KEY=your-api-key-here\n",
-            encoding="utf-8")
+            encoding="utf-8",
+        )
         git(repo, "add", "-A")
-        code, out = run_scanner("--repo", str(repo), "--mode", "worktree",
-                                "--no-allowlist")
-        check("vault refs, interpolation, placeholders and [] are quiet",
-              code == 0, out.strip().splitlines()[-1] if out.strip() else "")
+        code, out = run_scanner(
+            "--repo", str(repo), "--mode", "worktree", "--no-allowlist"
+        )
+        check(
+            "vault refs, interpolation, placeholders and [] are quiet",
+            code == 0,
+            out.strip().splitlines()[-1] if out.strip() else "",
+        )
 
         # ---------------------------------------------------------------
         # 6. The allowlist suppresses exactly its own digest and nothing else.
         # ---------------------------------------------------------------
         (repo / "stack.env").write_text(
-            f"MSSQL_SA_PASSWORD={FAKE_INFRA_CREDENTIAL}\n", encoding="utf-8")
+            f"MSSQL_SA_PASSWORD={FAKE_INFRA_CREDENTIAL}\n", encoding="utf-8"
+        )
         digest = hashlib.sha256(FAKE_INFRA_CREDENTIAL.encode()).hexdigest()[:16]
         allow_dir = repo / "scripts" / "security"
         allow_dir.mkdir(parents=True)
-        (allow_dir / "known_exposures.json").write_text(json.dumps({
-            "known_exposures": [
-                {"sha256_prefix": digest, "reason": "fixture"}
-            ]
-        }), encoding="utf-8")
+        (allow_dir / "known_exposures.json").write_text(
+            json.dumps(
+                {"known_exposures": [{"sha256_prefix": digest, "reason": "fixture"}]}
+            ),
+            encoding="utf-8",
+        )
         git(repo, "add", "-A")
 
         code, out = run_scanner("--repo", str(repo), "--mode", "worktree")
         check("allowlisted digest passes", code == 0, f"exit={code}")
-        check("allowlisted finding is still reported as a known exposure",
-              "KNOWN EXPOSURES" in out)
+        check(
+            "allowlisted finding is still reported as a known exposure",
+            "KNOWN EXPOSURES" in out,
+        )
 
-        code, _ = run_scanner("--repo", str(repo), "--mode", "worktree",
-                              "--no-allowlist")
-        check("--no-allowlist overrides the allowlist", code == 1,
-              f"exit={code}")
+        code, _ = run_scanner(
+            "--repo", str(repo), "--mode", "worktree", "--no-allowlist"
+        )
+        check("--no-allowlist overrides the allowlist", code == 1, f"exit={code}")
 
         # A different secret must NOT inherit the allowlist entry.
         (repo / "stack.env").write_text(
             f"MSSQL_SA_PASSWORD={FAKE_INFRA_CREDENTIAL}\n"
-            f"GRAPH_PASSWORD={FAKE_INFRA_CREDENTIAL[::-1]}\n", encoding="utf-8")
+            f"GRAPH_PASSWORD={FAKE_INFRA_CREDENTIAL[::-1]}\n",
+            encoding="utf-8",
+        )
         git(repo, "add", "-A")
         code, out = run_scanner("--repo", str(repo), "--mode", "worktree")
-        check("a different secret does not inherit the allowlist", code == 1,
-              f"exit={code}")
+        check(
+            "a different secret does not inherit the allowlist",
+            code == 1,
+            f"exit={code}",
+        )
 
         # ---------------------------------------------------------------
         # 7. A key inside a committed archive is still a leaked key. This is
         #    how linux_kit/returns_platform.tar.gz had to be cleared.
         # ---------------------------------------------------------------
         import tarfile
+
         (repo / "stack.env").unlink()
         payload = root / "payload.env"
-        payload.write_text(f"PLATFORM_GOOGLE_API_KEYS=[\"{FAKE_GOOGLE}\"]\n",
-                           encoding="utf-8")
+        payload.write_text(
+            f'PLATFORM_GOOGLE_API_KEYS=["{FAKE_GOOGLE}"]\n', encoding="utf-8"
+        )
         with tarfile.open(repo / "kit.tar.gz", "w:gz") as archive:
             archive.add(payload, arcname="kit/.env")
         git(repo, "add", "-A")
-        code, out = run_scanner("--repo", str(repo), "--mode", "worktree",
-                                "--no-allowlist")
-        check("a key inside a committed tarball is found", code == 1,
-              f"exit={code}")
+        code, out = run_scanner(
+            "--repo", str(repo), "--mode", "worktree", "--no-allowlist"
+        )
+        check("a key inside a committed tarball is found", code == 1, f"exit={code}")
         check("archive finding does NOT print the value", FAKE_GOOGLE not in out)
 
         shutil.rmtree(repo, ignore_errors=True)
@@ -245,12 +281,17 @@ def main() -> int:
             encoding="utf-8",
         )
         git(repo, "add", "-A")
-        code, out = run_scanner("--repo", str(repo), "--mode", "worktree",
-                                "--no-allowlist")
-        check("a bare-name alias in .py is not a credential", code == 0,
-              f"exit={code} out={out.strip()[:200]}")
-        check("a dotted-name alias in .py is not a credential",
-              "SHARED_SECRET" not in out)
+        code, out = run_scanner(
+            "--repo", str(repo), "--mode", "worktree", "--no-allowlist"
+        )
+        check(
+            "a bare-name alias in .py is not a credential",
+            code == 0,
+            f"exit={code} out={out.strip()[:200]}",
+        )
+        check(
+            "a dotted-name alias in .py is not a credential", "SHARED_SECRET" not in out
+        )
 
         # A QUOTED literal in source is still caught. This is how the live
         # provider keys entered history at 52732a5 -- hardcoded in conftest.py.
@@ -258,12 +299,11 @@ def main() -> int:
             f'_HARDCODED_TOKEN = "{FAKE_INFRA_CREDENTIAL}"\n', encoding="utf-8"
         )
         git(repo, "add", "-A")
-        code, out = run_scanner("--repo", str(repo), "--mode", "worktree",
-                                "--no-allowlist")
-        check("a QUOTED literal in .py is still blocked", code == 1,
-              f"exit={code}")
-        check("the hardcoded literal is NOT printed",
-              FAKE_INFRA_CREDENTIAL not in out)
+        code, out = run_scanner(
+            "--repo", str(repo), "--mode", "worktree", "--no-allowlist"
+        )
+        check("a QUOTED literal in .py is still blocked", code == 1, f"exit={code}")
+        check("the hardcoded literal is NOT printed", FAKE_INFRA_CREDENTIAL not in out)
 
         # The scope check: an unquoted, identifier-shaped value in a `.env` is
         # what a real generated password looks like. If the narrowing leaked
@@ -273,10 +313,14 @@ def main() -> int:
             "MONGO_ROOT_PASSWORD=abc123def456ghi789jkl\n", encoding="utf-8"
         )
         git(repo, "add", "-A")
-        code, out = run_scanner("--repo", str(repo), "--mode", "worktree",
-                                "--no-allowlist")
-        check("an identifier-shaped .env password is STILL blocked", code == 1,
-              f"exit={code} -- the source narrowing must not reach .env files")
+        code, out = run_scanner(
+            "--repo", str(repo), "--mode", "worktree", "--no-allowlist"
+        )
+        check(
+            "an identifier-shaped .env password is STILL blocked",
+            code == 1,
+            f"exit={code} -- the source narrowing must not reach .env files",
+        )
 
         shutil.rmtree(repo, ignore_errors=True)
 

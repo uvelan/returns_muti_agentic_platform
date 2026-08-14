@@ -125,9 +125,7 @@ def test_a_configured_holiday_is_skipped_like_a_weekend() -> None:
 
 
 def test_a_run_of_holidays_carries_across_days() -> None:
-    calendar = _calendar(
-        holidays=frozenset({date(2026, 11, 26), date(2026, 11, 27)})
-    )
+    calendar = _calendar(holidays=frozenset({date(2026, 11, 26), date(2026, 11, 27)}))
     wednesday = _local(2026, 11, 25, 16, 0)
 
     deadline = _in_new_york(advance_business_time(calendar, wednesday, 4 * 3600))
@@ -260,9 +258,7 @@ def test_a_calendar_that_is_never_open_fails_loudly() -> None:
         timezone="UTC",
         working_periods=(WorkingPeriod(weekday=0, start_minute=0, end_minute=60),),
         # Every day shut for longer than the horizon the walk is bounded by.
-        holidays=frozenset(
-            date(2026, 1, 1) + timedelta(days=offset) for offset in range(1200)
-        ),
+        holidays=frozenset(date(2026, 1, 1) + timedelta(days=offset) for offset in range(1200)),
     )
 
     with pytest.raises(ValueError, match="no working time"):
@@ -310,9 +306,7 @@ async def test_the_activity_applies_the_configured_production_calendar() -> None
     the worker changes" -- so the whole calculation lives in an activity whose
     single instant the workflow history records.
     """
-    configuration = load_return_configuration(
-        Path("config/returns/production.yaml")
-    ).configuration
+    configuration = load_return_configuration(Path("config/returns/production.yaml")).configuration
 
     resolved = await _resolve(
         configuration, from_instant=_local(2026, 8, 14, 16, 30), seconds=8 * 3600
@@ -332,9 +326,7 @@ async def test_an_undeclared_calendar_falls_back_to_wall_clock_and_says_so() -> 
     it must be visible. Inventing a default Mon-Fri instead would be wrong for
     most deployments and wrong invisibly.
     """
-    configuration = load_return_configuration(
-        Path("config/returns/production.yaml")
-    ).configuration
+    configuration = load_return_configuration(Path("config/returns/production.yaml")).configuration
     raised = _local(2026, 8, 14, 16, 30)
 
     resolved = await _resolve(

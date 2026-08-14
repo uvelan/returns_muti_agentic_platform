@@ -58,7 +58,8 @@ REPLACEMENT = "***SEC-01-PURGED-CREDENTIAL***"
 def git_show(repo: Path, ref: str) -> str | None:
     result = subprocess.run(
         ["git", "-C", str(repo), "show", ref],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     )
     if result.returncode != 0:
         return None
@@ -91,20 +92,28 @@ def recover(repo: Path) -> dict[str, str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", default=".", help="repository (or mirror) root")
-    parser.add_argument("--out", required=True,
-                        help="destination file, OUTSIDE the repository, mode 0600")
-    parser.add_argument("--baseline",
-                        default="scripts/security/known_exposures.json",
-                        help="reviewed baseline to interlock against")
+    parser.add_argument(
+        "--out",
+        required=True,
+        help="destination file, OUTSIDE the repository, mode 0600",
+    )
+    parser.add_argument(
+        "--baseline",
+        default="scripts/security/known_exposures.json",
+        help="reviewed baseline to interlock against",
+    )
     args = parser.parse_args()
 
     repo = Path(args.repo).resolve()
     out = Path(args.out).resolve()
 
     if out.is_relative_to(repo):
-        print(f"error: --out {out} is inside the repository. The replacements "
-              f"file contains every leaked credential in plaintext and must "
-              f"never sit in a working tree.", file=sys.stderr)
+        print(
+            f"error: --out {out} is inside the repository. The replacements "
+            f"file contains every leaked credential in plaintext and must "
+            f"never sit in a working tree.",
+            file=sys.stderr,
+        )
         return 2
 
     baseline_path = Path(args.baseline)
@@ -113,19 +122,23 @@ def main() -> int:
     if not baseline_path.is_file():
         # A mirror clone has no working tree; the operator passes the baseline
         # from the reviewed checkout instead.
-        print(f"error: baseline {baseline_path} not found. Pass --baseline "
-              f"pointing at the reviewed known_exposures.json.", file=sys.stderr)
+        print(
+            f"error: baseline {baseline_path} not found. Pass --baseline "
+            f"pointing at the reviewed known_exposures.json.",
+            file=sys.stderr,
+        )
         return 2
 
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
     expected = {
-        entry["sha256_prefix"]: entry
-        for entry in baseline.get("known_exposures", [])
+        entry["sha256_prefix"]: entry for entry in baseline.get("known_exposures", [])
     }
     if not expected:
-        print("error: the baseline lists no known exposures. Either the purge "
-              "has already run, or you are pointing at the post-purge file.",
-              file=sys.stderr)
+        print(
+            "error: the baseline lists no known exposures. Either the purge "
+            "has already run, or you are pointing at the post-purge file.",
+            file=sys.stderr,
+        )
         return 2
 
     recovered = recover(repo)
@@ -134,24 +147,34 @@ def main() -> int:
     missing = sorted(set(expected) - set(recovered))
 
     if unreviewed:
-        print("ABORT: history carries credential values that are not in the "
-              "reviewed baseline. Review them, add them to "
-              "known_exposures.json, then re-run.", file=sys.stderr)
+        print(
+            "ABORT: history carries credential values that are not in the "
+            "reviewed baseline. Review them, add them to "
+            "known_exposures.json, then re-run.",
+            file=sys.stderr,
+        )
         for key in unreviewed:
             value = recovered[key]
-            print(f"  unreviewed sha256[:16]={key} "
-                  f"prefix={value[:4]!r} len={len(value)}", file=sys.stderr)
+            print(
+                f"  unreviewed sha256[:16]={key} prefix={value[:4]!r} len={len(value)}",
+                file=sys.stderr,
+            )
         return 1
 
     if missing:
-        print("ABORT: the baseline lists credentials this history does not "
-              "contain. Purging against a stale baseline would report success "
-              "without removing them.", file=sys.stderr)
+        print(
+            "ABORT: the baseline lists credentials this history does not "
+            "contain. Purging against a stale baseline would report success "
+            "without removing them.",
+            file=sys.stderr,
+        )
         for key in missing:
             entry = expected[key]
-            print(f"  missing sha256[:16]={key} "
-                  f"({entry.get('provider')} / {entry.get('credential')})",
-                  file=sys.stderr)
+            print(
+                f"  missing sha256[:16]={key} "
+                f"({entry.get('provider')} / {entry.get('credential')})",
+                file=sys.stderr,
+            )
         return 1
 
     lines = [f"{value}==>{REPLACEMENT}" for value in recovered.values()]
@@ -160,16 +183,21 @@ def main() -> int:
         out.chmod(0o600)
     except OSError:
         # Windows/NTFS without POSIX permissions; the runbook covers ACLs.
-        print("warning: could not set mode 0600; restrict access manually.",
-              file=sys.stderr)
+        print(
+            "warning: could not set mode 0600; restrict access manually.",
+            file=sys.stderr,
+        )
 
     print(f"wrote {len(lines)} replacement rules to {out}")
     for key in sorted(recovered):
         entry = expected[key]
-        print(f"  sha256[:16]={key}  {entry.get('provider')} / "
-              f"{entry.get('credential')}")
-    print("\nThis file contains plaintext credentials. Delete it as soon as "
-          "git filter-repo has consumed it.")
+        print(
+            f"  sha256[:16]={key}  {entry.get('provider')} / {entry.get('credential')}"
+        )
+    print(
+        "\nThis file contains plaintext credentials. Delete it as soon as "
+        "git filter-repo has consumed it."
+    )
     return 0
 
 

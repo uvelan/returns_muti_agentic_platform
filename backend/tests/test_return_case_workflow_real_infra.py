@@ -471,7 +471,9 @@ async def test_the_bay_activity_answers_and_no_signal_is_needed(client: Client) 
     assert outcome.bay_reference == "BAY-9"
 
 
-async def test_a_signal_that_won_the_race_is_not_overwritten_by_the_activity(client: Client) -> None:
+async def test_a_signal_that_won_the_race_is_not_overwritten_by_the_activity(
+    client: Client,
+) -> None:
     """First answer wins, as `bay_result` already decided it.
 
     Both an early signal and the activity's own result are now possible for one
@@ -501,7 +503,9 @@ async def test_a_signal_that_won_the_race_is_not_overwritten_by_the_activity(cli
     assert outcome.bay_reference == "BAY-FIRST"
 
 
-async def test_a_duplicate_support_response_does_not_issue_a_second_set_of_rmas(client: Client) -> None:
+async def test_a_duplicate_support_response_does_not_issue_a_second_set_of_rmas(
+    client: Client,
+) -> None:
     """Support clicking send twice, or a transport redelivering."""
     probe = _Probe()
     queue, handle = await _start(client, probe, _case_input())
@@ -524,7 +528,9 @@ async def test_a_duplicate_support_response_does_not_issue_a_second_set_of_rmas(
     assert len(probe.outcomes) == 1
 
 
-async def test_the_rma_reaches_the_graph_before_the_case_reports_it_received(client: Client) -> None:
+async def test_the_rma_reaches_the_graph_before_the_case_reports_it_received(
+    client: Client,
+) -> None:
     """W2.5. The RMA is written to Mongo and then to the graph, in that order.
 
     The agent answering the associate's next turn reads the graph. Reporting

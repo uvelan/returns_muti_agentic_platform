@@ -134,9 +134,9 @@ def _instant(day: date, minute: int, zone: ZoneInfo) -> datetime:
     """
     if minute >= 1440:
         return datetime.combine(day + timedelta(days=1), time(0, 0), tzinfo=zone).astimezone(UTC)
-    local = datetime.combine(
-        day, time(hour=minute // 60, minute=minute % 60), tzinfo=zone
-    ).replace(fold=0)
+    local = datetime.combine(day, time(hour=minute // 60, minute=minute % 60), tzinfo=zone).replace(
+        fold=0
+    )
     return local.astimezone(UTC)
 
 
@@ -148,8 +148,10 @@ def is_working_time(calendar: BusinessCalendar, instant: datetime) -> bool:
     # that belongs to this local day only by a hair.
     for day in (local_day - timedelta(days=1), local_day):
         for period in _periods_on(calendar, day):
-            if _instant(day, period.start_minute, zone) <= instant < _instant(
-                day, period.end_minute, zone
+            if (
+                _instant(day, period.start_minute, zone)
+                <= instant
+                < _instant(day, period.end_minute, zone)
             ):
                 return True
     return False

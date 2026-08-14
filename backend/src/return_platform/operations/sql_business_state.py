@@ -291,7 +291,9 @@ class SQLBusinessStateRepository:
         async with asyncio.timeout(self._settings.operation_timeout_seconds):
             return await asyncio.to_thread(operation)
 
-    async def _run_retrying_deadlocks(self, operation: Callable[[], T], *, operation_name: str) -> T:
+    async def _run_retrying_deadlocks(
+        self, operation: Callable[[], T], *, operation_name: str
+    ) -> T:
         """`_run`, re-running the operation when SQL Server picks it as a victim.
 
         **Only for operations that are idempotent by construction**, which is

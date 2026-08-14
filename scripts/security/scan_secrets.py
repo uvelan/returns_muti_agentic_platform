@@ -56,16 +56,26 @@ RULES: list[tuple[str, re.Pattern[bytes]]] = [
     ("slack-token", re.compile(rb"xox[abprs]-[A-Za-z0-9\-]{10,}")),
     ("aws-access-key-id", re.compile(rb"(?:AKIA|ASIA)[0-9A-Z]{16}")),
     ("vault-service-token", re.compile(rb"\bhv[sb]\.[A-Za-z0-9_\-]{20,}")),
-    ("private-key-block",
-     re.compile(rb"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----")),
-    ("json-web-token",
-     re.compile(rb"eyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}")),
+    (
+        "private-key-block",
+        re.compile(rb"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----"),
+    ),
+    (
+        "json-web-token",
+        re.compile(
+            rb"eyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}"
+        ),
+    ),
     ("stripe-key", re.compile(rb"[rs]k_(?:live|test)_[A-Za-z0-9]{24,}")),
     ("sendgrid-key", re.compile(rb"SG\.[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}")),
     ("google-oauth-client-secret", re.compile(rb"GOCSPX-[A-Za-z0-9_\-]{20,}")),
     ("npm-token", re.compile(rb"npm_[A-Za-z0-9]{36}")),
-    ("azure-storage-key",
-     re.compile(rb"DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/=]{40,}")),
+    (
+        "azure-storage-key",
+        re.compile(
+            rb"DefaultEndpointsProtocol=https;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/=]{40,}"
+        ),
+    ),
 ]
 
 # A `NAME=value` assignment where NAME claims to hold a credential and value is
@@ -95,10 +105,34 @@ NOT_A_SECRET = re.compile(
 
 # Binary/vendored paths that cannot usefully hold a reviewable credential.
 SKIP_SUFFIXES = (
-    ".png", ".jpg", ".jpeg", ".gif", ".ico", ".bmp", ".webp", ".svg",
-    ".woff", ".woff2", ".ttf", ".otf", ".eot", ".pdf", ".zip", ".7z",
-    ".pyc", ".pyo", ".so", ".dll", ".dylib", ".exe", ".bin", ".wasm",
-    ".mp4", ".webm", ".mp3", ".lock",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".ico",
+    ".bmp",
+    ".webp",
+    ".svg",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".otf",
+    ".eot",
+    ".pdf",
+    ".zip",
+    ".7z",
+    ".pyc",
+    ".pyo",
+    ".so",
+    ".dll",
+    ".dylib",
+    ".exe",
+    ".bin",
+    ".wasm",
+    ".mp4",
+    ".webm",
+    ".mp3",
+    ".lock",
 )
 SKIP_DIR_PARTS = ("node_modules", ".git", "__pycache__", ".venv", "dist", "build")
 
@@ -130,9 +164,7 @@ class Finding:
         # so a reviewer can copy it straight out of a CI log into an allowlist
         # entry. 16 hex characters identify a value without revealing it.
         text = self.value.decode("utf-8", "replace")
-        return (
-            f"prefix={text[:4]!r} len={len(text)} sha256[:16]={self.digest[:16]}"
-        )
+        return f"prefix={text[:4]!r} len={len(text)} sha256[:16]={self.digest[:16]}"
 
     def key(self) -> tuple[str, str]:
         return (self.location, self.digest[:16])
@@ -246,9 +278,7 @@ def scan_archive(data: bytes, location: str) -> list[Finding]:
                 handle = archive.extractfile(member)
                 if handle is None:
                     continue
-                findings.extend(
-                    scan_bytes(handle.read(), f"{location}::{member.name}")
-                )
+                findings.extend(scan_bytes(handle.read(), f"{location}::{member.name}"))
     except tarfile.TarError:
         # Not a readable archive; the outer caller already scanned it as bytes.
         pass
@@ -302,7 +332,11 @@ def scan_blobs(repo: Path, rev_args: list[str]) -> list[Finding]:
     wanted: list[bytes] = []
     for line in check.splitlines():
         fields = line.split()
-        if len(fields) == 3 and fields[1] == b"blob" and int(fields[2]) <= MAX_BLOB_BYTES:
+        if (
+            len(fields) == 3
+            and fields[1] == b"blob"
+            and int(fields[2]) <= MAX_BLOB_BYTES
+        ):
             wanted.append(fields[0])
     if not wanted:
         return []
@@ -319,7 +353,7 @@ def scan_blobs(repo: Path, rev_args: list[str]) -> list[Finding]:
         if len(header) != 3:
             break
         sha, size = header[0], int(header[2])
-        body = stream[newline + 1: newline + 1 + size]
+        body = stream[newline + 1 : newline + 1 + size]
         offset = newline + 1 + size + 1
 
         # A blob can live at several paths; name them all so the purge knows
@@ -348,13 +382,20 @@ def load_allowlist(repo: Path) -> tuple[set[str], dict[str, str]]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=("worktree", "range", "history"),
-                        default="worktree")
-    parser.add_argument("--range", dest="rev_range",
-                        help="commit range for --mode range, e.g. BASE..HEAD")
+    parser.add_argument(
+        "--mode", choices=("worktree", "range", "history"), default="worktree"
+    )
+    parser.add_argument(
+        "--range",
+        dest="rev_range",
+        help="commit range for --mode range, e.g. BASE..HEAD",
+    )
     parser.add_argument("--repo", default=".", help="repository root")
-    parser.add_argument("--no-allowlist", action="store_true",
-                        help="report known exposures as failures too")
+    parser.add_argument(
+        "--no-allowlist",
+        action="store_true",
+        help="report known exposures as failures too",
+    )
     args = parser.parse_args()
 
     repo = Path(args.repo).resolve()
@@ -388,8 +429,10 @@ def main() -> int:
     known = [f for f in deduped.values() if f.digest[:16] in allowed]
 
     print(f"secret scan: {scope}")
-    print(f"  findings: {len(deduped)}  blocking: {len(blocking)}  "
-          f"known-exposure: {len(known)}")
+    print(
+        f"  findings: {len(deduped)}  blocking: {len(blocking)}  "
+        f"known-exposure: {len(known)}"
+    )
 
     if known:
         print("\nKNOWN EXPOSURES (allowlisted, pending the SEC-01 history purge)")

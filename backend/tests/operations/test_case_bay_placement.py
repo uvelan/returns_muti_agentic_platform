@@ -101,11 +101,15 @@ def _bay(
 
 class FakeCaseRepository:
     def __init__(self, facts: dict[str, Any] | None = None, *, case: dict[str, Any] | None = None):
-        self.case = case if case is not None else {
-            "caseId": CASE_ID,
-            "tenantId": "tenant-a",
-            "confirmedOrderReference": ORDER_REFERENCE,
-        }
+        self.case = (
+            case
+            if case is not None
+            else {
+                "caseId": CASE_ID,
+                "tenantId": "tenant-a",
+                "confirmedOrderReference": ORDER_REFERENCE,
+            }
+        )
         self._facts = dict(facts or {})
         self.decisions: list[dict[str, Any]] = []
 
@@ -124,7 +128,9 @@ class FakeCaseRepository:
 class FakeObservations:
     """The warehouse reading, with the three outcomes kept apart."""
 
-    def __init__(self, observation: WarehouseObservation | None = None, *, error: Exception | None = None):
+    def __init__(
+        self, observation: WarehouseObservation | None = None, *, error: Exception | None = None
+    ):
         self._observation = observation
         self._error = error
         self.observed: list[str | None] = []
@@ -186,16 +192,12 @@ async def test_a_received_case_gets_one_coherent_recommendation(
     evidence reference all come back together. A caller that had to join any of
     these from somewhere else would be the partial result C2 forbids.
     """
-    repository = FakeCaseRepository(
-        {FACT_WAREHOUSE: WAREHOUSE, FACT_PHYSICAL_STATUS: RECEIVED}
-    )
+    repository = FakeCaseRepository({FACT_WAREHOUSE: WAREHOUSE, FACT_PHYSICAL_STATUS: RECEIVED})
     observations = FakeObservations(
         _observed(_bay("B-1", capacity=4, priority=1), _bay("B-2", capacity=9, priority=2))
     )
 
-    result = await _placement(production_configuration, repository, observations).recommend(
-        CASE_ID
-    )
+    result = await _placement(production_configuration, repository, observations).recommend(CASE_ID)
 
     assert result.warehouse_reference == WAREHOUSE
     # The tightest fit that still holds the return -- the agent's own ranking.
@@ -260,9 +262,7 @@ async def test_no_warehouse_reference_is_a_stated_reason_not_every_bay(
     repository = FakeCaseRepository({FACT_PHYSICAL_STATUS: RECEIVED}, case={"caseId": CASE_ID})
     observations = FakeObservations()
 
-    result = await _placement(production_configuration, repository, observations).recommend(
-        CASE_ID
-    )
+    result = await _placement(production_configuration, repository, observations).recommend(CASE_ID)
 
     assert observations.observed == [None]
     assert result.bay_reference is None
@@ -274,9 +274,7 @@ async def test_no_warehouse_reference_is_a_stated_reason_not_every_bay(
 async def test_a_warehouse_the_graph_does_not_hold_is_told_apart_from_a_full_one(
     production_configuration: ReturnPlatformConfiguration,
 ) -> None:
-    repository = FakeCaseRepository(
-        {FACT_WAREHOUSE: WAREHOUSE, FACT_PHYSICAL_STATUS: RECEIVED}
-    )
+    repository = FakeCaseRepository({FACT_WAREHOUSE: WAREHOUSE, FACT_PHYSICAL_STATUS: RECEIVED})
     observations = FakeObservations(
         WarehouseObservation(
             warehouse_reference=WAREHOUSE,
@@ -286,9 +284,7 @@ async def test_a_warehouse_the_graph_does_not_hold_is_told_apart_from_a_full_one
         )
     )
 
-    result = await _placement(production_configuration, repository, observations).recommend(
-        CASE_ID
-    )
+    result = await _placement(production_configuration, repository, observations).recommend(CASE_ID)
 
     assert result.reason == "WAREHOUSE_ABSENT_WAREHOUSE_NOT_IN_GRAPH"
     assert result.evidence_reference == "WAREHOUSE_ABSENT:WAREHOUSE_NOT_IN_GRAPH"
@@ -302,14 +298,10 @@ async def test_an_unreadable_graph_never_reads_as_an_empty_warehouse(
     Reporting `ABSENT` here would mark every return's bay omitted across the
     deployment and look like configuration.
     """
-    repository = FakeCaseRepository(
-        {FACT_WAREHOUSE: WAREHOUSE, FACT_PHYSICAL_STATUS: RECEIVED}
-    )
+    repository = FakeCaseRepository({FACT_WAREHOUSE: WAREHOUSE, FACT_PHYSICAL_STATUS: RECEIVED})
     observations = FakeObservations(error=ConnectionRefusedError("neo4j is down"))
 
-    result = await _placement(production_configuration, repository, observations).recommend(
-        CASE_ID
-    )
+    result = await _placement(production_configuration, repository, observations).recommend(CASE_ID)
 
     assert result.bay_reference is None
     assert result.reason == "WAREHOUSE_UNAVAILABLE_CONNECTIONREFUSEDERROR"
@@ -332,9 +324,7 @@ async def test_a_bay_that_cannot_take_the_return_is_excluded_with_its_own_reason
         _observed(_bay("B-1", capacity=2), _bay("B-2", capacity=50, hazardous=False, priority=2))
     )
 
-    result = await _placement(production_configuration, repository, observations).recommend(
-        CASE_ID
-    )
+    result = await _placement(production_configuration, repository, observations).recommend(CASE_ID)
 
     assert result.bay_reference is None
     assert result.reason == "NO_ELIGIBLE_BAY"
@@ -357,9 +347,9 @@ async def test_the_warehouse_falls_back_to_the_confirmed_order(
     observations = FakeObservations(_observed(_bay("B-1", capacity=4)))
     orders = FakeOrderObservations(WAREHOUSE)
 
-    result = await _placement(
-        production_configuration, repository, observations, orders
-    ).recommend(CASE_ID)
+    result = await _placement(production_configuration, repository, observations, orders).recommend(
+        CASE_ID
+    )
 
     assert orders.asked == [ORDER_REFERENCE]
     assert observations.observed == [WAREHOUSE]
@@ -371,15 +361,11 @@ async def test_a_recorded_warehouse_outranks_the_order(
     production_configuration: ReturnPlatformConfiguration,
 ) -> None:
     """Somebody stating where this return is processed beats anything inferred."""
-    repository = FakeCaseRepository(
-        {FACT_WAREHOUSE: WAREHOUSE, FACT_PHYSICAL_STATUS: RECEIVED}
-    )
+    repository = FakeCaseRepository({FACT_WAREHOUSE: WAREHOUSE, FACT_PHYSICAL_STATUS: RECEIVED})
     observations = FakeObservations(_observed(_bay("B-1", capacity=4)))
     orders = FakeOrderObservations("WHSE-SOMEWHERE-ELSE")
 
-    await _placement(production_configuration, repository, observations, orders).recommend(
-        CASE_ID
-    )
+    await _placement(production_configuration, repository, observations, orders).recommend(CASE_ID)
 
     assert orders.asked == [], "the order was never consulted"
     assert observations.observed == [WAREHOUSE]
@@ -397,9 +383,7 @@ async def test_production_refuses_a_pre_arrival_case_and_says_why(
     repository = FakeCaseRepository()
     observations = FakeObservations(_observed(_bay("B-1", capacity=4)))
 
-    result = await _placement(production_configuration, repository, observations).recommend(
-        CASE_ID
-    )
+    result = await _placement(production_configuration, repository, observations).recommend(CASE_ID)
 
     assert result.reason == "PRE_ARRIVAL_NOT_ALLOWED"
     assert result.bay_reference is None
@@ -606,9 +590,7 @@ async def test_an_unreadable_reservation_ledger_degrades_and_says_so(
     than mysterious. Silently degrading would make the two readings
     indistinguishable, which is the whole reason this field exists.
     """
-    repository = FakeCaseRepository(
-        {FACT_WAREHOUSE: WAREHOUSE, FACT_PHYSICAL_STATUS: RECEIVED}
-    )
+    repository = FakeCaseRepository({FACT_WAREHOUSE: WAREHOUSE, FACT_PHYSICAL_STATUS: RECEIVED})
     observations = FakeObservations(_observed(_bay("B-1", capacity=4)))
     live = FakeLiveCapacity(error=ConnectionError("sql server is unreachable"))
 
@@ -626,9 +608,7 @@ async def test_an_unreadable_reservation_ledger_degrades_and_says_so(
 async def test_without_a_capacity_reader_the_ranking_says_it_used_the_maximum(
     production_configuration: ReturnPlatformConfiguration,
 ) -> None:
-    repository = FakeCaseRepository(
-        {FACT_WAREHOUSE: WAREHOUSE, FACT_PHYSICAL_STATUS: RECEIVED}
-    )
+    repository = FakeCaseRepository({FACT_WAREHOUSE: WAREHOUSE, FACT_PHYSICAL_STATUS: RECEIVED})
 
     result = await _placement(
         production_configuration, repository, FakeObservations(_observed(_bay("B-1", capacity=4)))
@@ -671,9 +651,7 @@ async def test_the_activity_answers_with_the_whole_result_and_records_it(
     and writes the recommendation onto the case so the associate's next turn
     reads it out of the fact projection with no second query.
     """
-    repository = FakeCaseRepository(
-        {FACT_WAREHOUSE: WAREHOUSE, FACT_PHYSICAL_STATUS: RECEIVED}
-    )
+    repository = FakeCaseRepository({FACT_WAREHOUSE: WAREHOUSE, FACT_PHYSICAL_STATUS: RECEIVED})
     recommendation = await _placement(
         production_configuration, repository, FakeObservations(_observed(_bay("B-1", capacity=4)))
     ).recommend(CASE_ID)
@@ -730,9 +708,7 @@ async def test_the_activity_never_raises_for_a_bay_state(
     workflow would record `REQUEST_FAILED` and lose which state applied -- and
     the audit is explicit that the best-effort semantics here are correct.
     """
-    repository = FakeCaseRepository(
-        {FACT_WAREHOUSE: WAREHOUSE, FACT_PHYSICAL_STATUS: RECEIVED}
-    )
+    repository = FakeCaseRepository({FACT_WAREHOUSE: WAREHOUSE, FACT_PHYSICAL_STATUS: RECEIVED})
     recommendation = await _placement(
         production_configuration,
         repository,

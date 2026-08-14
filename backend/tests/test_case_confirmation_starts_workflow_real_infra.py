@@ -247,9 +247,7 @@ def _build_app(*, temporal: Client, task_queue: str) -> FastAPI:
 
     @app.middleware("http")
     async def _identity(request: Request, call_next: Any) -> Any:
-        request.state.principal = Principal(
-            subject=PRINCIPAL_ID, roles=frozenset({"associate"})
-        )
+        request.state.principal = Principal(subject=PRINCIPAL_ID, roles=frozenset({"associate"}))
         request.state.tenant_id = TENANT_ID
         request.state.branch_ids = ("CHARLOTTE",)
         request.state.correlation_id = "corr-wf01"
@@ -403,15 +401,13 @@ async def test_confirming_through_the_api_creates_the_case_workflow_in_temporal(
     finally:
         for case_id in case_ids:
             try:
-                await temporal.get_workflow_handle(
-                    return_case_workflow_id(case_id)
-                ).terminate("test cleanup")
+                await temporal.get_workflow_handle(return_case_workflow_id(case_id)).terminate(
+                    "test cleanup"
+                )
             except Exception:  # noqa: BLE001 - never started, or already gone
                 pass
             await mongo[test_settings.mongo_database]["cases"].delete_many({"caseId": case_id})
-            await mongo[test_settings.mongo_database]["case_facts"].delete_many(
-                {"caseId": case_id}
-            )
+            await mongo[test_settings.mongo_database]["case_facts"].delete_many({"caseId": case_id})
         database = mongo.get_database("platform")
         for definition in structures:
             await database.get_collection(definition.physical_name).drop()
