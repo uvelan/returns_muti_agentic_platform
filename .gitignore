@@ -36,7 +36,16 @@ backend_results.txt
 docker_compose_logs.txt
 # Running a service from the repository root (uvicorn, the discovery worker)
 # redirects here, so without this every dev session shows a dirty tree.
+#
+# `backend.log` and `worker.log` were committed once and stayed committed; a
+# tracked file ignores its own ignore rule, so the pattern only prevents the
+# *next* one. Already-tracked evidence logs under `docs/evidence/` are
+# unaffected by this for the same reason, which is what keeps them.
 *.log
+# Same story: `backend/validation_output_new.txt` was a redirected PowerShell
+# traceback that got committed. Redirect targets are named after the run, not
+# after a convention, so match the stem rather than one exact name.
+validation_output*.txt
 playwright_results.txt
 linux_kit_validation/
 
