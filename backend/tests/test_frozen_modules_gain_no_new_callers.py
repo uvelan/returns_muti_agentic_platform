@@ -52,11 +52,16 @@ FROZEN: dict[str, tuple[str, frozenset[str]]] = {
         "return_platform.dynamic_knowledge.order_agent",
         frozenset({"return_platform/agents/registry/registry.py"}),
     ),
-    "return_platform.data_platform.graph.interim_active_schema": (
-        "config/dynamic_knowledge/active-schema.return-order.yaml via load_active_schema",
-        frozenset(),
-    ),
 }
+
+# `return_platform.data_platform.graph.interim_active_schema` was here with an
+# empty importer set. It is gone from `backend/src` entirely -- moved to
+# `tests/data_platform/graph/_interim_active_schema.py`, where it is input data
+# for two tests of live machinery rather than a shipped module. An entry naming
+# a module that no longer exists asserts nothing: `_importers` would return the
+# empty set forever and the rule would read as enforced while enforcing nothing.
+# Not being in the production package is the stronger guarantee, so the entry
+# is retired rather than kept as decoration.
 
 # Frozen HTTP surfaces. No frontend module may call these.
 FROZEN_ROUTE_PREFIXES: tuple[str, ...] = (
