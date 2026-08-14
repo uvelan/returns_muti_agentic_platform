@@ -47,7 +47,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from return_platform.platform.redaction.sample_masking import SampleMasker
+from return_platform.graph_schema_analyzer.composition import default_sample_masker
+from return_platform.graph_schema_analyzer.ports.masking_port import SampleMaskingPort
 
 __all__ = [
     "BLOCK_DELIMITER_PATTERN",
@@ -123,7 +124,7 @@ def build_prompt_blocks(
     untrusted_samples: Mapping[str, Sequence[Mapping[str, Any]]] | None,
     user_requirements: str,
     clarification_answers: Sequence[Mapping[str, str]] = (),
-    masker: SampleMasker | None = None,
+    masker: SampleMaskingPort | None = None,
 ) -> tuple[PromptBlock, ...]:
     """Assemble the six blocks in their fixed order.
 
@@ -178,7 +179,7 @@ def build_prompt_blocks(
             kind=PromptBlockKind.UNTRUSTED_SOURCE_SAMPLE,
             trusted=False,
             content=_render_samples(
-                untrusted_samples, masker=SampleMasker() if masker is None else masker
+                untrusted_samples, masker=default_sample_masker() if masker is None else masker
             ),
         ),
         PromptBlock(
@@ -208,7 +209,7 @@ def _render_metadata(source_metadata: Sequence[Mapping[str, Any]]) -> str:
 def _render_samples(
     untrusted_samples: Mapping[str, Sequence[Mapping[str, Any]]] | None,
     *,
-    masker: SampleMasker,
+    masker: SampleMaskingPort,
 ) -> str:
     """Masked first, then neutralised, then rendered.
 
