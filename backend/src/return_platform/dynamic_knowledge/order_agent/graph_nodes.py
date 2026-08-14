@@ -56,15 +56,15 @@ from return_platform.dynamic_knowledge.order_agent.contracts import (
     AgentTurnContext,
     ModelInvocationResult,
     OrderConfirmation,
-    OrderSearchIntent,
 )
 from return_platform.dynamic_knowledge.order_agent.errors import OrderAgentFailure
+from return_platform.dynamic_knowledge.order_agent.identification import IdentificationCatalogue
 from return_platform.dynamic_knowledge.order_agent.search_strategy import (
     MAX_CACHED_CANDIDATES,
     RESULT_PAGE_SIZE,
     CustomerFulltextPolicy,
-    build_customer_fulltext_plan,
-    build_progressive_plans,
+    PlannedSearch,
+    build_search_program,
     candidate_key,
     narrow_fulltext_matches,
     rank_search_results,
@@ -239,6 +239,13 @@ class GraphDependencies:
     # configured values, which is what makes the index name repointable without
     # a code change.
     customer_fulltext: CustomerFulltextPolicy = field(default_factory=CustomerFulltextPolicy)
+    # Every signal this deployment can be searched by, resolved against the
+    # active schema. Defaulted to empty rather than to a built-in list on
+    # purpose: a process that resolves no configuration must search on nothing
+    # and say so, not fall back to seventeen names compiled into the release.
+    # That fallback is the defect -- it is what made the configured catalogue
+    # unreachable and the hardcoded one authoritative.
+    identification: IdentificationCatalogue = field(default_factory=IdentificationCatalogue)
 
 
 async def _rehydrate_evidence(
@@ -281,6 +288,11 @@ async def _build_context(deps: GraphDependencies, state: dict[str, Any]) -> Agen
         policy_version=state["policy_version"],
         prompt_version=state["prompt_version"],
         compact_schema=await deps.knowledge_gateway.compact_schema(deps.schema, state["agent_id"]),
+        # Read fresh from the catalogue every turn. This is the line that makes
+        # a newly configured identification field usable without a release: the
+        # model learns the key to populate from here, not from the packaged
+        # prompt, which is one immutable string per configuration release.
+        identification_fields=tuple(deps.identification.describe()),
         conversation_state=(
             {"orderSearchCache": order_search_cache} if order_search_cache is not None else {}
         ),
@@ -677,57 +689,49 @@ def make_order_search_node(deps: GraphDependencies) -> Any:
                 retryable=False,
             )
 
-        plans = build_progressive_plans(intent)
-        raw_results: list[Any] = []
-        compiled_checksums: list[str] = []
-        for plan in plans:
-            if queries_used >= policy.max_graph_queries_per_turn:
-                break
-            try:
-                deps.schema_guard.validate(guard_context, plan)
-                deps.query_safety_guard.validate(plan)
-                compiled = deps.compiler.compile_read(deps.schema, plan)
-            except (GuardRejected, QueryCompilationError) as exc:
-                logger.debug(
-                    "order_search_plan_rejected",
+        program = build_search_program(
+            intent, deps.identification, fulltext_policy=deps.customer_fulltext
+        )
+        raw_results, compiled_checksums, queries_used = await _run_planned_searches(
+            deps,
+            planned=program.primary,
+            guard_context=guard_context,
+            state=state,
+            queries_used=queries_used,
+            budget=policy.max_graph_queries_per_turn,
+        )
+
+        ranked = rank_search_results(intent, raw_results, program=program)
+
+        # The deferred searches are the ones an operator marked as worth running
+        # only when everything else failed -- an indexed approximate match is
+        # imprecise next to an exact one and would dilute it. Which searches
+        # those are is configuration; that they run here, once, on zero results,
+        # is the shape of the turn.
+        if ranked["total_found"] == 0 and program.deferred:
+            fallback_results, fallback_checksums, queries_used = await _run_planned_searches(
+                deps,
+                planned=program.deferred,
+                guard_context=guard_context,
+                state=state,
+                queries_used=queries_used,
+                budget=policy.max_graph_queries_per_turn,
+                best_effort=True,
+            )
+            compiled_checksums.extend(fallback_checksums)
+            fallback = _rank_deferred_matches(
+                program.deferred, fallback_results, policy=deps.customer_fulltext
+            )
+            if fallback:
+                logger.info(
+                    "order_search_deferred_matched",
                     extra={
                         "conversation_id": state["conversation_id"],
                         "client_turn_id": state["client_turn_id"],
-                        "operation": plan.operation.value,
-                        "entity_id": plan.start_entity_id,
-                        "reason": str(exc),
+                        "match_count": len(fallback),
                     },
                 )
-                continue
-            try:
-                raw_result = await deps.knowledge_gateway.execute(
-                    schema=deps.schema,
-                    graph_generation_id=state["graph_generation_id"],
-                    plan=plan,
-                    compiled_cypher=compiled.cypher,
-                    parameters=compiled.parameters,
-                )
-            except Exception as exc:
-                raise OrderAgentFailure(
-                    "ORDER_AGENT_SEARCH_EXECUTION_FAILED",
-                    "The order search could not be completed against the knowledge graph.",
-                    retryable=True,
-                ) from exc
-            raw_results.append(raw_result)
-            compiled_checksums.append(compiled.checksum)
-            queries_used += 1
-
-        ranked = rank_search_results(intent, raw_results)
-
-        if (
-            ranked["total_found"] == 0
-            and intent.customerNames
-            and queries_used < policy.max_graph_queries_per_turn
-        ):
-            ranked = await _fuzzy_customer_fallback(
-                deps, intent=intent, ranked=ranked, guard_context=guard_context, state=state
-            )
-            queries_used += 1
+                ranked = {**ranked, "candidates": fallback, "total_found": len(fallback)}
 
         all_candidates = ranked["candidates"][:MAX_CACHED_CANDIDATES]
         page_candidates = all_candidates[:RESULT_PAGE_SIZE]
@@ -769,7 +773,7 @@ def make_order_search_node(deps: GraphDependencies) -> Any:
             expires_at=_now() + timedelta(minutes=30),
         )
         new_cache = {
-            "signature": search_intent_signature(intent),
+            "signature": search_intent_signature(intent, deps.identification),
             "intent": ranked["intent"],
             "evidenceRef": full_evidence.query_execution_id,
             "shown": len(page_candidates),
@@ -785,89 +789,120 @@ def make_order_search_node(deps: GraphDependencies) -> Any:
     return order_search
 
 
-async def _fuzzy_customer_fallback(
+async def _run_planned_searches(
     deps: GraphDependencies,
     *,
-    intent: OrderSearchIntent,
-    ranked: dict[str, Any],
+    planned: Sequence[PlannedSearch],
     guard_context: GuardContext,
     state: dict[str, Any],
-) -> dict[str, Any]:
-    """Best-effort misspelling recovery when an exact/partial name search finds nothing.
+    queries_used: int,
+    budget: int,
+    best_effort: bool = False,
+) -> tuple[list[Any], list[str], int]:
+    """Guard, compile and execute a set of planned searches within the turn budget.
 
-    One ranked read of the customer full-text index: every customer is searched
-    server-side and the best matches come back scored, so the correct one cannot
-    sit outside a window the way it could when this fetched an unordered batch
-    and compared strings on the client.
+    One loop for every configured search, whichever field produced it. The
+    per-field branches this replaced each had their own copy of guard-validate,
+    compile, execute and count -- which is how the misspelling fallback ended up
+    with subtly different error handling from the ordinary passes.
 
-    Never blocks or fails the turn if this step itself errors -- the associate is
-    no worse off than the zero-result search that triggered it. It does say so in
-    the log, though: a full-text index that is missing or offline degrades every
-    misspelled name to "not found", and that is an infrastructure fault to fix
-    rather than a search that legitimately found nothing.
+    `best_effort` is for searches whose failure must not fail the turn: the
+    associate is no worse off than the zero-result search that triggered them.
+    It is logged at WARNING rather than swallowed, because a full-text index
+    that is missing or offline degrades every misspelled name to "not found",
+    and that is an infrastructure fault to fix rather than an honest miss.
     """
-    plan = build_customer_fulltext_plan(intent.customerNames, deps.customer_fulltext)
-    if plan is None:
-        return ranked
-    try:
-        deps.schema_guard.validate(guard_context, plan)
-        deps.query_safety_guard.validate(plan)
-        compiled = deps.compiler.compile_read(deps.schema, plan)
-        raw_result = await deps.knowledge_gateway.execute(
-            schema=deps.schema,
-            graph_generation_id=state["graph_generation_id"],
-            plan=plan,
-            compiled_cypher=compiled.cypher,
-            parameters=compiled.parameters,
-        )
-    except Exception:
-        logger.warning(
-            "order_search_fuzzy_fallback_unavailable",
-            exc_info=True,
-            extra={
-                "conversation_id": state["conversation_id"],
-                "client_turn_id": state["client_turn_id"],
-                "fulltext_index": plan.fulltext_index,
-            },
-        )
-        return ranked
+    raw_results: list[Any] = []
+    checksums: list[str] = []
+    for item in planned:
+        if queries_used >= budget:
+            break
+        plan = item.plan
+        try:
+            deps.schema_guard.validate(guard_context, plan)
+            deps.query_safety_guard.validate(plan)
+            compiled = deps.compiler.compile_read(deps.schema, plan)
+        except (GuardRejected, QueryCompilationError) as exc:
+            logger.debug(
+                "order_search_plan_rejected",
+                extra={
+                    "conversation_id": state["conversation_id"],
+                    "client_turn_id": state["client_turn_id"],
+                    "operation": plan.operation.value,
+                    "entity_id": plan.start_entity_id,
+                    "intent_key": item.intent_key,
+                    "reason": str(exc),
+                },
+            )
+            continue
+        try:
+            raw_result = await deps.knowledge_gateway.execute(
+                schema=deps.schema,
+                graph_generation_id=state["graph_generation_id"],
+                plan=plan,
+                compiled_cypher=compiled.cypher,
+                parameters=compiled.parameters,
+            )
+        except Exception as exc:
+            if best_effort:
+                logger.warning(
+                    "order_search_deferred_unavailable",
+                    exc_info=True,
+                    extra={
+                        "conversation_id": state["conversation_id"],
+                        "client_turn_id": state["client_turn_id"],
+                        "intent_key": item.intent_key,
+                        "fulltext_index": plan.fulltext_index,
+                    },
+                )
+                queries_used += 1
+                continue
+            raise OrderAgentFailure(
+                "ORDER_AGENT_SEARCH_EXECUTION_FAILED",
+                "The order search could not be completed against the knowledge graph.",
+                retryable=True,
+            ) from exc
+        raw_results.append(raw_result)
+        checksums.append(compiled.checksum)
+        queries_used += 1
+    return raw_results, checksums, queries_used
 
-    rows = raw_result.get("rows", []) if isinstance(raw_result, dict) else []
-    matches = narrow_fulltext_matches(rows, policy=deps.customer_fulltext)
-    if not matches:
-        return ranked
 
-    logger.info(
-        "order_search_fuzzy_fallback_matched",
-        extra={
-            "conversation_id": state["conversation_id"],
-            "client_turn_id": state["client_turn_id"],
-            "match_count": len(matches),
-            "returned_rows": len(rows),
-        },
-    )
-    # `customer_name_fuzzy` and a score below every confirmed signal, on purpose:
-    # a name the associate half-remembered is a candidate to show, never a fact
-    # to act on. The best match keeps the 0.6 the constant-scored version gave
-    # every hit; the rest are scaled by how far behind it they ranked, so the
-    # order the index computed survives into the candidate set instead of being
-    # flattened into a tie.
-    best_score = matches[0][1]
-    candidates = [
-        {
-            "candidate_id": candidate_key(row),
-            "data": row,
-            "score": round(0.6 * (score / best_score), 4),
-            "matches": ["customer_name_fuzzy"],
-        }
-        for row, score in matches
-    ]
-    return {
-        "intent": ranked["intent"],
-        "candidates": candidates,
-        "total_found": len(candidates),
-        "unsupported_signals": ranked["unsupported_signals"],
-    }
+def _rank_deferred_matches(
+    planned: Sequence[PlannedSearch],
+    raw_results: Sequence[Any],
+    *,
+    policy: CustomerFulltextPolicy,
+) -> list[dict[str, Any]]:
+    """Turn a deferred search's ranked rows into candidates.
+
+    Scored by relevance relative to the best row and bounded by that relevance,
+    never by row count -- the SRCH-01 invariant, unchanged. The ceiling is the
+    field's configured ranking weight, so an approximate match cannot present as
+    strongly as the exact match it stood in for, and the match label is the
+    configured one: the reasoning prompt reads `customer_name_fuzzy` to decide
+    whether to hedge about spelling, and a candidate found this way must carry
+    it.
+    """
+    candidates: list[dict[str, Any]] = []
+    for item, raw_result in zip(planned, raw_results, strict=False):
+        rows = raw_result.get("rows", []) if isinstance(raw_result, dict) else []
+        matches = narrow_fulltext_matches(rows, policy=policy)
+        if not matches:
+            continue
+        best_score = matches[0][1]
+        ceiling = item.search.deferred_score_ceiling
+        candidates.extend(
+            {
+                "candidate_id": candidate_key(row),
+                "data": row,
+                "score": round(ceiling * (score / best_score), 4),
+                "matches": [item.search.label],
+            }
+            for row, score in matches
+        )
+    candidates.sort(key=lambda candidate: candidate["score"], reverse=True)
+    return candidates[:MAX_CACHED_CANDIDATES]
 
 
 def make_request_on_demand_sync_node(deps: GraphDependencies) -> Any:

@@ -157,6 +157,362 @@ discovery:
     confirmation_assistant_template: "Order line {order_line_id} is now locked for return processing. Please provide the return reason, quantity, number of packages, preferred shipping method, and any optional notes."
     submission_associate_template: "Confirmed return handling details."
     submission_assistant_template: "Return session {session_id} has been created and transferred to Return Support processing."
+  # Every signal the canonical Order Discovery agent can search on.
+  #
+  # This catalogue is the whole of it. Adding an identification field is adding
+  # an entry here: no Python edit, no TypeScript edit, no release. Seven places
+  # in the backend used to have to agree about the seventeen fields below --
+  # the intent model, a signature tuple, a numbered branch per field in the plan
+  # builder, an address pair list, a date-field constant, an unsupported-field
+  # tuple and a scoring block per field. They are one list now.
+  #
+  # Each entry answers, in order: what the model calls it, what it means, how it
+  # is normalized and validated, which graph reads can answer it, and what a
+  # match is worth when candidates are ranked.
+  #
+  # `searches` are tried independently and their results merged, which is what
+  # lets an associate be answered from partial information -- a name *or* a ZIP
+  # *or* a date, in any combination. A search whose entity/property/operator the
+  # active schema does not offer is dropped at startup with a reason rather than
+  # failing inside a turn; a field left with none is reported to the associate
+  # as a signal that could not be used.
+  identification_fields:
+    - field_id: order_number
+      intent_key: orderNumbers
+      label: "order number"
+      description: "The Ferguson sales order number or web order number."
+      aliases: [order number, sales order number, web order, SO number]
+      normalization: LOWER_ALPHANUMERIC
+      sensitivity: NONE
+      ranking_weight_millionths: 500000
+      exact_match_bonus_millionths: 500000
+      clarification_priority: 120
+      searches:
+        - entity: sales_order
+          field: sales_order_number
+          strategy: EXACT
+          limit: 1
+
+    # A second key for the same target, because the model distinguishes an
+    # identifier it was given from one it inferred, and both are order numbers.
+    - field_id: order_id
+      intent_key: orderIds
+      label: "order identifier"
+      aliases: [order id]
+      normalization: LOWER_ALPHANUMERIC
+      ranking_weight_millionths: 500000
+      exact_match_bonus_millionths: 500000
+      clarification_priority: 118
+      searches:
+        - entity: sales_order
+          field: sales_order_number
+          strategy: EXACT
+          limit: 1
+
+    - field_id: customer_name
+      intent_key: customerNames
+      label: "name on the order"
+      description: "Customer or company name as it appears on the order."
+      aliases: [customer name, company name, business name, account name]
+      normalization: LOWER_ALPHANUMERIC
+      sensitivity: PERSONAL
+      ranking_weight_millionths: 300000
+      clarification_priority: 85
+      searches:
+        - entity: customer
+          field: customer_name
+          strategy: CONTAINS
+          limit: 5
+        # The misspelling recovery. Deferred, so it runs only when every exact
+        # and partial search in the turn came back empty: an indexed approximate
+        # match is imprecise next to an exact one and would dilute it. The index
+        # ranks the complete customer set server-side, so the correct customer
+        # cannot fall outside a client-side window (SRCH-01).
+        - entity: customer
+          field: customer_name
+          strategy: FULLTEXT
+          limit: 25
+          result_fields: [account_id, customer_id, customer_name]
+          only_when_nothing_found: true
+          match_label: customer_name_fuzzy
+          deferred_score_ceiling_millionths: 600000
+
+    - field_id: email
+      intent_key: emails
+      label: "email used on the order"
+      aliases: [email, email address, e-mail]
+      normalization: LOWER_ALPHANUMERIC
+      sensitivity: CONTACT
+      ranking_weight_millionths: 200000
+      exact_match_bonus_millionths: 250000
+      clarification_priority: 95
+      searches:
+        # A complete address is an identifier and matches exactly; a fragment is
+        # all the associate could read off a screen, and only CONTAINS finds it.
+        # Which one is issued is decided by the value, not by a branch in code.
+        - entity: contact_point
+          field: email
+          strategy: EXACT
+          limit: 5
+          result_fields: [account_id, customer_id, email]
+          applies_when_pattern: "@"
+        - entity: contact_point
+          field: email
+          strategy: CONTAINS
+          limit: 5
+          result_fields: [account_id, customer_id, email]
+          applies_when_pattern: "^[^@]*$"
+
+    - field_id: phone
+      intent_key: phones
+      label: "phone number used on the order"
+      aliases: [phone, phone number, telephone, mobile, cell]
+      normalization: DIGITS
+      sensitivity: CONTACT
+      ranking_weight_millionths: 200000
+      exact_match_bonus_millionths: 200000
+      clarification_priority: 90
+      searches:
+        # As typed, in case it is stored formatted the way the associate read it
+        # out; as bare digits, so a stored form with different punctuation -- or
+        # a country code nobody mentioned -- still matches.
+        - entity: contact_point
+          field: phone_number
+          strategy: EXACT
+          limit: 5
+          result_fields: [account_id, customer_id, phone_number]
+        - entity: contact_point
+          field: phone_number
+          strategy: CONTAINS
+          limit: 5
+          result_fields: [account_id, customer_id, phone_number]
+          value_form: DIGITS
+        # `ship_to_phone` is EXACT-only, so only the digits form is worth asking
+        # for: a formatted value would have to match character for character.
+        - entity: sales_order
+          field: ship_to_phone
+          strategy: EXACT
+          limit: 5
+          result_fields: [sales_order_number, customer_id, ship_to_phone]
+          value_form: DIGITS
+
+    - field_id: street_address
+      intent_key: streetAddresses
+      label: "street address"
+      aliases: [street, address, street address, delivery address]
+      normalization: LOWER_ALPHANUMERIC
+      sensitivity: PERSONAL
+      ranking_weight_millionths: 300000
+      clarification_priority: 58
+      searches:
+        # No order-side counterpart: `sales_order` records the ship-to city,
+        # state and postal code but not the street.
+        - entity: contact_point
+          field: address_line1
+          strategy: CONTAINS
+          limit: 10
+          result_fields: [account_id, customer_id, address_line1]
+
+    - field_id: city
+      intent_key: cities
+      label: "city on the order"
+      aliases: [city, town]
+      normalization: LOWER_ALPHANUMERIC
+      ranking_weight_millionths: 150000
+      clarification_priority: 57
+      searches:
+        # Two homes, deliberately: the contact point is where the *customer* is
+        # registered, the order records where this particular order was sent. An
+        # associate saying "Dallas" could mean either, and asking only one would
+        # miss an order shipped to a job site.
+        - entity: contact_point
+          field: city
+          strategy: CONTAINS
+          limit: 10
+          result_fields: [account_id, customer_id, city]
+        - entity: sales_order
+          field: ship_to_city
+          strategy: CONTAINS
+          limit: 10
+          result_fields: [sales_order_number, customer_id, ship_to_city]
+
+    - field_id: state
+      intent_key: states
+      label: "state on the order"
+      aliases: [state, province]
+      normalization: LOWER_ALPHANUMERIC
+      # Narrows a result set; identifies nobody. It must not outrank a name or a
+      # contact detail.
+      ranking_weight_millionths: 50000
+      clarification_priority: 54
+      searches:
+        # EXACT on both sides because that is what the schema enables. A
+        # configured CONTAINS here would be dropped at startup with a reason.
+        - entity: contact_point
+          field: state
+          strategy: EXACT
+          limit: 10
+          result_fields: [account_id, customer_id, state]
+        - entity: sales_order
+          field: ship_to_state
+          strategy: EXACT
+          limit: 10
+          result_fields: [sales_order_number, customer_id, ship_to_state]
+
+    - field_id: postal_code
+      intent_key: postalCodes
+      label: "ZIP code on the order"
+      aliases: [zip, ZIP code, postcode, postal code]
+      normalization: LOWER_ALPHANUMERIC
+      ranking_weight_millionths: 200000
+      clarification_priority: 75
+      searches:
+        - entity: contact_point
+          field: postal_code
+          strategy: EXACT
+          limit: 10
+          result_fields: [account_id, customer_id, postal_code]
+        - entity: sales_order
+          field: ship_to_postal_code
+          strategy: EXACT
+          limit: 10
+          result_fields: [sales_order_number, customer_id, ship_to_postal_code]
+
+    - field_id: sku
+      intent_key: skus
+      label: "SKU or item number"
+      aliases: [sku, item number, part number, product code]
+      normalization: LOWER_ALPHANUMERIC
+      ranking_weight_millionths: 200000
+      exact_match_bonus_millionths: 200000
+      clarification_priority: 70
+      searches:
+        - entity: product
+          field: sku
+          strategy: EXACT
+          limit: 5
+
+    - field_id: product_description
+      intent_key: productNames
+      label: "product description"
+      aliases: [product, item, description, what was ordered]
+      normalization: LOWER_ALPHANUMERIC
+      ranking_weight_millionths: 200000
+      clarification_priority: 65
+      searches:
+        # Read from order_line so the order the line belongs to comes back too.
+        - entity: order_line
+          field: product_description
+          strategy: CONTAINS
+          limit: 5
+          result_fields: [sales_order_number, product_description, ordered_quantity]
+
+    - field_id: ordered_quantity
+      intent_key: quantities
+      label: "how many were ordered"
+      aliases: [quantity, how many, count]
+      value_type: INTEGER
+      ranking_weight_millionths: 100000
+      clarification_priority: 40
+      searches:
+        # A quantity alone matches thousands of lines. Paired with whatever
+        # product description the associate also gave, it is a real narrowing --
+        # and when they gave none, the broad pass still runs rather than being
+        # dropped.
+        - entity: order_line
+          field: ordered_quantity
+          strategy: EXACT
+          limit: 5
+          result_fields: [sales_order_number, product_description, ordered_quantity]
+          narrow_with: productNames
+
+    - field_id: order_date_from
+      intent_key: dateFrom
+      label: "earliest order date"
+      aliases: [from, since, after, earliest]
+      value_type: DATE_LOWER_BOUND
+      multiple: false
+      ranking_weight_millionths: 200000
+      clarification_priority: 60
+      searches:
+        # `order_date`, not `delivered_at`: the schema is derived from the real
+        # salesInv documents and there is no delivery timestamp in them. Date
+        # properties expose range operators only, never EXACT.
+        - entity: sales_order
+          field: order_date
+          strategy: GTE
+          limit: 10
+          result_fields: [sales_order_number, customer_id, order_date]
+
+    - field_id: order_date_to
+      intent_key: dateTo
+      label: "latest order date"
+      aliases: [to, until, before, latest]
+      value_type: DATE_UPPER_BOUND
+      multiple: false
+      ranking_weight_millionths: 200000
+      clarification_priority: 59
+      searches:
+        - entity: sales_order
+          field: order_date
+          strategy: LTE
+          limit: 10
+          result_fields: [sales_order_number, customer_id, order_date]
+
+    - field_id: approximate_order_date
+      intent_key: approximateDate
+      label: "approximate order date"
+      aliases: [around, roughly, about that date]
+      value_type: DATE_POINT
+      multiple: false
+      ranking_weight_millionths: 200000
+      clarification_priority: 60
+      searches:
+        # BETWEEN declared here is also what proves the operator is available
+        # for a merged dateFrom/dateTo window on the same property.
+        - entity: sales_order
+          field: order_date
+          strategy: BETWEEN
+          limit: 10
+          result_fields: [sales_order_number, customer_id, order_date]
+
+    - field_id: product_colour
+      intent_key: colors
+      label: "product colour"
+      description: >-
+        The colour of the item. Configured and enabled; whether it can be
+        searched depends on the active knowledge-graph schema carrying a colour
+        property. It does not today, so this signal is reported back to the
+        associate as one that could not be used rather than silently dropped --
+        and matching a colour word against product_description instead would put
+        "Blue Ridge Faucet" in front of someone who said the tap was blue.
+        The day a colour property is projected, one `searches` entry here turns
+        it on.
+      aliases: [colour, color, finish, shade]
+      normalization: LOWER_ALPHANUMERIC
+      ranking_weight_millionths: 100000
+      clarification_priority: 56
+      searches: []
+
+    - field_id: free_text
+      intent_key: freeTextTerms
+      label: "anything else the associate said"
+      aliases: [other details]
+      normalization: LOWER_ALPHANUMERIC
+      # Lowest of everything: leftover descriptive text is the weakest evidence
+      # in the catalogue and must never outrank a named signal.
+      ranking_weight_millionths: 50000
+      clarification_priority: 10
+      searches:
+        # `sales_order_number` supports EXACT only, so unclassified text is
+        # searched against product_description, which supports CONTAINS and is
+        # the likelier home for leftover descriptive words anyway.
+        - entity: order_line
+          field: product_description
+          strategy: CONTAINS
+          limit: 5
+          result_fields: [sales_order_number, product_description, ordered_quantity]
+
   progressive:
     enabled: true
     customer_fulltext_index: customer_name_search_v2

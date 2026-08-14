@@ -40,6 +40,7 @@ import pytest_asyncio
 from langgraph.runtime import Runtime
 from neo4j import AsyncDriver, AsyncGraphDatabase
 
+from return_platform.configuration.return_configuration import load_return_configuration
 from return_platform.dynamic_knowledge.config_loader import load_active_schema
 from return_platform.dynamic_knowledge.integration.neo4j_gateway import Neo4jKnowledgeGateway
 from return_platform.dynamic_knowledge.knowledge.cypher_compiler import CypherCompiler
@@ -64,6 +65,9 @@ from return_platform.dynamic_knowledge.order_agent.graph_nodes import (
     GraphDependencies,
     TurnRuntimeContext,
     make_order_search_node,
+)
+from return_platform.dynamic_knowledge.order_agent.identification import (
+    build_identification_catalogue,
 )
 from return_platform.dynamic_knowledge.order_agent.search_strategy import CustomerFulltextPolicy
 from return_platform.dynamic_knowledge.schema import ActiveSchema
@@ -238,6 +242,13 @@ class _UnusedModel:
         raise AssertionError("order_search must not invoke the reasoning model")
 
 
+def _discovery() -> Any:
+    root = Path(__file__).parents[2]
+    return load_return_configuration(
+        root / "config/returns/production.yaml"
+    ).configuration.discovery
+
+
 def _dependencies(schema: ActiveSchema, driver: AsyncDriver) -> GraphDependencies:
     return GraphDependencies(
         schema=schema,
@@ -255,6 +266,14 @@ def _dependencies(schema: ActiveSchema, driver: AsyncDriver) -> GraphDependencie
         on_demand_sync=None,
         compiler=CypherCompiler(),
         customer_fulltext=CustomerFulltextPolicy(),
+        # The shipped catalogue. Which signals exist and which searches answer
+        # them is configuration now, so a test that hand-built one would prove
+        # the index works for a catalogue nobody ships.
+        identification=build_identification_catalogue(
+            _discovery().identification_fields,
+            schema,
+            default_fulltext_index=_discovery().progressive.customer_fulltext_index,
+        ),
     )
 
 
@@ -263,7 +282,7 @@ def _search_state(typed_name: str) -> dict[str, Any]:
         business_capability="order-discovery",
         action_type=ActionType.ORDER_SEARCH,
         decision_summary="Search for the customer the associate named.",
-        search_intent=OrderSearchIntent(customerNames=(typed_name,)),
+        search_intent=OrderSearchIntent.model_validate({"customerNames": [typed_name]}),
     )
     return {
         "conversation_id": f"c-{uuid.uuid4().hex[:8]}",

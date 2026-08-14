@@ -53,6 +53,7 @@ from return_platform.dynamic_knowledge.order_agent.graph_nodes import (
     ReasoningModelGateway,
     TurnRuntimeContext,
 )
+from return_platform.dynamic_knowledge.order_agent.identification import IdentificationCatalogue
 from return_platform.dynamic_knowledge.order_agent.search_strategy import CustomerFulltextPolicy
 from return_platform.dynamic_knowledge.order_agent.state import (
     TRANSCRIPT_LIMIT,
@@ -265,6 +266,7 @@ class DynamicOrderAgentCoordinator:
         case_store: CaseStore | None = None,
         case_workflow_launcher: CaseWorkflowLauncher | None = None,
         customer_fulltext: CustomerFulltextPolicy | None = None,
+        identification: IdentificationCatalogue | None = None,
     ) -> None:
         self._schema = schema
         self._conversations = conversation_store
@@ -303,6 +305,7 @@ class DynamicOrderAgentCoordinator:
             case_store=case_store,
             case_workflow_launcher=case_workflow_launcher,
             customer_fulltext=customer_fulltext or CustomerFulltextPolicy(),
+            identification=identification or IdentificationCatalogue(),
         )
         checkpointer = SystemStoreCheckpointSaver(system_store, envelope_encryptor)
         self._graph = build_order_agent_graph(deps, checkpointer=checkpointer)

@@ -138,6 +138,134 @@ class ProgressiveDiscoveryConfiguration(StrictConfigModel):
         return self
 
 
+class IdentificationSearchConfiguration(StrictConfigModel):
+    """One graph read that can answer one identification signal.
+
+    A field usually has more than one: an associate saying "Dallas" could mean
+    where the customer is registered or where this order was sent, and a phone
+    number has to be asked for both as typed and as bare digits. Each of those
+    is an entry here rather than a branch in Python.
+
+    `applies_when_pattern` is what lets one value take different operators
+    without a code path per case -- a complete email address is an identifier
+    and matches EXACT, a fragment is all the associate could read off a screen
+    and only CONTAINS finds it. Both are entries; the pattern decides which is
+    issued.
+
+    `narrow_with` names another intent key whose value is added as a second
+    filter on the same entity when it is present. A quantity alone matches
+    thousands of lines; a quantity and a product description together are a
+    real narrowing, and skipping the pass entirely when the companion is absent
+    would lose the quantity-only search that is still worth running.
+    """
+
+    entity: NonBlank
+    field: NonBlank
+    #: Any operator the active schema enables for the field, plus FULLTEXT for a
+    #: ranked index read. Validated against the schema at runtime, not here:
+    #: this file is loaded by processes that hold no graph schema.
+    strategy: NonBlank = "EXACT"
+    limit: int = Field(default=5, ge=1, le=100)
+    #: Result columns. Empty means "every displayable field on the entity",
+    #: which is what the compiler already defaults to.
+    result_fields: tuple[NonBlank, ...] = ()
+    #: How the associate's value is reshaped before it is sent. `AS_TYPED`,
+    #: `DIGITS` (punctuation stripped) or `LOWERCASE`.
+    value_form: NonBlank = "AS_TYPED"
+    applies_when_pattern: str | None = None
+    narrow_with: NonBlank | None = None
+    #: A last resort rather than an ordinary pass: issued only when every other
+    #: search in the turn came back empty. This is how the misspelling recovery
+    #: for customer names is expressed -- an indexed approximate search is
+    #: expensive and imprecise next to an exact one, so it earns its turn only
+    #: once the cheap searches have failed.
+    only_when_nothing_found: bool = False
+    #: The most a candidate found by a deferred search may score. An approximate
+    #: match standing in for an exact one must not present as strongly as the
+    #: thing it stood in for -- the associate still has to confirm it.
+    deferred_score_ceiling_millionths: int = Field(default=600_000, ge=0, le=1_000_000)
+    #: What a match from this search is called in a candidate's `matches` list.
+    #: Defaults to `<field>_<strategy>`. Named explicitly where a label is part
+    #: of an existing contract -- `customer_name_fuzzy` is one the reasoning
+    #: prompt reads to decide whether to hedge about spelling.
+    match_label: NonBlank | None = None
+    #: Only for `strategy: FULLTEXT`. Defaults to the progressive customer index
+    #: when omitted, since that is the only index the platform creates today.
+    fulltext_index: NonBlank | None = None
+
+
+class IdentificationFieldConfiguration(StrictConfigModel):
+    """One thing an associate can say that helps identify an order.
+
+    This is the catalogue the audit's contract C6 requires: identity, the key
+    the model populates, what the value means, how it is normalized and
+    validated, which graph reads answer it, how much it is worth when ranking,
+    how sensitive it is, and whether it is on. Adding an identification field is
+    adding an entry here.
+
+    A field with no `searches` -- or whose searches name entities and fields the
+    active schema does not have -- is not an error and is not silently dropped.
+    It is reported to the associate's turn as an unusable signal, which is the
+    honest state for "the associate told us the colour and nothing in this graph
+    records colour".
+    """
+
+    field_id: NonBlank
+    #: The key the reasoning model populates on OrderSearchIntent. Distinct from
+    #: `field_id` because one is the operator's vocabulary and the other is the
+    #: model's, and they are not always the same word.
+    intent_key: NonBlank
+    enabled: bool = True
+    #: `STRING`, `INTEGER`, `DATE_LOWER_BOUND`, `DATE_UPPER_BOUND` or
+    #: `DATE_POINT`. The date kinds are what let one configured date field carry
+    #: an open bound and another carry a same-day window without either one
+    #: knowing which field it is.
+    value_type: NonBlank = "STRING"
+    #: Whether the model may supply several values. A date bound may not; a list
+    #: of names may.
+    multiple: bool = True
+    label: NonBlank
+    description: str = ""
+    #: Other words an associate or the model may use for this. Shown to the
+    #: model so a newly configured field is recognizable without a prompt edit.
+    aliases: tuple[NonBlank, ...] = ()
+    #: `NONE`, `LOWER_ALPHANUMERIC`, `DIGITS` or `TRIM`. Applied before the
+    #: value is compared during ranking, never before it is sent to the graph --
+    #: the graph gets the form each search asks for.
+    normalization: NonBlank = "NONE"
+    #: A value failing this is reported as invalid rather than searched, so a
+    #: mistyped ZIP does not silently return nothing.
+    validation_pattern: str | None = None
+    #: `NONE`, `CONTACT` or `PERSONAL`. Carried for the clarification and
+    #: redaction policies to read; nothing here decides disclosure.
+    sensitivity: NonBlank = "NONE"
+    #: What a match on this field is worth when candidates are ranked, and the
+    #: extra it is worth when the match is exact rather than partial. Millionths
+    #: for the same reason every other weight in this file is: integers compare
+    #: and serialize identically everywhere, floats do not.
+    ranking_weight_millionths: int = Field(default=100_000, ge=0, le=1_000_000)
+    exact_match_bonus_millionths: int = Field(default=0, ge=0, le=1_000_000)
+    #: How badly this field is wanted when the agent has to ask for something.
+    #: Mirrors `clarification_policy.fields[].priority`.
+    clarification_priority: int = Field(default=0, ge=0, le=10_000)
+    searches: tuple[IdentificationSearchConfiguration, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_field(self) -> IdentificationFieldConfiguration:
+        if self.value_type in {"DATE_LOWER_BOUND", "DATE_UPPER_BOUND", "DATE_POINT"}:
+            if self.multiple:
+                raise ValueError(
+                    f"identification field {self.field_id!r} is a date bound and cannot be multiple"
+                )
+        for search in self.searches:
+            if search.strategy == "FULLTEXT" and search.narrow_with is not None:
+                raise ValueError(
+                    f"identification field {self.field_id!r} cannot narrow a FULLTEXT search: "
+                    "the index is the predicate"
+                )
+        return self
+
+
 class DiscoveryConfiguration(StrictConfigModel):
     web_order_pattern: NonBlank
     ambiguity_gap_millionths: int = Field(ge=0, le=1_000_000)
@@ -149,11 +277,31 @@ class DiscoveryConfiguration(StrictConfigModel):
     free_text_fallback_anchor: NonBlank
     conversation: ConversationPromptsConfiguration
     progressive: ProgressiveDiscoveryConfiguration
+    #: Every signal the canonical Order Discovery agent can search on. Empty is
+    #: allowed and means "this deployment has configured no identification
+    #: fields", which the agent reports rather than papering over with a
+    #: built-in list -- a hardcoded fallback here is exactly the defect this
+    #: catalogue exists to remove.
+    identification_fields: tuple[IdentificationFieldConfiguration, ...] = ()
 
     @model_validator(mode="after")
     def validate_weights(self) -> DiscoveryConfiguration:
         if any(not 0 <= weight <= 1_000_000 for weight in self.anchor_weights.values()):
             raise ValueError("discovery anchor weights must be 0..1000000")
+        field_ids = [item.field_id for item in self.identification_fields]
+        if len(field_ids) != len(set(field_ids)):
+            raise ValueError("discovery identification field ids must be unique")
+        intent_keys = [item.intent_key for item in self.identification_fields]
+        if len(intent_keys) != len(set(intent_keys)):
+            raise ValueError("discovery identification intent keys must be unique")
+        known_keys = set(intent_keys)
+        for item in self.identification_fields:
+            for search in item.searches:
+                if search.narrow_with is not None and search.narrow_with not in known_keys:
+                    raise ValueError(
+                        f"identification field {item.field_id!r} narrows with unknown intent key "
+                        f"{search.narrow_with!r}"
+                    )
         extractor_types = [item.anchor_type for item in self.anchor_extractors]
         if len(extractor_types) != len(set(extractor_types)):
             raise ValueError("discovery anchor extractor types must be unique")
