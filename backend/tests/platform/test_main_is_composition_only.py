@@ -138,7 +138,10 @@ def test_router_mounting_is_the_bulk_of_create_app_and_that_is_allowed() -> None
     # to catch went uncaught. Corrected to the measured value rather than
     # re-baselined quietly; the six unaccounted mounts are the ones a later wave
     # has to explain.
-    assert len(mounts) == 29, (
-        f"{len(mounts)} routers are mounted, expected 29; if Wave F deleted one, "
+    # 29 -> 30 in SHIP-01: `api/return_shipments.py`, the HTTP entry point for an
+    # RMA-scoped shipment update. The chain below it already existed and was
+    # proven on real infrastructure; nothing in production could reach it.
+    assert len(mounts) == 30, (
+        f"{len(mounts)} routers are mounted, expected 30; if Wave F deleted one, "
         "update this number in the same commit"
     )

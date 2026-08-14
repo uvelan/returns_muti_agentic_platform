@@ -46,6 +46,7 @@ from return_platform.api.proposals import router as governance_proposals_router
 from return_platform.api.return_agents import router as return_agents_router
 from return_platform.api.return_artifacts import router as return_artifacts_router
 from return_platform.api.return_history import router as return_history_router
+from return_platform.api.return_shipments import router as return_shipments_router
 from return_platform.api.return_support import router as return_support_router
 from return_platform.api.returns import router as returns_router
 from return_platform.api.schema_releases import router as schema_releases_router
@@ -1273,6 +1274,11 @@ def create_app(
     fastapi_app.include_router(agent_configuration_router)
     fastapi_app.include_router(canonical_returns_router)
     fastapi_app.include_router(cases_router)
+    # SHIP-01's last link. The whole chain below this route -- SQL write,
+    # APPLIED-only targeted graph sync, fulfilment read, case facts -- existed
+    # and was proven on real infrastructure with no way in; a carrier event could
+    # reach it only from a Python caller, and production had none.
+    fastapi_app.include_router(return_shipments_router)
     fastapi_app.include_router(return_history_router)
     fastapi_app.include_router(source_bindings_router)
     fastapi_app.include_router(schema_releases_router)

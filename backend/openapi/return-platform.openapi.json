@@ -2247,6 +2247,39 @@
         "title": "APIResponse[SeedStatusView]",
         "type": "object"
       },
+      "APIResponse_ShipmentUpdateResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShipmentUpdateResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ShipmentUpdateResult]",
+        "type": "object"
+      },
       "APIResponse_SimulationE2EResult_": {
         "additionalProperties": false,
         "properties": {
@@ -11100,6 +11133,189 @@
         "title": "Severity",
         "type": "string"
       },
+      "ShipmentReadingView": {
+        "additionalProperties": false,
+        "description": "What the graph said about the parcel, and who was told.",
+        "properties": {
+          "caseId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caseid"
+          },
+          "evidence": {
+            "title": "Evidence",
+            "type": "string"
+          },
+          "evidenceReference": {
+            "title": "Evidencereference",
+            "type": "string"
+          },
+          "fulfillmentStatus": {
+            "title": "Fulfillmentstatus",
+            "type": "string"
+          },
+          "graphGenerationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graphgenerationid"
+          },
+          "observedStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observedstatus"
+          }
+        },
+        "required": [
+          "caseId",
+          "fulfillmentStatus",
+          "evidence",
+          "evidenceReference",
+          "graphGenerationId",
+          "observedStatus"
+        ],
+        "title": "ShipmentReadingView",
+        "type": "object"
+      },
+      "ShipmentUpdateRequest": {
+        "additionalProperties": false,
+        "description": "One carrier observation of one return parcel.\n\nEvery length below is `dbo.return_tracking`'s own column width, so a payload\nthis model accepts is a payload the store can hold. Refusing an over-long\ntracking number here is a 422 naming the field; letting it through is a\ntruncation or a driver error a caller cannot act on.",
+        "properties": {
+          "carrierCode": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carriercode"
+          },
+          "shipmentDetails": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shipmentdetails"
+          },
+          "shipmentStatus": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Shipmentstatus",
+            "type": "string"
+          },
+          "statusAt": {
+            "format": "date-time",
+            "title": "Statusat",
+            "type": "string"
+          },
+          "trackingReference": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Trackingreference",
+            "type": "string"
+          },
+          "trackingType": {
+            "title": "Trackingtype",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trackingReference",
+          "shipmentStatus",
+          "statusAt",
+          "trackingType"
+        ],
+        "title": "ShipmentUpdateRequest",
+        "type": "object"
+      },
+      "ShipmentUpdateResult": {
+        "additionalProperties": false,
+        "properties": {
+          "currentStatus": {
+            "title": "Currentstatus",
+            "type": "string"
+          },
+          "currentStatusAt": {
+            "format": "date-time",
+            "title": "Currentstatusat",
+            "type": "string"
+          },
+          "graphGenerationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graphgenerationid"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "reading": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShipmentReadingView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "returnReference": {
+            "title": "Returnreference",
+            "type": "string"
+          },
+          "rowVersion": {
+            "title": "Rowversion",
+            "type": "integer"
+          },
+          "trackingReference": {
+            "title": "Trackingreference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "returnReference",
+          "trackingReference",
+          "currentStatus",
+          "currentStatusAt",
+          "rowVersion",
+          "graphGenerationId",
+          "reading"
+        ],
+        "title": "ShipmentUpdateResult",
+        "type": "object"
+      },
       "SimulationAISummary": {
         "additionalProperties": false,
         "properties": {
@@ -15485,6 +15701,61 @@
         "summary": "Read Return History",
         "tags": [
           "Return History"
+        ]
+      }
+    },
+    "/api/return-shipments/{return_reference}/updates": {
+      "post": {
+        "description": "Record one carrier observation against one RMA.\n\nIdempotent, and safe to retry: the same observation submitted twice answers\n`DUPLICATE` and changes nothing, and an observation older than the stored one\nanswers `STALE` and is rejected. Both are 200 -- they are correct outcomes of\na well-formed request, not client errors, and a caller replaying a carrier\nfeed must be able to tell \"already knew that\" from \"your request was wrong\".",
+        "operationId": "record_shipment_update_api_return_shipments__return_reference__updates_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "return_reference",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Return Reference",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShipmentUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ShipmentUpdateResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Shipment Update",
+        "tags": [
+          "Return Shipments"
         ]
       }
     },

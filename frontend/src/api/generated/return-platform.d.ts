@@ -1196,6 +1196,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/return-shipments/{return_reference}/updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Shipment Update
+         * @description Record one carrier observation against one RMA.
+         *
+         *     Idempotent, and safe to retry: the same observation submitted twice answers
+         *     `DUPLICATE` and changes nothing, and an observation older than the stored one
+         *     answers `STALE` and is rejected. Both are 200 -- they are correct outcomes of
+         *     a well-formed request, not client errors, and a caller replaying a carrier
+         *     feed must be able to tell "already knew that" from "your request was wrong".
+         */
+        post: operations["record_shipment_update_api_return_shipments__return_reference__updates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/returns": {
         parameters: {
             query?: never;
@@ -3441,6 +3467,12 @@ export interface components {
         /** APIResponse[SeedStatusView] */
         APIResponse_SeedStatusView_: {
             data?: components["schemas"]["SeedStatusView"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[ShipmentUpdateResult] */
+        APIResponse_ShipmentUpdateResult_: {
+            data?: components["schemas"]["ShipmentUpdateResult"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -6601,6 +6633,71 @@ export interface components {
          * @enum {string}
          */
         Severity: "ERROR" | "WARNING";
+        /**
+         * ShipmentReadingView
+         * @description What the graph said about the parcel, and who was told.
+         */
+        ShipmentReadingView: {
+            /** Caseid */
+            caseId: string | null;
+            /** Evidence */
+            evidence: string;
+            /** Evidencereference */
+            evidenceReference: string;
+            /** Fulfillmentstatus */
+            fulfillmentStatus: string;
+            /** Graphgenerationid */
+            graphGenerationId: string | null;
+            /** Observedstatus */
+            observedStatus: string | null;
+        };
+        /**
+         * ShipmentUpdateRequest
+         * @description One carrier observation of one return parcel.
+         *
+         *     Every length below is `dbo.return_tracking`'s own column width, so a payload
+         *     this model accepts is a payload the store can hold. Refusing an over-long
+         *     tracking number here is a 422 naming the field; letting it through is a
+         *     truncation or a driver error a caller cannot act on.
+         */
+        ShipmentUpdateRequest: {
+            /** Carriercode */
+            carrierCode?: string | null;
+            /** Shipmentdetails */
+            shipmentDetails?: string | null;
+            /** Shipmentstatus */
+            shipmentStatus: string;
+            /**
+             * Statusat
+             * Format: date-time
+             */
+            statusAt: string;
+            /** Trackingreference */
+            trackingReference: string;
+            /** Trackingtype */
+            trackingType: string;
+        };
+        /** ShipmentUpdateResult */
+        ShipmentUpdateResult: {
+            /** Currentstatus */
+            currentStatus: string;
+            /**
+             * Currentstatusat
+             * Format: date-time
+             */
+            currentStatusAt: string;
+            /** Graphgenerationid */
+            graphGenerationId: string | null;
+            /** Outcome */
+            outcome: string;
+            reading: components["schemas"]["ShipmentReadingView"] | null;
+            /** Returnreference */
+            returnReference: string;
+            /** Rowversion */
+            rowVersion: number;
+            /** Trackingreference */
+            trackingReference: string;
+        };
         /** SimulationAISummary */
         SimulationAISummary: {
             /** Bydependency */
@@ -8944,6 +9041,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_ReturnHistory_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_shipment_update_api_return_shipments__return_reference__updates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                return_reference: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShipmentUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ShipmentUpdateResult_"];
                 };
             };
             /** @description Validation Error */
