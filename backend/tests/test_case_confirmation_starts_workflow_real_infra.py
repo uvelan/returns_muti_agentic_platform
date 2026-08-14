@@ -130,9 +130,7 @@ SCHEMA_PATH = (
     / "active-schema.return-order.yaml"
 )
 
-RETURNS_CONFIG_PATH = (
-    Path(__file__).resolve().parents[1] / "config" / "returns" / "production.yaml"
-)
+RETURNS_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "returns" / "production.yaml"
 
 AGENT_ID = "order-discovery-agent"
 CAPABILITY = "return-context-collection"

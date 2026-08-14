@@ -17,6 +17,22 @@ x-platform-environment: &platform-environment
   PLATFORM_VALIDATE_AI_ON_STARTUP: ${PLATFORM_VALIDATE_AI_ON_STARTUP:-false}
   PLATFORM_DYNAMIC_ORDER_AGENT_ENABLED: ${PLATFORM_DYNAMIC_ORDER_AGENT_ENABLED:-true}
   PLATFORM_DYNAMIC_KNOWLEDGE_SCHEMA_PATH: /app/config/dynamic_knowledge/active-schema.return-order.yaml
+  # The seventh sibling, and it was the only one missing. Every DEFAULT_*_PATH in
+  # settings.py hangs off BACKEND_ROOT = parents[3] of the settings module, which
+  # is correct from a source checkout and wrong inside the image: the runtime
+  # stage copies `config` and `scripts` but never `src`, so PYTHONPATH=/app/src
+  # dangles, `return_platform` imports from site-packages, and BACKEND_ROOT
+  # becomes /usr/local/lib/python3.13. The other six are overridden above and so
+  # never noticed; this one was not, so it resolved to a path that does not exist
+  # while the manifest ships at /app/config/platform/system_store.yaml.
+  #
+  # Consequences were severe and quiet: order-discovery-worker and
+  # return-orchestrator crash-looped, leaving two required process classes with
+  # zero live instances so adoption could never reach LIVE -- and main.py caught
+  # the same error, degrading the Graph Schema Analyzer and leaving
+  # `interception_store` None, which removes the durable store behind the AI
+  # interception gate, all while /health/ready still answered "ready".
+  PLATFORM_SYSTEM_STORE_MANIFEST_PATH: /app/config/platform/system_store.yaml
   PLATFORM_PROBE_TIMEOUT_SECONDS: ${PLATFORM_PROBE_TIMEOUT_SECONDS:-5}
   PLATFORM_DEPENDENCY_CONNECT_TIMEOUT_SECONDS: ${PLATFORM_DEPENDENCY_CONNECT_TIMEOUT_SECONDS:-10}
   PLATFORM_OPERATION_TIMEOUT_SECONDS: ${PLATFORM_OPERATION_TIMEOUT_SECONDS:-15}

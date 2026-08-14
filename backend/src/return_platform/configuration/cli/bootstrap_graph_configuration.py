@@ -6,8 +6,10 @@ import argparse
 import asyncio
 import hashlib
 import json
+import logging
 
 from neo4j import AsyncGraphDatabase
+from pydantic import ValidationError
 
 from return_platform.ai.routing.tasks import (
     LoadedAIGatewayConfiguration,
@@ -39,6 +41,8 @@ from return_platform.secrets.runtime import (
     resolve_runtime_settings_from_vault,
 )
 from return_platform.secrets.vault import SecretResolver
+
+logger = logging.getLogger(__name__)
 
 
 async def _prepare_return_configuration(
@@ -163,7 +167,40 @@ async def main(
                 RETURN_PLATFORM_DOMAIN_KEY,
             )
             if active_payload is not None:
-                existing_configuration = ReturnPlatformConfiguration.model_validate(active_payload)
+                # Carrying the active release's operator values forward is the
+                # point of this block -- but only while that release still
+                # validates. Unguarded, this was a deadlock: a release published
+                # before a schema change (a removed key, or one that became
+                # required) fails validation here, so no NEW release can be
+                # published, so the stale release stays active. The only tool
+                # that could repair it was blocked by the thing it repairs.
+                #
+                # Observed exactly that way: the active release predated both the
+                # removal of `agents.*.failure_policy` and the addition of the
+                # now-required `return_policy.bol_tendering_instruction_types`,
+                # and failed with seven validation errors. Every process
+                # independently rejected the same release and fell back to the
+                # version-controlled baseline, so adoption reported ACTIVATING
+                # forever with nothing able to move it.
+                #
+                # Falling back to the packaged YAML is the recoverable answer,
+                # and it is loud rather than silent: the operator values in that
+                # release ARE being dropped, which is a real loss and must be
+                # read, not discovered later.
+                try:
+                    existing_configuration = ReturnPlatformConfiguration.model_validate(
+                        active_payload
+                    )
+                except ValidationError as error:
+                    logger.error(
+                        "active_release_no_longer_validates release_id=%s errors=%d; "
+                        "falling back to the packaged configuration. Operator values "
+                        "carried by that release are NOT preserved -- re-apply them "
+                        "after this publish. Detail: %s",
+                        active.release_id,
+                        error.error_count(),
+                        error,
+                    )
 
         base_configuration = existing_configuration or loaded.configuration
         configuration = await _prepare_return_configuration(
