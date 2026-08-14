@@ -43,7 +43,10 @@ from fastapi import FastAPI, Request
 from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
-from return_platform.configuration.return_configuration import ReturnCaseTimingConfiguration
+from return_platform.configuration.return_configuration import (
+    ReturnCaseTimingConfiguration,
+    load_return_configuration,
+)
 from return_platform.configuration.settings import (
     DEFAULT_SYSTEM_STORE_MANIFEST_PATH,
     DEV_DEFAULT_REASONING_ENCRYPTION_KEY_B64,
@@ -88,6 +91,10 @@ from return_platform.dynamic_knowledge.order_agent.conversation_repository impor
     AtomicConversationRepository,
 )
 from return_platform.dynamic_knowledge.order_agent.coordinator import DynamicOrderAgentCoordinator
+from return_platform.dynamic_knowledge.order_agent.facts import build_fact_catalogue
+from return_platform.dynamic_knowledge.order_agent.identification import (
+    build_identification_catalogue,
+)
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 from return_platform.operations.repository import OperationalRepository
 from return_platform.platform.reasoning.evidence_store import QueryEvidenceStore
@@ -121,6 +128,10 @@ SCHEMA_PATH = (
     / "config"
     / "dynamic_knowledge"
     / "active-schema.return-order.yaml"
+)
+
+RETURNS_CONFIG_PATH = (
+    Path(__file__).resolve().parents[1] / "config" / "returns" / "production.yaml"
 )
 
 AGENT_ID = "order-discovery-agent"
@@ -241,6 +252,11 @@ class OneOrderKnowledge:
         return {"rows": [row], "total": 1}
 
 
+def _returns_configuration() -> Any:
+    """The shipped returns configuration, loaded the way the runtime loads it."""
+    return load_return_configuration(RETURNS_CONFIG_PATH).configuration
+
+
 def _build_app(*, temporal: Client, task_queue: str) -> FastAPI:
     """The production router, with the identity the auth middleware would set."""
     app = FastAPI()
@@ -311,6 +327,14 @@ async def test_confirming_through_the_api_creates_the_case_workflow_in_temporal(
         repository = OperationalRepository(mongo, test_settings)
         await repository.ensure_indexes()
 
+        # DISC-01 moved the identification signals out of `OrderSearchIntent` and
+        # into runtime configuration. `IdentificationCatalogue()` -- the default
+        # this construction site used to accept -- recognises nothing, so
+        # `orderNumbers` parsed as an unknown key, no search was planned, and the
+        # candidate set came back empty. Load the shipped catalogue, the way
+        # `integration/runtime_factory.py` does.
+        returns_configuration = _returns_configuration()
+        discovery = returns_configuration.discovery
         model = SearchThenConfirmModel()
         coordinator = DynamicOrderAgentCoordinator(
             schema=schema,
@@ -339,6 +363,12 @@ async def test_confirming_through_the_api_creates_the_case_workflow_in_temporal(
                 timings=ReturnCaseTimingConfiguration(),
                 task_queue=case_queue,
             ),
+            identification=build_identification_catalogue(
+                discovery.identification_fields,
+                schema,
+                default_fulltext_index=discovery.progressive.customer_fulltext_index,
+            ),
+            facts=build_fact_catalogue(returns_configuration.clarification_policy.fields),
         )
 
         worker = create_order_discovery_worker(

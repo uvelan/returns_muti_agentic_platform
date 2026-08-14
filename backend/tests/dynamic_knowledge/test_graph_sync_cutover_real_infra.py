@@ -100,6 +100,16 @@ def _mongo_dsn() -> str:
 
 
 def _neo4j_uri() -> str:
+    # `PLATFORM_TEST_NEO4J_URI` first -- the same variable
+    # `tests/conftest.py::test_settings` reads -- because the published port is
+    # not always 7687. Windows dynamically reserves 7454-7553 and 7679-7778,
+    # which contain Neo4j's 7474 and 7687, so Docker cannot publish them
+    # ("socket forbidden by its access permissions") and the stack maps Bolt to
+    # 17687 instead. A helper that let only the *host* move could not be pointed
+    # at it at all, and every test in this module failed to connect.
+    uri = os.getenv("PLATFORM_TEST_NEO4J_URI")
+    if uri and uri.strip():
+        return uri.strip()
     host = os.getenv("PLATFORM_TEST_NEO4J_HOST", "localhost")
     return f"bolt://{host}:7687"
 
