@@ -15,11 +15,30 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
+import pytest
+from pydantic import BaseModel
+
 import return_platform
+from return_platform.ai.gateway.interception_policy import build_interception_policy
 from return_platform.ai.gateway.redaction import REDACTED, redact_payload
+from return_platform.ai.gateway.structured_invocation import (
+    StructuredInvocationUnavailable,
+    StructuredOutputInvoker,
+)
+from return_platform.ai.interception.records import (
+    Interception,
+    InterceptionStatus,
+    ResumeCommand,
+)
+from return_platform.ai.providers import ProviderRequest, ProviderResponse
+from return_platform.ai.routing.routes import AIRoute
+from return_platform.ai.routing.selection import AIRoutePool
+from return_platform.ai.routing.tasks import ModelTier, load_ai_gateway_configuration
+from return_platform.configuration.settings import Settings
 
 
 def test_a_scalar_under_a_sensitive_key_is_masked() -> None:
@@ -374,3 +393,368 @@ def test_no_provider_endpoint_is_named_outside_the_adapters_and_settings() -> No
     offenders = {module: found for module, found in hits.items() if not module.startswith(allowed)}
 
     assert offenders == {}, f"provider endpoints named outside the adapter layer: {offenders}"
+
+
+# ---------------------------------------------------------------------------
+# AI-03: no raw provider HTTP client outside the adapters
+# ---------------------------------------------------------------------------
+#
+# "Raw provider HTTP client" cannot be scanned for as "an HTTP client", because
+# this platform legitimately makes HTTP calls from a dozen places -- Vault,
+# Temporal validation probes, the integration outbox, the external support
+# provider. A scan that flagged `httpx` would fire on all of them and be turned
+# off within a week.
+#
+# What a raw *provider* client actually needs is three things, and only two of
+# them are specific enough to be a signal:
+#
+#   1. a provider endpoint   -- scanned above
+#   2. a provider credential -- scanned here
+#   3. an HTTP client        -- ubiquitous, and no signal on its own
+#
+# Denying 1 and 2 outside the adapter layer is what makes 3 harmless: a caller
+# holding an `httpx.AsyncClient` and neither a vendor URL nor a vendor key cannot
+# reach a provider with it. The third check below then pins where the AI
+# package's own transport lives, so a second one inside `ai/` -- which would have
+# both -- cannot appear quietly.
+
+#: The attribute names by which a provider credential is read off `Settings`.
+#: A raw client needs one of these; nothing else in the process authenticates to
+#: a model vendor.
+PROVIDER_CREDENTIAL_NAMES = frozenset(
+    {
+        "google_api_key",
+        "nvidia_api_key",
+        "openai_api_key",
+        "anthropic_api_key",
+        "resolved_google_api_keys",
+        "resolved_nvidia_api_keys",
+        "resolved_openai_api_keys",
+        "resolved_anthropic_api_keys",
+        "google_api_key_references",
+        "nvidia_api_key_references",
+        "openai_api_key_references",
+        "anthropic_api_key_references",
+    }
+)
+
+
+def _credential_reads(source: str) -> list[str]:
+    """Attribute *and* string forms, because only one of them is obvious.
+
+    `settings.google_api_key` is the readable way and the way an attribute scan
+    catches. `getattr(settings, "google_api_key")` and
+    `settings.model_dump()["google_api_key"]` are the ways that get past one, and
+    they are exactly what someone writes when they already know a direct read
+    would be noticed.
+    """
+    tree = ast.parse(source)
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr in PROVIDER_CREDENTIAL_NAMES:
+            found.add(node.attr)
+        elif (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node.value in PROVIDER_CREDENTIAL_NAMES
+        ):
+            found.add(node.value)
+    return sorted(found)
+
+
+def test_the_credential_detector_actually_fires() -> None:
+    """Negative control, and the shape of the evasion it is written against."""
+    assert _credential_reads("key = settings.google_api_key\n") == ["google_api_key"]
+    assert _credential_reads('key = getattr(settings, "nvidia_api_key")\n') == ["nvidia_api_key"]
+    assert _credential_reads('key = dumped["anthropic_api_key"]\n') == ["anthropic_api_key"]
+    # The discriminating case: a non-provider secret must not fire, or the rule
+    # would forbid ordinary configuration reads and be deleted as noise.
+    assert _credential_reads("password = settings.graph_password\n") == []
+
+
+def test_a_provider_credential_is_read_only_where_a_provider_is_built() -> None:
+    """A business package that can read a vendor key can build a client with it.
+
+    Unlike the SDK rule this one is demonstrably live on this tree: the names
+    really are read, by the adapters and by the route builder that hands them
+    over. The first assertion is what proves the name list still matches
+    `Settings` -- if a rename made every name stale, this scan would find nothing
+    and would otherwise pass forever.
+    """
+    hits = {
+        module: found
+        for path in _sources()
+        if (found := _credential_reads(path.read_text(encoding="utf-8")))
+        and (module := _relative(path))
+    }
+    assert f"{PROVIDER_PACKAGE}google.py" in hits, (
+        "the credential scan cannot see the adapter that definitely reads a key "
+        f"-- the names are stale. Found: {sorted(hits)}"
+    )
+
+    scanned = 0
+    offenders: dict[str, list[str]] = {}
+    for path in _sources():
+        module = _relative(path)
+        if not module.startswith(BUSINESS_PACKAGES):
+            continue
+        scanned += 1
+        if found := _credential_reads(path.read_text(encoding="utf-8")):
+            offenders[module] = found
+
+    assert scanned > 100, f"the business-package scan only reached {scanned} modules"
+    assert offenders == {}, f"business packages read provider credentials: {offenders}"
+
+
+#: How an HTTP client is *constructed*. Holding one someone else built is a
+#: dependency; building one is the act of choosing where to send bytes.
+_HTTP_CLIENT_CONSTRUCTORS = frozenset(
+    {"httpx.AsyncClient", "httpx.Client", "aiohttp.ClientSession", "requests.Session"}
+)
+
+
+def _http_client_constructions(source: str) -> list[str]:
+    tree = ast.parse(source)
+    return sorted(
+        {
+            unparsed
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and (unparsed := ast.unparse(node.func))
+            if unparsed in _HTTP_CLIENT_CONSTRUCTORS
+        }
+    )
+
+
+def test_the_http_client_detector_actually_fires() -> None:
+    assert _http_client_constructions("c = httpx.AsyncClient(timeout=1)\n") == ["httpx.AsyncClient"]
+    assert _http_client_constructions("s = aiohttp.ClientSession()\n") == ["aiohttp.ClientSession"]
+    # A response object is not a client. Flagging one would make the rule fire on
+    # the error handling that lives beside every real client.
+    assert _http_client_constructions("raise_for_status(httpx.Response(200))\n") == []
+
+
+def test_the_ai_package_has_exactly_one_http_transport() -> None:
+    """`HTTPProvider._post` is it, and it is the reason the rule above is enough.
+
+    Every adapter goes through it, so bounded timeouts, the status-to-error-code
+    mapping and the JSON-shape check are properties of *the* AI transport rather
+    than of whichever adapter remembered them. A second client inside `ai/` would
+    have both a vendor URL and a vendor key in scope and would therefore be a
+    provider call that no other rule here can see.
+    """
+    builders = {
+        module: found
+        for path in _sources()
+        if (module := _relative(path)).startswith("ai/")
+        and (found := _http_client_constructions(path.read_text(encoding="utf-8")))
+    }
+    assert builders == {f"{PROVIDER_PACKAGE}http.py": ["httpx.AsyncClient"]}, (
+        f"the AI package builds HTTP clients outside its one transport: {builders}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# AI-03: nothing unredacted reaches interception *persistence*
+# ---------------------------------------------------------------------------
+#
+# A distinct sink from provider dispatch, and the one with the worse failure
+# mode. Redaction used to run at `ProviderRequest` construction -- i.e. *after*
+# the interception verdict -- so a held request sealed customer data into a store
+# whose entire purpose is to be opened and read by an operator, and which the
+# provider never received. The store is encrypted at rest, which protects it from
+# an attacker and not at all from the person it is designed for.
+#
+# The test below is a canary sweep rather than a single sample: PII is planted in
+# every shape the redactor has to follow, and a non-sensitive control is planted
+# beside each one. The controls are what make a pass meaningful -- an assertion
+# that a string is absent from a payload also passes when the payload is empty,
+# and "the store persisted nothing" is not the property being claimed.
+
+CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway.yaml"
+
+
+class _Verdict(BaseModel):
+    verdict: str
+
+
+class _CapturingProvider:
+    configured = True
+    name = "GOOGLE"
+    model = "model-standard"
+
+    def __init__(self) -> None:
+        self.requests: list[ProviderRequest] = []
+
+    async def generate(self, request: ProviderRequest) -> ProviderResponse:
+        self.requests.append(request)
+        return ProviderResponse(self.name, self.model, '{"verdict":"ok"}', 10, None, 5, 15)
+
+
+class _CapturingInterceptionStore:
+    """Only the four methods `DurableInterceptionPolicy` calls.
+
+    Deliberately keeps `request_payload` exactly as handed over, unsealed: what
+    is being asserted is what the policy *gave* the store, so encrypting it here
+    would hide the very bytes in question. The real
+    `SystemStoreInterceptionStore` and its sealing are exercised against Mongo in
+    `test_durable_interception_real_infra.py`.
+    """
+
+    def __init__(self) -> None:
+        self.records: dict[str, Interception] = {}
+        self.payloads: dict[str, dict[str, Any]] = {}
+
+    async def open(
+        self,
+        *,
+        interception_id: str,
+        task_id: str,
+        request_payload: Any,
+        resume: ResumeCommand,
+        expires_at: Any,
+    ) -> Interception:
+        record = Interception(
+            interception_id=interception_id,
+            task_id=task_id,
+            status=InterceptionStatus.PENDING,
+            resume=resume,
+            created_at=expires_at,
+            expires_at=expires_at,
+        )
+        self.records[interception_id] = record
+        self.payloads[interception_id] = dict(request_payload)
+        return record
+
+    async def get(self, interception_id: str) -> Interception | None:
+        return self.records.get(interception_id)
+
+    async def request_payload(self, interception_id: str) -> dict[str, Any] | None:
+        return self.payloads.get(interception_id)
+
+    # A held request is all this file needs; the decided transitions have
+    # compare-and-set semantics only the real store honours, and they are
+    # exercised in `test_ai_interception_covers_every_path.py`.
+    async def answer(
+        self, *, interception_id: str, response_text: str, answered_by: str
+    ) -> Interception:
+        raise NotImplementedError
+
+    async def allow(self, *, interception_id: str, allowed_by: str) -> Interception:
+        raise NotImplementedError
+
+    async def cancel(self, *, interception_id: str, status: InterceptionStatus) -> None:
+        raise NotImplementedError
+
+    async def list_pending(self, *, limit: int = 100) -> list[Interception]:
+        return list(self.records.values())[:limit]
+
+
+class _AlwaysOn:
+    async def get_ai_settings(self) -> Any:
+        class _View:
+            interceptMode = True
+
+        return _View()
+
+
+def _interception_harness() -> tuple[
+    StructuredOutputInvoker[_Verdict], _CapturingProvider, _CapturingInterceptionStore
+]:
+    loaded = load_ai_gateway_configuration(CONFIG)
+    provider = _CapturingProvider()
+    task_id = next(
+        task_id
+        for task_id, task in sorted(loaded.configuration.tasks.items())
+        if task.tier is ModelTier.STANDARD and "SIMULATOR" not in task.allowedProviders
+    )
+    pool = AIRoutePool(
+        (
+            AIRoute(
+                route_id="google/model-standard/key-1",
+                provider_name="GOOGLE",
+                model=provider.model,
+                credential_id="key-1",
+                credential_fingerprint="test",
+                tier=ModelTier.STANDARD,
+                provider=provider,
+                provider_priority=0,
+                model_priority=0,
+                credential_priority=0,
+            ),
+        ),
+        loaded.configuration,
+    )
+    store = _CapturingInterceptionStore()
+    invoker: StructuredOutputInvoker[_Verdict] = StructuredOutputInvoker(
+        settings=Settings.model_construct(
+            environment="test",
+            ai_gateway_configuration_path=CONFIG,
+            ai_timeout_seconds=2.0,
+            ai_global_timeout_seconds=10.0,
+            ai_max_payload_bytes=8_192,
+            ai_provider_order="GOOGLE,NVIDIA,SIMULATOR",
+            ai_requests_per_minute=120,
+        ),
+        configuration=loaded.configuration,
+        route_pool=pool,
+        task_id=task_id,
+        response_model=_Verdict,
+        logger=logging.getLogger("test"),
+        event_prefix="test",
+        subject="test invocation",
+        interception=build_interception_policy(
+            store=store, settings_source=_AlwaysOn(), subject="test"
+        ),
+    )
+    return invoker, provider, store
+
+
+@pytest.mark.asyncio
+async def test_no_shape_of_pii_survives_into_the_interception_store() -> None:
+    """Every position the recursive redactor has to reach, at the persistence
+    sink rather than at the dispatch sink.
+
+    The paired controls are the point. `customer_email` and `orderId` sit in the
+    same object, at the same depth, reached by the same recursion -- so if the
+    canary is gone and the control is present, the redactor followed the data and
+    masked leaves, which is the behaviour that keeps the agent able to reason. If
+    both were gone the payload would simply not have been persisted and every
+    "not in" assertion would be vacuously true.
+    """
+    invoker, provider, store = _interception_harness()
+
+    with pytest.raises(StructuredInvocationUnavailable, match="HUMAN_RESPONSE"):
+        await invoker.invoke(
+            payload={
+                # 1. a flat scalar under a sensitive key
+                "customer_name": "Jane Doe",
+                # 2. inside a JSON-encoded string -- `contextJson` itself
+                "contextJson": json.dumps(
+                    {
+                        "query_evidence": [
+                            {"rows": [{"customer_email": "jane@example.test", "orderId": "SO-9"}]}
+                        ],
+                        # 3. JSON nested inside that JSON
+                        "conversationState": json.dumps({"phone": "555-0100", "turn": "T-4"}),
+                        # 4. schema metadata, which must survive
+                        "compact_schema": {
+                            "customer_email": {"searchable": True, "type": "STRING"}
+                        },
+                    }
+                ),
+                "mode": "DECIDE",
+            },
+            size_probe="small",
+            log_context={},
+        )
+
+    assert provider.requests == [], "a held request reached the provider"
+    assert len(store.payloads) == 1, "interception ON must persist exactly one held request"
+    sealed = json.dumps(next(iter(store.payloads.values())))
+
+    for leaked in ("Jane Doe", "jane@example.test", "555-0100"):
+        assert leaked not in sealed, f"interception persisted unredacted {leaked!r}"
+    # The controls: same objects, same depths, not sensitive.
+    for kept in ("SO-9", "T-4", "DECIDE", "searchable"):
+        assert kept in sealed, f"redaction blanked the non-sensitive {kept!r}"
+    assert REDACTED in sealed

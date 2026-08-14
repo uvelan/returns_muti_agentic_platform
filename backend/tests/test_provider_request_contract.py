@@ -234,3 +234,139 @@ async def test_gemini_sends_both() -> None:
     generation_config = post.payload["generationConfig"]
     assert generation_config["maxOutputTokens"] == 4096
     assert "responseSchema" in generation_config
+
+
+# --------------------------------------------------------------------------
+# PERF-03: the cache accounting the benefit is measured by
+# --------------------------------------------------------------------------
+#
+# The canonical STANDARD route reaches Gemini Flash first and NVIDIA Nemotron on
+# failover, and neither adapter sends a caching directive: what these providers
+# offer is *automatic* prefix caching, which is earned by putting stable material
+# first (see `test_the_cacheable_prefix_is_byte_identical_across_turns`) rather
+# than requested. The only thing an adapter has to get right is reading back what
+# was served -- and that is where the money is, because `AIPricingEntry` bills
+# `cachedInputPerMillionTokensMicros` separately from `inputPerMillionTokensMicros`
+# and `AICostEstimate` adds the two lines.
+#
+# The two vendor conventions are not the same and the difference is a doubled
+# bill, not a rounding error:
+#
+#   subset  Gemini's `cachedContentTokenCount` and OpenAI's `cached_tokens` are
+#           *part of* the prompt count, so the uncached prompt is the remainder.
+#           Passing the prompt count through unmodified charges the cached half
+#           at the full rate as well as at the cached rate.
+#   sibling Anthropic's `cache_read_input_tokens` sits *beside* `input_tokens`,
+#           which is already the platform's split, so subtracting there would
+#           undercount the uncached prompt instead.
+#
+# Nothing else in the platform can catch this: both shapes parse, both produce a
+# plausible number, and the cost report is the only place the error surfaces.
+
+
+@pytest.mark.asyncio
+async def test_gemini_reports_the_cached_prompt_as_a_subset_of_the_prompt_count() -> None:
+    provider = GeminiProvider(
+        _settings(google_api_key=SecretStr("test-key"), google_model="gemini-test")
+    )
+    provider._post = _CapturedPost(  # type: ignore[method-assign]
+        {
+            "candidates": [{"content": {"parts": [{"text": '{"action_type":"RESPOND"}'}]}}],
+            "usageMetadata": {
+                "promptTokenCount": 16_000,
+                "cachedContentTokenCount": 5_200,
+                "candidatesTokenCount": 300,
+                "totalTokenCount": 16_300,
+            },
+        }
+    )
+
+    response = await provider.generate(REQUEST)
+
+    assert response.cached_input_tokens == 5_200
+    assert response.input_tokens == 10_800, (
+        "Gemini counts cached content inside promptTokenCount; passing it through "
+        "whole bills the cached prefix at the full rate as well"
+    )
+    assert response.input_tokens + response.cached_input_tokens == 16_000
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_reports_the_cached_prompt_as_a_subset_too() -> None:
+    provider = OpenAICompatibleProvider(
+        name="NVIDIA",
+        api_key="k",
+        base_url="https://example.invalid/v1",
+        model="m",
+        timeout_seconds=5,
+    )
+    provider._post = _CapturedPost(  # type: ignore[method-assign]
+        {
+            "choices": [{"message": {"content": '{"action_type":"RESPOND"}'}}],
+            "usage": {
+                "prompt_tokens": 16_000,
+                "prompt_tokens_details": {"cached_tokens": 5_200},
+                "completion_tokens": 300,
+                "total_tokens": 16_300,
+            },
+        }
+    )
+
+    response = await provider.generate(REQUEST)
+
+    assert response.cached_input_tokens == 5_200
+    assert response.input_tokens == 10_800
+    assert response.input_tokens + response.cached_input_tokens == 16_000
+
+
+@pytest.mark.asyncio
+async def test_anthropic_reports_the_cached_prompt_beside_the_prompt_count() -> None:
+    """The opposite convention, and the reason this cannot be one shared helper."""
+    provider = _anthropic()
+    provider._post = _CapturedPost(  # type: ignore[method-assign]
+        {
+            "content": [{"type": "tool_use", "input": {"action_type": "RESPOND"}}],
+            "usage": {
+                "input_tokens": 10_800,
+                "cache_read_input_tokens": 5_200,
+                "output_tokens": 300,
+            },
+        }
+    )
+
+    response = await provider.generate(REQUEST)
+
+    assert response.cached_input_tokens == 5_200
+    assert response.input_tokens == 10_800, (
+        "Anthropic already reports the uncached prompt; subtracting here would "
+        "undercount it by the size of the cache hit"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_provider_silent_about_caching_reports_none_rather_than_zero() -> None:
+    """`None` is "the provider said nothing", `0` is "nothing was cached".
+
+    Collapsing them would make a cache-hit-rate report read as a solid 0% for
+    every provider that simply does not publish the field -- which is how a
+    caching regression on the one provider that *does* publish it stays invisible
+    inside an average.
+    """
+    provider = OpenAICompatibleProvider(
+        name="OLLAMA",
+        api_key=None,
+        base_url="https://example.invalid/v1",
+        model="m",
+        timeout_seconds=5,
+    )
+    provider._post = _CapturedPost(  # type: ignore[method-assign]
+        {
+            "choices": [{"message": {"content": '{"action_type":"RESPOND"}'}}],
+            "usage": {"prompt_tokens": 16_000, "completion_tokens": 300},
+        }
+    )
+
+    response = await provider.generate(REQUEST)
+
+    assert response.cached_input_tokens is None
+    assert response.input_tokens == 16_000
