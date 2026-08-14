@@ -78,8 +78,8 @@
       "introduced": "bb9bf2e",
       "removed_from_tree": "0615921 (root), 5b5392a (backend)",
       "still_in_history": true,
-      "rotation_status": "NOT ROTATED -- no commit or record claims otherwise",
-      "reason": "SEC-01 P0. SQL Server sa password. Rotate in the compose stack and Vault, then purge."
+      "rotation_status": "ACCEPTED_RISK -- operator decision 2026-08-14, not rotated",
+      "reason": "ACCEPTED RISK -- repository owner, 2026-08-14. Not rotated, by decision. Rationale as given: these are auto-generated values scoped to the local Docker stack, reused nowhere else, so disclosure grants nothing an attacker could reach. Independently corroborated: compose binds every one of these services to 127.0.0.1 (SQL Server 14330, Neo4j 7474/7687, MongoDB 27017, Valkey 6379, Temporal 7233, Vault 8200), so none is reachable off-host as configured. Revisit if the stack is ever bound to a routable interface, shared between hosts, or promoted to an environment carrying real data."
     },
     {
       "sha256_prefix": "bc7a0dd37bd187f3",
@@ -93,8 +93,8 @@
       "introduced": "bb9bf2e",
       "removed_from_tree": "0615921 (root), 5b5392a (backend)",
       "still_in_history": true,
-      "rotation_status": "NOT ROTATED -- no commit or record claims otherwise",
-      "reason": "SEC-01 P0. Neo4j password. Rotate in the compose stack and Vault, then purge."
+      "rotation_status": "ACCEPTED_RISK -- operator decision 2026-08-14, not rotated",
+      "reason": "ACCEPTED RISK -- repository owner, 2026-08-14. Not rotated, by decision. Rationale as given: these are auto-generated values scoped to the local Docker stack, reused nowhere else, so disclosure grants nothing an attacker could reach. Independently corroborated: compose binds every one of these services to 127.0.0.1 (SQL Server 14330, Neo4j 7474/7687, MongoDB 27017, Valkey 6379, Temporal 7233, Vault 8200), so none is reachable off-host as configured. Revisit if the stack is ever bound to a routable interface, shared between hosts, or promoted to an environment carrying real data."
     },
     {
       "sha256_prefix": "00b7c04354ae15be",
@@ -108,8 +108,8 @@
       "introduced": "bb9bf2e",
       "removed_from_tree": "0615921 (root), 5b5392a (backend)",
       "still_in_history": true,
-      "rotation_status": "NOT ROTATED -- no commit or record claims otherwise",
-      "reason": "SEC-01 P0. MongoDB root password. Rotate in the compose stack and Vault, then purge."
+      "rotation_status": "ACCEPTED_RISK -- operator decision 2026-08-14, not rotated",
+      "reason": "ACCEPTED RISK -- repository owner, 2026-08-14. Not rotated, by decision. Rationale as given: these are auto-generated values scoped to the local Docker stack, reused nowhere else, so disclosure grants nothing an attacker could reach. Independently corroborated: compose binds every one of these services to 127.0.0.1 (SQL Server 14330, Neo4j 7474/7687, MongoDB 27017, Valkey 6379, Temporal 7233, Vault 8200), so none is reachable off-host as configured. Revisit if the stack is ever bound to a routable interface, shared between hosts, or promoted to an environment carrying real data."
     },
     {
       "sha256_prefix": "4c6320fdad5c6f20",
@@ -123,8 +123,8 @@
       "introduced": "bb9bf2e",
       "removed_from_tree": "0615921 (root), 5b5392a (backend)",
       "still_in_history": true,
-      "rotation_status": "NOT ROTATED -- no commit or record claims otherwise",
-      "reason": "SEC-01 P0. Replica-set keyfile material; it authenticates members to each other. Regenerate with the cluster, then purge."
+      "rotation_status": "ACCEPTED_RISK -- operator decision 2026-08-14, not rotated",
+      "reason": "ACCEPTED RISK -- repository owner, 2026-08-14. Not rotated, by decision. Rationale as given: these are auto-generated values scoped to the local Docker stack, reused nowhere else, so disclosure grants nothing an attacker could reach. Independently corroborated: compose binds every one of these services to 127.0.0.1 (SQL Server 14330, Neo4j 7474/7687, MongoDB 27017, Valkey 6379, Temporal 7233, Vault 8200), so none is reachable off-host as configured. Revisit if the stack is ever bound to a routable interface, shared between hosts, or promoted to an environment carrying real data."
     },
     {
       "sha256_prefix": "2e596e2a20a66573",
@@ -138,8 +138,8 @@
       "introduced": "bb9bf2e",
       "removed_from_tree": "0615921 (root), 5b5392a (backend)",
       "still_in_history": true,
-      "rotation_status": "NOT ROTATED -- no commit or record claims otherwise",
-      "reason": "SEC-01 P0. Temporal persistence password. Rotate in the compose stack and Vault, then purge."
+      "rotation_status": "ACCEPTED_RISK -- operator decision 2026-08-14, not rotated",
+      "reason": "ACCEPTED RISK -- repository owner, 2026-08-14. Not rotated, by decision. Rationale as given: these are auto-generated values scoped to the local Docker stack, reused nowhere else, so disclosure grants nothing an attacker could reach. Independently corroborated: compose binds every one of these services to 127.0.0.1 (SQL Server 14330, Neo4j 7474/7687, MongoDB 27017, Valkey 6379, Temporal 7233, Vault 8200), so none is reachable off-host as configured. Revisit if the stack is ever bound to a routable interface, shared between hosts, or promoted to an environment carrying real data."
     },
     {
       "sha256_prefix": "235aa2b01a3e107f",
@@ -153,8 +153,8 @@
       "introduced": "bb9bf2e",
       "removed_from_tree": "0615921 (root), 5b5392a (backend)",
       "still_in_history": true,
-      "rotation_status": "NOT ROTATED -- no commit or record claims otherwise",
-      "reason": "SEC-01 P0. Valkey password. Rotate in the compose stack and Vault, then purge."
+      "rotation_status": "ACCEPTED_RISK -- operator decision 2026-08-14, not rotated",
+      "reason": "ACCEPTED RISK -- repository owner, 2026-08-14. Not rotated, by decision. Rationale as given: these are auto-generated values scoped to the local Docker stack, reused nowhere else, so disclosure grants nothing an attacker could reach. Independently corroborated: compose binds every one of these services to 127.0.0.1 (SQL Server 14330, Neo4j 7474/7687, MongoDB 27017, Valkey 6379, Temporal 7233, Vault 8200), so none is reachable off-host as configured. Revisit if the stack is ever bound to a routable interface, shared between hosts, or promoted to an environment carrying real data."
     }
   ]
 }
