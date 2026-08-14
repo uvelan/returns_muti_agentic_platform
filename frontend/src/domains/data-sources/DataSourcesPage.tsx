@@ -85,11 +85,16 @@ export function DataSourcesPage() {
           void client.invalidateQueries({ queryKey: ["data-source"] });
         }}
       />
+      {/*
+        No rebind capability threaded through: `SourceBindingsPanel` asks for
+        `config.source.rebind` itself, which is what its two routes require.
+        This passed `config.source.write` -- the resync grant -- so a
+        `WORKSPACE_EDITOR` was offered a Rebind button the backend refuses.
+      */}
       <SourceDetailPane
         source={detail.data ?? null}
         loading={selected !== null && detail.isPending}
         error={detail.error}
-        canRebind={can("config.source.write")}
       />
     </div>
   );
@@ -287,12 +292,10 @@ function SourceDetailPane({
   source,
   loading,
   error,
-  canRebind,
 }: {
   source: SourceDetail | null;
   loading: boolean;
   error: Error | null;
-  canRebind: boolean;
 }) {
   if (error !== null) {
     return (
@@ -325,7 +328,7 @@ function SourceDetailPane({
             per-source: a dataset names a connection, and the reason to open
             this screen after an infrastructure move is to repoint one.
           */}
-          <BindingsSection canRebind={canRebind} />
+          <BindingsSection />
         </div>
       </Pane>
     );
@@ -381,13 +384,13 @@ function SourceDetailPane({
           <AssetTable assets={source.assets} />
         </section>
 
-        <BindingsSection canRebind={canRebind} />
+        <BindingsSection />
       </div>
     </Pane>
   );
 }
 
-function BindingsSection({ canRebind }: { canRebind: boolean }) {
+function BindingsSection() {
   return (
     <section className="flex flex-col gap-2 border-t border-outline-variant pt-4">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-outline">
@@ -404,7 +407,7 @@ function BindingsSection({ canRebind }: { canRebind: boolean }) {
         resolves it server-side, so no credential is ever entered here or returned to this
         browser.
       </p>
-      <SourceBindingsPanel canRebind={canRebind} />
+      <SourceBindingsPanel />
     </section>
   );
 }

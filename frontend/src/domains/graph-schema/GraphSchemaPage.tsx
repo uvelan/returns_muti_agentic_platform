@@ -489,7 +489,10 @@ function DetailTab({
     case "Drift":
       return <DriftTab draftId={draftId} canApply={canApprove} onChanged={onChanged} />;
     case "Sources":
-      return <SourceBindingsPanel canRebind={canApprove} />;
+      // No capability passed: the panel gates itself on `config.source.rebind`,
+      // which is the grant its two routes require. This tab used to hand it
+      // `graph_schema.draft.write`, which is the grant for editing a *draft*.
+      return <SourceBindingsPanel />;
     case "Versions":
       return <VersionsTab draftId={draftId} />;
     default:

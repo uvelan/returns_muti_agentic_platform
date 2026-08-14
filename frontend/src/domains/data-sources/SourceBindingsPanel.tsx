@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { sourceBindingsApi, type SourceBinding } from "../../api/sourceBindings";
+import { useCapabilities } from "../../hooks/capabilityContext";
 
 /**
  * Where each dataset the schema names is read from, and how to move one.
@@ -23,8 +24,20 @@ import { sourceBindingsApi, type SourceBinding } from "../../api/sourceBindings"
  * server-side. `RebindRequest` has no password, DSN or connection-string field
  * to send one through, and nothing that comes back carries a resolved value --
  * so this form asks for the pointer and offers nowhere to type a secret.
+ *
+ * **The panel asks the capability question itself, rather than taking the
+ * answer as a prop.** `PUT`/`DELETE /api/source-bindings/{dataset}` require
+ * `config.source.rebind`, and while the gate was a prop both call sites passed
+ * something else: Data Sources passed `config.source.write` and the analyzer's
+ * Sources tab passed `graph_schema.draft.write`. Two callers, two wrong answers
+ * to one question with one right answer -- and a `WORKSPACE_EDITOR`, who holds
+ * both of those and not the rebind, was offered a button that 403s. The panel
+ * makes the two calls, so the panel names the grant, and there is nowhere left
+ * to pass a different one from.
  */
-export function SourceBindingsPanel({ canRebind }: { canRebind: boolean }) {
+export function SourceBindingsPanel() {
+  const { can } = useCapabilities();
+  const canRebind = can("config.source.rebind");
   const client = useQueryClient();
   const [editing, setEditing] = useState<string | null>(null);
   const [connectionRef, setConnectionRef] = useState("");
@@ -82,6 +95,18 @@ export function SourceBindingsPanel({ canRebind }: { canRebind: boolean }) {
         A change here reaches the platform at the next publish. The active release keeps the
         sources it was compiled with.
       </p>
+      {/*
+        Said once, above the list, rather than left as a row of dead buttons. A
+        disabled control with no reason is indistinguishable from a broken one,
+        and the reader's next move -- ask for the grant -- needs the grant's
+        name.
+      */}
+      {canRebind ? null : (
+        <p className="mb-3 text-sm text-slate-600">
+          Repointing a dataset requires <code className="font-mono">config.source.rebind</code>,
+          which you do not hold. Bindings are shown read-only.
+        </p>
+      )}
       {rebind.error ? <p className="mb-2 text-sm text-red-700">{rebind.error.message}</p> : null}
       <ul className="flex flex-col gap-2">
         {bindings.data.map((binding) => (

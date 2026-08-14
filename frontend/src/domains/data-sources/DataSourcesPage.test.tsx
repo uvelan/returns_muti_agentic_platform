@@ -251,6 +251,38 @@ describe("DataSourcesPage", () => {
     expect(screen.getByRole("button", { name: "Rebind" })).toBeDisabled();
   });
 
+  /**
+   * The defect this pair exists to keep fixed.
+   *
+   * The rebind routes require `config.source.rebind`, which only admins hold.
+   * The screen gated on `config.source.write`, which a `WORKSPACE_EDITOR` holds
+   * -- so an editor was offered a Rebind button whose `PUT` the backend refuses
+   * with a 403. The first case is the one that used to pass wrongly; the second
+   * proves the gate is a gate and not a hardcoded `false`.
+   */
+  it("does not offer Rebind on config.source.write alone", async () => {
+    mocks.can.mockImplementation((capability: string) =>
+      capability === "config.source.read" || capability === "config.source.write",
+    );
+    renderPage();
+
+    await screen.findByText("source_sales");
+    expect(screen.getByRole("button", { name: "Rebind" })).toBeDisabled();
+    // Named, so the reader knows what to ask for rather than seeing a dead control.
+    expect(screen.getByText(/config\.source\.rebind/)).toBeTruthy();
+  });
+
+  it("offers Rebind on config.source.rebind", async () => {
+    mocks.can.mockImplementation((capability: string) =>
+      capability === "config.source.read" || capability === "config.source.rebind",
+    );
+    renderPage();
+
+    await screen.findByText("source_sales");
+    expect(screen.getByRole("button", { name: "Rebind" })).toBeEnabled();
+    expect(screen.queryByText(/config\.source\.rebind/)).toBeNull();
+  });
+
   it("shows nothing at all without the source read", () => {
     mocks.can.mockReturnValue(false);
     renderPage();
