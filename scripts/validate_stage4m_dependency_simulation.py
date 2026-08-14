@@ -106,7 +106,10 @@ def main() -> None:
         "backend/src/return_platform/dependency_simulation/ai.py",
         "backend/src/return_platform/api/dependency_simulator.py",
         "scripts/run_stage4m_simulated_e2e.sh",
-        "docs/plans/STAGE_4M_DEPENDENCY_SIMULATION_IMPLEMENTATION_PLAN.md",
+        # Moved under docs/archive/ when the superseded stage plans were
+        # separated from current documentation (DOC-17). The plan is still the
+        # artifact this gate checks for; only its location changed.
+        "docs/archive/stage-plans/STAGE_4M_DEPENDENCY_SIMULATION_IMPLEMENTATION_PLAN.md",
     ]
     for item in required:
         require(item)
