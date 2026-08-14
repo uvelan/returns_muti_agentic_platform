@@ -38,6 +38,7 @@ from typing import Any
 
 import pytest
 
+from return_platform.configuration.return_configuration import load_return_configuration
 from return_platform.dynamic_knowledge.config_loader import load_active_schema
 from return_platform.dynamic_knowledge.graph.projector import GenericGraphProjector
 from return_platform.dynamic_knowledge.knowledge.cypher_compiler import CypherCompiler
@@ -87,6 +88,10 @@ from return_platform.dynamic_knowledge.order_agent.graph_nodes import (
     ConfirmedCase,
     GraphDependencies,
     TurnRuntimeContext,
+)
+from return_platform.dynamic_knowledge.order_agent.identification import (
+    IdentificationCatalogue,
+    build_identification_catalogue,
 )
 from return_platform.dynamic_knowledge.order_agent.state import CandidateSet
 from return_platform.dynamic_knowledge.schema import (
@@ -437,6 +442,25 @@ def _sync_coordinator(source: ProjectingSource, writer: CountingGraphWriter) -> 
     )
 
 
+def _identification(schema: ActiveSchema) -> IdentificationCatalogue:
+    """The shipped catalogue, resolved against the shipped descriptor.
+
+    Real configuration for the same reason the guards and the compiler are
+    real: which signals Order Discovery can search on is now
+    `discovery.identification_fields`, and a scenario built on a hand-written
+    catalogue would prove the machinery works while saying nothing about
+    whether what we ship does.
+    """
+    discovery = load_return_configuration(
+        Path(__file__).parents[2] / "config/returns/production.yaml"
+    ).configuration.discovery
+    return build_identification_catalogue(
+        discovery.identification_fields,
+        schema,
+        default_fulltext_index=discovery.progressive.customer_fulltext_index,
+    )
+
+
 def _dependencies(
     schema: ActiveSchema,
     model: ScriptedModel,
@@ -460,6 +484,7 @@ def _dependencies(
         response_safety_guard=ResponseSafetyGuard(),
         on_demand_sync=on_demand_sync,
         compiler=CypherCompiler(),
+        identification=_identification(schema),
         case_store=case_store,
         # Supplied whenever a case store is: `confirm_order` refuses to write a
         # case it cannot make reachable, so the two arrive together in
@@ -732,11 +757,18 @@ async def test_an_email_or_phone_becomes_a_search_instead_of_a_dead_answer(
     associate for the email on the order and had nowhere to put the answer.
 
     The catalogue is asserted alongside the behaviour because the two fail
-    differently: a missing field makes the action itself unconstructable, while
-    a present field with no plan shape fails silently one layer down.
+    differently: an unconfigured signal produces no search at all, while a
+    configured one with no usable binding fails silently one layer down.
+
+    Asserted against the catalogue rather than `OrderSearchIntent.model_fields`,
+    which is where this used to look. There are no signal fields on that model
+    any more -- declaring them there under `extra="forbid"` was the first of the
+    seven places DISC-01 removed, and it was the one that rejected the
+    associate's answer outright.
     """
-    fields = set(OrderSearchIntent.model_fields)
-    assert {"emails", "phones", "orderNumbers", "customerNames", "productNames"} <= fields
+    catalogue = _identification(schema)
+    configured = {item.intent_key for item in catalogue.fields if item.is_usable}
+    assert {"emails", "phones", "orderNumbers", "customerNames", "productNames"} <= configured
 
     for intent in ({"emails": ["dana@example.com"]}, {"phones": ["(704) 555-0142"]}):
         _, model, knowledge = await _run(schema, "contact anchor", [_search(**intent), _respond()])

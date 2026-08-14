@@ -25,6 +25,7 @@ from return_platform.ai.interception.store import SystemStoreInterceptionStore
 from return_platform.ai_gateway.configuration import LoadedAIGatewayConfiguration
 from return_platform.ai_gateway.routing import AIRoutePool
 from return_platform.configuration.return_configuration import (
+    DiscoveryConfiguration,
     ProgressiveDiscoveryConfiguration,
     ReturnCaseTimingConfiguration,
     load_return_configuration,
@@ -54,6 +55,9 @@ from return_platform.dynamic_knowledge.order_agent.conversation_repository impor
     AtomicConversationRepository,
 )
 from return_platform.dynamic_knowledge.order_agent.coordinator import DynamicOrderAgentCoordinator
+from return_platform.dynamic_knowledge.order_agent.identification import (
+    build_identification_catalogue,
+)
 from return_platform.dynamic_knowledge.order_agent.search_strategy import CustomerFulltextPolicy
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 from return_platform.operations.repository import OperationalRepository
@@ -104,6 +108,7 @@ async def build_dynamic_order_agent_runtime(
     temporal_client: Client,
     return_case_timings: ReturnCaseTimingConfiguration,
     progressive_discovery: ProgressiveDiscoveryConfiguration | None = None,
+    discovery: DiscoveryConfiguration | None = None,
     schema: ActiveSchema | None = None,
 ) -> DynamicOrderAgentCoordinator:
     # The published release if the analyzer has activated one, else the file.
@@ -140,11 +145,10 @@ async def build_dynamic_order_agent_runtime(
     # from. Neither path leaves the index name as a code constant, which is the
     # property that matters: `customer_name_search_v2` is created by a migration
     # and can be rebuilt under a new name, and the agent has to follow.
-    progressive = progressive_discovery or (
-        load_return_configuration(
-            settings.return_configuration_path
-        ).configuration.discovery.progressive
+    resolved_discovery = discovery or (
+        load_return_configuration(settings.return_configuration_path).configuration.discovery
     )
+    progressive = progressive_discovery or resolved_discovery.progressive
 
     coordinator = DynamicOrderAgentCoordinator(
         schema=graph.schema,
@@ -199,5 +203,14 @@ async def build_dynamic_order_agent_runtime(
         ),
         active_snapshot_store=graph.active_snapshot_store,
         customer_fulltext=customer_fulltext_policy(progressive),
+        # Resolved once, here, against the schema this coordinator will
+        # actually query -- so a configured search naming a property the
+        # active schema does not have is reported at startup rather than
+        # failing one plan at a time inside an associate's turn.
+        identification=build_identification_catalogue(
+            resolved_discovery.identification_fields,
+            graph.schema,
+            default_fulltext_index=progressive.customer_fulltext_index,
+        ),
     )
     return coordinator

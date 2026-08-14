@@ -34,35 +34,46 @@ class ActionType(StrEnum):
 
 
 class OrderSearchIntent(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    """What the associate said that might identify an order.
 
-    orderIds: tuple[str, ...] = ()
-    orderNumbers: tuple[str, ...] = ()
-    customerNames: tuple[str, ...] = ()
-    # The two the clarification policy ranks highest after the hard order
-    # anchors -- email at 95, phone at 90 in `config/returns/production.yaml`.
-    # They were absent here while the policy asked for them, and this model is
-    # `extra="forbid"`, so the agent would ask an associate for the email on the
-    # order and then have nowhere to put the answer: the reply was either
-    # rejected as an unknown field or flattened into `freeTextTerms` and
-    # searched against product descriptions.
-    emails: tuple[str, ...] = ()
-    phones: tuple[str, ...] = ()
-    streetAddresses: tuple[str, ...] = ()
-    cities: tuple[str, ...] = ()
-    states: tuple[str, ...] = ()
-    postalCodes: tuple[str, ...] = ()
-    dateFrom: str | None = None
-    dateTo: str | None = None
-    approximateDate: str | None = None
-    skus: tuple[str, ...] = ()
-    productNames: tuple[str, ...] = ()
-    colors: tuple[str, ...] = ()
-    quantities: tuple[int, ...] = ()
-    freeTextTerms: tuple[str, ...] = ()
+    **The identifying signals are not fields of this class.** They arrive as
+    extra keys and are interpreted against the runtime identification catalogue
+    (`discovery.identification_fields`), so adding the tenth -- or the
+    eighteenth -- identification field is a configuration change and nothing
+    else. This class carries only the three things that are about the *search*
+    rather than about the customer, and those are genuinely fixed: which mode
+    the search is in, how sure the model is, and whether this is a request for
+    the next page of the previous search.
+
+    Seventeen signal names used to be declared here under `extra="forbid"`, and
+    that was the first of seven places an operator could not add a field
+    without a release. It was also actively harmful: the clarification policy
+    ranks email at 95 and phone at 90, so the agent would ask an associate for
+    the email on the order and the reply had nowhere to go -- rejected as an
+    unknown field, or flattened into free text and searched against product
+    descriptions.
+
+    `extra="allow"` is not a loosening of validation, it is a move of it. An
+    unrecognized key is no longer refused by a class that cannot know what this
+    deployment configured; it is named back to the turn as a signal nothing
+    could use (`ParsedIntent.unknown_keys`). Refusing outright is the behaviour
+    that lost the answer to the agent's own question.
+
+    Values are read through `IdentificationCatalogue.parse`, which applies the
+    configured multiplicity, normalization and validation. Nothing downstream
+    reads an attribute of this model by name.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="allow")
+
     searchMode: str = "DISCOVER"
     confidence: float = 0.0
     wantsMoreResults: bool = False
+
+    @property
+    def signal_values(self) -> dict[str, Any]:
+        """Everything the model supplied that is not search metadata."""
+        return dict(self.model_extra or {})
 
 
 class OrderConfirmation(BaseModel):
@@ -201,6 +212,14 @@ class AgentTurnContext(BaseModel):
     policy_version: str
     prompt_version: str
     compact_schema: dict[str, Any]
+    # Which identifying signals this deployment can search on, what each is
+    # called, and what else an associate might call it. Read from the runtime
+    # identification catalogue every turn rather than written into the packaged
+    # prompt: a prompt is one immutable string per configuration release, so a
+    # field named only there could not appear without a release, which is the
+    # whole defect. An operator adding a field to `discovery.identification_fields`
+    # has it described to the model on the very next turn.
+    identification_fields: tuple[dict[str, Any], ...] = ()
     conversation_state: dict[str, Any]
     query_evidence: tuple[QueryEvidence, ...] = ()
     schema_details: dict[str, Any] = Field(default_factory=dict)

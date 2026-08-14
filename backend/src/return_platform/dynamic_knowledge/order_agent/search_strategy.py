@@ -8,23 +8,18 @@ customer be found from partial or combined information (an order number
 those), because each signal is tried on its own and the results are then
 merged and scored by :func:`rank_search_results`.
 
-Not every field on :class:`OrderSearchIntent` has a backing field in the active
-knowledge-graph schema, and where one is missing the signal is *reported* rather
-than dropped: silently ignoring "it was the blue one" looks like "no results" to
-the associate with no indication why. :func:`build_progressive_plans` therefore
-names what it could not use in ``unsupported_signals``.
+**No identification field is named in this module.** Which signals exist, which
+entity and property answer each one, with which operator, at what limit, and
+what a match is worth are all read from the runtime identification catalogue
+(see :mod:`identification` and ``discovery.identification_fields`` in
+``config/returns/production.yaml``). This module is the machinery that turns
+that catalogue into plans and turns rows back into ranked candidates.
 
-``colors`` is the only such field left. No entity carries a colour property, and
-matching a colour word against ``product_description`` would put "Blue Ridge
-Faucet" in front of someone who said the tap was blue -- a wrong order presented
-with no sign that the colour had been matched loosely.
-
-Address, city, state, postal code, email and phone were on that list too, and
-were being dropped long after the schema grew real properties for all six. That
-is the worse failure of the two: an associate answering the agent's own
-clarifying question -- the policy in ``config/returns/production.yaml`` ranks
-email at 95 and phone at 90, above every narrowing signal -- contributed nothing
-to the search. They are ordinary passes now.
+Signals the catalogue cannot answer are *reported* rather than dropped:
+silently ignoring "it was the blue one" looks like "no results" to the
+associate with no indication why. That report is now derived — a signal is
+unusable because no configured search binds to the active schema, not because
+its name appears in a list here.
 """
 
 from __future__ import annotations
@@ -42,41 +37,17 @@ from return_platform.dynamic_knowledge.knowledge.query_plan import (
     QueryOperation,
 )
 from return_platform.dynamic_knowledge.order_agent.contracts import OrderSearchIntent
+from return_platform.dynamic_knowledge.order_agent.identification import (
+    FULLTEXT_STRATEGY,
+    IdentificationCatalogue,
+    ParsedIntent,
+    ResolvedSearch,
+    SignalValues,
+    apply_value_form,
+    normalize_value,
+)
 
 logger = logging.getLogger("return_platform.dynamic_knowledge.order_agent.search_strategy")
-
-# Fields the model may extract into OrderSearchIntent that have no backing
-# graph field yet. Kept in one place so this list and the module docstring
-# above stay in sync as the schema evolves.
-_UNSUPPORTED_INTENT_FIELDS: tuple[str, ...] = ("colors",)
-
-# Where an address or contact detail lives, and how precisely it can be matched.
-#
-# Two homes, deliberately, because they answer different questions: the contact
-# point is where the *customer* is registered, `sales_order` records where this
-# particular order was sent. An associate saying "Dallas" could mean either, and
-# a search that asked only one would miss an order shipped to a job site.
-#
-# The operator per field is the one the schema actually enables -- `state` and
-# `postal_code` are EXACT-only, and asking for CONTAINS on them would be refused
-# by the schema guard, taking the whole pass with it.
-_CONTACT_ENTITY = "contact_point"
-_ORDER_ENTITY = "sales_order"
-
-# Date fields only expose range operators (see the active schema): an exact-date
-# match is expressed as a same-day BETWEEN.
-#
-# `order_date`, not `delivered_at`. The schema is now derived from the real
-# salesInv documents and there is no delivery timestamp in them -- the dates
-# that exist are order, commit, invoice and shipped. `delivered_at` was a field
-# of the earlier synthetic schema, so every date-bearing search was being
-# rejected by the schema guard as an unknown field and silently dropped from the
-# plan set: the associate's "it was around the 14th" contributed nothing.
-# `order_date` is also the one an associate is most likely to recall and the
-# only one populated across every order in the dataset. If a genuine delivery
-# timestamp is ever sourced, this is the line that should move to it.
-_DATE_FIELD_ENTITY = "sales_order"
-_DATE_FIELD_ID = "order_date"
 
 # How many ranked candidates a single search keeps around for pagination
 # ("show next") versus how many are ever shown to the reasoning model or the
@@ -102,12 +73,6 @@ RESULT_PAGE_SIZE = 5
 #
 # Invariant: candidate limits may bound returned results. They must never bound the
 # searchable corpus.
-
-#: The entity and field the customer full-text index covers. The index itself is
-#: named by configuration; which field it indexes is a property of the schema
-#: (migration 0013 indexes `Customer.customer_name`), so it lives here.
-_CUSTOMER_ENTITY = "customer"
-_CUSTOMER_NAME_FIELD = "customer_name"
 
 #: Words a name extraction may carry through from the associate's sentence.
 #: Dropped before the query is built: "customer Smith" must search for Smith,
@@ -165,39 +130,26 @@ class CustomerFulltextPolicy:
     relative_score_floor: float = 0.55
 
 
-# Intent fields that identify *what* was searched for, as opposed to
-# metadata about the search itself (searchMode, confidence, wantsMoreResults).
-# Used to detect whether a "show next" follow-up still refers to the same
-# search or the associate has moved on to a different one.
-_SIGNATURE_FIELDS: tuple[str, ...] = (
-    "orderIds",
-    "orderNumbers",
-    "customerNames",
-    "streetAddresses",
-    "cities",
-    "states",
-    "postalCodes",
-    "emails",
-    "phones",
-    "dateFrom",
-    "dateTo",
-    "approximateDate",
-    "skus",
-    "productNames",
-    "colors",
-    "quantities",
-    "freeTextTerms",
-)
-
-
-def search_intent_signature(intent: OrderSearchIntent) -> str:
+def search_intent_signature(intent: OrderSearchIntent, catalogue: IdentificationCatalogue) -> str:
     """Stable fingerprint of the identifying signals in a search intent.
 
     Two intents with the same signature are considered "the same search" for
     pagination purposes, regardless of metadata fields like confidence or
     wantsMoreResults.
+
+    Computed over the catalogue's keys rather than a tuple written here, and
+    that is load-bearing rather than tidy: a "show next" is only allowed to page
+    a cached result set gathered under the same signals, so the definition of
+    "the same signals" has to move when an operator adds a field. It also covers
+    any key the model supplied that the catalogue does not know, because two
+    searches differing only in an unrecognized key are still two different
+    searches.
     """
-    payload = {field: getattr(intent, field) for field in _SIGNATURE_FIELDS}
+    values = intent.signal_values
+    payload = {key: values.get(key) for key in catalogue.intent_keys}
+    payload["_unrecognized"] = {
+        key: value for key, value in sorted(values.items()) if key not in set(catalogue.intent_keys)
+    }
     return sha256_digest(payload)
 
 
@@ -206,331 +158,293 @@ def normalize_string(val: str) -> str:
     return re.sub(r"[\s\-]+", "", val.lower())
 
 
-def unsupported_signals(intent: OrderSearchIntent) -> tuple[str, ...]:
-    """Identifying signals this intent carries that no plan can express.
+@dataclass(frozen=True, slots=True)
+class PlannedSearch:
+    """One plan, and the configured search that produced it.
 
-    Public because two docstrings already promised it and nothing defined it:
-    callers were told to check a function that did not exist, and the only way
-    to read the answer was to run a search and inspect the ranked result.
+    The search travels with the plan because the ranker needs to know which
+    field a returned row was matched on and what that match is called, and
+    re-deriving it from the compiled plan would be guessing.
     """
-    return tuple(
-        field_name for field_name in _UNSUPPORTED_INTENT_FIELDS if getattr(intent, field_name)
+
+    plan: LogicalQueryPlan
+    search: ResolvedSearch
+    intent_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class SearchProgram:
+    """Everything one turn's intent asks of the graph.
+
+    `deferred` holds the searches an operator marked `only_when_nothing_found`.
+    Separating them is what keeps an expensive approximate search from running
+    alongside the cheap exact ones and diluting them -- it earns its turn only
+    when nothing else found anything.
+    """
+
+    parsed: ParsedIntent
+    primary: tuple[PlannedSearch, ...] = ()
+    deferred: tuple[PlannedSearch, ...] = ()
+
+
+def build_search_program(
+    intent: OrderSearchIntent,
+    catalogue: IdentificationCatalogue,
+    *,
+    fulltext_policy: CustomerFulltextPolicy | None = None,
+) -> SearchProgram:
+    """Translate a (possibly partial) search intent into the reads it implies.
+
+    Every populated signal the catalogue can answer gets its own narrowly-scoped
+    plan; ``rank_search_results`` combines and scores whatever comes back.
+    Signals the catalogue cannot answer are carried on
+    ``SearchProgram.parsed`` rather than dropped.
+    """
+    parsed = catalogue.parse(intent.signal_values)
+    policy = fulltext_policy or CustomerFulltextPolicy()
+    primary: list[PlannedSearch] = []
+    deferred: list[PlannedSearch] = []
+    # Deduped by the question actually asked rather than by what was typed:
+    # "(214) 555-0142" and "2145550142" are the same number reshaped two ways,
+    # and asking the graph twice spends a turn's query budget on one answer.
+    asked: set[tuple[str, str, str, str]] = set()
+
+    for signal in parsed.searchable:
+        if signal.field.is_date_bound:
+            continue
+        for planned in _plans_for_signal(signal, parsed, policy=policy, asked=asked):
+            (deferred if planned.search.only_when_nothing_found else primary).append(planned)
+
+    for planned in _date_plans(parsed, catalogue):
+        primary.append(planned)
+
+    if parsed.unusable_signals:
+        logger.warning(
+            "order_search_unusable_intent_signals",
+            extra={
+                "fields": parsed.unusable_signals,
+                "search_mode": intent.searchMode,
+            },
+        )
+    if parsed.unknown_keys:
+        # Not a rejection. The model populated something no configured field
+        # claims, which is either a stale prompt or a field an operator has not
+        # configured yet -- both are worth seeing, neither is worth failing the
+        # associate's turn over.
+        logger.warning(
+            "order_search_unrecognized_intent_keys",
+            extra={"keys": parsed.unknown_keys, "search_mode": intent.searchMode},
+        )
+    if parsed.invalid_signals:
+        logger.info(
+            "order_search_invalid_signal_values",
+            extra={"fields": parsed.invalid_signals},
+        )
+
+    return SearchProgram(parsed=parsed, primary=tuple(primary), deferred=tuple(deferred))
+
+
+def _condition_for(search: ResolvedSearch, value: Any) -> QueryCondition:
+    return QueryCondition(
+        entity_id=search.entity_id,
+        field_id=search.field_id,
+        operator=search.strategy,
+        value=value,
     )
 
 
-def build_progressive_plans(intent: OrderSearchIntent) -> list[LogicalQueryPlan]:
-    """Translate a (possibly partial) search intent into a sequence of query plans.
+def _narrowing_condition(search: ResolvedSearch, parsed: ParsedIntent) -> QueryCondition | None:
+    """The companion filter that turns a weak signal into a real narrowing.
 
-    Every populated signal on ``intent`` gets its own narrowly-scoped plan;
-    ``rank_search_results`` is responsible for combining and scoring whatever
-    comes back. Callers that want visibility into intent fields that could not
-    be turned into a plan should check :func:`unsupported_signals`.
+    A quantity on its own matches thousands of order lines. A quantity together
+    with a product description is a search. When the companion is absent the
+    quantity pass still runs -- losing it entirely would be worse than running
+    it broad.
     """
-    plans: list[LogicalQueryPlan] = []
+    if search.narrow_with is None:
+        return None
+    companion = parsed.by_key(search.narrow_with)
+    if companion is None or not companion.values:
+        return None
+    for companion_search in companion.field.searches:
+        if (
+            companion_search.entity_id == search.entity_id
+            and companion_search.strategy != FULLTEXT_STRATEGY
+        ):
+            value = apply_value_form(companion.values[0], companion_search.value_form)
+            return _condition_for(companion_search, value)
+    return None
 
-    # 1. Exact order identifiers.
-    for num in dict.fromkeys(intent.orderNumbers + intent.orderIds):
-        plans.append(
-            LogicalQueryPlan(
-                operation=QueryOperation.SEARCH,
-                start_entity_id="sales_order",
-                filters=(
-                    QueryCondition(
-                        entity_id="sales_order",
-                        field_id="sales_order_number",
-                        operator="EXACT",
-                        value=num,
-                    ),
-                ),
-                limit=1,
-            )
-        )
 
-    # 2. Customer name.
-    for name in dict.fromkeys(intent.customerNames):
-        plans.append(
-            LogicalQueryPlan(
-                operation=QueryOperation.SEARCH,
-                start_entity_id="customer",
-                filters=(
-                    QueryCondition(
-                        entity_id="customer",
-                        field_id="customer_name",
-                        operator="CONTAINS",
-                        value=name,
-                    ),
-                ),
-                limit=5,
-            )
-        )
-
-    # 3. SKU.
-    for sku in dict.fromkeys(intent.skus):
-        plans.append(
-            LogicalQueryPlan(
-                operation=QueryOperation.SEARCH,
-                start_entity_id="product",
-                filters=(
-                    QueryCondition(
-                        entity_id="product",
-                        field_id="sku",
-                        operator="EXACT",
-                        value=sku,
-                    ),
-                ),
-                limit=5,
-            )
-        )
-
-    # 4. Product description (partial product info, e.g. "blue faucet" once a
-    # colour field exists, or "faucet" / "Moen kitchen faucet" today). Reads
-    # from order_line so the order the line belongs to comes back for free.
-    for product_name in dict.fromkeys(intent.productNames):
-        plans.append(
-            LogicalQueryPlan(
-                operation=QueryOperation.SEARCH,
-                start_entity_id="order_line",
-                fields=("sales_order_number", "product_description", "ordered_quantity"),
-                filters=(
-                    QueryCondition(
-                        entity_id="order_line",
-                        field_id="product_description",
-                        operator="CONTAINS",
-                        value=product_name,
-                    ),
-                ),
-                limit=5,
-            )
-        )
-
-    # 5. Ordered quantity, combined with product info when both are given.
-    for quantity in dict.fromkeys(intent.quantities):
-        filters = [
-            QueryCondition(
-                entity_id="order_line",
-                field_id="ordered_quantity",
-                operator="EXACT",
-                value=quantity,
-            )
-        ]
-        if intent.productNames:
-            filters.append(
-                QueryCondition(
-                    entity_id="order_line",
-                    field_id="product_description",
-                    operator="CONTAINS",
-                    value=intent.productNames[0],
-                )
-            )
-        plans.append(
-            LogicalQueryPlan(
-                operation=QueryOperation.SEARCH,
-                start_entity_id="order_line",
-                fields=("sales_order_number", "product_description", "ordered_quantity"),
-                filters=tuple(filters),
-                limit=5,
-            )
-        )
-
-    # 6. Contact details the associate was asked for.
-    #
-    # Email and phone are the highest-priority customer anchors in the
-    # clarification policy, so they are tried ahead of the broader narrowing
-    # signals below.
-    for email in dict.fromkeys(intent.emails):
-        plans.append(
-            LogicalQueryPlan(
-                operation=QueryOperation.SEARCH,
-                start_entity_id=_CONTACT_ENTITY,
-                fields=("account_id", "customer_id", "email"),
-                filters=(
-                    QueryCondition(
-                        entity_id=_CONTACT_ENTITY,
-                        field_id="email",
-                        # A complete address is an identifier and matches
-                        # exactly; a fragment is all the associate could read
-                        # off the screen, and CONTAINS is the only way it finds
-                        # anything at all.
-                        operator="EXACT" if "@" in email else "CONTAINS",
-                        value=email,
-                    ),
-                ),
-                limit=5,
-            )
-        )
-
-    # Deduped by what is actually asked, not by what was typed: "(214)
-    # 555-0142" and "2145550142" are the same number, and `dict.fromkeys` only
-    # sees two different strings.
-    asked: set[tuple[str, str, str]] = set()
-    for phone in dict.fromkeys(intent.phones):
-        digits = _digits_of(phone)
-        for value, operator in _phone_attempts(phone, digits):
-            if ("phone_number", value, operator) in asked:
-                continue
-            asked.add(("phone_number", value, operator))
-            plans.append(
-                LogicalQueryPlan(
-                    operation=QueryOperation.SEARCH,
-                    start_entity_id=_CONTACT_ENTITY,
-                    fields=("account_id", "customer_id", "phone_number"),
-                    filters=(
-                        QueryCondition(
-                            entity_id=_CONTACT_ENTITY,
-                            field_id="phone_number",
-                            operator=operator,
-                            value=value,
-                        ),
-                    ),
-                    limit=5,
-                )
-            )
-        if digits and ("ship_to_phone", digits, "EXACT") not in asked:
-            asked.add(("ship_to_phone", digits, "EXACT"))
-            # `ship_to_phone` is EXACT-only, so only the digits form is worth
-            # asking for: a formatted value would have to match character for
-            # character to return anything.
-            plans.append(
-                LogicalQueryPlan(
-                    operation=QueryOperation.SEARCH,
-                    start_entity_id=_ORDER_ENTITY,
-                    fields=("sales_order_number", "customer_id", "ship_to_phone"),
-                    filters=(
-                        QueryCondition(
-                            entity_id=_ORDER_ENTITY,
-                            field_id="ship_to_phone",
-                            operator="EXACT",
-                            value=digits,
-                        ),
-                    ),
-                    limit=5,
-                )
-            )
-
-    # 7. Where the customer is, or where this order went.
-    for value, contact_field, order_field, operator in _location_signals(intent):
-        plans.append(
-            LogicalQueryPlan(
-                operation=QueryOperation.SEARCH,
-                start_entity_id=_CONTACT_ENTITY,
-                fields=("account_id", "customer_id", contact_field),
-                filters=(
-                    QueryCondition(
-                        entity_id=_CONTACT_ENTITY,
-                        field_id=contact_field,
-                        operator=operator,
-                        value=value,
-                    ),
-                ),
-                limit=10,
-            )
-        )
-        if order_field is None:
+def _plans_for_signal(
+    signal: SignalValues,
+    parsed: ParsedIntent,
+    *,
+    policy: CustomerFulltextPolicy,
+    asked: set[tuple[str, str, str, str]],
+) -> list[PlannedSearch]:
+    planned: list[PlannedSearch] = []
+    for search in signal.field.searches:
+        if search.strategy == FULLTEXT_STRATEGY:
+            fulltext = _fulltext_plan(signal, search, policy=policy)
+            if fulltext is not None:
+                planned.append(fulltext)
             continue
-        plans.append(
-            LogicalQueryPlan(
-                operation=QueryOperation.SEARCH,
-                start_entity_id=_ORDER_ENTITY,
-                fields=("sales_order_number", "customer_id", order_field),
-                filters=(
-                    QueryCondition(
-                        entity_id=_ORDER_ENTITY,
-                        field_id=order_field,
-                        operator=operator,
-                        value=value,
+        narrowing = _narrowing_condition(search, parsed)
+        for value in signal.values:
+            if not search.accepts(value):
+                continue
+            shaped = apply_value_form(value, search.value_form)
+            if shaped is None or shaped == "":
+                continue
+            question = (search.entity_id, search.field_id, search.strategy, str(shaped))
+            if question in asked:
+                continue
+            asked.add(question)
+            filters = [_condition_for(search, shaped)]
+            if narrowing is not None:
+                filters.append(narrowing)
+            planned.append(
+                PlannedSearch(
+                    plan=LogicalQueryPlan(
+                        operation=QueryOperation.SEARCH,
+                        start_entity_id=search.entity_id,
+                        fields=search.result_fields,
+                        filters=tuple(filters),
+                        limit=search.limit,
                     ),
-                ),
-                limit=10,
+                    search=search,
+                    intent_key=signal.field.intent_key,
+                )
             )
+    return planned
+
+
+def _fulltext_plan(
+    signal: SignalValues, search: ResolvedSearch, *, policy: CustomerFulltextPolicy
+) -> PlannedSearch | None:
+    """One ranked index read covering every value of this signal at once.
+
+    Per signal rather than per value: the index scores a document against a
+    whole query, so two spellings of one customer are alternatives inside one
+    query rather than two searches whose scores cannot be compared.
+    """
+    if not policy.enabled or search.fulltext_index is None:
+        return None
+    query = build_fulltext_query(tuple(str(value) for value in signal.values), policy)
+    if not query:
+        return None
+    return PlannedSearch(
+        plan=LogicalQueryPlan(
+            operation=QueryOperation.FULLTEXT_SEARCH,
+            start_entity_id=search.entity_id,
+            fields=search.result_fields,
+            fulltext_index=search.fulltext_index,
+            fulltext_field_id=search.field_id,
+            fulltext_query=query,
+            limit=max(1, min(search.limit, MAX_CACHED_CANDIDATES)),
+        ),
+        search=search,
+        intent_key=signal.field.intent_key,
+    )
+
+
+def _between_capable(
+    catalogue: IdentificationCatalogue, target: tuple[str, str]
+) -> ResolvedSearch | None:
+    """A configured search on this property that declares BETWEEN, if there is one.
+
+    Read from the catalogue rather than from this turn's signals, because the
+    capability belongs to the configuration and not to what the associate
+    happened to say. Looking only at valued signals is how a `dateFrom` plus a
+    `dateTo` ended up as two open-ended range reads while the very field that
+    proves BETWEEN is available sat unused in the same catalogue.
+    """
+    for item in catalogue.fields:
+        if not item.is_date_bound:
+            continue
+        for search in item.searches:
+            if (search.entity_id, search.field_id) == target and search.strategy == "BETWEEN":
+                return search
+    return None
+
+
+def _date_plans(parsed: ParsedIntent, catalogue: IdentificationCatalogue) -> list[PlannedSearch]:
+    """At most one plan per date field, assembled from whichever bounds were given.
+
+    A lower and an upper bound on the same property are one window, not two
+    searches, and an approximate date is a same-day window. Which configured
+    field is which is read off `value_type`, so a second date field (an invoice
+    date, say) needs configuration and no code.
+
+    A merged window is only issued when some configured search on that property
+    declares BETWEEN -- that declaration is the proof the schema enables the
+    operator. Without it the bounds are issued separately, which is correct if
+    less precise, rather than guessed at and refused by the schema guard.
+    """
+    by_target: dict[tuple[str, str], dict[str, tuple[SignalValues, ResolvedSearch]]] = {}
+    for signal in parsed.searchable:
+        if not signal.field.is_date_bound or not signal.values:
+            continue
+        search = signal.field.searches[0]
+        by_target.setdefault((search.entity_id, search.field_id), {})[signal.field.value_type] = (
+            signal,
+            search,
         )
 
-    # 8. Order date window: dateFrom/dateTo, a single open bound, or a same-day
-    # match from approximateDate. The date field only supports range operators
-    # (GT/GTE/LT/LTE/BETWEEN) in the active schema, never EXACT.
-    date_condition = _date_condition(intent)
-    if date_condition is not None:
-        plans.append(
-            LogicalQueryPlan(
-                operation=QueryOperation.SEARCH,
-                start_entity_id=_DATE_FIELD_ENTITY,
-                fields=("sales_order_number", "customer_id", _DATE_FIELD_ID),
-                filters=(date_condition,),
-                limit=10,
+    planned: list[PlannedSearch] = []
+    for target, bounds in by_target.items():
+        lower = bounds.get("DATE_LOWER_BOUND")
+        upper = bounds.get("DATE_UPPER_BOUND")
+        point = bounds.get("DATE_POINT")
+        between = _between_capable(catalogue, target)
+        if lower and upper and between is not None:
+            condition = _condition_for(
+                between, {"from": lower[0].values[0], "to": upper[0].values[0]}
             )
-        )
-
-    # 9. Fallback free-text search. sales_order_number only supports EXACT
-    # match in the schema (CONTAINS is not an enabled operator for it), so an
-    # unclassified free-text term is searched against product_description
-    # instead, which does support CONTAINS and is the more likely match for
-    # leftover descriptive text anyway.
-    for term in dict.fromkeys(intent.freeTextTerms):
-        plans.append(
-            LogicalQueryPlan(
-                operation=QueryOperation.SEARCH,
-                start_entity_id="order_line",
-                fields=("sales_order_number", "product_description", "ordered_quantity"),
-                filters=(
-                    QueryCondition(
-                        entity_id="order_line",
-                        field_id="product_description",
-                        operator="CONTAINS",
-                        value=term,
-                    ),
-                ),
-                limit=5,
+            planned.append(_date_planned((lower[0], between), condition))
+            continue
+        if point and not lower and not upper and between is not None:
+            value = point[0].values[0]
+            planned.append(
+                _date_planned(
+                    (point[0], between), _condition_for(between, {"from": value, "to": value})
+                )
             )
-        )
+            continue
+        for entry in (lower, upper):
+            if entry is None:
+                continue
+            signal, search = entry
+            if search.strategy == "BETWEEN":
+                condition = _condition_for(
+                    search, {"from": signal.values[0], "to": signal.values[0]}
+                )
+            else:
+                condition = _condition_for(search, signal.values[0])
+            planned.append(_date_planned(entry, condition))
+    return planned
 
-    unsupported = unsupported_signals(intent)
-    if unsupported:
-        logger.warning(
-            "order_search_unsupported_intent_signals",
-            extra={"fields": unsupported, "search_mode": intent.searchMode},
-        )
 
-    return plans
+def _date_planned(
+    entry: tuple[SignalValues, ResolvedSearch], condition: QueryCondition
+) -> PlannedSearch:
+    signal, search = entry
+    return PlannedSearch(
+        plan=LogicalQueryPlan(
+            operation=QueryOperation.SEARCH,
+            start_entity_id=search.entity_id,
+            fields=search.result_fields,
+            filters=(condition,),
+            limit=search.limit,
+        ),
+        search=search,
+        intent_key=signal.field.intent_key,
+    )
 
 
 def _digits_of(value: str) -> str:
     return re.sub(r"[^0-9]+", "", value)
-
-
-def _phone_attempts(raw: str, digits: str) -> tuple[tuple[str, str], ...]:
-    """The forms of a phone number worth asking the graph for.
-
-    The raw value exactly, in case it is stored formatted the way the associate
-    read it out, and the digits as a CONTAINS so a stored form with different
-    punctuation -- or a country code nobody mentioned -- still matches. Deduped,
-    because a number typed plainly would otherwise be searched twice.
-    """
-    attempts: list[tuple[str, str]] = [(raw, "EXACT")]
-    if digits and digits != raw:
-        attempts.append((digits, "CONTAINS"))
-    return tuple(attempts)
-
-
-def _location_signals(
-    intent: OrderSearchIntent,
-) -> tuple[tuple[str, str, str | None, str], ...]:
-    """Each address signal, paired with the fields that can answer it.
-
-    Returns ``(value, contact_point field, sales_order field, operator)``.
-    `address_line1` has no order-side counterpart -- `sales_order` records the
-    ship-to city, state and postal code but not the street -- so that entry
-    carries ``None`` rather than a field name that would fail the schema guard
-    and take the pass with it.
-    """
-    signals: list[tuple[str, str, str | None, str]] = []
-    for street in dict.fromkeys(intent.streetAddresses):
-        signals.append((street, "address_line1", None, "CONTAINS"))
-    for city in dict.fromkeys(intent.cities):
-        signals.append((city, "city", "ship_to_city", "CONTAINS"))
-    for state in dict.fromkeys(intent.states):
-        signals.append((state, "state", "ship_to_state", "EXACT"))
-    for postal_code in dict.fromkeys(intent.postalCodes):
-        signals.append((postal_code, "postal_code", "ship_to_postal_code", "EXACT"))
-    return tuple(signals)
 
 
 def _name_tokens(value: str) -> tuple[str, ...]:
@@ -563,21 +477,26 @@ def _edit_distance_for(token: str, policy: CustomerFulltextPolicy) -> int:
     return 0
 
 
-def build_customer_name_query(names: tuple[str, ...], policy: CustomerFulltextPolicy) -> str:
-    """The Lucene query for one or more searched customer names.
+def build_fulltext_query(values: tuple[str, ...], policy: CustomerFulltextPolicy) -> str:
+    """The Lucene query for one or more searched values of one signal.
 
     Each token becomes a prefix term OR'd with a fuzzy term: the prefix carries
     the abbreviation an associate types ("Smi" for Smith), the fuzzy term
-    carries the misspelling ("Jhon" for John). Tokens within one name are
+    carries the misspelling ("Jhon" for John). Tokens within one value are
     AND'ed -- every word the associate gave has to be accounted for, or a
-    surname alone would drag in every customer sharing it -- and separate names
+    surname alone would drag in every customer sharing it -- and separate values
     are OR'ed, because they are alternatives rather than a compound.
+
+    Written for customer names and correct for any short free-text identifier a
+    full-text index covers, which is why it takes values rather than names: the
+    product description index created by the same migration is reachable by
+    configuring a `FULLTEXT` search against it, with no code here to change.
 
     Returns ``""`` when nothing searchable survives tokenization; callers treat
     that as "no query to ask" rather than as a query matching everything.
     """
     alternatives: list[str] = []
-    for name in dict.fromkeys(names):
+    for name in dict.fromkeys(values):
         clauses: list[str] = []
         for token in _name_tokens(name):
             edits = _edit_distance_for(token, policy)
@@ -589,37 +508,6 @@ def build_customer_name_query(names: tuple[str, ...], policy: CustomerFulltextPo
     if len(alternatives) == 1:
         return alternatives[0]
     return " OR ".join(f"({alternative})" for alternative in alternatives)
-
-
-def build_customer_fulltext_plan(
-    names: tuple[str, ...], policy: CustomerFulltextPolicy
-) -> LogicalQueryPlan | None:
-    """A ranked, server-side approximate search over every indexed customer.
-
-    ``None`` when the policy disables it or no searchable token survives, so the
-    caller reports "no misspelling recovery available" rather than issuing a
-    query that would match the whole table.
-    """
-    if not policy.enabled:
-        return None
-    query = build_customer_name_query(names, policy)
-    if not query:
-        return None
-    # `account_id`, not `customer_key`. The customer's natural key is
-    # (account_id, customer_id); `customer_key` was a surrogate on the earlier
-    # synthetic schema and does not exist, which made the guard reject this plan
-    # as an unknown result field -- so the misspelling fallback never ran at all.
-    # `candidate_key` identifies a customer row by `customer_id`, so the pair is
-    # what the caller needs to name the branch the match was found in.
-    return LogicalQueryPlan(
-        operation=QueryOperation.FULLTEXT_SEARCH,
-        start_entity_id=_CUSTOMER_ENTITY,
-        fields=("account_id", "customer_id", _CUSTOMER_NAME_FIELD),
-        fulltext_index=policy.index_name,
-        fulltext_field_id=_CUSTOMER_NAME_FIELD,
-        fulltext_query=query,
-        limit=max(1, min(policy.candidate_limit, MAX_CACHED_CANDIDATES)),
-    )
 
 
 def narrow_fulltext_matches(
@@ -661,32 +549,6 @@ def narrow_fulltext_matches(
     return [(row, score) for row, score in scored if score >= floor]
 
 
-def _date_condition(intent: OrderSearchIntent) -> QueryCondition | None:
-    if intent.dateFrom and intent.dateTo:
-        value: Any = {"from": intent.dateFrom, "to": intent.dateTo}
-        operator = "BETWEEN"
-    elif intent.dateFrom:
-        value = intent.dateFrom
-        operator = "GTE"
-    elif intent.dateTo:
-        value = intent.dateTo
-        operator = "LTE"
-    elif intent.approximateDate:
-        # Treat an approximate date as a same-day window. This assumes
-        # delivered_at is stored at day granularity; if the source ever
-        # carries a time component this window will need widening.
-        value = {"from": intent.approximateDate, "to": intent.approximateDate}
-        operator = "BETWEEN"
-    else:
-        return None
-    return QueryCondition(
-        entity_id=_DATE_FIELD_ENTITY,
-        field_id=_DATE_FIELD_ID,
-        operator=operator,
-        value=value,
-    )
-
-
 def candidate_key(row: dict[str, Any]) -> str:
     """The stable identity a candidate row is deduplicated and referenced by --
     shared between `rank_search_results` and any fallback path (e.g. fuzzy
@@ -705,121 +567,53 @@ def candidate_key(row: dict[str, Any]) -> str:
 def rank_search_results(
     intent: OrderSearchIntent,
     raw_results: list[dict[str, Any]],
+    *,
+    program: SearchProgram,
 ) -> dict[str, Any]:
-    """Score and merge rows returned by the plans from ``build_progressive_plans``.
+    """Score and merge rows returned by a ``SearchProgram``.
 
     Each entry in ``raw_results`` is a ``Neo4jKnowledgeGateway.execute`` result,
     shaped as ``{"rows": [...], "count": N}``.
+
+    Scoring reads the catalogue, not a block per field. A row scores a signal's
+    configured weight when it carries a column that signal searched on and the
+    value agrees, plus the configured exact bonus when the agreement is exact
+    rather than partial. That is the same shape the hand-written version had --
+    an exact email at 0.45 outranking a shared city at 0.15 -- with the numbers
+    moved to where an operator can change them and the field names gone.
+
+    The base 0.5 for appearing in any pass at all is kept: a row the graph
+    returned is evidence even when the column that matched is not one of the
+    returned columns.
     """
     candidates: dict[str, dict[str, Any]] = {}
+    searches_by_key: dict[str, list[ResolvedSearch]] = {}
+    for planned in (*program.primary, *program.deferred):
+        searches_by_key.setdefault(planned.intent_key, []).append(planned.search)
 
     for res in raw_results:
         rows = res.get("rows", []) if isinstance(res, dict) else []
-
         for row in rows:
             if not isinstance(row, dict):
                 continue
-
             key = candidate_key(row)
-
             candidate = candidates.setdefault(
                 key, {"candidate_id": key, "data": row, "score": 0.0, "matches": []}
             )
             # A row for the same key may arrive from more than one plan with a
-            # different (possibly narrower) field selection — merge rather
+            # different (possibly narrower) field selection -- merge rather
             # than overwrite so evidence gathered by one plan isn't lost.
             candidate["data"] = {**row, **candidate["data"]}
 
             score = 0.5  # base score for appearing in any matching plan
-            norm_key = normalize_string(str(key))
-
-            for intent_id in intent.orderNumbers + intent.orderIds:
-                if normalize_string(intent_id) == norm_key:
-                    score += 0.5
-                    candidate["matches"].append("order_number_exact")
-
-            if "customer_name" in row:
-                norm_name = normalize_string(row["customer_name"])
-                for intent_name in intent.customerNames:
-                    if normalize_string(intent_name) in norm_name:
-                        score += 0.3
-                        candidate["matches"].append("customer_name_contains")
-
-            if "product_description" in row:
-                norm_description = normalize_string(row["product_description"])
-                for product_name in intent.productNames:
-                    if normalize_string(product_name) in norm_description:
-                        score += 0.2
-                        candidate["matches"].append("product_description_contains")
-
-            if "ordered_quantity" in row:
-                for quantity in intent.quantities:
-                    if row["ordered_quantity"] == quantity:
-                        score += 0.1
-                        candidate["matches"].append("ordered_quantity_exact")
-
-            # The contact anchors, weighted the way the clarification policy
-            # ranks them: an exact email is the strongest customer signal after
-            # an order number, and without a bump here a contact matched on a
-            # ZIP shared by a thousand customers ranked level with one matched
-            # on the address the associate read out.
-            if "email" in row:
-                norm_email = normalize_string(str(row["email"]))
-                for intent_email in intent.emails:
-                    norm_intent = normalize_string(intent_email)
-                    if norm_intent == norm_email:
-                        score += 0.45
-                        candidate["matches"].append("email_exact")
-                    elif norm_intent and norm_intent in norm_email:
-                        score += 0.2
-                        candidate["matches"].append("email_contains")
-
-            for phone_field in ("phone_number", "ship_to_phone"):
-                if phone_field not in row:
-                    continue
-                row_digits = _digits_of(str(row[phone_field]))
-                for intent_phone in intent.phones:
-                    intent_digits = _digits_of(intent_phone)
-                    # Compared as digits on both sides. A stored "2145550142"
-                    # and a spoken "(214) 555-0142" are the same number, and
-                    # scoring them as a miss is how the right customer ends up
-                    # below the wrong one.
-                    if intent_digits and intent_digits == row_digits:
-                        score += 0.4
-                        candidate["matches"].append("phone_exact")
-                    elif intent_digits and row_digits and intent_digits in row_digits:
-                        score += 0.2
-                        candidate["matches"].append("phone_contains")
-
-            # Where the customer is, or where the order went. Weaker on
-            # purpose: a city or a state is shared by many customers, so it
-            # narrows a result set rather than identifying anyone, and it must
-            # not outrank a name or a contact detail.
-            for value, row_fields, weight in (
-                (intent.streetAddresses, ("address_line1",), 0.3),
-                (intent.cities, ("city", "ship_to_city"), 0.15),
-                (intent.states, ("state", "ship_to_state"), 0.05),
-                (intent.postalCodes, ("postal_code", "ship_to_postal_code"), 0.2),
-            ):
-                for row_field in row_fields:
-                    if row_field not in row:
+            for signal in program.parsed.searchable:
+                for search in searches_by_key.get(signal.field.intent_key, ()):
+                    matched = _match_strength(signal, search, row)
+                    if matched is None:
                         continue
-                    norm_row = normalize_string(str(row[row_field]))
-                    for wanted in value:
-                        if normalize_string(wanted) and normalize_string(wanted) in norm_row:
-                            score += weight
-                            candidate["matches"].append(f"{row_field}_match")
-
-            # `order_date`, not `delivered_at`. The schema lost `delivered_at`
-            # when it was rebuilt from the real salesInv documents, so this
-            # branch scored nothing for years of date-window searches: an
-            # associate's "around the 14th" narrowed the plan set and then
-            # contributed no rank at all.
-            if _DATE_FIELD_ID in row and (
-                intent.dateFrom or intent.dateTo or intent.approximateDate
-            ):
-                score += 0.2
-                candidate["matches"].append("order_date_in_range")
+                    score += matched[0]
+                    if matched[1] not in candidate["matches"]:
+                        candidate["matches"].append(matched[1])
 
             candidate["score"] = min(1.0, candidate["score"] + score)
 
@@ -829,5 +623,44 @@ def rank_search_results(
         "intent": intent.model_dump(),
         "candidates": sorted_candidates[:MAX_CACHED_CANDIDATES],
         "total_found": len(sorted_candidates),
-        "unsupported_signals": list(unsupported_signals(intent)),
+        "unsupported_signals": list(program.parsed.unusable_signals),
+        "unrecognized_signals": list(program.parsed.unknown_keys),
+        "invalid_signals": list(program.parsed.invalid_signals),
     }
+
+
+def _match_strength(
+    signal: SignalValues, search: ResolvedSearch, row: dict[str, Any]
+) -> tuple[float, str] | None:
+    """What this row is worth for this signal, and what the match is called.
+
+    ``None`` when the row does not carry the column this search asked about, or
+    carries it with a value that does not agree -- which is not the same as a
+    zero score, because a zero would still append a match label claiming the
+    field had matched.
+    """
+    if search.field_id not in row:
+        return None
+    row_value = row.get(search.field_id)
+    if row_value is None:
+        return None
+    weight = signal.field.ranking_weight
+
+    if signal.field.is_date_bound:
+        # A date window cannot be re-checked here: the graph applied the range,
+        # so the row being present *is* the match. Comparing the returned date
+        # to a bound would re-implement the filter and disagree with it at the
+        # edges.
+        return weight, search.label
+
+    normalized_row = normalize_value(row_value, signal.field.normalization)
+    for value in signal.values:
+        shaped = apply_value_form(value, search.value_form)
+        normalized_value = normalize_value(shaped, signal.field.normalization)
+        if not normalized_value:
+            continue
+        if normalized_value == normalized_row:
+            return weight + signal.field.exact_match_bonus, f"{search.field_id}_exact"
+        if normalized_value in normalized_row:
+            return weight, f"{search.field_id}_contains"
+    return None
