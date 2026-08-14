@@ -55,6 +55,7 @@ from return_platform.dynamic_knowledge.order_agent.conversation_repository impor
     AtomicConversationRepository,
 )
 from return_platform.dynamic_knowledge.order_agent.coordinator import DynamicOrderAgentCoordinator
+from return_platform.dynamic_knowledge.order_agent.facts import build_fact_catalogue
 from return_platform.dynamic_knowledge.order_agent.identification import (
     build_identification_catalogue,
 )
@@ -145,9 +146,8 @@ async def build_dynamic_order_agent_runtime(
     # from. Neither path leaves the index name as a code constant, which is the
     # property that matters: `customer_name_search_v2` is created by a migration
     # and can be rebuilt under a new name, and the agent has to follow.
-    resolved_discovery = discovery or (
-        load_return_configuration(settings.return_configuration_path).configuration.discovery
-    )
+    loaded_returns = load_return_configuration(settings.return_configuration_path).configuration
+    resolved_discovery = discovery or loaded_returns.discovery
     progressive = progressive_discovery or resolved_discovery.progressive
 
     coordinator = DynamicOrderAgentCoordinator(
@@ -212,5 +212,9 @@ async def build_dynamic_order_agent_runtime(
             graph.schema,
             default_fulltext_index=progressive.customer_fulltext_index,
         ),
+        # `clarification_policy.fields` already names everything the agent may
+        # ask an associate for. Reused as the fact catalogue rather than
+        # duplicated, so the two cannot drift.
+        facts=build_fact_catalogue(loaded_returns.clarification_policy.fields),
     )
     return coordinator

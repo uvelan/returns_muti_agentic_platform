@@ -76,6 +76,33 @@ class OrderSearchIntent(BaseModel):
         return dict(self.model_extra or {})
 
 
+class ObservedFact(BaseModel):
+    """Something the associate stated, reported by the model as it heard it.
+
+    Carried on every action rather than only on the confirmation, because the
+    facts worth keeping are usually stated in the opening sentence -- "the
+    damaged red pump from order CW273354" establishes a return reason, a
+    condition, a colour, a product and an order before any search has run, and
+    a case to record them on does not exist for several turns yet.
+
+    `source_message_id` is the provenance that makes the fact auditable back to
+    the sentence it came from. `ambiguous` is the model's own hedge: a fact it
+    was unsure of is kept and marked, not discarded, so the agent can raise
+    exactly that one again instead of re-asking everything.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    fact: str = Field(min_length=1, max_length=128)
+    value: Any = None
+    source_message_id: str | None = None
+    #: STATED (someone said it) or DERIVED (computed from other facts). Never
+    #: OBSERVED: that means a source system reported it, and nothing a model
+    #: heard in a conversation qualifies.
+    acquisition: str = Field(default="STATED", pattern=r"^(STATED|DERIVED)$")
+    ambiguous: bool = False
+
+
 class OrderConfirmation(BaseModel):
     """What the associate confirmed they are raising a return against.
 
@@ -133,6 +160,11 @@ class AgentAction(BaseModel):
     search_intent: OrderSearchIntent | None = None
     selected_candidate_id: str | None = None
     order_confirmation: OrderConfirmation | None = None
+    # Facts the model heard in the associate's message this turn. Valid on
+    # any action: the opening sentence usually carries them, and refusing
+    # them until CONFIRM_ORDER is how the return reason came to be asked for
+    # a second time.
+    observed_facts: tuple[ObservedFact, ...] = ()
 
     @model_validator(mode="after")
     def validate_action_payload(self) -> AgentAction:
@@ -228,6 +260,12 @@ class AgentTurnContext(BaseModel):
     # Evidence, not instruction: `clarification_policy.field_selection_owner` is
     # `LLM` and stays that way. The model is given the ranking and picks.
     suggested_discriminators: tuple[dict[str, Any], ...] = ()
+    # What the associate has already told us this conversation, with each
+    # fact's status. A fact listed here as USABLE has been answered and must
+    # not be asked for again; one carrying `askAgainBecause` is the only kind
+    # that may be raised a second time, and it says which of the five reasons
+    # applies. Distinct from `case_facts`, which exists only once a case does.
+    captured_facts: tuple[dict[str, Any], ...] = ()
     conversation_state: dict[str, Any]
     query_evidence: tuple[QueryEvidence, ...] = ()
     schema_details: dict[str, Any] = Field(default_factory=dict)

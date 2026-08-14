@@ -43,6 +43,7 @@ from return_platform.dynamic_knowledge.order_agent.conversation_repository impor
     ConversationScope,
 )
 from return_platform.dynamic_knowledge.order_agent.errors import OrderAgentFailure
+from return_platform.dynamic_knowledge.order_agent.facts import FactCatalogue
 from return_platform.dynamic_knowledge.order_agent.graph import build_order_agent_graph
 from return_platform.dynamic_knowledge.order_agent.graph_nodes import (
     CaseStore,
@@ -105,6 +106,18 @@ class ConversationStore(Protocol):
         conversation_state: dict[str, object],
         scope: ConversationScope,
     ) -> AgentTurnResult: ...
+
+
+def _stored_observed_facts(conversation_state: dict[str, object]) -> tuple[dict[str, Any], ...]:
+    """The facts earlier turns of this conversation captured.
+
+    Defensive about shape because conversation documents outlive releases: a
+    conversation started before this field existed simply has none.
+    """
+    stored = conversation_state.get("observedFacts")
+    if not isinstance(stored, list):
+        return ()
+    return tuple(entry for entry in stored if isinstance(entry, dict))
 
 
 def _scope_of(guard_context: GuardContext) -> ConversationScope:
@@ -267,6 +280,7 @@ class DynamicOrderAgentCoordinator:
         case_workflow_launcher: CaseWorkflowLauncher | None = None,
         customer_fulltext: CustomerFulltextPolicy | None = None,
         identification: IdentificationCatalogue | None = None,
+        facts: FactCatalogue | None = None,
     ) -> None:
         self._schema = schema
         self._conversations = conversation_store
@@ -306,6 +320,7 @@ class DynamicOrderAgentCoordinator:
             case_workflow_launcher=case_workflow_launcher,
             customer_fulltext=customer_fulltext or CustomerFulltextPolicy(),
             identification=identification or IdentificationCatalogue(),
+            facts=facts or FactCatalogue(),
         )
         checkpointer = SystemStoreCheckpointSaver(system_store, envelope_encryptor)
         self._graph = build_order_agent_graph(deps, checkpointer=checkpointer)
@@ -484,6 +499,10 @@ class DynamicOrderAgentCoordinator:
                 cast("dict[str, Any] | None", conversation_state.get("orderSearchCache")),
                 graph_generation_id,
             ),
+            # Carried forward whole. Unlike the search cache these do not belong
+            # to a graph generation -- what the associate said they are
+            # returning does not stop being true because the graph was rebuilt.
+            "observed_facts": _stored_observed_facts(conversation_state),
             "action": None,
             "reasoning_steps_used": 0,
             "queries_used": 0,
@@ -602,6 +621,7 @@ class DynamicOrderAgentCoordinator:
                 conversation_state={
                     **conversation_state,
                     "orderSearchCache": final_state.get("order_search_cache"),
+                    "observedFacts": list(final_state.get("observed_facts", ())),
                     "transcript": _extended_transcript(
                         conversation_state, user_message=request.message, response=None
                     ),
@@ -625,6 +645,7 @@ class DynamicOrderAgentCoordinator:
         new_conversation_state = {
             **conversation_state,
             "orderSearchCache": final_state.get("order_search_cache"),
+            "observedFacts": list(final_state.get("observed_facts", ())),
             "transcript": _extended_transcript(
                 conversation_state, user_message=request.message, response=response
             ),

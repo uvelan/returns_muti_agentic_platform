@@ -141,6 +141,12 @@ class OrderAgentGraphState(TypedDict, total=False):
     requested_schema_entity_ids: tuple[str, ...]
     evidence_refs: tuple[str, ...]
     order_search_cache: dict[str, Any] | None
+    # Facts the associate has stated so far in this conversation, each with
+    # its own provenance and status. Carried across turns on the conversation
+    # document and flushed into the case fact log at confirmation -- a case
+    # does not exist before then, and the facts worth keeping are stated long
+    # before it does.
+    observed_facts: tuple[dict[str, Any], ...]
     # {"question", "answer"} pairs from CLARIFY pauses resumed within this turn.
     # Both halves are conversation text of exactly the same sensitivity as
     # `user_message` (already checkpointed above): a model-generated question and
@@ -204,6 +210,10 @@ ORDER_DISCOVERY_CHECKPOINT_ALLOWLIST: frozenset[str] = frozenset(
         "requested_schema_entity_ids",
         "evidence_refs",
         "order_search_cache",
+        # Safe to checkpoint on the same terms as `action`, which already
+        # carries the search intent: these are model-reported values from the
+        # associate's own message, bounded by the configured fact catalogue.
+        "observed_facts",
         "clarification_exchanges",
         "transcript",
         "action",

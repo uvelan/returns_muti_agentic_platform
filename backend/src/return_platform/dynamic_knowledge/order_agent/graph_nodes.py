@@ -58,6 +58,10 @@ from return_platform.dynamic_knowledge.order_agent.contracts import (
     OrderConfirmation,
 )
 from return_platform.dynamic_knowledge.order_agent.errors import OrderAgentFailure
+from return_platform.dynamic_knowledge.order_agent.facts import (
+    CapturedFact,
+    FactCatalogue,
+)
 from return_platform.dynamic_knowledge.order_agent.identification import IdentificationCatalogue
 from return_platform.dynamic_knowledge.order_agent.planner import rank_discriminators
 from return_platform.dynamic_knowledge.order_agent.search_strategy import (
@@ -165,6 +169,7 @@ class CaseStore(Protocol):
         confirmation: OrderConfirmation,
         configuration_release_id: str,
         graph_generation_id: str,
+        observed_facts: tuple[dict[str, Any], ...] = (),
     ) -> ConfirmedCase: ...
 
 
@@ -251,6 +256,10 @@ class GraphDependencies:
     # That fallback is the defect -- it is what made the configured catalogue
     # unreachable and the hardcoded one authoritative.
     identification: IdentificationCatalogue = field(default_factory=IdentificationCatalogue)
+    # Which facts a conversation may establish, and when one of them is worth
+    # raising a second time. Read from `clarification_policy.fields`, the
+    # configuration that already names everything the agent may ask for.
+    facts: FactCatalogue = field(default_factory=FactCatalogue)
 
 
 async def _rehydrate_evidence(
@@ -299,6 +308,9 @@ async def _build_context(deps: GraphDependencies, state: dict[str, Any]) -> Agen
         # prompt, which is one immutable string per configuration release.
         identification_fields=tuple(deps.identification.describe()),
         suggested_discriminators=_next_discriminators(deps, order_search_cache, evidence),
+        captured_facts=tuple(
+            fact.describe() for fact in deps.facts.refresh(_stored_facts(state), as_of=as_of)
+        ),
         conversation_state=(
             {"orderSearchCache": order_search_cache} if order_search_cache is not None else {}
         ),
@@ -349,6 +361,35 @@ def _next_discriminators(
         result_count=order_search_cache.get("totalFound"),
     )
     return tuple(item.describe() for item in ranked)
+
+
+def _stored_facts(state: dict[str, Any]) -> tuple[CapturedFact, ...]:
+    stored = state.get("observed_facts", ())
+    return tuple(
+        fact
+        for entry in stored
+        if isinstance(entry, dict) and (fact := CapturedFact.from_state(entry)) is not None
+    )
+
+
+def _capture_observed_facts(
+    deps: GraphDependencies, state: dict[str, Any], action: AgentAction
+) -> tuple[tuple[dict[str, Any], ...], tuple[str, ...]]:
+    """Merge this action's stated facts into what the conversation already knew.
+
+    Done on every validated action rather than at confirmation. The facts worth
+    keeping arrive in the associate's opening sentence, several turns before a
+    case exists to record them on, and a capture that waited for the
+    confirmation is a capture that happens after the agent has already re-asked.
+    """
+    as_of, _ = _pinned_grounding(state)
+    merged, unknown = deps.facts.capture(
+        _stored_facts(state),
+        action.observed_facts,
+        turn_id=state["client_turn_id"],
+        as_of=as_of,
+    )
+    return tuple(fact.to_state() for fact in merged), unknown
 
 
 def _pinned_grounding(state: dict[str, Any]) -> tuple[datetime, str]:
@@ -538,9 +579,23 @@ def make_validate_action_node(deps: GraphDependencies) -> Any:
                     "capability_validated": False,
                 }
             raise OrderAgentFailure(exc.code, exc.message, retryable=False) from exc
+        captured, unknown = _capture_observed_facts(deps, state, action)
+        if unknown:
+            # Named, never stored. A fact nobody configured has no label, no
+            # validation and no re-ask rule, and putting one into a case's
+            # permanent record would make it unowned for the rest of its life.
+            logger.warning(
+                "order_agent_unconfigured_observed_facts",
+                extra={
+                    "conversation_id": state["conversation_id"],
+                    "client_turn_id": state["client_turn_id"],
+                    "facts": unknown,
+                },
+            )
         return {
             "capability_validated": True,
             "reasoning_steps_used": state.get("reasoning_steps_used", 0) + 1,
+            "observed_facts": captured,
         }
 
     return validate_action
@@ -1240,6 +1295,11 @@ def make_confirm_order_node(deps: GraphDependencies) -> Any:
             confirmation=confirmation,
             configuration_release_id=state["configuration_release_id"],
             graph_generation_id=state["graph_generation_id"],
+            # Everything the associate stated before there was a case to state it
+            # on. Flushed here because this is the first moment a case exists --
+            # each fact keeps the turn and message it was captured in, not this
+            # one (DISC-04).
+            observed_facts=tuple(state.get("observed_facts", ())),
         )
         # Attempted on every confirmation, including one that resolved to an
         # existing case. A turn that committed the case and then failed to start
