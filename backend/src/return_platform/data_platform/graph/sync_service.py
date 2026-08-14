@@ -11,6 +11,7 @@ labels, or write Cypher; see the source-to-graph alignment plan's Step 8.
 from __future__ import annotations
 
 import hashlib
+import logging
 import uuid
 from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -57,6 +58,7 @@ from return_platform.dynamic_knowledge.lifecycle.orchestrator import (
     GenerationLifecycleOrchestrator,
     adopt_existing_generation,
 )
+from return_platform.dynamic_knowledge.release_migration import MigrationPlan, MigrationStrategy
 from return_platform.dynamic_knowledge.on_demand_sync.contracts import (
     GraphNodeMutation,
     SyncOrigin,
@@ -206,6 +208,8 @@ class GraphSyncRunView(GraphSyncModel):
 
 GRAPH_SYNC_RUNS_COLLECTION = "graph_sync_runs"
 
+_LOGGER = logging.getLogger(__name__)
+
 
 def _now() -> datetime:
     return datetime.now(UTC)
@@ -341,7 +345,7 @@ class _SyncOutcome:
     graph_generation_id: str | None
 
 
-def _is_destructive_rebuild(request: GraphSyncRequest) -> bool:
+def _is_destructive_rebuild(request: GraphSyncRequest, scope: frozenset[str] | None) -> bool:
     """Which requests replace the graph rather than update it in place.
 
     A full scan of every source *is* a rebuild -- it re-derives the whole
@@ -349,8 +353,14 @@ def _is_destructive_rebuild(request: GraphSyncRequest) -> bool:
     resync or an incremental pass updates part of a graph that stays live, and
     forcing those through a full rebuild would make an operator re-reading one
     collection pay for a complete re-projection of every other.
+
+    A *scoped* run is never a rebuild, whatever its mode says. The scope comes
+    from a migration plan classified ADDITIVE or COMPATIBLE, which by
+    construction leaves every existing identity intact -- and a cutover there
+    would rebuild the whole graph from a subset of its sources, dropping
+    everything the scope excluded.
     """
-    return request.mode is GraphSyncScope.FULL and not request.incremental
+    return request.mode is GraphSyncScope.FULL and not request.incremental and scope is None
 
 
 class _ScopedRebuildCoordinator:
@@ -605,7 +615,16 @@ class GraphSyncService:
         actor_id: str,
         seed_version: str | None = None,
         seed_digest: str | None = None,
+        source_asset_ids: frozenset[str] | None = None,
     ) -> GraphSyncRunView:
+        """`source_asset_ids` narrows the run to a subset of what `mode` selects.
+
+        Not on `GraphSyncRequest`, deliberately: the HTTP surface offers an
+        operator whole-source-class modes, and a caller that could name arbitrary
+        sources over the wire would be choosing scope the schema is supposed to
+        derive. The one caller that needs it is `apply_migration_plan`, which
+        gets its scope from a plan rather than from a request.
+        """
         if (seed_version is None) is not (seed_digest is None):
             raise ValueError("Seed version and digest must be supplied together.")
         # Before anything is read or written: a run records the schema version
@@ -647,6 +666,7 @@ class GraphSyncService:
                 seed_digest=seed_digest,
                 source_counts=source_counts,
                 skipped=skipped,
+                scope=source_asset_ids,
             )
 
             completed = _now()
@@ -675,6 +695,59 @@ class GraphSyncService:
             await self._runs.update_one({"_id": run_id}, {"$set": document})
             raise
 
+    async def apply_migration_plan(
+        self, plan: MigrationPlan, *, actor_id: str
+    ) -> GraphSyncRunView | None:
+        """Execute what activating a release committed the graph to.
+
+        `plan_migration` classifies the change; this is the half that acts on the
+        classification, and until it existed the plan was a recorded opinion
+        nobody carried out. The three tiers map onto work that already exists --
+        no new execution path was invented for any of them:
+
+          DESTRUCTIVE -> FULL, non-incremental, which is the generation cutover
+          COMPATIBLE  -> a full re-scan of the affected sources into the serving
+                         generation, correcting values in place
+          ADDITIVE    -> the same scan, filling in what is new
+          NONE        -> nothing, and `None` says so rather than an empty run
+
+        The middle tiers are a *full* scan of a *narrow* set of sources, not an
+        incremental pass: an incremental run resumes from a checkpoint and would
+        skip every record that did not happen to change, which is precisely the
+        set a backfill or a remapping has to reach.
+
+        Returns the run so a caller can report it. Errors propagate: a migration
+        that was recorded as owed and then silently not performed is the failure
+        this method exists to remove.
+        """
+        if plan.strategy in {MigrationStrategy.NO_CHANGE, MigrationStrategy.INCREMENTAL}:
+            # INCREMENTAL only ever appears on a plan recorded before the change
+            # classes existed. Re-deriving a strategy for it here would be
+            # inventing a judgement for a migration that already happened.
+            _LOGGER.info(
+                "graph_migration_plan_no_work",
+                extra={"to_release_id": plan.to_release_id, "strategy": plan.strategy.value},
+            )
+            return None
+
+        if plan.requires_rebuild:
+            return await self.sync(
+                GraphSyncRequest(mode=GraphSyncScope.FULL, applySchema=True), actor_id=actor_id
+            )
+
+        if not plan.affected_source_asset_ids:
+            # A cheap tier with no scope would silently do nothing while
+            # reporting a completed run. The plan is malformed, not the graph.
+            raise ValueError(
+                f"migration plan for release {plan.to_release_id!r} is "
+                f"{plan.strategy.value} but names no affected sources"
+            )
+        return await self.sync(
+            GraphSyncRequest(mode=GraphSyncScope.FULL, applySchema=True),
+            actor_id=actor_id,
+            source_asset_ids=frozenset(plan.affected_source_asset_ids),
+        )
+
     async def _sync_participating_sources(
         self,
         *,
@@ -685,6 +758,7 @@ class GraphSyncService:
         seed_digest: str | None,
         source_counts: dict[str, int],
         skipped: list[str],
+        scope: frozenset[str] | None = None,
     ) -> _SyncOutcome:
         mongo_source_ids = frozenset(
             source_id
@@ -705,6 +779,12 @@ class GraphSyncService:
             participating |= mongo_source_ids
         if request.mode in {GraphSyncScope.FULL, GraphSyncScope.SQLSERVER}:
             participating |= sql_source_ids
+        if scope is not None:
+            # Intersected, never substituted: a plan's scope narrows what the
+            # mode already selected. Letting it *add* a source would let a
+            # migration plan reach a connector class the operator's request
+            # deliberately excluded.
+            participating &= set(scope)
         if not participating:
             # Nothing to sync, so nothing to resolve, adopt or cut over to. A
             # generation id here would name a generation this run never touched.
@@ -789,7 +869,7 @@ class GraphSyncService:
         )
         participating_ids = frozenset(participating)
 
-        if _is_destructive_rebuild(request):
+        if _is_destructive_rebuild(request, scope):
             return await self._rebuild_and_activate(
                 coordinator=coordinator, source_asset_ids=participating_ids
             )

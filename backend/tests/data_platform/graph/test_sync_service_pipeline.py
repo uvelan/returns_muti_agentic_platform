@@ -40,6 +40,11 @@ from return_platform.dynamic_knowledge.graph.validation import (
 )
 from return_platform.dynamic_knowledge.lifecycle.handle import DEFAULT_SNAPSHOT_NAME
 from return_platform.dynamic_knowledge.lifecycle.orchestrator import ActivationError
+from return_platform.dynamic_knowledge.release_migration import (
+    MigrationPlan,
+    MigrationStrategy,
+    SchemaChangeClass,
+)
 from return_platform.dynamic_knowledge.schema import ConnectorType
 from return_platform.dynamic_knowledge.sync.adapters import scan_connector_registry
 
@@ -919,3 +924,144 @@ async def test_the_watermark_is_still_captured_before_any_scan_begins() -> None:
     assert scanned <= set(watermarks_before), (
         "a source was scanned before every participating source's watermark was captured"
     )
+
+
+# --- GRAPH-02: a classified change reaches the execution it earned ------------
+#
+# The classifier had no executor: `plan_migration` recorded a verdict and
+# nothing acted on it. These prove each class lands on a different real path,
+# and -- the part that would be easy to get wrong -- that the two cheap tiers do
+# NOT go through the cutover just because they run in FULL mode.
+
+
+def _plan(strategy: MigrationStrategy, **updates: Any) -> MigrationPlan:
+    return MigrationPlan(
+        from_release_id="release-1",
+        to_release_id="release-2",
+        strategy=strategy,
+        **updates,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_destructive_plan_runs_the_generation_cutover() -> None:
+    tx = FakeTransaction(fence_matched=1)
+    service = _service_with(tx, _mongo_source_db())
+    _without_sqlserver_sources(service)
+    await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, applySchema=False), actor_id="setup"
+    )
+    serving = await service._snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)  # type: ignore[attr-defined]
+    assert serving is not None
+
+    run = await service.apply_migration_plan(
+        _plan(MigrationStrategy.FULL_REBUILD, change_class=SchemaChangeClass.DESTRUCTIVE),
+        actor_id="operator",
+    )
+
+    assert run is not None
+    assert run.graphGenerationId != serving.graph_generation_id, "no cutover happened"
+    after = await service._snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)  # type: ignore[attr-defined]
+    assert after is not None and after.activation_version == serving.activation_version + 1
+
+
+@pytest.mark.asyncio
+async def test_a_compatible_plan_resyncs_only_the_affected_sources_in_place() -> None:
+    """The tier that did not exist. It must correct values inside the generation
+    that is serving -- not cut over, and not touch sources the change never
+    reached."""
+    tx = FakeTransaction(fence_matched=1)
+    service = _service_with(tx, _mongo_source_db())
+    _without_sqlserver_sources(service)
+    await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, applySchema=False), actor_id="setup"
+    )
+    serving = await service._snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)  # type: ignore[attr-defined]
+    assert serving is not None
+
+    run = await service.apply_migration_plan(
+        _plan(
+            MigrationStrategy.AFFECTED_SCOPE_RESYNC,
+            change_class=SchemaChangeClass.COMPATIBLE,
+            affected_source_asset_ids=("customer_outbound",),
+        ),
+        actor_id="operator",
+    )
+
+    assert run is not None
+    assert run.graphGenerationId == serving.graph_generation_id, "a resync must not cut over"
+    after = await service._snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)  # type: ignore[attr-defined]
+    assert after is not None and after.activation_version == serving.activation_version
+    # Only the named source was read.
+    assert set(run.sourceCounts) <= {"customer_outbound"}
+
+
+@pytest.mark.asyncio
+async def test_an_additive_plan_backfills_the_affected_sources() -> None:
+    tx = FakeTransaction(fence_matched=1)
+    service = _service_with(tx, _mongo_source_db())
+    _without_sqlserver_sources(service)
+    await service.sync(
+        GraphSyncRequest(mode=GraphSyncScope.SOURCE_MONGODB, applySchema=False), actor_id="setup"
+    )
+    serving = await service._snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)  # type: ignore[attr-defined]
+    assert serving is not None
+
+    run = await service.apply_migration_plan(
+        _plan(
+            MigrationStrategy.BACKFILL,
+            change_class=SchemaChangeClass.ADDITIVE,
+            affected_source_asset_ids=("customer_outbound",),
+        ),
+        actor_id="operator",
+    )
+
+    assert run is not None
+    assert run.graphGenerationId == serving.graph_generation_id
+    # A backfill is a *full* scan of a narrow scope, never an incremental pass:
+    # the records that need the new property are exactly the ones that did not
+    # change, and a checkpointed run would skip every one of them.
+    assert run.recordScope == "FULL"
+
+
+@pytest.mark.asyncio
+async def test_a_no_change_plan_runs_nothing_at_all() -> None:
+    """An empty run in the ledger would be a migration an operator has to explain."""
+    service = _service_with(FakeTransaction(fence_matched=1), _mongo_source_db())
+
+    assert (
+        await service.apply_migration_plan(
+            _plan(MigrationStrategy.NO_CHANGE, change_class=SchemaChangeClass.NONE), actor_id="op"
+        )
+        is None
+    )
+    assert service._runs.documents == {}  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_a_legacy_incremental_plan_is_not_re_judged() -> None:
+    """INCREMENTAL only appears on plans recorded before the change classes
+    existed. Deriving a strategy for one now would be inventing a judgement for
+    a migration that already happened."""
+    service = _service_with(FakeTransaction(fence_matched=1), _mongo_source_db())
+
+    assert (
+        await service.apply_migration_plan(_plan(MigrationStrategy.INCREMENTAL), actor_id="op")
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_cheap_plan_with_no_scope_is_refused_rather_than_run_empty() -> None:
+    """Scope is what makes the cheap tiers cheap. Without it the run would read
+    nothing, complete green, and report a migration as performed."""
+    service = _service_with(FakeTransaction(fence_matched=1), _mongo_source_db())
+
+    with pytest.raises(ValueError, match="names no affected sources"):
+        await service.apply_migration_plan(
+            _plan(
+                MigrationStrategy.AFFECTED_SCOPE_RESYNC,
+                change_class=SchemaChangeClass.COMPATIBLE,
+            ),
+            actor_id="op",
+        )

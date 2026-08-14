@@ -16,10 +16,22 @@ the full analyzer path -- typed mutation commands, `GraphSchemaShape`,
 is grafted onto the baseline. Nothing already in the descriptor is recompiled,
 so nothing already in it can be silently degraded.
 
-**Strictly additive, and it refuses otherwise.** An id that already exists is an
-error, never an overwrite. Replacing an existing entity is a destructive change
-in D8's classification and needs the migration path W2.3 built; letting it happen
-here, silently, under the word "addition", is how a graph rebuild goes unplanned.
+**Strictly additive, and it routes otherwise.** An id that already exists is an
+error *here*, never an overwrite -- but the error is no longer a dead end. When
+this was written the migration path did not exist, so "this belongs on the
+migration path" meant "this cannot be done". It exists now:
+`dynamic_knowledge.release_migration.plan_migration` classifies a change as
+ADDITIVE, COMPATIBLE or DESTRUCTIVE, and
+`data_platform.graph.sync_service.GraphSyncService.apply_migration_plan` carries
+out the strategy each class earns -- including the generation cutover a
+destructive change needs.
+
+So the refusal below is a statement about *this function's* contract, not about
+the platform's capability: `compile_addition` compiles a fragment and grafts it
+on, and a graft cannot express a replacement. A caller holding a full candidate
+release publishes it and activates it, which plans and performs the migration.
+The message names that route, because an error that does not say what to do
+instead is how a capability that exists goes unused.
 """
 
 from __future__ import annotations
@@ -154,8 +166,10 @@ def _refuse_collisions(baseline: ActiveSchema, fragment: ActiveSchema) -> None:
         if description:
             raise ReleaseCompilationError(
                 f"this addition redefines existing {label}(s) {sorted(description)}; "
-                "replacing one is a destructive change and belongs on the migration path, "
-                "not in an additive compile"
+                "an additive compile grafts a fragment on and cannot express a "
+                "replacement. Publish the full candidate release and activate it: "
+                "plan_migration classifies the change and apply_migration_plan runs "
+                "the strategy it earns, up to a generation cutover"
             )
     for source_id, asset in fragment.sources.items():
         existing = baseline.sources.get(source_id)
