@@ -225,6 +225,61 @@ def main() -> int:
 
         shutil.rmtree(repo, ignore_errors=True)
 
+    # ------------------------------------------------------------------
+    # A source alias is a reference, not a credential -- and the narrowing
+    # that recognises it must not reach any further than source.
+    #
+    # `_LEGACY_FENCING_TOKEN = LEGACY_FENCING_TOKEN` (sync_service.py, from
+    # GRAPH-01) failed the whole scan: 20 characters, 13 distinct, so length
+    # and entropy could not reject it. The four controls below are what keep
+    # the fix from becoming a hole -- the last two are the ones that matter.
+    # ------------------------------------------------------------------
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        repo = new_repo(root)
+
+        (repo / "sync_service.py").write_text(
+            "LEGACY_FENCING_TOKEN = 1\n"
+            "_LEGACY_FENCING_TOKEN = LEGACY_FENCING_TOKEN\n"
+            "_ALIASED_SECRET = constants.SHARED_SECRET\n",
+            encoding="utf-8",
+        )
+        git(repo, "add", "-A")
+        code, out = run_scanner("--repo", str(repo), "--mode", "worktree",
+                                "--no-allowlist")
+        check("a bare-name alias in .py is not a credential", code == 0,
+              f"exit={code} out={out.strip()[:200]}")
+        check("a dotted-name alias in .py is not a credential",
+              "SHARED_SECRET" not in out)
+
+        # A QUOTED literal in source is still caught. This is how the live
+        # provider keys entered history at 52732a5 -- hardcoded in conftest.py.
+        (repo / "sync_service.py").write_text(
+            f'_HARDCODED_TOKEN = "{FAKE_INFRA_CREDENTIAL}"\n', encoding="utf-8"
+        )
+        git(repo, "add", "-A")
+        code, out = run_scanner("--repo", str(repo), "--mode", "worktree",
+                                "--no-allowlist")
+        check("a QUOTED literal in .py is still blocked", code == 1,
+              f"exit={code}")
+        check("the hardcoded literal is NOT printed",
+              FAKE_INFRA_CREDENTIAL not in out)
+
+        # The scope check: an unquoted, identifier-shaped value in a `.env` is
+        # what a real generated password looks like. If the narrowing leaked
+        # out of source files, this is the control that fails.
+        (repo / "sync_service.py").unlink()
+        (repo / "stack.env").write_text(
+            "MONGO_ROOT_PASSWORD=abc123def456ghi789jkl\n", encoding="utf-8"
+        )
+        git(repo, "add", "-A")
+        code, out = run_scanner("--repo", str(repo), "--mode", "worktree",
+                                "--no-allowlist")
+        check("an identifier-shaped .env password is STILL blocked", code == 1,
+              f"exit={code} -- the source narrowing must not reach .env files")
+
+        shutil.rmtree(repo, ignore_errors=True)
+
     print()
     if failures:
         print(f"{len(failures)} FAILED: {', '.join(failures)}")

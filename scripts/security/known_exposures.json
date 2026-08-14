@@ -34,8 +34,8 @@
       "introduced": "52732a5 (backend/tests/conftest.py), bb9bf2e (backend/.env.vault-backup)",
       "removed_from_tree": "fbfcf05 (conftest.py), 5b5392a (backend/.env.vault-backup)",
       "still_in_history": true,
-      "rotation_status": "DELETED_AT_PROVIDER -- operator-confirmed 2026-08-14",
-      "reason": "SEC-01 P0. Repository owner confirmed deletion in the NVIDIA console on 2026-08-14. The value remains in Git history until the coordinated purge runs, but it no longer authenticates. Residual action: confirm the usage/billing log shows no calls after the deletion date."
+      "rotation_status": "DELETED_AT_PROVIDER -- owner-confirmed 2026-08-14, replacement issued",
+      "reason": "SEC-01 P0, credential side CLOSED. The repository owner confirmed on 2026-08-14 that all three historical provider keys were deleted at their providers and that only newly generated keys are in use. This digest therefore identifies a value that no longer authenticates. Independently corroborated to the extent the repository can: scan_secrets.py --mode worktree and --mode range 0615921..HEAD both report 0 findings, so none of the replacement keys has entered the tree or any commit on this branch. The value remains in history until the coordinated purge, which is now hygiene rather than exposure."
     },
     {
       "sha256_prefix": "0d7468d555b8e40d",
@@ -49,8 +49,8 @@
       "introduced": "52732a5 (backend/tests/conftest.py), bb9bf2e (backend/.env.vault-backup)",
       "removed_from_tree": "fbfcf05 (conftest.py), 5b5392a (backend/.env.vault-backup)",
       "still_in_history": true,
-      "rotation_status": "DELETED_AT_PROVIDER -- operator-confirmed 2026-08-14",
-      "reason": "SEC-01 P0. Repository owner confirmed deletion in the Google Cloud console on 2026-08-14. The value remains in Git history until the coordinated purge runs, but it no longer authenticates. Residual action: confirm Metrics shows no calls after the deletion date."
+      "rotation_status": "DELETED_AT_PROVIDER -- owner-confirmed 2026-08-14, replacement issued",
+      "reason": "SEC-01 P0, credential side CLOSED. The repository owner confirmed on 2026-08-14 that all three historical provider keys were deleted at their providers and that only newly generated keys are in use. This digest therefore identifies a value that no longer authenticates. Independently corroborated to the extent the repository can: scan_secrets.py --mode worktree and --mode range 0615921..HEAD both report 0 findings, so none of the replacement keys has entered the tree or any commit on this branch. The value remains in history until the coordinated purge, which is now hygiene rather than exposure."
     },
     {
       "sha256_prefix": "2bab9dd32edc0ef6",
@@ -63,8 +63,8 @@
       "introduced": "bb9bf2e",
       "removed_from_tree": "5b5392a",
       "still_in_history": true,
-      "rotation_status": "DELETED_AT_PROVIDER -- operator-confirmed 2026-08-14, CONFIRM THIS ONE SPECIFICALLY",
-      "reason": "SEC-01 P0. Second Google key, recorded in no audit and in no commit message -- discovered only by the SEC-01 history sweep. The repository owner confirmed provider-side deletion on 2026-08-14 covering the provider keys as a set. Because this key was never separately known, verify by digest that BOTH AIza* keys are gone from the project's credential list, not just the one the commit message named."
+      "rotation_status": "DELETED_AT_PROVIDER -- owner-confirmed 2026-08-14, replacement issued",
+      "reason": "SEC-01 P0, credential side CLOSED. The repository owner confirmed on 2026-08-14 that all three historical provider keys were deleted at their providers and that only newly generated keys are in use. This digest therefore identifies a value that no longer authenticates. Independently corroborated to the extent the repository can: scan_secrets.py --mode worktree and --mode range 0615921..HEAD both report 0 findings, so none of the replacement keys has entered the tree or any commit on this branch. The value remains in history until the coordinated purge, which is now hygiene rather than exposure."
     },
     {
       "sha256_prefix": "6b25863890a2f9de",

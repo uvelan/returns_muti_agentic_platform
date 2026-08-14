@@ -161,6 +161,31 @@ def interesting_path(path: str) -> bool:
     return not any(part in SKIP_DIR_PARTS for part in parts)
 
 
+#: A bare name or dotted attribute path -- `TOKEN`, `module.TOKEN`, `Cls.TOKEN`.
+_PY_REFERENCE = re.compile(rb"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
+
+#: Source files where an unquoted right-hand side is a reference, not a value.
+_SOURCE_SUFFIXES = (".py", ".pyi")
+
+
+def _is_source_reference(location: str, raw: bytes, value: bytes) -> bool:
+    """Whether this assignment is one source name aliasing another.
+
+    Three conditions, all required. The file must be source, because in a
+    `.env` an unquoted identifier-shaped value is a real credential. The value
+    must be unquoted, because a quoted literal in source is a hardcoded secret
+    and is precisely what this scanner exists to catch -- `52732a5` put live
+    provider keys in `conftest.py` exactly that way. And it must be
+    identifier-shaped, because anything else is not a name.
+    """
+    path = location.split("::", 1)[0].lower()
+    if not path.endswith(_SOURCE_SUFFIXES):
+        return False
+    if raw[:1] in (b'"', b"'"):
+        return False
+    return bool(_PY_REFERENCE.match(value))
+
+
 def scan_bytes(data: bytes, location: str) -> list[Finding]:
     findings: list[Finding] = []
     seen: set[tuple[str, bytes]] = set()
@@ -178,8 +203,21 @@ def scan_bytes(data: bytes, location: str) -> list[Finding]:
     for match in ENV_ASSIGNMENT.finditer(data):
         name = match.group(1).decode("ascii", "replace")
         # `.strip()` also removes the trailing `\r` a CRLF file leaves behind.
-        value = match.group(2).strip().strip(b'"').strip(b"'").rstrip(b",").strip()
+        raw = match.group(2).strip()
+        value = raw.strip(b'"').strip(b"'").rstrip(b",").strip()
         if len(value) < 16 or NOT_A_SECRET.match(value):
+            continue
+        # `_LEGACY_FENCING_TOKEN = LEGACY_FENCING_TOKEN` is an alias, not a
+        # credential -- the right-hand side is a name the interpreter resolves,
+        # and it never held a value. Unquoted plus identifier-shaped is what
+        # separates a reference from a literal.
+        #
+        # Scoped to source files on purpose, and the scope is the whole point:
+        # in a `.env`, `MONGO_ROOT_PASSWORD=abc123def456ghi789` is ALSO unquoted
+        # and identifier-shaped, and it is exactly the class of value SEC-01 was
+        # about. Applying this anywhere but source would blind the scanner to
+        # its primary job.
+        if _is_source_reference(location, raw, value):
             continue
         # An empty JSON array/object is the "no key configured" encoding.
         if value in (b"[]", b"{}", b'""', b"''"):
