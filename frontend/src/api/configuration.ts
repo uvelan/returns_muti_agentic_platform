@@ -71,6 +71,68 @@ export type RuntimeSnapshot = Readonly<Record<string, unknown>>;
 
 export type AuditRecord = Readonly<Record<string, unknown>>;
 
+/**
+ * `ACTIVATED != LIVE` -- contract C5, as one answer an operator can act on.
+ *
+ * Promoting a release moves the graph pointer and nothing else. The API
+ * process, the workers and the model the Order Agent calls each adopt on their
+ * own poll, so until every required process class has reported the activated
+ * revision the platform is running two releases at once. `ACTIVATING` is that
+ * window, and it is a normal state rather than a fault.
+ *
+ * Mirrors `configuration/process_adoption.py::ReleaseAdoptionState`. The route
+ * is declared `dict[str, Any]` on the backend, so these types are the contract
+ * this client asserts rather than one the generated schema could give it.
+ */
+export type ReleaseAdoptionStatus = "LIVE" | "ACTIVATING" | "NO_ACTIVE_RELEASE";
+
+export type ProcessAdoptionRecord = {
+  readonly process_class: string;
+  readonly instance_id: string;
+  readonly release_id: string;
+  readonly head_revision: number;
+  readonly adopted_at: string;
+  readonly reported_at: string;
+  readonly source: string;
+};
+
+export type ProcessClassAdoption = {
+  readonly process_class: string;
+  readonly required: boolean;
+  readonly adopted: boolean;
+  /**
+   * `live_instances === 0` is why `adopted` is false for a class nothing is
+   * running. Reported separately from `adopted_instances` so "not deployed" and
+   * "deployed and behind" are two different answers -- they call for opposite
+   * responses, and a single "not adopted" badge collapses them.
+   */
+  readonly live_instances: number;
+  readonly adopted_instances: number;
+  readonly instances: readonly ProcessAdoptionRecord[];
+};
+
+export type ReleaseAdoptionState = {
+  readonly status: ReleaseAdoptionStatus;
+  readonly activated_release_id: string | null;
+  readonly activated_head_revision: number | null;
+  /**
+   * The classes the platform is waiting on, by name. Named rather than counted
+   * because "3 of 5" does not tell an operator which container to look at.
+   */
+  readonly pending_process_classes: readonly string[];
+  readonly process_classes: readonly ProcessClassAdoption[];
+  readonly evaluated_at: string;
+};
+
+/** Which of the two reasons a class has not adopted. They call for opposite acts. */
+export function adoptionGap(
+  adoption: ProcessClassAdoption,
+): "ADOPTED" | "NOT_DEPLOYED" | "BEHIND" | "PARTIAL" {
+  if (adoption.adopted) return "ADOPTED";
+  if (adoption.live_instances === 0) return "NOT_DEPLOYED";
+  return adoption.adopted_instances === 0 ? "BEHIND" : "PARTIAL";
+}
+
 async function unwrap<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await apiClient<T>(path, init);
   if (response.data === undefined || response.data === null) {
@@ -89,6 +151,16 @@ export const configApi = {
   // configuration tab -- one untyped `Record<string, unknown>` reader for it
   // was what made the old tab a JSON viewer instead of a screen.
   audit: () => unwrap<AuditRecord[]>("/api/config/audit"),
+
+  /**
+   * Which processes are actually running the activated release.
+   *
+   * 503s rather than answering when `process_adoption_store` is absent from app
+   * state, which is a real state -- reporting is unavailable, not "everything
+   * has adopted" -- and is why callers must not fall back to an empty state on
+   * failure.
+   */
+  adoption: () => unwrap<ReleaseAdoptionState>("/api/config/adoption"),
 
   /**
    * Move a release along the lifecycle.

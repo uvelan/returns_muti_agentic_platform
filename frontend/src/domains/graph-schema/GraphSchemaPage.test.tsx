@@ -22,6 +22,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type * as GraphSchemaModule from "../../api/graphSchema";
 import { GraphSchemaPage } from "./GraphSchemaPage";
 
 const mocks = vi.hoisted(() => ({
@@ -44,7 +45,11 @@ const mocks = vi.hoisted(() => ({
   can: vi.fn(),
 }));
 
-vi.mock("../../api/graphSchema", () => ({
+// Only the transport is stubbed. `TERMINAL_SESSION_STATUSES` mirrors the
+// backend lifecycle table, and a mocked copy of it would be a second
+// vocabulary to keep in step.
+vi.mock("../../api/graphSchema", async (importOriginal) => ({
+  ...(await importOriginal<typeof GraphSchemaModule>()),
   graphSchemaApi: {
     listAnalyses: mocks.listAnalyses,
     getAnalysis: vi.fn(),

@@ -33,6 +33,13 @@ export type Capability =
   | "config.release.promote"
   | "config.source.read"
   | "config.source.write"
+  /**
+   * Repointing a dataset at different infrastructure. Narrower than
+   * `config.source.write` on purpose: a resync re-reads where the platform
+   * already reads, a rebind decides where it reads production data from at all,
+   * with no approval in between. `capabilities.py` grants it to admins only.
+   */
+  | "config.source.rebind"
   | "graph_schema.draft.read"
   | "graph_schema.draft.write"
   | "graph_schema.generation.activate"

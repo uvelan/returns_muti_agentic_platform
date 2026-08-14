@@ -29,6 +29,7 @@ const ALL_CAPABILITIES = [
   "config.release.promote",
   "config.source.read",
   "config.source.write",
+  "config.source.rebind",
   "graph_schema.draft.read",
   "graph_schema.draft.write",
   "graph_schema.generation.activate",

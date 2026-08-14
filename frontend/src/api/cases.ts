@@ -42,6 +42,16 @@ export type CaseReturnRecord = {
   items: CaseReturnItem[];
 };
 
+/**
+ * One observation about a case, with how it was obtained.
+ *
+ * **This log is the case's audit history.** `/api/config/audit` is
+ * platform-scoped and records promotions and source edits, not case events, so
+ * the only case-scoped trail the backend publishes is this one -- and it is a
+ * good one: append-only, attributed to the agent that wrote it, carrying the
+ * channel it arrived on, whether it was OBSERVED or DERIVED, the source system
+ * and path, and the fact it supersedes when it corrects one.
+ */
 export type CaseFact = {
   factId: string;
   caseId: string;
@@ -50,10 +60,14 @@ export type CaseFact = {
   agentId: string;
   channel: string;
   acquisitionMethod: string;
+  turnId: string | null;
   sourceSystem: string | null;
   sourcePath: string | null;
   observedAt: string;
   recordedAt: string;
+  /** Set when this fact corrects an earlier one, which is never overwritten. */
+  supersedesFactId: string | null;
+  correlationId: string | null;
 };
 
 export type CaseSummary = {
@@ -65,24 +79,120 @@ export type CaseSummary = {
   updatedAt: string;
 };
 
+/**
+ * `operations/models.py::CaseView`.
+ *
+ * The last six fields are what the case was *persisted and projected* under,
+ * and they were omitted here while the only reader was the copilot, which shows
+ * a conversation rather than a record. An operations reader needs them: a case
+ * with no `workflowId` has no durable execution behind it, and a
+ * `graphGenerationId` is the generation an answer about this case was read
+ * from. Naming them beats inferring them from silence.
+ */
+export type CaseView = {
+  caseId: string;
+  tenantId: string;
+  principalId: string;
+  branchId: string | null;
+  status: string;
+  channelAConversationId: string | null;
+  channelBWorkItemId: string | null;
+  confirmedOrderReference: string | null;
+  /** tenant | conversation | order | line-set -- the confirmation idempotency boundary. */
+  confirmationKey: string | null;
+  sessionId: string | null;
+  /** Null means no durable execution was ever started for this case. */
+  workflowId: string | null;
+  configurationReleaseId: string | null;
+  graphGenerationId: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type CaseDetail = {
-  case: {
-    caseId: string;
-    tenantId: string;
-    principalId: string;
-    branchId: string | null;
-    status: string;
-    channelAConversationId: string | null;
-    channelBWorkItemId: string | null;
-    confirmedOrderReference: string | null;
-    createdAt: string;
-    updatedAt: string;
-  };
+  case: CaseView;
   returnRecords: CaseReturnRecord[];
   /** Lines the associate named that no RMA covers yet. Never folded into the first record. */
   unassignedItems: CaseReturnItem[];
   facts: CaseFact[];
 };
+
+/**
+ * The newest fact for each name.
+ *
+ * `facts` is an append-only log -- Bay, Support, Fulfilment and Channel A all
+ * write concurrently -- and the backend's own `latest_case_facts` projection
+ * takes the newest per name. Doing the same here means a corrected bay
+ * recommendation supersedes the first one on screen instead of both being
+ * rendered as though the platform held two opinions.
+ *
+ * Ordered by `recordedAt`, with `observedAt` as the tiebreak: two facts written
+ * in one activity share a millisecond often enough that ties are the norm, and
+ * falling back to array order would make the projection depend on Mongo's
+ * cursor.
+ */
+export function latestFacts(facts: readonly CaseFact[]): ReadonlyMap<string, CaseFact> {
+  const latest = new Map<string, CaseFact>();
+  for (const fact of facts) {
+    const held = latest.get(fact.factName);
+    if (
+      held === undefined
+      || fact.recordedAt > held.recordedAt
+      || (fact.recordedAt === held.recordedAt && fact.observedAt >= held.observedAt)
+    ) {
+      latest.set(fact.factName, fact);
+    }
+  }
+  return latest;
+}
+
+/**
+ * The bay recommendation, as `ReturnCaseWorkflow` records it on the case.
+ *
+ * **Best-effort by declared policy.** A case with no bay is the normal state of
+ * a case whose workflow has not reached placement, or one where placement is
+ * not configured -- `bay_reason` says which. It is not an error and must not be
+ * rendered as one.
+ *
+ * Confidence is stored in millionths because the fact log holds no floats;
+ * `confidence` below is the fraction, or null when nothing computed one. A
+ * constant confidence would violate C2, so an absent one is reported absent
+ * rather than defaulted to something that looks computed.
+ */
+export type BayRecommendation = {
+  readonly warehouseReference: string | null;
+  readonly bayReference: string | null;
+  readonly returnLocation: string | null;
+  readonly confidence: number | null;
+  readonly reason: string | null;
+  readonly evidenceReference: string | null;
+  readonly capacityEvidence: string | null;
+};
+
+function factString(latest: ReadonlyMap<string, CaseFact>, name: string): string | null {
+  const value = latest.get(name)?.value;
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
+export function bayRecommendation(facts: readonly CaseFact[]): BayRecommendation {
+  const latest = latestFacts(facts);
+  const millionths = latest.get("bay_confidence_millionths")?.value;
+  return {
+    warehouseReference: factString(latest, "bay_warehouse_reference"),
+    bayReference: factString(latest, "bay_reference"),
+    returnLocation: factString(latest, "bay_return_location"),
+    confidence: typeof millionths === "number" ? millionths / 1_000_000 : null,
+    reason: factString(latest, "bay_reason"),
+    evidenceReference: factString(latest, "bay_evidence_reference"),
+    capacityEvidence: factString(latest, "bay_capacity_evidence"),
+  };
+}
+
+/** True when the workflow asked for a bay but nothing came back with a location. */
+export function hasBayResult(bay: BayRecommendation): boolean {
+  return bay.bayReference !== null || bay.returnLocation !== null;
+}
 
 export const casesApi = {
   /**

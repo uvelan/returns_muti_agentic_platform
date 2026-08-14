@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { CONFIG_SECTIONS, DOMAINS, DOMAIN_PATHS, isDomainPath, LANDING_PATH } from "./registry";
+import { DOMAIN_SCREENS } from "./domainScreens";
+import {
+  CONFIG_SECTIONS,
+  DOMAINS,
+  DOMAIN_PATHS,
+  domainForPath,
+  isDomainPath,
+  LANDING_PATH,
+  requireDomain,
+  toSlug,
+} from "./registry";
 
 describe("the domain registry", () => {
   it("declares exactly the canonical domains", () => {
@@ -57,8 +67,9 @@ describe("the domain registry", () => {
     // slip, which is what this catches. Two are intended, and both for the same
     // reason: the capability they would want does not exist yet, and gating on
     // an invented one the backend never grants would hide the domain from
-    // everyone. Operations has no backend of its own; Support is a distinct
-    // *role* that has no `support.*` capability to be granted.
+    // everyone. Operations now has two backed sections but still no
+    // `operations.*` capability; Support is a distinct *role* that has no
+    // `support.*` capability to be granted.
     //
     // The third is different and is not a workaround. Data Sources and Source
     // Sync both ask `config.source.read` because both are literally the
@@ -84,9 +95,39 @@ describe("the domain registry", () => {
     ]);
   });
 
-  it("marks a domain without a backend, rather than letting it look finished", () => {
-    const pending = DOMAINS.filter((domain) => domain.status !== undefined);
-    expect(pending.map((domain) => domain.path)).toEqual(["/operations"]);
+  it("marks a domain without a backend, and only one without a backend", () => {
+    // The invariant, not the census. `status` means "no backend surface exists
+    // yet", so it must never sit on a domain that has a screen -- which is what
+    // `DOMAIN_SCREENS` registers. `/operations` carried it until its Cases and
+    // Return sessions sections were both backed; asserting the rule rather than
+    // the list means the next domain to gain a screen fails here if its badge
+    // is left behind.
+    const badged = DOMAINS.filter((domain) => domain.status !== undefined).map((d) => d.path);
+    const built = Object.keys(DOMAIN_SCREENS);
+    expect(badged.filter((path) => built.includes(path))).toEqual([]);
+  });
+
+  it("gives every section a slug that resolves to its own domain's route", () => {
+    // A rail entry that routes nowhere is worse than an absent one. Every
+    // section renders at `/{domain}/{slug}`, which `isDomainPath` must accept
+    // and `domainForPath` must resolve back to the domain that declared it.
+    for (const domain of DOMAINS) {
+      for (const section of domain.sections) {
+        const path = `${domain.path}/${section.slug}`;
+        expect(isDomainPath(path)).toBe(true);
+        expect(domainForPath(path)?.path).toBe(domain.path);
+        expect(section.slug).toBe(toSlug(section.label));
+      }
+    }
+  });
+
+  it("gives Operations its two backed sections", () => {
+    // Cases is first because it is the canonical unit: `useDomainSection` falls
+    // back to `sections[0]`, so this decides what a bare `/operations` shows.
+    expect(requireDomain("/operations").sections.map((section) => section.label)).toEqual([
+      "Cases",
+      "Return sessions",
+    ]);
   });
 
   it("gives every domain a landing-card purpose distinct from its description", () => {
