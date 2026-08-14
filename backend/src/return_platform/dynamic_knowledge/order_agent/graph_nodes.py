@@ -17,6 +17,7 @@ real objects (`decide`, `respond`, `clarify`). See `state.py`'s
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -30,6 +31,7 @@ from langgraph.types import interrupt
 
 from return_platform.dynamic_knowledge.fingerprint import on_demand_request_digest, sha256_digest
 from return_platform.dynamic_knowledge.knowledge.cypher_compiler import (
+    CompiledQuery,
     CypherCompiler,
     QueryCompilationError,
 )
@@ -910,16 +912,49 @@ async def _run_planned_searches(
     compile, execute and count -- which is how the misspelling fallback ended up
     with subtly different error handling from the ordinary passes.
 
+    **Independent plans are executed concurrently (PERF-01).** Progressive search
+    decomposes one intent into several narrow reads -- a name, a ZIP, a date
+    window -- that share no state, write nothing, and run against one pinned
+    graph generation. Issuing them one after another made an associate wait the
+    sum of six round trips for work whose answer is the union.
+
+    Three properties are preserved exactly, because each of them is something a
+    faster version could quietly break:
+
+    * **Which searches run.** Guarding and compiling stay strictly serial and
+      happen first, and a plan the guard rejects still costs no budget -- so the
+      admitted set is the same set, and the same prefix of it, that the serial
+      loop would have executed. Compilation stops as soon as the budget is
+      filled, so even the rejection log is unchanged.
+    * **What order results are in.** Results are collected by plan position and
+      never by completion order. DISC-03 made execution order meaningful -- most
+      discriminating first decides what survives truncation -- and ranking
+      decides what the associate reads first, so "the same set of rows" would
+      not be parity.
+    * **Which failure is raised.** The ordered walk reports the first failing
+      plan in plan order, which is the one the serial loop would have raised on.
+
+    Concurrency is bounded by `max_graph_queries_per_turn`, the budget that was
+    already there. Nothing new bounds it, because nothing new needs to: the
+    budget is the concurrency control, and a semaphore beside it would be a
+    second answer to the same question.
+
     `best_effort` is for searches whose failure must not fail the turn: the
     associate is no worse off than the zero-result search that triggered them.
     It is logged at WARNING rather than swallowed, because a full-text index
     that is missing or offline degrades every misspelled name to "not found",
     and that is an infrastructure fault to fix rather than an honest miss.
     """
-    raw_results: list[Any] = []
-    checksums: list[str] = []
+    capacity = budget - queries_used
+    if capacity <= 0:
+        return [], [], queries_used
+
+    # Serial, and before any IO. Guards and the compiler are pure, so this
+    # settles exactly which searches are admitted without a round trip -- and
+    # keeps the whole guard/reject decision out of the concurrent region.
+    admitted: list[tuple[PlannedSearch, CompiledQuery]] = []
     for item in planned:
-        if queries_used >= budget:
+        if len(admitted) >= capacity:
             break
         plan = item.plan
         try:
@@ -939,24 +974,42 @@ async def _run_planned_searches(
                 },
             )
             continue
-        try:
-            raw_result = await deps.knowledge_gateway.execute(
-                schema=deps.schema,
-                graph_generation_id=state["graph_generation_id"],
-                plan=plan,
-                compiled_cypher=compiled.cypher,
-                parameters=compiled.parameters,
-            )
-        except Exception as exc:
+        admitted.append((item, compiled))
+
+    if not admitted:
+        return [], [], queries_used
+
+    async def _execute(compiled: CompiledQuery, plan: Any) -> Any:
+        return await deps.knowledge_gateway.execute(
+            schema=deps.schema,
+            graph_generation_id=state["graph_generation_id"],
+            plan=plan,
+            compiled_cypher=compiled.cypher,
+            parameters=compiled.parameters,
+        )
+
+    # `return_exceptions=True` so one failing read does not cancel the siblings
+    # mid-flight and leave their sessions to be torn down by cancellation. Every
+    # outcome is then examined in plan order below, which is what makes the
+    # failure this raises the same one the serial loop raised.
+    outcomes = await asyncio.gather(
+        *(_execute(compiled, item.plan) for item, compiled in admitted),
+        return_exceptions=True,
+    )
+
+    raw_results: list[Any] = []
+    checksums: list[str] = []
+    for (item, compiled), outcome in zip(admitted, outcomes, strict=True):
+        if isinstance(outcome, BaseException):
             if best_effort:
                 logger.warning(
                     "order_search_deferred_unavailable",
-                    exc_info=True,
+                    exc_info=outcome,
                     extra={
                         "conversation_id": state["conversation_id"],
                         "client_turn_id": state["client_turn_id"],
                         "intent_key": item.intent_key,
-                        "fulltext_index": plan.fulltext_index,
+                        "fulltext_index": item.plan.fulltext_index,
                     },
                 )
                 queries_used += 1
@@ -965,8 +1018,8 @@ async def _run_planned_searches(
                 "ORDER_AGENT_SEARCH_EXECUTION_FAILED",
                 "The order search could not be completed against the knowledge graph.",
                 retryable=True,
-            ) from exc
-        raw_results.append(raw_result)
+            ) from outcome
+        raw_results.append(outcome)
         checksums.append(compiled.checksum)
         queries_used += 1
     return raw_results, checksums, queries_used
