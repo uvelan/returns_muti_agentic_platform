@@ -754,6 +754,71 @@ def test_an_empty_selection_is_not_a_selection() -> None:
     assert derive_copilot_stage(state) is CopilotStage.ORDER_CONFIRMATION
 
 
+def test_a_verdict_reached_before_anything_was_selected_is_not_arrival() -> None:
+    """The trap a live case fell into on 2026-08-16.
+
+    A turn confirmed the order and closed the exchange in the same breath, so
+    the case was raised with nothing selected and the evaluator ran against it.
+    It correctly reported REQUIRED_FACT_UNKNOWN and failed safe to
+    REVIEW_REQUIRED -- an honest "nobody has told me yet".
+
+    Stage derivation read that as arrival. `APPROVAL_REQUIRED` and
+    `POLICY_EVALUATION` both outrank `ITEM_SELECTION` and `ORDER_CONFIRMATION`,
+    so the Copilot drew the evaluation pane, offered a supervisor an override of
+    a decision nobody had made on the merits, and **could never leave**:
+    `_has_selected_items` ranks below, and the only screen that can create a
+    selection is the item pane that had just become unreachable.
+    """
+    confirmed = ConfirmedOrderProjection(orderReference="SO-1")
+
+    fail_safe = case(
+        confirmedOrder=confirmed,
+        selectedItems=(),
+        status=ReturnCaseStatus.AWAITING_POLICY_REVIEW,
+        policyEvaluation=evaluation(EligibilityDecision.REVIEW_REQUIRED),
+    )
+    assert derive_copilot_stage(fail_safe) is CopilotStage.ORDER_CONFIRMATION
+
+    # And the way out is open: naming a line moves it on, which is the property
+    # the trap removed.
+    selected = fail_safe.model_copy(
+        update={
+            "selectedItems": (
+                SelectedItemProjection(returnItemId="RI-1", orderLineReference="1"),
+            )
+        }
+    )
+    assert derive_copilot_stage(selected) is CopilotStage.APPROVAL_REQUIRED
+
+
+def test_a_projection_that_did_not_load_the_selection_keeps_its_verdict() -> None:
+    """`None` is "not looked", `()` is "looked and found nothing".
+
+    Collapsing the two would demote a genuinely evaluated case to
+    `ORDER_CONFIRMATION` on any partial projection -- a lifecycle regression,
+    and a worse defect than the one above.
+    """
+    state = case(
+        confirmedOrder=ConfirmedOrderProjection(orderReference="SO-1"),
+        selectedItems=None,
+        policyEvaluation=evaluation(EligibilityDecision.APPROVE),
+    )
+    assert derive_copilot_stage(state) is CopilotStage.POLICY_EVALUATION
+
+
+def test_support_holding_a_case_survives_an_empty_selection() -> None:
+    """An open Support work item is an observation, not an inference.
+
+    Gating it on the selection would hide something a person is actually doing.
+    """
+    state = case(
+        confirmedOrder=ConfirmedOrderProjection(orderReference="SO-1"),
+        selectedItems=(),
+        status=ReturnCaseStatus.AWAITING_SUPPORT,
+    )
+    assert derive_copilot_stage(state) is CopilotStage.AWAITING_SUPPORT
+
+
 def test_a_case_with_nothing_on_it_is_discovery() -> None:
     assert derive_copilot_stage(case()) is CopilotStage.DISCOVERY
     assert derive_copilot_stage(case(customer=CustomerProjection(displayName="Ada"))) is (

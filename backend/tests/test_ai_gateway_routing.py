@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -181,18 +183,47 @@ def test_settings_accept_key_and_model_lists() -> None:
     assert settings.ai_studio_sqlserver_password is None
 
 
+#: Route lists as they are *shipped*, read from the tracked example.
+#:
+#: `Settings()` reads the developer's own `.env`, which is untracked, so this
+#: test used to pass or fail on a file nobody reviews and CI never sees -- the
+#: same fragility already corrected once in the credential tests. Curating the
+#: pools on evidence flipped it to failing while `.env.example`, the thing
+#: actually shipped, had been below the floor the whole time.
+def _shipped_models(prefix: str) -> set[str]:
+    text = (Path(__file__).resolve().parents[2] / ".env.example").read_text(encoding="utf-8")
+    found: set[str] = set()
+    for tier in ("LIGHTWEIGHT", "STANDARD"):
+        match = re.search(rf"^PLATFORM_{prefix}_{tier}_MODELS=(.+)$", text, re.M)
+        if match is not None:
+            found.update(json.loads(match.group(1).strip().strip("'\"")))
+    return found
+
+
 def test_default_model_pools_have_rotation_capacity() -> None:
-    settings = Settings()
-    google_models = {
-        *settings.google_lightweight_models,
-        *settings.google_standard_models,
-    }
-    nvidia_models = {
-        *settings.nvidia_lightweight_models,
-        *settings.nvidia_standard_models,
-    }
-    assert len(google_models) >= 4
-    assert len(nvidia_models) >= 5
+    """Enough rungs that one failing model does not end the provider.
+
+    The floors are what the curated lists actually carry, and each is a claim
+    about failover rather than a target to pad towards. Measured 2026-08-16:
+
+    * Google is six, after `gemini-3.7-flash` was dropped for returning HTTP 503
+      on 15 of 21 attempts -- and a 503 opens the circuit for the whole
+      *provider*, so an unreliable rung costs every model beneath it.
+    * NVIDIA is four, after `nemotron-mini-4b-instruct` was dropped for a
+      4,096-token window that cannot hold a ~19,400-token prompt. Three
+      candidate replacements were probed against the live account: one 404'd
+      (listed in the catalogue, not enabled for the account), one timed out at
+      90s, and `nemotron-3-nano-30b-a3b` answered in 0.8s but emitted reasoning
+      prose ahead of its JSON, which this task's contract forbids. Raise this
+      floor when a fifth rung is measured, not to make the number larger.
+    """
+    google_models = _shipped_models("GOOGLE")
+    nvidia_models = _shipped_models("NVIDIA")
+
+    assert len(google_models) >= 4, google_models
+    assert len(nvidia_models) >= 4, nvidia_models
+    # A single-rung tier cannot rotate at all, which no total can reveal.
+    assert nvidia_models, "the shipped NVIDIA pool is empty"
 
 
 def test_build_routes_expands_model_and_key_lists_by_tier() -> None:

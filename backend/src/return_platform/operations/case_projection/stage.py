@@ -146,6 +146,41 @@ def _has_authorized_rma(case: CaseProjectionState, policy: StageDerivationPolicy
     return any(record.returnReference is not None for record in case.records())
 
 
+def _evaluation_has_a_subject(case: CaseProjectionState) -> bool:
+    """Whether there is anything for a policy decision to be *about*.
+
+    **A decision reached before anything was selected is not a decision.** Every
+    stage below presupposes that the associate has named what is coming back:
+    the evaluator scores lines, a supervisor approves lines, and Support
+    verifies a claim about lines. Run with nothing selected, the evaluator
+    correctly reports `REQUIRED_FACT_UNKNOWN` and fails safe to
+    `REVIEW_REQUIRED` -- which is an honest "nobody has told me yet", not a
+    finding against the return.
+
+    Stage derivation used to read that placeholder as arrival. Because
+    `APPROVAL_REQUIRED` and `POLICY_EVALUATION` both outrank `ITEM_SELECTION`
+    and `ORDER_CONFIRMATION` in `STAGE_PRECEDENCE`, an evaluation attached to an
+    empty case moved the Copilot to the evaluation pane and **the case could
+    never leave**: `_has_selected_items` ranks below, and the only screen that
+    can create a selection is the item pane that just became unreachable. An
+    associate was shown "Policy Exception Review Required" with a supervisor
+    override offered, for a return whose lines nobody had been able to name.
+
+    A supervisor override is the sharp end of it. Offering one here invites a
+    human to record an override of a decision that was never made on the merits,
+    against a case whose contents are still unknown.
+
+    **Only positively-known emptiness blocks.** `selectedItems` is
+    `tuple | None`, and the two are not the same claim: `()` is "the platform
+    looked and there is nothing", `None` is "the platform has not looked". A
+    guard that read `None` as nothing selected would demote a genuinely
+    evaluated case to `ORDER_CONFIRMATION` on any partial projection -- a
+    lifecycle regression, and a worse defect than the one being fixed. Unknown
+    therefore keeps the behaviour this function is narrowing.
+    """
+    return case.selectedItems is None or bool(case.selectedItems)
+
+
 def _is_awaiting_support(case: CaseProjectionState, policy: StageDerivationPolicy) -> bool:
     """Support has it: the status says so, a work item is open, or a route sent it there.
 
@@ -153,19 +188,35 @@ def _is_awaiting_support(case: CaseProjectionState, policy: StageDerivationPolic
     on the existing stage. Both are `AWAITING_SUPPORT` with an `awaiting`
     dimension -- no new stage, no UI change -- because Support verifies both and
     an approved case rejoins the ordinary RMA lifecycle.
+
+    Only the route clause is gated on there being something selected. The other
+    two are observations of the world rather than inferences from an evaluation:
+    an open Support work item exists whatever this case's projection holds, and
+    hiding it would lose a real thing somebody is doing.
     """
     del policy
     if case.status is ReturnCaseStatus.AWAITING_SUPPORT:
         return True
     if case.support is not None and case.support.resolvedAt is None:
         return True
-    return case.policyEvaluation is not None and case.policyEvaluation.route is not (
-        PolicyRoute.STANDARD_RETURN
+    return (
+        _evaluation_has_a_subject(case)
+        and case.policyEvaluation is not None
+        and case.policyEvaluation.route is not PolicyRoute.STANDARD_RETURN
     )
 
 
 def _needs_approval(case: CaseProjectionState, policy: StageDerivationPolicy) -> bool:
+    """Both clauses are gated: each is a verdict, and a verdict needs a subject.
+
+    `AWAITING_POLICY_REVIEW` is not exempt because it is a stored status rather
+    than a derived one. It is the status the workflow writes *from* a fail-safe
+    evaluation, so on an empty case it carries exactly the same emptiness -- and
+    it is the clause the observed case actually tripped.
+    """
     del policy
+    if not _evaluation_has_a_subject(case):
+        return False
     if case.status is ReturnCaseStatus.AWAITING_POLICY_REVIEW:
         return True
     return effective_decision(case) is EligibilityDecision.REVIEW_REQUIRED
@@ -173,7 +224,7 @@ def _needs_approval(case: CaseProjectionState, policy: StageDerivationPolicy) ->
 
 def _has_policy_evaluation(case: CaseProjectionState, policy: StageDerivationPolicy) -> bool:
     del policy
-    return case.policyEvaluation is not None
+    return _evaluation_has_a_subject(case) and case.policyEvaluation is not None
 
 
 def _has_return_facts(case: CaseProjectionState, policy: StageDerivationPolicy) -> bool:

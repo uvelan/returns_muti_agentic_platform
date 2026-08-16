@@ -213,37 +213,76 @@ function citedExecutions(turn: AgentTurnResult): ReadonlySet<string> {
 }
 
 /**
- * Order-line rows collapsed to the orders they belong to.
+ * Row-shaped evidence collapsed to the orders it describes.
  *
- * The agent reaches a shortlist of orders by reading their *lines*, so the
- * evidence behind "which one is the return against?" is one row per line --
- * twelve rows for six orders. Offering those directly would put the same order
- * on screen five times, and confirming one line is not what the question asked.
+ * The agent reaches a shortlist by reading orders' *lines*, so the evidence
+ * behind "which one is the return against?" is one row per line -- twelve rows
+ * for six orders. Offering those directly would put the same order on screen
+ * five times, and confirming one line is not what the question asked.
  *
- * Only fields that hold the same value across every line of an order survive
- * the collapse. A line-level field has no order-level answer, so it is dropped
- * rather than resolved to whichever line happened to sort first: the table says
- * less than the evidence, never more.
+ * **Every row across every cited query is grouped once, together.** A turn
+ * routinely asks two different questions about the same orders -- a GROUP_BY
+ * returning `{sales_order_number, count}` to rank them, then a line query
+ * returning descriptions and SKUs for the top few. Collapsing each query's rows
+ * separately and concatenating put every order on screen twice, once per query,
+ * each copy carrying only the other's missing columns as dashes. They are rows
+ * about the same orders, so they are grouped as such.
+ *
+ * A field survives the collapse only where every row carrying it agrees.
+ * **Absence is not disagreement**: the GROUP_BY rows have no `product_description`
+ * and that silence must not veto the line query's, or merging the two would
+ * erase both. A field whose value genuinely differs across an order's lines has
+ * no order-level answer and is dropped rather than resolved to whichever line
+ * sorted first -- the table says less than the evidence, never more.
  */
-function ordersFromLineRows(rows: readonly unknown[]): Record<string, unknown>[] {
+function ordersFromRows(rows: readonly unknown[]): Record<string, unknown>[] {
   const byOrder = new Map<string, Record<string, unknown>[]>();
   for (const row of rows) {
     if (!isRecord(row)) continue;
     const order = row.sales_order_number;
     if (typeof order !== "string" || order === "") continue;
-    const lines = byOrder.get(order);
-    if (lines === undefined) byOrder.set(order, [row]);
-    else lines.push(row);
+    const group = byOrder.get(order);
+    if (group === undefined) byOrder.set(order, [row]);
+    else group.push(row);
   }
 
-  return [...byOrder.values()].map((lines) => {
-    const [first, ...rest] = lines;
-    return Object.fromEntries(
-      Object.entries(first).filter(([field, value]) =>
-        rest.every((line) => Object.is(line[field], value)),
-      ),
-    );
+  const merged = [...byOrder.values()].map((group) => {
+    const fields: Record<string, unknown> = {};
+    const contradicted = new Set<string>();
+    for (const row of group) {
+      for (const [field, value] of Object.entries(row)) {
+        if (contradicted.has(field)) continue;
+        if (!(field in fields)) {
+          fields[field] = value;
+        } else if (!Object.is(fields[field], value)) {
+          contradicted.add(field);
+          delete fields[field];
+        }
+      }
+    }
+    return fields;
   });
+
+  // Then only the fields every order could answer.
+  //
+  // Surviving the per-order collapse is not enough, because an order whose
+  // lines were *paged out* has nothing to contradict it. CF803663 has six
+  // lines and the evidence page carried one, so its line number, description,
+  // SKU and quantity came through the collapse intact and the table presented
+  // line 5's SKU as though it were the order's -- a line-level value asserted
+  // at order level, which is a stronger error than the empty cells it sat
+  // beside. Orders with several lines on the page had those same fields
+  // dropped, so the column existed to hold one accidental value and dashes.
+  //
+  // A field only some orders can answer is not a fact about this set of
+  // orders. Keeping the intersection makes the table rectangular and leaves
+  // the line detail to the pane whose subject is lines.
+  const universal = [...new Set(merged.flatMap((order) => Object.keys(order)))].filter((field) =>
+    merged.every((order) => field in order),
+  );
+  return merged.map((order) =>
+    Object.fromEntries(universal.map((field) => [field, order[field]])),
+  );
 }
 
 function turnCandidates(turn: AgentTurnResult): TurnCandidates | null {
@@ -264,11 +303,16 @@ function turnCandidates(turn: AgentTurnResult): TurnCandidates | null {
     // read line by line is still a set of orders to choose between. Without this
     // the operator had no Select at all once discovery moved past the customer,
     // and had to type the order number the agent had just listed.
-    const orders = spoken.flatMap((evidence) =>
+    //
+    // Every cited query's rows are gathered before grouping, never grouped per
+    // query and concatenated: a turn that ranks orders by line count and then
+    // reads the top few describes one set of orders with two queries.
+    const rows = spoken.flatMap((evidence) =>
       isRecord(evidence.result) && Array.isArray(evidence.result.rows)
-        ? ordersFromLineRows(evidence.result.rows)
+        ? (evidence.result.rows as unknown[])
         : [],
     );
+    const orders = ordersFromRows(rows);
     if (orders.length === 0) return null;
     return { rows: orders, totalFound: orders.length };
   }
