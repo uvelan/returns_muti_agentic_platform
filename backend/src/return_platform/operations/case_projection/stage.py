@@ -71,7 +71,7 @@ from return_platform.operations.case_projection.vocabulary import (
     StageRegressionReason,
     stage_rank,
 )
-from return_platform.policy import EligibilityDecision, PolicyRoute
+from return_platform.policy import EligibilityDecision, PolicyReasonCode, PolicyRoute
 
 __all__ = [
     "DEFAULT_STAGE_DERIVATION_POLICY",
@@ -147,38 +147,32 @@ def _has_authorized_rma(case: CaseProjectionState, policy: StageDerivationPolicy
 
 
 def _evaluation_has_a_subject(case: CaseProjectionState) -> bool:
-    """Whether there is anything for a policy decision to be *about*.
+    """Whether the evaluator was in a position to decide anything.
 
-    **A decision reached before anything was selected is not a decision.** Every
-    stage below presupposes that the associate has named what is coming back:
-    the evaluator scores lines, a supervisor approves lines, and Support
-    verifies a claim about lines. Run with nothing selected, the evaluator
-    correctly reports `REQUIRED_FACT_UNKNOWN` and fails safe to
-    `REVIEW_REQUIRED` -- which is an honest "nobody has told me yet", not a
-    finding against the return.
+    **The evaluator says so itself.** `REQUIRED_FACT_UNKNOWN` is the reason code
+    it emits when a fact a rule needs is missing, and it fails safe to
+    `REVIEW_REQUIRED` on the strength of it. That is an honest "nobody has told
+    me yet", not a finding against the return -- and an associate whose case is
+    missing a required fact belongs on the pane that captures facts, not the one
+    that displays verdicts.
 
-    Stage derivation used to read that placeholder as arrival. Because
-    `APPROVAL_REQUIRED` and `POLICY_EVALUATION` both outrank `ITEM_SELECTION`
-    and `ORDER_CONFIRMATION` in `STAGE_PRECEDENCE`, an evaluation attached to an
-    empty case moved the Copilot to the evaluation pane and **the case could
-    never leave**: `_has_selected_items` ranks below, and the only screen that
-    can create a selection is the item pane that just became unreachable. An
-    associate was shown "Policy Exception Review Required" with a supervisor
-    override offered, for a return whose lines nobody had been able to name.
+    Read from the evaluation rather than inferred from the case, after an
+    attempt at the latter failed twice. Counting `selectedItems` looked
+    equivalent and is not: `project_selected_items` omits any item an RMA
+    already covers, so the list empties as a case *progresses* and the guard
+    would have demoted genuinely evaluated cases later in the lifecycle. It also
+    could not have worked as written, because that function ends `or None` and
+    `CaseAggregateDocuments.return_items` defaults to `()`, leaving "looked and
+    found nothing" indistinguishable from "never looked" at the source. The unit
+    tests passed only because they built `selectedItems=()` by hand, a value the
+    assembler cannot emit.
 
-    A supervisor override is the sharp end of it. Offering one here invites a
-    human to record an override of a decision that was never made on the merits,
-    against a case whose contents are still unknown.
-
-    **Only positively-known emptiness blocks.** `selectedItems` is
-    `tuple | None`, and the two are not the same claim: `()` is "the platform
-    looked and there is nothing", `None` is "the platform has not looked". A
-    guard that read `None` as nothing selected would demote a genuinely
-    evaluated case to `ORDER_CONFIRMATION` on any partial projection -- a
-    lifecycle regression, and a worse defect than the one being fixed. Unknown
-    therefore keeps the behaviour this function is narrowing.
+    A reason code decays with nothing and is the evaluator's own word.
     """
-    return case.selectedItems is None or bool(case.selectedItems)
+    evaluation = case.policyEvaluation
+    if evaluation is None or evaluation.reasonCodes is None:
+        return True
+    return PolicyReasonCode.REQUIRED_FACT_UNKNOWN not in evaluation.reasonCodes
 
 
 def _is_awaiting_support(case: CaseProjectionState, policy: StageDerivationPolicy) -> bool:

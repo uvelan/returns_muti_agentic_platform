@@ -79,7 +79,7 @@ from return_platform.operations.case_projection import (
 )
 from return_platform.operations.case_projection import contract as contract_module
 from return_platform.operations.case_projection.completion import ROUTE_VERIFICATION_DIMENSIONS
-from return_platform.policy import EligibilityDecision, PolicyRoute
+from return_platform.policy import EligibilityDecision, PolicyReasonCode, PolicyRoute
 
 NOW = datetime(2026, 8, 15, 12, 0, tzinfo=UTC)
 
@@ -126,6 +126,10 @@ def evaluation(
     *,
     route: PolicyRoute = PolicyRoute.STANDARD_RETURN,
     override: PolicyOverrideProjection | None = None,
+    #: Left absent by default so existing cases keep describing an evaluation
+    #: that reached its decision on the facts. `REQUIRED_FACT_UNKNOWN` among
+    #: these is what marks one that could not -- see `_evaluation_has_a_subject`.
+    reasons: tuple[PolicyReasonCode, ...] | None = None,
 ) -> PolicyEvaluationProjection:
     effective = override.overrideDecision if override is not None else decision
     return PolicyEvaluationProjection(
@@ -133,6 +137,7 @@ def evaluation(
         originalDecision=decision,
         effectiveDecision=effective,
         override=override,
+        reasonCodes=reasons,
         policyId="FERGUSON_RETURNS",
         policyVersion="2025.05",
         evaluatedAt=NOW,
@@ -754,13 +759,13 @@ def test_an_empty_selection_is_not_a_selection() -> None:
     assert derive_copilot_stage(state) is CopilotStage.ORDER_CONFIRMATION
 
 
-def test_a_verdict_reached_before_anything_was_selected_is_not_arrival() -> None:
-    """The trap a live case fell into on 2026-08-16.
+def test_an_evaluation_missing_a_required_fact_is_not_arrival() -> None:
+    """The trap a live case fell into on 2026-08-16, twice.
 
     A turn confirmed the order and closed the exchange in the same breath, so
     the case was raised with nothing selected and the evaluator ran against it.
-    It correctly reported REQUIRED_FACT_UNKNOWN and failed safe to
-    REVIEW_REQUIRED -- an honest "nobody has told me yet".
+    It reported REQUIRED_FACT_UNKNOWN and failed safe to REVIEW_REQUIRED -- an
+    honest "nobody has told me yet".
 
     Stage derivation read that as arrival. `APPROVAL_REQUIRED` and
     `POLICY_EVALUATION` both outrank `ITEM_SELECTION` and `ORDER_CONFIRMATION`,
@@ -768,53 +773,61 @@ def test_a_verdict_reached_before_anything_was_selected_is_not_arrival() -> None
     a decision nobody had made on the merits, and **could never leave**:
     `_has_selected_items` ranks below, and the only screen that can create a
     selection is the item pane that had just become unreachable.
-    """
-    confirmed = ConfirmedOrderProjection(orderReference="SO-1")
 
+    The signal is the evaluator's own reason code and deliberately not a count
+    of `selectedItems` -- that list omits every item an RMA already covers, so
+    it empties as a case *progresses*, and gating on it demoted cases that were
+    genuinely evaluated.
+    """
     fail_safe = case(
-        confirmedOrder=confirmed,
-        selectedItems=(),
+        confirmedOrder=ConfirmedOrderProjection(orderReference="SO-1"),
         status=ReturnCaseStatus.AWAITING_POLICY_REVIEW,
-        policyEvaluation=evaluation(EligibilityDecision.REVIEW_REQUIRED),
+        policyEvaluation=evaluation(
+            EligibilityDecision.REVIEW_REQUIRED,
+            reasons=(PolicyReasonCode.REQUIRED_FACT_UNKNOWN,),
+        ),
     )
     assert derive_copilot_stage(fail_safe) is CopilotStage.ORDER_CONFIRMATION
 
-    # And the way out is open: naming a line moves it on, which is the property
-    # the trap removed.
-    selected = fail_safe.model_copy(
-        update={
-            "selectedItems": (
-                SelectedItemProjection(returnItemId="RI-1", orderLineReference="1"),
-            )
-        }
-    )
-    assert derive_copilot_stage(selected) is CopilotStage.APPROVAL_REQUIRED
 
-
-def test_a_projection_that_did_not_load_the_selection_keeps_its_verdict() -> None:
-    """`None` is "not looked", `()` is "looked and found nothing".
-
-    Collapsing the two would demote a genuinely evaluated case to
-    `ORDER_CONFIRMATION` on any partial projection -- a lifecycle regression,
-    and a worse defect than the one above.
-    """
-    state = case(
+def test_an_evaluation_that_decided_is_arrival() -> None:
+    """The guard narrows one case and must leave every other one alone."""
+    decided = case(
         confirmedOrder=ConfirmedOrderProjection(orderReference="SO-1"),
-        selectedItems=None,
         policyEvaluation=evaluation(EligibilityDecision.APPROVE),
     )
-    assert derive_copilot_stage(state) is CopilotStage.POLICY_EVALUATION
+    assert derive_copilot_stage(decided) is CopilotStage.POLICY_EVALUATION
 
 
-def test_support_holding_a_case_survives_an_empty_selection() -> None:
+def test_a_review_on_the_merits_still_reaches_a_supervisor() -> None:
+    """REVIEW_REQUIRED for a stated reason is a finding, not an absence.
+
+    The distinction the guard rests on: an evaluation that weighed the facts and
+    wants a human is exactly what the approval pane is for.
+    """
+    on_the_merits = case(
+        confirmedOrder=ConfirmedOrderProjection(orderReference="SO-1"),
+        selectedItems=(SelectedItemProjection(returnItemId="RI-1", orderLineReference="1"),),
+        policyEvaluation=evaluation(
+            EligibilityDecision.REVIEW_REQUIRED,
+            reasons=(PolicyReasonCode.OUTSIDE_STANDARD_RETURN_WINDOW,),
+        ),
+    )
+    assert derive_copilot_stage(on_the_merits) is CopilotStage.APPROVAL_REQUIRED
+
+
+def test_support_holding_a_case_survives_an_undecided_evaluation() -> None:
     """An open Support work item is an observation, not an inference.
 
-    Gating it on the selection would hide something a person is actually doing.
+    Gating it would hide something a person is actually doing.
     """
     state = case(
         confirmedOrder=ConfirmedOrderProjection(orderReference="SO-1"),
-        selectedItems=(),
         status=ReturnCaseStatus.AWAITING_SUPPORT,
+        policyEvaluation=evaluation(
+            EligibilityDecision.REVIEW_REQUIRED,
+            reasons=(PolicyReasonCode.REQUIRED_FACT_UNKNOWN,),
+        ),
     )
     assert derive_copilot_stage(state) is CopilotStage.AWAITING_SUPPORT
 
