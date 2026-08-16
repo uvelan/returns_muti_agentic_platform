@@ -438,7 +438,10 @@ async def test_both_entities_appear_in_compact_schema_for_the_permitted_agent(
     "this platform cannot answer that".
     """
     compact = await Neo4jKnowledgeGateway.compact_schema(
-        object.__new__(Neo4jKnowledgeGateway), descriptor, "order-discovery-agent"
+        object.__new__(Neo4jKnowledgeGateway),
+        descriptor,
+        "order-discovery-agent",
+        principal_roles=frozenset({"associate"}),
     )
 
     assert "warehouse" in compact["entities"]

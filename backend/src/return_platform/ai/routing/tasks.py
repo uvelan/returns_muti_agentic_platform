@@ -81,8 +81,11 @@ class TaskConfiguration(StrictModel):
     #: it. Raised from 12,000 when Order Discovery's progressive-narrowing and
     #: aggregation rules were written: the prompt they went into had 67
     #: characters of headroom, and the alternative to raising it was dropping
-    #: rules to fit a number no provider enforces.
-    systemPrompt: str = Field(min_length=20, max_length=14_000)
+    #: rules to fit a number no provider enforces. Raised again to 15,000 for
+    #: v16's rule that a turn asking a question may not declare itself complete
+    #: -- the defect it closes had already reached a live case, and the tripwire
+    #: did its job by making the growth a decision rather than a side effect.
+    systemPrompt: str = Field(min_length=20, max_length=15_000)
     fallbackStrategy: FallbackStrategy
     fallbackTemplate: str = Field(min_length=1, max_length=128)
     maximumOutputTokens: int = Field(ge=32, le=8192)
@@ -100,6 +103,43 @@ class TaskConfiguration(StrictModel):
         if len(set(self.allowedInputKeys)) != len(self.allowedInputKeys):
             raise ValueError("allowedInputKeys must be unique")
         return self
+
+
+class ModelContextEntry(StrictModel):
+    """How much a model can actually read, declared rather than discovered.
+
+    `nvidia/nemotron-mini-4b-instruct` answered every `ORDER_AGENT_REASONING_V1`
+    call with `HTTP 400 -- maximum context length is 4096 tokens, however you
+    requested 24014`. That is not a transient provider failure and no amount of
+    failover fixes it: the model cannot serve the task, it could never have
+    served the task, and the platform paid a round trip per turn to be told so
+    again. A model's context window is a fact about the model, it is knowable
+    before the first call, and `TaskConfiguration.maximumInputTokens` is the
+    number it has to be compared against.
+
+    Declared in the released configuration rather than compiled in, for the
+    reason `AIPricingCatalog` is: it is vendor fact that changes on the vendor's
+    schedule, and a rate or a window baked into a wheel cannot be corrected
+    without a deploy. `source` is the same provenance discipline -- a window that
+    turns out to be wrong must be traceable to whoever wrote it down.
+
+    **An undeclared model is not refused.** Absence means nobody has measured
+    this model, which is not evidence that it is too small; refusing on silence
+    would take every unlisted model out of service the moment this field was
+    introduced. The stance matches pricing's `UNKNOWN`: the gap is visible and
+    it does not masquerade as a finding.
+    """
+
+    provider: Literal["GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC", "OLLAMA", "SIMULATOR", "MANUAL"]
+    model: str = Field(min_length=1, max_length=128)
+    #: Total tokens the model accepts across prompt and completion. Compared
+    #: against `maximumInputTokens` alone, which is the *input* budget: a task
+    #: whose input ceiling already exceeds the whole window cannot fit, and
+    #: adding `maximumOutputTokens` to the comparison would additionally refuse
+    #: routes that fit but leave little room, which is a tuning judgement and not
+    #: an impossibility.
+    maximumContextTokens: int = Field(ge=256, le=10_000_000)
+    source: str = Field(min_length=1, max_length=512)
 
 
 class AIGatewayConfiguration(StrictModel):
@@ -121,6 +161,31 @@ class AIGatewayConfiguration(StrictModel):
     # price list would be worse than the hardcoded zero it replaces: it would be
     # confidently wrong instead of obviously absent.
     pricing: AIPricingCatalog = AIPricingCatalog()
+    #: Declared model context windows. Empty by default, so a release published
+    #: before this field existed keeps every route it had.
+    modelContexts: tuple[ModelContextEntry, ...] = ()
+
+    def maximum_context_tokens(self, *, provider: str, model: str) -> int | None:
+        """The declared window for this provider/model, or nothing if undeclared."""
+        for entry in self.modelContexts:
+            if entry.provider == provider and entry.model == model:
+                return entry.maximumContextTokens
+        return None
+
+    def context_shortfall(
+        self, *, provider: str, model: str, task: TaskConfiguration
+    ) -> tuple[int, int] | None:
+        """`(window, required)` when this model cannot serve this task, else nothing.
+
+        The one place the comparison is written. `AIRoutePool` calls it twice --
+        once at build time to say so in the log, once per selection to act on it
+        -- and two copies of a rule that decides whether a request is even
+        attempted would be two chances to disagree.
+        """
+        window = self.maximum_context_tokens(provider=provider, model=model)
+        if window is None or window >= task.maximumInputTokens:
+            return None
+        return window, task.maximumInputTokens
 
     @model_validator(mode="after")
     def validate_registry(self) -> AIGatewayConfiguration:
@@ -140,6 +205,9 @@ class AIGatewayConfiguration(StrictModel):
         unknown = set(self.providerLimits) - allowed_providers
         if unknown:
             raise ValueError(f"Unknown provider limit entries: {', '.join(sorted(unknown))}")
+        context_keys = [(entry.provider, entry.model) for entry in self.modelContexts]
+        if len(set(context_keys)) != len(context_keys):
+            raise ValueError("AI model context windows declare the same provider and model twice")
         return self
 
 

@@ -60,6 +60,23 @@ class FactStatus(StrEnum):
     CONFIRMATION_REQUIRED = "CONFIRMATION_REQUIRED"
 
 
+#: The statuses whose value a later statement replaces instead of contradicting.
+#:
+#: Both of these are recorded precisely because the value was *not* an answer:
+#: `INVALID` failed its own validation, and `AMBIGUOUS` matched more than one
+#: thing. Weighing either against the value that later settled the question
+#: would read a refinement as a contradiction -- and the agent narrows by
+#: refinement, so it is the normal path rather than an edge case. An associate
+#: who says "Alvara", is shown five Alvarados and picks ANTONIO ALVARADO has
+#: answered once, not twice; carrying the search term forward as a rival left
+#: the name `CONFLICTING`, which is `REASKABLE`, so the agent asked for it again
+#: immediately after it had been confirmed.
+#:
+#: Two *resolved* values still conflict. Choosing between two things the
+#: associate actually established is not a choice this code gets to make.
+SUPERSEDABLE = frozenset({FactStatus.INVALID, FactStatus.AMBIGUOUS})
+
+
 #: The statuses that make a fact worth raising with the associate again.
 #: Everything else has been answered and must be left alone.
 REASKABLE = frozenset(
@@ -211,6 +228,9 @@ class FactCatalogue:
         restate things. A *different* value is, and it is kept as a conflict
         rather than silently overwritten, because choosing between two things
         the associate said is not a choice this code gets to make.
+
+        The exception is a previous value that was never an answer: see
+        `SUPERSEDABLE`. Those are replaced by whatever settled them.
         """
         merged: dict[str, CapturedFact] = {fact.name: fact for fact in existing}
         unknown: list[str] = []
@@ -226,7 +246,7 @@ class FactCatalogue:
             ambiguous = bool(getattr(statement, "ambiguous", False))
             previous = merged.get(name)
             values: list[Any] = [value]
-            if previous is not None and previous.status != FactStatus.INVALID.value:
+            if previous is not None and FactStatus(previous.status) not in SUPERSEDABLE:
                 values.insert(0, previous.value)
             status = definition.status_for(
                 values, ambiguous=ambiguous, observed_at=as_of, as_of=as_of

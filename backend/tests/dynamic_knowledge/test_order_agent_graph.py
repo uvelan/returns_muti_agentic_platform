@@ -69,8 +69,10 @@ class FakeEvidenceStore:
 
 
 class Knowledge:
-    async def compact_schema(self, schema: ActiveSchema, agent_id: str) -> dict[str, Any]:
-        del agent_id
+    async def compact_schema(
+        self, schema: ActiveSchema, agent_id: str, *, principal_roles: frozenset[str]
+    ) -> dict[str, Any]:
+        del agent_id, principal_roles
         return {"entityIds": list(schema.entities)}
 
     async def schema_details(
@@ -183,7 +185,12 @@ class MiscasedCapabilityThenValidModel:
                 statements=(
                     ResponseStatement(
                         statement_id="s0",
-                        statement_type=StatementType.CLARIFICATION_QUESTION,
+                        # Not a question, and no longer typed as one. This test is
+                        # about capability casing; the statement type was only ever
+                        # chosen because it needs no evidence refs, and
+                        # REASONED_SUGGESTION needs none either. A non-question
+                        # typed as a question now contradicts DISCOVERY_COMPLETE.
+                        statement_type=StatementType.REASONED_SUGGESTION,
                         text="This should never reach the caller.",
                         evidence_refs=(),
                     ),
@@ -206,7 +213,8 @@ class MiscasedCapabilityThenValidModel:
             statements=(
                 ResponseStatement(
                     statement_id="s1",
-                    statement_type=StatementType.CLARIFICATION_QUESTION,
+                    # As above: a statement about the correction, not a question.
+                    statement_type=StatementType.REASONED_SUGGESTION,
                     text="Corrected after capability formatting was fixed.",
                     evidence_refs=(),
                 ),
@@ -429,7 +437,12 @@ class ClarifyThenRespondModel:
                     statements=(
                         ResponseStatement(
                             statement_id="s1",
-                            statement_type=StatementType.CLARIFICATION_QUESTION,
+                            # A statement that the question was answered is not
+                            # itself a question. This test is about resuming the
+                            # thread with the associate's answer; the type is
+                            # incidental, and typing a non-question as a question
+                            # now contradicts DISCOVERY_COMPLETE.
+                            statement_type=StatementType.REASONED_SUGGESTION,
                             text="Answered after the clarification was resolved.",
                             evidence_refs=(),
                         ),

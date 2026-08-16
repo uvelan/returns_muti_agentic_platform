@@ -186,19 +186,61 @@ class OrderConfirmation(BaseModel):
         return f"{tenant_id}|{conversation_id}|{self.order_reference}|{lines}"
 
 
+#: What `validate_action_payload` below actually enforces, written where a model
+#: can read it.
+#:
+#: This requirement is **conditional on another field's value**, and the JSON
+#: Schema dialect these contracts are emitted in cannot say so. Gemini's
+#: `responseSchema` is an OpenAPI 3.0 subset with no `if`/`then` and no
+#: `dependentRequired`; OpenAI's strict structured outputs reject both keywords
+#: too. The only place a conditional requirement survives every provider is a
+#: `description`, which each of them forwards to the model verbatim -- so the
+#: rule is carried as prose attached to the exact field it constrains, and the
+#: top-level `required` list stays the three fields that are unconditionally
+#: required.
+#:
+#: Kept adjacent to `validate_action_payload`, which is the only thing that
+#: enforces it: a change to the requirements table below must be made in both
+#: places, and putting them a dozen lines apart is what makes that obvious.
+_PAYLOAD_CONTRACT = (
+    "Each action type requires its own payload and is rejected without it: "
+    "GRAPH_QUERY needs query_plan; ORDER_SEARCH needs search_intent; GET_SCHEMA "
+    "needs a non-empty schema_entity_ids; CONFIRM_ORDER needs order_confirmation; "
+    "REQUEST_ON_DEMAND_SYNC needs strong_anchor_request and original_query_plan "
+    "together; RESPOND needs response; CLARIFY needs response with a non-empty "
+    "response.requested_input. REPLAN and OUT_OF_SCOPE need no payload."
+)
+
+
 class AgentAction(BaseModel):
     """Only action shape accepted from the reasoning model."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    business_capability: str
-    action_type: ActionType
+    business_capability: str = Field(
+        description=(
+            "One value copied character for character from "
+            "contextJson.compact_schema.capabilities -- lower-case and hyphenated, "
+            "for example order-discovery. Not an action type, not upper case, not "
+            "underscored: any other spelling is rejected, and response."
+            "business_capability must repeat the same value."
+        )
+    )
+    action_type: ActionType = Field(description=_PAYLOAD_CONTRACT)
     decision_summary: str = Field(min_length=1, max_length=500)
     schema_entity_ids: tuple[str, ...] = ()
     query_plan: LogicalQueryPlan | None = None
     strong_anchor_request: StrongAnchorRequest | None = None
     original_query_plan: LogicalQueryPlan | None = None
-    response: StructuredAgentResponse | None = None
+    response: StructuredAgentResponse | None = Field(
+        default=None,
+        description=(
+            "Required for RESPOND and for CLARIFY. On a CLARIFY, "
+            "response.requested_input must carry the question being asked and must "
+            "not be empty or null -- a CLARIFICATION_QUESTION statement on its own "
+            "does not satisfy it, and the action is rejected."
+        ),
+    )
     search_intent: OrderSearchIntent | None = None
     selected_candidate_id: str | None = None
     order_confirmation: OrderConfirmation | None = None

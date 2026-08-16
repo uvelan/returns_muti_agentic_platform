@@ -73,7 +73,7 @@ class GuardContext:
 
 class CapabilityGuard:
     def validate(self, context: GuardContext, capability: str) -> None:
-        if not _roles_allowed(context.principal.roles, context.agent_policy.allowed_roles):
+        if not roles_allowed(context.principal.roles, context.agent_policy.allowed_roles):
             raise GuardRejected(
                 "ORDER_AGENT_OUT_OF_SCOPE",
                 "The authenticated role cannot use this agent.",
@@ -115,7 +115,7 @@ class SchemaQueryGuard:
                 raise GuardRejected(
                     "REJECT_UNSUPPORTED_OPERATOR", "Operator is not enabled for the field."
                 )
-            if not _roles_allowed(context.principal.roles, field.permissions.searchable_by):
+            if not roles_allowed(context.principal.roles, field.permissions.searchable_by):
                 raise GuardRejected(
                     "REJECT_UNAUTHORIZED_FIELD", "The field is not available to this role."
                 )
@@ -139,7 +139,7 @@ class SchemaQueryGuard:
                 raise GuardRejected(
                     "REJECT_INVALID_SCHEMA_REFERENCE", "Field is not search-enabled."
                 )
-            if not _roles_allowed(context.principal.roles, indexed_field.permissions.searchable_by):
+            if not roles_allowed(context.principal.roles, indexed_field.permissions.searchable_by):
                 raise GuardRejected(
                     "REJECT_UNAUTHORIZED_FIELD", "The field is not available to this role."
                 )
@@ -179,7 +179,7 @@ class SchemaQueryGuard:
                 raise GuardRejected(
                     "REJECT_INVALID_SCHEMA_REFERENCE", "Aggregation is not enabled for the field."
                 )
-            if not _roles_allowed(
+            if not roles_allowed(
                 context.principal.roles, selected_field.permissions.displayable_by
             ):
                 raise GuardRejected(
@@ -276,7 +276,7 @@ class StrongAnchorGuard:
                     "REJECT_UNSUPPORTED_OPERATOR", "Anchor operator is not enabled."
                 )
             permitted_roles = field_definition.permissions.on_demand_sync_by
-            if not _roles_allowed(context.principal.roles, permitted_roles):
+            if not roles_allowed(context.principal.roles, permitted_roles):
                 raise GuardRejected(
                     "REJECT_UNAUTHORIZED_FIELD", "Anchor field is not available to this role."
                 )
@@ -396,5 +396,17 @@ def _normalize_anchor_value(operator: str, value: Any) -> Any:
     return value
 
 
-def _roles_allowed(principal_roles: frozenset[str], permitted_roles: frozenset[str]) -> bool:
+def roles_allowed(principal_roles: frozenset[str], permitted_roles: frozenset[str]) -> bool:
+    """Whether this principal holds a role the field or policy admits.
+
+    Public, and imported by `integration/neo4j_gateway.py`, so that the compact
+    schema put in front of the reasoning model can advertise exactly what these
+    guards will accept rather than a superset of it. A second copy of the
+    predicate there would be a second copy of a security decision, and the two
+    would drift the first time `*` stopped meaning what it means today.
+
+    An empty `permitted_roles` denies everyone. That is not an oversight in the
+    callers -- it is what an unset `permissions.searchable_by` means, and 55
+    fields in the active schema rely on it.
+    """
     return "*" in permitted_roles or bool(principal_roles.intersection(permitted_roles))

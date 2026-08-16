@@ -33,7 +33,7 @@ import {
 import { returnHistoryApi } from "../../api/returnHistory";
 import { useCapabilities } from "../../hooks/capabilityContext";
 import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
-import { DomainRail, RailFact, RailNote, RailSection } from "../DomainRail";
+import { DomainRail, RailFact, RailSection } from "../DomainRail";
 
 import { ReturnCopilotShell } from "./panes/ReturnCopilotShell";
 import { ConversationPane, type ChatHistoryEntry } from "./panes/ConversationPane";
@@ -185,13 +185,94 @@ type TurnCandidates = {
   readonly totalFound: number | null;
 };
 
+/**
+ * The evidence this turn's own statements actually stand on.
+ *
+ * **A turn runs more queries than it speaks about.** Narrowing to an order
+ * takes a customer lookup first and an order lookup second, and both land in
+ * `query_evidence`. Taking every candidate-bearing search from the array put
+ * the *scaffolding* search on screen: the agent asked "which of these six
+ * orders?" beside a table still offering the five customers it had used to get
+ * there, each with a Select that would re-confirm a customer already
+ * confirmed.
+ *
+ * Citations are the signal, and they are the agent's own rather than a guess
+ * about entity shapes: a query the turn's statements quote is a query the turn
+ * is talking about. An uncited execution was a step along the way.
+ *
+ * A turn that cites nothing -- a search with no findings to state -- falls back
+ * to the whole array, since suppressing the table there would hide results the
+ * agent did produce.
+ */
+function citedExecutions(turn: AgentTurnResult): ReadonlySet<string> {
+  return new Set(
+    turn.response.statements.flatMap((statement) =>
+      (statement.evidence_refs ?? []).map((reference) => reference.query_execution_id),
+    ),
+  );
+}
+
+/**
+ * Order-line rows collapsed to the orders they belong to.
+ *
+ * The agent reaches a shortlist of orders by reading their *lines*, so the
+ * evidence behind "which one is the return against?" is one row per line --
+ * twelve rows for six orders. Offering those directly would put the same order
+ * on screen five times, and confirming one line is not what the question asked.
+ *
+ * Only fields that hold the same value across every line of an order survive
+ * the collapse. A line-level field has no order-level answer, so it is dropped
+ * rather than resolved to whichever line happened to sort first: the table says
+ * less than the evidence, never more.
+ */
+function ordersFromLineRows(rows: readonly unknown[]): Record<string, unknown>[] {
+  const byOrder = new Map<string, Record<string, unknown>[]>();
+  for (const row of rows) {
+    if (!isRecord(row)) continue;
+    const order = row.sales_order_number;
+    if (typeof order !== "string" || order === "") continue;
+    const lines = byOrder.get(order);
+    if (lines === undefined) byOrder.set(order, [row]);
+    else lines.push(row);
+  }
+
+  return [...byOrder.values()].map((lines) => {
+    const [first, ...rest] = lines;
+    return Object.fromEntries(
+      Object.entries(first).filter(([field, value]) =>
+        rest.every((line) => Object.is(line[field], value)),
+      ),
+    );
+  });
+}
+
 function turnCandidates(turn: AgentTurnResult): TurnCandidates | null {
-  const searches = turn.query_evidence.flatMap((evidence) =>
+  const cited = citedExecutions(turn);
+  const spoken =
+    cited.size === 0
+      ? turn.query_evidence
+      : turn.query_evidence.filter((evidence) => cited.has(evidence.query_execution_id));
+
+  const searches = spoken.flatMap((evidence) =>
     isRecord(evidence.result) && Array.isArray(evidence.result.candidates)
       ? [evidence.result]
       : [],
   );
-  if (searches.length === 0) return null;
+
+  if (searches.length === 0) {
+    // No search envelope among what the turn spoke about, but an order shortlist
+    // read line by line is still a set of orders to choose between. Without this
+    // the operator had no Select at all once discovery moved past the customer,
+    // and had to type the order number the agent had just listed.
+    const orders = spoken.flatMap((evidence) =>
+      isRecord(evidence.result) && Array.isArray(evidence.result.rows)
+        ? ordersFromLineRows(evidence.result.rows)
+        : [],
+    );
+    if (orders.length === 0) return null;
+    return { rows: orders, totalFound: orders.length };
+  }
+
   const totals = searches.flatMap((result) =>
     typeof result.total_found === "number" && Number.isFinite(result.total_found)
       ? [result.total_found]
@@ -709,9 +790,12 @@ export function ReturnCopilotPage() {
           <RailFact label="Stage" value={lifecycle?.stage ?? null} />
           <RailFact label="Case" value={caseId} />
           <RailFact label="Order" value={confirmedOrderReference} />
-          <RailNote>
-            Post-sidebar 40fr / 24fr / 36fr unified 8-mode lifecycle copilot.
-          </RailNote>
+          {/* No note here. What stood in this slot described the *layout* --
+              its column ratios and how many modes the component had -- which is
+              a fact about the source file rather than about the return on
+              screen. An associate reading the rail learns nothing from it, and
+              a rail that spends a line on the grid geometry is a rail telling
+              them how the software is built. */}
         </RailSection>
       </DomainRail>
 
@@ -783,6 +867,22 @@ export function ReturnCopilotPage() {
                   // first step of that narrowing, so say that instead.
                   const confirmation = confirmationFor(chosen);
                   if (confirmation !== null) {
+                    // **The list is spent the moment one of it is chosen.**
+                    // Leaving it up left the agent asking "which of these five
+                    // orders?" beside a table still offering the five
+                    // *customers* it had narrowed two turns ago, each with a
+                    // live Select that would re-confirm a customer already
+                    // confirmed. A stale list reads as an answer to the question
+                    // just asked, which is worse than no list at all.
+                    //
+                    // Cleared here rather than on the turn that follows, because
+                    // only here is a *choice* known. A later turn cannot tell
+                    // "the associate picked one and moved on" from "the
+                    // associate asked a question about the one already matched"
+                    // -- both carry query evidence with rows and no candidates,
+                    // and clearing the second would throw away a live match.
+                    setCandidates([]);
+                    setCandidateTotal(null);
                     submit(confirmation);
                   }
                 }}

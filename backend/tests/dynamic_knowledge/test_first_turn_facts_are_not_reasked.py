@@ -178,6 +178,103 @@ def test_a_conflicting_restatement_is_raised_again(catalogue: FactCatalogue) -> 
     assert reason.describe()["askAgainBecause"] == FactStatus.CONFLICTING.value
 
 
+def test_resolving_an_ambiguous_value_is_not_a_conflict(catalogue: FactCatalogue) -> None:
+    """The narrowing path, which the conflict rule used to make unfinishable.
+
+    An associate says "Alvara", is shown five Alvarados and picks one. That is
+    one answer arriving in two steps, not two answers -- but the ambiguous
+    search term was weighed against the value that settled it, so the name came
+    out `CONFLICTING`, which is `REASKABLE`, so the agent asked for the name
+    again on the turn straight after it was confirmed.
+    """
+    first, _ = _capture(
+        catalogue,
+        (ObservedFact(fact="customer_name", value="Alvara", ambiguous=True),),
+    )
+    assert _by_name(first)["customer_name"].status == FactStatus.AMBIGUOUS.value
+
+    second, _ = _capture(
+        catalogue,
+        (ObservedFact(fact="customer_name", value="ANTONIO ALVARADO", source_message_id="m2"),),
+        existing=first,
+        turn_id="turn-2",
+    )
+    resolved = _by_name(second)["customer_name"]
+
+    assert resolved.value == "ANTONIO ALVARADO"
+    assert resolved.status == FactStatus.USABLE.value
+    assert not resolved.needs_asking_again
+
+
+def test_correcting_an_invalid_value_is_not_a_conflict(
+    clarification_policy: SmartQuestionConfiguration,
+) -> None:
+    """A value that failed validation was never an answer to weigh against."""
+    payload = clarification_policy.model_dump(mode="json")
+    for entry in payload["fields"]:
+        if entry["field"] == "zip_code":
+            entry["validation_pattern"] = "^[0-9]{5}$"
+    catalogue = build_fact_catalogue(SmartQuestionConfiguration.model_validate(payload).fields)
+
+    first, _ = _capture(catalogue, (ObservedFact(fact="zip_code", value="752"),))
+    assert _by_name(first)["zip_code"].status == FactStatus.INVALID.value
+
+    second, _ = _capture(
+        catalogue,
+        (ObservedFact(fact="zip_code", value="75201"),),
+        existing=first,
+        turn_id="turn-2",
+    )
+
+    assert _by_name(second)["zip_code"].status == FactStatus.USABLE.value
+
+
+def test_two_settled_values_still_conflict(catalogue: FactCatalogue) -> None:
+    """Superseding is for values that were never answers, and nothing wider.
+
+    The failure this guards is the easy over-correction: making restatement
+    always win would silently discard the first thing the associate said.
+    """
+    first, _ = _capture(catalogue, OPENING_TURN)
+    second, _ = _capture(
+        catalogue,
+        (ObservedFact(fact="product_colour", value="blue"),),
+        existing=first,
+        turn_id="turn-2",
+    )
+
+    assert _by_name(second)["product_colour"].status == FactStatus.CONFLICTING.value
+    assert _by_name(second)["product_colour"].needs_asking_again
+
+
+@pytest.mark.asyncio
+async def test_a_name_reached_by_narrowing_is_written_to_the_case(
+    catalogue: FactCatalogue,
+) -> None:
+    """The consequence at the far end.
+
+    A fact still owing a question is withheld from the case, and correctly so.
+    But every progressively narrowed customer name owed a question forever, so
+    the name the associate confirmed on screen never reached the case record.
+    """
+    first, _ = _capture(
+        catalogue,
+        (ObservedFact(fact="customer_name", value="Alvara", ambiguous=True),),
+    )
+    resolved, _ = _capture(
+        catalogue,
+        (ObservedFact(fact="customer_name", value="ANTONIO ALVARADO", source_message_id="m2"),),
+        existing=first,
+        turn_id="turn-2",
+    )
+    repository = _RecordingRepository()
+
+    await _confirm(repository, tuple(fact.to_state() for fact in resolved))
+
+    written = {fact["fact_name"]: fact for fact in repository.facts}
+    assert written["customer_name"]["value"] == "ANTONIO ALVARADO"
+
+
 def test_a_fact_the_model_was_unsure_of_is_raised_again(catalogue: FactCatalogue) -> None:
     """Kept and marked rather than discarded, so one question resolves it."""
     captured, _ = _capture(

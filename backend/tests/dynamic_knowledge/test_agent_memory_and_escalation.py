@@ -63,7 +63,11 @@ def test_the_model_can_see_the_anchors_it_must_name(production_schema: ActiveSch
     and no anchors at all, so the action was unemittable however well the prompt
     described it."""
     gateway = Neo4jKnowledgeGateway(None, database="neo4j")  # type: ignore[arg-type]
-    compact = asyncio.run(gateway.compact_schema(production_schema, "order-discovery-agent"))
+    compact = asyncio.run(
+        gateway.compact_schema(
+            production_schema, "order-discovery-agent", principal_roles=frozenset({"associate"})
+        )
+    )
 
     anchors = compact["strongAnchors"]
     assert anchors, "no anchors exposed: the escalation cannot be emitted"
@@ -79,7 +83,11 @@ def test_only_sync_capable_anchors_are_offered(production_schema: ActiveSchema) 
     """An anchor that does not permit on-demand sync is not an option the model
     has, and offering it would produce a guard rejection the model cannot fix."""
     gateway = Neo4jKnowledgeGateway(None, database="neo4j")  # type: ignore[arg-type]
-    compact = asyncio.run(gateway.compact_schema(production_schema, "order-discovery-agent"))
+    compact = asyncio.run(
+        gateway.compact_schema(
+            production_schema, "order-discovery-agent", principal_roles=frozenset({"associate"})
+        )
+    )
     for anchor_id in compact["strongAnchors"]:
         owner = next(
             entity

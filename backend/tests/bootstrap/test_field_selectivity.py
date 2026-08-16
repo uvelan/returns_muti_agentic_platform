@@ -377,7 +377,9 @@ async def _compact(schema: ActiveSchema) -> dict[str, Any]:
     # and constructing a real gateway would demand a live Neo4j connection to
     # test a pure projection.
     gateway = Neo4jKnowledgeGateway.__new__(Neo4jKnowledgeGateway)
-    return await gateway.compact_schema(schema, _agent_of(schema))
+    return await gateway.compact_schema(
+        schema, _agent_of(schema), principal_roles=frozenset({"associate"})
+    )
 
 
 def _with_selectivity(schema: ActiveSchema, selectivity: FieldSelectivity | None) -> ActiveSchema:

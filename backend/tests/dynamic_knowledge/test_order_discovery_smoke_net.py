@@ -169,7 +169,10 @@ class RecordingKnowledge:
         self.plans: list[LogicalQueryPlan] = []
         self.compiled: list[str] = []
 
-    async def compact_schema(self, schema: ActiveSchema, agent_id: str) -> dict[str, Any]:
+    async def compact_schema(
+        self, schema: ActiveSchema, agent_id: str, *, principal_roles: frozenset[str]
+    ) -> dict[str, Any]:
+        del principal_roles
         policy = schema.agent_policies[agent_id]
         return {"entities": sorted(policy.allowed_entity_ids)}
 

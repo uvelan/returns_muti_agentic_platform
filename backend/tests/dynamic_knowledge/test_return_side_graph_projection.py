@@ -324,7 +324,7 @@ async def test_the_compact_schema_describes_the_return_side_to_the_model(
     driver = AsyncGraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "unused"))
     try:
         compact = await Neo4jKnowledgeGateway(driver, database="neo4j").compact_schema(
-            schema, AGENT_ID
+            schema, AGENT_ID, principal_roles=frozenset({"associate"})
         )
     finally:
         await driver.close()

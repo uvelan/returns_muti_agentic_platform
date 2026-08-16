@@ -117,6 +117,7 @@ class AIRoutePool:
         self.configuration = configuration
         self._state = _RuntimeState()
         self._lock = asyncio.Lock()
+        self._report_context_shortfalls()
 
     async def replace_routes(
         self,
@@ -129,6 +130,53 @@ class AIRoutePool:
             self.routes = tuple(routes)
             self.configuration = configuration
             self._state = _RuntimeState()
+        self._report_context_shortfalls()
+
+    def _report_context_shortfalls(self) -> None:
+        """Say at build time which route cannot serve which task, and why.
+
+        A model whose context window is smaller than a task's
+        `maximumInputTokens` cannot serve that task and never could:
+        `nvidia/nemotron-mini-4b-instruct` answered every
+        `ORDER_AGENT_REASONING_V1` call with `HTTP 400 -- maximum context length
+        is 4096 tokens, however you requested 24014`. Nothing in the platform
+        knew that before the call, so the only place it surfaced was one failed
+        provider round trip per turn, indistinguishable in the health view from a
+        model having a bad afternoon.
+
+        Logged here rather than raised. Refusing to *build* the route would be
+        wrong on its face -- a 4k model is perfectly capable of
+        `RETURN_STATUS_SUMMARY_V1`, and the incompatibility is a property of the
+        pair, not of the route -- and refusing to build the *pool* would take a
+        process down over a configuration line an operator can fix. `candidates`
+        enforces the same rule per selection; this exists so the operator learns
+        it at startup and from a release activation, rather than from a metric.
+        """
+        for route in self.routes:
+            for task_id, task in sorted(self.configuration.tasks.items()):
+                if route.provider_name not in task.allowedProviders or route.tier is not task.tier:
+                    continue
+                shortfall = self.configuration.context_shortfall(
+                    provider=route.provider_name, model=route.model, task=task
+                )
+                if shortfall is None:
+                    continue
+                window, required = shortfall
+                logger.warning(
+                    "ai_route_context_window_too_small route_id=%s task=%s window=%d required=%d",
+                    route.route_id,
+                    task_id,
+                    window,
+                    required,
+                    extra={
+                        "route_id": route.route_id,
+                        "provider": route.provider_name,
+                        "model": route.model,
+                        "task_id": task_id,
+                        "maximum_context_tokens": window,
+                        "maximum_input_tokens": required,
+                    },
+                )
 
     @staticmethod
     def _model_key(route: AIRoute) -> str:
@@ -182,6 +230,19 @@ class AIRoutePool:
                     and task_id not in route.allowed_task_keys
                 ):
                     reason = "task not in allowed_task_keys"
+                elif (
+                    shortfall := self.configuration.context_shortfall(
+                        provider=route.provider_name, model=route.model, task=task
+                    )
+                ) is not None:
+                    # Refused before the request rather than after the provider's
+                    # 400. A model that cannot read the prompt is not a route
+                    # having a bad minute, so it must not open a circuit, consume
+                    # an attempt from the retry budget, or record a failure
+                    # against a credential that is working perfectly well.
+                    reason = (
+                        f"model context {shortfall[0]} < task maximumInputTokens {shortfall[1]}"
+                    )
                 elif not self._is_available(route, now):
                     reason = f"not available (configured={route.provider.configured})"
                 logger.debug(

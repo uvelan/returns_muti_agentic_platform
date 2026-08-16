@@ -259,8 +259,10 @@ class ScriptedModel:
 class UnusedKnowledge:
     """These scenarios confirm against a seeded candidate set; nothing queries."""
 
-    async def compact_schema(self, schema: ActiveSchema, agent_id: str) -> dict[str, Any]:
-        del schema, agent_id
+    async def compact_schema(
+        self, schema: ActiveSchema, agent_id: str, *, principal_roles: frozenset[str]
+    ) -> dict[str, Any]:
+        del schema, agent_id, principal_roles
         return {}
 
     async def schema_details(self, *_: Any, **__: Any) -> dict[str, Any]:  # pragma: no cover

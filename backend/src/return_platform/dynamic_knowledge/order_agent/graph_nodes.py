@@ -116,7 +116,9 @@ class ReasoningModelGateway(Protocol):
 
 
 class KnowledgeGateway(Protocol):
-    async def compact_schema(self, schema: ActiveSchema, agent_id: str) -> dict[str, Any]: ...
+    async def compact_schema(
+        self, schema: ActiveSchema, agent_id: str, *, principal_roles: frozenset[str]
+    ) -> dict[str, Any]: ...
     async def schema_details(
         self, schema: ActiveSchema, entity_ids: tuple[str, ...]
     ) -> dict[str, Any]: ...
@@ -272,7 +274,19 @@ async def _rehydrate_evidence(
     return await deps.evidence_store.get_many(evidence_refs)
 
 
-async def _build_context(deps: GraphDependencies, state: dict[str, Any]) -> AgentTurnContext:
+async def _build_context(
+    deps: GraphDependencies,
+    state: dict[str, Any],
+    guard_context: GuardContext,
+) -> AgentTurnContext:
+    """Everything the model is shown this turn.
+
+    `guard_context` is required rather than optional because `compact_schema`
+    needs the principal's roles: what the model may filter on is a per-principal
+    answer (`SchemaQueryGuard` checks `permissions.searchable_by` against exactly
+    these roles), and building the schema view without them is how the context
+    came to advertise 55 fields the guard would refuse.
+    """
     evidence = await _rehydrate_evidence(deps, state.get("evidence_refs", ()))
     requested_ids = state.get("requested_schema_entity_ids", ())
     schema_details = (
@@ -303,7 +317,11 @@ async def _build_context(deps: GraphDependencies, state: dict[str, Any]) -> Agen
         configuration_release_id=state["configuration_release_id"],
         policy_version=state["policy_version"],
         prompt_version=state["prompt_version"],
-        compact_schema=await deps.knowledge_gateway.compact_schema(deps.schema, state["agent_id"]),
+        compact_schema=await deps.knowledge_gateway.compact_schema(
+            deps.schema,
+            state["agent_id"],
+            principal_roles=guard_context.principal.roles,
+        ),
         # Read fresh from the catalogue every turn. This is the line that makes
         # a newly configured identification field usable without a release: the
         # model learns the key to populate from here, not from the packaged
@@ -533,8 +551,7 @@ def route_after_correctable_node(state: dict[str, Any]) -> str:
 
 def make_decide_node(deps: GraphDependencies) -> Any:
     async def decide(state: dict[str, Any], runtime: Runtime[TurnRuntimeContext]) -> dict[str, Any]:
-        del runtime
-        context = await _build_context(deps, state)
+        context = await _build_context(deps, state, runtime.context.guard_context)
         invocation = await _invoke_decide(deps, context)
         return {
             "action": invocation.action.model_dump(mode="json"),
@@ -568,7 +585,7 @@ def make_validate_action_node(deps: GraphDependencies) -> Any:
                     raise OrderAgentFailure(
                         "ORDER_AGENT_OUT_OF_SCOPE", exc.message, retryable=False
                     ) from exc
-                context = await _build_context(deps, state)
+                context = await _build_context(deps, state, guard_context)
                 invocation = await _invoke_correction(
                     deps, context=context, invalid_action=action, validation_error=exc.message
                 )
@@ -666,6 +683,7 @@ def make_graph_query_node(deps: GraphDependencies) -> Any:
                 return await _correct_or_raise_action(
                     deps,
                     state=state,
+                    guard_context=guard_context,
                     action=action,
                     exc=exc,
                     correction_attempts=correction_attempts,
@@ -679,6 +697,7 @@ def make_graph_query_node(deps: GraphDependencies) -> Any:
             return await _correct_or_raise_action(
                 deps,
                 state=state,
+                guard_context=guard_context,
                 action=action,
                 exc=exc,
                 correction_attempts=correction_attempts,
@@ -713,6 +732,7 @@ async def _correct_or_raise_action(
     deps: GraphDependencies,
     *,
     state: dict[str, Any],
+    guard_context: GuardContext,
     action: AgentAction,
     exc: Exception,
     correction_attempts: int,
@@ -723,7 +743,7 @@ async def _correct_or_raise_action(
     if correction_attempts >= max_correction_attempts:
         code = exc.code if isinstance(exc, GuardRejected) else "ORDER_AGENT_MODEL_OUTPUT_INVALID"
         raise OrderAgentFailure(code, str(exc), retryable=True) from exc
-    context = await _build_context(deps, state)
+    context = await _build_context(deps, state, guard_context)
     invocation = await _invoke_correction(
         deps, context=context, invalid_action=action, validation_error=str(exc)
     )
@@ -1093,7 +1113,7 @@ def make_request_on_demand_sync_node(deps: GraphDependencies) -> Any:
         except GuardRejected as exc:
             if correction_attempts >= policy.max_correction_attempts:
                 raise OrderAgentFailure(exc.code, exc.message, retryable=True) from exc
-            context = await _build_context(deps, state)
+            context = await _build_context(deps, state, guard_context)
             invocation = await _invoke_correction(
                 deps, context=context, invalid_action=action, validation_error=exc.message
             )
@@ -1218,7 +1238,7 @@ def make_clarify_node(deps: GraphDependencies) -> Any:
                     "The response could not be validated against the active knowledge graph.",
                     retryable=True,
                 )
-            context = await _build_context(deps, state)
+            context = await _build_context(deps, state, guard_context)
             invocation = await _invoke_response_correction(
                 deps,
                 context=context,
@@ -1334,6 +1354,7 @@ def make_confirm_order_node(deps: GraphDependencies) -> Any:
             return await _correct_or_raise_action(
                 deps,
                 state=state,
+                guard_context=guard_context,
                 action=action,
                 exc=GuardRejected("ORDER_AGENT_INVALID_CANDIDATE_SELECTION", str(error)),
                 correction_attempts=correction_attempts,
@@ -1479,7 +1500,7 @@ def make_respond_node(deps: GraphDependencies) -> Any:
                     "The response could not be validated against the active knowledge graph.",
                     retryable=True,
                 )
-            context = await _build_context(deps, state)
+            context = await _build_context(deps, state, guard_context)
             invocation = await _invoke_response_correction(
                 deps,
                 context=context,

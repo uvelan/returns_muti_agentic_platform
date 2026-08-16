@@ -100,8 +100,10 @@ def _mongo_dsn() -> str:
 
 
 class Knowledge:
-    async def compact_schema(self, schema: ActiveSchema, agent_id: str) -> dict[str, Any]:
-        del agent_id
+    async def compact_schema(
+        self, schema: ActiveSchema, agent_id: str, *, principal_roles: frozenset[str]
+    ) -> dict[str, Any]:
+        del agent_id, principal_roles
         return {"entityIds": list(schema.entities)}
 
     async def schema_details(

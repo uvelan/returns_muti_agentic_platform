@@ -48,7 +48,14 @@ function scalar(value: unknown): string {
  * within an account. It is withheld from display and from anything written into
  * the conversation, not from the client's own reasoning.
  */
-const SUPPRESSED_COLUMNS = new Set(["customer_id"]);
+const SUPPRESSED_COLUMNS = new Set([
+  // The internal ERP customer number is not for the screen.
+  "customer_id",
+  // Extract housekeeping, not a fact about the order. It says when the source
+  // system last rewrote the row -- which tells an associate choosing between
+  // five Alvarados nothing, and reads like an order date beside one.
+  "source_updated_at",
+]);
 
 export function CandidateOrderMode({
   candidates,

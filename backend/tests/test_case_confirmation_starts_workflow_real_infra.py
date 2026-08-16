@@ -232,7 +232,10 @@ class OneOrderKnowledge:
     def __init__(self) -> None:
         self.executions = 0
 
-    async def compact_schema(self, schema: ActiveSchema, agent_id: str) -> dict[str, Any]:
+    async def compact_schema(
+        self, schema: ActiveSchema, agent_id: str, *, principal_roles: frozenset[str]
+    ) -> dict[str, Any]:
+        del principal_roles
         return {"entities": sorted(schema.agent_policies[agent_id].allowed_entity_ids)}
 
     async def schema_details(

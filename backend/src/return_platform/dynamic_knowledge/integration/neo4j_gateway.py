@@ -14,6 +14,7 @@ from return_platform.dynamic_knowledge.knowledge.cypher_compiler import (
     FULLTEXT_PROCEDURE,
     GENERATION_PARAMETER,
 )
+from return_platform.dynamic_knowledge.knowledge.guards import roles_allowed as _roles_allowed
 from return_platform.dynamic_knowledge.schema import ActiveSchema, FieldDefinition
 
 _PROHIBITED = re.compile(
@@ -80,6 +81,44 @@ def _is_permitted_read(normalized: str) -> bool:
     return normalized.startswith("MATCH") and not _PROHIBITED.search(normalized)
 
 
+def _queryability_of(field: FieldDefinition, principal_roles: frozenset[str]) -> dict[str, Any]:
+    """What this principal may actually put in a filter, not what the field can do.
+
+    `SchemaQueryGuard.validate` admits a filter condition only when the field
+    carries `filterable` *or* `searchable` **and** the principal holds a role in
+    `permissions.searchable_by`. This method used to publish the first half and
+    omit the second, so the schema in front of the model advertised 55 fields as
+    `filterable: true` that the guard then refused for every role there is --
+    `permissions.searchable_by` is absent on all 55, and an empty permitted-role
+    set denies everyone. `order_line.account_id` is the one that cost a model a
+    scenario; `sales_order.shipped_at`, `order_line.line_number` and
+    `return_item.item_condition` are on the same list.
+
+    The mismatch is a disclosure defect and it is fixed on the disclosure side.
+    Granting those fields a `searchable_by` would make the advertisement true by
+    widening what the guard permits, which is a security boundary moved to make a
+    model's life easier; publishing the *effective* capability instead makes the
+    advertisement true by narrowing it, and can only ever publish less than
+    before. The predicate is the guard's own, imported rather than restated, so
+    the two cannot drift.
+
+    `operators` goes with them. A list of comparison operators for a field no
+    filter may name is the same false offer one field further down, and nothing
+    else reads it -- `strongAnchors` publishes its own per-anchor operator lists.
+
+    The field itself is still listed, with its description, type, selectivity and
+    display capabilities intact. What is withdrawn is only the claim that it can
+    be queried on, which was never true for this principal.
+    """
+    filterable = field.capabilities.filterable or field.capabilities.searchable
+    permitted = filterable and _roles_allowed(principal_roles, field.permissions.searchable_by)
+    return {
+        "searchable": field.capabilities.searchable and permitted,
+        "filterable": permitted,
+        "operators": sorted(field.capabilities.operators) if permitted else [],
+    }
+
+
 def _selectivity_of(field: FieldDefinition) -> dict[str, Any]:
     """W4.8: what the analyzer measured about how well this field narrows.
 
@@ -131,7 +170,13 @@ class Neo4jKnowledgeGateway:
         self._driver = driver
         self._database = database
 
-    async def compact_schema(self, schema: ActiveSchema, agent_id: str) -> dict[str, Any]:
+    async def compact_schema(
+        self,
+        schema: ActiveSchema,
+        agent_id: str,
+        *,
+        principal_roles: frozenset[str],
+    ) -> dict[str, Any]:
         policy = schema.agent_policies[agent_id]
         return {
             "schemaVersion": schema.schema_version,
@@ -142,11 +187,9 @@ class Neo4jKnowledgeGateway:
                         field_id: {
                             "description": field.description,
                             "type": field.data_type.value,
-                            "searchable": field.capabilities.searchable,
-                            "filterable": field.capabilities.filterable,
+                            **_queryability_of(field, principal_roles),
                             "distinct": field.capabilities.distinct,
                             "aggregatable": field.capabilities.aggregatable,
-                            "operators": sorted(field.capabilities.operators),
                             **_selectivity_of(field),
                         }
                         for field_id, field in schema.entities[entity_id].fields.items()

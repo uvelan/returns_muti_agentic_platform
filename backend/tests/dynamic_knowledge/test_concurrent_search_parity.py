@@ -125,8 +125,10 @@ class _Graph:
         self.in_flight = 0
         self.max_in_flight = 0
 
-    async def compact_schema(self, schema: ActiveSchema, agent_id: str) -> dict[str, Any]:
-        del schema, agent_id
+    async def compact_schema(
+        self, schema: ActiveSchema, agent_id: str, *, principal_roles: frozenset[str]
+    ) -> dict[str, Any]:
+        del schema, agent_id, principal_roles
         return {}
 
     async def schema_details(

@@ -343,6 +343,40 @@ accepted only by the backend validation control plane.
 Details: [`docs/architecture/ai-dispatch.md`](docs/architecture/ai-dispatch.md),
 [`docs/optimization/model-routing.md`](docs/optimization/model-routing.md).
 
+### Which models are listed, and why
+
+The route lists in `.env` are ordered newest-first, but a model earns its place by
+measurement against **this** task — a ~19,400-token reasoning prompt that must come
+back as schema-valid JSON. Measured 2026-08-16 against prompt release
+`order-agent-prompt-v15`, over five discovery scenarios:
+
+| Model | Scenarios | Median latency | Notes |
+| --- | --- | --- | --- |
+| `gemini-3.5-flash-lite` | 4/5 | 3.0s | Best measured, and it is in the *lightweight* tier |
+| `gemini-3.7-flash` | 3/5 | 15.4s | **Not listed** — 503 on 15 of 21 attempts |
+| `nvidia/llama-3.3-nemotron-super-49b-v1.5` | — | — | First standard rung; NVIDIA has the headroom Google lacks |
+
+Two findings worth carrying forward.
+
+**Availability is a listing criterion, not just quality.** `gemini-3.7-flash` is the
+newest model and is deliberately absent. It returned HTTP 503 "high demand" on 15 of
+21 non-429 attempts and spent its entire 20/day allowance in about fifteen minutes,
+because the 503s consume quota too. Demoting it would not have contained the damage:
+a 503 raises `PROVIDER_UNAVAILABLE`, and route selection opens the circuit keyed on
+the **provider**, not the model, so at `failureThreshold: 3` an unreliable rung
+anywhere in the Google list suspends every other Google model with it. Re-measure
+before restoring it.
+
+**Most "model failures" here were ours.** Under v14, `gemini-3.5-flash-lite` failed
+the ambiguous-candidate scenario 0/2; under v15 it passes 3/3, with a clean
+clarification naming all five candidates at the configured cap. The only change was
+v15 disclosing the response contract the platform had always enforced silently. Suspect
+the prompt before the model.
+
+One open defect: `ObservedFact.value` is typed `Any`, which reaches Gemini as an
+unconstrained `"value": {}`. Every Gemini model tested degenerates at exactly that
+position, emitting a repeating string until the output cap truncates the JSON.
+
 ## Graph generations
 
 Generations are **load-bearing**, not a label on one mutable graph.
