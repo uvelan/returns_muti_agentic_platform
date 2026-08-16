@@ -153,7 +153,21 @@ function confirmationFor(chosen: Record<string, unknown>): string | null {
   // here would put conversation content in the client, where no release can
   // change it and no prompt version governs it.
   const order = text(chosen.sales_order_number);
-  if (order !== null) return `Confirm order ${order}.`;
+  if (order !== null) {
+    // A line row names the item as well as the order, and saying only the order
+    // would throw that away: the associate clicked the damaged tap, and the
+    // agent would still have to ask which item it was. The line number is the
+    // part that identifies it -- the description rides along because a line
+    // number alone is not something an associate can check the agent against.
+    const line = text(chosen[LINE_FIELD]);
+    const product = text(chosen.product_description);
+    if (line !== null) {
+      return product !== null
+        ? `Confirm order ${order}, line ${line}: ${product}.`
+        : `Confirm order ${order}, line ${line}.`;
+    }
+    return `Confirm order ${order}.`;
+  }
 
   // `customer_id` is deliberately not read here. By operator instruction
   // (2026-08-15) the internal ERP customer number must not be exposed, and what
@@ -213,27 +227,22 @@ function citedExecutions(turn: AgentTurnResult): ReadonlySet<string> {
 }
 
 /**
- * Row-shaped evidence collapsed to the orders it describes.
+ * The field that marks a row as describing a *line* rather than a whole order.
  *
- * The agent reaches a shortlist by reading orders' *lines*, so the evidence
- * behind "which one is the return against?" is one row per line -- twelve rows
- * for six orders. Offering those directly would put the same order on screen
- * five times, and confirming one line is not what the question asked.
+ * Named here for the same reason `sales_order_number` is: this module already
+ * depends on the order key to group at all, and a line key is the same kind of
+ * dependency. Everything else about a row stays data-driven -- which columns
+ * exist, what they are called, and what they hold all come from the evidence.
+ */
+const LINE_FIELD = "line_number";
+
+/**
+ * Order-level rows collapsed to one row per order.
  *
- * **Every row across every cited query is grouped once, together.** A turn
- * routinely asks two different questions about the same orders -- a GROUP_BY
- * returning `{sales_order_number, count}` to rank them, then a line query
- * returning descriptions and SKUs for the top few. Collapsing each query's rows
- * separately and concatenating put every order on screen twice, once per query,
- * each copy carrying only the other's missing columns as dashes. They are rows
- * about the same orders, so they are grouped as such.
- *
- * A field survives the collapse only where every row carrying it agrees.
- * **Absence is not disagreement**: the GROUP_BY rows have no `product_description`
- * and that silence must not veto the line query's, or merging the two would
- * erase both. A field whose value genuinely differs across an order's lines has
- * no order-level answer and is dropped rather than resolved to whichever line
- * sorted first -- the table says less than the evidence, never more.
+ * Used only when the turn produced **no** line rows -- a GROUP_BY that ranked
+ * orders by line count and nothing else. A field survives only where every row
+ * carrying it agrees, and **absence is not disagreement**, so two queries that
+ * each describe part of an order merge rather than cancel.
  */
 function ordersFromRows(rows: readonly unknown[]): Record<string, unknown>[] {
   const byOrder = new Map<string, Record<string, unknown>[]>();
@@ -266,17 +275,13 @@ function ordersFromRows(rows: readonly unknown[]): Record<string, unknown>[] {
   // Then only the fields every order could answer.
   //
   // Surviving the per-order collapse is not enough, because an order whose
-  // lines were *paged out* has nothing to contradict it. CF803663 has six
-  // lines and the evidence page carried one, so its line number, description,
-  // SKU and quantity came through the collapse intact and the table presented
-  // line 5's SKU as though it were the order's -- a line-level value asserted
-  // at order level, which is a stronger error than the empty cells it sat
-  // beside. Orders with several lines on the page had those same fields
-  // dropped, so the column existed to hold one accidental value and dashes.
+  // lines were *paged out* has nothing to contradict it. CF803663 has six lines
+  // and the evidence page carried one, so its line number, description, SKU and
+  // quantity came through intact and the table presented line 5's SKU as though
+  // it were the order's -- a line-level value asserted at order level, which is
+  // a stronger error than the empty cells beside it.
   //
-  // A field only some orders can answer is not a fact about this set of
-  // orders. Keeping the intersection makes the table rectangular and leaves
-  // the line detail to the pane whose subject is lines.
+  // A field only some orders can answer is not a fact about this set of orders.
   const universal = [...new Set(merged.flatMap((order) => Object.keys(order)))].filter((field) =>
     merged.every((order) => field in order),
   );
@@ -299,19 +304,53 @@ function turnCandidates(turn: AgentTurnResult): TurnCandidates | null {
   );
 
   if (searches.length === 0) {
-    // No search envelope among what the turn spoke about, but an order shortlist
-    // read line by line is still a set of orders to choose between. Without this
-    // the operator had no Select at all once discovery moved past the customer,
-    // and had to type the order number the agent had just listed.
+    // No search envelope among what the turn spoke about, but the rows the turn
+    // read are still the thing the associate has to choose from. Without this
+    // there was no Select at all once discovery moved past the customer, and
+    // the operator had to type the order number the agent had just listed.
     //
-    // Every cited query's rows are gathered before grouping, never grouped per
-    // query and concatenated: a turn that ranks orders by line count and then
-    // reads the top few describes one set of orders with two queries.
+    // Rows are gathered across every cited query before anything is grouped. A
+    // turn routinely asks two questions about the same orders -- a GROUP_BY
+    // ranking them by line count, then a line query describing the top few --
+    // and treating those as separate result sets put every order on screen
+    // twice, each copy carrying the other's missing columns as dashes.
     const rows = spoken.flatMap((evidence) =>
       isRecord(evidence.result) && Array.isArray(evidence.result.rows)
         ? (evidence.result.rows as unknown[])
         : [],
     );
+
+    // **Lines win when there are any, and they are not collapsed.**
+    //
+    // Collapsing to one row per order was answering the agent's question
+    // ("which of these orders?") rather than the associate's ("which order has
+    // the damaged tap?"). It is exactly the product description and SKU that
+    // tell them apart, and those are the first things a collapse discards,
+    // because an order with seven lines has seven different SKUs and therefore
+    // no order-level one. The associate was left choosing between order numbers
+    // and a line count -- honest, and useless for the job in hand.
+    //
+    // So each line is its own row, and carries the order-level facts of the
+    // order it belongs to (the GROUP_BY's line count, for instance) alongside
+    // its own. The same order appearing on several rows is not duplication
+    // here: those rows say different things. `CandidateOrderMode` pages them.
+    const lines = rows.filter((row) => isRecord(row) && row[LINE_FIELD] !== undefined);
+    if (lines.length > 0) {
+      const orderFacts = new Map(
+        ordersFromRows(rows.filter((row) => isRecord(row) && row[LINE_FIELD] === undefined)).map(
+          (order) => [String(order.sales_order_number), order],
+        ),
+      );
+      const enriched = lines.flatMap((row) => {
+        if (!isRecord(row)) return [];
+        const order = text(row.sales_order_number);
+        // Order-level facts first, so a line's own value always wins where both
+        // carry the same field.
+        return [{ ...(order === null ? {} : orderFacts.get(order)), ...row }];
+      });
+      return { rows: enriched, totalFound: enriched.length };
+    }
+
     const orders = ordersFromRows(rows);
     if (orders.length === 0) return null;
     return { rows: orders, totalFound: orders.length };
