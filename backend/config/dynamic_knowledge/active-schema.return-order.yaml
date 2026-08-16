@@ -2084,10 +2084,15 @@ entities:
         on_demand_sync_allowed: true
   customer_account:
     entity_id: customer_account
-    description: 'The documented bridge between customerOutboundCDM and salesInv: party[].custAccts[].additionalCustomerInfo[].customerId
-      is what the order writers copy into salesInv custId/orderCust. UNVERIFIED because the one CDM sample
-      available is a type=PARTY document that carries no custAccts array, so these paths come from the
-      field specification rather than from data.'
+    description: 'The bridge between customerOutboundCDM and salesInv, read from the paths the real
+      documents actually carry: party[].partyMainCusts[].mainCusts holds "BRANCH*CUSTID" (e.g.
+      "PLYMOUTH*232385"), whose CUSTID half is what the order writers copy into salesInv
+      custId/orderCust. Previously declared as party[].custAccts[].additionalCustomerInfo[], taken from
+      the field specification rather than from data -- no real CDM document has a custAccts array at
+      any level, so that path extracted nothing. It appeared to work only because the seed generator
+      builds custAccts from whatever this entity declares, manufacturing the exact shape the
+      declaration asserted and the source lacks. Verified against MASTER:900781, the one non-synthetic
+      document in the extract.'
     source_asset_id: source_customers
     fields:
       party_id:
@@ -2114,11 +2119,42 @@ entities:
           - '*'
           masking: null
         path_origin: ROOT_DOCUMENT
+      customer_account:
+        field_id: customer_account
+        description: 'The account reference exactly as the source carries it: "BRANCH*CUSTID". Extracted
+          before customer_id and customer_branch_id because both are split out of it -- a derivation
+          may only read a non-derived sibling.'
+        physical_path:
+        - mainCusts
+        graph_property: customer_account
+        data_type: STRING
+        nullable: false
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
       customer_id:
         field_id: customer_id
-        description: Branch ERP customer number. Joins to sales_order.customer_id.
-        physical_path:
-        - customerId
+        description: Branch ERP customer number, the half of mainCusts after the '*'. Joins to
+          sales_order.customer_id.
+        derive:
+          operation: SPLIT_PART
+          source_field: customer_account
+          delimiter: '*'
+          index: 1
         graph_property: customer_id
         data_type: STRING
         nullable: false
@@ -2139,36 +2175,14 @@ entities:
           searchable_by:
           - '*'
           masking: null
-      customer_account:
-        field_id: customer_account
-        description: Business account identifier.
-        physical_path:
-        - customerAcct
-        graph_property: customer_account
-        data_type: STRING
-        nullable: true
-        capabilities:
-          searchable: true
-          filterable: true
-          distinct: false
-          aggregatable: false
-          displayable: true
-          on_demand_sync_anchor: false
-          operators:
-          - EXACT
-          - EQUALS
-          aggregations: []
-        permissions:
-          displayable_by:
-          - '*'
-          searchable_by:
-          - '*'
-          masking: null
       customer_branch_id:
         field_id: customer_branch_id
-        description: Servicing branch.
-        physical_path:
-        - custBranchId
+        description: Servicing branch, the half of mainCusts before the '*'.
+        derive:
+          operation: SPLIT_PART
+          source_field: customer_account
+          delimiter: '*'
+          index: 0
         graph_property: customer_branch_id
         data_type: STRING
         nullable: true
@@ -2187,12 +2201,17 @@ entities:
           displayable_by:
           - '*'
           masking: null
-      ship_to_phone:
-        field_id: ship_to_phone
-        description: Delivery contact number.
+      customer_name:
+        field_id: customer_name
+        description: 'Customer name as the bridge record states it. Replaces the former ship_to_phone
+          field, which was removed rather than repointed: the real bridge record carries no phone of
+          any kind, and the owning party''s additionalMcustomerInfo.mcustPhone is the master
+          customer''s number, not a delivery contact -- keeping the field name over that value would
+          have been a claim the data does not make. The order''s own ship_to_phone (on sales_order) is
+          unaffected and is what the phone search strategy uses.'
         physical_path:
-        - shipToPhone
-        graph_property: ship_to_phone
+        - mainCustsName
+        graph_property: customer_name
         data_type: STRING
         nullable: true
         capabilities:
@@ -2205,6 +2224,8 @@ entities:
           operators:
           - EXACT
           - EQUALS
+          - PREFIX
+          - CONTAINS
           aggregations: []
         permissions:
           displayable_by:
@@ -2241,11 +2262,18 @@ entities:
     - customer_id
     record_path:
     - party
-    - custAccts
-    - additionalCustomerInfo
+    - partyMainCusts
     explode: true
+    # A party repeats the same mainCusts value across entries (MASTER:900781
+    # lists MINNWW*28634 twice), so the same (party_id, customer_id) would
+    # otherwise be projected more than once from one document.
     distinct: true
-    source_contract_status: UNVERIFIED
+    # VERIFIED now: every path above resolves on the real MASTER:900781 document
+    # and yields two distinct bridge rows from it. source_access stays SEED_ONLY
+    # -- the paths are confirmed, but nothing has yet exercised this entity as an
+    # on-demand read target, and widening access is a separate decision from
+    # correcting where it reads from.
+    source_contract_status: VERIFIED
     source_access: SEED_ONLY
   customer_party:
     entity_id: customer_party
@@ -4695,7 +4723,7 @@ graph:
       property_fields:
       - customer_account
       - customer_branch_id
-      - ship_to_phone
+      - customer_name
       - source_updated_at
     customer_party_node:
       projection_id: customer_party_node
@@ -5046,4 +5074,4 @@ agent_policies:
     max_clarifications: 3
     max_replans: 2
     max_targeted_syncs_per_turn: 3
-configuration_checksum: 56b4ff4771786e7068ff74cfd08276f1ff551e31614da49a541cebd1e5c691aa
+configuration_checksum: 5b69245c6c6ea9912cfe9131e8b0116244a26b55c1d040c1250f7bfb445dd94f

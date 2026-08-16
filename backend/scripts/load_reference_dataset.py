@@ -139,9 +139,19 @@ def _products(orders: list[dict[str, Any]], template: dict[str, Any]) -> list[di
 def _customers(orders: list[dict[str, Any]], template: dict[str, Any]) -> list[dict[str, Any]]:
     """One customerOutboundCDM per distinct custId.
 
-    Carries the documented bridge back to salesInv:
-    `party[].custAccts[].additionalCustomerInfo[].customerId` is what the order
-    copies into `custId`. That nesting is load-bearing, not decoration.
+    Carries the bridge back to salesInv at the path the **real** documents use:
+    `party[].partyMainCusts[].mainCusts` holds `BRANCH*CUSTID`, and the CUSTID
+    half is what the order writers copy into `custId`. `customer_account`
+    derives `customer_id` and `customer_branch_id` from it with a `SPLIT_PART`
+    on the `*`.
+
+    This used to build `party[].custAccts[].additionalCustomerInfo[]`, taken
+    from the field specification rather than from data. **No real CDM document
+    has a `custAccts` array at any level** -- verified against `MASTER:900781`,
+    the only non-synthetic one in the extract -- so that path extracted nothing
+    and the fixture cleared the entity's validation error by manufacturing
+    exactly the shape the declaration asserted and the source lacks. See D41 and
+    D48 in `docs/RETURN_COPILOT_EXECUTION_STATE.md`.
     """
     customers: OrderedDict[str, dict[str, Any]] = OrderedDict()
     for index, order in enumerate(orders):
@@ -172,19 +182,19 @@ def _customers(orders: list[dict[str, Any]], template: dict[str, Any]) -> list[d
                 "personLastName": name,
             }
         ]
-        party["custAccts"] = [
+        party["partyMainCusts"] = [
             {
-                "accountName": name,
-                "additionalCustomerInfo": [
-                    {
-                        "customerId": customer_id,
-                        "customerAcct": f"{account_id}*{customer_id}",
-                        "custBranchId": account_id,
-                        "shipToPhone": f"555-01{index % 100:02d}",
-                    }
-                ],
+                "mainCusts": f"{account_id}*{customer_id}",
+                "mainCustsName": name,
+                "mainCustJobs": [],
             }
         ]
+        party["additionalMcustomerInfo"] = {
+            "mcustId": party_id,
+            "mcustPhone": f"55501{index % 100:02d}",
+            "searchMcustPhone": f"155501{index % 100:02d}",
+        }
+        party.pop("custAccts", None)
         customers[customer_id] = document
     return list(customers.values())
 

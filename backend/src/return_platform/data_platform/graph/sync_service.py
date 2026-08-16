@@ -492,13 +492,31 @@ class _ScopedRebuildCoordinator:
     `full_sync` twice, once to build and once to catch up on what changed since
     the build's watermarks were captured, and both wrote into the generation this
     run activated.
+
+    It also satisfies `lifecycle.orchestrator.SourceRecordCensusProvider`: the
+    counting connectors write into the same `source_counts` mapping this holds,
+    so by the time the orchestrator validates, it can ask what each source
+    actually yielded rather than inferring it from an empty label.
     """
 
-    def __init__(self, inner: GenericSyncCoordinator, source_asset_ids: frozenset[str]) -> None:
+    def __init__(
+        self,
+        inner: GenericSyncCoordinator,
+        source_asset_ids: frozenset[str],
+        source_counts: Mapping[str, int],
+    ) -> None:
         self._inner = inner
         self._source_asset_ids = source_asset_ids
+        self._source_counts = source_counts
         self.node_writes = 0
         self.relationship_writes = 0
+
+    def source_records_read(self) -> Mapping[str, int]:
+        """A snapshot, not the live mapping: validation must reason about what
+        the build read, and handing out a dict that later scans keep mutating
+        would make the report depend on when it was read."""
+
+        return dict(self._source_counts)
 
     async def full_sync(
         self,
@@ -525,7 +543,17 @@ class _ScopedRebuildCoordinator:
 class _CountingConnector:
     """Wraps a connector to record per-source document counts for the run view --
     orchestration-level bookkeeping, not something the generic connectors need
-    to know about themselves."""
+    to know about themselves.
+
+    The counts are no longer only a display value. Generation validation reads
+    them to decide whether an empty node label means "this source had nothing"
+    (tolerable) or "this source had records and the build lost them" (not), so
+    `scan` registers a zero for every source it is asked to read *before* the
+    first page. Without that, a source that yielded nothing would be absent from
+    the mapping and indistinguishable from a source this run never touched --
+    and validation would have to guess between the two, which is precisely what
+    it must not do.
+    """
 
     def __init__(self, inner: SourceScanConnector, counts: dict[str, int]) -> None:
         self._inner = inner
@@ -550,6 +578,7 @@ class _CountingConnector:
         after: SourceCursor | None,
         through: SourceCursor,
     ) -> AsyncIterator[RawSourcePage]:
+        self._counts.setdefault(source_asset_id, 0)
         async for page in self._inner.scan(
             schema=schema, source_asset_id=source_asset_id, after=after, through=through
         ):
@@ -1005,7 +1034,9 @@ class GraphSyncService:
 
         if _is_destructive_rebuild(request, scope):
             return await self._rebuild_and_activate(
-                coordinator=coordinator, source_asset_ids=participating_ids
+                coordinator=coordinator,
+                source_asset_ids=participating_ids,
+                source_counts=source_counts,
             )
 
         # Every other shape writes into the generation that is already serving:
@@ -1044,7 +1075,11 @@ class GraphSyncService:
         return _SyncOutcome(nodes, relationships, graph_generation_id)
 
     async def _rebuild_and_activate(
-        self, *, coordinator: GenericSyncCoordinator, source_asset_ids: frozenset[str]
+        self,
+        *,
+        coordinator: GenericSyncCoordinator,
+        source_asset_ids: frozenset[str],
+        source_counts: Mapping[str, int],
     ) -> _SyncOutcome:
         """The C9 destructive flow, driven by the lifecycle that already implements it.
 
@@ -1067,7 +1102,7 @@ class GraphSyncService:
         snapshot, so N stays active and serving. That is the property, and it is
         why this must never pre-emptively touch N.
         """
-        scoped = _ScopedRebuildCoordinator(coordinator, source_asset_ids)
+        scoped = _ScopedRebuildCoordinator(coordinator, source_asset_ids, source_counts)
         orchestrator = GenerationLifecycleOrchestrator(
             snapshot_store=self._snapshots,
             lease_store=self._rebuild_leases,

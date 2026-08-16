@@ -48,13 +48,14 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from return_platform.dynamic_knowledge.graph.generation import (
     ActiveRuntimeSnapshot,
     GraphGenerationStatus,
 )
 from return_platform.dynamic_knowledge.graph.generation_writer import Neo4jGenerationWriter
+from return_platform.dynamic_knowledge.graph.validation import SourceRecordCensus
 from return_platform.dynamic_knowledge.lifecycle.lease_store import (
     GenerationLeaseStore,
     LeaseClass,
@@ -97,6 +98,20 @@ class RebuildSyncCoordinator(Protocol):
         expected_generation_status: GraphGenerationStatus,
         sync_run_id: str | None = None,
     ) -> tuple[int, int]: ...
+
+
+@runtime_checkable
+class SourceRecordCensusProvider(Protocol):
+    """A coordinator that can say how many records each source actually yielded.
+
+    Separate from `RebuildSyncCoordinator` and probed structurally rather than
+    required, because the census is evidence validation *can use* and not
+    something the rebuild needs in order to run. A coordinator that cannot
+    supply it is not broken; it just gets the strict, pre-census severity for
+    every populated-ness check (see `graph/validation._populated_severity`).
+    """
+
+    def source_records_read(self) -> SourceRecordCensus: ...
 
 
 class GenerationLifecycleOrchestrator:
@@ -206,7 +221,15 @@ class GenerationLifecycleOrchestrator:
                 GraphGenerationStatus.VALIDATING,
                 stage="VALIDATE",
             )
-            await self._validate(schema=schema, graph_generation_id=graph_generation_id)
+            # Read before validating, not after: the candidate has to be checked
+            # against the generation it would replace, and by the time the
+            # compare-and-swap reads it again the decision has been made.
+            serving = await self._snapshot_store.read(snapshot_name=snapshot_name)
+            await self._validate(
+                schema=schema,
+                graph_generation_id=graph_generation_id,
+                previous_generation_id=None if serving is None else serving.graph_generation_id,
+            )
             await self._transition(
                 graph_generation_id,
                 fencing_token,
@@ -274,7 +297,13 @@ class GenerationLifecycleOrchestrator:
         finally:
             await self._lease_store.release(snapshot_name=snapshot_name, lease_id=lease.lease_id)
 
-    async def _validate(self, *, schema: ActiveSchema, graph_generation_id: str) -> None:
+    async def _validate(
+        self,
+        *,
+        schema: ActiveSchema,
+        graph_generation_id: str,
+        previous_generation_id: str | None = None,
+    ) -> None:
         """Deep validation, between VALIDATING and READY_FOR_ACTIVATION.
 
         Raising here is the mechanism behind the Wave C gate's "validation
@@ -286,6 +315,12 @@ class GenerationLifecycleOrchestrator:
         A validator that is not configured is *not* a silent pass -- it is
         logged, because "we validated and it was fine" and "we did not
         validate" must not look the same in an incident.
+
+        The source record census is read off the coordinator *after* both sync
+        passes have run, so it reflects everything this build actually read. It
+        is what lets the validator tell "this entity's source was empty" from
+        "this entity's source had records and none of them survived the
+        projection" -- see `graph/validation._populated_severity`.
         """
         if self._validator is None:
             _LOGGER.warning(
@@ -293,8 +328,14 @@ class GenerationLifecycleOrchestrator:
                 graph_generation_id,
             )
             return
+        census: SourceRecordCensus | None = None
+        if isinstance(self._sync_coordinator, SourceRecordCensusProvider):
+            census = self._sync_coordinator.source_records_read()
         report = await self._validator.validate(
-            schema=schema, graph_generation_id=graph_generation_id
+            schema=schema,
+            graph_generation_id=graph_generation_id,
+            source_records_read=census,
+            previous_generation_id=previous_generation_id,
         )
         if not report.passed:
             raise ActivationError(report.summary(), stage="VALIDATE")

@@ -442,3 +442,81 @@ async def test_a_retried_confirmation_does_not_double_write_the_facts(
     await _confirm(repository, payload)
 
     assert len(repository.facts) == first_count
+
+
+# --- what reaches the console -------------------------------------------------
+#
+# The other end of the same capture. Until `AgentTurnResult.captured_facts`
+# existed, the merged set lived only on the conversation document and in the
+# reasoning prompt, so the copilot's "Extracted & Verified Facts" panel had
+# nothing to read but the agent's own prose -- and briefly rendered it, showing
+# an operator the model narrating its reasoning under a heading promising
+# established fact.
+
+
+def test_the_turn_reports_the_whole_conversation_not_only_this_turn(
+    catalogue: FactCatalogue,
+) -> None:
+    """A panel fed only this turn's additions would empty itself on the next one."""
+    from return_platform.dynamic_knowledge.order_agent.coordinator import _committed_facts
+
+    first, _ = _capture(catalogue, OPENING_TURN)
+    later, _ = _capture(
+        catalogue,
+        (ObservedFact(fact="product_sku", value="R7010108781"),),
+        existing=first,
+        turn_id="turn-2",
+    )
+
+    reported = _committed_facts({"observed_facts": tuple(fact.to_state() for fact in later)})
+    by_name = {fact.name: fact for fact in reported}
+
+    assert by_name["product_sku"].value == "R7010108781"
+    # Stated three turns before the SKU, and still on the turn that reports it.
+    assert by_name["return_reason"].value == "damaged"
+    assert by_name["return_reason"].label == "reason for return"
+
+
+def test_a_fact_still_owing_a_question_travels_with_its_status(
+    catalogue: FactCatalogue,
+) -> None:
+    """Carried rather than filtered.
+
+    A conflicting value is not something the console may draw as settled, and it
+    is not something to hide either -- the associate said both things. The
+    status is what lets the panel mark it instead of choosing between them.
+    """
+    from return_platform.dynamic_knowledge.order_agent.coordinator import _committed_facts
+
+    first, _ = _capture(catalogue, OPENING_TURN)
+    conflicted, _ = _capture(
+        catalogue,
+        (ObservedFact(fact="return_reason", value="wrong item"),),
+        existing=first,
+        turn_id="turn-2",
+    )
+
+    reported = {
+        fact.name: fact
+        for fact in _committed_facts(
+            {"observed_facts": tuple(fact.to_state() for fact in conflicted)}
+        )
+    }
+
+    assert reported["return_reason"].status == FactStatus.CONFLICTING.value
+    assert reported["product_colour"].status == FactStatus.USABLE.value
+
+
+def test_a_conversation_document_from_an_older_release_reports_nothing_broken() -> None:
+    """Conversation state outlives releases, so the reader is defensive.
+
+    An entry that is not a named fact is dropped rather than reported as one --
+    the same rule `_stored_observed_facts` applies on the way in.
+    """
+    from return_platform.dynamic_knowledge.order_agent.coordinator import _committed_facts
+
+    assert _committed_facts({}) == ()
+    assert _committed_facts({"observed_facts": "not a list"}) == ()
+    assert (
+        _committed_facts({"observed_facts": [{"value": "orphan"}, {"name": ""}, "junk"]}) == ()
+    )

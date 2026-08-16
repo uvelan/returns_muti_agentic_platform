@@ -124,14 +124,22 @@ def test_the_canonical_router_is_versionless() -> None:
     assert router.prefix == "/api/config"
 
 
-def test_promotion_is_the_only_mutation_on_the_canonical_config_surface() -> None:
+def test_the_release_lifecycle_is_the_only_mutation_surface_here() -> None:
     """Replaces `..._is_read_only`, which held while two release lifecycles
     existed and either could be blessed by a button.
 
     D3 settled that in favour of the graph, so a mutation surface became
-    buildable -- but only one. Configuration changes through a release moving
-    along its lifecycle; anything else here would be a second way to change what
-    the platform is running.
+    buildable -- but only *one*, and this pins its exact shape. Configuration
+    changes by a release being drafted, edited and moved along its lifecycle;
+    any mutation here that is not one of those three is a second way to change
+    what the platform is running.
+
+    Promotion alone used to be the whole set, which is how the surface shipped
+    able to publish a release but unable to create or edit one -- every prompt
+    or policy change needed a source edit and an image rebuild. The full-document
+    `PUT .../domains/{key}` the console router also declares stays off: a merge
+    patch reaches the same outcome without letting a caller overwrite fields it
+    never read.
     """
     from return_platform.configuration.api.router import router
 
@@ -141,7 +149,11 @@ def test_promotion_is_the_only_mutation_on_the_canonical_config_surface() -> Non
         for method in getattr(route, "methods", set())
         if method not in {"GET", "HEAD"}
     }
-    assert mutations == {("/api/config/releases/{release_id}/promote", "POST")}, mutations
+    assert mutations == {
+        ("/api/config/releases", "POST"),
+        ("/api/config/releases/{release_id}/domains/{domain_key}", "PATCH"),
+        ("/api/config/releases/{release_id}/promote", "POST"),
+    }, mutations
 
 
 def test_the_canonical_promotion_delegates_rather_than_reimplementing() -> None:

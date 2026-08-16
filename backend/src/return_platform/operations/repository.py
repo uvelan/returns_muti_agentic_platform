@@ -9,6 +9,7 @@ from typing import Any, Final, cast
 
 from fastapi import HTTPException, Request
 from pymongo import ASCENDING, DESCENDING, AsyncMongoClient, ReplaceOne, ReturnDocument
+from pymongo.asynchronous.client_session import AsyncClientSession
 from pymongo.asynchronous.collection import AsyncCollection
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
@@ -22,13 +23,24 @@ from return_platform.dynamic_knowledge.source_bindings import (
     SourceBindingCatalogue,
     catalogue_from,
 )
+from return_platform.operations.case_repository import CaseRepository
+
+# Re-exported deliberately, under the redundant-alias form `no_implicit_reexport`
+# requires. `ConcurrencyConflictError` moved to `operations.errors` so that this
+# module and the aggregate mixins it composes can raise one class without
+# importing one another; nine modules and the concurrency tests import it from
+# here, and that path is kept rather than rewritten.
+from return_platform.operations.errors import (
+    ConcurrencyConflictError as ConcurrencyConflictError,
+)
+from return_platform.operations.integrations.outbox import (
+    INTEGRATION_OUTBOX_COLLECTION,
+    ensure_integration_outbox_indexes,
+)
 from return_platform.operations.models import (
     AIGatewaySettingsView,
     AIRequestStatus,
     AITraceView,
-    CaseStatus,
-    FactAcquisition,
-    FactChannel,
     ReturnCreateRequest,
     ReturnSessionView,
     ReturnStatus,
@@ -39,6 +51,9 @@ from return_platform.operations.models import (
     TimelineEvent,
     normalize_utc_datetime,
     utc_now,
+)
+from return_platform.operations.order_lines.reservations import (
+    ensure_order_line_reservation_indexes,
 )
 from return_platform.operations.seed_manifest import (
     SOURCE_CUSTOMERS_DATASET,
@@ -51,6 +66,7 @@ from return_platform.operations.seed_manifest import (
     materialize_seed,
     scenario_counts,
 )
+from return_platform.operations.support_events import ensure_support_event_indexes
 from return_platform.resources import RuntimeResources
 
 RETURNS: Final = "operational_returns"
@@ -76,7 +92,9 @@ SHIPMENT_EVENTS: Final = "shipment_events"
 OMC_COMMAND_RECORDS: Final = "omc_command_records"
 AGENT_DECISIONS: Final = "agent_decisions"
 VENDOR_RETURN_LINKS: Final = "vendor_return_links"
-INTEGRATION_OUTBOX: Final = "integration_outbox"
+#: Re-exported from the module that owns the collection rather than restated, so
+#: the handle below and the indexes built on it can never name two collections.
+INTEGRATION_OUTBOX: Final = INTEGRATION_OUTBOX_COLLECTION
 RETURN_CONFIGURATION_SNAPSHOTS: Final = "return_configuration_snapshots"
 SOURCE_ORDERS: Final = "orders"
 SOURCE_CUSTOMERS: Final = "customers"
@@ -127,10 +145,6 @@ _DOMAIN_SOURCE_INDEXES: Final[dict[str, tuple[tuple[str, str, bool], ...]]] = {
 }
 
 
-class ConcurrencyConflictError(RuntimeError):
-    pass
-
-
 class SourceDatasetUnresolvedError(RuntimeError):
     """Configuration does not say where a dataset this code reads actually is.
 
@@ -141,8 +155,13 @@ class SourceDatasetUnresolvedError(RuntimeError):
     """
 
 
-class OperationalRepository:
-    """Repository for product-facing projections and immutable event evidence."""
+class OperationalRepository(CaseRepository):
+    """Repository for product-facing projections and immutable event evidence.
+
+    The case aggregate lives in `CaseRepository` and is inherited rather than
+    delegated to, so `repository.get_case(...)` and its dozen siblings read
+    exactly as they did when the methods were declared in this file.
+    """
 
     def __init__(
         self,
@@ -437,10 +456,25 @@ class OperationalRepository:
         await self.vendor_return_links.create_index(
             [("sessionId", ASCENDING), ("omcRgaId", ASCENDING)], unique=True
         )
-        await self.integration_outbox.create_index("idempotencyKey", unique=True)
-        await self.integration_outbox.create_index(
-            [("status", ASCENDING), ("nextAttemptAt", ASCENDING)]
-        )
+        # The outbox's five indexes, including the two this method used to omit:
+        # `leaseUntil` (the dispatcher's lease predicate) and `(createdAt DESC)`
+        # (the operator listing's sort). Defined next to the dispatcher that
+        # depends on them and called from here so index creation stays in one
+        # place -- the same arrangement as the Support-event index below. This
+        # is the call the orchestrator reaches through `ensure_indexes`, and it
+        # was the owner building the smallest subset.
+        await ensure_integration_outbox_indexes(self._db)
+        # `(caseId, supportEventId)` unique. The identity of a Support mutation,
+        # and the only thing that makes a resent reply a no-op rather than a
+        # second RMA. Defined next to the store that depends on it and called
+        # from here so index creation stays in one place.
+        await ensure_support_event_indexes(self._db)
+        # One `ACTIVE` hold per (case, line), plus the availability read and the
+        # expiry sweep's predicates. The unique partial index is what makes "a
+        # case editing its own reservation" a well-defined operation rather than
+        # an accumulation of holds nobody can reconcile. Defined beside the
+        # lifecycle that depends on it and called from here, like the two above.
+        await ensure_order_line_reservation_indexes(self._db)
         await self.return_configuration_snapshots.create_index("sha256", unique=True)
         await self.return_configuration_snapshots.create_index(
             [("assumptionSetVersion", ASCENDING), ("activatedAt", DESCENDING)]
@@ -864,367 +898,66 @@ class OperationalRepository:
         *,
         expected_version: int,
     ) -> dict[str, Any]:
-        document = await self.return_items.find_one_and_update(
-            {"returnItemId": return_item_id, "version": expected_version},
-            {"$set": {**updates, "updatedAt": utc_now()}, "$inc": {"version": 1}},
-            return_document=ReturnDocument.AFTER,
-        )
-        if document is None:
-            exists = await self.return_items.find_one({"returnItemId": return_item_id}, {"_id": 1})
-            if exists is None:
-                raise KeyError(return_item_id)
-            raise ConcurrencyConflictError(return_item_id)
-        return cast(dict[str, Any], document)
+        """Move one item's fields, and the case revision with them (plan sect. 6.5).
 
-    # ------------------------------------------------------------------
-    # Case aggregate
-    # ------------------------------------------------------------------
+        `operational_return_items` holds both shapes: an item keyed to a return
+        *session* (the legacy path) and an item keyed to a *case*. Only the
+        second is on a `CaseDetail` projection -- `selectedItems` reads it, and
+        `returnRecordId` is what attributes an item to an RMA -- so the bump is
+        conditional on the updated document actually carrying a `caseId`. A
+        session item has no case to invalidate, and bumping for it would need a
+        case id that does not exist.
 
-    async def create_case(
-        self,
-        *,
-        case_id: str,
-        tenant_id: str,
-        principal_id: str,
-        branch_id: str | None = None,
-        channel_a_conversation_id: str | None = None,
-        confirmed_order_reference: str | None = None,
-        configuration_release_id: str | None = None,
-        graph_generation_id: str | None = None,
-        confirmation_key: str | None = None,
-    ) -> dict[str, Any]:
-        """Create a case, or return the existing one for the same confirmation.
+        The case id comes off the updated document rather than off a parameter,
+        exactly as `CaseRepository.update_return_record` takes it: the callers
+        hold an item id and nothing else, and two sources for one truth is two
+        things that can disagree.
 
-        Idempotent on `confirmationKey` rather than on `caseId`: the caller is a
-        turn Temporal may retry, and two attempts of the same confirmation must
-        produce one case. The unique partial index is what enforces it -- this
-        catches the duplicate and reads back the winner rather than racing a
-        find-then-insert.
+        Written through `_in_transaction` and `bump_case_revision` -- the
+        mechanism `case_repository.py` already established -- rather than a
+        second one. This method lives here and not there only because
+        `OperationalRepository` shadows the mixin's item collection with the
+        session-scoped view, which is why it was missed when the four writers
+        over there were fixed.
 
-        Not keyed on the conversation: one conversation confirming two different
-        orders is two returns, and collapsing them would silently discard the
-        second.
+        A version mismatch raises from *inside* the transaction, so the bump
+        rolls back with the failed update: the loser of a compare-and-set
+        changed nothing and must move no revision.
         """
         now = utc_now()
-        document = {
-            "caseId": case_id,
-            "tenantId": tenant_id,
-            "principalId": principal_id,
-            "branchId": branch_id,
-            "status": CaseStatus.GATHERING_INFO.value,
-            "channelAConversationId": channel_a_conversation_id,
-            "channelBWorkItemId": None,
-            "confirmedOrderReference": confirmed_order_reference,
-            "confirmationKey": confirmation_key,
-            "sessionId": None,
-            "workflowId": None,
-            "configurationReleaseId": configuration_release_id,
-            "graphGenerationId": graph_generation_id,
-            "version": 0,
-            "createdAt": now,
-            "updatedAt": now,
-        }
-        try:
-            await self.cases.insert_one(dict(document))
-        except DuplicateKeyError:
-            existing = None
-            if confirmation_key is not None:
-                existing = await self.cases.find_one({"confirmationKey": confirmation_key})
-            if existing is None:
-                existing = await self.cases.find_one({"caseId": case_id})
-            if existing is None:  # pragma: no cover - duplicate on neither key
-                raise
-            return cast(dict[str, Any], existing)
-        return document
 
-    async def get_case(self, case_id: str) -> dict[str, Any] | None:
-        document = await self.cases.find_one({"caseId": case_id})
-        return cast(dict[str, Any], document) if document is not None else None
-
-    async def find_case_by_confirmation(self, confirmation_key: str) -> dict[str, Any] | None:
-        document = await self.cases.find_one({"confirmationKey": confirmation_key})
-        return cast(dict[str, Any], document) if document is not None else None
-
-    async def get_case_by_conversation(
-        self,
-        conversation_id: str,
-        *,
-        tenant_id: str | None = None,
-        principal_id: str | None = None,
-    ) -> dict[str, Any] | None:
-        """Channel A -> case. What the copilot needs to show a return's state.
-
-        Most recent first: a conversation that confirmed two different orders
-        has two cases, and the one the associate is working on is the latest.
-
-        Scope belongs in the filter, not in a check afterwards. A conversation
-        id is guessable, and a caller that reads the document first has already
-        read someone else's case by the time it decides not to return it.
-        """
-        query: dict[str, Any] = {"channelAConversationId": conversation_id}
-        if tenant_id is not None:
-            query["tenantId"] = tenant_id
-        if principal_id is not None:
-            query["principalId"] = principal_id
-        document = await self.cases.find_one(query, sort=[("createdAt", DESCENDING)])
-        return cast(dict[str, Any], document) if document is not None else None
-
-    async def get_case_by_work_item(self, work_item_id: str) -> dict[str, Any] | None:
-        """Channel B -> case. The other half of the link, and the one that makes
-        a support outcome reachable from the associate's conversation."""
-        document = await self.cases.find_one({"channelBWorkItemId": work_item_id})
-        return cast(dict[str, Any], document) if document is not None else None
-
-    async def list_cases_for_principal(
-        self, *, tenant_id: str, principal_id: str, limit: int = 50
-    ) -> list[dict[str, Any]]:
-        cursor = (
-            self.cases.find({"tenantId": tenant_id, "principalId": principal_id})
-            .sort("updatedAt", DESCENDING)
-            .limit(limit)
-        )
-        return [cast(dict[str, Any], document) async for document in cursor]
-
-    async def bind_case_workflow(self, case_id: str, *, workflow_id: str) -> bool:
-        """Record the durable execution that owns this case. Idempotent.
-
-        Deliberately not `update_case(..., expected_version=)`: the writer is
-        the confirmation that has just started the workflow, and it holds no
-        version -- while the workflow it started is already writing statuses
-        against the same document. An optimistic-concurrency round trip here
-        would lose that race routinely and report a link failure for a case
-        that is running perfectly well.
-
-        `workflowId: None` in the filter is what makes it write once. A second
-        call with the same id matches nothing, finds the id already recorded
-        and reports success; a call with a *different* id for a case that has
-        one is a broken invariant (the id is derived from the case, so two
-        cannot exist) and raises rather than silently repointing the case at
-        another execution.
-        """
-        result = await self.cases.update_one(
-            {"caseId": case_id, "workflowId": None},
-            {"$set": {"workflowId": workflow_id, "updatedAt": utc_now()}, "$inc": {"version": 1}},
-        )
-        if result.modified_count == 1:
-            return True
-        existing = await self.cases.find_one({"caseId": case_id}, {"workflowId": 1})
-        if existing is None:
-            raise KeyError(case_id)
-        recorded = existing.get("workflowId")
-        if recorded == workflow_id:
-            return False
-        raise ConcurrencyConflictError(case_id)
-
-    async def list_cases_without_workflow(
-        self, *, created_before: datetime, limit: int = 100
-    ) -> list[dict[str, Any]]:
-        """Confirmed cases whose durable execution was never recorded.
-
-        The queue `return_case_recovery` drains. Terminal cases are excluded:
-        only `ReturnCaseWorkflow` sets `CLOSED` or `CANCELLED`, so one that
-        reached either has had its workflow whatever the link says, and
-        starting a fresh execution for it would reopen a finished return.
-        """
-        cursor = (
-            self.cases.find(
-                {
-                    "workflowId": None,
-                    "status": {
-                        "$nin": [CaseStatus.CLOSED.value, CaseStatus.CANCELLED.value],
-                    },
-                    "createdAt": {"$lt": created_before},
-                }
+        async def _write(session: AsyncClientSession) -> dict[str, Any]:
+            document = await self.return_items.find_one_and_update(
+                {"returnItemId": return_item_id, "version": expected_version},
+                {"$set": {**updates, "updatedAt": now}, "$inc": {"version": 1}},
+                return_document=ReturnDocument.AFTER,
+                session=session,
             )
-            .sort("createdAt", ASCENDING)
-            .limit(limit)
-        )
-        return [cast(dict[str, Any], document) async for document in cursor]
+            if document is None:
+                exists = await self.return_items.find_one(
+                    {"returnItemId": return_item_id}, {"_id": 1}, session=session
+                )
+                if exists is None:
+                    raise KeyError(return_item_id)
+                raise ConcurrencyConflictError(return_item_id)
+            case_id = document.get("caseId")
+            if isinstance(case_id, str) and case_id:
+                await self.bump_case_revision(case_id, session=session, when=now)
+            return cast(dict[str, Any], document)
 
-    async def update_case(
-        self, case_id: str, updates: dict[str, Any], *, expected_version: int
-    ) -> dict[str, Any]:
-        document = await self.cases.find_one_and_update(
-            {"caseId": case_id, "version": expected_version},
-            {"$set": {**updates, "updatedAt": utc_now()}, "$inc": {"version": 1}},
-            return_document=ReturnDocument.AFTER,
-        )
-        if document is None:
-            if await self.cases.find_one({"caseId": case_id}, {"_id": 1}) is None:
-                raise KeyError(case_id)
-            raise ConcurrencyConflictError(case_id)
-        return cast(dict[str, Any], document)
-
-    async def append_case_fact(
-        self,
-        *,
-        fact_id: str,
-        case_id: str,
-        fact_name: str,
-        value: Any,
-        agent_id: str,
-        channel: FactChannel,
-        acquisition_method: FactAcquisition,
-        turn_id: str | None = None,
-        source_system: str | None = None,
-        source_path: str | None = None,
-        observed_at: datetime | None = None,
-        supersedes_fact_id: str | None = None,
-        correlation_id: str | None = None,
-    ) -> dict[str, Any]:
-        """Record one observation. Never updates an existing one.
-
-        Insert-only by construction: Bay, Support, Fulfillment and Channel A all
-        write concurrently, and an update-in-place would make the last writer
-        win and drop what the others learned. Two writers here both succeed, and
-        `latest_case_facts` decides which is current.
-        """
-        now = utc_now()
-        document = {
-            "factId": fact_id,
-            "caseId": case_id,
-            "factName": fact_name,
-            "value": value,
-            "agentId": agent_id,
-            "channel": channel.value,
-            "turnId": turn_id,
-            "sourceSystem": source_system,
-            "sourcePath": source_path,
-            "acquisitionMethod": acquisition_method.value,
-            "observedAt": observed_at or now,
-            "recordedAt": now,
-            "supersedesFactId": supersedes_fact_id,
-            "correlationId": correlation_id,
-        }
-        await self.case_facts.insert_one(dict(document))
-        return document
-
-    async def list_case_facts(self, case_id: str) -> list[dict[str, Any]]:
-        """The whole log, oldest first. The audit read."""
-        cursor = self.case_facts.find({"caseId": case_id}).sort("recordedAt", ASCENDING)
-        return [cast(dict[str, Any], document) async for document in cursor]
-
-    async def latest_case_facts(self, case_id: str) -> dict[str, dict[str, Any]]:
-        """Current state, projected from the log: newest record per fact name.
-
-        A projection rather than a stored document, so adding a writer cannot
-        clobber a value it did not know about. Ties on `recordedAt` -- two
-        writers inside the same clock tick -- break on `factId`, which is
-        arbitrary but stable, so the projection is at least deterministic.
-        """
-        latest: dict[str, dict[str, Any]] = {}
-        for document in await self.list_case_facts(case_id):
-            name = str(document["factName"])
-            current = latest.get(name)
-            if current is None:
-                latest[name] = document
-                continue
-            if (document["recordedAt"], str(document["factId"])) >= (
-                current["recordedAt"],
-                str(current["factId"]),
-            ):
-                latest[name] = document
-        return latest
-
-    async def create_return_record(
-        self,
-        *,
-        return_record_id: str,
-        case_id: str,
-        return_reference: str | None = None,
-        status: str = "DRAFT",
-        source_system: str | None = None,
-    ) -> dict[str, Any]:
-        now = utc_now()
-        document = {
-            "returnRecordId": return_record_id,
-            "caseId": case_id,
-            "returnReference": return_reference,
-            "status": status,
-            "returnLocation": None,
-            "trackingReference": None,
-            "labelReference": None,
-            "shippingInstructionReference": None,
-            "sourceSystem": source_system,
-            "version": 0,
-            "createdAt": now,
-            "updatedAt": now,
-        }
-        await self.return_records.insert_one(dict(document))
-        return document
-
-    async def list_return_records(self, case_id: str) -> list[dict[str, Any]]:
-        cursor = self.return_records.find({"caseId": case_id}).sort("createdAt", ASCENDING)
-        return [cast(dict[str, Any], document) async for document in cursor]
-
-    async def update_return_record(
-        self, return_record_id: str, updates: dict[str, Any], *, expected_version: int
-    ) -> dict[str, Any]:
-        document = await self.return_records.find_one_and_update(
-            {"returnRecordId": return_record_id, "version": expected_version},
-            {"$set": {**updates, "updatedAt": utc_now()}, "$inc": {"version": 1}},
-            return_document=ReturnDocument.AFTER,
-        )
-        if document is None:
-            exists = await self.return_records.find_one(
-                {"returnRecordId": return_record_id}, {"_id": 1}
-            )
-            if exists is None:
-                raise KeyError(return_record_id)
-            raise ConcurrencyConflictError(return_record_id)
-        return cast(dict[str, Any], document)
-
-    async def create_case_return_item(
-        self,
-        *,
-        return_item_id: str,
-        case_id: str,
-        return_record_id: str | None,
-        order_line_reference: str,
-        product_reference: str | None = None,
-        quantity: int = 1,
-        reason: str | None = None,
-        condition: str | None = None,
-        package_reference: str | None = None,
-    ) -> dict[str, Any]:
-        """An item on a case, optionally already assigned to a return record.
-
-        `return_record_id` is nullable because the two are learned at different
-        times: the associate names the lines they are returning before Support
-        has said how many RMAs those lines will become. Forcing the association
-        up front would mean inventing a record to hold them.
-
-        Written into `operational_return_items` rather than a second item
-        collection. That collection is already the item list, already uniquely
-        indexed, and already read by three call sites; a parallel one would be
-        the duplication this programme is removing.
-        """
-        now = utc_now()
-        document = {
-            "returnItemId": return_item_id,
-            "caseId": case_id,
-            "returnRecordId": return_record_id,
-            "orderLineId": order_line_reference,
-            "productReference": product_reference,
-            "quantity": quantity,
-            "reason": reason,
-            "condition": condition,
-            "packageReference": package_reference,
-            "version": 0,
-            "createdAt": now,
-            "updatedAt": now,
-        }
-        await self.return_items.insert_one(dict(document))
-        return document
-
-    async def list_case_return_items(self, case_id: str) -> list[dict[str, Any]]:
-        cursor = self.return_items.find({"caseId": case_id}).sort("createdAt", ASCENDING)
-        return [cast(dict[str, Any], document) async for document in cursor]
+        return await self._in_transaction(_write)
 
     async def assign_return_item_to_record(
         self, return_item_id: str, *, return_record_id: str, expected_version: int
     ) -> dict[str, Any]:
-        """Attach an item to the RMA that covers it, once Support has said which."""
+        """Attach an item to the RMA that covers it, once Support has said which.
+
+        The live one of the pair: `return_case_activities._assign_items_to_record`
+        calls it on every Support outcome that maps order lines to an RMA, and
+        the attribution it writes is on the projection. It inherits the revision
+        bump from `update_return_item` rather than repeating it, so the two
+        cannot come to hold the invariant differently.
+        """
         return await self.update_return_item(
             return_item_id, {"returnRecordId": return_record_id}, expected_version=expected_version
         )

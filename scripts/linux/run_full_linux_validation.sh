@@ -80,6 +80,23 @@ if [[ "$keep_running" == false ]]; then
   "$LINUX_SCRIPT_DIR/17_stop_host_processes.sh"
   "$LINUX_SCRIPT_DIR/18_stop_infrastructure.sh" --stop
 fi
+
+# Reported from the manifest, not asserted. This block used to print
+# `e2e_status=PASS` and `accessibility_status=PASS` unconditionally, so a
+# disabled phase would have been summarized as a passing one -- a summary that
+# claims a gate ran is worse than one that admits it did not.
+phase_status() {
+  local script_name="$1"
+  local item
+  for item in "${phases[@]}"; do
+    if [[ "$item" == "$script_name" ]]; then
+      printf 'PASS'
+      return 0
+    fi
+  done
+  printf 'SKIPPED_NO_SUITE'
+}
+
 cat <<EOF
 overall_status=PASS
 failed_phase=NONE
@@ -92,8 +109,8 @@ frontend_status=PASS
 api_status=PASS
 scenario_status=PASS
 ai_live_stack_status=PASS
-e2e_status=PASS
-accessibility_status=PASS
+e2e_status=$(phase_status 14_run_real_e2e.sh)
+accessibility_status=$(phase_status 14_run_accessibility.sh)
 restart_replay_status=PASS
 manual_screen_status=PASS
 evidence_directory=$EVIDENCE_DIR

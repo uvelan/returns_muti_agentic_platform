@@ -12,11 +12,18 @@ would be a second way to read someone else's case, so both live here.
 Over real HTTP against a stub repository: what is under test is the router's
 scoping decision, and a real datastore would move the assertion from "the
 handler refused" to "the query found nothing", which is a different claim.
+
+The route now serves `CaseProjection`, so `load_case_projection_state` is what
+the stub answers. It deliberately ignores ownership -- that is the real method's
+behaviour, and it is why the check has to live in the handler. What the
+projection *contains* is `test_case_projection_route.py`'s subject; this module
+only ever asks who was allowed to see it.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -25,11 +32,22 @@ from fastapi.testclient import TestClient
 
 from return_platform.api import cases as cases_module
 from return_platform.api.cases import router
+from return_platform.configuration.return_configuration import (
+    LoadedReturnConfiguration,
+    load_return_configuration,
+)
+from return_platform.configuration.settings import DEFAULT_RETURN_CONFIGURATION_PATH
+from return_platform.operations.case_projection.assembly import (
+    CaseAggregateDocuments,
+    assemble_case_projection_state,
+)
+from return_platform.operations.case_projection.contract import CaseProjectionState
 from return_platform.security import roles as r
 from return_platform.security.principal import Principal
 
 TENANT = "tenant-a"
 PRINCIPAL = "associate-1"
+NOW = datetime(2026, 8, 12, tzinfo=UTC)
 
 
 def _case(
@@ -49,17 +67,17 @@ def _case(
         "channelBWorkItemId": None,
         "confirmedOrderReference": "CW273354",
         "version": 0,
-        "createdAt": "2026-08-12T00:00:00Z",
-        "updatedAt": "2026-08-12T00:00:00Z",
+        "createdAt": NOW,
+        "updatedAt": NOW,
     }
 
 
 class StubRepository:
     """Answers with whatever it was given, and records how it was asked.
 
-    `get_case` deliberately ignores ownership -- that is the repository's real
-    behaviour, and a stub that filtered would make the router look correct
-    whether or not it checked anything.
+    `load_case_projection_state` deliberately ignores ownership -- that is the
+    repository's real behaviour, and a stub that filtered would make the router
+    look correct whether or not it checked anything.
     """
 
     def __init__(self, *, stored: dict[str, Any] | None = None) -> None:
@@ -67,8 +85,10 @@ class StubRepository:
         self.conversation_queries: list[dict[str, Any]] = []
         self.principal_queries: list[dict[str, Any]] = []
 
-    async def get_case(self, case_id: str) -> dict[str, Any] | None:
-        return self._stored
+    async def load_case_projection_state(self, case_id: str) -> CaseProjectionState | None:
+        if self._stored is None:
+            return None
+        return assemble_case_projection_state(CaseAggregateDocuments(case=self._stored))
 
     async def get_case_by_conversation(
         self,
@@ -98,15 +118,6 @@ class StubRepository:
         self.principal_queries.append({"tenantId": tenant_id, "principalId": principal_id})
         return [] if self._stored is None else [self._stored]
 
-    async def list_return_records(self, case_id: str) -> list[dict[str, Any]]:
-        return []
-
-    async def list_case_return_items(self, case_id: str) -> list[dict[str, Any]]:
-        return []
-
-    async def list_case_facts(self, case_id: str) -> list[dict[str, Any]]:
-        return []
-
 
 @pytest.fixture(autouse=True)
 def _stub_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -130,6 +141,14 @@ def _client(repository: StubRepository, *, tenant_id: str = TENANT) -> Iterator[
 
     app.include_router(router)
     app.state.stub_repository = repository
+    # The route resolves the operator's return-method requirement table from the
+    # active release and refuses without one, so every client here carries the
+    # shipped configuration.
+    app.state.return_configuration = LoadedReturnConfiguration(
+        configuration=load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration,
+        path=DEFAULT_RETURN_CONFIGURATION_PATH,
+        sha256="0" * 64,
+    )
     with TestClient(app) as client:
         yield client
 
@@ -140,7 +159,7 @@ def test_the_caller_can_read_their_own_case() -> None:
         response = client.get("/api/cases/case-1")
 
     assert response.status_code == 200, response.text
-    assert response.json()["data"]["case"]["caseId"] == "case-1"
+    assert response.json()["data"]["caseId"] == "case-1"
 
 
 def test_another_principals_case_reads_as_absent() -> None:

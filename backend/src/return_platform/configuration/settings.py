@@ -19,9 +19,31 @@ DEFAULT_DYNAMIC_KNOWLEDGE_SCHEMA_PATH = (
     BACKEND_ROOT / "config" / "dynamic_knowledge" / "active-schema.return-order.yaml"
 )
 DEFAULT_SYSTEM_STORE_MANIFEST_PATH = BACKEND_ROOT / "config" / "platform" / "system_store.yaml"
+#: The packaged configuration tree itself, not one file inside it.
+#:
+#: The manifest-driven loader is handed a *directory* and reads `manifest.yaml`
+#: and every module path declared in it. Every other default above is a single
+#: file with a `PLATFORM_*_PATH` override, and this had neither a setting nor an
+#: override -- `main.py` passed `BACKEND_ROOT / "config"` straight to the agent
+#: configuration service. `BACKEND_ROOT` is right from a source checkout and
+#: wrong inside the image, where `return_platform` imports from site-packages
+#: and it becomes `/usr/local/lib/python3.13`, so the Configuration screen's
+#: Agents section answered 500 in every container while passing every test.
+DEFAULT_CONFIGURATION_DIRECTORY = BACKEND_ROOT / "config"
 # Base64-encoded, deterministically-derived 32 raw bytes -- development-only. Never a
 # valid production value (rejected explicitly below when vault_secrets_resolved).
 DEV_DEFAULT_REASONING_ENCRYPTION_KEY_B64 = "z4hdfhOkyWNWVgigtCB8skElDHzOmAVUs6NEYWF+WQo="
+#: The one environment in which a missing prerequisite refuses the process
+#: rather than degrading it -- the rule `validate_relationships` below applies to
+#: Vault, spelled out here so the same rule can be applied elsewhere without
+#: being restated as a literal.
+#:
+#: `require_healthy_configuration` is the elsewhere: an unset or dangling Copilot
+#: agent mapping and an unpublished eligibility policy refuse production startup
+#: exactly as a missing Vault reference does. It cannot live in
+#: `validate_relationships` because Settings holds neither the released return
+#: configuration nor the active schema -- both arrive inside the lifespan.
+PRODUCTION_ENVIRONMENT = "production"
 
 
 class Settings(BaseSettings):
@@ -47,6 +69,7 @@ class Settings(BaseSettings):
     dynamic_order_agent_enabled: bool = True
     dynamic_knowledge_schema_path: Path = DEFAULT_DYNAMIC_KNOWLEDGE_SCHEMA_PATH
     system_store_manifest_path: Path = DEFAULT_SYSTEM_STORE_MANIFEST_PATH
+    configuration_directory: Path = DEFAULT_CONFIGURATION_DIRECTORY
     environment: Literal["development", "test", "staging", "production"] = "development"
 
     vault_enabled: bool = False
@@ -203,6 +226,19 @@ class Settings(BaseSettings):
     ai_requests_per_minute: int = Field(default=120, ge=1, le=100_000)
     ai_max_payload_bytes: int = Field(default=16_384, ge=1_024, le=1_048_576)
     ai_interception_default: bool = False
+    # The *second* interception point: hold the provider's reply after it
+    # arrives so a human can accept, edit or reject it.
+    #
+    # Off by default and deliberately not operator-mutable, which is the
+    # difference between this and `ai_interception_default`. Holding a request
+    # costs nothing while a human thinks -- the run is released and resumed.
+    # Holding a *response* blocks the calling coroutine and keeps its route
+    # acquired, because the provider has already been paid for and re-entering
+    # dispatch would buy the same answer twice. A control with that cost should
+    # not be a toggle somebody can flip on a live queue; it is process
+    # configuration, and `validate_relationships` refuses it in production
+    # exactly as it refuses MANUAL in the provider order.
+    ai_response_interception: bool = False
     ai_prompt_version: str = Field(default="return-eligibility-v1", min_length=1, max_length=128)
     ai_allowed_endpoint_hosts: tuple[str, ...] = (
         "generativelanguage.googleapis.com",
@@ -297,6 +333,26 @@ class Settings(BaseSettings):
             resolved_path = REPOSITORY_ROOT / resolved_path
         if resolved_path.suffix.lower() not in {".yaml", ".yml"}:
             raise ValueError("Dynamic knowledge schema path must reference a YAML file.")
+        return resolved_path.resolve(strict=False)
+
+    @field_validator("configuration_directory")
+    @classmethod
+    def resolve_configuration_directory(cls, value: Path) -> Path:
+        """A directory, resolved the way the schema paths above are.
+
+        Relative values resolve against the repository root, so a compose entry
+        or a `.env` line may be written either way and mean the same thing.
+
+        No existence check, and no "does it look like a directory" heuristic.
+        Settings are constructed in contexts with no config tree on disk at all
+        -- the OpenAPI exporter's fixed basis, unit tests -- so a validator that
+        refused there would break generation rather than surface a deployment
+        problem, and a suffix rule would reject a legitimate `config.d`. The
+        loader raises with the path it looked in when it actually reads.
+        """
+        resolved_path = value.expanduser()
+        if not resolved_path.is_absolute():
+            resolved_path = REPOSITORY_ROOT / resolved_path
         return resolved_path.resolve(strict=False)
 
     @field_validator(
@@ -792,6 +848,14 @@ class Settings(BaseSettings):
             raise ValueError("SIMULATOR cannot be configured in production.")
         if self.environment == "production" and "MANUAL" in self.ai_provider_order.split(","):
             raise ValueError("MANUAL cannot be configured in production.")
+        # The same rule, applied to the other way a human gets into the loop.
+        # MANUAL substitutes a person for the model; response interception puts
+        # a person between the model and its caller. Both stop production
+        # traffic on somebody being at a console, and both are refused here
+        # rather than merely discouraged -- this is the mechanism, not a second
+        # one invented for the occasion.
+        if self.environment == "production" and self.ai_response_interception:
+            raise ValueError("AI response interception cannot be enabled in production.")
         self._reject_inline_ai_credentials()
         dependency_modes = {
             self.omc_dependency_mode,

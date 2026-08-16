@@ -151,6 +151,50 @@ async def test_a_held_request_is_answered_from_the_store() -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_held_record_names_the_task_the_request_came_from() -> None:
+    """One MANUAL route serves every task that permits it.
+
+    The provider is constructed once per *route*, at `build_routes` time, so a
+    construction-time task id is necessarily wrong for all but one of the tasks
+    that route serves -- which is how every held request came to show
+    `taskId: "UNKNOWN"` in the operator queue. The dispatcher knows the answer
+    per invocation, so the request carries it and the request wins.
+
+    This is legibility, not routing: `systemPrompt` already carries the response
+    schema, so an operator could always answer correctly. They just could not
+    tell what they were answering.
+    """
+    store = _Store()
+    provider = DurableInterceptionProvider(_settings(), store, task_id="UNKNOWN", poll_seconds=0.01)
+
+    answering = asyncio.create_task(_answer_first_pending(store, '{"ok": true}'))
+    request = ProviderRequest(
+        system_prompt="You are a careful assistant.",
+        user_payload={"mode": "DECIDE", "contextJson": "{}"},
+        task_id="GRAPH_SCHEMA_PROPOSAL_V1",
+    )
+    await provider.generate(request)
+    interception_id = await answering
+
+    assert store.records[interception_id].task_id == "GRAPH_SCHEMA_PROPOSAL_V1"
+
+
+@pytest.mark.asyncio
+async def test_a_request_that_names_no_task_falls_back_to_the_route_it_was_built_for() -> None:
+    """`task_id` is optional, so a caller predating it must not regress."""
+    store = _Store()
+    provider = DurableInterceptionProvider(
+        _settings(), store, task_id="ORDER_AGENT_REASONING_V1", poll_seconds=0.01
+    )
+
+    answering = asyncio.create_task(_answer_first_pending(store, '{"ok": true}'))
+    await provider.generate(_request())  # no task_id on the request
+    interception_id = await answering
+
+    assert store.records[interception_id].task_id == "ORDER_AGENT_REASONING_V1"
+
+
+@pytest.mark.asyncio
 async def test_the_resume_command_is_written_with_the_request_not_after_it() -> None:
     """The plan requires the interception and its resume command to be
     persisted atomically. They are one document, so a crash between "held the

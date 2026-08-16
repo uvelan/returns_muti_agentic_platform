@@ -116,6 +116,24 @@ class CaseStatus(StrEnum):
 
     GATHERING_INFO = "GATHERING_INFO"
     AWAITING_BAY = "AWAITING_BAY"
+    #: The four below arrive with the policy gate (plan sect. 7.7). They are
+    #: added to *this* enum because it is the one `ReturnCaseWorkflow` writes and
+    #: the one `cases.status` holds; the frozen `ReturnCaseStatus` in
+    #: `case_projection/vocabulary.py` is a second, different set, and
+    #: reconciling the two is the migration's job rather than the gate's.
+    #:
+    #: `POLICY_APPROVED` is transient: the workflow sets it and immediately opens
+    #: the Support work item, which moves the case to `AWAITING_SUPPORT`. It is
+    #: the one of the four with no counterpart in `ReturnCaseStatus`.
+    POLICY_APPROVED = "POLICY_APPROVED"
+    #: The evaluator asked for a human and **no work item was opened**. That is
+    #: what distinguishes it from `AWAITING_SUPPORT`.
+    AWAITING_POLICY_REVIEW = "AWAITING_POLICY_REVIEW"
+    #: Terminal. Outside policy, and Support was never asked.
+    POLICY_REJECTED = "POLICY_REJECTED"
+    #: An operational failure parked the case -- today, a deployment with no
+    #: published eligibility policy. Non-terminal: publishing one fixes it.
+    RECOVERY_REQUIRED = "RECOVERY_REQUIRED"
     AWAITING_SUPPORT = "AWAITING_SUPPORT"
     RMA_RECEIVED = "RMA_RECEIVED"
     IN_TRANSIT = "IN_TRANSIT"
@@ -211,6 +229,38 @@ class CaseFactView(MutableContract):
     correlationId: str | None = None
 
 
+class ReturnRecordShipmentView(MutableContract):
+    """One parcel on one RMA, as the case aggregate stores it (D1, D4).
+
+    Written by `CaseRepository.record_case_shipment` from an APPLIED
+    `dbo.return_tracking` update, and read by
+    `case_projection.assembly.project_shipments`. Declared here because the
+    record document persists it and a stored field no contract names is a field
+    that drifts.
+
+    **Four fields, and the omissions are the point.**
+
+    `trackingReference` is the parcel's identity -- `UQ_return_tracking_reference`
+    makes it one row per number -- and is what `ShipmentProjection.shipmentId`
+    reads. `carrier` is the code the feed filed, `None` when it filed none, in
+    which case the projection falls back to the RMA's own `carrier` rather than
+    asserting the parcel has none.
+
+    The carrier's *status* is deliberately not here. `dbo.return_tracking`
+    remains its authoritative home, and this shape exists to make the parcel
+    visible rather than to become a second copy of the shipment log: the platform
+    has no closed vocabulary to store a carrier status under (see
+    `api.return_shipments.ShipmentUpdateRequest.shipmentStatus`), and its own
+    reading of that status already reaches the case as the `fulfillment_status`
+    fact. Nothing here would read a stored copy.
+    """
+
+    trackingReference: str
+    carrier: str | None = None
+    createdAt: datetime
+    updatedAt: datetime
+
+
 class ReturnRecordView(MutableContract):
     """One RMA, and everything that belongs to that RMA rather than to the case.
 
@@ -224,8 +274,52 @@ class ReturnRecordView(MutableContract):
     caseId: str
     returnReference: str | None = None
     status: str = "DRAFT"
+    #: How the goods come back, for **this** RMA (D23).
+    #:
+    #: Per record and never per case, for the same reason the label and the
+    #: return location are: one case can carry several RMAs with different
+    #: methods, and a case-level value would be read as the method of every one
+    #: of them -- silently completing a `CUSTOMER_KEEP` record against a
+    #: `PREPAID_PARCEL` requirement set, or hanging a `NO_PHYSICAL_RETURN` one
+    #: forever waiting for a label.
+    #:
+    #: A plain string, not a closed enum. The catalogue is operator-owned
+    #: through `return_policy.normalized_return_methods`, and a method an
+    #: operator added must still render; an unmapped one leaves the completion
+    #: profile unresolved rather than making the case unreadable.
+    returnMethod: str | None = None
+    #: Who is carrying the goods back, for **this** RMA (audit finding #9).
+    #:
+    #: The home `ShipmentProjection.carrier` reads from. Per record and never per
+    #: case, for the same reason the tracking reference is: a split return goes
+    #: back on two carriers, and a case-level value would attribute one package's
+    #: carrier to the other's.
+    #:
+    #: A plain string with no closed vocabulary behind it. Unlike
+    #: `returnMethod`, no operator-owned catalogue of carriers exists -- see
+    #: `api.return_support.ReturnOutcomeRecord.carrier` for why one is not
+    #: invented here -- so this holds whatever Support named, bounded to the
+    #: length `dbo.return_record.carrier` can store.
+    carrier: str | None = None
     returnLocation: str | None = None
+    #: The tracking number **Support** stated when the RMA was issued. One slot,
+    #: because it is one statement -- and not the same statement as `shipments`
+    #: below, which is what carriers have actually filed. A record can carry
+    #: either, both, or neither; `project_shipments` unions them on the tracking
+    #: reference so that one parcel named twice is one parcel.
     trackingReference: str | None = None
+    #: Every parcel a carrier has filed against this RMA (D1, D4).
+    #:
+    #: Absent on a record no carrier has scanned, which is the ordinary state of
+    #: a freshly issued RMA -- absence here means "no carrier has filed one",
+    #: never "this return has no parcels", and the two are distinguishable only
+    #: because nothing writes an empty array to stand for the first.
+    #:
+    #: Plural because `dbo.return_tracking` has been RMA-scoped and plural since
+    #: `006_return_shipment_state.sql`: a split return goes back in two parcels,
+    #: each with its own tracking number and its own carrier, and the read model
+    #: had one slot for them until this field existed.
+    shipments: list[ReturnRecordShipmentView] | None = None
     labelReference: str | None = None
     shippingInstructionReference: str | None = None
     sourceSystem: str | None = None

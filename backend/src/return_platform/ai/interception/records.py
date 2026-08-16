@@ -19,6 +19,12 @@ than a transaction that could be forgotten.
 model produced it -- an evaluation set built from traces would silently be
 training on and measuring human text.
 
+**One record, two points.** The same document now also holds a *response* a
+human is reviewing, distinguished by `InterceptionPoint`. Everything that made
+this record worth having -- one atomic document, sealed at rest, compare-and-set
+transitions, one operator queue -- is exactly as valuable for a held response,
+and a parallel store would have had to re-earn all of it.
+
 **No chain of thought, deliberately.** The record holds the request that was
 sent and the response text that came back. There is no field for reasoning,
 working, or deliberation, and the sealed payload is the request as the provider
@@ -30,6 +36,34 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+
+
+class InterceptionPoint(StrEnum):
+    """*When* a human was put in the loop, which is the only thing that differs.
+
+    There are two moments worth holding at, and they are genuinely different
+    jobs. At `REQUEST` the provider has not been called: a human writes an answer
+    from scratch, and the model never runs. At `RESPONSE` the provider has
+    already answered: a human reads what came back and either takes it, changes
+    it, or throws it away.
+
+    A field on the same record rather than a second collection. The queue, the
+    sealing, the compare-and-set discipline, the expiry sweep and the operator
+    endpoints are identical for both; the only thing that varies is what the
+    sealed payload contains and how the three terminal statuses are *read*:
+
+        point     ANSWERED          ALLOWED                CANCELLED/EXPIRED
+        REQUEST   human wrote it    model may proceed      request refused
+        RESPONSE  human edited it   response accepted      response rejected
+
+    Reusing the statuses instead of adding `ACCEPTED`/`EDITED`/`REJECTED` keeps
+    one state machine. Eight statuses whose legality depended on a sibling field
+    would be two state machines wearing one enum, and every consumer would have
+    to learn both.
+    """
+
+    REQUEST = "REQUEST"
+    RESPONSE = "RESPONSE"
 
 
 class InterceptionStatus(StrEnum):
@@ -106,3 +140,7 @@ class Interception:
     answered_at: datetime | None = None
     answered_by: str | None = None
     response_text: str | None = None
+    #: Defaulted to `REQUEST` so every record written before response
+    #: interception existed reads as what it was. An absent field must not become
+    #: an ambiguous one.
+    point: InterceptionPoint = InterceptionPoint.REQUEST

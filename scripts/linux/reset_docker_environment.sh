@@ -136,7 +136,14 @@ if [[ "${DELETE_ALL_DOCKER}" == true ]]; then
     docker builder prune -af
     docker system prune -af --volumes
 else
-    log "Project-only cleanup."
+    # "Project-only" is the mode name, not a description of these four commands.
+    # `docker container prune` removes EVERY stopped container on this host and
+    # `docker image prune` removes every dangling image, whether or not this
+    # project created them. That is intended for a dev box and is called out
+    # here because the log line above reads like it is scoped to the Compose
+    # project, and someone with unrelated stopped containers deserves to know
+    # before they run it rather than after.
+    log "Host-wide prune of stopped containers, dangling images, unused networks and build cache."
     docker container prune -f
     docker image prune -f
     docker network prune -f
@@ -176,7 +183,10 @@ docker ps -a
 if [[ "${START_HOST}" == true ]]; then
     [[ -x "scripts/run_all_host.sh" ]] || fail "scripts/run_all_host.sh is missing or not executable."
     log "Starting backend, workers, and frontend."
-    scripts/run_all_host.sh
+    # `--no-supervise`: the supervising form blocks forever, so the "Next
+    # command" guidance below never printed and Ctrl-C tore down what had just
+    # been started.
+    scripts/run_all_host.sh --no-supervise
 fi
 
 log "Docker environment recreation completed."

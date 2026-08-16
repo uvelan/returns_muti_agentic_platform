@@ -11,11 +11,13 @@ from enum import StrEnum
 from typing import Any, Final, cast
 
 from pydantic import BaseModel, ConfigDict, Field
-from pymongo import ASCENDING, DESCENDING, AsyncMongoClient, ReturnDocument
+from pymongo import ASCENDING, AsyncMongoClient, ReturnDocument
+from pymongo.asynchronous.client_session import AsyncClientSession
 from pymongo.errors import DuplicateKeyError
 
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 from return_platform.configuration.settings import Settings
+from return_platform.operations.integrations.outbox import INTEGRATION_OUTBOX_COLLECTION
 from return_platform.operations.repository import ConcurrencyConflictError, OperationalRepository
 from return_platform.workflows.production_return_workflow import ProductionReturnEventType
 
@@ -40,6 +42,17 @@ class SupportWorkItemStatus(StrEnum):
     CLARIFICATION_REQUIRED = "CLARIFICATION_REQUIRED"
     IN_PROGRESS = "IN_PROGRESS"
     RETURN_CREATION_PENDING = "RETURN_CREATION_PENDING"
+    #: Support has referred the question to someone outside the platform and is
+    #: waiting on them: a manufacturer on a warranty or a special-order
+    #: acceptance, a carrier on a delivery claim (plan sect. 7.6).
+    #:
+    #: **One new status total, parameterised by route rather than three.** The
+    #: work item stays on its route's queue and the case stays `AWAITING_SUPPORT`
+    #: -- an external party reviewing is not a terminal state and not a decision.
+    #: The action that sets it belongs to the Support console work (3A.6); the
+    #: vocabulary is declared here so that the three paths cannot each invent
+    #: their own spelling of it.
+    EXTERNAL_PARTY_REVIEW = "EXTERNAL_PARTY_REVIEW"
     RETURN_CREATED = "RETURN_CREATED"
     SHIPPING_INSTRUCTIONS_PENDING = "SHIPPING_INSTRUCTIONS_PENDING"
     READY_FOR_ASSOCIATE = "READY_FOR_ASSOCIATE"
@@ -221,7 +234,7 @@ class ReturnSupportService:
         database = client[settings.mongo_database]
         self._work_items = database["support_work_items"]
         self._messages = database["support_messages"]
-        self._outbox = database["integration_outbox"]
+        self._outbox = database[INTEGRATION_OUTBOX_COLLECTION]
         self._config = configuration
         self._repository = operational_repository
 
@@ -252,9 +265,22 @@ class ReturnSupportService:
             [("threadId", ASCENDING), ("sequence", ASCENDING)], unique=True
         )
         await self._messages.create_index([("threadId", ASCENDING), ("createdAt", ASCENDING)])
-        await self._outbox.create_index("idempotencyKey", unique=True)
-        await self._outbox.create_index([("status", ASCENDING), ("nextAttemptAt", ASCENDING)])
-        await self._outbox.create_index([("createdAt", DESCENDING)])
+        # The integration outbox is deliberately absent. This service writes
+        # commands to it but owns none of the fields it was indexing, and its
+        # copy of the definition had drifted from the other two: it alone built
+        # `(createdAt DESC)` and never built `leaseUntil`.
+        #
+        # `operations.integrations.outbox.ensure_integration_outbox_indexes` now
+        # owns all five, and `OperationalRepository.ensure_indexes` -- which runs
+        # immediately before this method in the API lifespan and inside the
+        # orchestrator -- builds them. Removing the copy is also what stops the
+        # API process from building the outbox indexes twice on every boot.
+        #
+        # `(createdAt DESC)` was not lost with it: it is in the union, which is
+        # the only reason this deletion is safe. Deleting it before the union
+        # existed would have turned the operator listing in
+        # `api/integration_outbox.py` into a collection scan and an in-memory
+        # sort.
 
     @staticmethod
     def _work_item_view(document: dict[str, Any]) -> SupportWorkItemView:
@@ -422,8 +448,31 @@ class ReturnSupportService:
         principal_id: str,
         support_draft: str,
         idempotency_key: str,
+        queue: str | None = None,
+        sla_due_at: datetime | None = None,
     ) -> str:
         """Open Channel B for a case, once, and return the work-item id.
+
+        `queue` is how a warranty or delivery-claim verification reaches the team
+        that verifies it. It is optional and defaults to the returns queue, so
+        the ordinary path is unchanged; route context travels as a queue and
+        never as a work-item type field (plan sect. 7.6).
+
+        `sla_due_at` is a deadline **somebody else computed**, and today the only
+        caller that supplies one is the delivery-claim path: the reporting
+        window is `delivery_claim.reporting_window` business days after
+        delivery, decided by the policy evaluation that routed the case and
+        carried here rather than recomputed. Recomputing it would need this
+        service to resolve a business calendar it has no business resolving, and
+        would produce a second answer to a question already answered -- the
+        failure `PolicyOutcome.delivery_claim_window` names in as many words.
+
+        `None` means "no deadline but yours", and the generic acknowledgement
+        SLA stands. That is the ordinary case for every standard return, and it
+        is also the honest fallback for a delivery claim whose window is
+        `UNDETERMINED`; the caller distinguishes the two by recording a
+        `SupportSlaBasis`, because the fallback and a computed deadline are
+        otherwise the same field with the same shape.
 
         The case-scoped counterpart to `create_work_item`, which is keyed to a
         return *session*. A case has no session -- it is the thing sessions hang
@@ -434,7 +483,37 @@ class ReturnSupportService:
         the unique `caseId` index, which catches the race the key check cannot.
         There is one Returns Support conversation per return; a second would
         split the exchange a human is reading in two.
+
+        **The two inserts share one transaction, and the reason is durability
+        rather than the revision** (D28). This writes no case field: the link
+        that puts the thread on the projection is `channelBWorkItemId`, set by
+        `open_support_work_item`'s own `update_case` after this returns, and that
+        writer bumps. So `CaseDetail` cannot observe a torn state here -- until
+        the case is linked, `_load_support_work_item` reads nothing at all, which
+        is why there is no `bump_case_revision` call below and adding one would
+        invalidate every cached projection for a document no client can yet see.
+
+        What the transaction fixes is worse than a stale cache and permanent.
+        The work item was inserted first and the opening message second; a
+        failure between them left a thread whose request text never existed, and
+        the idempotency check at the top then returns that thread forever, so no
+        retry ever writes the missing message. A human opens the conversation
+        Support is meant to answer and finds it empty. Both inserts now commit or
+        neither does, and a retry re-opens the thread properly.
+
+        `with_transaction` re-runs the callback on a transient abort; both
+        documents are built above with fixed ids and the failed attempt's writes
+        are rolled back first, so the re-run is an identical pair of inserts
+        rather than a duplicate. A `DuplicateKeyError` is *not* transient -- it
+        aborts and surfaces here, where it means the race the unique index
+        exists to catch, and the winner's thread is read back.
         """
+        if sla_due_at is not None and sla_due_at.utcoffset() is None:
+            raise ValueError(
+                "a supplied slaDueAt must be timezone-aware: stored naive beside the aware "
+                "instants every other writer produces, it sorts and compares as if it were UTC "
+                "whatever zone it was meant in"
+            )
         existing = await self._work_items.find_one(
             {"$or": [{"idempotencyKey": idempotency_key}, {"caseId": case_id}]}
         )
@@ -454,7 +533,7 @@ class ReturnSupportService:
             "status": SupportWorkItemStatus.NEW.value,
             "priority": "NORMAL",
             "priorityRank": 2,
-            "queue": "RETURNS_SUPPORT",
+            "queue": queue or "RETURNS_SUPPORT",
             "subject": f"Return request for case {case_id}",
             "requestSnapshotDigest": _digest({"caseId": case_id}),
             "assignedTo": None,
@@ -470,7 +549,13 @@ class ReturnSupportService:
             "shippingInstructionsIssuedAt": None,
             "customerResolutionRecordedAt": None,
             "completedAt": None,
-            "slaDueAt": now + timedelta(minutes=sla_minutes),
+            # The caller's deadline wins where there is one; the desk's own SLA
+            # is the fallback and not the default, which is the difference D2
+            # closed. A tz-aware instant is required: a naive one stored beside
+            # aware ones compares wrong in every query that sorts on this field.
+            "slaDueAt": (
+                sla_due_at if sla_due_at is not None else now + timedelta(minutes=sla_minutes)
+            ),
             "lastMessageSequence": 1,
             "version": 0,
             "idempotencyKey": idempotency_key,
@@ -490,8 +575,14 @@ class ReturnSupportService:
             "businessPayload": {"caseId": case_id},
             "createdAt": now,
         }
+
+        async def _open(mongo_session: AsyncClientSession) -> None:
+            await self._work_items.insert_one(document, session=mongo_session)
+            await self._messages.insert_one(message, session=mongo_session)
+
         try:
-            await self._work_items.insert_one(document)
+            async with self._client.start_session() as mongo_session:
+                await mongo_session.with_transaction(_open)
         except DuplicateKeyError:
             # Lost the race on `caseId` or `idempotencyKey`. The winner's thread
             # is the one thread this case gets.
@@ -501,7 +592,6 @@ class ReturnSupportService:
             if winner is None:  # pragma: no cover - duplicate on neither key
                 raise
             return str(winner["_id"])
-        await self._messages.insert_one(message)
         return item_id
 
     async def post_reminder(
@@ -654,6 +744,22 @@ class ReturnSupportService:
                     SupportAction.ASSIGN,
                     SupportAction.RECORD_RETURN_CREATION,
                     SupportAction.REQUEST_CLARIFICATION,
+                    SupportAction.CANCEL,
+                    SupportAction.ATTACH_EXTERNAL_TICKET,
+                }
+            ),
+            # A work item waiting on a manufacturer or a carrier is still a work
+            # item Support owns: it can be reassigned, chased, progressed when
+            # the answer comes back, rejected, or cancelled. The action set
+            # therefore matches `IN_PROGRESS` -- what changes is who everyone is
+            # waiting for, not what Support may do about it.
+            SupportWorkItemStatus.EXTERNAL_PARTY_REVIEW: frozenset(
+                {
+                    SupportAction.ASSIGN,
+                    SupportAction.REQUEST_CLARIFICATION,
+                    SupportAction.REQUEST_RETURN_CREATION,
+                    SupportAction.RECORD_RETURN_CREATION,
+                    SupportAction.REJECT,
                     SupportAction.CANCEL,
                     SupportAction.ATTACH_EXTERNAL_TICKET,
                 }
@@ -868,14 +974,15 @@ class ReturnSupportService:
             updates["externalTicketReference"] = request.externalTicketReference
         else:  # pragma: no cover - enum exhaustiveness
             raise ValueError(f"Unsupported Support action {action.value}")
-        updated = await self._work_items.find_one_and_update(
-            {"_id": work_item_id, "version": request.expectedVersion, "status": status.value},
-            {"$set": updates, "$inc": {"version": 1}},
-            return_document=ReturnDocument.AFTER,
-        )
-        if updated is None:
-            raise ConcurrencyConflictError(work_item_id)
-        session_id = str(updated["sessionId"])
+        updated = await self._commit_action(work_item_id, request, status, updates, when=now)
+        projected_session = updated.get("sessionId")
+        if not isinstance(projected_session, str) or not projected_session:
+            # A case thread. It has no return session to project onto and no
+            # session event log to append to -- `open_case_thread` writes
+            # `sessionId: None` deliberately, because a case is the thing
+            # sessions hang off. The projection this action changed is the
+            # case's, and the write above has already moved its revision.
+            return self._work_item_view(updated)
         return_updates: dict[str, Any] = {"supportStatus": str(updated["status"])}
         if updated.get("returnReference"):
             return_updates.update(
@@ -894,9 +1001,9 @@ class ReturnSupportService:
             )
         if updated.get("customerResolutionStatus"):
             return_updates["customerResolutionStatus"] = str(updated["customerResolutionStatus"])
-        await self._repository.update_return(session_id, return_updates)
+        await self._repository.update_return(projected_session, return_updates)
         await self._repository.append_event(
-            session_id,
+            projected_session,
             event_type=f"SUPPORT_{action.value}",
             actor_type="USER",
             actor_id=actor_id,
@@ -906,4 +1013,67 @@ class ReturnSupportService:
                 "reasonDigest": _digest(request.reason),
             },
         )
-        return self._work_item_view(cast(dict[str, Any], updated))
+        return self._work_item_view(updated)
+
+    async def _commit_action(
+        self,
+        work_item_id: str,
+        request: SupportActionRequest,
+        status: SupportWorkItemStatus,
+        updates: dict[str, Any],
+        *,
+        when: datetime,
+    ) -> dict[str, Any]:
+        """Apply the action to the work item, and the case revision with it.
+
+        > Any write that can change the `CaseDetail` projection must, in the
+        > same transaction, bump `case.revision` and set `case.updatedAt`.
+        > (plan sect. 6.5)
+
+        This one changes it. `SupportProjection` reads `status`, `assignedTo`
+        and `completedAt` (as `resolvedAt`) straight off this document, and
+        every branch above sets at least one of them -- so a Support reply that
+        left the revision untouched is the precise case the invariant exists to
+        prevent: the projection moves, the client's `revision` comparison says
+        nothing changed, and the screen never re-renders.
+
+        The mechanism is the repository's `bump_case_revision` -- a blind `$inc`
+        with `session` a required keyword -- inside `with_transaction`, which is
+        the shape `case_repository.py`'s four writers use and the shape
+        `create_work_item` above already opens a session with. Not a second,
+        best-effort `update_one` afterwards: a bump that can fail after the work
+        item commits produces a case that is resolved on the server and
+        unresolved on every client that trusts the revision.
+
+        `with_transaction` retries a transient abort by re-running the callback,
+        so the compare-and-set is re-issued rather than surfaced as a conflict
+        on a case nobody edited. That is safe because the callback is
+        idempotent-by-refusal: the second attempt matches on the same
+        `(version, status)` pair, and if a real writer moved the item in between
+        it matches nothing and raises, which is the correct answer.
+
+        **A work item with no case bumps nothing.** The session-scoped half of
+        this collection is on no case projection, and there would be no case id
+        to name.
+
+        **A refused action bumps nothing.** The `None` result raises from inside
+        the transaction, so the bump rolls back with it -- a caller that lost
+        the compare-and-set changed nothing and must move no revision.
+        """
+
+        async def _write(mongo_session: AsyncClientSession) -> dict[str, Any]:
+            document = await self._work_items.find_one_and_update(
+                {"_id": work_item_id, "version": request.expectedVersion, "status": status.value},
+                {"$set": updates, "$inc": {"version": 1}},
+                return_document=ReturnDocument.AFTER,
+                session=mongo_session,
+            )
+            if document is None:
+                raise ConcurrencyConflictError(work_item_id)
+            case_id = document.get("caseId")
+            if isinstance(case_id, str) and case_id:
+                await self._repository.bump_case_revision(case_id, session=mongo_session, when=when)
+            return cast(dict[str, Any], document)
+
+        async with self._client.start_session() as mongo_session:
+            return cast(dict[str, Any], await mongo_session.with_transaction(_write))

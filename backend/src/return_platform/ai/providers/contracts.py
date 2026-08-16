@@ -22,6 +22,60 @@ class ProviderRequest:
     temperature: float = 0.0
     response_schema: dict[str, Any] | None = None
 
+    #: Which task this request belongs to, for providers that must say so.
+    #:
+    #: Model providers have no use for it. A human-in-the-loop provider does: it
+    #: is built once per *route*, at `build_routes` time, while one route can
+    #: serve several tasks -- so a provider-construction-time task id is
+    #: necessarily wrong for all but one of them, and an operator answering a
+    #: held request sees the wrong label or none. The dispatcher already knows
+    #: the answer per invocation (`DispatchRequest.task_id`); this carries it the
+    #: one hop that was missing.
+    #:
+    #: Optional because every existing caller predates it and a model provider
+    #: that never reads it must not be forced to supply one.
+    task_id: str | None = None
+
+
+#: The third response identity, and the reason it is a *third* one.
+#:
+#: The platform already distinguishes two: a model answered (`provider` names the
+#: model), or a human answered in the model's place (`MANUAL` /
+#: `manual-human-v1`). A response a human *edited* is neither. Labelling it with
+#: the originating model would let an evaluation set absorb human edits as model
+#: quality; labelling it `MANUAL` would lose that a model produced the substance.
+#:
+#: So it gets its own provider name, and `HumanEdit` carries the origin. The
+#: choice of which half goes in `provider` is deliberate and is about how a
+#: consumer that has never heard of this feature behaves: with `HUMAN_EDITED`
+#: there, a query for `provider == "GOOGLE"` excludes the edited row and a query
+#: for `provider == "MANUAL"` excludes it too, so it falls out of both sets
+#: rather than silently into one. Putting the origin in `provider` and the edit
+#: in a field would have made the *default* reading "pure model output", which is
+#: precisely the misattribution this exists to prevent.
+HUMAN_EDITED_PROVIDER = "HUMAN_EDITED"
+HUMAN_EDITED_MODEL = "human-edited-v1"
+
+
+@dataclass(frozen=True, slots=True)
+class HumanEdit:
+    """A model produced the substance; a named human changed it.
+
+    Both digests are recorded rather than either text: `origin_digest` is the
+    model's output exactly as it arrived, `delivered_digest` is what the caller
+    actually received. Equal digests would mean an edit that changed nothing;
+    different ones prove an edit happened and let a later audit line the two up
+    against the sealed interception record, which is where the actual text lives
+    (sealed, because a response can carry the same customer rows the prompt did).
+    """
+
+    origin_provider: str
+    origin_model: str
+    origin_digest: str
+    delivered_digest: str
+    edited_by: str
+    interception_id: str
+
 
 @dataclass(frozen=True, slots=True)
 class ProviderResponse:
@@ -42,6 +96,18 @@ class ProviderResponse:
     cached_input_tokens: int | None = None
     output_tokens: int | None = None
     total_tokens: int | None = None
+    #: Set only when a human modified this response after the provider produced
+    #: it, in which case `provider`/`model` are `HUMAN_EDITED`/`human-edited-v1`
+    #: and this names the model whose answer was edited. `None` -- the default,
+    #: and the only value any provider adapter ever produces -- means the text is
+    #: exactly what `provider` returned.
+    #:
+    #: The token counts are deliberately *not* recomputed for an edit. They are
+    #: what the provider billed for its own output; a human rewriting the text
+    #: afterwards does not change the invoice, and adjusting them would make the
+    #: cost column disagree with the bill in order to make it agree with the
+    #: text.
+    human_edit: HumanEdit | None = None
 
 
 class AIProvider(Protocol):

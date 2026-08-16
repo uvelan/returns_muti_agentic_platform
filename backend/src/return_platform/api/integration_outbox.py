@@ -28,6 +28,20 @@ class OutboxView(BaseModel):
     nextAttemptAt: datetime
     lastErrorCode: str | None = None
     externalReference: str | None = None
+    #: What a human or a reconciler still has to do about this command.
+    #:
+    #: Deliberately separate from `status`, which only says what the outbox will
+    #: do next. A permanently undeliverable command -- a workflow that completed
+    #: or was terminated before its Support answer reached it -- comes to rest at
+    #: `status=DEAD_LETTER` *and* `reconciliationState=REQUIRES_RECONCILIATION`,
+    #: and only the second of those says the case still needs reconciling.
+    #: Without it on this view an operator can see that delivery stopped but not
+    #: that anything is owed, which is the difference between an abandoned
+    #: command and a lost RMA. Phase 10 consumes it.
+    #:
+    #: `None` for every command that has not dead-lettered, so absence means
+    #: "nothing to reconcile" rather than "not recorded".
+    reconciliationState: str | None = None
     createdAt: datetime
     updatedAt: datetime
 
@@ -65,6 +79,7 @@ async def list_outbox(
                     "nextAttemptAt": document.get("nextAttemptAt", document.get("createdAt")),
                     "lastErrorCode": document.get("lastErrorCode"),
                     "externalReference": document.get("externalReference"),
+                    "reconciliationState": document.get("reconciliationState"),
                     "createdAt": document.get("createdAt"),
                     "updatedAt": document.get("updatedAt", document.get("createdAt")),
                 }

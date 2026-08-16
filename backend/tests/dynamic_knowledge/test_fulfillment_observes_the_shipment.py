@@ -271,7 +271,7 @@ async def test_the_read_is_compiled_from_the_schema_and_anchored_on_the_tracking
 
     await _observations(descriptor, reader).observe(TRACKING)
 
-    assert "MATCH (n0:`Shipment`)" in reader.cypher
+    assert "MATCH (n0:`Shipment` {graph_generation_id: $graph_generation_id})" in reader.cypher
     assert "n0.`tracking_number` = $p0" in reader.cypher
     assert reader.parameters["p0"] == TRACKING
     # Read-only, and the gateway refuses anything else.

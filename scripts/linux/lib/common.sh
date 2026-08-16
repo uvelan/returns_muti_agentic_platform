@@ -22,6 +22,131 @@ require_command() {
   }
 }
 
+# Vault comes back SEALED after every restart of its container, and nothing in
+# this repository unseals it automatically. Sealed Vault does not look like
+# sealed Vault: `PLATFORM_MONGO_DSN` keeps its `.env` sentinel of
+# `mongodb://vault-resolved.invalid/...`, so all six workers crash-loop on DNS
+# resolution of a host that does not exist and `backend` goes unhealthy. That
+# reads as six unrelated bugs. It is one, and it is this.
+#
+# Echoes exactly one of:
+#   UNKNOWN_NO_CURL | UNREACHABLE | UNINITIALIZED | SEALED | UNSEALED
+# Never fails, so a caller can print the state without `set -e` aborting.
+vault_seal_state() {
+  local address health
+  # A missing diagnostic tool is not a diagnosis. Reporting UNREACHABLE here
+  # would turn "curl is not installed" into "your Vault is down".
+  command -v curl >/dev/null 2>&1 || {
+    printf 'UNKNOWN_NO_CURL\n'
+    return 0
+  }
+  address="${PLATFORM_VAULT_ADDRESS:-http://127.0.0.1:8200}"
+  address="${address%/}"
+  # sealedcode/uninitcode make Vault answer 200 in states where it otherwise
+  # answers 503/501, so a non-200 here really does mean "not reachable".
+  health="$(
+    curl --fail --silent --max-time 5 \
+      "$address/v1/sys/health?standbyok=true&sealedcode=200&uninitcode=200" \
+      2>/dev/null || true
+  )"
+  if [[ -z "$health" ]]; then
+    printf 'UNREACHABLE\n'
+    return 0
+  fi
+  if [[ "$health" == *'"initialized":false'* ]]; then
+    printf 'UNINITIALIZED\n'
+    return 0
+  fi
+  if [[ "$health" == *'"sealed":true'* ]]; then
+    printf 'SEALED\n'
+    return 0
+  fi
+  printf 'UNSEALED\n'
+}
+
+# One line, naming the fix. Returns non-zero unless Vault is usable.
+assert_vault_unsealed() {
+  local state
+  state="$(vault_seal_state)"
+  case "$state" in
+    UNSEALED)
+      return 0
+      ;;
+    UNKNOWN_NO_CURL)
+      # Warn and pass. Blocking a startup on the absence of a probe would be a
+      # check that fails closed against itself rather than against Vault.
+      printf 'Vault seal state could not be checked: curl is not installed.\n' >&2
+      return 0
+      ;;
+    SEALED)
+      printf 'Vault is SEALED. Every credential resolves to the .env sentinel until it is opened; run: ./scripts/infra.sh unseal\n' >&2
+      ;;
+    UNINITIALIZED)
+      printf 'Vault is UNINITIALIZED. Run: ./scripts/infra.sh unseal (it initializes, unseals and seeds).\n' >&2
+      ;;
+    UNREACHABLE)
+      printf 'Vault is UNREACHABLE at %s. Start it with: ./scripts/infra.sh start\n' \
+        "${PLATFORM_VAULT_ADDRESS:-http://127.0.0.1:8200}" >&2
+      ;;
+  esac
+  return 1
+}
+
+# Resolve the Poetry executable into the global array POETRY_CMD. Non-zero when
+# there is none.
+#
+# `$RUNTIME_ROOT/tooling/bin/poetry` was the only fallback five scripts knew
+# about, and NOTHING IN THIS REPOSITORY HAS EVER CREATED IT.
+# `scripts/bootstrap_host.sh` -- the documented first-time setup -- installs
+# Poetry into `$REPO_ROOT/.tmp/poetry` and does not put it on PATH, so on a host
+# set up exactly as documented every one of those branches missed and the phase
+# exited 2 with "Poetry is required", next to a working Poetry it had installed
+# itself. `.tmp/poetry/bin/poetry` is added here; the `tooling` path is kept
+# because an environment that does provision it should keep working.
+poetry_cmd() {
+  if command -v poetry >/dev/null 2>&1; then
+    POETRY_CMD=(poetry)
+  elif [[ -x "$RUNTIME_ROOT/tooling/bin/poetry" ]]; then
+    POETRY_CMD=("$RUNTIME_ROOT/tooling/bin/poetry")
+  elif [[ -x "$REPO_ROOT/.tmp/poetry/bin/poetry" ]]; then
+    POETRY_CMD=("$REPO_ROOT/.tmp/poetry/bin/poetry")
+  elif [[ -x "$REPO_ROOT/.tmp/poetry/Scripts/poetry.exe" ]]; then
+    POETRY_CMD=("$REPO_ROOT/.tmp/poetry/Scripts/poetry.exe")
+  else
+    POETRY_CMD=()
+    printf 'Poetry is unavailable. Run scripts/bootstrap_host.sh, which installs it into .tmp/poetry.\n' >&2
+    return 2
+  fi
+}
+
+# Resolve a command prefix that runs Python inside the backend environment, and
+# set it in the global array BACKEND_PYTHON. Returns non-zero when there is none.
+#
+# Five scripts used to branch on `poetry` then on
+# `$RUNTIME_ROOT/tooling/bin/poetry` and give up. Nothing in this repository has
+# ever created that second path -- `bootstrap_host.sh` installs Poetry into
+# `.tmp/poetry`, which is a third location, and does not add it to PATH. So on
+# any host bootstrapped exactly as documented, both branches missed and the
+# scripts exited 2 with "Poetry is required", having ignored the working
+# `backend/.venv` that `bootstrap_host.sh` had just created.
+#
+# The stale branch is kept rather than removed: it costs one `-x` test, and an
+# environment that does provision it keeps working.
+backend_python() {
+  if poetry_cmd 2>/dev/null; then
+    BACKEND_PYTHON=("${POETRY_CMD[@]}" run python)
+  elif [[ -x "$REPO_ROOT/backend/.venv/bin/python" ]]; then
+    BACKEND_PYTHON=("$REPO_ROOT/backend/.venv/bin/python")
+  elif [[ -x "$REPO_ROOT/backend/.venv/Scripts/python.exe" ]]; then
+    # Windows, under Git Bash.
+    BACKEND_PYTHON=("$REPO_ROOT/backend/.venv/Scripts/python.exe")
+  else
+    BACKEND_PYTHON=()
+    printf 'No backend Python environment. Run scripts/bootstrap_host.sh (or phase 02).\n' >&2
+    return 2
+  fi
+}
+
 repo_fingerprint() {
   {
     git -C "$REPO_ROOT" rev-parse HEAD

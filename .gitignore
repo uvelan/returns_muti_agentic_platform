@@ -15,6 +15,13 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .venv/
+# Written by `scripts/bootstrap_host.sh` via `poetry config --local
+# virtualenvs.in-project true`, which is what puts the environment at
+# `backend/.venv` where every no-Poetry fallback in this repository looks for
+# it. Machine-local, exactly like `.venv/` itself -- and untracked on purpose,
+# because `19_verify_repository_state.sh` requires a clean tree and a bootstrap
+# that leaves a new file behind would fail the phase it enables.
+backend/poetry.toml
 .env
 # Every `.env` variant, not just the bare name. `backend/.env.vault-backup` was
 # tracked and carried a live provider key into history, which GitHub's push

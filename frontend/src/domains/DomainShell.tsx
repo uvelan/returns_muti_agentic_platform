@@ -214,35 +214,37 @@ function DomainFrame({ domain, children }: { domain: DomainDefinition; children:
           </div>
         )}
       </aside>
-      <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-20 flex h-[4.5rem] items-center justify-between gap-6 border-b border-outline-variant/70 bg-surface/95 px-7 backdrop-blur">
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-outline">
-              <span>Returns Intelligence Platform</span>
-              <ChevronRight size={13} aria-hidden="true" />
-              <span className="truncate text-on-surface-variant">{domain.name}</span>
-              {activeSectionLabel === "" ? null : (
-                <>
-                  <ChevronRight size={13} aria-hidden="true" />
-                  <span className="truncate text-primary">{activeSectionLabel}</span>
-                </>
+      <div className="min-w-0 flex-1 flex flex-col h-screen overflow-hidden">
+        {domain.path === "/returns" ? null : (
+          <header className="sticky top-0 z-20 flex h-[4.5rem] shrink-0 items-center justify-between gap-6 border-b border-outline-variant/70 bg-surface/95 px-7 backdrop-blur">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-outline">
+                <span>Returns Intelligence Platform</span>
+                <ChevronRight size={13} aria-hidden="true" />
+                <span className="truncate text-on-surface-variant">{domain.name}</span>
+                {activeSectionLabel === "" ? null : (
+                  <>
+                    <ChevronRight size={13} aria-hidden="true" />
+                    <span className="truncate text-primary">{activeSectionLabel}</span>
+                  </>
+                )}
+              </div>
+              <p className="mt-1 truncate text-sm text-on-surface-variant">{domain.description}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              <span className="hidden items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant xl:flex" title={runtimeConfig?.releaseId}>
+                <Command size={13} aria-hidden="true" />
+                {runtimeConfig?.environment ?? "Environment unknown"}
+              </span>
+              {principal === undefined ? null : (
+                <span className="max-w-64 truncate rounded-full bg-secondary-container px-3 py-1.5 text-xs font-medium text-on-secondary-container" title={principal.subject}>
+                  {principal.subject}
+                </span>
               )}
             </div>
-            <p className="mt-1 truncate text-sm text-on-surface-variant">{domain.description}</p>
-          </div>
-          <div className="flex shrink-0 items-center gap-3">
-            <span className="hidden items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant xl:flex" title={runtimeConfig?.releaseId}>
-              <Command size={13} aria-hidden="true" />
-              {runtimeConfig?.environment ?? "Environment unknown"}
-            </span>
-            {principal === undefined ? null : (
-              <span className="max-w-64 truncate rounded-full bg-secondary-container px-3 py-1.5 text-xs font-medium text-on-secondary-container" title={principal.subject}>
-                {principal.subject}
-              </span>
-            )}
-          </div>
-        </header>
-        <main className="min-w-0 overflow-x-auto p-7">
+          </header>
+        )}
+        <main className={`min-w-0 flex-1 ${domain.path === "/returns" ? "p-3 h-full overflow-hidden" : "overflow-x-auto p-7"}`}>
           <RailSlotProvider value={collapsed ? null : railSlot}>{children}</RailSlotProvider>
         </main>
       </div>

@@ -18,7 +18,10 @@ from typing import Any
 import pytest
 
 from return_platform.dynamic_knowledge.integration.neo4j_gateway import Neo4jKnowledgeGateway
-from return_platform.dynamic_knowledge.knowledge.cypher_compiler import CypherCompiler
+from return_platform.dynamic_knowledge.knowledge.cypher_compiler import (
+    GENERATION_PARAMETER,
+    CypherCompiler,
+)
 from return_platform.dynamic_knowledge.knowledge.query_plan import (
     LogicalQueryPlan,
     QueryOperation,
@@ -149,3 +152,65 @@ async def test_the_full_text_exception_buys_one_call_and_nothing_else(
         await _execute(driver, active_schema, smuggled)
 
     assert driver.executed == []
+
+
+@pytest.mark.asyncio
+async def test_the_generation_is_bound_rather_than_discarded(
+    active_schema: ActiveSchema,
+) -> None:
+    """`execute` used to open with `del graph_generation_id`.
+
+    Every layer above it did its job -- the snapshot was resolved, the lease was
+    taken, the id was threaded down -- and then the one call that reached the
+    database dropped it, so the read spanned every generation Neo4j held. The
+    compiler now emits the predicate; this is the half that gives it a value.
+    """
+    plan = LogicalQueryPlan(
+        operation=QueryOperation.SEARCH,
+        start_entity_id="entity_a",
+        fields=("id", "name"),
+        limit=10,
+    )
+    compiled = CypherCompiler().compile_read(active_schema, plan)
+    driver = _RecordingDriver()
+
+    gateway = Neo4jKnowledgeGateway(driver, database="neo4j")  # type: ignore[arg-type]
+    await gateway.execute(
+        schema=active_schema,
+        graph_generation_id="generation-77",
+        plan=None,
+        compiled_cypher=compiled.cypher,
+        parameters=compiled.parameters,
+    )
+
+    ((_, bound),) = driver.executed
+    assert bound[GENERATION_PARAMETER] == "generation-77"
+
+
+@pytest.mark.asyncio
+async def test_a_generation_smuggled_in_the_parameters_cannot_override_the_handle(
+    active_schema: ActiveSchema,
+) -> None:
+    """A compiled query supplying its own generation would be a second opinion
+    about which one serves this request, which is exactly what resolving through
+    a handle exists to make impossible."""
+    plan = LogicalQueryPlan(
+        operation=QueryOperation.SEARCH,
+        start_entity_id="entity_a",
+        fields=("id", "name"),
+        limit=10,
+    )
+    compiled = CypherCompiler().compile_read(active_schema, plan)
+    driver = _RecordingDriver()
+
+    gateway = Neo4jKnowledgeGateway(driver, database="neo4j")  # type: ignore[arg-type]
+    await gateway.execute(
+        schema=active_schema,
+        graph_generation_id="generation-77",
+        plan=None,
+        parameters={**compiled.parameters, GENERATION_PARAMETER: "some-other-generation"},
+        compiled_cypher=compiled.cypher,
+    )
+
+    ((_, bound),) = driver.executed
+    assert bound[GENERATION_PARAMETER] == "generation-77"

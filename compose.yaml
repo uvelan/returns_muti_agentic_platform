@@ -33,6 +33,15 @@ x-platform-environment: &platform-environment
   # `interception_store` None, which removes the durable store behind the AI
   # interception gate, all while /health/ready still answered "ready".
   PLATFORM_SYSTEM_STORE_MANIFEST_PATH: /app/config/platform/system_store.yaml
+  # The eighth, and the reason the note above did not end the class. The seven
+  # siblings are single files; this is the config *tree* the manifest-driven
+  # loader walks, and it was not a setting at all -- `main.py` handed
+  # `BACKEND_ROOT / "config"` to the agent configuration service directly, so no
+  # env var could reach it. Same wrong path, quieter symptom: the Configuration
+  # screen's Agents section 500s on `GET /api/agents` and the console renders
+  # "Loading..." forever, in every container, with the suite green because tests
+  # run from the checkout where BACKEND_ROOT is correct.
+  PLATFORM_CONFIGURATION_DIRECTORY: /app/config
   PLATFORM_PROBE_TIMEOUT_SECONDS: ${PLATFORM_PROBE_TIMEOUT_SECONDS:-5}
   PLATFORM_DEPENDENCY_CONNECT_TIMEOUT_SECONDS: ${PLATFORM_DEPENDENCY_CONNECT_TIMEOUT_SECONDS:-10}
   PLATFORM_OPERATION_TIMEOUT_SECONDS: ${PLATFORM_OPERATION_TIMEOUT_SECONDS:-15}

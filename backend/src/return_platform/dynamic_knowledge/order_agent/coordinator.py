@@ -38,6 +38,7 @@ from return_platform.dynamic_knowledge.on_demand_sync.coordinator import OnDeman
 from return_platform.dynamic_knowledge.order_agent.contracts import (
     AgentTurnRequest,
     AgentTurnResult,
+    CapturedTurnFact,
 )
 from return_platform.dynamic_knowledge.order_agent.conversation_repository import (
     ConversationScope,
@@ -244,6 +245,40 @@ def _committed_grounding(final_state: dict[str, Any]) -> dict[str, Any]:
         "as_of": as_of if as_of.tzinfo is not None else as_of.replace(tzinfo=UTC),
         "session_timezone": normalize_session_timezone(zone if isinstance(zone, str) else None),
     }
+
+
+def _committed_facts(final_state: dict[str, Any]) -> tuple[CapturedTurnFact, ...]:
+    """The conversation's captured facts, as the turn reports them back.
+
+    The merged set the graph is carrying, not this turn's new statements: the
+    console's extracted-facts panel is a view of what the conversation knows,
+    and a panel that only ever showed the last turn's additions would empty
+    itself the moment the associate answered a question about something else.
+
+    Entries are read defensively for the reason `_stored_observed_facts` gives:
+    the list travels through a conversation document that outlives releases, and
+    an entry that is not a named fact is dropped rather than reported as one.
+    """
+    stored = final_state.get("observed_facts", ())
+    if not isinstance(stored, tuple | list):
+        return ()
+    facts: list[CapturedTurnFact] = []
+    for entry in stored:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        facts.append(
+            CapturedTurnFact(
+                name=name,
+                value=entry.get("value"),
+                status=str(entry.get("status", "USABLE")),
+                label=str(entry.get("label", "")),
+                acquisition=str(entry.get("acquisition", "STATED")),
+            )
+        )
+    return tuple(facts)
 
 
 class DynamicOrderAgentCoordinator:
@@ -605,6 +640,7 @@ class DynamicOrderAgentCoordinator:
                 query_evidence=await self._evidence_store.get_many(
                     final_state.get("evidence_refs", ())
                 ),
+                captured_facts=_committed_facts(final_state),
                 model_provider=final_state["last_provider"],
                 model_name=final_state["last_model"],
                 pending_clarification_thread_id=thread_id,
@@ -657,6 +693,7 @@ class DynamicOrderAgentCoordinator:
             graph_generation_id=graph_generation_id,
             response=response,
             query_evidence=evidence,
+            captured_facts=_committed_facts(final_state),
             model_provider=final_state["last_provider"],
             model_name=final_state["last_model"],
             case_id=final_state.get("case_id"),

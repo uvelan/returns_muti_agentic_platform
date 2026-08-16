@@ -15,15 +15,8 @@ curl --fail --silent --show-error "$API/health/ready" \
   --output "$EVIDENCE_DIR/restart-readiness.json"
 
 cd "$REPO_ROOT/backend"
-if command -v poetry >/dev/null 2>&1; then
-  POETRY=(poetry)
-elif [[ -x "$RUNTIME_ROOT/tooling/bin/poetry" ]]; then
-  POETRY=("$RUNTIME_ROOT/tooling/bin/poetry")
-else
-  echo "Poetry is required for restart seed verification." >&2
-  exit 2
-fi
-"${POETRY[@]}" run python scripts/seed_e2e_data.py \
+backend_python
+"${BACKEND_PYTHON[@]}" scripts/seed_e2e_data.py \
   >"$EVIDENCE_DIR/restart-seed-status.json"
 jq -e '.ready == true and (.validationErrors | length == 0)' \
   "$EVIDENCE_DIR/restart-seed-status.json" >/dev/null

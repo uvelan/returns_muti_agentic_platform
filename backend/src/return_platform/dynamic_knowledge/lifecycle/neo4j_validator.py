@@ -13,6 +13,7 @@ from typing import Any, Protocol
 from return_platform.dynamic_knowledge.graph.generation_writer import GenerationDriver
 from return_platform.dynamic_knowledge.graph.validation import (
     GenerationValidationReport,
+    SourceRecordCensus,
     ValidationFinding,
     compile_validation_checks,
     evaluate,
@@ -24,7 +25,12 @@ _LOGGER = logging.getLogger(__name__)
 
 class GenerationValidator(Protocol):
     async def validate(
-        self, *, schema: ActiveSchema, graph_generation_id: str
+        self,
+        *,
+        schema: ActiveSchema,
+        graph_generation_id: str,
+        source_records_read: SourceRecordCensus | None = None,
+        previous_generation_id: str | None = None,
     ) -> GenerationValidationReport: ...
 
 
@@ -34,15 +40,34 @@ class Neo4jGenerationValidator:
         self._database = database
 
     async def validate(
-        self, *, schema: ActiveSchema, graph_generation_id: str
+        self,
+        *,
+        schema: ActiveSchema,
+        graph_generation_id: str,
+        source_records_read: SourceRecordCensus | None = None,
+        previous_generation_id: str | None = None,
     ) -> GenerationValidationReport:
         """Run every schema-derived check and collect the findings.
 
         Runs all checks rather than stopping at the first error: an operator
         deciding whether a rebuild is salvageable needs the whole picture, and
         the queries are counts against a generation-scoped index, not scans.
+
+        `source_records_read` is what the building run observed at each source.
+        It decides whether an empty node label is a tolerable "the source was
+        empty" or an intolerable "records were read and lost"; passing nothing
+        keeps every populated-ness check at ERROR.
+
+        `previous_generation_id` is the generation this candidate would replace.
+        It adds the guard that stops an emptied source from activating over a
+        populated generation, which the source census alone cannot see.
         """
-        checks = compile_validation_checks(schema, graph_generation_id=graph_generation_id)
+        checks = compile_validation_checks(
+            schema,
+            graph_generation_id=graph_generation_id,
+            source_records_read=source_records_read,
+            previous_generation_id=previous_generation_id,
+        )
         findings: list[ValidationFinding] = []
         async with self._driver.session(database=self._database) as session:
             for check in checks:

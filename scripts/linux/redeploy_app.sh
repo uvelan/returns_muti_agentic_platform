@@ -64,14 +64,11 @@ if [[ "$install_dependencies" == true ]]; then
   # Poetry 2.x. Sync so a dependency dropped from the lockfile leaves the
   # environment as well -- a redeploy that only ever adds is how a removed
   # package keeps working locally and fails in a fresh container.
-  if command -v poetry >/dev/null 2>&1; then
-    poetry sync --no-interaction
-  elif [[ -x "$RUNTIME_ROOT/tooling/bin/poetry" ]]; then
-    "$RUNTIME_ROOT/tooling/bin/poetry" sync --no-interaction
-  else
-    echo "Poetry is required to install backend dependencies." >&2
-    exit 2
-  fi
+  # Needs the Poetry binary: only it can sync an environment against the
+  # lockfile. Resolved through the shared helper so the `.tmp/poetry` that
+  # `bootstrap_host.sh` installs is found.
+  poetry_cmd
+  "${POETRY_CMD[@]}" sync --no-interaction
 
   echo "Synchronizing locked frontend dependencies..."
   cd "$REPO_ROOT/frontend"

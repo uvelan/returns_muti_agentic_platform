@@ -31,8 +31,9 @@ venv_python() {
   elif [[ -x "$ROOT/backend/.venv/Scripts/python.exe" ]]; then
     printf '%s' "$ROOT/backend/.venv/Scripts/python.exe"
   else
-    echo "No backend Python environment: install Poetry or run scripts/bootstrap_host.sh." >&2
-    exit 1
+    # `exit` here would leave only the command substitution's subshell, after
+    # which the caller would `exec ""`. Report failure and let the caller abort.
+    return 1
   fi
 }
 
@@ -48,4 +49,8 @@ export PYTHONPATH="$ROOT/backend/src${PYTHONPATH:+:$PYTHONPATH}"
 if command -v poetry >/dev/null; then
   exec poetry run uvicorn return_platform.asgi:app --host 0.0.0.0 --port 8000
 fi
-exec "$(venv_python)" -m uvicorn return_platform.asgi:app --host 0.0.0.0 --port 8000
+resolved_python="$(venv_python)" || {
+  echo "No backend Python environment: install Poetry or run scripts/bootstrap_host.sh." >&2
+  exit 1
+}
+exec "$resolved_python" -m uvicorn return_platform.asgi:app --host 0.0.0.0 --port 8000

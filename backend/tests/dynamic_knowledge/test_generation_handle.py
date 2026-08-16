@@ -18,7 +18,10 @@ from pathlib import Path
 
 import pytest
 
-from return_platform.dynamic_knowledge.lifecycle.handle import GenerationHandleProvider
+from return_platform.dynamic_knowledge.lifecycle.handle import (
+    GenerationHandleProvider,
+    GenerationResolutionError,
+)
 from return_platform.dynamic_knowledge.lifecycle.lease_store import LeaseClass
 
 _SRC = Path(__file__).resolve().parents[2] / "src" / "return_platform"
@@ -284,7 +287,26 @@ async def test_no_snapshot_yet_falls_back_to_the_legacy_resolver() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_snapshot_read_failure_falls_back_rather_than_failing_the_request() -> None:
+async def test_a_snapshot_read_failure_fails_the_request_rather_than_answering_from_nowhere() -> (
+    None
+):
+    """The inverse of what this test asserted until 2026-08-15, deliberately.
+
+    It used to require degrading to the legacy resolver, reasoning that a Mongo
+    blip should not take order search down. That was right while `legacy-live`
+    held the live data: degrading meant *slightly stale results*.
+
+    The first cutover inverted it. `legacy-live` is drained and RETIRED, so the
+    degraded answer became "no orders found" -- which an associate cannot tell
+    apart from "this order does not exist", and which sends them off to re-key
+    an order number that was correct. A dependency failure that presents as a
+    confident negative is worse than one that presents as a failure, because
+    only the first looks like an answer.
+
+    Not hypothetical: this dev stack ran two hours with Vault sealed, every
+    Mongo read raising `ServerSelectionTimeoutError`, while 5,978 nodes sat in
+    Neo4j and search would have answered nothing.
+    """
     resolver = _Resolver("gen-legacy")
     provider = GenerationHandleProvider(
         resolver,
@@ -292,5 +314,62 @@ async def test_a_snapshot_read_failure_falls_back_rather_than_failing_the_reques
         snapshot_store=_SnapshotStore(raises=True),
     )
 
-    async with provider.acquire_read(object()) as handle:  # type: ignore[arg-type]
-        assert handle.graph_generation_id == "gen-legacy"
+    with pytest.raises(GenerationResolutionError):
+        async with provider.acquire_read(object()):  # type: ignore[arg-type]
+            pass
+
+    assert resolver.calls == 0, (
+        "the legacy resolver must not be consulted at all -- reaching it is how a "
+        "read failure would come to be served as an empty generation"
+    )
+
+
+@pytest.mark.asyncio
+async def test_falling_back_to_the_legacy_resolver_is_never_silent(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Nothing in this repository writes `dynamic_graph_generations`, so the
+    legacy resolver can only ever answer `LEGACY_GENERATION_ID`.
+
+    Before the first cutover that is correct and unremarkable. After one it
+    names a generation that has been drained and RETIRED, so a request served
+    from it finds nothing -- and a graph holding thousands of nodes while search
+    returns zero is unexplainable unless the fallback announces itself. This is
+    the log line that makes it explainable, and a reviewer reading the resolver
+    argument alone has already once concluded from its absence that blue/green
+    was dead.
+    """
+    resolver = _Resolver("legacy-live")
+    provider = GenerationHandleProvider(
+        resolver,
+        lease_store=_LeaseStore(),
+        snapshot_store=_SnapshotStore(None),
+    )
+
+    with caplog.at_level("WARNING"):
+        async with provider.acquire_read(object()) as handle:  # type: ignore[arg-type]
+            assert handle.graph_generation_id == "legacy-live"
+
+    assert any(
+        "legacy resolver" in record.message and record.levelname == "WARNING"
+        for record in caplog.records
+    ), "taking the legacy fallback must be visible in an incident"
+
+
+@pytest.mark.asyncio
+async def test_a_published_snapshot_never_reaches_the_legacy_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The normal post-cutover path must stay quiet, or the warning above
+    becomes noise everyone filters out."""
+    provider = GenerationHandleProvider(
+        _Resolver("legacy-live"),
+        lease_store=_LeaseStore(),
+        snapshot_store=_SnapshotStore(_snapshot("gen-snapshot", 2)),  # type: ignore[arg-type]
+    )
+
+    with caplog.at_level("WARNING"):
+        async with provider.acquire_read(object()) as handle:  # type: ignore[arg-type]
+            assert handle.graph_generation_id == "gen-snapshot"
+
+    assert not [r for r in caplog.records if "legacy resolver" in r.message]

@@ -81,6 +81,7 @@ class RoutePoolReasoningModelGateway:
                 store=interception_store,
                 settings_source=gateway_settings,
                 subject="order_agent_reasoning",
+                settings=settings,
             ),
         )
         self._settings = settings

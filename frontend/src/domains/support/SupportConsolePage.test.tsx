@@ -19,9 +19,15 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type * as CasesModule from "../../api/cases";
-import type { CaseDetail, CaseFact, CaseReturnItem, CaseReturnRecord } from "../../api/cases";
+import type {
+  CaseFactProjection,
+  CaseProjection,
+  ReturnRecordProjection,
+  SelectedItemProjection,
+} from "../../api/cases";
 import type * as ShipmentsModule from "../../api/returnShipments";
 import { ShipmentGraphSyncFailed, type ShipmentUpdateResult } from "../../api/returnShipments";
+import type * as SupportModule from "../../api/support";
 import type { SupportMessage, SupportWorkItem } from "../../api/support";
 import { SupportConsolePage } from "./SupportConsolePage";
 
@@ -46,7 +52,12 @@ const mocks = vi.hoisted(() => ({
   can: vi.fn(),
 }));
 
-vi.mock("../../api/support", () => ({
+// Only `supportApi` is replaced. `newSupportEventId` is kept real on purpose:
+// the id it produces, and where the page calls it from, is exactly what the
+// idempotency assertions below are about, and a stubbed generator would let a
+// per-render or per-send mint pass.
+vi.mock("../../api/support", async (importOriginal) => ({
+  ...(await importOriginal<typeof SupportModule>()),
   supportApi: {
     listWorkItems: mocks.listWorkItems,
     readWorkItem: mocks.readWorkItem,
@@ -57,12 +68,12 @@ vi.mock("../../api/support", () => ({
   },
 }));
 
-// Only the transport is stubbed. `bayRecommendation` and `latestFacts` are the
-// projection this screen's correctness depends on -- replacing them with a
+// Only the transport is stubbed. `bayRecommendation` and `projectedFactString`
+// are the reads this screen's correctness depends on -- replacing them with a
 // fixture would test the fixture.
 vi.mock("../../api/cases", async (importOriginal) => ({
   ...(await importOriginal<typeof CasesModule>()),
-  casesApi: { read: mocks.readCase, list: vi.fn() },
+  casesApi: { readProjection: mocks.readCase, list: vi.fn() },
 }));
 
 vi.mock("../../api/returnShipments", async (importOriginal) => ({
@@ -95,7 +106,7 @@ function workItem(overrides: Partial<SupportWorkItem> = {}): SupportWorkItem {
   };
 }
 
-function item(overrides: Partial<CaseReturnItem> = {}): CaseReturnItem {
+function item(overrides: Partial<SelectedItemProjection> = {}): SelectedItemProjection {
   return {
     returnItemId: "ri-1",
     orderLineReference: "LINE-1",
@@ -108,69 +119,132 @@ function item(overrides: Partial<CaseReturnItem> = {}): CaseReturnItem {
   };
 }
 
-function fact(name: string, value: unknown): CaseFact {
+/**
+ * One fact off `CaseProjection.facts` -- the backend's latest-per-name
+ * projection, so there is one entry per name and no superseded value beside it.
+ */
+function fact(
+  name: string,
+  value: string | number | boolean | null,
+  overrides: Partial<CaseFactProjection> = {},
+): CaseFactProjection {
   return {
     factId: `${name}-case-1`,
-    caseId: "case-1",
     factName: name,
     value,
     agentId: "bay-assignment-agent",
     channel: "SYSTEM",
     acquisitionMethod: "DERIVED",
-    turnId: null,
-    sourceSystem: null,
-    sourcePath: "RETURN_CASE_WORKFLOW",
+    sourceSystem: "RETURN_CASE_WORKFLOW",
     observedAt: "2026-08-11T00:00:00Z",
     recordedAt: "2026-08-11T00:00:00Z",
     supersedesFactId: null,
-    correlationId: null,
+    ...overrides,
   };
 }
 
-function returnRecord(overrides: Partial<CaseReturnRecord["record"]> = {}): CaseReturnRecord {
+/**
+ * One RMA with a label on its package.
+ *
+ * The label hangs off the record and names the package through `shipmentId`,
+ * which is the amended contract: one home for the document, so it cannot be
+ * attributed to a parcel it does not name.
+ */
+function returnRecord(overrides: Partial<ReturnRecordProjection> = {}): ReturnRecordProjection {
   return {
-    record: {
-      returnRecordId: "rr-1",
-      caseId: "case-1",
-      returnReference: "RMA-1",
-      status: "ISSUED",
-      returnLocation: "DOCK-4",
-      trackingReference: "1Z-A",
-      labelReference: "LBL-A",
-      shippingInstructionReference: null,
-      sourceSystem: "SUPPORT",
-      version: 1,
-      createdAt: "2026-08-11T00:00:00Z",
-      updatedAt: "2026-08-11T00:00:00Z",
-      ...overrides,
-    },
-    items: [item()],
+    returnRecordId: "rr-1",
+    returnReference: "RMA-1",
+    status: "ISSUED",
+    returnMethod: "PREPAID_PARCEL",
+    returnLocation: "DOCK-4",
+    approvedItems: [
+      {
+        returnItemId: "ri-1",
+        orderLineReference: "LINE-1",
+        productReference: "SKU-1",
+        quantityApproved: 1,
+        disposition: null,
+        itemStatus: null,
+      },
+    ],
+    shipments: [
+      {
+        shipmentId: "rr-1",
+        shipmentStatus: null,
+        carrier: null,
+        serviceLevel: null,
+        trackingNumber: "1Z-A",
+        estimatedDeliveryAt: null,
+        createdAt: null,
+        updatedAt: null,
+      },
+    ],
+    artifacts: [
+      {
+        artifactId: "LBL-A",
+        artifactType: "SHIPPING_LABEL",
+        shipmentId: "rr-1",
+        fileName: null,
+        mediaType: null,
+        version: 1,
+        active: true,
+        supersededBy: null,
+        expiresAt: null,
+        createdAt: null,
+      },
+    ],
+    ...overrides,
   };
 }
 
-function caseDetail(overrides: Partial<CaseDetail> = {}): CaseDetail {
+function caseDetail(overrides: Partial<CaseProjection> = {}): CaseProjection {
   return {
-    case: {
-      caseId: "case-1",
-      tenantId: "default",
-      principalId: "dev-operator",
-      branchId: null,
-      status: "AWAITING_SUPPORT",
-      channelAConversationId: "disc-1",
-      channelBWorkItemId: "wi-1",
-      confirmedOrderReference: "CW273354",
+    caseId: "case-1",
+    tenantId: "default",
+    principalId: "dev-operator",
+    conversationId: "disc-1",
+    status: "AWAITING_SUPPORT",
+    revision: 2,
+    updatedAt: "2026-08-11T00:00:00Z",
+    customer: null,
+    confirmedOrder: {
+      orderReference: "CW273354",
+      orderSource: null,
+      sourceWebOrderNumber: null,
+      trilogieOrderNumber: null,
       confirmationKey: "default|disc-1|CW273354|1",
-      sessionId: null,
-      workflowId: "return-case-case-1",
-      configurationReleaseId: "release-1",
-      graphGenerationId: "gen-7",
-      version: 2,
-      createdAt: "2026-08-11T00:00:00Z",
-      updatedAt: "2026-08-11T00:00:00Z",
+      candidateSetId: null,
+      candidateId: null,
+      confirmedAt: null,
     },
-    returnRecords: [],
-    unassignedItems: [item(), item({ returnItemId: "ri-2", orderLineReference: "LINE-2" })],
-    facts: [],
+    selectedItems: [item(), item({ returnItemId: "ri-2", orderLineReference: "LINE-2" })],
+    facts: null,
+    policyEvaluation: null,
+    support: {
+      workItemId: "wi-1",
+      threadId: "th-1",
+      queue: "RETURNS",
+      status: "NEW",
+      subject: "Return for CW273354",
+      priority: "NORMAL",
+      assignedTo: null,
+      slaDueAt: "2026-08-12T00:00:00Z",
+      openedAt: "2026-08-11T00:00:00Z",
+      resolvedAt: null,
+    },
+    returnRecords: null,
+    pickup: null,
+    warehouse: null,
+    settlement: {
+      status: "NOT_INTEGRATED",
+      creditMemoReference: null,
+      settledAmount: null,
+      settledAt: null,
+    },
+    stage: "AWAITING_SUPPORT",
+    awaiting: ["POLICY", "RETURN_METHOD"],
+    businessComplete: false,
+    isTerminal: false,
     ...overrides,
   };
 }
@@ -256,21 +330,27 @@ describe("SupportConsolePage", () => {
       fireEvent.click(screen.getByRole("button", { name: /send 2 rmas/i }));
 
       await waitFor(() => { expect(mocks.submitReturnOutcome).toHaveBeenCalledTimes(1); });
-      expect(mocks.submitReturnOutcome).toHaveBeenCalledWith("wi-1", {
-        records: [
-          {
-            returnReference: "RMA-1001",
-            trackingReference: "1Z999",
-            returnLocation: "DOCK-4",
-            orderLineReferences: ["LINE-1"],
-          },
-          {
-            returnReference: "RMA-1002",
-            labelReference: "LBL-B",
-            orderLineReferences: ["LINE-2"],
-          },
-        ],
-      });
+      const [target, sent] = mocks.submitReturnOutcome.mock.calls[0] as [
+        string,
+        { records: object[]; supportEventId: string },
+      ];
+      expect(target).toBe("wi-1");
+      expect(sent.records).toEqual([
+        {
+          returnReference: "RMA-1001",
+          trackingReference: "1Z999",
+          returnLocation: "DOCK-4",
+          orderLineReferences: ["LINE-1"],
+        },
+        {
+          returnReference: "RMA-1002",
+          labelReference: "LBL-B",
+          orderLineReferences: ["LINE-2"],
+        },
+      ]);
+      // Required by the endpoint, not optional: without it the write is refused
+      // with 422 SUPPORT_EVENT_ID_REQUIRED and the RMAs are lost.
+      expect(sent.supportEventId).toMatch(/^ui-wi-1-/);
       // The reply composer is a different act on a different endpoint, and an
       // outcome that also posted a message would double-report to Support.
       expect(mocks.reply).not.toHaveBeenCalled();
@@ -392,6 +472,91 @@ describe("SupportConsolePage", () => {
       expect(screen.queryByText(/Answer sent to the case/i)).toBeNull();
     });
 
+    /**
+     * The retry that must not become a second RMA.
+     *
+     * The endpoint is durable rather than synchronous: it commits the event and
+     * an outbox command and returns, and the outbox delivers at least once
+     * afterwards. Effectively-once processing is keyed on `supportEventId`
+     * alone, so the id has to survive the one event that actually loses RMAs --
+     * an operator whose response never arrived pressing send again. Minted per
+     * send, or inside `submitReturnOutcome`, or on each render, that press is a
+     * new identity and the backend has no way left to tell it from a new reply.
+     */
+    it("resends the same event id when the operator retries the same answer", async () => {
+      mocks.submitReturnOutcome.mockRejectedValueOnce(new Error("The connection dropped."));
+      await openOutcomeForm();
+
+      fireEvent.change(screen.getByLabelText(/RMA 1 number/), { target: { value: "RMA-7007" } });
+      fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("The connection dropped.");
+
+      // The same drafts, the same button, no edit in between: one business act
+      // the operator is repeating because they never learned its outcome.
+      fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
+      await waitFor(() => { expect(mocks.submitReturnOutcome).toHaveBeenCalledTimes(2); });
+
+      const [first, second] = mocks.submitReturnOutcome.mock.calls as [
+        [string, { supportEventId: string }],
+        [string, { supportEventId: string }],
+      ];
+      expect(second[1].supportEventId).toBe(first[1].supportEventId);
+    });
+
+    it("mints a new event id for a deliberately new answer", async () => {
+      mocks.submitReturnOutcome.mockRejectedValueOnce(new Error("The connection dropped."));
+      await openOutcomeForm();
+
+      fireEvent.change(screen.getByLabelText(/RMA 1 number/), { target: { value: "RMA-8008" } });
+      fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("The connection dropped.");
+
+      // Abandoning the draft and opening the form again is a second act, not a
+      // repeat of the first. Carrying the id across would have the backend
+      // refuse the new reply as an idempotency conflict with the old one.
+      fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+      fireEvent.click(await screen.findByRole("button", { name: /issue rmas/i }));
+      fireEvent.change(screen.getByLabelText(/RMA 1 number/), { target: { value: "RMA-9009" } });
+      fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
+
+      await waitFor(() => { expect(mocks.submitReturnOutcome).toHaveBeenCalledTimes(2); });
+      const [first, second] = mocks.submitReturnOutcome.mock.calls as [
+        [string, { supportEventId: string }],
+        [string, { supportEventId: string }],
+      ];
+      expect(second[1].supportEventId).not.toBe(first[1].supportEventId);
+    });
+
+    /**
+     * A re-render is not a new business act.
+     *
+     * `useState` rather than a value recomputed in the component body, because
+     * this screen re-renders on every poll of the work-item and message queries
+     * and a recomputed id would silently change underneath a form the operator
+     * is still filling in.
+     */
+    it("keeps the event id stable across re-renders while the form is open", async () => {
+      mocks.submitReturnOutcome.mockRejectedValueOnce(new Error("The connection dropped."));
+      await openOutcomeForm();
+
+      fireEvent.change(screen.getByLabelText(/RMA 1 number/), { target: { value: "RMA-5005" } });
+      fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("The connection dropped.");
+
+      // Every keystroke re-renders the whole form.
+      fireEvent.change(screen.getByLabelText(/RMA 1 tracking/), { target: { value: "1Z777" } });
+      fireEvent.click(screen.getByRole("button", { name: /add another rma/i }));
+      fireEvent.click(screen.getByRole("button", { name: /remove rma 2/i }));
+      fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
+
+      await waitFor(() => { expect(mocks.submitReturnOutcome).toHaveBeenCalledTimes(2); });
+      const [first, second] = mocks.submitReturnOutcome.mock.calls as [
+        [string, { supportEventId: string }],
+        [string, { supportEventId: string }],
+      ];
+      expect(second[1].supportEventId).toBe(first[1].supportEventId);
+    });
+
     it("does not offer to issue an RMA without returns.support.act", async () => {
       mocks.can.mockImplementation((capability: string) => capability !== "returns.support.act");
       await openThread();
@@ -407,19 +572,49 @@ describe("SupportConsolePage", () => {
         caseDetail({
           returnRecords: [
             returnRecord(),
-            {
-              record: {
-                ...returnRecord().record,
-                returnRecordId: "rr-2",
-                returnReference: "RMA-2",
-                labelReference: "LBL-B",
-                trackingReference: "1Z-B",
-                returnLocation: "DOCK-9",
-              },
-              items: [item({ returnItemId: "ri-2", orderLineReference: "LINE-2" })],
-            },
+            returnRecord({
+              returnRecordId: "rr-2",
+              returnReference: "RMA-2",
+              returnLocation: "DOCK-9",
+              approvedItems: [
+                {
+                  returnItemId: "ri-2",
+                  orderLineReference: "LINE-2",
+                  productReference: "SKU-2",
+                  quantityApproved: 1,
+                  disposition: null,
+                  itemStatus: null,
+                },
+              ],
+              shipments: [
+                {
+                  shipmentId: "rr-2",
+                  shipmentStatus: null,
+                  carrier: null,
+                  serviceLevel: null,
+                  trackingNumber: "1Z-B",
+                  estimatedDeliveryAt: null,
+                  createdAt: null,
+                  updatedAt: null,
+                },
+              ],
+              artifacts: [
+                {
+                  artifactId: "LBL-B",
+                  artifactType: "SHIPPING_LABEL",
+                  shipmentId: "rr-2",
+                  fileName: null,
+                  mediaType: null,
+                  version: 1,
+                  active: true,
+                  supersededBy: null,
+                  expiresAt: null,
+                  createdAt: null,
+                },
+              ],
+            }),
           ],
-          unassignedItems: [],
+          selectedItems: [],
         }),
       );
       await openThread();
@@ -431,22 +626,105 @@ describe("SupportConsolePage", () => {
       // header that shows "the" label -- which is wrong the moment RMA-2 exists
       // and is unsayable in SQL, where they are `return_record` columns.
       expect(within(first).getByText("LBL-A")).toBeTruthy();
+      expect(within(first).getByText("1Z-A")).toBeTruthy();
       expect(within(first).getByText("DOCK-4")).toBeTruthy();
       expect(within(first).getByText("LINE-1")).toBeTruthy();
       expect(within(second).getByText("LBL-B")).toBeTruthy();
+      expect(within(second).getByText("1Z-B")).toBeTruthy();
       expect(within(second).getByText("DOCK-9")).toBeTruthy();
       expect(within(second).getByText("LINE-2")).toBeTruthy();
       expect(within(first).queryByText("LBL-B")).toBeNull();
       expect(within(second).queryByText("LBL-A")).toBeNull();
     });
 
-    it("says a case with no durable workflow has nothing waiting on the answer", async () => {
+    it("shows an RMA with a label and no package as exactly that", async () => {
+      // Record `4e372a39...`. The label is real, it belongs to no package, and
+      // neither dropping it nor inventing a shipment to carry it is acceptable.
       mocks.readCase.mockResolvedValue(
-        caseDetail({ case: { ...caseDetail().case, workflowId: null } }),
+        caseDetail({
+          returnRecords: [
+            returnRecord({
+              shipments: null,
+              artifacts: [
+                {
+                  artifactId: "LBL-OPS01",
+                  artifactType: "SHIPPING_LABEL",
+                  shipmentId: null,
+                  fileName: null,
+                  mediaType: null,
+                  version: 1,
+                  active: true,
+                  supersededBy: null,
+                  expiresAt: null,
+                  createdAt: null,
+                },
+              ],
+            }),
+          ],
+          selectedItems: [],
+          awaiting: ["LABEL", "TRACKING"],
+        }),
       );
       await openThread();
 
-      expect(await screen.findByText(/No durable workflow is recorded/i)).toBeTruthy();
+      const block = enclosing(await screen.findByText("RMA-1"), "article");
+      expect(within(block).getByText("LBL-OPS01")).toBeTruthy();
+      expect(within(block).getByText(/label and no package yet/i)).toBeTruthy();
+      // And the case says the same thing from the other end.
+      expect(screen.getByText(/Waiting on LABEL, TRACKING/i)).toBeTruthy();
+    });
+
+    it("ignores a superseded label rather than taking the first artifact", async () => {
+      mocks.readCase.mockResolvedValue(
+        caseDetail({
+          returnRecords: [
+            returnRecord({
+              artifacts: [
+                {
+                  artifactId: "LBL-REPLACED",
+                  artifactType: "SHIPPING_LABEL",
+                  shipmentId: "rr-1",
+                  fileName: null,
+                  mediaType: null,
+                  version: 1,
+                  active: false,
+                  supersededBy: "LBL-A",
+                  expiresAt: null,
+                  createdAt: null,
+                },
+                {
+                  artifactId: "LBL-A",
+                  artifactType: "SHIPPING_LABEL",
+                  shipmentId: "rr-1",
+                  fileName: null,
+                  mediaType: null,
+                  version: 2,
+                  active: true,
+                  supersededBy: null,
+                  expiresAt: null,
+                  createdAt: null,
+                },
+              ],
+            }),
+          ],
+          selectedItems: [],
+        }),
+      );
+      await openThread();
+
+      const block = enclosing(await screen.findByText("RMA-1"), "article");
+      expect(within(block).getByText("LBL-A")).toBeTruthy();
+      expect(within(block).queryByText("LBL-REPLACED")).toBeNull();
+    });
+
+    it("says what a case is waiting on rather than inferring it from a missing field", async () => {
+      // This replaces the missing-`workflowId` reading. `CaseProjection` carries
+      // no workflow id; it carries `awaiting`, computed by the backend from the
+      // release's requirement table, which is the answer that reading wanted.
+      mocks.readCase.mockResolvedValue(caseDetail({ awaiting: ["LABEL", "TRACKING"] }));
+      await openThread();
+
+      expect(await screen.findByText(/Waiting on LABEL, TRACKING/i)).toBeTruthy();
     });
   });
 
@@ -484,12 +762,19 @@ describe("SupportConsolePage", () => {
       expect(screen.queryByRole("alert")).toBeNull();
     });
 
-    it("takes the newest fact when the log holds a superseded one", async () => {
+    it("reads the newest fact because the backend already projected it", async () => {
+      // `CaseProjection.facts` *is* `latest_case_facts`: one entry per name,
+      // already the newest, with the fact it supersedes named. The console used
+      // to reduce the whole log itself; that duplicate is deleted, and this
+      // asserts the screen shows the surviving value and not the superseded id.
       mocks.readCase.mockResolvedValue(
         caseDetail({
           facts: [
-            fact("bay_reference", "BAY-OLD"),
-            { ...fact("bay_reference", "BAY-NEW"), recordedAt: "2026-08-12T00:00:00Z" },
+            fact("bay_reference", "BAY-NEW", {
+              factId: "bay_reference-2",
+              recordedAt: "2026-08-12T00:00:00Z",
+              supersedesFactId: "bay_reference-case-1",
+            }),
           ],
         }),
       );
@@ -503,7 +788,7 @@ describe("SupportConsolePage", () => {
   describe("recording a shipment", () => {
     async function openShipmentEditor() {
       mocks.readCase.mockResolvedValue(
-        caseDetail({ returnRecords: [returnRecord()], unassignedItems: [] }),
+        caseDetail({ returnRecords: [returnRecord()], selectedItems: [] }),
       );
       await openThread();
       fireEvent.click(await screen.findByRole("button", { name: /record or correct a shipment/i }));
@@ -574,7 +859,7 @@ describe("SupportConsolePage", () => {
     it("does not offer the editor without returns.logistics.act", async () => {
       mocks.can.mockImplementation((capability: string) => capability !== "returns.logistics.act");
       mocks.readCase.mockResolvedValue(
-        caseDetail({ returnRecords: [returnRecord()], unassignedItems: [] }),
+        caseDetail({ returnRecords: [returnRecord()], selectedItems: [] }),
       );
       await openThread();
 
@@ -586,7 +871,7 @@ describe("SupportConsolePage", () => {
       mocks.readCase.mockResolvedValue(
         caseDetail({
           returnRecords: [returnRecord({ returnReference: null })],
-          unassignedItems: [],
+          selectedItems: [],
         }),
       );
       await openThread();

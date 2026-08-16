@@ -28,6 +28,7 @@ from return_platform.dynamic_knowledge.graph.validation import (
     ValidationSeverity,
     compile_validation_checks,
 )
+from return_platform.dynamic_knowledge.knowledge.cypher_compiler import CypherCompiler
 from return_platform.dynamic_knowledge.lifecycle.neo4j_validator import Neo4jGenerationValidator
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
@@ -97,15 +98,32 @@ async def _seed_healthy(driver: object, schema: ActiveSchema, generation_id: str
     for relationship in schema.graph.relationships.values():
         source_label = schema.entity_node(relationship.source_entity_id).label
         target_label = schema.entity_node(relationship.target_entity_id).label
+        # No `graph_generation_id` on the edge, because no writer in this
+        # codebase puts one there. Seeding one made every check in this file
+        # pass against data the platform cannot produce -- which is how
+        # RELATIONSHIP_ENDPOINTS_SAME_GENERATION stayed green here while being
+        # structurally unable to fire in production.
         await _run(
             driver,
             f"MATCH (s:{source_label} {{graph_generation_id: $generationId}}) "
             f"MATCH (t:{target_label} {{graph_generation_id: $generationId}}) "
             "WITH s, t LIMIT 1 "
-            f"CREATE (s)-[:{relationship.relationship_type} "
-            "{graph_generation_id: $generationId}]->(t)",
+            f"CREATE (s)-[:{relationship.relationship_type}]->(t)",
             generationId=generation_id,
         )
+
+
+async def _create_node(
+    driver: object, label: str, generation_id: str, properties: dict[str, str]
+) -> None:
+    assignments = ", ".join(f"n.{name} = ${name}" for name in properties)
+    await _run(
+        driver,
+        f"CREATE (n:{label} {{graph_generation_id: $generationId}}) "
+        + (f"SET {assignments}" if assignments else ""),
+        generationId=generation_id,
+        **properties,
+    )
 
 
 async def _drop(driver: object, generation_id: str) -> None:
@@ -177,7 +195,8 @@ async def test_an_edge_into_the_previous_generation_is_detected(
     try:
         await _seed_healthy(driver, active_schema, generation_id)
         # A target node belonging to the *previous* generation, wired to a
-        # source node in the new one by an edge stamped with the new one.
+        # source node in the new one by a plain edge -- the shape every writer
+        # in this codebase produces.
         await _run(
             driver,
             f"CREATE (t:{target_label} {{graph_generation_id: $staleId}})",
@@ -188,8 +207,7 @@ async def test_an_edge_into_the_previous_generation_is_detected(
             f"MATCH (s:{source_label} {{graph_generation_id: $generationId}}) "
             f"MATCH (t:{target_label} {{graph_generation_id: $staleId}}) "
             "WITH s, t LIMIT 1 "
-            f"CREATE (s)-[:{relationship.relationship_type} "
-            "{graph_generation_id: $generationId}]->(t)",
+            f"CREATE (s)-[:{relationship.relationship_type}]->(t)",
             generationId=generation_id,
             staleId=stale_generation_id,
         )
@@ -267,3 +285,116 @@ async def test_a_missing_relationship_type_warns_but_does_not_block(
         assert all(f.severity is ValidationSeverity.WARNING for f in report.warnings)
     finally:
         await _drop(driver, generation_id)
+
+
+@pytest.mark.asyncio
+async def test_the_endpoint_check_fires_on_an_edge_a_real_in_tree_writer_produced(
+    driver: object, active_schema: ActiveSchema
+) -> None:
+    """The proof that the dead check is alive, and why endpoint scoping is what
+    revives it.
+
+    The bleed is not hand-written here. `CypherCompiler.compile_relationship_upsert`
+    is a real relationship writer in this tree, and it matches both endpoints on
+    their business keys with **no generation predicate at all** -- so when the
+    target key exists only in the previous generation, that is the node it
+    attaches to. The edge it MERGEs carries no `graph_generation_id`, because
+    nothing in this codebase writes one.
+
+    That is the whole case against fixing this by stamping the edge instead: the
+    writer that can produce the bleed is precisely the writer that would not
+    stamp, so a stamp-based check would still count zero here. Scoping by the
+    endpoints catches it whoever wrote it.
+
+    Before this change the check filtered on `r.graph_generation_id =
+    $generationId`, matched nothing, and reported this generation healthy.
+    """
+    relationship = next(iter(active_schema.graph.relationships.values()))
+    source_entity = active_schema.entities[relationship.source_entity_id]
+    target_entity = active_schema.entities[relationship.target_entity_id]
+    source_node = active_schema.entity_node(relationship.source_entity_id)
+    target_node = active_schema.entity_node(relationship.target_entity_id)
+
+    generation_id = f"gen-{uuid.uuid4().hex[:8]}"
+    stale_generation_id = f"gen-{uuid.uuid4().hex[:8]}"
+    unique = uuid.uuid4().hex[:8]
+
+    def _properties(entity, node, field_ids) -> dict[str, str]:
+        # Every key property, so the node is well-formed, plus the join
+        # properties the writer matches on.
+        return {
+            entity.fields[field_id].graph_property: f"bleed-{node.label}-{field_id}-{unique}"
+            for field_id in {*node.key_fields, *field_ids}
+        }
+
+    source_properties = _properties(source_entity, source_node, relationship.source_match_fields)
+    target_properties = _properties(target_entity, target_node, relationship.target_match_fields)
+    row = {
+        "sourceKeys": {
+            field_id: source_properties[source_entity.fields[field_id].graph_property]
+            for field_id in relationship.source_match_fields
+        },
+        "targetKeys": {
+            field_id: target_properties[target_entity.fields[field_id].graph_property]
+            for field_id in relationship.target_match_fields
+        },
+        "properties": {},
+    }
+
+    try:
+        await _seed_healthy(driver, active_schema, generation_id)
+        await _create_node(driver, source_node.label, generation_id, source_properties)
+        # The same business key, in the generation being replaced. Nothing under
+        # that key exists in the candidate generation at all.
+        await _create_node(driver, target_node.label, stale_generation_id, target_properties)
+
+        upsert = CypherCompiler().compile_relationship_upsert(
+            active_schema, relationship.relationship_id
+        )
+        await _run(driver, upsert.cypher, rows=[row])
+
+        report = await Neo4jGenerationValidator(driver).validate(  # type: ignore[arg-type]
+            schema=active_schema, graph_generation_id=generation_id
+        )
+
+        assert not report.passed, report.summary()
+        assert ValidationCheckId.RELATIONSHIP_ENDPOINTS_SAME_GENERATION in {
+            f.check_id for f in report.errors
+        }
+    finally:
+        await _drop(driver, generation_id)
+        await _drop(driver, stale_generation_id)
+
+
+@pytest.mark.asyncio
+async def test_an_empty_label_warns_when_its_source_was_empty_and_errors_when_it_was_not(
+    driver: object, active_schema: ActiveSchema
+) -> None:
+    """Defect 3, end to end against a real database.
+
+    The same empty generation, validated twice. It is the census -- what the run
+    recorded reading at each source -- that decides whether an empty label is a
+    tolerable "there was nothing to project" or an intolerable "records were
+    read and lost". Nothing about the graph differs between the two calls, which
+    is the point: the distinction cannot be recovered from Neo4j and has to come
+    from the run.
+    """
+    generation_id = f"gen-{uuid.uuid4().hex[:8]}"
+    every_source_empty = {source_id: 0 for source_id in active_schema.sources}
+    every_source_full = {source_id: 250 for source_id in active_schema.sources}
+
+    empty = await Neo4jGenerationValidator(driver).validate(  # type: ignore[arg-type]
+        schema=active_schema,
+        graph_generation_id=generation_id,
+        source_records_read=every_source_empty,
+    )
+    assert empty.passed, empty.summary()
+    assert ValidationCheckId.NODE_LABEL_POPULATED in {f.check_id for f in empty.warnings}
+
+    lost = await Neo4jGenerationValidator(driver).validate(  # type: ignore[arg-type]
+        schema=active_schema,
+        graph_generation_id=generation_id,
+        source_records_read=every_source_full,
+    )
+    assert not lost.passed
+    assert ValidationCheckId.NODE_LABEL_POPULATED in {f.check_id for f in lost.errors}

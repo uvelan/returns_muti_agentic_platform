@@ -19,6 +19,8 @@ from __future__ import annotations
 import re
 
 import pytest
+from fastapi import FastAPI
+from fastapi.routing import APIRoute
 
 from return_platform.main import create_app
 
@@ -103,6 +105,58 @@ CONSOLE_PATHS: tuple[str, ...] = (
 )
 
 
+#: The configuration write lifecycle, as `(method, path)` rather than path alone.
+#:
+#: A path-only assertion cannot see this class of gap. `/api/config/releases` was
+#: served -- by `GET` -- while `POST` was not, so every path-shaped check passed
+#: over a surface on which no release could be created. Wave F1 unmounted the
+#: eighteen `/data-console/v1/*` routers and re-exported four modules' handlers
+#: through `/api/config`; `releases.py` was not one of the four, and the two
+#: writes went with it.
+#:
+#: Nothing caught it because the tests that cover these handlers -- e.g.
+#: `test_partial_agent_behavior_edit_activates_without_restart` -- call the
+#: handler *function*. A function is reachable from Python whatever the router
+#: does with it, so those tests stay green while the HTTP surface disappears.
+#: Assert the route table, not the callable.
+CONFIGURATION_WRITE_ROUTES: tuple[tuple[str, str], ...] = (
+    ("post", "/api/config/releases"),
+    ("patch", "/api/config/releases/{release_id}/domains/{domain_key}"),
+    ("post", "/api/config/releases/{release_id}/promote"),
+)
+
+
+@pytest.fixture(scope="module")
+def openapi_document() -> dict[str, object]:
+    return dict(create_app().openapi())
+
+
+def _mounted_api_routes(app: FastAPI) -> dict[tuple[str, str], APIRoute]:
+    """Every `APIRoute` the app actually serves, keyed by `(method, path)`.
+
+    `app.routes` is not a flat list on this FastAPI version: `include_router`
+    records a lazy placeholder holding the original router and the prefix it was
+    included under, and the real `APIRoute` objects are only reachable through
+    it. Walking it is worth the few lines -- the OpenAPI document tells you a
+    path is published, and only the route object carries the dependencies that
+    say who may call it.
+    """
+    found: dict[tuple[str, str], APIRoute] = {}
+    stack: list[tuple[str, object]] = [("", route) for route in app.routes]
+    while stack:
+        prefix, item = stack.pop()
+        context = getattr(item, "include_context", None)
+        included = getattr(item, "original_router", None)
+        if included is not None:
+            nested = prefix + str(getattr(context, "prefix", "") or "")
+            stack.extend((nested, route) for route in included.routes)
+            continue
+        if isinstance(item, APIRoute):
+            for method in item.methods:
+                found[(method.lower(), prefix + item.path)] = item
+    return found
+
+
 @pytest.fixture(scope="module")
 def served_paths() -> frozenset[str]:
     return frozenset(create_app().openapi()["paths"])
@@ -120,6 +174,52 @@ def test_agent_configuration_routes_are_mounted(served_paths: frozenset[str]) ->
     """Named separately so a regression reads as itself, not as a list diff."""
     assert "/api/agents" in served_paths
     assert "/api/agents/{manifest_id}" in served_paths
+
+
+def test_configuration_release_write_routes_are_mounted(
+    openapi_document: dict[str, object],
+) -> None:
+    """Draft, edit and publish must all be reachable over HTTP, by method.
+
+    Without the create and the patch, a configuration change is a source edit
+    and an image rebuild -- which is the opposite of what a graph-backed release
+    lifecycle is for.
+    """
+    paths = openapi_document["paths"]
+    assert isinstance(paths, dict)
+    missing = sorted(
+        f"{method.upper()} {path}"
+        for method, path in CONFIGURATION_WRITE_ROUTES
+        if method not in (paths.get(path) or {})
+    )
+    assert not missing, (
+        "the configuration release lifecycle is not fully reachable over HTTP; "
+        f"these operations are declared but unmounted: {missing}"
+    )
+
+
+def test_configuration_release_writes_require_write_roles(
+    openapi_document: dict[str, object],
+) -> None:
+    """Reachable is not the goal -- reachable *and still guarded* is.
+
+    Mounting a route by relaxing its dependency would satisfy the test above and
+    hand every reader a publish button. `require_write_roles` returns the actor
+    id the repository attributes the change to, so this walks the live route
+    objects rather than the document: the dependency is the assertion.
+    """
+    mounted = _mounted_api_routes(create_app())
+    for method, path in CONFIGURATION_WRITE_ROUTES:
+        route = mounted.get((method, path))
+        assert route is not None, f"{method.upper()} {path} is not in the route table"
+        dependency_names = {
+            dependant.call.__name__
+            for dependant in route.dependant.dependencies
+            if dependant.call is not None
+        }
+        assert "require_write_roles" in dependency_names, (
+            f"{method.upper()} {path} does not require write roles: {sorted(dependency_names)}"
+        )
 
 
 def test_no_versioned_data_console_path_is_mounted(served_paths: frozenset[str]) -> None:

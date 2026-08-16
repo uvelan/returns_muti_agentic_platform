@@ -1,15 +1,17 @@
 """Run the housekeeping worker as a dedicated Docker process.
 
-Reclaims the three debris classes measured on this platform: orphaned Temporal
+Reclaims the five debris classes measured on this platform: orphaned Temporal
 executions stranded on queues nothing polls, RETIRED graph generations whose
-nodes retirement deliberately leaves behind, and the `*_probe` SQL Server
-databases test fixtures create and never drop. The rules live in
+nodes retirement deliberately leaves behind, the `*_probe` SQL Server databases
+test fixtures create and never drop, order-line holds whose TTL elapsed with
+nobody left to settle them, and AI interceptions left `PENDING` past their
+deadline because the caller that opened them is long gone. The rules live in
 `return_platform.housekeeping`; this script is composition and the loop.
 
 Like every other worker here it hot-adopts configuration through
 `RuntimeConfigurationActivator` and reports adoption (contract C5) so an operator
 can see which release it is running. `housekeeping-worker` is deliberately **not**
-in `REQUIRED_PROCESS_CLASSES`: two of its three reclaimers are gated to
+in `REQUIRED_PROCESS_CLASSES`: two of its five reclaimers are gated to
 development and test, so this service is not deployed everywhere, and a required
 class that is not always deployed leaves every release at ACTIVATING forever.
 

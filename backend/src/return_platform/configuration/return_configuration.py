@@ -3,12 +3,22 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable, Collection
 from datetime import date
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+
+from return_platform.configuration.settings import PRODUCTION_ENVIRONMENT
+from return_platform.policy.eligibility_policy import ReturnEligibilityPolicy
+from return_platform.policy.vocabulary import ReturnReason
+
+if TYPE_CHECKING:  # pragma: no cover - see `validate_return_method_requirements`
+    from return_platform.operations.case_projection.completion import (
+        ReturnMethodRequirementTable,
+    )
 
 NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=256)]
 
@@ -324,6 +334,15 @@ class SourceResolutionConfiguration(StrictConfigModel):
     shipment_collection: NonBlank
     product_collection: NonBlank
     order_number_paths: tuple[NonBlank, ...] = Field(min_length=1)
+    #: Where the order's own date lives on the sales document, in preference
+    #: order. This is the basis of the standard return window, so it is declared
+    #: beside the other source bindings rather than written into the policy
+    #: package -- a re-bind is an operator edit, not a code change.
+    #:
+    #: Defaulted empty so a release cut before this field still parses. Empty
+    #: means the deployment has bound no order date, and a case whose window
+    #: cannot be dated reviews rather than guessing one.
+    order_date_paths: tuple[NonBlank, ...] = ()
     web_order_paths: tuple[NonBlank, ...] = Field(min_length=1)
     trilogie_order_paths: tuple[NonBlank, ...] = Field(min_length=1)
     customer_id_paths: tuple[NonBlank, ...] = Field(min_length=1)
@@ -403,10 +422,44 @@ class BranchStagingConfiguration(StrictConfigModel):
     allow_branch_inventory_addition: bool
 
 
+class ReturnMethodRequirementConfiguration(StrictConfigModel):
+    """One return method and the artifacts it needs before the return is complete.
+
+    The operator-owned half of `operations/case_projection/completion.py`. The
+    *structure* of a legal row is not stated here twice -- every row is handed to
+    `ReturnMethodRequirementTable` at load, so the three guards that make the
+    table safe (every row requires `RMA`, no row names `UNKNOWN`, no row means
+    unmapped rather than "requires nothing") are enforced by the one model that
+    owns them.
+    """
+
+    method: NonBlank
+    requires: tuple[NonBlank, ...] = Field(min_length=1)
+
+
 class ReturnPolicyConfiguration(StrictConfigModel):
     photo_required_reason_codes: tuple[NonBlank, ...]
     supported_product_presence: tuple[NonBlank, ...] = Field(min_length=1)
     normalized_return_methods: tuple[NonBlank, ...] = Field(min_length=1)
+    #: What each return method needs before the return is business-complete.
+    #: Keyed by the catalogue directly above, and released with it, so an
+    #: operator adding `OFFSITE_HEAVY_PICKUP` declares what it requires in the
+    #: same release that declares the method exists.
+    #:
+    #: No Python default, for the same reason `bol_tendering_instruction_types`
+    #: has none: a fallback would be the same table in a second place, reachable
+    #: exactly when the operator has not answered. It would also be the *worst*
+    #: place to guess -- a wrong row either hangs a return forever on an artifact
+    #: nobody will produce, or lets one report itself complete without the
+    #: paperwork that proves it happened.
+    #:
+    #: A method in the catalogue with no row here is **unmapped**, which leaves
+    #: the completion profile unresolved and the case awaiting `RETURN_METHOD`.
+    #: That is the safe direction and it is deliberately not an error: `UNKNOWN`
+    #: is in the catalogue and cannot have a row.
+    return_method_requirements: tuple[ReturnMethodRequirementConfiguration, ...] = Field(
+        min_length=1
+    )
     #: Which shipping instruction types tender a bill of lading, and therefore
     #: make `RECORD_SHIPPING_INSTRUCTIONS` emit `BOL_TENDERED` as well as
     #: `SHIPPING_INSTRUCTIONS_ISSUED`.
@@ -424,6 +477,142 @@ class ReturnPolicyConfiguration(StrictConfigModel):
     rga_required_product_resolutions: tuple[NonBlank, ...]
     heavy_pickup_required_fields: tuple[NonBlank, ...] = Field(min_length=1)
     branch_staging: BranchStagingConfiguration
+
+    @model_validator(mode="after")
+    def validate_return_method_requirements(self) -> ReturnPolicyConfiguration:
+        """Refuse a requirement table the projection would refuse anyway.
+
+        Two checks, and only the second is written here. The first -- every row
+        requires `RMA`, no row names `UNKNOWN`, no method appears twice, no row
+        names a dimension that is not a fulfilment requirement -- is delegated by
+        constructing the real `ReturnMethodRequirementTable`, so the guards have
+        one home and a release cannot express a table the projection would then
+        reject at read time.
+
+        The import is deferred to call time on purpose. `case_projection`
+        reaches `return_platform.agents`, whose package `__init__` imports this
+        module, so a module-level import here is a cycle. Validation runs long
+        after both modules are loaded, which is why this placement is safe and a
+        top-level one is not.
+        """
+        from return_platform.operations.case_projection.completion import (  # noqa: PLC0415
+            ReturnMethodRequirementTable,
+        )
+
+        try:
+            ReturnMethodRequirementTable.model_validate(
+                {"rows": [row.model_dump(mode="json") for row in self.return_method_requirements]}
+            )
+        except ValueError as invalid:
+            raise ValueError(
+                f"return_policy.return_method_requirements is not a usable table: {invalid}"
+            ) from invalid
+
+        catalogue = {method.strip().upper() for method in self.normalized_return_methods}
+        unknown = sorted(
+            {
+                row.method.strip().upper()
+                for row in self.return_method_requirements
+                if row.method.strip().upper() not in catalogue
+            }
+        )
+        if unknown:
+            raise ValueError(
+                "return_policy.return_method_requirements names methods that are not in "
+                f"normalized_return_methods: {', '.join(unknown)}"
+            )
+        return self
+
+
+class SelectionVocabularyConfiguration(StrictConfigModel):
+    """The reason and condition catalogues an associate selects a line from.
+
+    Plan sect. 12.4: *"Reason and condition vocabularies come from return
+    configuration."* Until this block existed they came from nowhere --
+    `SelectedItemRequest` accepted any string up to 128 characters and
+    `LineSelection` carried it through verbatim, its docstring saying a check
+    written then would have been a check against a literal in the API module.
+    This is the answer that makes the check real.
+
+    **A top-level block, not a nested one, and that is the whole reason it
+    validates on a live deployment.** `bootstrap_graph_configuration` merges the
+    packaged file underneath an active release at *top-level* granularity, so a
+    key added inside `return_policy` after a release was cut is dropped by the
+    release's own `return_policy` and can never arrive (platform defect D11,
+    observed with `copilot.order_discovery_agent_id`). A new top-level key is
+    absent from every existing release, so the packaged value wins and reaches
+    the deployment on the next publish -- the same reasoning that put
+    `return_eligibility_policy` and `copilot` where they are.
+
+    **An empty catalogue means "no catalogue has been published", and that is
+    not the same as "reject everything".** A deployment running a release cut
+    before this block gets exactly the behaviour it has today: length-bounded
+    free text, recorded verbatim. Refusing every selection instead would take a
+    branch's returns offline over a configuration key nobody had been asked for.
+    The direction matches `business_calendars`, which defaults empty and falls
+    back to wall clock rather than inventing a working week.
+    """
+
+    #: Why the line is coming back. Constrained to `ReturnReason`, which is the
+    #: evaluator's own closed vocabulary: `case_policy_facts` maps a stored
+    #: `return_reason` onto it and resolves anything it does not recognise to
+    #: `UNKNOWN`, which routes the case to a human. A release free to publish
+    #: `DAMAGED_IN_TRANSIT` would therefore look correct, pass validation, and
+    #: send every return using it to review with nothing in the audit trail
+    #: saying why. Refusing it here is the only place that can say so.
+    reasons: tuple[NonBlank, ...] = ()
+    #: What state the line is in. **Not** constrained against a code vocabulary,
+    #: because there is no item-condition enum to constrain it against -- the
+    #: evaluator reads condition as a set of named tri-state facts, not as one
+    #: closed value -- and inventing an enum here to validate against would be
+    #: the hardcoded catalogue this block exists to remove.
+    conditions: tuple[NonBlank, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_vocabularies(self) -> SelectionVocabularyConfiguration:
+        for name, values in (("reasons", self.reasons), ("conditions", self.conditions)):
+            normalized = [value.strip().upper() for value in values]
+            duplicated = sorted({value for value in normalized if normalized.count(value) > 1})
+            if duplicated:
+                raise ValueError(
+                    f"selection_vocabulary.{name} lists the same entry twice: "
+                    f"{', '.join(duplicated)}"
+                )
+        known = {member.value for member in ReturnReason} - {ReturnReason.UNKNOWN.value}
+        unknown = sorted({value.strip().upper() for value in self.reasons} - known)
+        if unknown:
+            raise ValueError(
+                "selection_vocabulary.reasons names reason(s) the policy evaluator cannot "
+                f"read, which would silently route every return using them to review: "
+                f"{', '.join(unknown)}. Known reasons: {', '.join(sorted(known))}"
+            )
+        return self
+
+    def unknown_reasons(self, values: Collection[str]) -> tuple[str, ...]:
+        """The submitted reasons this release does not publish, in order.
+
+        Empty when no catalogue is published, because an unpublished catalogue
+        refuses nothing -- see the class docstring. Comparison is on the
+        stripped, upper-cased token, so a client sending `damaged` is answered
+        the same way as one sending `DAMAGED`.
+        """
+        return self._unknown(self.reasons, values)
+
+    def unknown_conditions(self, values: Collection[str]) -> tuple[str, ...]:
+        """The submitted conditions this release does not publish, in order."""
+        return self._unknown(self.conditions, values)
+
+    @staticmethod
+    def _unknown(catalogue: tuple[str, ...], values: Collection[str]) -> tuple[str, ...]:
+        if not catalogue:
+            return ()
+        published = {entry.strip().upper() for entry in catalogue}
+        seen: list[str] = []
+        for value in values:
+            token = value.strip().upper()
+            if token not in published and value not in seen:
+                seen.append(value)
+        return tuple(seen)
 
 
 class WorkflowConfiguration(StrictConfigModel):
@@ -534,11 +723,27 @@ class ReturnCaseTimingConfiguration(StrictConfigModel):
     `bay_wait_seconds` is deliberately NOT a business duration. It bounds dead
     time on the critical path while an associate waits, and stretching it
     across a weekend would leave a live conversation hanging.
+
+    Neither is `item_reservation_ttl_seconds`. It bounds how long a selected
+    line's quantity is held out of everyone else's reach, and a hold that
+    stretched over a weekend would make Monday's associate wait for Friday's
+    abandoned conversation.
     """
 
     # Bay is advisory and sits in front of every return, so this is dead time
     # on the critical path. Short on purpose; measure before raising it.
     bay_wait_seconds: int = Field(default=120, ge=0, le=86_400)
+    #: How long a selected quantity stays held before the hold expires (plan
+    #: sect. 12.3). Configuration, not a source constant: the right value is the
+    #: length of a counter conversation, which differs by branch and by trade,
+    #: and a deployment that discovers its associates need longer must be able
+    #: to say so in a release rather than in a deploy.
+    #:
+    #: Floored well above zero because a TTL shorter than a conversation turn
+    #: would expire every hold before the associate finished naming the reason,
+    #: and capped at a day because a hold nobody has authorized by then is an
+    #: abandoned selection whatever the operator intended.
+    item_reservation_ttl_seconds: int = Field(default=1_800, ge=60, le=86_400)
     support_response_wait_seconds: int = Field(default=28_800, ge=60)
     reminder_interval_seconds: int = Field(default=7_200, ge=60)
     max_reminders: int = Field(default=3, ge=0, le=50)
@@ -622,6 +827,58 @@ class ProbeDatabaseReclamationConfiguration(StrictConfigModel):
     batch_limit: int = Field(default=50, ge=1, le=500)
 
 
+class OrderLineReservationReclamationConfiguration(StrictConfigModel):
+    """How many lapsed order-line holds housekeeping settles per pass.
+
+    **No age window, unlike the three blocks above.** A reservation carries its
+    own `expiresAt`, stamped from `return_case.item_reservation_ttl_seconds` as
+    it stood when the hold was taken, so the deadline is already an operator
+    decision. A second window here would be a second answer to "is this hold
+    over", and the only thing it could do is hold quantity out of a branch's
+    reach for longer than the TTL the operator published.
+
+    **Enabled everywhere.** The probe-database and Temporal reclaimers are gated
+    because they delete infrastructure; this one moves a lapsed hold from
+    `ACTIVE` to `EXPIRED` on production data, which is ordinary bookkeeping. It
+    is still a switch, because a deployment diagnosing the reservation lifecycle
+    needs to be able to stop the sweep without stopping housekeeping.
+    """
+
+    enabled: bool = True
+    #: Holds settled per pass. Larger than the other batches because each one is
+    #: a single conditional update rather than a `DROP DATABASE` or a series of
+    #: graph delete batches, and a branch that abandons selections faster than
+    #: the sweep clears them would otherwise never catch up.
+    batch_limit: int = Field(default=200, ge=1, le=5_000)
+
+
+class InterceptionExpiryConfiguration(StrictConfigModel):
+    """How many lapsed AI interceptions housekeeping settles per pass.
+
+    **No age window, for the same reason the reservation block above has none.**
+    An interception carries its own `expires_at`, stamped from the TTL that was
+    live when it was opened, so the deadline is already a decision somebody made.
+    A second window here could only keep a dead request in the collection longer
+    than the TTL it was written with said it would be.
+
+    **Enabled everywhere.** Two of the four blocks above are gated because they
+    delete infrastructure; this moves a lapsed hold from `PENDING` to the
+    `EXPIRED` it should already have carried, which is ordinary bookkeeping on a
+    collection an operator reads. It is still a switch, because a deployment
+    diagnosing the interception lifecycle needs to be able to stop the sweep
+    without stopping housekeeping -- and stopping it is safe, since
+    `InterceptionStore.list_pending` hides a lapsed record whether or not this
+    reclaimer ever runs.
+    """
+
+    enabled: bool = True
+    #: Interceptions settled per pass. Sized like the reservation batch and for
+    #: the same reason: each one is a single conditional update, and a
+    #: deployment that has been accumulating dead holds for days needs a batch
+    #: that can actually drain the backlog over a few intervals.
+    batch_limit: int = Field(default=200, ge=1, le=5_000)
+
+
 class HousekeepingConfiguration(StrictConfigModel):
     """Operational debris reclamation, on a schedule.
 
@@ -644,6 +901,24 @@ class HousekeepingConfiguration(StrictConfigModel):
     )
     probe_databases: ProbeDatabaseReclamationConfiguration = Field(
         default_factory=ProbeDatabaseReclamationConfiguration
+    )
+    #: Defaulted, and the default is the intended behaviour rather than a
+    #: placeholder. `bootstrap_graph_configuration` merges the packaged file
+    #: under an active release at *top-level* granularity, so a release cut
+    #: before this key existed carries a `housekeeping` block that wins whole and
+    #: this nested field falls back to the model default. That is safe here
+    #: precisely because the default is what an operator would choose: the sweep
+    #: is not an operator value, it is bookkeeping the lifecycle owes itself.
+    order_line_reservations: OrderLineReservationReclamationConfiguration = Field(
+        default_factory=OrderLineReservationReclamationConfiguration
+    )
+    #: Defaulted for the reason the block above is, and the default is likewise
+    #: the intended behaviour rather than a placeholder: a release cut before
+    #: this key existed carries a `housekeeping` block that wins whole at
+    #: top-level granularity, and falling back to "settle lapsed interceptions"
+    #: is what an operator would have chosen anyway.
+    ai_interceptions: InterceptionExpiryConfiguration = Field(
+        default_factory=InterceptionExpiryConfiguration
     )
 
 
@@ -680,6 +955,30 @@ class FeatureFlagsConfiguration(StrictConfigModel):
     order_discovery_copilot: bool = False
     copilot_operations_console: bool = False
     graph_first_runtime_configuration: bool = False
+
+
+class CopilotConfiguration(StrictConfigModel):
+    """Which registered agent policy the Copilot's conversation turns are routed to.
+
+    The frontend used to carry the answer as the literal `"order_discovery"`
+    while the active schema keys the policy `order-discovery-agent`, so every
+    turn 422'd with `ORDER_AGENT_OUT_OF_SCOPE`. The mapping belongs here because
+    both sides of it are operator-owned: the agent policy is published in a
+    schema release, and which agent answers the Copilot is a deployment
+    decision.
+
+    It is stated rather than inferred. "The only registered policy" would work
+    today and become a silent misroute the moment a second agent is published,
+    and it is exactly the kind of hidden convention that produced the literal
+    this replaces.
+
+    `None` -- the default, so a release cut before this block still loads -- is
+    not a fallback to some other id. It is the honest "this deployment has not
+    said", and every reader is expected to fail closed on it: the shell disables
+    the composer and names the missing setting rather than guessing.
+    """
+
+    order_discovery_agent_id: NonBlank | None = None
 
 
 class CredentialBindingConfiguration(StrictConfigModel):
@@ -908,6 +1207,13 @@ class ReturnPlatformConfiguration(StrictConfigModel):
     source_resolution: SourceResolutionConfiguration
     clarification_policy: SmartQuestionConfiguration
     return_policy: ReturnPolicyConfiguration
+    #: The reason and condition catalogues an associate selects a line from
+    #: (plan sect. 12.4). Top-level rather than nested inside `return_policy`,
+    #: and defaulted empty so a release cut before it still loads -- both
+    #: decisions are argued in `SelectionVocabularyConfiguration`.
+    selection_vocabulary: SelectionVocabularyConfiguration = Field(
+        default_factory=SelectionVocabularyConfiguration
+    )
     workflow: WorkflowConfiguration
     support: SupportConfiguration
     omc: OmcConfiguration
@@ -933,6 +1239,20 @@ class ReturnPlatformConfiguration(StrictConfigModel):
         default_factory=RuntimeIntegrationsConfiguration
     )
     feature_flags: FeatureFlagsConfiguration = Field(default_factory=FeatureFlagsConfiguration)
+    # Defaulted so a release cut before the block still loads. The default is
+    # empty rather than a guessed agent id -- see `CopilotConfiguration`.
+    copilot: CopilotConfiguration = Field(default_factory=CopilotConfiguration)
+    #: The deterministic return eligibility rule set (`policy/`), versioned and
+    #: released like every other section here.
+    #:
+    #: Optional for the same reason `copilot` is: a release cut before this block
+    #: existed must still load, and `bootstrap_graph_configuration` merges the
+    #: packaged file underneath an active release rather than over it. `None` is
+    #: not a permissive default -- it is "this deployment has published no policy",
+    #: and `validate_return_eligibility_policy` below refuses activation on it.
+    #: Nothing may read `None` as "approve" or even as "review"; an absent policy
+    #: is an operational failure, not an eligibility outcome.
+    return_eligibility_policy: ReturnEligibilityPolicy | None = None
 
     @model_validator(mode="after")
     def validate_required_agents(self) -> ReturnPlatformConfiguration:
@@ -965,6 +1285,206 @@ class ReturnPlatformConfiguration(StrictConfigModel):
         if any(item.ai_may_fabricate_success for item in configured_integrations):
             raise ValueError("AI cannot fabricate success for authoritative integrations")
         return self
+
+
+def validate_copilot_agent_binding(
+    configuration: ReturnPlatformConfiguration,
+    known_agent_policy_ids: Collection[str],
+) -> str:
+    """Resolve the configured Order Discovery agent against the active schema.
+
+    Raises `ValueError` for an unset binding and for a dangling one -- an id
+    naming a policy the active schema does not publish. Both are the same defect
+    from the associate's seat, because both end the same way: `agent_policies.get`
+    returns `None` in `order_discovery_activities` and the turn 422s with
+    `ORDER_AGENT_OUT_OF_SCOPE`. Renaming the agent in a schema release without
+    renaming the mapping is the realistic way to reintroduce it, which is why
+    the reference is checked rather than assumed.
+
+    Takes the policy ids rather than an `ActiveSchema` so the check stays
+    importable from the configuration package, which holds no schema types.
+    """
+    configured = configuration.copilot.order_discovery_agent_id
+    if configured is None:
+        raise ValueError(
+            "copilot.order_discovery_agent_id is not configured, so no Copilot turn can be routed"
+        )
+    known = set(known_agent_policy_ids)
+    if configured not in known:
+        raise ValueError(
+            f"copilot.order_discovery_agent_id {configured!r} names no agent policy in the active "
+            f"schema (published policies: {', '.join(sorted(known)) or 'none'})"
+        )
+    return configured
+
+
+def validate_return_eligibility_policy(
+    configuration: ReturnPlatformConfiguration,
+) -> ReturnEligibilityPolicy:
+    """The active eligibility policy, or a refusal to activate.
+
+    Mirrors `validate_copilot_agent_binding`: the field is optional on the model
+    so that stored payloads predating it still parse, and the requirement is
+    enforced here, at activation, where a refusal is actionable.
+
+    A missing policy must never degrade to `REVIEW_REQUIRED`. That would look
+    like the evaluator working -- every return quietly queued for a human -- when
+    in fact no rule set was published at all. The two are distinguishable and the
+    plan requires them to stay so: malformed or absent policy refuses activation;
+    a valid policy with missing facts is what yields `REVIEW_REQUIRED`.
+    """
+    policy = configuration.return_eligibility_policy
+    if policy is None:
+        raise ValueError(
+            "return_eligibility_policy is not configured, so no return can be evaluated; "
+            "publish a policy release rather than allowing every return to fall to review"
+        )
+    return policy
+
+
+def build_return_method_requirement_table(
+    configuration: ReturnPlatformConfiguration,
+) -> ReturnMethodRequirementTable:
+    """The operator's requirement table, as the projection consumes it.
+
+    The one conversion from released configuration to
+    `resolve_completion(..., requirements=)`. Validated already -- the release
+    could not have loaded otherwise -- so this cannot be the place a bad table is
+    discovered; it exists so that no caller has to know the wire shape, and so
+    that "which table is production running?" has exactly one answer.
+    """
+    from return_platform.operations.case_projection.completion import (  # noqa: PLC0415
+        ReturnMethodRequirementTable,
+    )
+
+    return ReturnMethodRequirementTable.model_validate(
+        {
+            "rows": [
+                row.model_dump(mode="json")
+                for row in configuration.return_policy.return_method_requirements
+            ]
+        }
+    )
+
+
+#: The configuration checks `/health/ready` reports and production startup
+#: refuses on. Named individually rather than collapsed into one "configuration
+#: is bad" flag: the two failures have different operators and different fixes.
+ConfigurationCheck = Literal[
+    "COPILOT_AGENT_BINDING",
+    "RETURN_ELIGIBILITY_POLICY",
+]
+
+#: The wire code for each check. `COPILOT_AGENT_CONFIGURATION_INVALID` is the
+#: same code the Copilot turn route and `/api/return-history` already 503 with,
+#: so an operator reading a failed turn and an operator reading `/health/ready`
+#: are reading one fact.
+_CONFIGURATION_CHECK_CODES: dict[ConfigurationCheck, str] = {
+    "COPILOT_AGENT_BINDING": "COPILOT_AGENT_CONFIGURATION_INVALID",
+    "RETURN_ELIGIBILITY_POLICY": "RETURN_ELIGIBILITY_POLICY_MISSING",
+}
+
+
+class ConfigurationHealthFailure(StrictConfigModel):
+    """One configuration check that did not pass.
+
+    `RETURN_ELIGIBILITY_POLICY_MISSING` is an **operational** failure and is
+    reported here, next to a dangling agent mapping, precisely so it can never be
+    mistaken for `REVIEW_REQUIRED`. A review outcome is the evaluator working: a
+    published rule set looked at a return and asked for a human. An absent policy
+    is no rule set at all, and a platform that answered `REVIEW_REQUIRED` to it
+    would queue every return to a human while looking healthy.
+    """
+
+    check: ConfigurationCheck
+    code: NonBlank
+    message: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+
+
+def evaluate_configuration_health(
+    configuration: ReturnPlatformConfiguration,
+    known_agent_policy_ids: Collection[str],
+) -> tuple[ConfigurationHealthFailure, ...]:
+    """Every configuration check, run together, each failure reported distinctly.
+
+    One seam rather than a call site per validator. Both `validate_*` functions
+    below raise on the first thing wrong, which is right for a request that is
+    about to be refused and wrong for a health report: an operator fixing a
+    dangling agent mapping should not have to redeploy to discover the eligibility
+    policy is also missing. So they are run independently and their failures are
+    collected.
+
+    This is the only place that decides *what* configuration health means. The
+    probe on `/health/ready` and the production startup gate both read it, which
+    is what keeps the dev and production answers from drifting apart.
+    """
+    failures: list[ConfigurationHealthFailure] = []
+    checks: tuple[tuple[ConfigurationCheck, Callable[[], object]], ...] = (
+        (
+            "COPILOT_AGENT_BINDING",
+            lambda: validate_copilot_agent_binding(configuration, known_agent_policy_ids),
+        ),
+        (
+            "RETURN_ELIGIBILITY_POLICY",
+            lambda: validate_return_eligibility_policy(configuration),
+        ),
+    )
+    for check, run in checks:
+        try:
+            run()
+        except ValueError as invalid:
+            failures.append(
+                ConfigurationHealthFailure(
+                    check=check,
+                    code=_CONFIGURATION_CHECK_CODES[check],
+                    message=str(invalid)[:500],
+                )
+            )
+    return tuple(failures)
+
+
+class ConfigurationInvalidError(RuntimeError):
+    """Production refused to start on an invalid configuration."""
+
+    def __init__(self, failures: Collection[ConfigurationHealthFailure]) -> None:
+        self.failures = tuple(failures)
+        super().__init__(
+            "The active return configuration is invalid and this is production: "
+            + "; ".join(f"{failure.code}: {failure.message}" for failure in self.failures)
+        )
+
+
+def require_healthy_configuration(
+    configuration: ReturnPlatformConfiguration,
+    known_agent_policy_ids: Collection[str],
+    *,
+    environment: str,
+) -> tuple[ConfigurationHealthFailure, ...]:
+    """Refuse to start in production; report the failures anywhere else.
+
+    The split plan sect. 5.4 asks for, and it follows the precedent
+    `Settings.validate_relationships` sets for Vault: production is the
+    environment where a missing prerequisite is a startup failure rather than a
+    degraded mode, because there is nobody at the keyboard to read a warning and
+    the alternative is serving returns nobody can route.
+
+    It is not *in* `Settings.validate_relationships` because Settings holds
+    neither the released return configuration nor the active schema's agent
+    policies -- both arrive long after settings are constructed, inside the
+    lifespan -- so the check has to run where they exist. What is copied exactly
+    is the rule: `environment == "production"` refuses, everything else degrades
+    visibly.
+
+    Dev and CI get the failures back instead of an exception. The caller records
+    them, `/health/ready` reports the configuration probe unhealthy, and the turn
+    route 503s with `COPILOT_AGENT_CONFIGURATION_INVALID` -- an environment where
+    a developer is mid-change must be able to boot and be *told*, not refuse to
+    boot at all.
+    """
+    failures = evaluate_configuration_health(configuration, known_agent_policy_ids)
+    if failures and environment == PRODUCTION_ENVIRONMENT:
+        raise ConfigurationInvalidError(failures)
+    return failures
 
 
 class LoadedReturnConfiguration(StrictConfigModel):

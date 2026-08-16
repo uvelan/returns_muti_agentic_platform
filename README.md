@@ -4,24 +4,30 @@ Production return orchestration: an associate-facing Order Discovery copilot,
 runtime-configured behaviour held in a graph, Vault-managed credentials, durable
 workflow execution, and operational evidence tooling.
 
-**Current as of 2026-08-14, commit `dcbb7dc`, branch
+**Current as of 2026-08-16, commit `2878be0`, branch
 `refactor/unified-return-platform`.**
 
 ## Start here
 
 | Question | Document |
 |---|---|
+| **I have never seen this repo. How do I get it running?** | [Running it](#running-it), then `./scripts/bootstrap_host.sh` and `./scripts/linux/reset_all.sh` |
 | **How does a return actually run, end to end?** | [`docs/architecture/canonical-runtime-flow.md`](docs/architecture/canonical-runtime-flow.md) |
-| How do I bring it up? | [`docs/operations/startup.md`](docs/operations/startup.md) |
-| Something is wrong | [`docs/operations/troubleshooting.md`](docs/operations/troubleshooting.md) |
+| How do I bring it up, in detail? | [`docs/operations/startup.md`](docs/operations/startup.md) |
+| Something is wrong | [When something is wrong](#when-something-is-wrong), then [`docs/operations/troubleshooting.md`](docs/operations/troubleshooting.md) |
 | What does each screen do? | [`docs/screens/`](docs/screens/README.md) |
 | What does each endpoint guarantee? | [`docs/api/README.md`](docs/api/README.md) |
 | What can I configure, and when does it take effect? | [`docs/configuration/families.md`](docs/configuration/families.md) |
 | Where are the security boundaries? | [`docs/architecture/security-boundaries.md`](docs/architecture/security-boundaries.md) |
 | Everything | [`docs/README.md`](docs/README.md) |
 
-This README is the map. The depth is in `docs/`, and where the two disagree, `docs/`
-is newer.
+This README is the map. The depth is in `docs/`.
+
+Where the two disagree, check the date stamps rather than assuming: `docs/` was
+generally revised after this file, but the operational sections below —
+[Running it](#running-it) and [When something is wrong](#when-something-is-wrong) —
+are newer than `docs/operations/`, which is still stamped at commit `dcbb7dc` and
+does not yet carry the Vault-seal, container-recreate or graph-truncation notes.
 
 ## The canonical flow, in nine lines
 
@@ -107,19 +113,21 @@ backend/src/return_platform/
   configuration/          graph releases, snapshots, runtime resolver, sources,
                           process adoption, SQL migrations
   agents/                 the agent plugin contract and registry
-  ai/                     provider routing, redaction, interception, ONE dispatch boundary
-  ai_gateway/             gateway surface
+  ai/                     provider routing, redaction, interception, ONE dispatch
+                          boundary; `ai/gateway/` is the gateway surface
   api/                    HTTP surface, canonical and legacy
   canonical/              shared canonical models
   conversation/           reusable conversation contracts and state engine
   operations/             return business flow, SQL business state, connection pool,
                           warehouse placement
+  policy/                 shared policy evaluation
   workflows/              Temporal workflows, activities, workers, recovery
   dynamic_knowledge/      order agent, graph generations, lifecycle, integration
   data_platform/          graph sync, schema, source integration
   data_governance/        inventory and sampling
   dependency_simulation/  dev/test simulators (forbidden in production)
   graph_schema_analyzer/  host-composable schema proposal and approval
+  housekeeping/           scheduled maintenance work
   secrets/                Vault resolution
   security/               capabilities, roles, FastAPI dependencies
   source_connectors/      one read path per source technology
@@ -127,6 +135,10 @@ backend/src/return_platform/
   workers/                integration outbox, interception resume
   shared/                 cross-cutting helpers
 ```
+
+There is no top-level `ai_gateway/` package; this list claimed one. The gateway
+is `ai/gateway/`, inside the package that owns the single dispatch boundary,
+which is the point. `policy/` and `housekeeping/` were missing entirely.
 
 Frontend:
 
@@ -217,7 +229,9 @@ Details: [`docs/architecture/order-discovery.md`](docs/architecture/order-discov
 | `POST` | `/api/v1/associate-returns/conversations/{id}/messages` |
 | `POST` | `/api/v1/associate-returns/conversations/{id}/confirm` |
 | `POST` | `/api/v1/associate-returns/conversations/{id}/details` |
+| `POST` | `/api/v2/order-agent/conversations` |
 | `POST` | `/api/v2/order-agent/conversations/{id}/turns` |
+| `GET` | `/api/v2/order-agent/conversations/{id}/transcript` |
 
 `/api/v2/order-agent` is the only surviving `/api/v2` prefix; it is unrelated to the
 deleted V2 shell and merely shared it.
@@ -362,14 +376,34 @@ Details: [`docs/architecture/graph-generations.md`](docs/architecture/graph-gene
 
 ## Running it
 
-Full detail in [`docs/operations/startup.md`](docs/operations/startup.md). The short
-version:
+Full detail in [`docs/operations/startup.md`](docs/operations/startup.md).
+
+### From nothing to a working platform
+
+Two commands. The second is the whole kit — it resets infrastructure, seeds Vault,
+loads the reference dataset, starts every host process, **builds the knowledge
+graph**, and then verifies the result rather than assuming it.
 
 ```bash
-./scripts/bootstrap_host.sh          # first time only
-./scripts/infra.sh start             # datastores only; no image build
-./scripts/run_all_host.sh            # API, workers, frontend
+./scripts/bootstrap_host.sh          # first time only: toolchain, .env, deps
+./scripts/linux/reset_all.sh         # everything else, in the one order that works
 ```
+
+The graph build is the step that is easy to miss and impossible to notice missing.
+Loading the source collections leaves Neo4j empty, so the copilot searches a graph
+with no nodes and truthfully reports finding nothing — which reads as a broken agent
+rather than a missing build.
+
+For an incremental start against infrastructure that is already up:
+
+```bash
+./scripts/infra.sh start             # datastores only; no image build
+./scripts/run_all_host.sh            # API, workers, frontend (blocks; Ctrl-C stops all)
+```
+
+`run_all_host.sh` **supervises**: it does not return, and its exit trap stops
+everything it started. Pass `--no-supervise` to start the processes and get the
+shell back.
 
 Then verify **both** of these — they answer different questions:
 
@@ -378,26 +412,153 @@ curl -fsS http://127.0.0.1:8000/health/ready        | jq
 curl -fsS http://127.0.0.1:8000/api/config/adoption | jq
 ```
 
-Reset to a clean, fully-built environment:
+### The fast edit loop
+
+Infrastructure in Docker, backend/frontend/workers on the **host**, no image build in
+the loop. This is the default way to work on the code, and `.claude/launch.json`
+declares each process:
+
+| Process | Command | Port |
+|---|---|---|
+| backend | `backend/.venv/bin/python -m uvicorn return_platform.main:create_app --factory` | 8000 |
+| order-discovery-worker | `backend/scripts/run_order_discovery_worker.py` | — |
+| frontend | `npm --prefix frontend run dev -- --port 5273` | **5273** |
+| frontend-mock | `npm --prefix frontend run dev:mock -- --port 5174` | 5174 |
+
+**The frontend port differs between the two loops.** `scripts/run_frontend_host.sh`
+runs plain `npm run dev`, which Vite serves on **5173** — that is the port
+`10_start_frontend.sh`, `11_validate_host_processes.sh` and `stop_application_ports.sh`
+all check. `.claude/launch.json` asks for **5273**. Neither is wrong; they are
+different loops, and a health check against the wrong one reports a frontend that is
+down while it is serving.
+
+A configuration or prompt change **no longer needs a rebuild**. The release write
+routes are mounted, so the loop is draft → patch → promote:
 
 ```bash
-./scripts/linux/reset_all.sh
+curl -fsS -X POST http://127.0.0.1:8000/api/config/releases \
+  -H 'Content-Type: application/json' -d '{"release_id":"local-001"}'
+curl -fsS -X PATCH http://127.0.0.1:8000/api/config/releases/local-001/domains/RETURN_PLATFORM \
+  -H 'Content-Type: application/json' -d '{"patch":{...}}'
+# expected_head_revision comes from GET /api/config/adoption
+curl -fsS -X POST http://127.0.0.1:8000/api/config/releases/local-001/promote \
+  -H 'Content-Type: application/json' \
+  -d '{"status":"RELEASED","expected_head_revision":<n>}'
 ```
 
-It re-seeds Vault (nothing else does, and step two destroys its volume) and **builds
-the knowledge graph** — loading the source collections leaves Neo4j empty, so the
-copilot searches a graph with no nodes and truthfully reports finding nothing, which
-reads as a broken agent rather than a missing build.
+Promotion requires `expected_head_revision` precisely so two administrators cannot
+activate two releases from the same starting point.
+
+### Published ports
+
+Host processes must dial the **published** port, not the container's.
+
+| Service | In-container | Published on the host |
+|---|---|---|
+| Backend API | 8000 | 8000 (`BACKEND_PORT`) |
+| Frontend (host dev) | — | 5173, or 5273 under `.claude/launch.json` |
+| Frontend (containerized) | 8080 | 3200 |
+| MongoDB | 27017 | 27017 |
+| SQL Server | 1433 | **14330** |
+| Neo4j Bolt | 7687 | `NEO4J_BOLT_PORT`, **17687** on this dev host |
+| Neo4j HTTP | 7474 | `NEO4J_HTTP_PORT` |
+| Temporal | 7233 | 7233 |
+| Temporal UI | 8080 | 8080 (`--profile dev-tools`) |
+| Valkey | 6379 | 6379 |
+| Vault | 8200 | 8200 |
+
+Neo4j is the one that bites: its host port is overridable because WinNAT can reserve
+7687, so a host process left pointing at 7687 reaches no listener and Order Discovery
+simply finds nothing. `PLATFORM_NEO4J_URI` must carry the same port as
+`NEO4J_BOLT_PORT`; `scripts/linux/validate_env.py` now refuses a mismatch.
 
 Individual workers, containerized mode, redeploy and the reference dataset:
 [`docs/operations/startup.md`](docs/operations/startup.md),
 [`docs/operations/reset.md`](docs/operations/reset.md).
 
-Requirements: Python 3.13, Node 24, npm 11, Docker with Compose, `flock`, and enough
-RAM for SQL Server, Neo4j, MongoDB, Temporal, PostgreSQL, Valkey and Vault at once.
+Requirements: Python 3.13, Node 24, npm 11, Docker with Compose, `flock`, one of
+`ss`/`fuser`/`lsof`, and enough RAM for SQL Server, Neo4j, MongoDB, Temporal,
+PostgreSQL, Valkey and Vault at once. `scripts/linux/00_validate_prerequisites.sh`
+checks all of it.
 
 Never commit `.env`, `.vault-local/`, generated tokens, unseal material, or
 credentials.
+
+## When something is wrong
+
+[`docs/operations/troubleshooting.md`](docs/operations/troubleshooting.md) is the
+long form. These five cost real hours and each looks like something else.
+
+### Vault comes back SEALED after any restart
+
+**Symptom:** six workers crash-looping, `backend` unhealthy, every log naming the
+host `vault-resolved.invalid`. It reads as six independent bugs.
+
+It is one. `vault-resolved.invalid` is the **sentinel** `.env` carries in place of
+the real DSN; Vault is supposed to replace it at startup. A sealed Vault replaces
+nothing, so the literal string becomes the hostname. Nothing auto-unseals, and
+Vault's healthcheck passes while sealed — deliberately, because a sealed Vault is a
+live server — so `docker compose ps` says everything is fine.
+
+```bash
+./scripts/infra.sh status     # prints the seal state on its own line
+./scripts/infra.sh unseal     # unseals from .vault-local/init.json, then reseeds
+```
+
+The unseal key is `keys_base64[0]` in `.vault-local/init.json`. Lose that file with
+Vault sealed and the data is unrecoverable.
+
+Anything that started while Vault was sealed must be restarted afterwards; it
+resolved its credentials once, at startup.
+
+### `docker compose up -d` does not recreate on a new image
+
+`up -d` compares the **service definition**, not the image id. Rebuild under the same
+`:local` tag and the running container is considered current — the build succeeds and
+the old code keeps serving. `--force-recreate` is required.
+`scripts/infra.sh full-containerized` now passes it.
+
+### The frontend caches the backend's address
+
+The frontend image's nginx resolves `backend` once, at startup, and holds the address
+for the life of the process. Recreate the backend and every `/api/*` call 502s until
+the frontend is restarted too. **Container order matters: frontend restarts last.**
+
+### A graph that builds successfully and holds almost nothing
+
+Two independent causes, same symptom — a copilot that finds nothing.
+
+**Truncation.** There are two ceilings and the lower one wins:
+`GraphSyncRequest.maxRecordsPerAsset` defaults to 1,000, and the effective limit is
+`min(maxRecordsPerAsset, PLATFORM_GRAPH_SYNC_MAX_RECORDS)`, which defaults to 10,000.
+Raising only the argument still clamps at 10,000. That ceiling is exactly the
+`customers` count in `backend/config/seed/e2e_seed_manifest.json` — no headroom at
+all, so a synthetic-seeded graph silently truncates the customer set the copilot
+searches. Raise both:
+
+```bash
+PLATFORM_GRAPH_SYNC_MAX_RECORDS=30000 \
+  python backend/scripts/build_knowledge_graph.py 30000
+```
+
+`reset_all.sh` does this for you and takes `--graph-records N`.
+
+**Total silent data loss.** The source scan bounds on `{cursor: {"$lte": <Date>}}`,
+and MongoDB compares only *within* BSON type brackets — so a timestamp written as a
+**string** matches no date bound at all. Zero records scanned, the run reports
+`COMPLETED`, and a graph holding nothing gets activated.
+`build_knowledge_graph.py` refuses to report success when a `COMPLETED` run wrote no
+nodes or relationships, which is the only thing standing between this and a
+convincingly empty platform.
+
+### Host processes hang in `Waiting for application startup`
+
+A `vault://` reference with no resolver behind it. Running a host process with
+`PLATFORM_VAULT_ENABLED=false` means **also clearing every `*_SECRET_REFERENCE`
+variable** and replacing the seven `vault-resolved` sentinels with real values.
+A reference left behind looks configured and resolves to nothing, and startup waits
+forever rather than failing. `compose.novault.yaml` does exactly this for the
+containerized profile.
 
 ## Quality gates
 
@@ -406,11 +567,15 @@ Backend:
 ```bash
 cd backend
 poetry run ruff check src tests scripts
-poetry run mypy --strict src
+poetry run ruff format --check src tests scripts
+poetry run mypy src tests          # `strict = true` is in pyproject.toml
 poetry run pytest -q
 ```
 
-Without Poetry, substitute `.venv/bin/python -m …`.
+Without Poetry, substitute `.venv/bin/python -m …` (`.venv/Scripts/python.exe` on
+Windows). `scripts/bootstrap_host.sh` installs Poetry into `.tmp/poetry` rather than
+onto `PATH`, so `command -v poetry` failing is normal and every phase that needs it
+falls back.
 
 Frontend:
 
@@ -430,11 +595,24 @@ python scripts/check_openapi_drift.py --write    # regenerate the five artifacts
 **Wired into pytest**, so a contract change that is not regenerated fails the suite
 rather than shipping silently.
 
-Full validation:
+Full validation — the numbered pipeline in `scripts/linux/`, phase 00 through the
+manual screen attestation:
 
 ```bash
-./scripts/linux/run_full_linux_validation.sh
+./scripts/linux/run_full_linux_validation.sh --from-start [--keep-running]
+./scripts/linux/run_full_linux_validation.sh --resume        # skip passed phases
 ```
+
+The phase list is `scripts/linux/validation_phases.txt`, and **two phases are
+currently commented out of it**. Wave F4 deleted `frontend/tests/a11y.spec.ts` and
+`frontend/playwright.real.config.ts` along with the npm scripts that ran them, and
+nothing replaced either; left enabled they made the whole pipeline unrunnable.
+`14_run_accessibility.sh` and `14_run_real_e2e.sh` each state exactly what to write
+to restore their gate, and the pipeline's summary reports
+`accessibility_status=SKIPPED_NO_SUITE` rather than claiming a pass.
+
+**This pipeline is a release gate, not the way to bring the platform up.** For that,
+see [Running it](#running-it).
 
 Static checks (these do not replace dependency-backed tests):
 

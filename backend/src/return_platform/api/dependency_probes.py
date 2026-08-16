@@ -1,6 +1,7 @@
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from math import ceil
 from time import perf_counter
@@ -17,7 +18,14 @@ from redis.exceptions import (
     ConnectionError as RedisConnectionError,
 )
 
+from return_platform.configuration.return_configuration import (
+    ConfigurationHealthFailure,
+    LoadedReturnConfiguration,
+    evaluate_configuration_health,
+)
 from return_platform.configuration.settings import Settings
+from return_platform.dynamic_knowledge.config_loader import resolve_active_schema
+from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore
 from return_platform.resources import (
     DependencyHealthCheckFailedError,
     DependencyNotInitializedError,
@@ -400,3 +408,132 @@ async def probe_temporal(request: Request) -> DependencyProbeResult:
         probe_coro=execute,
         ttl_seconds=2.0,
     )
+
+
+async def resolve_known_agent_policy_ids(
+    resources: RuntimeResources,
+    settings: Settings,
+) -> Collection[str]:
+    """The agent policy ids the *active* schema publishes.
+
+    A published, activated release wins over the file, which is what makes a
+    dangling mapping detectable at all: renaming the agent in a schema release
+    is the realistic way the mapping goes stale, and comparing against the file
+    would keep reporting healthy while every turn 422'd.
+
+    Shared by the readiness probe and the startup gate so both answer the same
+    question against the same schema.
+    """
+    releases = (
+        None
+        if resources.mongo is None
+        else SchemaReleaseStore(resources.mongo, settings.mongo_database)
+    )
+    schema = await resolve_active_schema(settings.dynamic_knowledge_schema_path, releases)
+    return tuple(schema.agent_policies)
+
+
+#: Where the last configuration-health evaluation is recorded, so the startup
+#: gate and the probe leave their answer in one place. `/health/ready` reads it
+#: to name the individual failures; nothing else writes it.
+CONFIGURATION_HEALTH_ATTRIBUTE = "configuration_health_failures"
+
+
+@dataclass(frozen=True, slots=True)
+class ConfigurationHealthReport:
+    """The probe result, plus which checks failed.
+
+    Two shapes because `/health/ready` needs both and they answer different
+    questions. `result` is a `DependencyProbeResult` so configuration sits in
+    the `dependencies` map beside `mongodb` and `temporal` -- plan sect. 5.4 is
+    explicit that configuration validity joins the existing probe set rather
+    than becoming a parallel mechanism, and a monitor that trips on any
+    unhealthy dependency must trip on this one too.
+
+    `failures` is what the probe result cannot carry: `DependencyProbeResult`
+    has one `error_code` from a closed enum, so collapsing "the agent mapping is
+    dangling" and "no eligibility policy is published" into a single
+    `HEALTH_CHECK_FAILED` would leave the operator to guess which -- and the
+    second is the one that must never be mistaken for `REVIEW_REQUIRED`. They
+    are reported individually in the readiness body's `configuration` block.
+    """
+
+    result: DependencyProbeResult
+    failures: tuple[ConfigurationHealthFailure, ...]
+
+
+async def probe_configuration(request: Request) -> ConfigurationHealthReport:
+    """Is the released configuration usable by the surfaces that read it?
+
+    Not a network call, so it does not go through `_measure_probe`: there is
+    nothing to time out against, and what it reports is not "a dependency is
+    down" but "what this process was told to run is wrong". It is
+    single-flighted on the same 2s TTL as the rest because resolving the active
+    schema is a Mongo read plus a YAML parse, and a readiness endpoint scraped
+    by three monitors should do that once.
+
+    The failures are recorded on `app.state` rather than returned through the
+    cache, because the cache holds one `DependencyProbeResult` and widening a
+    shared mechanism for one probe's local need is the worse trade. Both values
+    come from the same evaluation: the closure writes the list in every branch
+    it can return from, so a cache hit serves the failures belonging to the
+    result it serves.
+    """
+    resources = _get_resources(request)
+    settings = _get_settings(request)
+
+    def record(failures: tuple[ConfigurationHealthFailure, ...]) -> None:
+        setattr(request.app.state, CONFIGURATION_HEALTH_ATTRIBUTE, failures)
+
+    async def execute() -> DependencyProbeResult:
+        loop = asyncio.get_running_loop()
+        started_at = loop.time()
+        loaded = getattr(request.app.state, "return_configuration", None)
+        if not isinstance(loaded, LoadedReturnConfiguration):
+            record(())
+            return _probe_result(
+                status=DependencyStatus.UNAVAILABLE,
+                error_code=DependencyErrorCode.UNINITIALIZED,
+                safe_message="The return configuration is not loaded.",
+            )
+        try:
+            known_agent_policy_ids = await resolve_known_agent_policy_ids(resources, settings)
+        except Exception as exc:
+            logger.exception(
+                "dependency_probe_failed",
+                extra={"dependency": "configuration", "error_type": type(exc).__name__},
+            )
+            record(())
+            return _probe_result(
+                status=DependencyStatus.UNAVAILABLE,
+                error_code=DependencyErrorCode.UNKNOWN_ERROR,
+                safe_message="The active schema could not be resolved.",
+            )
+        failures = evaluate_configuration_health(loaded.configuration, known_agent_policy_ids)
+        record(failures)
+        latency_ms = int((loop.time() - started_at) * 1000)
+        if failures:
+            logger.error(
+                "configuration_health_check_failed",
+                extra={"failed_checks": tuple(failure.check for failure in failures)},
+            )
+            return _probe_result(
+                status=DependencyStatus.UNAVAILABLE,
+                latency_ms=latency_ms,
+                error_code=DependencyErrorCode.HEALTH_CHECK_FAILED,
+                safe_message=(
+                    "Configuration checks failed: "
+                    + ", ".join(failure.code for failure in failures)
+                )[:500],
+            )
+        return _probe_result(status=DependencyStatus.HEALTHY, latency_ms=latency_ms)
+
+    result = await resources.execute_single_flight_probe(
+        key="configuration",
+        probe_coro=execute,
+        ttl_seconds=2.0,
+    )
+    recorded: Collection[ConfigurationHealthFailure] = getattr(
+        request.app.state, CONFIGURATION_HEALTH_ATTRIBUTE, ()
+    )
+    return ConfigurationHealthReport(result=result, failures=tuple(recorded))

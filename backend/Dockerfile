@@ -42,14 +42,25 @@ RUN python -m pip install "poetry==${POETRY_VERSION}" poetry-plugin-export
 
 WORKDIR /build
 COPY pyproject.toml poetry.lock ./
-COPY src ./src
 
 # poetry.lock, not this Dockerfile, is the single source of truth for exact
 # (including transitive) dependency versions -- exporting it to a requirements
 # file keeps the image build reproducible across machines instead of
 # re-resolving on every build.
+#
+# **Third-party wheels are built before `src` is copied, and that ordering is
+# the point.** `COPY src` used to sit above this line, so every source edit
+# invalidated it and every dependency -- neo4j, temporal, pymongo, pydantic and
+# the rest of the transitive tree -- was re-wheeled from scratch on a build that
+# changed one Python file. Observed cost: roughly thirty minutes per rebuild,
+# paid repeatedly in a single session. Only `pyproject.toml` and `poetry.lock`
+# reach this layer now, so a source-only change reuses the cached wheels.
 RUN poetry export --without-hashes --only main -f requirements.txt -o requirements.txt \
-    && python -m pip wheel --wheel-dir /wheels -r requirements.txt .
+    && python -m pip wheel --wheel-dir /wheels -r requirements.txt
+
+# Now the source, and only the project's own wheel on top of the cached ones.
+COPY src ./src
+RUN python -m pip wheel --wheel-dir /wheels --no-deps .
 
 # The real-infra test image. A separate stage on purpose: the runtime image
 # below carries only main dependencies and must never carry pytest, and this one

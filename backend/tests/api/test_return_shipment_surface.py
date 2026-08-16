@@ -91,14 +91,32 @@ class _BusinessState:
         del return_reference
         return self._record
 
+    async def read_shipment_state(self, return_reference: str) -> list[dict[str, Any]]:
+        """The parcels the store holds, as `dbo.return_tracking` answers them."""
+        return [
+            {
+                "return_reference": return_reference,
+                "tracking_reference": update.tracking_reference,
+                "carrier_code": update.carrier_code,
+                "tracking_status": update.shipment_status,
+                "event_at": update.status_at,
+            }
+            for update in self.updates
+        ]
+
 
 class _Repository:
     def __init__(self) -> None:
         self.facts: list[dict[str, Any]] = []
+        self.parcels: list[dict[str, Any]] = []
 
     async def append_case_fact(self, **fields: Any) -> dict[str, Any]:
         self.facts.append(dict(fields))
         return dict(fields)
+
+    async def record_case_shipment(self, **fields: Any) -> bool:
+        self.parcels.append(dict(fields))
+        return True
 
 
 class _Observations:

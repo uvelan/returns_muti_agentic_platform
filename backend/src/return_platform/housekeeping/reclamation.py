@@ -1,7 +1,7 @@
 """What one reclamation pass did, and why it did not do more.
 
-Every reclaimer answers with the same record because the three debris classes
-fail in the same way when they go wrong: quietly. A pass that examined nothing
+Every reclaimer answers with the same record because every debris class here
+fails in the same way when it goes wrong: quietly. A pass that examined nothing
 because it was gated off, a pass that examined two hundred candidates and
 rejected all of them, and a pass that reclaimed two hundred resources are three
 very different operational facts, and a bare count cannot tell them apart.

@@ -141,7 +141,12 @@ def test_router_mounting_is_the_bulk_of_create_app_and_that_is_allowed() -> None
     # 29 -> 30 in SHIP-01: `api/return_shipments.py`, the HTTP entry point for an
     # RMA-scoped shipment update. The chain below it already existed and was
     # proven on real infrastructure; nothing in production could reach it.
-    assert len(mounts) == 30, (
-        f"{len(mounts)} routers are mounted, expected 30; if Wave F deleted one, "
+    # 30 -> 31 in Phase 6: `api/order_lines.py`, the case-bound order-line read
+    # and the selection writer. Mounted on the same `/api/cases` prefix as
+    # `api/cases.py` because the case is the authorization boundary, and kept a
+    # separate router because the resource is the order rather than the case
+    # projection -- so the count moves even though the prefix does not.
+    assert len(mounts) == 31, (
+        f"{len(mounts)} routers are mounted, expected 31; if Wave F deleted one, "
         "update this number in the same commit"
     )

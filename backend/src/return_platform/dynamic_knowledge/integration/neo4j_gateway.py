@@ -10,7 +10,10 @@ from neo4j import READ_ACCESS, AsyncDriver
 from neo4j.spatial import Point
 from neo4j.time import Date, DateTime, Duration, Time
 
-from return_platform.dynamic_knowledge.knowledge.cypher_compiler import FULLTEXT_PROCEDURE
+from return_platform.dynamic_knowledge.knowledge.cypher_compiler import (
+    FULLTEXT_PROCEDURE,
+    GENERATION_PARAMETER,
+)
 from return_platform.dynamic_knowledge.schema import ActiveSchema, FieldDefinition
 
 _PROHIBITED = re.compile(
@@ -209,14 +212,29 @@ class Neo4jKnowledgeGateway:
         compiled_cypher: str,
         parameters: dict[str, Any],
     ) -> Any:
-        del graph_generation_id, plan
+        """Execute one compiled read, pinned to the generation the caller resolved.
+
+        The generation used to be deleted here. `CypherCompiler` emitted no
+        generation predicate and this method discarded the id, so the whole
+        blue/green protocol -- the snapshot compare-and-swap, the read lease, the
+        drain -- ended at the point where a query was actually run, and every
+        read saw every generation the database held. Binding it is the other half
+        of the predicate the compiler now emits (see `GENERATION_PARAMETER`).
+
+        The caller's value always wins: a compiled query cannot supply its own
+        generation, and a parameter map that carried one would be a second
+        opinion about which generation serves this request -- exactly what
+        `lifecycle/handle.py` exists to make impossible.
+        """
+        del plan
         normalized = compiled_cypher.strip()
         if not _is_permitted_read(normalized):
             raise ValueError("Only validated read-only Cypher is permitted")
+        bound = {**parameters, GENERATION_PARAMETER: graph_generation_id}
         database = self._database or schema.graph.database
         async with self._driver.session(
             database=database, default_access_mode=READ_ACCESS
         ) as session:
-            result = await session.run(normalized, parameters)
+            result = await session.run(normalized, bound)
             rows = [_json_safe(dict(record)) async for record in result]
         return {"rows": rows, "count": len(rows)}

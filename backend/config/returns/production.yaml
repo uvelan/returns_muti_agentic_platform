@@ -564,6 +564,24 @@ source_resolution:
   order_number_paths:
     - salesHdrEventData.orderId
     - salesHdr.salesHdrData.orderId
+  # THE BASIS OF THE STANDARD RETURN WINDOW.
+  #
+  # Verified 2026-08-15 against the 100-order reference extract:
+  #
+  #   salesHdr.salesHdrData.orderDate   present on 100/100, always midnight UTC
+  #   salesHdrEventData.orderDate       present on   0/100  (never written)
+  #   salesHdr.salesHdrData.invoiceDate present on  99/100, differs from
+  #                                     orderDate on 67 of them
+  #   salesHdr.salesHdrData.entryDate   present on 100/100, differs on 18
+  #
+  # So `orderDate` is the only field that both exists everywhere and names the
+  # purchase itself. `invoiceDate` is when the order was billed and `entryDate`
+  # is when it was keyed into the ERP; either would answer a 30-day boundary
+  # with a date that is not the purchase, so neither is listed as a fallback.
+  # An order carrying no `orderDate` leaves the window undated, and the case
+  # reviews on PURCHASE_DATE_UNKNOWN rather than being decided from a guess.
+  order_date_paths:
+    - salesHdr.salesHdrData.orderDate
   web_order_paths:
     - salesHdrEventData.webOrderId
     - salesHdrEventData.webOrderNumber
@@ -824,6 +842,62 @@ return_policy:
     - NO_PHYSICAL_RETURN
     - CUSTOMER_KEEP
     - UNKNOWN
+  # What each return method needs before the return is business-complete.
+  # `awaiting[]` is `required(method) - satisfied(case)` and `businessComplete`
+  # is that difference being empty, so this table is the whole definition of
+  # "done" for a return -- it sits beside the catalogue above because adding a
+  # method without saying what it requires is an incomplete release.
+  #
+  # Three structural rules, enforced at load rather than described here:
+  #   * every row must require RMA -- a method that completes without an
+  #     authorization completes without a return;
+  #   * no row may name UNKNOWN -- UNKNOWN is the absence of a method, and a row
+  #     for it would let an undecided case complete;
+  #   * a method with NO row is unmapped, which leaves the completion profile
+  #     unresolved and the case awaiting RETURN_METHOD. That is the safe
+  #     direction and the reason an empty `requires` list is rejected: "no row"
+  #     must never read as "requires nothing".
+  #
+  # Dimensions: RMA, LABEL, TRACKING, BOL, PICKUP, RETURN_LOCATION.
+  return_method_requirements:
+    # --- Stated verbatim in the remediation plan (sect. 6.4).
+    - method: PREPAID_PARCEL
+      requires: [RMA, LABEL, TRACKING]
+    - method: BRANCH_LTL
+      requires: [RMA, BOL, PICKUP]
+    - method: OFFSITE_LTL
+      requires: [RMA, BOL, PICKUP, RETURN_LOCATION]
+    - method: CUSTOMER_KEEP
+      requires: [RMA]
+    - method: NO_PHYSICAL_RETURN
+      requires: [RMA]
+    # --- INFERRED FROM THE CATALOGUE -- OPERATOR REVIEW REQUIRED.
+    #     The four rows below were derived when the table moved out of code.
+    #     The plan does not state them, so each is a reading rather than a
+    #     decision, and each is wrong in a way that shows up late: too few
+    #     requirements lets a return report itself complete without the
+    #     paperwork, too many hangs it forever on an artifact nobody produces.
+    #     Confirm each with Returns operations and delete this banner.
+    #
+    #     A parcel tendered at a branch: the branch is the origin, so there is
+    #     no return location to establish, but there is still a label to print
+    #     and a number to follow.
+    - method: BRANCH_UPS
+      requires: [RMA, LABEL, TRACKING]
+    #     A parcel from a customer site -- BRANCH_UPS plus the location, for the
+    #     same reason OFFSITE_LTL is BRANCH_LTL plus one.
+    - method: OFFSITE_PARCEL
+      requires: [RMA, LABEL, TRACKING, RETURN_LOCATION]
+    #     Straight back to the vendor. Somebody has to say where; the carrier
+    #     paperwork is the vendor's, not ours.
+    - method: DIRECT_VENDOR
+      requires: [RMA, RETURN_LOCATION]
+    #     Scrapped where it stands. Nothing ships, so nothing but the
+    #     authorization can be required -- the same shape as NO_PHYSICAL_RETURN,
+    #     reached for a different reason.
+    - method: FIELD_SCRAP
+      requires: [RMA]
+    # --- UNKNOWN has no row, and cannot have one. See the second rule above.
   # Which shipping instruction types tender a bill of lading. Recording
   # shipping instructions of one of these types emits BOL_TENDERED alongside
   # SHIPPING_INSTRUCTIONS_ISSUED, and the same set decides what the acting role
@@ -854,6 +928,78 @@ return_policy:
     require_return_number_tag: true
     allow_manufacturer_box_marking: false
     allow_branch_inventory_addition: false
+
+# What an associate may say about a line they are selecting (plan sect. 12.4).
+#
+# Top-level rather than nested inside `return_policy` on purpose. The publisher
+# merges this file underneath the active release one TOP-LEVEL key at a time, so
+# a key added inside `return_policy` would be dropped by the release's own
+# `return_policy` and could never reach a deployment that has ever published
+# (defect D11, observed with `copilot.order_discovery_agent_id`). A new
+# top-level key is in no existing release, so this one arrives on the next
+# publish.
+#
+# An empty list here means "no catalogue published", which leaves the field as
+# length-bounded free text -- the behaviour before this block existed. It does
+# not mean "reject everything": that would take a branch's returns offline over
+# a key nobody had been asked for.
+selection_vocabulary:
+  # Constrained at load to `policy.vocabulary.ReturnReason`, the evaluator's own
+  # closed vocabulary. A reason outside it resolves to UNKNOWN in
+  # `case_policy_facts` and routes the return to a human with nothing in the
+  # audit trail saying why, so the release is refused instead.
+  #
+  # UNKNOWN is absent and cannot be listed: it is the absence of an answer, not
+  # something an associate chooses.
+  reasons:
+    # Delivery-related. The same four `return_eligibility_policy.delivery_claim`
+    # already routes as a claim.
+    - SHIPPING_DAMAGE
+    - SHORTAGE
+    - SHIPMENT_ERROR
+    - IMPROPER_DELIVERY
+    # Warranty-related. The same four `return_eligibility_policy.warranty_issue`
+    # already routes to warranty verification.
+    - MANUFACTURING_DEFECT
+    - PRODUCT_FAILURE_AFTER_INSTALLATION
+    - COVERED_PRIVATE_LABEL_DEFECT
+    - MANUFACTURER_WARRANTY_ISSUE
+    # Ordinary returns. These take the standard-stock path.
+    - CHANGED_MIND
+    - ORDERED_IN_ERROR
+    - NO_LONGER_NEEDED
+    - OTHER
+  # --- DERIVED FROM THE ELIGIBILITY POLICY -- OPERATOR REVIEW REQUIRED.
+  #     There is no condition vocabulary anywhere in code to copy, and inventing
+  #     one in Python is the defect this block removes. Every entry below is
+  #     instead the associate-facing name of a condition
+  #     `return_eligibility_policy.standard_stock_return.requirements` already
+  #     reads: the five `condition` facts and the eight `prohibited_states`.
+  #     They are a reading of that table, not a decision Returns operations has
+  #     taken. Confirm the wording with the counter staff who will pick from it
+  #     and delete this banner.
+  #
+  #     Deleting an entry is safe -- an associate can no longer choose it.
+  #     Adding one is safe too: nothing downstream branches on a condition, so
+  #     the value is recorded and read by a human.
+  conditions:
+    # Satisfies the resale requirements: new, suitable for resale, original
+    # packaging, packaging undamaged, all original parts.
+    - NEW_IN_ORIGINAL_PACKAGING
+    # New, but the packaging no longer proves it.
+    - NEW_PACKAGING_OPENED
+    - NEW_PACKAGING_DAMAGED
+    - MISSING_ORIGINAL_PARTS
+    # The eight prohibited states, one entry each, so an associate naming the
+    # state names the one the policy refuses on.
+    - USED
+    - INSTALLED
+    - MODIFIED
+    - REBUILT
+    - RECONDITIONED
+    - REPAIRED
+    - ALTERED
+    - DAMAGED
 
 workflow:
   version: "2.0"
@@ -932,9 +1078,34 @@ return_case:
   # Bay is advisory and sits in front of every return, so this is dead time on
   # the critical path before the Support handoff can begin. Deliberately short.
   bay_wait_seconds: 120
+  # How long a selected line's quantity is held for this case before the hold
+  # expires and the units go back to everyone else (plan sect. 12.3). Wall
+  # clock, not business hours: it bounds a live counter conversation, and a
+  # hold that survived a weekend would make Monday's associate wait for
+  # Friday's abandoned one. Thirty minutes.
+  item_reservation_ttl_seconds: 1800
   # Business hours, not wall clock -- eight hours over a weekend is a different
   # instant entirely. `business_calendar_id` names the calendar that decides.
-  support_response_wait_seconds: 28800
+  #
+  # DEV SETTING (2026-08-15, operator decision: "change to ttl seconds in dev").
+  # Set equal to `item_reservation_ttl_seconds` above, to close the overselling
+  # window described in D46: the availability formula counts only ACTIVE holds
+  # and RMA-covered items, so between a hold lapsing and Support answering the
+  # units belonged to neither and a second case could be authorized for them.
+  # At 28800 against a 30-minute hold that window was hours, and up to ~72
+  # wall-clock hours across a weekend.
+  #
+  # This value alone is NOT sufficient -- it is measured on the business
+  # calendar while the TTL is wall clock, so outside 09:00-17:00 it would still
+  # stretch. `business_calendars.default` is therefore ALSO set to 24/7 below,
+  # which the calendar's own documentation names as the way to get wall-clock
+  # behaviour back exactly. The two changes only work together.
+  #
+  # BEFORE LIVE: restore 28800 (or the desk's real SLA) and restore the real
+  # Mon-Fri calendar. A 30-minute Support SLA is not a real-world commitment;
+  # the production answer to D46 is a fourth term in the availability formula
+  # for "selected but not yet authorized", not a shortened SLA.
+  support_response_wait_seconds: 1800
   reminder_interval_seconds: 7200
   max_reminders: 3
   # A reminder cap with no terminal branch leaves the case sitting forever with
@@ -956,20 +1127,44 @@ business_calendars:
     # calendar that declares none -- a holiday has to fall on the same day for
     # every reader whatever zone the worker computing it runs in.
     timezone: America/New_York
+    # DEV SETTING (2026-08-15) -- 24/7, i.e. every day 0..1440. This is the
+    # mechanism this file's own header names: "a 24/7 operation declares every
+    # day 0..1440 and gets wall-clock behaviour back exactly."
+    #
+    # It exists to make `support_response_wait_seconds: 1800` mean thirty
+    # *wall-clock* minutes, matching `item_reservation_ttl_seconds`. Without it
+    # the two clocks disagree and D46's overselling window reopens outside
+    # office hours -- which, for a dev stack worked on at any hour, is most of
+    # the time.
+    #
+    # Blast radius, stated rather than discovered later: every deadline and
+    # reminder computed on this calendar becomes wall clock too. In dev that is
+    # the point -- nothing should sit until Monday.
+    #
+    # BEFORE LIVE: restore the Mon-Fri 540..1020 pattern below, together with
+    # `support_response_wait_seconds: 28800`.
     working_periods:
-      - { weekday: 0, start_minute: 540, end_minute: 1020 }
-      - { weekday: 1, start_minute: 540, end_minute: 1020 }
-      - { weekday: 2, start_minute: 540, end_minute: 1020 }
-      - { weekday: 3, start_minute: 540, end_minute: 1020 }
-      - { weekday: 4, start_minute: 540, end_minute: 1020 }
+      - { weekday: 0, start_minute: 0, end_minute: 1440 }
+      - { weekday: 1, start_minute: 0, end_minute: 1440 }
+      - { weekday: 2, start_minute: 0, end_minute: 1440 }
+      - { weekday: 3, start_minute: 0, end_minute: 1440 }
+      - { weekday: 4, start_minute: 0, end_minute: 1440 }
+      - { weekday: 5, start_minute: 0, end_minute: 1440 }
+      - { weekday: 6, start_minute: 0, end_minute: 1440 }
+    # The real Mon-Fri desk, kept here so restoring it is a copy rather than a
+    # reconstruction:
+    #   - { weekday: 0, start_minute: 540, end_minute: 1020 }
+    #   - { weekday: 1, start_minute: 540, end_minute: 1020 }
+    #   - { weekday: 2, start_minute: 540, end_minute: 1020 }
+    #   - { weekday: 3, start_minute: 540, end_minute: 1020 }
+    #   - { weekday: 4, start_minute: 540, end_minute: 1020 }
+    #
     # Whole non-working days in the calendar's own zone. Extend per year; an
     # empty list is legitimate and means the weekly pattern is the whole story.
-    holidays:
-      - 2026-01-01
-      - 2026-07-03
-      - 2026-11-26
-      - 2026-11-27
-      - 2026-12-25
+    # Emptied in dev for the same reason: a holiday is a day nothing progresses.
+    holidays: []
+    # The real holiday list, for restoration:
+    #   2026-01-01, 2026-07-03, 2026-11-26, 2026-11-27, 2026-12-25
 
 
 integrations:
@@ -1006,6 +1201,14 @@ feature_flags:
   order_discovery_copilot: true
   copilot_operations_console: false
   graph_first_runtime_configuration: true
+
+copilot:
+  # The agent policy every Copilot conversation turn is routed to. It must name
+  # a key under `agent_policies` in the active schema release
+  # (config/dynamic_knowledge/active-schema.return-order.yaml); a dangling value
+  # is a hard error, not a fallback, because the alternative is the 422 that
+  # this setting exists to remove.
+  order_discovery_agent_id: order-discovery-agent
 
 runtime_integrations:
   ai_providers: []
@@ -1085,3 +1288,169 @@ runtime_integrations:
       host: runtime-resolved.invalid
       port: 7233
       bootstrap_managed: true
+
+# The deterministic return eligibility rule set. Authority:
+# docs/RETURN_COPILOT_POLICY_BASELINE.md -- Ferguson's public Returns and
+# Cancellations Policy and Terms and Conditions of Sale (Rev. May 2025).
+#
+# `percentage` and `amount` are null and typed `None` in the model: Ferguson
+# publishes no universal restocking-fee percentage, so a release attempting to
+# write one fails to parse rather than shipping an invented number. The engine
+# determines that a fee APPLIES; the amount comes from the seller or the
+# manufacturer.
+return_eligibility_policy:
+  id: ferguson-standard-return-policy
+  version: "2026-08-15"
+  authority: FERGUSON_PUBLIC_TERMS
+  source_document: Ferguson Terms and Conditions of Sale
+  source_revision: "Terms and Conditions of Sale - Rev. May 2025"
+  precedence:
+    - CUSTOMER_CONTRACT_OVERRIDE
+    - SPECIAL_ORDER_MANUFACTURER_POLICY
+    - FERGUSON_STANDARD_RETURN
+  standard_stock_return:
+    purchase_window: { days: 30, basis: PURCHASE_DATE }
+    requirements:
+      seller_stocked: true
+      special_order: false
+      condition:
+        new: true
+        suitable_for_resale: true
+        original_packaging: true
+        packaging_undamaged: true
+        all_original_parts: true
+      prohibited_states:
+        used: false
+        installed: false
+        modified: false
+        rebuilt: false
+        reconditioned: false
+        repaired: false
+        altered: false
+        damaged: false
+    decision_when_satisfied: APPROVE
+    conditions:
+      - RESTOCKING_FEE_APPLIES
+    # WHAT AN UNSTATED CONDITION FACT IS ALLOWED TO DECIDE.
+    #
+    #   REVIEW_REQUIRED  silence queues the return; nothing approves until the
+    #                    conversation has captured all thirteen facts above
+    #   NOT_EVALUATED    silence decides nothing; the checks it left unanswered
+    #                    are recorded and the return window decides the case
+    #
+    # Set to NOT_EVALUATED by operator decision (2026-08-16): "only evaluate
+    # basic policy -- is the item in the return window". Extraction currently
+    # captures `return_reason` and `product_presence` and nothing else, so under
+    # REVIEW_REQUIRED every single return queued on REQUIRED_FACT_UNKNOWN and
+    # the only route to APPROVE was a supervisor override. That is a rule set
+    # that decides nothing.
+    #
+    # This does NOT weaken the requirements above. A fact somebody *did* state
+    # still decides: an item the customer says was installed is still REJECTed,
+    # and still rejected before the window is looked at. What changes is only
+    # that an unanswered question no longer counts as an objection.
+    #
+    # Every decision taken this way carries the applied rule
+    # CONDITION_FACTS_NOT_EVALUATED together with the names of the checks that
+    # were skipped, exactly as STOCK_CLASS_FROM_CONFIGURATION marks a decision
+    # taken on an assumed stock class -- so an approval granted on the window
+    # alone is never indistinguishable in the audit trail from one granted on
+    # full evidence.
+    #
+    # TO SWITCH THE OTHER CHECKS BACK ON: change this line to REVIEW_REQUIRED
+    # and publish. No code change, no deployment. Do it once conversational
+    # extraction actually captures the condition and packaging facts, or the
+    # returns will simply queue again.
+    unstated_condition_facts: NOT_EVALUATED
+  # `percentage` and `amount` stay null: Ferguson publishes no universal
+  # restocking-fee percentage, so a number there would claim Ferguson's
+  # authority for a rate Ferguson has not set.
+  #
+  # `seller_schedule` is the seller's OWN standing rate. Every determination it
+  # produces carries FeeAmountSource.SELLER_CONFIGURATION, so an audit can always
+  # tell it from a manufacturer's fee or from published policy. It is a rate in
+  # basis points (1500 = 15.00%) rather than a currency amount because the
+  # evaluator is pure and holds no line prices; the figure is computed downstream
+  # where order_line.net_price exists.
+  #
+  # ---------------------------------------------------------------------------
+  # DEV RATE -- ACCEPTED BY THE OPERATOR FOR NON-PRODUCTION USE (2026-08-15).
+  # 1500 bp (15%) is an arbitrary working figure so the lifecycle can complete and
+  # a refund can render. It is NOT sourced from any Ferguson document and carries
+  # no business authority.
+  #
+  # This is deliberately still loud. The operator's decision was "it's dev, put a
+  # number in" -- which settles this environment, not the next one. Before any
+  # live deployment, replace it with the seller's real schedule, or remove
+  # `seller_schedule` entirely to go back to emitting applicability with no figure
+  # attached. `FeeAmountSource.SELLER_CONFIGURATION` on every outcome it produces
+  # is what keeps it from ever passing as published Ferguson policy in the interim.
+  # ---------------------------------------------------------------------------
+  restocking_fee:
+    applies_by_default: true
+    percentage: null
+    amount: null
+    amount_source: [SELLER_CONFIGURATION, SELLER_OVERRIDE, MANUFACTURER]
+    seller_can_waive: true
+    invent_default_amount: false
+    seller_schedule:
+      default_rate_basis_points: 1500
+      currency: USD
+  # WHERE STOCKED-VS-SPECIAL-ORDER COMES FROM.
+  #
+  # Not from the source. Verified 2026-08-15 against the real `salesInv` extract:
+  # no field carries the distinction. `lineType` is the only candidate and it is
+  # undocumented in all four Ferguson vendor dictionaries; its `MP` majority
+  # contains 89 procure-to-order lines (`taggedPoId` with `prodAvailQty == 0`)
+  # sitting exactly on the "normally stocked" seam, so reading `MP` as "stocked"
+  # would turn 89 unknowns into approval evidence. Ferguson's public policy
+  # describes what happens TO a special order; it does not say which products
+  # ARE one.
+  #
+  # So the operator says, here, and can change it without code.
+  #
+  #   unresolved_default:
+  #     STANDARD_STOCK   unclassified lines are ordinary stock; returns flow
+  #     SPECIAL_ORDER    unclassified lines take the manufacturer path
+  #     REVIEW_REQUIRED  leave unknown; every return queues for a human
+  #
+  # Set to STANDARD_STOCK by operator decision: the alternative queues every
+  # return, which is safe but decides nothing. Every decision taken this way
+  # carries the applied rule STOCK_CLASS_FROM_CONFIGURATION, so an approval made
+  # on this assumption is distinguishable in the audit trail from one made on
+  # evidence. Change this line to REVIEW_REQUIRED to go back to fail-safe.
+  #
+  # The designation lists override the default for named products. They are
+  # empty on purpose. The reference data shows 8 `SP`-prefixed master product
+  # ids that look like special orders (all with `taggedPoId`, all
+  # `cntrtCostType: P`) -- but the same `SP` token appears as `origProdStatus`
+  # on four ordinary catalogue products, and no vendor document defines either.
+  # Adding "SP" to special_order_sku_prefixes is an assertion for an operator to
+  # make, not a guess for this file to ship.
+  stock_classification:
+    unresolved_default: STANDARD_STOCK
+    special_order_skus: []
+    special_order_sku_prefixes: []
+    special_order_product_ids: []
+
+  special_or_nonstock:
+    manufacturer_acceptance_required: true
+    buyer_fee_acceptance_required: true
+    decisions:
+      manufacturer_acceptance_unknown: REVIEW_REQUIRED
+      manufacturer_acceptance_rejected: REJECT
+      manufacturer_acceptance_accepted_buyer_fee_unknown: REVIEW_REQUIRED
+      manufacturer_acceptance_accepted_buyer_fee_rejected: REJECT
+      manufacturer_acceptance_accepted_buyer_fee_accepted: APPROVE
+  outside_standard_window:
+    decision: REVIEW_REQUIRED
+    reason_code: OUTSIDE_STANDARD_RETURN_WINDOW
+  delivery_claim:
+    conditions: [SHIPPING_DAMAGE, SHORTAGE, SHIPMENT_ERROR, IMPROPER_DELIVERY]
+    reporting_window: { business_days: 2, basis: DELIVERY_DATE }
+  warranty_issue:
+    reasons:
+      - MANUFACTURING_DEFECT
+      - PRODUCT_FAILURE_AFTER_INSTALLATION
+      - COVERED_PRIVATE_LABEL_DEFECT
+      - MANUFACTURER_WARRANTY_ISSUE

@@ -173,6 +173,37 @@ def _customer_addresses(
     return rows
 
 
+#: Branch halves of the `BRANCH*CUSTID` account references the CDM carries.
+#: `PLYMOUTH` and `MINNWW` are the two the one real document (`MASTER:900781`)
+#: actually lists; the rest are of the same shape.
+#:
+#: Uppercase and free of `*`, which is load-bearing rather than cosmetic:
+#: `customer_account.customer_branch_id` and `.customer_id` are `SPLIT_PART`
+#: derivations on that delimiter, so a branch code carrying one would move the
+#: split and hand the join half a branch name.
+_CDM_BRANCH_CODES: tuple[str, ...] = (
+    "PLYMOUTH",
+    "MINNWW",
+    "CHARLOTTE",
+    "ATLANTA",
+    "DALLAS",
+)
+
+
+def _main_customer_reference(seed: int, index: int, ordinal: int) -> str:
+    """One `partyMainCusts[].mainCusts` value, shaped `BRANCH*CUSTID`.
+
+    Numeric on the customer half because the source's are (`PLYMOUTH*232385`),
+    and deterministic in `(seed, document, ordinal)` so a document's accounts do
+    not move between runs -- they are the natural key of every
+    `customer_account` row projected from it.
+    """
+    digest = generate_stable_string(seed, "cdm", index, f"mainCusts-{ordinal}", 12)
+    branch = _CDM_BRANCH_CODES[int(digest[:4], 16) % len(_CDM_BRANCH_CODES)]
+    customer_id = 100_000 + int(digest[4:12], 16) % 900_000
+    return f"{branch}*{customer_id}"
+
+
 def _cdm_parties(
     values: dict[str, object],
     resolver: RelationshipResolver,
@@ -180,25 +211,46 @@ def _cdm_parties(
     seed: int,
     index: int,
 ) -> list[dict[str, object]]:
-    """customerOutboundCDM party[]: name, contact points, and the custAccts[]
-    bridge whose additionalCustomerInfo[].customerId is what salesInv copies
-    into custId."""
+    """customerOutboundCDM party[]: name, contact points, and the
+    partyMainCusts[] bridge whose `mainCusts` is what salesInv copies into
+    custId.
+
+    This used to hand-build `custAccts[].additionalCustomerInfo[]`, a shape no
+    real CDM document has at any level. It existed because the active schema
+    once declared `customer_account` against that path -- taken from the field
+    specification rather than from data -- and the generator was written to
+    satisfy the declaration. Seeding then manufactured the very structure the
+    declaration asserted, so `customer_account` extracted rows in every
+    environment that had been seeded and none from the source, and a validation
+    ERROR was cleared by data the platform had invented for itself.
+
+    The entity now reads `party[].partyMainCusts[].mainCusts`, which is what
+    `MASTER:900781` carries, so this emits that. Not because the schema says so
+    -- that is the reasoning which produced the fabrication -- but because the
+    one non-synthetic document in `return_source.customerOutboundCDM` does.
+
+    Three entries for two accounts, mirroring the real document, which lists
+    `MINNWW*28634` twice. `customer_account` is declared `distinct`, and a seed
+    that never repeated an account would leave that declaration unexercised by
+    everything except the real fixture.
+    """
     party_id = str(values.get("partyId", generate_stable_string(seed, "cdm", index, "partyId")))
     name = get_synthetic_name(index, seed=seed)
-    # Falls back to a stable id when no salesInv customer has been generated
-    # yet -- asset generation order decides whether the resolver has one, and
-    # emitting no custAccts at all would leave customer_account with zero
-    # records and hide whether the exploded path works.
-    customer_id = resolver.get_key("customer_reference", record_rng) or generate_stable_string(
-        seed, "cdm", index, "customer_reference", 10
-    )
-    # Publish it. The resolver is fed from the field loop, which only registers
-    # *string* values -- and this id is minted inside an array, so it was never
-    # published and salesInv could not consume it. Both sides then invented
-    # their own customer id and the documented bridge joined nothing: every
-    # CustomerParty in the graph was an orphan, from seed data that looked
-    # entirely plausible.
-    resolver.add_key("customer_reference", customer_id)
+    accounts = [_main_customer_reference(seed, index, ordinal) for ordinal in range(2)]
+    # Publish the CUSTID halves, and only the distinct ones. The resolver is fed
+    # from the field loop, which registers *string* values only -- these ids are
+    # minted inside an array, so nothing published them and salesInv could not
+    # consume them. Both sides then invented their own customer id and the
+    # documented bridge joined nothing: every CustomerParty in the graph was an
+    # orphan, from seed data that looked entirely plausible.
+    #
+    # Each document mints its own rather than reusing one already in the pool.
+    # The pool can only ever hold another *CDM* document's ids here -- salesInv
+    # is generated after customerOutboundCDM -- so reusing meant every seeded
+    # party shared one customer number, and `customer_account` would have been
+    # one account wearing many parties.
+    for account in accounts:
+        resolver.add_key("customer_reference", account.split("*", 1)[1])
     return [
         {
             "partyNumber": party_id,
@@ -215,20 +267,13 @@ def _cdm_parties(
                     "personLastName": name,
                 }
             ],
-            "custAccts": [
+            "partyMainCusts": [
                 {
-                    "accountName": name,
-                    "additionalCustomerInfo": [
-                        {
-                            "customerId": customer_id,
-                            "customerAcct": party_id,
-                            "custBranchId": get_deterministic_semantic_fallback(
-                                "cdm", "custBranchId", seed, index
-                            ),
-                            "shipToPhone": get_synthetic_phone(record_rng),
-                        }
-                    ],
+                    "mainCusts": account,
+                    "mainCustsName": name,
+                    "mainCustJobs": [],
                 }
+                for account in (*accounts, accounts[-1])
             ],
         }
     ]

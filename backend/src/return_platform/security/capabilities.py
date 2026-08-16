@@ -38,6 +38,18 @@ RETURNS_SUPPORT_ACT: Final = "returns.support.act"
 RETURNS_LOGISTICS_ACT: Final = "returns.logistics.act"
 RETURNS_WAREHOUSE_ACT: Final = "returns.warehouse.act"
 RETURNS_AUDIT_READ: Final = "returns.audit.read"
+#: Overriding the deterministic eligibility evaluator on one case --
+#: `POST /api/cases/{caseId}/policy-override`.
+#:
+#: **A capability rather than a role group, and a supervisor's rather than an
+#: operator's.** It is the same split `GOVERNANCE_PROPOSAL_APPROVE` draws: the
+#: people who work a return propose, and someone else decides. Only
+#: `ALL_CAPABILITIES` carries it, so the holders are exactly `ADMIN_ROLES`.
+#:
+#: `RETURN_PLATFORM_SERVICE` is deliberately excluded. The platform's own calls
+#: must not answer for a human, and an override is precisely a human deciding
+#: that the published rule set is wrong about this one return.
+RETURNS_POLICY_OVERRIDE: Final = "returns.policy.override"
 
 # Configuration domain -- `/api/config`.
 CONFIG_RUNTIME_READ: Final = "config.runtime.read"
@@ -95,6 +107,7 @@ ALL_CAPABILITIES: Final = frozenset(
         RETURNS_LOGISTICS_ACT,
         RETURNS_WAREHOUSE_ACT,
         RETURNS_AUDIT_READ,
+        RETURNS_POLICY_OVERRIDE,
         CONFIG_RUNTIME_READ,
         CONFIG_RELEASE_READ,
         CONFIG_RELEASE_PROMOTE,

@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from return_platform.ai.pricing import AICostEstimate
+from return_platform.ai.providers.contracts import HumanEdit
 
 __all__ = [
     "AIAttemptRecord",
@@ -102,6 +103,17 @@ class AIAttemptRecord:
     request_digest: str
     response_digest: str | None
     error_code: str | None
+    #: Set only when a human edited the model's answer at the response
+    #: interception point.
+    #:
+    #: This is the column that keeps an evaluation set honest. `provider` and
+    #: `model` on this row name the route that was *called*, because that is
+    #: what was called and what was billed -- so without this field an edited
+    #: answer would sit in the metrics store indistinguishable from a pure model
+    #: answer, and "model quality" computed from `responseDigest` would be
+    #: measuring a person. `responseAttribution` in the document makes the
+    #: default reading explicit rather than implied by a null.
+    human_edit: HumanEdit | None = None
 
     def to_document(self) -> dict[str, Any]:
         """The stored row, in `AIUsageAttemptView`'s field names.
@@ -144,6 +156,21 @@ class AIAttemptRecord:
             "errorCode": self.error_code,
             "requestDigest": self.request_digest,
             "responseDigest": self.response_digest,
+            # "MODEL" on every row a provider produced, including every row
+            # written before response interception existed. A reader filtering
+            # for model output writes one equality, not a null check they have
+            # to remember.
+            "responseAttribution": "MODEL" if self.human_edit is None else "HUMAN_EDITED",
+            "humanEditedBy": None if self.human_edit is None else self.human_edit.edited_by,
+            # The model's own output, before the edit. With `responseDigest`
+            # (which is what the caller actually received) this proves an edit
+            # changed something without either digest carrying any text.
+            "originalResponseDigest": (
+                None if self.human_edit is None else self.human_edit.origin_digest
+            ),
+            "humanEditInterceptionId": (
+                None if self.human_edit is None else self.human_edit.interception_id
+            ),
         }
 
 

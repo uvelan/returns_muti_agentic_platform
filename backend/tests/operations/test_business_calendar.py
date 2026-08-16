@@ -307,14 +307,76 @@ async def test_the_activity_applies_the_configured_production_calendar() -> None
     single instant the workflow history records.
     """
     configuration = load_return_configuration(Path("config/returns/production.yaml")).configuration
+    raised = _local(2026, 8, 14, 16, 30)
 
-    resolved = await _resolve(
-        configuration, from_instant=_local(2026, 8, 14, 16, 30), seconds=8 * 3600
+    resolved = await _resolve(configuration, from_instant=raised, seconds=8 * 3600)
+
+    # Asserted against what the *shipped* calendar computes, not against a
+    # hardcoded Monday. The seam this test exists for is "configuration and the
+    # tz database are read in the activity"; pinning a specific instant here
+    # additionally pins an operator's business decision, so this test failed the
+    # day the deployment's calendar legitimately changed. The Mon-Fri
+    # weekend-spanning arithmetic it used to demonstrate is covered directly,
+    # and independently of any config file, by the tests above that build
+    # `_NINE_TO_FIVE` themselves.
+    shipped = next(c for c in configuration.business_calendars if c.calendar_id == "default")
+    expected = advance_business_time(
+        BusinessCalendar(
+            calendar_id=shipped.calendar_id,
+            timezone=shipped.timezone,
+            working_periods=tuple(
+                WorkingPeriod(
+                    weekday=p.weekday, start_minute=p.start_minute, end_minute=p.end_minute
+                )
+                for p in shipped.working_periods
+            ),
+            holidays=frozenset(shipped.holidays),
+        ),
+        raised,
+        8 * 3600,
     )
 
     assert resolved.calendar_applied is True
-    assert _in_new_york(datetime.fromisoformat(resolved.instant_iso)) == datetime(
-        2026, 8, 17, 16, 30, tzinfo=NEW_YORK
+    assert datetime.fromisoformat(resolved.instant_iso) == expected
+
+
+@pytest.mark.asyncio
+async def test_the_shipped_calendar_and_the_support_sla_agree_about_which_clock_they_use() -> None:
+    """The coupling behind D46, enforced rather than left in a comment.
+
+    `item_reservation_ttl_seconds` is **wall clock**; `support_response_wait_
+    seconds` is **business time**. While those disagreed -- 30 minutes against
+    8 business hours -- there was a window between a hold lapsing and Support
+    answering in which the units belonged to neither term of the availability
+    formula, so a second case could be authorized for the same quantity and the
+    total authorized could exceed the quantity ordered.
+
+    Dev closes that by setting the SLA to the TTL **and** declaring the calendar
+    24/7, which this file's own header names as the way to get wall-clock
+    behaviour back exactly. Either change alone leaves the window open outside
+    office hours.
+
+    So the two must move together, and this test is what says so. Restoring the
+    real Mon-Fri desk before live is expected to fail here -- that is the point:
+    it is the reminder to restore `support_response_wait_seconds` too, and to
+    close D46 properly with a fourth availability term rather than a 30-minute
+    Support SLA nobody could honour.
+    """
+    configuration = load_return_configuration(Path("config/returns/production.yaml")).configuration
+    shipped = next(c for c in configuration.business_calendars if c.calendar_id == "default")
+
+    around_the_clock = len(shipped.working_periods) == 7 and all(
+        period.start_minute == 0 and period.end_minute == 1440 for period in shipped.working_periods
+    )
+    sla_within_hold = (
+        configuration.return_case.support_response_wait_seconds
+        <= configuration.return_case.item_reservation_ttl_seconds
+    )
+
+    assert around_the_clock == sla_within_hold, (
+        "the Support SLA and the calendar must be changed together: a business-time "
+        "SLA longer than the wall-clock reservation TTL reopens the D46 overselling "
+        "window, and a 24/7 calendar without a shortened SLA is merely a different desk"
     )
 
 

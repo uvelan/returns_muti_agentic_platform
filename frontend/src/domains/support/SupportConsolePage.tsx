@@ -6,11 +6,12 @@ import {
   bayRecommendation,
   casesApi,
   hasBayResult,
-  latestFacts,
+  projectedFactString,
+  type ApprovedItemProjection,
   type BayRecommendation,
-  type CaseDetail,
-  type CaseReturnItem,
-  type CaseReturnRecord,
+  type CaseProjection,
+  type ReturnRecordProjection,
+  type SelectedItemProjection,
 } from "../../api/cases";
 import {
   nowWithOffset,
@@ -21,6 +22,7 @@ import {
   type TrackingType,
 } from "../../api/returnShipments";
 import {
+  newSupportEventId,
   supportApi,
   type ReturnOutcomeRecordInput,
   type SupportMessage,
@@ -95,7 +97,7 @@ export function SupportConsolePage() {
    */
   const caseDetail = useQuery({
     queryKey: ["cases", caseId],
-    queryFn: caseId === null ? skipToken : () => casesApi.read(caseId),
+    queryFn: caseId === null ? skipToken : () => casesApi.readProjection(caseId),
   });
 
   const reply = useMutation({
@@ -157,12 +159,20 @@ export function SupportConsolePage() {
               ) : (
                 <RailFact
                   label="RMAs"
-                  value={caseDetail.data === undefined ? null : caseDetail.data.returnRecords.length}
+                  value={
+                    // `null` for "not read yet" and `null` again for "the
+                    // platform has not computed the records". Both are the
+                    // absence this rail already renders as a dash; what must
+                    // not happen is either becoming a confident `0`.
+                    caseDetail.data?.returnRecords?.length ?? null
+                  }
                 />
               )}
-              {caseDetail.data === undefined
-                || caseDetail.data.unassignedItems.length === 0 ? null : (
-                <RailFact label="Lines unassigned" value={caseDetail.data.unassignedItems.length} />
+              {(caseDetail.data?.selectedItems?.length ?? 0) === 0 ? null : (
+                <RailFact
+                  label="Lines unassigned"
+                  value={caseDetail.data?.selectedItems?.length ?? null}
+                />
               )}
             </>
           )}
@@ -412,25 +422,23 @@ function CasePane({
 }: {
   workItemId: string | null;
   item: SupportWorkItem | null;
-  caseDetail: CaseDetail | null;
+  caseDetail: CaseProjection | null;
   loading: boolean;
   error: Error | null;
   canAct: boolean;
   canLogistics: boolean;
 }) {
-  const bay = useMemo(
-    () => bayRecommendation(caseDetail?.facts ?? []),
+  // `CaseProjection.facts` is the backend's own `latest_case_facts` -- one entry
+  // per name, already the newest. The client-side reduction that used to happen
+  // here is gone with it.
+  const bay = useMemo(() => bayRecommendation(caseDetail?.facts), [caseDetail?.facts]);
+  const fulfillment = useMemo(
+    () => ({
+      status: projectedFactString(caseDetail?.facts, "fulfillment_status"),
+      evidence: projectedFactString(caseDetail?.facts, "shipment_evidence"),
+    }),
     [caseDetail?.facts],
   );
-  const fulfillment = useMemo(() => {
-    const latest = latestFacts(caseDetail?.facts ?? []);
-    const status = latest.get("fulfillment_status")?.value;
-    const evidence = latest.get("shipment_evidence")?.value;
-    return {
-      status: typeof status === "string" ? status : null,
-      evidence: typeof evidence === "string" ? evidence : null,
-    };
-  }, [caseDetail?.facts]);
 
   if (item === null) {
     return (
@@ -478,6 +486,12 @@ function CasePane({
     );
   }
 
+  // `null` (not computed) and `[]` (computed, and there are none) render the
+  // same here on purpose: from Support's seat both mean "no RMA to work on".
+  // The distinction is kept where it decides something -- the rail's counts.
+  const records = caseDetail.returnRecords ?? [];
+  const selectedItems = caseDetail.selectedItems ?? [];
+
   return (
     <Pane title="Case">
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
@@ -486,29 +500,29 @@ function CasePane({
 
         <section className="flex flex-col gap-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-outline">
-            RMAs ({caseDetail.returnRecords.length})
+            RMAs ({records.length})
           </h3>
-          {caseDetail.returnRecords.length === 0 ? (
+          {records.length === 0 ? (
             <p className="text-sm text-on-surface-variant">
               No RMA has been issued for this case yet.
             </p>
           ) : (
-            caseDetail.returnRecords.map((record) => (
+            records.map((record) => (
               <RmaBlock
-                key={record.record.returnRecordId}
-                entry={record}
+                key={record.returnRecordId}
+                record={record}
                 canLogistics={canLogistics}
               />
             ))
           )}
         </section>
 
-        {caseDetail.unassignedItems.length > 0 ? (
+        {selectedItems.length > 0 ? (
           <section className="flex flex-col gap-1.5">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-outline">
-              Lines no RMA covers yet ({caseDetail.unassignedItems.length})
+              Lines no RMA covers yet ({selectedItems.length})
             </h3>
-            <ItemList items={caseDetail.unassignedItems} />
+            <ItemList items={selectedItems.map(selectedRow)} />
           </section>
         ) : null}
 
@@ -516,7 +530,7 @@ function CasePane({
           <IssueOutcomeForm
             workItemId={workItemId}
             caseId={item.caseId}
-            unassignedItems={caseDetail.unassignedItems}
+            unassignedItems={selectedItems}
             suggestedReturnLocation={bay.returnLocation}
             canAct={canAct}
           />
@@ -527,64 +541,75 @@ function CasePane({
 }
 
 /**
- * What the case is, and what it was persisted and projected under.
+ * What the case is, and what it is still waiting for.
  *
- * The four provenance fields are the persistence/sync status: an absent
- * `workflowId` means no durable execution was ever started for this case, which
- * is the difference between "waiting" and "nothing is going to happen", and an
- * absent `graphGenerationId` means nothing has been projected for anyone to
- * read.
+ * **`awaiting` replaces the persistence block that used to sit here.** The
+ * projection carries no `workflowId`, `sessionId`, `configurationReleaseId` or
+ * `graphGenerationId` -- deliberately: those describe how the platform stored
+ * and synced the case, not what the return is, and `CaseProjection` is the
+ * business read. What Support actually needed from them was the one question
+ * they were being used to approximate -- is anything going to happen to this
+ * case -- and `awaiting`, `stage` and `businessComplete` answer it directly and
+ * from a computation rather than an inference.
+ *
+ * A case awaiting nothing while not business-complete is the state that used to
+ * be read off a missing `workflowId`, and it is said here in those words.
  */
 function CaseStatusPanel({
   detail,
   fulfillment,
 }: {
-  detail: CaseDetail;
+  detail: CaseProjection;
   fulfillment: { status: string | null; evidence: string | null };
 }) {
-  const record = detail.case;
+  const orderReference = detail.confirmedOrder?.orderReference ?? null;
   return (
     <section className="flex flex-col gap-2 rounded-md border border-outline-variant p-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="rounded-full bg-surface-container px-2 py-0.5 text-[11px] text-on-surface">
-          {record.status}
+          {detail.status}
         </span>
-        {record.confirmedOrderReference === null ? null : (
+        <span className="rounded-full bg-surface-container px-2 py-0.5 text-[11px] text-on-surface-variant">
+          {detail.stage}
+        </span>
+        {orderReference === null ? null : (
           <span className="min-w-0 break-all font-mono text-[11px] text-on-surface-variant">
-            {record.confirmedOrderReference}
+            {orderReference}
           </span>
         )}
       </div>
       <dl className="flex flex-col gap-1 text-[11px]">
-        <Field label="Case" value={record.caseId} />
+        <Field label="Case" value={detail.caseId} />
         <Field label="Fulfilment" value={fulfillment.status} />
         <Field label="Shipment evidence" value={fulfillment.evidence} />
       </dl>
+      {/*
+        Computed by the backend from the return method's requirement table, not
+        inferred here. An empty `awaiting` on a case that is not
+        business-complete is the shape that means nothing is going to move on
+        its own -- which is what an absent workflow used to be read as.
+      */}
+      {detail.awaiting.length > 0 ? (
+        <p className="text-[11px] text-on-surface-variant">
+          Waiting on {detail.awaiting.join(", ")}.
+        </p>
+      ) : detail.businessComplete ? (
+        <p className="text-[11px] text-on-surface-variant">
+          Everything this return needs has been recorded.
+        </p>
+      ) : (
+        <p className="text-[11px] text-on-surface-variant">
+          Nothing is outstanding and the return is not complete
+          {detail.isTerminal ? ", and the case is finished" : ""}.
+        </p>
+      )}
       <details className="text-[11px]">
-        <summary className="cursor-pointer text-outline">Persistence and sync</summary>
+        <summary className="cursor-pointer text-outline">Revision</summary>
         <dl className="mt-1.5 flex flex-col gap-1">
-          {/*
-            Stated rather than omitted. A missing durable execution is the one
-            failure this screen cannot infer from anything else on it: the case
-            looks identical either way until the deadline that never fires.
-          */}
-          {record.workflowId === null ? (
-            <p className="text-error">
-              No durable workflow is recorded for this case. Nothing is waiting on your answer.
-            </p>
-          ) : (
-            <Field label="Workflow" value={record.workflowId} />
-          )}
-          {record.graphGenerationId === null ? (
-            <p className="text-on-surface-variant">
-              Not projected into any graph generation yet.
-            </p>
-          ) : (
-            <Field label="Graph generation" value={record.graphGenerationId} />
-          )}
-          <Field label="Configuration release" value={record.configurationReleaseId} />
-          <Field label="Case version" value={record.version} />
-          <Field label="Updated" value={record.updatedAt} />
+          <Field label="Case revision" value={detail.revision} />
+          <Field label="Updated" value={detail.updatedAt} />
+          <Field label="Confirmation key" value={detail.confirmedOrder?.confirmationKey ?? null} />
+          <Field label="Support work item" value={detail.support?.workItemId ?? null} />
         </dl>
       </details>
     </section>
@@ -650,8 +675,25 @@ function BayPanel({ bay }: { bay: BayRecommendation }) {
  * (`/api/return-shipments/{return_reference}/updates`) and a case-level
  * shipment control would have no reference to send.
  */
-function RmaBlock({ entry, canLogistics }: { entry: CaseReturnRecord; canLogistics: boolean }) {
-  const record = entry.record;
+function RmaBlock({
+  record,
+  canLogistics,
+}: {
+  record: ReturnRecordProjection;
+  canLogistics: boolean;
+}) {
+  // The live label: `active` and not superseded, never `artifacts[0]`. A
+  // replaced label stays on the record for audit, and picking the first one
+  // would print the one somebody replaced.
+  const label =
+    record.artifacts?.find(
+      (artifact) =>
+        artifact.artifactType === "SHIPPING_LABEL"
+        && artifact.active === true
+        && artifact.supersededBy === null,
+    ) ?? null;
+  const shipments = record.shipments ?? [];
+  const approvedItems = record.approvedItems ?? [];
   return (
     <article className="flex flex-col gap-2 rounded-md border border-outline-variant p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -664,18 +706,48 @@ function RmaBlock({ entry, canLogistics }: { entry: CaseReturnRecord; canLogisti
         </span>
       </div>
       <dl className="flex flex-col gap-1 text-[11px]">
-        <Field label="Label" value={record.labelReference} />
-        <Field label="Tracking" value={record.trackingReference} />
+        <Field label="Label" value={label?.artifactId ?? null} />
+        <Field label="Method" value={record.returnMethod} />
         <Field label="Return to" value={record.returnLocation} />
-        <Field label="Pickup" value={record.shippingInstructionReference} />
-        <Field label="Source" value={record.sourceSystem} />
-        <Field label="Version" value={record.version} />
       </dl>
 
-      {entry.items.length === 0 ? (
+      {/*
+        Packages, each with its own tracking number. A label with no package is
+        the real shape of record `4e372a39...` -- the label is above, attributed
+        to nothing, and this says the parcel has not been tendered rather than
+        inventing one to hang the label on.
+      */}
+      {shipments.length === 0 ? (
+        <p className="text-[11px] text-on-surface-variant">
+          {label === null
+            ? "No package has been tendered for this RMA."
+            : "This RMA has a label and no package yet, so there is no tracking number."}
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {shipments.map((shipment) => (
+            <li
+              key={shipment.shipmentId}
+              className="flex min-w-0 flex-wrap items-baseline gap-x-2 rounded bg-surface-container-low px-2 py-1 text-[11px]"
+            >
+              <span className="min-w-0 break-all font-mono text-on-surface">
+                {shipment.trackingNumber ?? "no tracking number"}
+              </span>
+              {shipment.shipmentStatus === null ? null : (
+                <span className="text-outline">{shipment.shipmentStatus}</span>
+              )}
+              {shipment.carrier === null ? null : (
+                <span className="text-outline">{shipment.carrier}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {approvedItems.length === 0 ? (
         <p className="text-[11px] text-on-surface-variant">No lines are attached to this RMA.</p>
       ) : (
-        <ItemList items={entry.items} />
+        <ItemList items={approvedItems.map(approvedRow)} />
       )}
 
       {record.returnReference === null ? (
@@ -689,7 +761,50 @@ function RmaBlock({ entry, canLogistics }: { entry: CaseReturnRecord; canLogisti
   );
 }
 
-function ItemList({ items }: { items: readonly CaseReturnItem[] }) {
+/**
+ * One line, however it reached the screen.
+ *
+ * `SelectedItemProjection` and `ApprovedItemProjection` are different shapes --
+ * a line the associate named versus a line an RMA authorized -- and they are
+ * deliberately not merged on the contract. They render identically, so the two
+ * mappers below are where the difference stops, rather than a union type that
+ * would let a caller read a reason off an approved line that has none.
+ */
+type ItemRow = {
+  readonly returnItemId: string;
+  readonly orderLineReference: string;
+  readonly productReference: string | null;
+  readonly quantity: number | null;
+  readonly reason: string | null;
+  readonly condition: string | null;
+};
+
+function selectedRow(item: SelectedItemProjection): ItemRow {
+  return {
+    returnItemId: item.returnItemId,
+    orderLineReference: item.orderLineReference,
+    productReference: item.productReference,
+    quantity: item.quantity,
+    reason: item.reason,
+    condition: item.condition,
+  };
+}
+
+function approvedRow(item: ApprovedItemProjection): ItemRow {
+  return {
+    returnItemId: item.returnItemId,
+    orderLineReference: item.orderLineReference ?? item.returnItemId,
+    productReference: item.productReference,
+    // The quantity the RMA *authorized*, which is not always the quantity asked
+    // for, and is labelled as the RMA's below.
+    quantity: item.quantityApproved,
+    // An approved line carries a disposition, not a customer's reason.
+    reason: item.disposition,
+    condition: item.itemStatus,
+  };
+}
+
+function ItemList({ items }: { items: readonly ItemRow[] }) {
   return (
     <ul className="flex flex-col gap-1">
       {items.map((line) => (
@@ -700,7 +815,7 @@ function ItemList({ items }: { items: readonly CaseReturnItem[] }) {
           <span className="min-w-0 break-all font-mono text-on-surface">
             {line.orderLineReference}
           </span>
-          <span className="text-outline">x{line.quantity}</span>
+          {line.quantity === null ? null : <span className="text-outline">x{line.quantity}</span>}
           {line.productReference === null ? null : (
             <span className="min-w-0 break-all text-on-surface-variant">
               {line.productReference}
@@ -1043,17 +1158,38 @@ function IssueOutcomeForm({
 }: {
   workItemId: string;
   caseId: string;
-  unassignedItems: readonly CaseReturnItem[];
+  unassignedItems: readonly SelectedItemProjection[];
   suggestedReturnLocation: string | null;
   canAct: boolean;
 }) {
   const client = useQueryClient();
   const [open, setOpen] = useState(false);
   const [drafts, setDrafts] = useState<readonly DraftRecord[]>([]);
+  /**
+   * The identity of the answer being drafted, minted when the form opens.
+   *
+   * Held in state rather than computed at send time so that every route back to
+   * the same send reuses it: a re-render, React Query re-invoking `mutationFn`
+   * on retry, a double click, and -- the one that actually loses RMAs -- an
+   * operator pressing send again after the response never arrived. All four
+   * collapse into one Support event. Opening the form again is a different
+   * business act and gets a different id, which is the distinction the backend's
+   * `(caseId, supportEventId)` constraint is there to preserve.
+   */
+  const [supportEventId, setSupportEventId] = useState(() => newSupportEventId(workItemId));
 
   const outcome = useMutation({
-    mutationFn: (records: readonly ReturnOutcomeRecordInput[]) =>
-      supportApi.submitReturnOutcome(workItemId, { records: [...records] }),
+    // The id travels in the variables, not read from state inside the request:
+    // a retry re-runs `mutationFn` with the variables it was given, so this is
+    // stable by construction rather than by whatever state happens to be current.
+    mutationFn: (submission: {
+      readonly supportEventId: string;
+      readonly records: readonly ReturnOutcomeRecordInput[];
+    }) =>
+      supportApi.submitReturnOutcome(workItemId, {
+        records: [...submission.records],
+        supportEventId: submission.supportEventId,
+      }),
     onSuccess: async () => {
       setOpen(false);
       // The workflow writes asynchronously, so this is optimistic about
@@ -1107,6 +1243,10 @@ function IssueOutcomeForm({
           onClick={() => {
             outcome.reset();
             setDrafts([emptyDraft(suggestedReturnLocation ?? "")]);
+            // A fresh form is a fresh answer. Reusing the previous id here
+            // would make a genuinely new reply look like a resend of the old
+            // one and be rejected as an idempotency conflict.
+            setSupportEventId(newSupportEventId(workItemId));
             setOpen(true);
           }}
           className="flex items-center gap-1.5 self-start text-xs text-primary transition hover:underline"
@@ -1124,7 +1264,7 @@ function IssueOutcomeForm({
       onSubmit={(event) => {
         event.preventDefault();
         if (complete.length === 0 || duplicateReferences || outcome.isPending) return;
-        outcome.mutate(complete.map(toInput));
+        outcome.mutate({ supportEventId, records: complete.map(toInput) });
       }}
     >
       {outcome.error === null ? null : (
@@ -1210,7 +1350,7 @@ function DraftRecordBlock({
   draft: DraftRecord;
   index: number;
   removable: boolean;
-  unassignedItems: readonly CaseReturnItem[];
+  unassignedItems: readonly SelectedItemProjection[];
   claimedElsewhere: ReadonlySet<string>;
   onChange: (next: DraftRecord) => void;
   onRemove: () => void;

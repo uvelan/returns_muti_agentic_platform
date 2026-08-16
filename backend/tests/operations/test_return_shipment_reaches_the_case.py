@@ -66,6 +66,19 @@ _DEFAULT_RECORD: dict[str, Any] = {
     "return_reference": RMA,
 }
 
+#: What `dbo.return_tracking` holds for this RMA once the update below applied.
+#: One parcel, newest observation first, exactly as `read_shipment_state` orders
+#: its rows.
+_DEFAULT_PARCELS: list[dict[str, Any]] = [
+    {
+        "return_reference": RMA,
+        "tracking_reference": TRACKING,
+        "carrier_code": "UPS",
+        "tracking_status": "IN_TRANSIT",
+        "event_at": AT,
+    }
+]
+
 
 class _BusinessState:
     """The authoritative store, answering whatever the test needs it to."""
@@ -76,10 +89,12 @@ class _BusinessState:
         outcome: str = SHIPMENT_UPDATE_APPLIED,
         graph_generation_id: str | None = GENERATION,
         record: dict[str, Any] | None = _DEFAULT_RECORD,
+        parcels: list[dict[str, Any]] | None = None,
     ) -> None:
         self._outcome = outcome
         self._graph_generation_id = graph_generation_id
         self._record = record
+        self._parcels = _DEFAULT_PARCELS if parcels is None else parcels
         self.updates: list[ShipmentUpdate] = []
 
     async def record_shipment_update(self, update: ShipmentUpdate) -> ShipmentUpdateOutcome:
@@ -100,14 +115,31 @@ class _BusinessState:
         del return_reference
         return self._record
 
+    async def read_shipment_state(self, return_reference: str) -> list[dict[str, Any]]:
+        """`dbo.return_tracking`, newest observation first, as the real read answers.
+
+        Seeded from `parcels` rather than from `updates`, so a test can state an
+        RMA that already carries a second parcel -- the shape `_mirror_parcels`
+        exists to mirror whole.
+        """
+        del return_reference
+        return list(self._parcels)
+
 
 class _Repository:
+    """The case aggregate: the facts it was told, and the parcels it was given."""
+
     def __init__(self) -> None:
         self.facts: list[dict[str, Any]] = []
+        self.parcels: list[dict[str, Any]] = []
 
     async def append_case_fact(self, **fields: Any) -> dict[str, Any]:
         self.facts.append(dict(fields))
         return dict(fields)
+
+    async def record_case_shipment(self, **fields: Any) -> bool:
+        self.parcels.append(dict(fields))
+        return True
 
 
 class _Observations:
@@ -301,6 +333,7 @@ async def test_an_update_that_changed_nothing_tells_the_case_nothing(outcome: st
     assert result.applied is False
     assert reading is None
     assert repository.facts == []
+    assert repository.parcels == []
     assert observations.calls == [], "a rejected update still read the graph"
 
 
@@ -323,6 +356,9 @@ async def test_a_shipment_for_an_rma_no_case_owns_is_read_but_not_recorded() -> 
     assert reading.case_id is None
     assert reading.status is FulfillmentTrackingStatus.IN_TRANSIT
     assert repository.facts == []
+    # And no package either. There is no record to hang one off, and minting an
+    # id to carry it would put a parcel on no RMA.
+    assert repository.parcels == []
 
 
 @pytest.mark.asyncio
@@ -343,6 +379,72 @@ async def test_the_same_reading_twice_rewrites_one_fact_rather_than_appending_tw
     evidence_ids = {fact["fact_id"] for fact in _named(repository, FULFILLMENT_EVIDENCE_FACT)}
     assert len(status_ids) == 1
     assert len(evidence_ids) == 1
+
+
+@pytest.mark.asyncio
+async def test_an_applied_update_puts_the_parcel_on_the_case_record() -> None:
+    """D1, at the decision layer: the parcel is written, not only the reading.
+
+    The facts below it say what the platform concluded about the package. They
+    do not say the package *exists* -- facts reach `facts[]` and nothing else,
+    while `returnRecords[].shipments` is assembled from the case's return
+    records. Until this write existed, an accepted carrier update left the read
+    model with no package at all, so `awaiting` reported `TRACKING` outstanding
+    for a return the carrier had collected and a Copilot polling for it polled
+    forever.
+    """
+    business_state, repository = _BusinessState(), _Repository()
+
+    await _service(business_state, repository, _Observations(_observed())).record_update(_update())
+
+    assert repository.parcels == [
+        {"return_record_id": "rec-1", "tracking_reference": TRACKING, "carrier": "UPS"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_every_parcel_the_store_holds_is_recorded_not_only_the_one_submitted() -> None:
+    """The mirror is of `dbo.return_tracking`, not of the update in hand (D4).
+
+    An RMA can gain a parcel while no case owns it -- `dbo.return_tracking` is
+    keyed on the RMA and needs no `dbo.return_record` row -- and a mirror that
+    only ever wrote the parcel it was handed would leave that one permanently
+    invisible. Reading the authoritative rows instead makes the next carrier
+    event, on any parcel, bring the whole RMA up to date.
+    """
+    business_state = _BusinessState(
+        parcels=[
+            {"tracking_reference": TRACKING, "carrier_code": "UPS", "event_at": AT},
+            {"tracking_reference": "TRK-SECOND", "carrier_code": "FEDEX", "event_at": AT},
+        ]
+    )
+    repository = _Repository()
+
+    await _service(business_state, repository, _Observations(_observed())).record_update(_update())
+
+    assert [parcel["tracking_reference"] for parcel in repository.parcels] == [
+        "TRK-SECOND",
+        TRACKING,
+    ], "parcels are recorded oldest observation first"
+
+
+@pytest.mark.asyncio
+async def test_a_row_with_no_tracking_reference_records_no_parcel() -> None:
+    """A package with a null tracking number is the one shipment shape forbidden.
+
+    `dbo.return_tracking.tracking_reference` cannot be null, so this is a
+    defensive reading rather than an expected row -- and the defence is to
+    record nothing, never to record a package the projection would have to
+    describe with a null.
+    """
+    business_state = _BusinessState(
+        parcels=[{"tracking_reference": "   ", "carrier_code": "UPS", "event_at": AT}]
+    )
+    repository = _Repository()
+
+    await _service(business_state, repository, _Observations(_observed())).record_update(_update())
+
+    assert repository.parcels == []
 
 
 @pytest.mark.asyncio

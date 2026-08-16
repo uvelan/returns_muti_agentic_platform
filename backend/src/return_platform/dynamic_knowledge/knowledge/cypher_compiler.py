@@ -29,6 +29,52 @@ FULLTEXT_SCORE_FIELD = "search_score"
 #: compare against exactly the same literal.
 FULLTEXT_PROCEDURE = "db.index.fulltext.queryNodes"
 
+#: The Cypher parameter every compiled read pins itself to a generation with.
+#:
+#: `lifecycle/handle.py` states the rule -- "no code below handle acquisition
+#: resolves 'current generation' independently" -- and this is the half of it
+#: that reaches the database. Before this constant existed, `compile_read`
+#: emitted `MATCH (n0:SalesOrder) WHERE ...` with no generation predicate at all
+#: and `Neo4jKnowledgeGateway.execute` discarded the generation it was handed,
+#: so a read saw every generation the graph had ever held at once: retired ones,
+#: half-built ones, and candidates that failed validation and were never
+#: activated. The handle was resolved correctly and then thrown away one call
+#: later.
+#:
+#: The *name* is fixed here and the *value* is bound at the read boundary, for
+#: the same reason `FULLTEXT_PROCEDURE` is: the compiler is pure and knows
+#: nothing about which generation serves a request, while `execute` is the one
+#: place that is handed it. A gateway that forgot to bind it gets Neo4j's
+#: "Expected parameter(s): graph_generation_id" -- a loud failure rather than an
+#: unscoped read, which is the direction this should fail in.
+GENERATION_PARAMETER = "graph_generation_id"
+
+#: How many extra ranked rows a full-text read pulls from the index before the
+#: generation predicate is applied.
+#:
+#: A full-text search cannot express the generation inside the index query --
+#: the index spans the label, not one generation of it -- so scoping happens in
+#: the `WHERE` that follows, *after* `queryNodes` has already truncated to its
+#: own limit. `LogicalQueryPlan` refuses ordinary filters on a full-text plan for
+#: precisely this reason, and a generation predicate applied naively would
+#: reintroduce the same defect: with retired generations' nodes still resident
+#: (retirement changes a marker's status, it does not delete nodes), the top
+#: `$limit` rows could be entirely another generation's and the read would return
+#: nothing.
+#:
+#: Over-fetching by this factor and truncating afterwards makes that failure need
+#: a stale generation to out-rank the live one ten deep rather than once. It is a
+#: mitigation, not a proof. What actually bounds the dilution is
+#: `housekeeping/graph_generations.py`, which deletes a RETIRED generation's
+#: nodes once its retention window has passed -- so in a deployment where
+#: housekeeping runs, the index converges on one live generation plus whatever is
+#: inside the retention window, and this factor stops mattering. It matters most
+#: on a stack carrying leaked generations that never reach RETIRED and are
+#: therefore never reclaimed. The cap keeps a `limit: 1000` plan from asking the
+#: index for an unbounded page.
+FULLTEXT_GENERATION_HEADROOM = 10
+FULLTEXT_MAX_INDEX_ROWS = 2_000
+
 
 @dataclass(frozen=True, slots=True)
 class CompiledQuery:
@@ -82,6 +128,19 @@ def _condition_expression(
         raise QueryCompilationError(f"unsupported query operator: {operator}") from exc
 
 
+def _generation_scoped(label: str) -> str:
+    """One node pattern, pinned to the generation serving this request.
+
+    Every node this compiler matches goes through here. The predicate is written
+    into the pattern rather than into the `WHERE` so it applies to *every* alias
+    in a traversal, including ones a plan carries no filter for -- a traversal
+    scoped only at its start entity would hop straight out of its generation on
+    the first relationship.
+    """
+
+    return f"{_quoted(label)} {{{GENERATION_PARAMETER}: ${GENERATION_PARAMETER}}}"
+
+
 class CypherCompiler:
     """Compile graph reads and schema-driven projection writes."""
 
@@ -90,7 +149,7 @@ class CypherCompiler:
             return self._compile_fulltext_read(schema, plan)
         aliases: dict[str, str] = {plan.start_entity_id: "n0"}
         start_node = schema.entity_node(plan.start_entity_id)
-        match_parts = [f"MATCH (n0:{_quoted(start_node.label)})"]
+        match_parts = [f"MATCH (n0:{_generation_scoped(start_node.label)})"]
         current_entity = plan.start_entity_id
         current_alias = "n0"
         for index, step in enumerate(plan.traversal, start=1):
@@ -115,7 +174,8 @@ class CypherCompiler:
             target_node = schema.entity_node(step.target_entity_id)
             target_alias = f"n{index}"
             match_parts.append(
-                f"MATCH ({current_alias}){arrow}({target_alias}:{_quoted(target_node.label)})"
+                f"MATCH ({current_alias}){arrow}"
+                f"({target_alias}:{_generation_scoped(target_node.label)})"
             )
             aliases[step.target_entity_id] = target_alias
             current_entity = step.target_entity_id
@@ -189,6 +249,14 @@ class CypherCompiler:
         predicate is re-asserted from the schema's own node projection: if a
         caller ever named an index over some other label, this query returns
         nothing rather than nodes the plan's entity does not describe.
+
+        The generation predicate sits beside the label one, and for the same
+        reason: a full-text index covers a label across every generation that
+        has ever written into it, so without it a search returns rows from
+        retired and failed generations ranked among the live ones. It has to be
+        applied after `queryNodes` rather than inside it, which is why the
+        procedure is asked for `$fulltext_index_rows` rather than `$limit` --
+        see `FULLTEXT_GENERATION_HEADROOM`.
         """
         entity = schema.entities.get(plan.start_entity_id)
         if entity is None:
@@ -219,10 +287,13 @@ class CypherCompiler:
         return_items.append(f"score AS {_quoted(FULLTEXT_SCORE_FIELD)}")
         cypher = "\n".join(
             (
-                f"CALL {FULLTEXT_PROCEDURE}($fulltext_index, $fulltext_query, {{limit: $limit}})",
+                f"CALL {FULLTEXT_PROCEDURE}($fulltext_index, $fulltext_query, "
+                "{limit: $fulltext_index_rows})",
                 "YIELD node AS n0, score",
                 "WITH n0, score",
-                f"WHERE n0:{_quoted(node.label)} AND n0.{_quoted(indexed_property)} IS NOT NULL",
+                f"WHERE n0:{_quoted(node.label)} "
+                f"AND n0.{GENERATION_PARAMETER} = ${GENERATION_PARAMETER} "
+                f"AND n0.{_quoted(indexed_property)} IS NOT NULL",
                 "RETURN " + ", ".join(return_items),
                 "ORDER BY score DESC",
                 "LIMIT $limit",
@@ -232,6 +303,9 @@ class CypherCompiler:
             "fulltext_index": plan.fulltext_index,
             "fulltext_query": plan.fulltext_query,
             "limit": plan.limit,
+            "fulltext_index_rows": min(
+                plan.limit * FULLTEXT_GENERATION_HEADROOM, FULLTEXT_MAX_INDEX_ROWS
+            ),
         }
         return CompiledQuery(
             cypher=cypher,

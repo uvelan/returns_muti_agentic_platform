@@ -2,7 +2,10 @@
 
 from return_platform.ai.providers.anthropic import AnthropicProvider
 from return_platform.ai.providers.contracts import (
+    HUMAN_EDITED_MODEL,
+    HUMAN_EDITED_PROVIDER,
     AIProvider,
+    HumanEdit,
     ProviderError,
     ProviderRequest,
     ProviderResponse,
@@ -16,9 +19,12 @@ from return_platform.ai.providers.registry import build_providers
 from return_platform.ai.providers.simulator import SimulatorProvider
 
 __all__ = [
+    "HUMAN_EDITED_MODEL",
+    "HUMAN_EDITED_PROVIDER",
     "AIProvider",
     "AnthropicProvider",
     "GeminiProvider",
+    "HumanEdit",
     "ManualFileProvider",
     "NvidiaProvider",
     "OllamaProvider",

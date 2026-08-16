@@ -388,6 +388,30 @@ def _nested_set(document: dict[str, Any], path: str, value: Any) -> None:
     current[parts[-1]] = value
 
 
+def _main_customer_reference(context: ScenarioContext) -> str:
+    """This scenario's `partyMainCusts[].mainCusts`, shaped `BRANCH*CUSTID`.
+
+    The CUSTID half is the scenario's own customer reference, which is what its
+    sales order carries in `custId` -- the join `customer_account.customer_id`
+    exists to make, and a value minted independently here would leave every
+    sandbox party an orphan of its own orders.
+
+    The branch half is uppercased to the source's convention and must not itself
+    contain the delimiter: `SPLIT_PART` takes index 0 and index 1, so a branch
+    carrying a `*` would silently publish a truncated branch and a customer id
+    that is half a branch code. Sandbox branch references are minted as
+    `BR-<digits>` a few lines above, so this cannot fire today -- which is the
+    point of asserting it here rather than trusting it at the call site.
+    """
+    branch = context.branch_reference.upper()
+    if "*" in branch:
+        raise ValueError(
+            f"branch reference {context.branch_reference!r} contains the mainCusts delimiter, "
+            "so customer_id and customer_branch_id would be derived from the wrong halves"
+        )
+    return f"{branch}*{context.customer_reference}"
+
+
 def _value(generator: str | None, context: ScenarioContext, rng: random.Random) -> Any:
     if generator not in SUPPORTED_GENERATORS:
         raise ValueError(f"Unsupported AI Studio generator: {generator!r}")
@@ -534,25 +558,53 @@ def _value(generator: str | None, context: ScenarioContext, rng: random.Random) 
             }
         ]
     if generator == "cdm_parties":
-        # `party[]` on customerOutboundCDM. The nesting is load-bearing: the
-        # documented bridge back to salesInv is
-        # party[].custAccts[].additionalCustomerInfo[].customerId, so a flatter
-        # approximation would join to nothing.
+        # `party[]` on customerOutboundCDM, as the real documents carry it.
+        #
+        # The bridge back to salesInv is `partyMainCusts[].mainCusts`, a
+        # `BRANCH*CUSTID` pair (`PLYMOUTH*232385` on MASTER:900781) whose CUSTID
+        # half is what the order writers copy into `custId`. `customer_account`
+        # reads exactly that, deriving `customer_id` and `customer_branch_id`
+        # with `SPLIT_PART` on the `*` -- so the delimiter is load-bearing and
+        # `_main_customer_reference` is where that is enforced rather than
+        # assumed.
+        #
+        # What this replaces was `custAccts[].additionalCustomerInfo[]`, a path
+        # no real CDM document has at any level. It was taken from the field
+        # specification rather than from data, and generating it here made the
+        # sandbox manufacture the very shape a wrong schema declaration
+        # asserted: the entity extracted rows from every seeded environment and
+        # none from the source. `operational_generation/generator.py::_cdm_parties`
+        # was corrected first; this is the same shape, from the same reasoning.
+        #
+        # One account rather than the seed generator's two. That generator mints
+        # its own customer ids and repeats one to exercise the entity's
+        # `distinct` declaration; a scenario here has exactly one customer, and
+        # a second account would be a customer number no sandbox order names.
         return [
             {
                 "partyNumber": context.party_id,
                 "partyName": context.customer_name,
                 "organizationName": context.customer_name,
-                "custAccts": [
+                "b2bCustomer": "Y",
+                "customerContactPoints": [
                     {
-                        "accountName": context.customer_name,
-                        "additionalCustomerInfo": [
-                            {
-                                "customerId": context.customer_reference,
-                                "custBranchId": context.branch_reference,
-                                "shipToPhone": context.phone,
-                            }
-                        ],
+                        "contactPointType": "PHONE",
+                        "phoneNumber": context.phone,
+                        # The source's searchable form is the digits alone,
+                        # country code included ("10000000000").
+                        "searchPhoneNumber": "".join(
+                            character for character in context.phone if character.isdigit()
+                        ),
+                        "emailAddress": context.email,
+                        "personFirstName": context.customer_name,
+                        "personLastName": context.customer_name,
+                    }
+                ],
+                "partyMainCusts": [
+                    {
+                        "mainCusts": _main_customer_reference(context),
+                        "mainCustsName": context.customer_name,
+                        "mainCustJobs": [],
                     }
                 ],
             }

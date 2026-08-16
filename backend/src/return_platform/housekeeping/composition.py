@@ -1,4 +1,4 @@
-"""Building the three reclaimers from the release and settings that are live now.
+"""Building the five reclaimers from the release and settings that are live now.
 
 Kept out of the reclaimers so none of them takes a `Settings` or a configuration
 object: their rules are the part that must be provable without a database, a
@@ -22,6 +22,7 @@ from typing import Any
 from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
+from return_platform.ai.interception.store import InterceptionExpirySweep
 from return_platform.configuration.return_configuration import (
     HousekeepingConfiguration,
 )
@@ -41,6 +42,18 @@ from return_platform.housekeeping.graph_generations import (
 from return_platform.housekeeping.graph_generations import (
     GraphGenerationReclaimer,
 )
+from return_platform.housekeeping.interception_expiry import (
+    RESOURCE_CLASS as AI_INTERCEPTION_CLASS,
+)
+from return_platform.housekeeping.interception_expiry import (
+    InterceptionExpiryReclaimer,
+)
+from return_platform.housekeeping.order_line_reservations import (
+    RESOURCE_CLASS as ORDER_LINE_RESERVATION_CLASS,
+)
+from return_platform.housekeeping.order_line_reservations import (
+    OrderLineReservationReclaimer,
+)
 from return_platform.housekeeping.probe_databases import (
     RESOURCE_CLASS as PROBE_DATABASE_CLASS,
 )
@@ -52,10 +65,17 @@ from return_platform.housekeeping.temporal_executions import (
     TemporalExecutionReclaimer,
     deployed_task_queues,
 )
+from return_platform.operations.repository import OperationalRepository
+from return_platform.platform.system_store.manifest_loader import (
+    load_system_store_config,
+    structure_definitions,
+)
+from return_platform.platform.system_store.repository import SystemStore
 
 __all__ = [
     "MongoActiveGenerationReader",
     "build_housekeeping_cycle",
+    "build_interception_expiry_sweep",
     "build_probe_database_connector",
 ]
 
@@ -106,6 +126,41 @@ def build_probe_database_connector(settings: Settings) -> Callable[[str], Any]:
         )
 
     return connect
+
+
+def build_interception_expiry_sweep(
+    settings: Settings, mongo: AsyncMongoClient[dict[str, object]]
+) -> InterceptionExpirySweep:
+    """A sweep bound to the `ai_interceptions` structure the manifest declares.
+
+    **Resolved through the manifest, never by physical name.** Logical naming is
+    mandatory for system-store access, and a reaper that hardcoded
+    `platform_ai_interceptions` would be the one caller a collection rename did
+    not reach.
+
+    **Deliberately not `bootstrap_system_store`.** That runs migrations, takes a
+    lease and builds an `AesGcmEnvelopeEncryptor` from the reasoning encryption
+    key. This process creates no structures and opens no envelope -- it moves
+    `status` on documents another process wrote -- so requiring it to hold the
+    key that unseals held prompts, in order to reap records it must never read,
+    would be exactly backwards.
+
+    Built per pass like every other reclaimer here, so a released change to the
+    manifest path is adopted without a restart. A manifest that cannot be loaded,
+    or one that does not declare `ai_interceptions`, raises -- and the cycle
+    records `configuration rejected` and reclaims nothing, which is the
+    fail-closed direction this package chose everywhere else.
+    """
+    structures = structure_definitions(
+        load_system_store_config(settings.system_store_manifest_path)
+    )
+    return InterceptionExpirySweep(
+        SystemStore(
+            mongo,
+            {definition.logical_name: definition for definition in structures},
+            database="platform",
+        )
+    )
 
 
 def build_housekeeping_cycle(
@@ -185,10 +240,42 @@ def build_housekeeping_cycle(
             batch_limit=block.batch_limit,
         )
 
+    def order_line_reservation_factory() -> Reclaimer | None:
+        configuration = configuration_provider()
+        if not configuration.enabled or not configuration.order_line_reservations.enabled:
+            return None
+        if mongo is None:
+            return None
+        settings = settings_provider()
+        # Built per pass like every other reclaimer here, and cheap to build:
+        # `OperationalRepository.__init__` binds collection handles and opens
+        # nothing. Constructed rather than injected because the sweep's rules --
+        # the `ACTIVE and past its deadline` predicate and the conditional update
+        # that enforces the state machine -- belong to the repository beside the
+        # lifecycle they implement, and a second implementation reachable from
+        # here is exactly the drift this package avoids.
+        return OrderLineReservationReclaimer(
+            sweep=OperationalRepository(mongo, settings),
+            batch_limit=configuration.order_line_reservations.batch_limit,
+        )
+
+    def interception_expiry_factory() -> Reclaimer | None:
+        configuration = configuration_provider()
+        if not configuration.enabled or not configuration.ai_interceptions.enabled:
+            return None
+        if mongo is None:
+            return None
+        return InterceptionExpiryReclaimer(
+            sweep=build_interception_expiry_sweep(settings_provider(), mongo),
+            batch_limit=configuration.ai_interceptions.batch_limit,
+        )
+
     return HousekeepingCycle(
         (
             (TEMPORAL_EXECUTION_CLASS, temporal_factory),
             (GRAPH_GENERATION_CLASS, generation_factory),
             (PROBE_DATABASE_CLASS, probe_database_factory),
+            (ORDER_LINE_RESERVATION_CLASS, order_line_reservation_factory),
+            (AI_INTERCEPTION_CLASS, interception_expiry_factory),
         )
     )

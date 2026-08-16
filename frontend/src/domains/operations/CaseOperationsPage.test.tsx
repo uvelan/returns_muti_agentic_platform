@@ -1,12 +1,18 @@
 /**
  * UI-04 -- what the case operations view says, and what it refuses to make up.
  *
- * The failure this screen exists to avoid is a plausible placeholder. Three
- * answers an operator wants are not published by any API -- live workflow
- * execution state, the workflow's business-calendar deadline, and a failure or
- * blocker code -- and a screen that filled those with "HEALTHY", "--" or a
- * relabelled support SLA would be trusted and wrong. So the tests below assert
- * the *absence* claims as hard as the presence ones.
+ * The failure this screen exists to avoid is a plausible placeholder. Answers an
+ * operator wants that no API publishes -- live workflow execution state, the
+ * workflow's business-calendar deadline, a failure or blocker code -- would be
+ * trusted and wrong if filled with "HEALTHY", "--" or a relabelled support SLA.
+ * So the tests below assert the *absence* claims as hard as the presence ones.
+ *
+ * **The screen now reads `CaseProjection`**, and that moved several answers from
+ * one category to the other. `workflowId`, `configurationReleaseId` and
+ * `graphGenerationId` are no longer published on this resource, and the facts
+ * arrive as the latest-per-name projection rather than the append-only log. Each
+ * of those is now an absence claim, and each is tested as one: what must never
+ * happen is the panel quietly rendering less under the old heading.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -15,7 +21,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type * as CasesModule from "../../api/cases";
-import type { CaseDetail, CaseFact, CaseSummary } from "../../api/cases";
+import type { CaseFactProjection, CaseProjection, CaseSummary } from "../../api/cases";
 import type * as ConfigModule from "../../api/configuration";
 import type { ReleaseAdoptionState } from "../../api/configuration";
 import type { SupportMessage, SupportWorkItem } from "../../api/support";
@@ -30,11 +36,12 @@ const mocks = vi.hoisted(() => ({
   can: vi.fn(),
 }));
 
-// The fact projection stays real: `latestFacts` is what decides which bay
-// recommendation and which fulfilment status this screen shows.
+// Only the transport is stubbed. `bayRecommendation` and `projectedFactString`
+// are the real ones: they decide which bay and which fulfilment status this
+// screen shows, and a stub of them would test the fixture.
 vi.mock("../../api/cases", async (importOriginal) => ({
   ...(await importOriginal<typeof CasesModule>()),
-  casesApi: { list: mocks.listCases, read: mocks.readCase },
+  casesApi: { list: mocks.listCases, readProjection: mocks.readCase },
 }));
 
 vi.mock("../../api/configuration", async (importOriginal) => ({
@@ -54,6 +61,8 @@ function summary(overrides: Partial<CaseSummary> = {}): CaseSummary {
   return {
     caseId: "case-1",
     status: "AWAITING_SUPPORT",
+    stage: "AWAITING_SUPPORT",
+    isTerminal: false,
     confirmedOrderReference: "CW273354",
     channelAConversationId: "disc-1",
     returnRecordCount: 1,
@@ -62,49 +71,58 @@ function summary(overrides: Partial<CaseSummary> = {}): CaseSummary {
   };
 }
 
-function fact(name: string, value: unknown, overrides: Partial<CaseFact> = {}): CaseFact {
+function fact(
+  name: string,
+  value: string | number | boolean | null,
+  overrides: Partial<CaseFactProjection> = {},
+): CaseFactProjection {
   return {
     factId: `${name}-1`,
-    caseId: "case-1",
     factName: name,
     value,
     agentId: "order-discovery-agent",
     channel: "CHANNEL_A",
     acquisitionMethod: "STATED",
-    turnId: null,
-    sourceSystem: null,
-    sourcePath: "ORDER_CONFIRMATION",
+    sourceSystem: "RETURN_PLATFORM",
     observedAt: "2026-08-13T10:00:00Z",
     recordedAt: "2026-08-13T10:00:00Z",
     supersedesFactId: null,
-    correlationId: null,
     ...overrides,
   };
 }
 
-function detail(overrides: Partial<CaseDetail> = {}): CaseDetail {
+function projection(overrides: Partial<CaseProjection> = {}): CaseProjection {
   return {
-    case: {
-      caseId: "case-1",
-      tenantId: "default",
-      principalId: "dev-operator",
-      branchId: null,
-      status: "AWAITING_SUPPORT",
-      channelAConversationId: "disc-1",
-      channelBWorkItemId: null,
-      confirmedOrderReference: "CW273354",
+    caseId: "case-1",
+    tenantId: "default",
+    principalId: "dev-operator",
+    conversationId: "disc-1",
+    status: "AWAITING_SUPPORT",
+    revision: 2,
+    updatedAt: "2026-08-13T10:00:00Z",
+    customer: null,
+    confirmedOrder: {
+      orderReference: "CW273354",
+      orderSource: null,
+      sourceWebOrderNumber: null,
+      trilogieOrderNumber: null,
       confirmationKey: "default|disc-1|CW273354|1",
-      sessionId: null,
-      workflowId: "return-case-case-1",
-      configurationReleaseId: "release-A",
-      graphGenerationId: "gen-7",
-      version: 2,
-      createdAt: "2026-08-13T09:00:00Z",
-      updatedAt: "2026-08-13T10:00:00Z",
+      candidateSetId: null,
+      candidateId: null,
+      confirmedAt: "2026-08-13T09:00:00Z",
     },
-    returnRecords: [],
-    unassignedItems: [],
+    selectedItems: null,
     facts: [fact("confirmed_order_reference", "CW273354")],
+    policyEvaluation: null,
+    support: null,
+    returnRecords: null,
+    pickup: null,
+    warehouse: null,
+    settlement: { status: "NOT_INTEGRATED", creditMemoReference: null, settledAmount: null, settledAt: null },
+    stage: "AWAITING_SUPPORT",
+    awaiting: ["POLICY", "RETURN_METHOD"],
+    businessComplete: false,
+    isTerminal: false,
     ...overrides,
   };
 }
@@ -156,6 +174,22 @@ const WORK_ITEM: SupportWorkItem = {
   updatedAt: "2026-08-13T10:00:00Z",
 };
 
+/** The `support` block, which is where the Channel B link lives on the projection. */
+function supportBlock(): NonNullable<CaseProjection["support"]> {
+  return {
+    workItemId: "wi-1",
+    threadId: "th-1",
+    queue: "RETURNS",
+    status: "NEW",
+    subject: "Return for CW273354",
+    priority: "NORMAL",
+    assignedTo: null,
+    slaDueAt: "2026-08-15T12:00:00Z",
+    openedAt: "2026-08-13T10:00:00Z",
+    resolvedAt: null,
+  };
+}
+
 function reminder(id: string, createdAt: string): SupportMessage {
   return {
     id,
@@ -181,7 +215,7 @@ function renderPage() {
 async function openCase() {
   renderPage();
   fireEvent.click(await screen.findByText("CW273354"));
-  await screen.findByText("Execution");
+  await screen.findByText("Lifecycle");
 }
 
 describe("CaseOperationsPage", () => {
@@ -189,7 +223,7 @@ describe("CaseOperationsPage", () => {
     vi.clearAllMocks();
     mocks.can.mockReturnValue(true);
     mocks.listCases.mockResolvedValue([summary()]);
-    mocks.readCase.mockResolvedValue(detail());
+    mocks.readCase.mockResolvedValue(projection());
     mocks.adoption.mockResolvedValue(adoptionState());
     mocks.readWorkItem.mockResolvedValue(WORK_ITEM);
     mocks.listMessages.mockResolvedValue([]);
@@ -199,11 +233,20 @@ describe("CaseOperationsPage", () => {
     it("says live execution state is not published rather than showing one", async () => {
       await openCase();
 
-      const execution = enclosingPanel(await screen.findByText("Execution"));
-      expect(within(execution).getAllByText(/not published by any API/i)).toHaveLength(2);
-      expect(within(execution).getByText(/execution_state query/i)).toBeTruthy();
-      // The workflow id is a different claim, and it is one the backend does make.
-      expect(within(execution).getByText("return-case-case-1")).toBeTruthy();
+      const lifecycle = enclosingPanel(await screen.findByText("Lifecycle"));
+      expect(within(lifecycle).getAllByText(/not published by any API/i)).toHaveLength(3);
+      expect(within(lifecycle).getByText(/execution_state query/i)).toBeTruthy();
+    });
+
+    it("says the durable execution is not on this resource rather than implying one", async () => {
+      // `workflowId` used to be shown here and is not on `CaseProjection`. The
+      // panel must say that, not fall silent -- an operator who saw no workflow
+      // line would read it as no workflow.
+      await openCase();
+
+      const lifecycle = enclosingPanel(await screen.findByText("Lifecycle"));
+      expect(within(lifecycle).getByText(/Durable execution/i)).toBeTruthy();
+      expect(within(lifecycle).getByText(/no workflowId or sessionId/i)).toBeTruthy();
     });
 
     it("says no failure or blocker field exists", async () => {
@@ -213,9 +256,7 @@ describe("CaseOperationsPage", () => {
     });
 
     it("labels the support SLA as the support SLA, not as the workflow deadline", async () => {
-      mocks.readCase.mockResolvedValue(
-        detail({ case: { ...detail().case, channelBWorkItemId: "wi-1" } }),
-      );
+      mocks.readCase.mockResolvedValue(projection({ support: supportBlock() }));
       await openCase();
 
       expect(await screen.findByText("Support SLA due")).toBeTruthy();
@@ -231,14 +272,46 @@ describe("CaseOperationsPage", () => {
     });
   });
 
-  describe("execution", () => {
-    it("raises a case with no durable workflow as a fault", async () => {
-      mocks.readCase.mockResolvedValue(detail({ case: { ...detail().case, workflowId: null } }));
+  describe("lifecycle", () => {
+    it("shows what the platform says the case is waiting for", async () => {
+      await openCase();
+
+      const lifecycle = enclosingPanel(await screen.findByText("Lifecycle"));
+      // Rendered from `awaiting`, which the backend computes from the release's
+      // return-method requirement table. Nothing here derives it.
+      expect(within(lifecycle).getByText("POLICY, RETURN_METHOD")).toBeTruthy();
+      expect(within(lifecycle).getByText("Stage").nextSibling).toHaveTextContent(
+        "AWAITING_SUPPORT",
+      );
+    });
+
+    it("raises a case waiting on nothing that is neither complete nor finished", async () => {
+      // The state the missing-`workflowId` alert used to approximate: nothing
+      // outstanding, nothing done, nothing finished. Said from a computation now
+      // rather than inferred from a null column.
+      mocks.readCase.mockResolvedValue(
+        projection({ awaiting: [], businessComplete: false, isTerminal: false }),
+      );
       await openCase();
 
       const alert = await screen.findByRole("alert");
-      expect(alert).toHaveTextContent(/No durable workflow is recorded/i);
-      expect(alert).toHaveTextContent(/no deadline will fire/i);
+      expect(alert).toHaveTextContent(/waiting on nothing/i);
+      expect(alert).toHaveTextContent(/Nothing will move it/i);
+    });
+
+    it("does not raise a completed case as a fault", async () => {
+      mocks.readCase.mockResolvedValue(
+        projection({
+          status: "COMPLETED_EXTERNAL_SETTLEMENT",
+          stage: "COMPLETED",
+          awaiting: [],
+          businessComplete: true,
+          isTerminal: true,
+        }),
+      );
+      await openCase();
+
+      expect(screen.queryByRole("alert")).toBeNull();
     });
   });
 
@@ -262,10 +335,19 @@ describe("CaseOperationsPage", () => {
       expect(screen.getByText("not deployed")).toBeTruthy();
     });
 
-    it("says the case ran under a different release from the activated one", async () => {
+    it("says the case's own release is not published rather than comparing against nothing", async () => {
+      // It used to say "this case ran under a different release". The projection
+      // carries no `configurationReleaseId`, so the comparison is gone -- and
+      // silently dropping it would leave adoption looking case-scoped when it is
+      // platform-wide.
       await openCase();
 
-      expect(await screen.findByText(/ran under a different release/i)).toBeTruthy();
+      const release = enclosingPanel(
+        await screen.findByText("Configuration release and adoption"),
+      );
+      expect(within(release).getByText(/The release this case ran under/i)).toBeTruthy();
+      expect(within(release).getByText(/Adoption below is platform-wide/i)).toBeTruthy();
+      expect(screen.queryByText(/ran under a different release/i)).toBeNull();
     });
 
     it("reports adoption as unavailable rather than as adopted when the route fails", async () => {
@@ -280,11 +362,108 @@ describe("CaseOperationsPage", () => {
     });
   });
 
+  describe("bay and facts", () => {
+    it("shows the bay the workflow recorded, read off the projected facts", async () => {
+      mocks.readCase.mockResolvedValue(
+        projection({
+          facts: [
+            fact("bay_warehouse_reference", "WH-01"),
+            fact("bay_reference", "BAY-14"),
+            fact("bay_return_location", "DOCK-3"),
+          ],
+        }),
+      );
+      await openCase();
+
+      const state = enclosingPanel(await screen.findByRole("heading", { name: "Case" }));
+      expect(within(state).getByText("WH-01 / BAY-14 / DOCK-3")).toBeTruthy();
+    });
+
+    it("reports no bay as a state rather than a fault, with the reason the engine gave", async () => {
+      mocks.readCase.mockResolvedValue(
+        projection({ facts: [fact("bay_reason", "PRE_ARRIVAL_NOT_ALLOWED")] }),
+      );
+      await openCase();
+
+      expect(await screen.findByText(/No bay recommended/i)).toHaveTextContent(
+        /PRE_ARRIVAL_NOT_ALLOWED/,
+      );
+      // Not an alert. Placement is best-effort by declared policy.
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("says the facts are the latest per name and not the log", async () => {
+      // The projection serves `latest_case_facts`, so a superseded value is no
+      // longer here. The heading and note have to say that: the same shorter
+      // list under "Case history" would read as an audit trail with entries
+      // missing.
+      mocks.readCase.mockResolvedValue(
+        projection({
+          facts: [
+            fact("bay_reference", "BAY-NEW", {
+              factId: "bay-2",
+              recordedAt: "2026-08-13T11:00:00Z",
+              supersedesFactId: "bay_reference-1",
+            }),
+          ],
+        }),
+      );
+      await openCase();
+
+      const facts = enclosingPanel(await screen.findByText(/Case facts \(1\)/));
+      expect(within(facts).getByText(/Not the append-only log/i)).toBeTruthy();
+      expect(within(facts).getByText("BAY-NEW")).toBeTruthy();
+      // The correction is still legible as a correction.
+      expect(within(facts).getByText("supersedes earlier")).toBeTruthy();
+      expect(screen.queryByText(/Case history/)).toBeNull();
+    });
+  });
+
+  describe("RMAs", () => {
+    it("shows a label with no package as exactly that", async () => {
+      // Record `4e372a39...`. Two fields where one is filled and one is blank
+      // is what an operator has to interpret; this says it.
+      mocks.readCase.mockResolvedValue(
+        projection({
+          returnRecords: [
+            {
+              returnRecordId: "4e372a39",
+              returnReference: "RMA-OPS01-CD4364",
+              status: "ISSUED",
+              returnMethod: "PREPAID_PARCEL",
+              returnLocation: null,
+              approvedItems: null,
+              shipments: null,
+              artifacts: [
+                {
+                  artifactId: "LBL-OPS01",
+                  artifactType: "SHIPPING_LABEL",
+                  shipmentId: null,
+                  fileName: null,
+                  mediaType: null,
+                  version: 1,
+                  active: true,
+                  supersededBy: null,
+                  expiresAt: null,
+                  createdAt: null,
+                },
+              ],
+            },
+          ],
+        }),
+      );
+      await openCase();
+
+      const rmas = enclosingPanel(await screen.findByText("RMAs (1)"));
+      expect(within(rmas).getByText("RMA-OPS01-CD4364")).toBeTruthy();
+      expect(within(rmas).getByText("LBL-OPS01")).toBeTruthy();
+      expect(within(rmas).getByText(/no package has been tendered/i)).toBeTruthy();
+    });
+  });
+
   describe("reminders", () => {
     it("counts what actually reached Support", async () => {
-      mocks.readCase.mockResolvedValue(
-        detail({ case: { ...detail().case, channelBWorkItemId: "wi-1" } }),
-      );
+      mocks.readCase.mockResolvedValue(projection({ support: supportBlock() }));
       mocks.listMessages.mockResolvedValue([
         reminder("m-1", "2026-08-13T11:00:00Z"),
         reminder("m-2", "2026-08-13T12:00:00Z"),
@@ -315,33 +494,6 @@ describe("CaseOperationsPage", () => {
       const panel = enclosingPanel(await screen.findByText("Permitted interventions"));
       expect(within(panel).getByText(/No support request has been raised/i)).toBeTruthy();
       expect(within(panel).getByText(/No RMA on this case has a reference/i)).toBeTruthy();
-    });
-  });
-
-  describe("the case history", () => {
-    it("keeps a superseded fact in the log while the panels show the newest", async () => {
-      mocks.readCase.mockResolvedValue(
-        detail({
-          facts: [
-            fact("bay_reference", "BAY-OLD"),
-            fact("bay_reference", "BAY-NEW", {
-              factId: "bay-2",
-              recordedAt: "2026-08-13T11:00:00Z",
-              supersedesFactId: "bay_reference-1",
-            }),
-          ],
-        }),
-      );
-      await openCase();
-
-      // The panel projects newest-per-name...
-      const state = enclosingPanel(await screen.findByRole("heading", { name: "Case" }));
-      expect(within(state).getByText("BAY-NEW")).toBeTruthy();
-      expect(within(state).queryByText("BAY-OLD")).toBeNull();
-      // ...and the log keeps both, because an auditor asks what was believed then.
-      const history = enclosingPanel(screen.getByText(/Case history \(2\)/));
-      expect(within(history).getByText("BAY-OLD")).toBeTruthy();
-      expect(within(history).getByText("supersedes earlier")).toBeTruthy();
     });
   });
 

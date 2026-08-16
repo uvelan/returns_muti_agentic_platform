@@ -398,10 +398,19 @@ class _PassingValidator:
 
     def __init__(self) -> None:
         self.validated: list[str] = []
+        self.census: Any = None
 
-    async def validate(self, *, schema: Any, graph_generation_id: str) -> Any:
-        del schema
+    async def validate(
+        self,
+        *,
+        schema: Any,
+        graph_generation_id: str,
+        source_records_read: Any = None,
+        previous_generation_id: str | None = None,
+    ) -> Any:
+        del schema, previous_generation_id
         self.validated.append(graph_generation_id)
+        self.census = source_records_read
         return GenerationValidationReport(graph_generation_id=graph_generation_id, findings=())
 
 
@@ -409,8 +418,15 @@ class _FailingValidator:
     def __init__(self) -> None:
         self.validated: list[str] = []
 
-    async def validate(self, *, schema: Any, graph_generation_id: str) -> Any:
-        del schema
+    async def validate(
+        self,
+        *,
+        schema: Any,
+        graph_generation_id: str,
+        source_records_read: Any = None,
+        previous_generation_id: str | None = None,
+    ) -> Any:
+        del schema, source_records_read, previous_generation_id
         self.validated.append(graph_generation_id)
         return GenerationValidationReport(
             graph_generation_id=graph_generation_id,

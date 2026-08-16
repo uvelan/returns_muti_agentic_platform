@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   readInterceptionRequest: vi.fn(),
   answerInterception: vi.fn(),
   cancelInterception: vi.fn(),
+  allowInterception: vi.fn(),
   can: vi.fn(),
 }));
 
@@ -40,6 +41,7 @@ vi.mock("../../api/aiControlCenter", () => ({
     readInterceptionRequest: mocks.readInterceptionRequest,
     answerInterception: mocks.answerInterception,
     cancelInterception: mocks.cancelInterception,
+    allowInterception: mocks.allowInterception,
   },
 }));
 
@@ -51,9 +53,32 @@ const PENDING = {
   interceptionId: "int-1",
   taskId: "GRAPH_SCHEMA_PROPOSAL_V1",
   status: "PENDING",
+  point: "REQUEST" as const,
   createdAt: "2026-08-10T10:00:00Z",
   expiresAt: "2026-08-10T11:00:00Z",
   answeredBy: null,
+};
+
+/** The second interception point: a reply that came back and is being reviewed. */
+const HELD_RESPONSE = {
+  interceptionId: "resp-1",
+  taskId: "ORDER_AGENT_REASONING_V1",
+  status: "PENDING",
+  point: "RESPONSE" as const,
+  createdAt: "2026-08-10T10:00:00Z",
+  expiresAt: "2026-08-10T11:00:00Z",
+  answeredBy: null,
+};
+
+const SEALED_RESPONSE_PAYLOAD = {
+  systemPrompt: "decide",
+  payload: { contextJson: "{}" },
+  modelResponse: {
+    provider: "GOOGLE",
+    model: "gemini-flash",
+    text: '{"action":"SEARCH"}',
+    digest: "abc",
+  },
 };
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -100,6 +125,12 @@ describe("AI Control Center interceptions", () => {
       status: "CANCELLED",
       answeredBy: null,
       answeredAt: null,
+    });
+    mocks.allowInterception.mockResolvedValue({
+      interceptionId: "int-1",
+      status: "ALLOWED",
+      answeredBy: "operator",
+      answeredAt: "2026-08-10T10:05:00Z",
     });
   });
 
@@ -216,6 +247,105 @@ describe("AI Control Center interceptions", () => {
     expect(screen.getByText("Cancelled")).toBeInTheDocument();
     expect(screen.queryByText("Claimed")).toBeNull();
     expect(screen.queryByText("Responded")).toBeNull();
+  });
+
+  it("shows both hold points in one queue, distinguishable at a glance", async () => {
+    // Two queues would be two screens to remember to open. One queue is only
+    // acceptable if a row says which job it is without being clicked.
+    mocks.listInterceptions.mockResolvedValue([PENDING, HELD_RESPONSE]);
+    await openInterceptionsTab();
+    await screen.findByText("int-1");
+
+    expect(screen.getByText("resp-1")).toBeInTheDocument();
+    expect(screen.getByText("Request")).toBeInTheDocument();
+    expect(screen.getByText("Response")).toBeInTheDocument();
+    expect(screen.getByText("Held requests")).toBeInTheDocument();
+    expect(screen.getByText("Held responses")).toBeInTheDocument();
+    // And the actions are named for the job, not for the endpoint.
+    expect(screen.getByRole("button", { name: "Respond manually" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Review response" })).toBeInTheDocument();
+  });
+
+  it("pre-fills the model's reply when reviewing a response", async () => {
+    // The whole ergonomic difference between the points. At REQUEST you write
+    // from nothing; at RESPONSE you edit what came back. An editor that made
+    // you retype it would turn every edit into a rewrite.
+    mocks.listInterceptions.mockResolvedValue([HELD_RESPONSE]);
+    mocks.readInterceptionRequest.mockResolvedValue(SEALED_RESPONSE_PAYLOAD);
+    await openInterceptionsTab();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Review response" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox")).toHaveValue('{"action":"SEARCH"}');
+    });
+    // And it says what the edit will be recorded as -- neither the model nor a
+    // plain manual answer.
+    expect(screen.getByText(/HUMAN_EDITED/)).toBeInTheDocument();
+    expect(screen.getByText(/GOOGLE\/gemini-flash/)).toBeInTheDocument();
+  });
+
+  it("submits an edited response through the same answer route", async () => {
+    mocks.listInterceptions.mockResolvedValue([HELD_RESPONSE]);
+    mocks.readInterceptionRequest.mockResolvedValue(SEALED_RESPONSE_PAYLOAD);
+    await openInterceptionsTab();
+    fireEvent.click(await screen.findByRole("button", { name: "Review response" }));
+    await waitFor(() => {
+      expect(screen.getByRole("textbox")).toHaveValue('{"action":"SEARCH"}');
+    });
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: '{"action":"CONFIRM_ORDER"}' },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit edit" }));
+
+    await waitFor(() => {
+      expect(mocks.answerInterception).toHaveBeenCalledWith(
+        "resp-1",
+        '{"action":"CONFIRM_ORDER"}',
+      );
+    });
+  });
+
+  it("accepts a held response unchanged without unsealing it into an edit", async () => {
+    // Accept and edit must be different acts. Routing "unchanged" through the
+    // answer route would record a human answer whose text happens to match the
+    // model's, and the row would then read as human-authored forever.
+    mocks.listInterceptions.mockResolvedValue([HELD_RESPONSE]);
+    await openInterceptionsTab();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Accept unchanged" }));
+
+    await waitFor(() => {
+      expect(mocks.allowInterception).toHaveBeenCalledWith("resp-1");
+    });
+    expect(mocks.answerInterception).not.toHaveBeenCalled();
+  });
+
+  it("rejects a held response", async () => {
+    mocks.listInterceptions.mockResolvedValue([HELD_RESPONSE]);
+    await openInterceptionsTab();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Reject" }));
+
+    await waitFor(() => {
+      expect(mocks.cancelInterception).toHaveBeenCalledWith("resp-1");
+    });
+  });
+
+  it("reads the same status differently at each point", async () => {
+    // `ANSWERED` on a request is a substitution; on a response it is an edit.
+    // One state machine, two readings, and the queue is where somebody has to
+    // be able to tell them apart.
+    mocks.listInterceptions.mockResolvedValue([
+      { ...PENDING, status: "ANSWERED", answeredBy: "operator" },
+      { ...HELD_RESPONSE, status: "ANSWERED", answeredBy: "operator" },
+    ]);
+    await openInterceptionsTab();
+    await screen.findByText("int-1");
+
+    expect(screen.getByText("(Answered by human)")).toBeInTheDocument();
+    expect(screen.getByText("(Edited by human)")).toBeInTheDocument();
   });
 
   it("offers no responder without the act capability", async () => {

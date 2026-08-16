@@ -118,6 +118,7 @@ class SimulationNarrativeService:
                 store=interception_store,
                 settings_source=gateway_settings,
                 subject="simulator_operation_narrative",
+                settings=settings,
             ),
         )
 

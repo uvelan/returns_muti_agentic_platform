@@ -69,14 +69,23 @@ async def test_generation_relationships_valid(
     # Read by registry path, not by top-level key: these records are nested,
     # which is the shape the active schema's `physical_path` mappings read.
     #
-    # The customer join is the documented CDM bridge --
-    # party[].custAccts[].additionalCustomerInfo[].customerId is what salesInv
-    # copies into custId. There is no top-level `customerId` on the CDM
-    # document, and asserting one only ever passed against the old flat seed.
-    cdm_customer_id = at(customer, "party")[0]["custAccts"][0]["additionalCustomerInfo"][0][
-        "customerId"
-    ]
-    assert at(order, "salesHdr.salesHdrData.custId") == cdm_customer_id
+    # The customer join is the CDM bridge the real documents carry --
+    # party[].partyMainCusts[].mainCusts, shaped `BRANCH*CUSTID`, whose CUSTID
+    # half is what salesInv copies into custId. There is no top-level
+    # `customerId` on the CDM document, and asserting one only ever passed
+    # against the old flat seed. It was `custAccts[].additionalCustomerInfo[]`
+    # here until D48: a path no real CDM document has, which the generator
+    # itself invented to satisfy a schema declaration taken from the field
+    # specification rather than from data.
+    #
+    # Membership rather than equality, because a party lists several accounts
+    # and salesInv copies one of them -- which is what the source does.
+    cdm_customer_ids = {
+        entry["mainCusts"].split("*", 1)[1]
+        for party in at(customer, "party")
+        for entry in party["partyMainCusts"]
+    }
+    assert at(order, "salesHdr.salesHdrData.custId") in cdm_customer_ids
     assert at(shipment, "shipmentInfoEventData.trilOrdNum") == at(
         order, "salesHdrEventData.orderId"
     )

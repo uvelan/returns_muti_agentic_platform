@@ -123,12 +123,30 @@ export type InterceptionRow = {
   readonly interceptionId: string;
   readonly taskId: string;
   readonly status: string;
+  /**
+   * Which of the two hold points this is.
+   *
+   * `REQUEST` -- the provider has not been called; a human may answer in the
+   * model's place. `RESPONSE` -- the provider has answered and a human may
+   * accept, edit or reject the reply. One queue carries both, so this is what
+   * tells an operator which job a row is.
+   */
+  readonly point: InterceptionPoint;
   readonly createdAt: string;
   readonly expiresAt: string;
   readonly answeredBy: string | null;
 };
 
-/** The unsealed prompt. Shape belongs to whichever task raised the request. */
+export type InterceptionPoint = "REQUEST" | "RESPONSE";
+
+/**
+ * The unsealed payload. Shape belongs to whichever task raised the hold.
+ *
+ * At `RESPONSE` it also carries `modelResponse` -- the reply the operator is
+ * reviewing, with the provider and model that produced it. Typed loosely
+ * because the request half genuinely varies by task; `modelResponse` is read
+ * defensively at the point of use rather than asserted here.
+ */
 export type InterceptionRequest = Readonly<Record<string, unknown>>;
 
 export type InterceptionAnswerResult = {
@@ -179,6 +197,30 @@ export const aiControlCenterApi = {
       { method: "POST" },
     ),
 
+  /**
+   * Take the held item unchanged.
+   *
+   * At `REQUEST` the model is allowed to proceed after all; at `RESPONSE` the
+   * model's reply stands and reaches the caller byte-identical. Both are
+   * reported as the model, which is exactly why this is a different call from
+   * `answerInterception` -- approving is a statement that no human text is
+   * involved, and routing it through "answer" would record an empty human
+   * answer instead.
+   *
+   * The route has existed since AI-01 and nothing called it, so an operator's
+   * only options here were to hand-write an answer or kill the request.
+   */
+  allowInterception: (interceptionId: string) =>
+    unwrap<InterceptionAnswerResult>(
+      `/api/ai/interceptions/${encodeURIComponent(interceptionId)}/allow`,
+      { method: "POST" },
+    ),
+
+  /**
+   * Supply the text the caller will receive: an answer at `REQUEST`, an edit of
+   * the model's reply at `RESPONSE`. One route for both, because the act is the
+   * same act; the backend attributes it from the record's point.
+   */
   answerInterception: (interceptionId: string, responseText: string) =>
     unwrap<InterceptionAnswerResult>(
       `/api/ai/interceptions/${encodeURIComponent(interceptionId)}/answer`,

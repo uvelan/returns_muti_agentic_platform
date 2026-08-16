@@ -6,15 +6,29 @@ fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/linux/lib/common.sh"
 validate_ai=false
+supervise=true
 while (($# > 0)); do
   case "$1" in
     --validate-ai) validate_ai=true ;;
+    # Start everything and RETURN, instead of blocking in the watch loop below.
+    #
+    # This exists because two callers -- `scripts/linux/reset_all.sh` and
+    # `reset_docker_environment.sh --start-host` -- invoked this script
+    # synchronously as one step of a longer sequence. It never returns, so in
+    # `reset_all.sh` the graph build that follows it never ran: the reset
+    # completed as far as "processes started", left Neo4j empty, and the copilot
+    # then truthfully reported finding no orders. That is the exact failure the
+    # header comment of `reset_all.sh` says the script was written to prevent.
+    # Worse, the `EXIT` trap meant the Ctrl-C an operator eventually pressed
+    # tore down everything the reset had just started.
+    --no-supervise) supervise=false ;;
     -h|--help)
-      echo "Usage: ./scripts/run_all_host.sh [--validate-ai]"
+      echo "Usage: ./scripts/run_all_host.sh [--validate-ai] [--no-supervise]"
+      echo "  --no-supervise  start the processes and return, leaving them running"
       exit 0
       ;;
     *)
-      printf 'Unknown option: %s\\n' "$1" >&2
+      printf 'Unknown option: %s\n' "$1" >&2
       exit 2
       ;;
   esac
@@ -61,8 +75,13 @@ if [[ -s "$supervisor_pid_file" ]]; then
   rm -f "$supervisor_pid_file"
 fi
 
-printf '%s\n' "$$" >"$supervisor_pid_file"
-trap cleanup INT TERM EXIT
+if [[ "$supervise" == true ]]; then
+  printf '%s\n' "$$" >"$supervisor_pid_file"
+  # Only the supervising form installs this. Under `--no-supervise` an `EXIT`
+  # trap would stop every process the moment this script returned successfully,
+  # which is the opposite of what the caller asked for.
+  trap cleanup INT TERM EXIT
+fi
 
 "$LINUX_SCRIPT_DIR/17_stop_host_processes.sh"
 "$LINUX_SCRIPT_DIR/stop_application_ports.sh" "${application_ports[@]}"
@@ -78,6 +97,14 @@ export PLATFORM_SKIP_RUNTIME_PREPARE=true
 "$LINUX_SCRIPT_DIR/09_start_workers.sh"
 "$LINUX_SCRIPT_DIR/10_start_frontend.sh"
 "$LINUX_SCRIPT_DIR/11_validate_host_processes.sh"
+
+if [[ "$supervise" == false ]]; then
+  echo "Host processes started. They keep running after this script returns."
+  echo "  Frontend: http://127.0.0.1:5173/"
+  echo "  Backend:  http://127.0.0.1:8000/"
+  echo "  Stop:     ./scripts/linux/17_stop_host_processes.sh"
+  exit 0
+fi
 
 processes=(
   backend

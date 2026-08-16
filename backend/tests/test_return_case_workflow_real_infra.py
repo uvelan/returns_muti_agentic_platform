@@ -63,8 +63,13 @@ from temporalio.worker import Worker
 from return_platform.workflows.return_case_workflow import (
     BayResultNotice,
     CancelCaseCommand,
+    CaseEligibilityOutcome,
     DraftSupportRequestInput,
+    EvaluateCaseEligibilityInput,
     OpenSupportWorkItemInput,
+    PolicyDecisionName,
+    PolicyGateState,
+    PolicyRouteName,
     RecordCaseStatusInput,
     RecordSupportOutcomeInput,
     RequestBayAssignmentInput,
@@ -111,6 +116,15 @@ class _Probe:
         self.deadline_requests: list[ResolveBusinessDeadlineInput] = []
         self.sync_should_fail = False
         self.graph_generation_id = "gen-under-test"
+        #: What the policy gate answers. Approving by default, because every
+        #: scenario in this file is about what happens *after* a return is
+        #: allowed through to Support.
+        self.eligibility = CaseEligibilityOutcome(
+            state=PolicyGateState.EVALUATED.value,
+            route=PolicyRouteName.STANDARD_RETURN.value,
+            decision=PolicyDecisionName.APPROVE.value,
+        )
+        self.evaluations: list[EvaluateCaseEligibilityInput] = []
 
     @activity.defn(name="record_case_status")
     async def record_case_status(self, request: RecordCaseStatusInput) -> None:
@@ -146,6 +160,22 @@ class _Probe:
             ).isoformat(),
             calendar_applied=self.deadline_seconds is not None,
         )
+
+    @activity.defn(name="evaluate_case_eligibility")
+    async def evaluate_case_eligibility(
+        self, request: EvaluateCaseEligibilityInput
+    ) -> CaseEligibilityOutcome:
+        """Approve, so that the scenarios below still reach Support.
+
+        The gate (3A.7) sits between the bay step and `_open_support`, so every
+        case in this file now passes through it. What this file is about is the
+        Support wait and its durability, so the eligibility answer is a constant
+        here and the gate's own branching is tested in
+        `test_return_case_policy_gate_real_infra.py` and in the normal suite.
+        """
+        self._record("evaluate_case_eligibility")
+        self.evaluations.append(request)
+        return self.eligibility
 
     @activity.defn(name="draft_support_request")
     async def draft_support_request(self, request: DraftSupportRequestInput) -> str:
@@ -201,6 +231,7 @@ class _Probe:
             self.record_case_status,
             self.resolve_business_deadline,
             self.request_bay_assignment,
+            self.evaluate_case_eligibility,
             self.draft_support_request,
             self.open_support_work_item,
             self.send_support_reminder,

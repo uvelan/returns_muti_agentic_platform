@@ -130,16 +130,28 @@ def test_every_order_line_can_reach_a_product(orders: list[dict[str, Any]]) -> N
 
 
 def test_every_order_can_reach_a_customer(orders: list[dict[str, Any]]) -> None:
-    """The documented CDM bridge: `custId` on the order must appear at
-    party[].custAccts[].additionalCustomerInfo[].customerId on some party."""
+    """The real CDM bridge: `custId` on the order is the half of
+    `party[].partyMainCusts[].mainCusts` after the `*`.
+
+    This used to read `party[].custAccts[].additionalCustomerInfo[].customerId`,
+    which is the *field specification's* path and not the data's. No real CDM
+    document has a `custAccts` array at any level -- verified against
+    `MASTER:900781` -- so the fixture passed only because
+    `load_reference_dataset` built the shape the assertion expected. Both have
+    been moved onto the path the schema now declares and the real document
+    carries (D41 / D48).
+    """
     load = _module("load_reference_dataset")
     template = json.loads((DATASET / "customerOutboundCDM.json").read_text(encoding="utf-8"))
+    customers = load._customers(orders, template)
+    assert not any(
+        "custAccts" in party for customer in customers for party in customer["party"]
+    ), "the fabricated custAccts shape is back; no real CDM document has one"
     bridged = {
-        info["customerId"]
-        for customer in load._customers(orders, template)
+        str(bridge["mainCusts"]).partition("*")[2]
+        for customer in customers
         for party in customer["party"]
-        for account in party["custAccts"]
-        for info in account["additionalCustomerInfo"]
+        for bridge in party["partyMainCusts"]
     }
     referenced = {str(order["salesHdr"]["salesHdrData"]["custId"]) for order in orders}
     assert referenced <= bridged

@@ -100,6 +100,23 @@ The audit is anchored at `0615921` and the code has moved well past it. Where th
 disagree, the code and these documents are current — the ledger records which audit
 items were superseded and why.
 
+### Return Copilot
+
+A second, narrower programme with its own audit and plan. Scoped to the Return Business Copilot
+and its backend integration; anchored at `2878be0` plus the unpushed Copilot working tree.
+
+| Document | Subject |
+|---|---|
+| [`RETURN_COPILOT_AUDIT_2026-08-15.md`](RETURN_COPILOT_AUDIT_2026-08-15.md) | Sixteen findings, each marked runtime- or statically-confirmed |
+| [`RETURN_COPILOT_REMEDIATION_PLAN.md`](RETURN_COPILOT_REMEDIATION_PLAN.md) | The plan closing them, with its amendment history |
+| [`RETURN_COPILOT_PARALLEL_EXECUTION.md`](RETURN_COPILOT_PARALLEL_EXECUTION.md) | What can run concurrently, with measured file contention |
+| [`RETURN_COPILOT_POLICY_BASELINE.md`](RETURN_COPILOT_POLICY_BASELINE.md) | The return eligibility rule set the deterministic evaluator implements |
+
+The Copilot audit describes the tree at its own baseline and is **not** superseded by the
+`0615921` audit above — the two cover different subsystems at different times. The remediation
+plan is the authority for Copilot work; where it and the Copilot audit disagree, the plan is the
+later document.
+
 ## Process
 
 [`implementation/`](implementation/) and [`execution-context/`](execution-context/) —

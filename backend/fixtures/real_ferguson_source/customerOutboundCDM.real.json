@@ -1,0 +1,294 @@
+[
+ {
+  "_id": "MASTER:900781",
+  "partyId": "900781",
+  "lastUpdateDate": {
+   "$date": "2024-05-05T07:05:18Z"
+  },
+  "num": null,
+  "type": "PARTY",
+  "expireDate": null,
+  "sourceSystem": "Trilogie",
+  "notSearchable": "N",
+  "status": null,
+  "customerParties": [
+   {
+    "partyName": "HIGHVIEW PLUMBING INC",
+    "partyNumber": "900781",
+    "partyType": null,
+    "jgzzFiscalCode": null,
+    "personFirstName": null,
+    "personLastName": null,
+    "personNameSuffix": null,
+    "personMiddleName": null,
+    "personTitle": null,
+    "status": null,
+    "partyUsageCode": null,
+    "salutation": null,
+    "personSecondLastName": null,
+    "preferredContactPersonId": null,
+    "lastUpdateDate": {
+     "$date": "2024-05-05T07:05:18Z"
+    },
+    "personLastNamePrefix": null,
+    "contactPointId": null
+   }
+  ],
+  "party": [
+   {
+    "origSystem": null,
+    "origSystemReference": null,
+    "partyType": null,
+    "partyNumber": "900781",
+    "partyUsageCode": null,
+    "jgzzFiscalCode": null,
+    "partyName": "HIGHVIEW PLUMBING INC",
+    "organizationName": "HIGHVIEW PLUMBING INC",
+    "dunsNumberC": null,
+    "status": null,
+    "attributeCategory": null,
+    "pricingColumn": null,
+    "nationalAccountIndicator": "N",
+    "trilogieLogon": null,
+    "trilCrossRef": null,
+    "salutation": null,
+    "b2bCustomer": "Y",
+    "bectranCrossRef": null,
+    "natlAcctMgrId": null,
+    "effectiveStartDate": null,
+    "effectiveEndDate": null,
+    "partySites": [
+     {
+      "partySiteId": null,
+      "partyOrigSystem": null,
+      "partyOrigSystemReference": null,
+      "locationId": null,
+      "siteOrigSystem": null,
+      "siteOrigSystemReference": null,
+      "locationOrigSystem": null,
+      "locationOrigSystemRef": null,
+      "partySiteName": null,
+      "partySiteNumber": null,
+      "startDateActive": null,
+      "endDateActive": null,
+      "identifyingAddressFlag": null,
+      "partyStatus": null,
+      "partySiteStatus": null,
+      "mailstop": null,
+      "partySiteLanguage": null,
+      "relationSourceSystem": null,
+      "relationSrcSystemRer": null,
+      "lastUpdateDate": {
+       "$date": "2024-05-05T07:05:18Z"
+      },
+      "customerOrgContacts": [
+       {
+        "orgContactId": null,
+        "partySiteId": null,
+        "contactNumber": null,
+        "departmentCode": null,
+        "department": null,
+        "jobTitle": null,
+        "jobTitleCode": null,
+        "relSys": null,
+        "relSysRef": null,
+        "siteSys": null,
+        "siteSysRef": null,
+        "lastUpdateDate": null,
+        "customerContactRoles": [
+         {
+          "roleSys": null,
+          "roleSysRef": null,
+          "contactSys": null,
+          "contactSysRef": null,
+          "roleType": null,
+          "roleLevel": null,
+          "primaryFlag": null,
+          "primaryContactPerRoleType": null,
+          "status": null
+         }
+        ]
+       }
+      ],
+      "partySiteLocations": [
+       {
+        "locSys": null,
+        "locSysRef": null,
+        "country": "US",
+        "address1": "7460 OXFORD ST",
+        "address2": null,
+        "address3": null,
+        "address4": null,
+        "city": "SAINT LOUIS PARK",
+        "state": "MN",
+        "province": null,
+        "county": null,
+        "postalCode": "55426",
+        "postalPlus4Code": null,
+        "locationLanguage": null,
+        "description": null,
+        "shortDescription": null,
+        "salesTaxGeocode": null,
+        "salesTaxInsideCityLimits": null,
+        "timezoneCode": null,
+        "dateValidated": null,
+        "addressEffectiveDate": null,
+        "addressExpirationDate": null,
+        "validatedFlag": null,
+        "statusFlag": null,
+        "doNotValidateFlag": null,
+        "lastUpdateDate": {
+         "$date": "2024-05-05T07:05:18Z"
+        }
+       }
+      ],
+      "partySiteUses": [
+       {
+        "partyOrigSystemRef": null,
+        "partyOrigSystem": null,
+        "partySiteOrigSystem": null,
+        "partySiteOrigSystemRef": null,
+        "partySiteUseOrigSystem": null,
+        "partySiteUseOrigSystemRef": null,
+        "siteUseType": "BILL_TO",
+        "primaryPerType": null,
+        "beginDate": null,
+        "endDate": null,
+        "lastUpdateDate": {
+         "$date": "2024-05-05T07:05:18Z"
+        }
+       }
+      ]
+     }
+    ],
+    "customerContactPoints": [
+     {
+      "contactPointId": "MASTER*900781-0000*0",
+      "contactPointType": "PHONE",
+      "primaryFlag": null,
+      "emailAddress": null,
+      "phoneAreaCode": "952",
+      "phoneNumber": "9338600",
+      "searchPhoneNumber": "19529338600",
+      "phoneExtension": null,
+      "phoneLineType": "GEN",
+      "phoneCountryCode": null,
+      "phoneCallingCalendar": null,
+      "startDate": null,
+      "endDate": null,
+      "cpOrigSystem": null,
+      "cpOrigSystemRef": null,
+      "partyOrigSystem": null,
+      "partyOrigSystemRef": null,
+      "partysiteOrigSystem": null,
+      "partysiteOrigSystemRef": null,
+      "contactPointPurpose": null,
+      "relaOrigSystem": null,
+      "relaOrigSystemRef": null,
+      "primaryPhoneContactPersonId": null,
+      "primaryEmailContactPtId": null,
+      "objectId": null,
+      "webURL": null,
+      "lastUpdateDate": {
+       "$date": "2024-05-05T07:05:18Z"
+      },
+      "status": null,
+      "relationshipId": null,
+      "relationshipCode": null,
+      "relationshipType": null,
+      "objectTableName": null,
+      "custAcctSiteId": null,
+      "custAccountId": null,
+      "partySiteId": null,
+      "personPreNameAdjunct": null,
+      "personFirstName": "HIGHVIEW PLUMBING INC",
+      "personLastName": "HIGHVIEW PLUMBING INC",
+      "personMiddleName": null
+     },
+     {
+      "contactPointId": "MASTER*900781-0000*1",
+      "contactPointType": "FAX",
+      "primaryFlag": null,
+      "emailAddress": null,
+      "phoneAreaCode": "952",
+      "phoneNumber": "9430932",
+      "searchPhoneNumber": "19529430932",
+      "phoneExtension": null,
+      "phoneLineType": "FAX",
+      "phoneCountryCode": null,
+      "phoneCallingCalendar": null,
+      "startDate": null,
+      "endDate": null,
+      "cpOrigSystem": null,
+      "cpOrigSystemRef": null,
+      "partyOrigSystem": null,
+      "partyOrigSystemRef": null,
+      "partysiteOrigSystem": null,
+      "partysiteOrigSystemRef": null,
+      "contactPointPurpose": null,
+      "relaOrigSystem": null,
+      "relaOrigSystemRef": null,
+      "primaryPhoneContactPersonId": null,
+      "primaryEmailContactPtId": null,
+      "objectId": null,
+      "webURL": null,
+      "lastUpdateDate": {
+       "$date": "2024-05-05T07:05:18Z"
+      },
+      "status": null,
+      "relationshipId": null,
+      "relationshipCode": null,
+      "relationshipType": null,
+      "objectTableName": null,
+      "custAcctSiteId": null,
+      "custAccountId": null,
+      "partySiteId": null,
+      "personPreNameAdjunct": null,
+      "personFirstName": "HIGHVIEW PLUMBING INC",
+      "personLastName": "HIGHVIEW PLUMBING INC",
+      "personMiddleName": null
+     }
+    ],
+    "partyMainCusts": [
+     {
+      "mainCusts": "PLYMOUTH*232385",
+      "mainCustsName": "HIGHVIEW PLUMBING INC",
+      "mainCustJobs": []
+     },
+     {
+      "mainCusts": "MINNWW*28634",
+      "mainCustsName": "HIGHVIEW PLUMBING INC",
+      "mainCustJobs": []
+     },
+     {
+      "mainCusts": "MINNWW*28634",
+      "mainCustsName": "HIGHVIEW PLUMBING INC",
+      "mainCustJobs": []
+     }
+    ],
+    "additionalMcustomerInfo": {
+     "mcustId": "900781",
+     "mcustAlpha": "**B2B**",
+     "mcustAddrType": "DOM",
+     "mcustPhone": "9529338600",
+     "mcustFax": "9529430932",
+     "mcustJobFlag": "N",
+     "mcustMainId": null,
+     "parentId": null,
+     "mcustJobId": null,
+     "mcustGeocode": "240531060",
+     "ecreditFlag": null,
+     "frtBumpFlag": null,
+     "knownAnonFlag": null,
+     "lastUpdateDate": {
+      "$date": "2024-05-05T07:05:18Z"
+     },
+     "searchMcustPhone": "19529338600"
+    },
+    "lastUpdateDate": {
+     "$date": "2021-05-25T21:42:31Z"
+    }
+   }
+  ]
+ }
+]

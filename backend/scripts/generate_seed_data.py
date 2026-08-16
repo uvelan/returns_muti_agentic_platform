@@ -1,64 +1,75 @@
 #!/usr/bin/env python3
-"""Generate a realistic source corpus from the shapes the active schema declares.
+"""Generate a large, realistic source corpus in the Ferguson idiom.
 
-**Schema-driven, not shape-guessed.** The generator does not hard-code what a
-`salesInv` document looks like. It reads the active schema, and for every entity
-bound to a source it writes a value at each field's declared `physical_path`,
-honouring `record_path`, `explode`, `path_origin`, and the `where` selectors
-that decide whether a document projects at all. A document built that way
-satisfies the schema by construction, and a schema change is picked up without
-editing this file. The alternative -- transcribing the sample documents by hand
--- produces a corpus that looks right and silently omits whatever path was
-mistyped, which is exactly how an entity goes missing from the graph with no
-error anywhere.
+**Derived from the real extract, never scraped.** The shapes reproduced here
+come from the data already in `return_source`: the real `salesInv` documents
+(572 order lines carrying 482 distinct `masterProductId`, with genuine SKUs and
+descriptions such as `Q1685` / "16X25 SILV FLEX AIR DUCT R8.0"), the one real
+`lkpSearchProduct` document, and the one real `customerOutboundCDM` document.
+`scripts/seed_ferguson_idiom.py` holds what was mined and states what each
+observation was taken from. Nothing was fetched from any website.
 
-**One document is built per source asset, not per entity.** Four entities share
-`salesInv` -- `sales_order`, `customer`, `order_line`, `contact_point` -- and
-extraction runs all four over whatever document it is handed, so a document that
-carries only the entity someone had in mind leaves the rest with nothing to
-project. `_build_source_document` therefore takes a source asset id and builds
-every entity bound to it, nesting each exploded entity's records at its
-`record_path` inside the enclosing entity's records. Which collection an entity
-belongs in is then the schema's answer, not the caller's: `contact_point` is
-embedded on the *order* under `customer.address`, and only `customer_party` and
-the `customer_account` bridge nested inside it live on `customerOutboundCDM`.
+What this run does, in order:
 
-**Curated name pools, no `faker`.** One fewer dependency, fully offline, and
-deterministic: the same `seed` in `config/seed/generation.yaml` reproduces the
-same corpus on any machine.
+1. **Backs up every real source document first, and never overwrites a backup.**
+   `backend/fixtures/real_ferguson_source/` receives the real `salesInv`,
+   `customerOutboundCDM`, `lkpSearchProduct` and `shipmentInfo` documents as
+   MongoDB Extended JSON. They are the only genuine Ferguson data in the system.
+   Once written, that directory -- not the database -- is the authority on what
+   the originals said, which is what makes step 2 idempotent.
+
+2. **Renames every customer to an individual person, real records included.**
+   An operator decision: `ATLAS MECHANICAL SERVICES` and `TAMILLO PLBG` become
+   people, with emails derived from the name. Applied to the *backed-up*
+   originals rather than to whatever is currently in Mongo, so running this
+   twice produces the same names rather than renaming the renames.
+   **Everything except the name and the email is preserved byte for byte** --
+   `_id`, order numbers, line structure, SKUs, dates, statuses, account ids.
+
+3. **Replaces the synthetic corpus** -- every document whose `_id` is not in the
+   backup -- at the volumes `config/seed/generation.yaml` asks for.
+
+4. **Verifies every path the active schema declares** against a generated
+   document of each kind, and refuses to load a corpus the schema cannot read.
+
+**Why the documents are built to a real template rather than from schema paths
+alone.** The previous generator wrote a value at each declared `physical_path`
+and nothing else, which satisfied the schema and produced documents no ERP would
+emit: `upc_code-38342`, `brand_type-403988`, `SKU0000001`. It could not be used
+to judge whether a screen reads well, which is what a manual-testing corpus is
+for. The builders below write the enclosing structure the real documents carry
+and put real-idiom values at the declared paths. The guarantee the old approach
+gave -- that a schema change is picked up without editing this file -- is
+replaced by `_verify`, which fails loudly and names the field, rather than by
+silence.
 
 Realism rules that are not decoration:
 
-* **Emails are derived from the name they belong to** (`marcus.feldman@...`), so
-  searching an email and searching a name find the same customer -- which is
-  what the copilot's clarification policy assumes when it ranks email above
-  every narrowing signal.
+* **Emails are derived from the name they belong to** (`richard.reynolds@...`,
+  `r.reynolds@...`), so searching an email and searching a name resolve the same
+  customer -- which is what the copilot's clarification policy assumes when it
+  ranks email above every narrowing signal.
 * **Phone numbers are unique by construction**, allocated from a shuffled index
-  over a valid NANP range rather than generated and retried. At 1,000 customers
-  a birthday collision is otherwise near-certain, and a duplicate phone makes
-  the phone search ambiguous in a way no test would catch.
+  over the 555 fiction range rather than generated and retried. At 1,000
+  customers a birthday collision is otherwise near-certain, and a duplicate
+  phone makes phone search ambiguous in a way no test would catch.
 * **Addresses are drawn as a unit** from a city/state/ZIP table, so no customer
-  is ever in "Dallas, VT 90210". A geographically impossible address makes a
-  location search look broken when it is the data that is wrong.
+  is ever in "Dallas, VT 90210".
+* **A product has a finish only where a finish is real.** A lavatory faucet
+  does; a flex duct does not. See `seed_ferguson_idiom.Category.finishes`.
 
 **This corpus is synthetic and must never be mistaken for real customer data.**
-Domains are `example.com` and friends, phone numbers sit in the 555 exchange
-reserved for fiction, and every name is assembled from pools in this file.
+Domains are the RFC 2606 reserved ones, phone numbers sit in the 555 exchange
+reserved for fiction, and every name is assembled from pools in
+`seed_ferguson_idiom.py`.
 
-## The warehouse structure is provisional
+## The warehouse master is still provisional
 
-The active schema has no warehouse entity and no warehouse source. Warehouses
-appear only as *identifiers* on other records -- `sell_warehouse_id`,
-`ship_from_warehouse_id`, `inventory_warehouse_id` on an order, and bay and
-warehouse ids on a return handling unit -- so there is no declared shape to
-generate against, and nothing reads a warehouse document today.
-
-What this writes to `warehouseMaster` is therefore **invented for this project's
-needs, not derived from a real Ferguson structure**: an id, a name, an address
-drawn the same way a customer's is, a bay list, and capacity. It exists so that
-the warehouse ids scattered across orders resolve to something with a name and a
-location, and so the return-side work has a master to point at when a real
-structure arrives. See `docs/SEED_DATA_GENERATION.md`.
+The active schema has no warehouse *source*; warehouses appear only as
+identifiers on other records. What this writes to `warehouseMaster` is invented
+for this project's needs and nothing reads it -- but the ids are now the real
+inventory warehouse ids the order lines carry, so at least they are the same
+identifiers. See `docs/SEED_DATA_GENERATION.md`.
 
 Usage, from the repository root so the token and `.env` paths resolve:
 
@@ -70,229 +81,166 @@ from __future__ import annotations
 
 import asyncio
 import random
+import re
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import yaml
+from bson import json_util
 from pymongo import AsyncMongoClient
+
+# `sys.path[0]` is this script's own directory when it is run as a file, so the
+# idiom module beside it imports without any path manipulation.
+from seed_ferguson_idiom import (
+    ASSOCIATES,
+    BRANCH_WEIGHTS,
+    CATEGORIES,
+    GIVEN_NAMES,
+    LINE_TYPE_WEIGHTS,
+    LINES_PER_ORDER,
+    ORDER_PREFIXES,
+    ORDER_STATUS_WEIGHTS,
+    PLACES,
+    PO_NUMBERS,
+    SALES_TYPE_WEIGHTS,
+    SHIP_VIA,
+    SKU_SHAPES,
+    STREET_NAMES,
+    STREET_TYPES,
+    SURNAMES,
+    UOM_DESCRIPTIONS,
+    WAREHOUSE_WEIGHTS,
+    Category,
+    GeneratedProduct,
+    expand,
+)
 
 from return_platform.configuration.settings import BACKEND_ROOT, Settings
 from return_platform.dynamic_knowledge.config_loader import load_active_schema
-from return_platform.dynamic_knowledge.schema import (
-    ActiveSchema,
-    EntityDefinition,
-    FieldType,
-    PathOrigin,
-)
+from return_platform.dynamic_knowledge.schema import ActiveSchema, PathOrigin
 
 DEFAULT_CONFIG = BACKEND_ROOT / "config" / "seed" / "generation.yaml"
+BACKUP_DIRECTORY = BACKEND_ROOT / "fixtures" / "real_ferguson_source"
+
+
+def _moment(moment: datetime) -> datetime:
+    """A naive BSON datetime, which is what the real documents hold.
+
+    **Load-bearing, and it cost a whole graph build to learn.** Every source
+    carries `incremental_cursor_field: source_updated_at`, and
+    `MongoDBSourceScanConnector` bounds its scan with
+    `{<cursor field>: {"$lte": <Date>}}` after reading the collection's high
+    watermark. MongoDB compares within a BSON type bracket, and String sorts
+    below Date, so **a timestamp written as a string matches no date bound at
+    all**. A corpus that wrote `"2026-03-26 14:24:00.000000"` there scanned as
+    zero records, the run reported COMPLETED, and the new generation activated
+    holding only the 101 real documents -- silently, because an unscanned
+    document and an absent one are indistinguishable downstream.
+
+    Naive rather than UTC-aware because that is what the extract holds: the
+    real `CQ363350` carries `datetime(2025, 10, 14, 21, 38, 3, 408000)` with no
+    tzinfo, and a mix of aware and naive values in one field is not comparable
+    in Python at all.
+    """
+    return moment.replace(tzinfo=None, microsecond=moment.microsecond)
+
+
+def _day(moment: datetime) -> datetime:
+    """Midnight on the given day, as every real `orderDate` is written."""
+    return moment.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+
 
 # ---------------------------------------------------------------------------
-# Curated pools. Ordinary names that read as real without belonging to anyone:
-# common given names and surnames combined freely, and trade-company tokens in
-# the style the sample data uses ("HIGHVIEW PLUMBING INC").
+# People and the identities derived from them
 # ---------------------------------------------------------------------------
 
-GIVEN_NAMES = (
-    "Marcus",
-    "Danielle",
-    "Priya",
-    "Andre",
-    "Colleen",
-    "Hector",
-    "Nadia",
-    "Trevor",
-    "Imani",
-    "Grant",
-    "Rosa",
-    "Dmitri",
-    "Fiona",
-    "Malik",
-    "Camille",
-    "Sean",
-    "Yuki",
-    "Alejandro",
-    "Bridget",
-    "Omar",
-    "Lena",
-    "Curtis",
-    "Anita",
-    "Rafael",
-    "Simone",
-    "Douglas",
-    "Farah",
-    "Nathan",
-    "Beatriz",
-    "Kyle",
-    "Ingrid",
-    "Terrence",
-)
 
-SURNAMES = (
-    "Feldman",
-    "Okonkwo",
-    "Vasquez",
-    "Lindqvist",
-    "Barrett",
-    "Nakamura",
-    "Duffy",
-    "Castellanos",
-    "Whitfield",
-    "Rahman",
-    "Kowalski",
-    "Mbeki",
-    "Sorensen",
-    "Pruitt",
-    "Delacroix",
-    "Ferraro",
-    "Adeyemi",
-    "Novak",
-    "Guerrero",
-    "Hollingsworth",
-    "Bhatt",
-    "Sandoval",
-    "Kirkland",
-    "Petrov",
-    "Ngata",
-    "Ellison",
-    "Moreau",
-    "Vance",
-)
+class Person:
+    """A customer identity: one name, and the email derived from it.
 
-COMPANY_HEADS = (
-    "Highview",
-    "Ironbridge",
-    "Cedar Ridge",
-    "Northgate",
-    "Blue Harbor",
-    "Stonecrest",
-    "Fairmont",
-    "Lakeside",
-    "Redwood",
-    "Summit Line",
-    "Bayard",
-    "Kingsford",
-    "Cobalt",
-    "Meridian",
-    "Ashford",
-    "Granite Peak",
-    "Silverton",
-    "Westbrook",
-)
-
-COMPANY_TRADES = (
-    "PLUMBING",
-    "MECHANICAL",
-    "HVAC",
-    "SUPPLY",
-    "CONTRACTING",
-    "PIPE & FITTING",
-    "WATERWORKS",
-    "BUILDERS",
-    "FACILITIES",
-    "UTILITY",
-)
-
-COMPANY_SUFFIXES = ("INC", "LLC", "CO", "GROUP", "SERVICES")
-
-STREET_NAMES = (
-    "Beacon",
-    "Whitcomb",
-    "Larkspur",
-    "Foundry",
-    "Kestrel",
-    "Alderman",
-    "Corbin",
-    "Mulberry",
-    "Pinewood",
-    "Halstead",
-    "Chandler",
-    "Ravenswood",
-    "Dunmore",
-    "Sycamore",
-    "Winslow",
-    "Trenholm",
-    "Beaufort",
-    "Calloway",
-)
-
-STREET_TYPES = ("St", "Ave", "Rd", "Blvd", "Dr", "Way", "Ln")
-
-# City / state / ZIP prefix drawn together, so an address is never
-# geographically impossible.
-PLACES = (
-    ("CHARLOTTE", "NC", "282"),
-    ("DALLAS", "TX", "752"),
-    ("CHICAGO", "IL", "606"),
-    ("PHOENIX", "AZ", "850"),
-    ("TEMPE", "AZ", "852"),
-    ("LEWISTON", "ME", "042"),
-    ("ATLANTA", "GA", "303"),
-    ("DENVER", "CO", "802"),
-    ("SEATTLE", "WA", "981"),
-    ("NASHVILLE", "TN", "372"),
-    ("COLUMBUS", "OH", "432"),
-    ("TAMPA", "FL", "336"),
-    ("RICHMOND", "VA", "232"),
-    ("OMAHA", "NE", "681"),
-    ("BOISE", "ID", "837"),
-    ("SPOKANE", "WA", "992"),
-    ("MOBILE", "AL", "366"),
-    ("FRESNO", "CA", "937"),
-)
-
-PRODUCT_ADJECTIVES = ("Brushed", "Polished", "Matte", "Compact", "Heavy-Duty", "Low-Flow")
-PRODUCT_MATERIALS = ("Brass", "Chrome", "Stainless", "PVC", "Copper", "Cast Iron")
-PRODUCT_NOUNS = (
-    "Kitchen Faucet",
-    "Ball Valve",
-    "Elbow Fitting",
-    "Water Heater",
-    "Shower Trim",
-    "Sump Pump",
-    "Pipe Coupling",
-    "Toilet Flange",
-    "Pressure Regulator",
-    "Sink Basin",
-)
-PRODUCT_BRANDS = ("Moen", "Kohler", "Delta", "Zurn", "Rheem", "Watts", "Nibco")
-
-ORDER_STATUSES = ("CALLCSR", "OPEN", "SHIPPED", "INVOICED", "CLOSED")
-UNITS = ("EA", "BX", "FT", "CS")
-
-# The two shipment families the real `shipmentInfo` collection holds, paired
-# with the tracking-number shape each one issues: Convey brokers parcel carriers
-# and carries their tracking numbers, DispatchTrack is own-fleet last-mile and
-# issues its own route references. Generating one shape for both would make a
-# tracking-number search look uniform in a way the real source is not.
-#
-# `currentStatus` is generated normalised. The real source is not -- it holds
-# `intransit`, `in_transit`, `INTRANSIT` and `DELIVEREDD` for two states -- but
-# reproducing that here would put dirt in the corpus that no consumer has been
-# built to handle yet, and a generator is the wrong place to decide that.
-SHIPMENT_STATUSES = ("intransit", "delivered")
-
-
-class Phones:
-    """Unique phone numbers, by construction rather than by retry.
-
-    A shuffled index over the 555-01xx fiction range extended with a subscriber
-    counter: pull the n-th value and it cannot repeat, so 1,000 customers get
-    1,000 distinct numbers without a collision set to consult.
+    The ERP holds customer names in upper case -- every real `custName` does --
+    so `display` is upper case and the email is not. Two derivation styles are
+    used, `first.last` and `f.last`, chosen deterministically from the person's
+    own index so that the same person always produces the same address.
     """
 
+    __slots__ = ("email", "family", "given", "phone")
+
+    def __init__(self, given: str, family: str, email: str, phone: str) -> None:
+        self.given = given
+        self.family = family
+        self.email = email
+        self.phone = phone
+
+    @property
+    def display(self) -> str:
+        return f"{self.given} {self.family}".upper()
+
+    @property
+    def digits(self) -> str:
+        return "".join(character for character in self.phone if character.isdigit())
+
+
+class PersonDirectory:
+    """Distinct people, drawn without replacement so variety is guaranteed.
+
+    Sampling with replacement from 128 given names and 208 surnames would give
+    roughly 30 duplicate full names at a thousand customers and, worse, a
+    visibly lumpy surname distribution -- the "hundred variations of one
+    surname" failure. Drawing pairs without replacement from the full cross
+    product cannot repeat, and shuffling the product means the surnames arrive
+    in no order at all.
+    """
+
+    def __init__(self, rng: random.Random, domains: Sequence[str]) -> None:
+        pairs = [(given, family) for family in SURNAMES for given in GIVEN_NAMES]
+        rng.shuffle(pairs)
+        self._pairs = pairs
+        self._domains = tuple(domains)
+        self._next = 0
+        self._emails: set[str] = set()
+        self._phones = _Phones(rng, capacity=len(pairs))
+
+    def take(self) -> Person:
+        if self._next >= len(self._pairs):
+            raise RuntimeError("person pool exhausted; widen GIVEN_NAMES or SURNAMES")
+        given, family = self._pairs[self._next]
+        index = self._next
+        self._next += 1
+        stem = (
+            (f"{given}.{family}" if index % 3 else f"{given[0]}.{family}")
+            .lower()
+            .replace(" ", "")
+            .replace("'", "")
+        )
+        domain = self._domains[index % len(self._domains)]
+        candidate = f"{stem}@{domain}"
+        attempt = 2
+        # A numeric suffix appears only on a genuine collision -- `r.reynolds`
+        # and `richard.reynolds` can both be taken -- which is what happens in a
+        # real directory too.
+        while candidate in self._emails:
+            candidate = f"{stem}{attempt}@{domain}"
+            attempt += 1
+        self._emails.add(candidate)
+        return Person(given, family, candidate, self._phones.take())
+
+
+class _Phones:
+    """Unique phone numbers, by construction rather than by retry."""
+
     def __init__(self, rng: random.Random, capacity: int) -> None:
-        area_codes = (205, 212, 312, 404, 469, 512, 602, 704, 720, 813, 919)
+        area_codes = (205, 212, 303, 312, 404, 469, 512, 602, 704, 720, 813, 919)
         pool: list[str] = []
         for area in area_codes:
             for subscriber in range(10_000):
-                pool.append(f"({area}) 555-{subscriber % 10_000:04d}")
-                if len(pool) >= capacity * 3:
+                pool.append(f"{area}-555-{subscriber:04d}")
+                if len(pool) >= capacity:
                     break
-            if len(pool) >= capacity * 3:
+            if len(pool) >= capacity:
                 break
         rng.shuffle(pool)
         self._pool = pool
@@ -306,591 +254,1255 @@ class Phones:
         return value
 
 
-class People:
-    """Names, and the emails derived from them."""
-
-    def __init__(self, rng: random.Random) -> None:
-        self._rng = rng
-        self._seen_emails: set[str] = set()
-
-    def person(self) -> tuple[str, str]:
-        return self._rng.choice(GIVEN_NAMES), self._rng.choice(SURNAMES)
-
-    def company(self) -> str:
-        head = self._rng.choice(COMPANY_HEADS).upper()
-        trade = self._rng.choice(COMPANY_TRADES)
-        suffix = self._rng.choice(COMPANY_SUFFIXES)
-        return f"{head} {trade} {suffix}"
-
-    def email(self, given: str, family: str, domains: tuple[str, ...]) -> str:
-        """Derived from the name, so a name search and an email search agree.
-
-        A numeric suffix appears only on a genuine collision -- two people
-        called the same thing -- which is what happens in a real directory too.
-        """
-        stem = f"{given}.{family}".lower().replace(" ", "")
-        domain = self._rng.choice(domains)
-        candidate = f"{stem}@{domain}"
-        attempt = 2
-        while candidate in self._seen_emails:
-            candidate = f"{stem}{attempt}@{domain}"
-            attempt += 1
-        self._seen_emails.add(candidate)
-        return candidate
+def _address(rng: random.Random) -> dict[str, str]:
+    city, state, zip_prefix = rng.choice(PLACES)
+    return {
+        "address1": f"{rng.randint(100, 9899)} {rng.choice(STREET_NAMES)} "
+        f"{rng.choice(STREET_TYPES)}",
+        "city": city,
+        "state": state,
+        "zipCode": f"{zip_prefix}{rng.randint(10, 99)}",
+        # Upper case, as every real `county` is -- "COLUMBIA", not "Columbia".
+        "county": city,
+    }
 
 
-class Places:
-    def __init__(self, rng: random.Random) -> None:
-        self._rng = rng
+def _weighted(rng: random.Random, weights: Sequence[tuple[Any, int]]) -> Any:
+    population = [value for value, _ in weights]
+    return rng.choices(population, weights=[count for _, count in weights], k=1)[0]
 
-    def address(self) -> dict[str, str]:
-        city, state, zip_prefix = self._rng.choice(PLACES)
-        return {
-            "line1": f"{self._rng.randint(100, 9899)} {self._rng.choice(STREET_NAMES)} "
-            f"{self._rng.choice(STREET_TYPES)}",
-            "city": city,
-            "state": state,
-            "postal_code": f"{zip_prefix}{self._rng.randint(10, 99)}",
+
+# ---------------------------------------------------------------------------
+# The real corpus: backup, and the identities it needs
+# ---------------------------------------------------------------------------
+
+#: A synthetic `_id` from any generator this repository has ever run. Used only
+#: on the first backup, to tell the real documents from the generated ones
+#: before a backup exists to answer the question. It covers `salesInv` and
+#: `shipmentInfo`, whose generated documents carry no marker; generated
+#: `lkpSearchProduct` and `customerOutboundCDM` documents are recognised by the
+#: `__context` key the previous generator stamped on them.
+#:
+#: Deliberately no `MASTER:...` clause. The real party is `MASTER:900781` and
+#: the previous generator minted `MASTER:900001` upward -- any pattern wide
+#: enough to catch the second catches the first, which would classify the one
+#: real CDM document as synthetic and delete it.
+_SYNTHETIC_ID = re.compile(r"^(ACCT\d+\*SO\d+|PRD\d+|SKU\d+)")
+
+_COLLECTION_FILES = {
+    "orders": "salesInv.real.json",
+    "customers": "customerOutboundCDM.real.json",
+    "products": "lkpSearchProduct.real.json",
+    "shipments": "shipmentInfo.real.json",
+}
+
+
+class RealCorpus:
+    """The genuine Ferguson documents, loaded from the on-disk backup.
+
+    Read from `backend/fixtures/real_ferguson_source/` rather than from Mongo,
+    because this class is also the input to the rename: taking the originals
+    from the database would mean a second run renamed the already-renamed
+    documents, and the third run would rename those.
+    """
+
+    def __init__(self, documents: Mapping[str, list[dict[str, Any]]]) -> None:
+        self.orders = documents["orders"]
+        self.customers = documents["customers"]
+        self.products = documents["products"]
+        self.shipments = documents["shipments"]
+
+    def identifiers(self, kind: str) -> set[Any]:
+        return {document["_id"] for document in getattr(self, kind)}
+
+
+async def _ensure_backup(database: Any, names: Mapping[str, str]) -> RealCorpus:
+    """Write the real documents to disk once, then always read them from there.
+
+    Refusing to overwrite is the safety property. The alternative -- refresh the
+    backup on every run -- means one run after a mistake replaces the only copy
+    of the only genuine data in the system with the mistake.
+    """
+    if BACKUP_DIRECTORY.is_dir() and all(
+        (BACKUP_DIRECTORY / file_name).is_file() for file_name in _COLLECTION_FILES.values()
+    ):
+        restored = {
+            kind: json_util.loads((BACKUP_DIRECTORY / file_name).read_text(encoding="utf-8"))
+            for kind, file_name in _COLLECTION_FILES.items()
         }
+        print(f"real corpus loaded from {BACKUP_DIRECTORY}")
+        return RealCorpus(restored)
 
-
-def _assign(document: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
-    """Write `value` at a declared physical path, creating the nesting."""
-    node = document
-    for part in path[:-1]:
-        nested = node.get(part)
-        if not isinstance(nested, dict):
-            nested = {}
-            node[part] = nested
-        node = nested
-    node[path[-1]] = value
-
-
-def _digits(phone: str) -> str:
-    """The bare-digit form the order and CDM ship-to fields carry."""
-    return "".join(character for character in phone if character.isdigit())
-
-
-def _sample_value(
-    field_type: FieldType,
-    field_id: str,
-    context: dict[str, Any],
-    rng: random.Random,
-) -> Any:
-    """A value that fits the declared type and reads like the field it is for.
-
-    Context supplies anything already decided for this record -- the order
-    number, the customer's city -- so related fields agree instead of each
-    inventing its own answer.
-    """
-    if field_id in context:
-        return context[field_id]
-    if field_type is FieldType.INTEGER:
-        return rng.randint(1, 40)
-    if field_type is FieldType.NUMBER:
-        return round(rng.uniform(4.5, 2400.0), 2)
-    if field_type is FieldType.BOOLEAN:
-        return rng.random() < 0.5
-    if field_type in (FieldType.DATE, FieldType.DATETIME):
-        return context.get("__timestamp__", datetime.now(UTC))
-    return f"{field_id}-{rng.randint(1000, 999999)}"
-
-
-def _entity_fields(
-    entity: EntityDefinition,
-    document: dict[str, Any],
-    context: dict[str, Any],
-    rng: random.Random,
-    *,
-    origins: tuple[PathOrigin, ...],
-) -> None:
-    """Write the declared fields of `entity` whose `path_origin` is in `origins`.
-
-    Fields whose value the caller already decided arrive through `context`
-    keyed by `field_id`; everything else is invented to the declared type.
-
-    **`physical_path` is relative to the field's origin, not to the document**,
-    so the origin decides which document a field belongs in: a `CURRENT_RECORD`
-    path exists inside the entity's own exploded record and everything else
-    exists in a document enclosing it. Writing them all at one level is not a
-    tidier approximation -- it is how an exploded entity ends up with no record
-    at all, every path resolving somewhere except where the schema reads it.
-    """
-    for field_id, field in entity.fields.items():
-        if field.physical_path is None or field.path_origin not in origins:
-            continue
-        value = _sample_value(field.data_type, field_id, context, rng)
-        _assign(document, tuple(field.physical_path), value)
-
-
-def _apply_selectors(entity: EntityDefinition, record: dict[str, Any]) -> None:
-    """Satisfy the `where` selectors, or the record never projects.
-
-    Selector paths are current-record relative, the same as a `CURRENT_RECORD`
-    field's -- `_passes_where` tests the exploded record, not the root.
-
-    `sales_order` is gated on a document-type discriminator; a corpus that
-    omits it produces zero orders in the graph and no error anywhere.
-    """
-    for selector in entity.where:
-        if selector.equals is not None:
-            _assign(record, tuple(selector.physical_path), selector.equals)
-
-
-def _source_entities(schema: ActiveSchema, source_asset_id: str) -> list[EntityDefinition]:
-    """Every entity bound to this source, shallowest `record_path` first.
-
-    Shallowest first so an entity nested inside another finds its enclosing
-    records already built: `customer_account` lives at
-    `party.custAccts.additionalCustomerInfo`, inside the `party` records
-    `customer_party` creates.
-    """
-    return sorted(
-        (
-            entity
-            for entity in schema.entities.values()
-            if entity.source_asset_id == source_asset_id
-        ),
-        key=lambda entity: len(entity.record_path),
-    )
-
-
-def _build_source_document(
-    schema: ActiveSchema,
-    source_asset_id: str,
-    document: dict[str, Any],
-    context: dict[str, Any],
-    rng: random.Random,
-    *,
-    records: Mapping[str, Sequence[dict[str, Any]]] | None = None,
-) -> None:
-    """Build one document carrying every entity bound to `source_asset_id`.
-
-    **A document belongs to a source asset, not to an entity.** `salesInv`
-    carries `sales_order`, `customer`, `order_line` *and* `contact_point` at
-    once, and extraction runs every entity bound to the source over whatever
-    document it is handed. Building only the entities someone remembered to name
-    is how three of them came to have no record anywhere in the corpus -- an
-    entity whose `record_path` was never created projects nothing, and nothing
-    projected is indistinguishable from a source that had no data.
-
-    An entity with no `record_path` is written at the document root. An exploded
-    entity becomes a list of records at its `record_path`, resolved relative to
-    the innermost enclosing entity's records rather than to the root, because
-    that is where the path exists: `customer_account` declares
-    `party.custAccts.additionalCustomerInfo`, and `party` is the array
-    `customer_party` has already built.
-
-    Intermediate segments the record path crosses become plain objects. Nothing
-    in the schema says which of them are arrays -- `explode` marks the level the
-    records sit at, not every level above it -- and extraction descends through
-    a list and a map alike.
-
-    `records` supplies one context per record for an exploded entity, which is
-    how an order's lines each carry their own product. An entity absent from it
-    gets a single record built from `context`.
-    """
-    per_entity = records or {}
-    built: dict[tuple[str, ...], list[dict[str, Any]]] = {(): [document]}
-    for entity in _source_entities(schema, source_asset_id):
-        # Extraction ignores the record path of an entity it does not explode
-        # and reads every one of that entity's fields from the root.
-        record_path = entity.record_path if entity.explode else ()
-        if not record_path:
-            _entity_fields(entity, document, context, rng, origins=tuple(PathOrigin))
-            _apply_selectors(entity, document)
-            continue
-        enclosing = max((known for known in built if record_path[: len(known)] == known), key=len)
-        relative = record_path[len(enclosing) :]
-        _entity_fields(entity, document, context, rng, origins=(PathOrigin.ROOT_DOCUMENT,))
-        created: list[dict[str, Any]] = []
-        for parent in built[enclosing]:
-            # The parent record is the map one list level above the exploded
-            # record, which is exactly the enclosing entity's record.
-            _entity_fields(entity, parent, context, rng, origins=(PathOrigin.PARENT_RECORD,))
-            siblings: list[dict[str, Any]] = []
-            for record_context in per_entity.get(entity.entity_id) or (context,):
-                record: dict[str, Any] = {}
-                _entity_fields(
-                    entity, record, record_context, rng, origins=(PathOrigin.CURRENT_RECORD,)
-                )
-                _apply_selectors(entity, record)
-                siblings.append(record)
-            _assign(parent, relative, siblings)
-            created.extend(siblings)
-        built[record_path] = created
-
-
-async def _write(
-    collection: Any, documents: list[dict[str, Any]], *, replace: bool, label: str
-) -> None:
-    if replace:
-        await collection.drop()
-    for start in range(0, len(documents), 1000):
-        batch = documents[start : start + 1000]
-        if batch:
-            await collection.insert_many(batch)
-    print(f"  {label}: {len(documents)}")
-
-
-async def _run(config: dict[str, Any], config_name: str) -> None:
-    counts = config["counts"]
-    rng = random.Random(config["seed"])
-    people, places = People(rng), Places(rng)
-    phones = Phones(rng, counts["customers"] + counts["warehouses"] + 100)
-    domains = tuple(config["email_domains"])
-    names = config["collections"]
-
-    settings = Settings()
-    schema: ActiveSchema = load_active_schema(settings.dynamic_knowledge_schema_path)
-    client: AsyncMongoClient[dict[str, Any]] = AsyncMongoClient(
-        settings.source_mongo_dsn.get_secret_value()
-        if settings.source_mongo_dsn is not None
-        else settings.mongo_dsn.get_secret_value()
-    )
-    database = client[settings.source_mongo_database]
-    replace = bool(config.get("replace", True))
-
-    earliest = datetime.fromisoformat(config["order_dates"]["earliest"]).replace(tzinfo=UTC)
-    latest = datetime.fromisoformat(config["order_dates"]["latest"]).replace(tzinfo=UTC)
-    span_days = max(1, (latest - earliest).days)
-
-    try:
-        print(f"generating from {config_name} (seed {config['seed']})")
-
-        warehouses = _warehouses(counts["warehouses"], places, phones, rng)
-        await _write(database[names["warehouses"]], warehouses, replace=replace, label="warehouses")
-
-        customers = _customers(counts["customers"], schema, people, places, phones, domains, rng)
-        await _write(database[names["customers"]], customers, replace=replace, label="customers")
-
-        products = _products(counts["products"], schema, rng)
-        await _write(database[names["products"]], products, replace=replace, label="products")
-
-        orders, order_contexts = _orders(
-            counts["orders"],
-            schema,
-            customers,
-            products,
-            warehouses,
-            config,
-            earliest,
-            span_days,
-            rng,
+    BACKUP_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    documents: dict[str, list[dict[str, Any]]] = {}
+    for kind, file_name in _COLLECTION_FILES.items():
+        collection = database[names[kind]]
+        found: list[dict[str, Any]] = []
+        async for document in collection.find({}):
+            identifier = str(document.get("_id"))
+            if "__context" in document or "__seed" in document:
+                continue
+            if _SYNTHETIC_ID.match(identifier):
+                continue
+            found.append(document)
+        found.sort(key=lambda document: str(document["_id"]))
+        (BACKUP_DIRECTORY / file_name).write_text(
+            json_util.dumps(found, indent=1), encoding="utf-8"
         )
-        await _write(database[names["orders"]], orders, replace=replace, label="orders")
-
-        shipments = _shipments(schema, orders, order_contexts, rng)
-        await _write(database[names["shipments"]], shipments, replace=replace, label="shipments")
-        if not shipments:
-            # A corpus with orders but no shipments is the state this run exists
-            # to end, and it is silent otherwise -- fulfillment simply reports
-            # every return as awaiting handoff.
-            raise SystemExit("no shipments generated; check shipped_fraction and lines_per_order")
-
-        print("\nverifying every declared path resolves against a generated document...")
-        _verify(schema, orders[0], customers[0], products[0], shipments[0])
-        print("all declared paths resolve.")
-    finally:
-        await client.close()
+        documents[kind] = found
+    (BACKUP_DIRECTORY / "README.md").write_text(_BACKUP_README, encoding="utf-8")
+    print(f"real corpus backed up to {BACKUP_DIRECTORY}")
+    return RealCorpus(documents)
 
 
-def _warehouses(
-    count: int, places: Places, phones: Phones, rng: random.Random
-) -> list[dict[str, Any]]:
-    """Provisional. No warehouse source exists in the schema -- see the docstring."""
-    documents = []
-    for index in range(count):
-        address = places.address()
-        code = f"WH{index + 1:03d}"
-        documents.append(
-            {
-                "_id": code,
-                "warehouseId": code,
-                "name": f"{address['city'].title()} Distribution Center",
-                "address": address,
-                "phone": phones.take(),
-                "bays": [f"BAY-{bay:02d}" for bay in range(1, rng.randint(6, 24))],
-                "capacityUnits": rng.randint(500, 5000),
-                "acceptsHazmat": rng.random() < 0.3,
-                "acceptsOversize": rng.random() < 0.5,
-                "sourceUpdatedAt": datetime.now(UTC),
-            }
-        )
-    return documents
+_BACKUP_README = """# Real Ferguson source documents
+
+**The only genuine Ferguson data in this system.** Everything else in
+`return_source` is generated by `backend/scripts/generate_seed_data.py`.
+
+Written once, by that script, before it renamed any customer. It is never
+overwritten: the script reads this directory when it exists and only writes it
+when it does not, so the originals survive a mistake in a later run.
+
+| File | Contents |
+|---|---|
+| `salesInv.real.json` | the real orders, `_id` shaped `BRANCH*ORDERNO` |
+| `customerOutboundCDM.real.json` | the real master party |
+| `lkpSearchProduct.real.json` | the real product master row |
+| `shipmentInfo.real.json` | the real shipment rows |
+
+MongoDB Extended JSON (`bson.json_util`), so the `{"$date": ...}` wrappers
+survive a round trip. Read them with `json_util.loads`, never `json.loads`.
+
+**These documents still carry the original customer identities.** The corpus in
+Mongo does not: an operator decision replaced every customer name with an
+individual person and derived the email from that name. To restore the
+originals, load these documents back over the collections.
+"""
 
 
-def _customers(
-    count: int,
-    schema: ActiveSchema,
-    people: People,
-    places: Places,
-    phones: Phones,
-    domains: tuple[str, ...],
-    rng: random.Random,
-) -> list[dict[str, Any]]:
-    """The `customerOutboundCDM` documents, one master party each.
+# ---------------------------------------------------------------------------
+# Renaming the real records
+# ---------------------------------------------------------------------------
 
-    Only the entities bound to that source are built here -- `customer_party`
-    and the `customer_account` bridge nested inside it. `customer` and
-    `contact_point` read from `salesInv`: the order carries custId/custName
-    directly and embeds the contact rows under `customer.address`, so both are
-    built with the order.
 
-    The bridge is what makes these documents reachable. `customer_account`'s
-    `customer_id` is the value `salesInv` copies into custId, and `_orders`
-    draws its customer from the contexts returned here, so the two agree by
-    construction rather than by coincidence.
+def _rename_real_orders(
+    orders: Sequence[dict[str, Any]], directory: PersonDirectory
+) -> tuple[list[dict[str, Any]], dict[tuple[str, str], Person], int]:
+    """Give every real order's customer a person's name and a derived email.
+
+    Keyed on `(accountId, custId)`, which is `customer`'s natural key: the same
+    ERP customer number in two branches is two customers, and one person spread
+    across both would merge them in the graph.
+
+    Everything else is preserved. The name is replaced where the name is stated
+    -- header, ship-to, the embedded contact rows, the placed-by initials and
+    the cardholder -- and nowhere else, so `shipToKey` and every id keep the
+    original string.
     """
-    documents = []
-    for index in range(count):
-        given, family = people.person()
-        address = places.address()
-        company = people.company()
-        account_id = f"ACCT{index + 1:06d}"
-        phone = phones.take()
-        party_id = f"{900_000 + index + 1}"
-        context = {
-            "party_id": party_id,
-            "account_id": account_id,
-            "customer_account": account_id,
-            "customer_branch_id": account_id,
-            "customer_id": f"CUST{index + 1:06d}",
-            "customer_name": company,
-            "organization_name": company,
-            "party_name": f"{given} {family}",
-            "b2b_customer": "Y" if rng.random() < 0.75 else "N",
-            "email": people.email(given, family, domains),
-            "phone_number": phone,
-            "ship_to_phone": _digits(phone),
-            "address_line1": address["line1"],
-            "city": address["city"],
-            "state": address["state"],
-            "postal_code": address["postal_code"],
-            "county": f"{address['city'].title()} County",
-            "__timestamp__": datetime.now(UTC),
+    people: dict[tuple[str, str], Person] = {}
+    renamed: list[dict[str, Any]] = []
+    emails_added = 0
+    for original in orders:
+        document = json_util.loads(json_util.dumps(original))
+        header = (document.get("salesHdr") or {}).get("salesHdrData") or {}
+        account = str((document.get("salesHdrEventData") or {}).get("accountId") or "")
+        customer_id = str(header.get("custId") or "")
+        key = (account, customer_id)
+        person = people.setdefault(key, directory.take())
+        previous = {
+            value
+            for value in (header.get("custName"), _ship_to(document).get("shipToName"))
+            if isinstance(value, str) and value
         }
-        document: dict[str, Any] = {"_id": f"MASTER:{party_id}"}
-        _build_source_document(schema, "source_customers", document, context, rng)
-        document["__context"] = context
-        documents.append(document)
-    return documents
+
+        if "custName" in header:
+            header["custName"] = person.display
+        ship_to = _ship_to(document)
+        if "shipToName" in ship_to:
+            ship_to["shipToName"] = person.display
+        sales_person = header.get("salesPerson")
+        if isinstance(sales_person, dict) and "placedByName" in sales_person:
+            sales_person["placedByName"] = person.family.upper()
+
+        for row in (document.get("customer") or {}).get("address") or []:
+            if not isinstance(row, dict):
+                continue
+            if isinstance(row.get("contactFirstName"), str):
+                row["contactFirstName"] = person.given.upper()
+            if isinstance(row.get("contactLastName"), str):
+                row["contactLastName"] = person.family.upper()
+            if isinstance(row.get("email"), str):
+                row["email"] = person.email
+
+        # 97 of the 101 real orders already carry an email on a contact row and
+        # the rewrite above has just replaced it. The remaining four carry none
+        # at all, and the operator's decision is that every customer has one --
+        # so an email is written onto a row that had no contact on it. Only for
+        # those four: an order that already stated an email needs no addition,
+        # and adding a second one would invent a contact the source never had.
+        if not _states_an_email(document) and _add_email_row(document, person):
+            emails_added += 1
+
+        payments = header.get("payments")
+        if isinstance(payments, dict):
+            _rename_cardholder(payments, person)
+        _replace_emails(document, person.email)
+        for name in previous:
+            _replace_exact(document, name, person.display)
+        renamed.append(document)
+    return renamed, people, emails_added
 
 
-def _products(count: int, schema: ActiveSchema, rng: random.Random) -> list[dict[str, Any]]:
-    documents = []
-    for index in range(count):
-        description = (
-            f"{rng.choice(PRODUCT_ADJECTIVES)} {rng.choice(PRODUCT_MATERIALS)} "
-            f"{rng.choice(PRODUCT_NOUNS)}"
-        )
-        sku = f"SKU{index + 1:07d}"
-        context = {
-            "sku": sku,
-            "product_id": f"PRD{index + 1:07d}",
-            "product_description": description,
-            "product_long_description": f"{rng.choice(PRODUCT_BRANDS)} {description}",
-            "web_display_name": description,
-            "vendor_name": rng.choice(PRODUCT_BRANDS),
-            "unit_of_measure": rng.choice(UNITS),
-            "__timestamp__": datetime.now(UTC),
-        }
-        document: dict[str, Any] = {"_id": sku, "__context": context}
-        _build_source_document(schema, "source_products", document, context, rng)
-        documents.append(document)
-    return documents
-
-
-def _orders(
-    count: int,
-    schema: ActiveSchema,
-    customers: list[dict[str, Any]],
-    products: list[dict[str, Any]],
-    warehouses: list[dict[str, Any]],
-    config: dict[str, Any],
-    earliest: datetime,
-    span_days: int,
-    rng: random.Random,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """The order documents, and the contexts they were built from, aligned by index.
-
-    The contexts are returned rather than stashed on the documents because
-    shipments have to agree with the order they belong to -- same account, same
-    order number -- or `SHIPPED_AS` matches nothing and every shipment lands in
-    the graph orphaned.
-    """
-    line_bounds = config["lines_per_order"]
-    shipped_fraction = float(config.get("shipped_fraction", 0.7))
-
-    documents: list[dict[str, Any]] = []
-    contexts: list[dict[str, Any]] = []
-    for index in range(count):
-        customer = rng.choice(customers)["__context"]
-        warehouse = rng.choice(warehouses)
-        ordered_at = earliest + timedelta(days=rng.randint(0, span_days))
-        order_number = f"SO{index + 1:07d}"
-        context = {
-            "sales_order_number": order_number,
-            "order_key": f"{customer['account_id']}*{order_number}",
-            "account_id": customer["account_id"],
-            "customer_id": customer["customer_id"],
-            "customer_name": customer["customer_name"],
-            "customer_account": customer["account_id"],
-            "ship_to_name": customer["customer_name"],
-            "ship_to_city": customer["city"],
-            "ship_to_state": customer["state"],
-            "ship_to_postal_code": customer["postal_code"],
-            "ship_to_phone": customer["ship_to_phone"],
-            "order_status": rng.choice(ORDER_STATUSES),
-            "order_date": ordered_at,
-            "sell_warehouse_id": warehouse["warehouseId"],
-            "ship_from_warehouse_id": warehouse["warehouseId"],
-            "inventory_warehouse_id": warehouse["warehouseId"],
-            "__timestamp__": ordered_at,
-        }
-        line_contexts: list[dict[str, Any]] = []
-        for line_number in range(
-            1, rng.randint(line_bounds["minimum"], line_bounds["maximum"]) + 1
-        ):
-            product = rng.choice(products)["__context"]
-            line_context = {
-                **context,
-                "line_number": line_number,
-                "order_line_id": f"{order_number}-{line_number}",
-                "sku": product["sku"],
-                "product_id": product["product_id"],
-                "product_description": product["product_description"],
-                "ordered_quantity": rng.randint(1, 25),
-                "unit_of_measure": product["unit_of_measure"],
-                "shipped_quantity": 0,
-            }
-            if rng.random() < shipped_fraction:
-                line_context["shipped_quantity"] = line_context["ordered_quantity"]
-            line_contexts.append(line_context)
-
-        document: dict[str, Any] = {"_id": context["order_key"]}
-        _build_source_document(
-            schema,
-            "source_sales",
-            document,
-            context,
-            rng,
-            records={
-                "order_line": line_contexts,
-                # The contact rows carry the customer's own contact details and
-                # postal address. The order context holds neither under those
-                # field ids -- it keeps a ship-to copy under `ship_to_*` -- so
-                # the customer's own context supplies them, which is also what
-                # makes a search by email and a search by name agree.
-                "contact_point": ({**customer, **context},),
-            },
-        )
-        documents.append(document)
-        contexts.append(context)
-    return documents, contexts
-
-
-def _shipments(
-    schema: ActiveSchema,
-    orders: list[dict[str, Any]],
-    order_contexts: list[dict[str, Any]],
-    rng: random.Random,
-) -> list[dict[str, Any]]:
-    """One `shipmentInfo` document per order that actually shipped something.
-
-    `config/seed/generation.yaml` has named `shipmentInfo` since the generator
-    was written and nothing was ever emitted for it, so the fulfillment path had
-    no corpus to read and every tracking number in a generated deployment looked
-    like a label printed and never collected.
-
-    An order with no shipped line gets no shipment, deliberately: a shipment for
-    every order would make "the graph holds no shipment for this number" a state
-    the corpus can never produce, and that is precisely the reading W2.6 exists
-    to make possible.
-    """
-    if not _source_entities(schema, "source_shipments"):
-        return []
-    line_entity = schema.entities.get("order_line")
-    shipped_quantity_path = (
-        line_entity.fields["shipped_quantity"].physical_path
-        if line_entity is not None and "shipped_quantity" in line_entity.fields
-        else None
-    )
-    record_path = tuple(line_entity.record_path) if line_entity is not None else ()
-
-    documents: list[dict[str, Any]] = []
-    for index, (order, context) in enumerate(zip(orders, order_contexts, strict=True)):
-        if not _has_shipped_line(order, record_path, shipped_quantity_path):
-            continue
-        ordinal = index + 1
-        # Convey brokers parcel carriers, DispatchTrack runs own fleet; the
-        # tracking numbers they issue do not look alike, and the source system
-        # is the field that says which one a number came from.
-        convey = rng.random() < 0.3
-        tracking = f"1Z{ordinal:09d}" if convey else f"{3520000000 + ordinal}_474"
-        shipment_context = {
-            "tracking_number": tracking,
-            "sales_order_number": context["sales_order_number"],
-            "account_id": context["account_id"],
-            "shipment_id": (
-                f"shipid{ordinal:06d}"
-                if convey
-                else f"{context['account_id']}:{context['sales_order_number']}:4"
-            ),
-            "current_status": rng.choice(SHIPMENT_STATUSES),
-            "source_system": "Convey" if convey else "DispatchTrack",
-            "__timestamp__": context["__timestamp__"],
-        }
-        # `_id` mirrors the real collection's composite: account, order and
-        # tracking number together, which is the only thing unique about a
-        # `shipmentInfo` document -- the tracking number alone is not.
-        document: dict[str, Any] = {
-            "_id": f"{context['account_id']}*{context['sales_order_number']}*{tracking}"
-        }
-        _build_source_document(schema, "source_shipments", document, shipment_context, rng)
-        documents.append(document)
-    return documents
-
-
-def _has_shipped_line(
-    order: dict[str, Any],
-    record_path: tuple[str, ...],
-    shipped_quantity_path: tuple[str, ...] | None,
-) -> bool:
-    """Whether any of this order's lines carries a shipped quantity."""
-    if shipped_quantity_path is None:
-        return True
-    node: Any = order
-    for part in record_path:
+def _ship_to(document: Mapping[str, Any]) -> dict[str, Any]:
+    node: Any = document
+    for part in ("salesHdr", "salesHdrData", "shipping", "shipTo", "address"):
         node = node.get(part) if isinstance(node, dict) else None
-    if not isinstance(node, list):
+    return node if isinstance(node, dict) else {}
+
+
+def _states_an_email(document: Mapping[str, Any]) -> bool:
+    rows = (document.get("customer") or {}).get("address")
+    if not isinstance(rows, list):
         return False
-    for line in node:
-        value: Any = line
-        for part in shipped_quantity_path:
-            value = value.get(part) if isinstance(value, dict) else None
-        if isinstance(value, int) and value > 0:
+    return any(isinstance(row, dict) and row.get("email") for row in rows)
+
+
+def _add_email_row(document: dict[str, Any], person: Person) -> bool:
+    """Write the email onto a row that carries no contact of its own.
+
+    `contact_value` is `COALESCE(email, phone_number)`, so a row with neither
+    projects on a null natural key and is lost. Choosing such a row means the
+    email is gained without shadowing the phone contact on a sibling row. If
+    every row already carries a phone, none is chosen and the order simply has
+    no email contact -- which is what its source says.
+    """
+    rows = (document.get("customer") or {}).get("address")
+    if not isinstance(rows, list):
+        return False
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if not row.get("email") and not row.get("phoneNumber"):
+            row["email"] = person.email
             return True
     return False
 
 
+def _rename_cardholder(payments: dict[str, Any], person: Person) -> None:
+    """The cardholder is a person's real name; it is a name, so it is replaced."""
+    names = payments.get("ccName")
+    if isinstance(names, list):
+        payments["ccName"] = [
+            [person.given.upper(), person.family.upper()] if isinstance(entry, list) else entry
+            for entry in names
+        ]
+
+
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _replace_emails(node: Any, email: str) -> None:
+    """Every address-shaped string becomes the derived one, wherever it hides.
+
+    Real orders carry an email inside the card-on-file tuple as well as on the
+    contact rows. Leaving one behind would leave a real business address in a
+    corpus whose whole point is that it holds none.
+    """
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if isinstance(value, str) and _EMAIL.match(value):
+                node[key] = email.upper() if value.isupper() else email
+            else:
+                _replace_emails(value, email)
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            if isinstance(value, str) and _EMAIL.match(value):
+                node[index] = email.upper() if value.isupper() else email
+            else:
+                _replace_emails(value, email)
+
+
+def _replace_exact(node: Any, previous: str, replacement: str) -> None:
+    """Replace the customer's name where it appears verbatim, and only there.
+
+    Exact whole-string matching, never substring: `shipToKey` is
+    `CHARLOTTE*CQ363350-0000` and an id must survive a rename untouched.
+    """
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if value == previous:
+                node[key] = replacement
+            else:
+                _replace_exact(value, previous, replacement)
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            if value == previous:
+                node[index] = replacement
+            else:
+                _replace_exact(value, previous, replacement)
+
+
+def _rename_real_customers(
+    customers: Sequence[dict[str, Any]],
+    people: Mapping[tuple[str, str], Person],
+    directory: PersonDirectory,
+) -> list[dict[str, Any]]:
+    """Rename the real CDM party, reusing the person its accounts already have.
+
+    `party[].partyMainCusts[].mainCusts` is `BRANCH*CUSTID`, and `CUSTID` is
+    what the order writers copy into `salesInv.custId`. If one of those accounts
+    appears on a real order, the party is that order's customer and must carry
+    the same person -- otherwise a name search and an account lookup disagree
+    about who this is.
+    """
+    renamed: list[dict[str, Any]] = []
+    for original in customers:
+        document = json_util.loads(json_util.dumps(original))
+        parties = document.get("party")
+        bridges: list[str] = []
+        if isinstance(parties, list):
+            for party in parties:
+                for bridge in (party or {}).get("partyMainCusts") or []:
+                    value = (bridge or {}).get("mainCusts")
+                    if isinstance(value, str):
+                        bridges.append(value)
+        person: Person | None = None
+        for bridge in bridges:
+            branch, _, customer_id = bridge.partition("*")
+            person = people.get((branch, customer_id))
+            if person is not None:
+                break
+        if person is None:
+            person = directory.take()
+
+        previous = {value for value in _party_names(document) if isinstance(value, str) and value}
+        _rename_party(document, person)
+        for name in previous:
+            _replace_exact(document, name, person.display)
+        _replace_emails(document, person.email)
+        renamed.append(document)
+    return renamed
+
+
+def _party_names(document: Mapping[str, Any]) -> list[Any]:
+    names: list[Any] = []
+    for party in document.get("customerParties") or []:
+        names.append((party or {}).get("partyName"))
+    for party in document.get("party") or []:
+        names.append((party or {}).get("partyName"))
+        names.append((party or {}).get("organizationName"))
+    return names
+
+
+def _rename_party(document: dict[str, Any], person: Person) -> None:
+    for party in document.get("customerParties") or []:
+        if isinstance(party, dict) and "partyName" in party:
+            party["partyName"] = person.display
+    for party in document.get("party") or []:
+        if not isinstance(party, dict):
+            continue
+        if "partyName" in party:
+            party["partyName"] = person.display
+        if "organizationName" in party:
+            party["organizationName"] = person.display
+        for bridge in party.get("partyMainCusts") or []:
+            if isinstance(bridge, dict) and "mainCustsName" in bridge:
+                bridge["mainCustsName"] = person.display
+        for contact in party.get("customerContactPoints") or []:
+            if not isinstance(contact, dict):
+                continue
+            if "personFirstName" in contact:
+                contact["personFirstName"] = person.given.upper()
+            if "personLastName" in contact:
+                contact["personLastName"] = person.family.upper()
+            # The field exists and is null on every real contact point. Filling
+            # it is the email half of the operator's decision; adding a contact
+            # point would be a structural change the brief does not ask for.
+            if "emailAddress" in contact and not contact["emailAddress"]:
+                contact["emailAddress"] = person.email
+
+
+# ---------------------------------------------------------------------------
+# Products
+# ---------------------------------------------------------------------------
+
+
+def _mine_real_products(orders: Iterable[Mapping[str, Any]]) -> list[GeneratedProduct]:
+    """One catalogue entry per `masterProductId` any real order line names.
+
+    The id, the SKU and the description are **the values the order line already
+    carries** -- `3180140` / `Q1685` / `16X25 SILV FLEX AIR DUCT R8.0` -- not
+    invented ones. `line_references_product` matches `master_product_id` against
+    `product.product_id`, so building these is what lets the real orders resolve
+    a product at all; without them the graph answers "no product" for 482 real
+    lines, which is finding D5.
+
+    Attributes the line does not state -- vendor, department, finish -- are
+    **left absent**, because guessing a vendor for a real catalogue number would
+    put a claim in the corpus that no source made. `webDisplayName` is derived
+    from the description by expansion, which restates it rather than adding to
+    it.
+    """
+    products: dict[str, GeneratedProduct] = {}
+    for order in orders:
+        for line in order.get("salesLines") or []:
+            data = (line or {}).get("lineData") or {}
+            master = data.get("masterProductId")
+            if master is None:
+                continue
+            key = str(master)
+            if key in products:
+                continue
+            description = str(data.get("productDesc") or "").strip()
+            if not description:
+                continue
+            sku = str(data.get("altCode1") or key)
+            products[key] = GeneratedProduct(
+                product_id=key,
+                sku=sku,
+                description=description,
+                long_description=expand(description),
+                web_display_name=expand(description),
+                vendor="",
+                department="",
+                unit_of_measure="EA",
+                unit_of_measure_description="EACH",
+                brand_type="",
+                upc_code="",
+                list_price=float(data.get("listPrice") or 0.0),
+                colour_finish=None,
+                category_key="from_order_line",
+                real=True,
+            )
+    return list(products.values())
+
+
+def _clip(description: str, limit: int) -> str:
+    """Trim on a word boundary. No real `productDesc` ends mid-token.
+
+    The longest real description is 34 characters, and the ERP abbreviates
+    rather than truncates -- `16X25 SILV FLEX AIR DUCT R8.0`, not
+    `16X25 SILVER FLEXIBLE AIR DU`. Cutting at `limit` characters would produce
+    the second, which is a tell that no ERP wrote it.
+    """
+    if len(description) <= limit:
+        return description
+    clipped = description[:limit]
+    head, separator, _ = clipped.rpartition(" ")
+    return head if separator else clipped
+
+
+def _sku(rng: random.Random, category: Category, ordinal: int) -> str:
+    """A vendor product code in one of the four shapes the real 482 exhibit."""
+    letters = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+    prefix = "".join(rng.choice(letters) for _ in range(2))
+    shape = SKU_SHAPES[ordinal % len(SKU_SHAPES)]
+    if shape == "letter_digits":
+        return f"{rng.choice(letters)}{rng.randint(1000, 999999)}"
+    if shape == "alpha_block":
+        return prefix + "".join(rng.choice(letters) for _ in range(rng.randint(3, 9)))
+    if shape == "prefix_digits":
+        return f"{prefix}{rng.choice(letters)}{rng.randint(1000, 9999)}"
+    return f"{rng.choice(letters)}{rng.randint(10**8, 10**10 - 1)}"
+
+
+def _generate_products(
+    count: int,
+    taken: set[str],
+    rng: random.Random,
+) -> list[GeneratedProduct]:
+    """Catalogue entries in the mined idiom: size, spec, abbreviated noun.
+
+    A finish is appended to the description and written to `eco.colorFinish`
+    only for the categories that have one. `_id` is drawn from a numeric band
+    disjoint from every real `masterProductId`, and asserted against `taken`, so
+    a generated product can never shadow a real one.
+    """
+    # Categories that carry a finish appear twice in the cycle. **A deliberate
+    # over-representation, and the only one in this file.** Colour/finish is on
+    # Ferguson's return-setup list and had exactly one product behind it; the
+    # 482 real catalogue numbers cannot be given one, because their order lines
+    # do not state it. Weighting trim and fixtures up puts roughly half the
+    # generated catalogue behind the attribute instead of a third, at the cost
+    # of a catalogue mix that leans further towards trim than a real branch's.
+    cycle = [category for category in CATEGORIES for _ in range(2 if category.finishes else 1)]
+    products: list[GeneratedProduct] = []
+    used_skus: set[str] = set()
+    used_descriptions: set[str] = set()
+    ordinal = 0
+    next_id = 4_000_000
+    while len(products) < count:
+        category = cycle[ordinal % len(cycle)]
+        ordinal += 1
+        while str(next_id) in taken:
+            next_id += 1
+        product_id = str(next_id)
+        next_id += 1
+
+        sku = _sku(rng, category, ordinal)
+        while sku in used_skus or sku in taken:
+            sku = _sku(rng, category, ordinal + len(used_skus))
+        used_skus.add(sku)
+
+        # Redrawn until the description is one no other generated product
+        # already carries. Two catalogue numbers reading `2 IPS DEEP ESC CP`
+        # from the same vendor make a product search return two rows an
+        # associate cannot tell apart, which is a defect in the corpus rather
+        # than in the search. Bounded: a category whose cross product is
+        # genuinely exhausted accepts the repeat rather than looping.
+        size = spec = ""
+        finish_name: str | None = None
+        finish_token = ""
+        description = ""
+        for _ in range(24):
+            size = rng.choice(category.sizes)
+            spec = rng.choice(category.specs)
+            if category.finishes:
+                finish_name, finish_token = rng.choice(category.finishes)
+            description = " ".join(
+                token for token in (size, spec, category.noun, finish_token) if token
+            )
+            if description not in used_descriptions:
+                break
+        used_descriptions.add(description)
+        long_description = " ".join(
+            token
+            for token in (
+                size,
+                expand(spec),
+                category.long_noun if category.noun else "",
+                finish_name or "",
+            )
+            if token
+        )
+        vendor = rng.choice(category.vendors)
+        low, high = category.price_range
+        products.append(
+            GeneratedProduct(
+                product_id=product_id,
+                sku=sku,
+                description=_clip(description, 40),
+                long_description=long_description,
+                web_display_name=f"{long_description} by {vendor.title()}",
+                vendor=vendor,
+                department=category.department,
+                unit_of_measure=category.unit_of_measure,
+                unit_of_measure_description=UOM_DESCRIPTIONS[category.unit_of_measure],
+                brand_type="Own Brand" if vendor == "PROSELECT" else "National Brand",
+                upc_code=f"{rng.randint(10**11, 10**12 - 1)}",
+                list_price=round(rng.uniform(low, high), 2),
+                colour_finish=finish_name,
+                category_key=category.key,
+            )
+        )
+    return products
+
+
+def _product_document(product: GeneratedProduct, generated_at: datetime) -> dict[str, Any]:
+    """A `lkpSearchProduct` document shaped like the real one.
+
+    `eco.colorFinish` is the path the real document carries its finish on, and
+    it is written only where a finish exists. **The active schema declares no
+    colour field on `product`**, so the value reaches Mongo but not the graph;
+    it is searchable today only through the description and the display name,
+    both of which state it. Declaring a `color_finish` field is a schema change
+    and out of this script's scope.
+    """
+    document: dict[str, Any] = {
+        "_id": product.product_id,
+        "eventMeta": {
+            "insertMongoTs": _moment(generated_at),
+            "collectionVersion": "1",
+            "type": "ADD",
+            "machineName": "STEP",
+            "insertTS": _moment(generated_at),
+            "updateMongoTs": _moment(generated_at),
+            "lastUpdateTS": _moment(generated_at),
+            "deleteMongoTs": None,
+            "expireDate": None,
+            "id": int(product.product_id) if product.product_id.isdigit() else 0,
+            "account": "MASTER",
+        },
+        "mpData": {
+            "integLocProductId": int(product.product_id) if product.product_id.isdigit() else 0,
+            "ecatAnsiUom": product.unit_of_measure,
+            "webDisplayName": product.web_display_name,
+            "ecatQtyMultiple": 1,
+        },
+        "masterProduct": {
+            "uom": product.unit_of_measure,
+            "uomDesc": product.unit_of_measure_description,
+            "vendorProdCode": product.sku,
+            "productDesc": product.description,
+            "prodLongDesc": product.long_description,
+            "altCodes": {"alt1Code1": product.sku},
+            "perQty": 1,
+            "sellMultiplier": 1,
+        },
+        "pricingData": {"listPrice": product.list_price, "discPct": 0, "localPriceFlag": "N"},
+        "eco": {},
+        "fld": {"baseModelNumber": product.sku, "shippingClassification": "Standard"},
+        "fopt": {},
+        "mpNotes": None,
+        "ecomm": None,
+    }
+    master = document["masterProduct"]
+    if product.upc_code:
+        master["upcCode"] = product.upc_code
+    if product.vendor:
+        master["vendorName"] = product.vendor
+    if product.department:
+        master["deptCodeDesc"] = product.department
+    if product.brand_type:
+        master["brandType"] = product.brand_type
+    if product.colour_finish:
+        document["eco"]["colorFinish"] = [product.colour_finish]
+    document["fopt"]["mstrProdId"] = f"{product.product_id}*{19635}"
+    if not product.real:
+        document["__seed"] = True
+    return document
+
+
+def _hydrate_real_product(product: GeneratedProduct, generated_at: datetime) -> dict[str, Any]:
+    """Fill only the paths the schema declares and the order line can answer.
+
+    A real catalogue number gets its own SKU and description, an expanded
+    display name, and nothing else. No vendor, no department, no finish: the
+    order line does not state them and a plausible guess against a real
+    identifier is the fabrication this whole exercise is about.
+    """
+    hydrated = _product_document(product, generated_at)
+    hydrated["masterProduct"].pop("upcCode", None)
+    # Written by this script, so it keeps the marker: only the *values* are
+    # real, and a document with no marker is one `_ensure_backup` would take
+    # for a genuine source row if the backup directory were ever lost.
+    hydrated["__seed"] = "DERIVED_FROM_ORDER_LINE"
+    hydrated["provenance"] = {
+        "derivedFrom": "salesInv order line",
+        "statedFields": ["_id", "vendorProdCode", "productDesc", "listPrice"],
+    }
+    if not product.list_price:
+        hydrated["pricingData"].pop("listPrice", None)
+    return hydrated
+
+
+# ---------------------------------------------------------------------------
+# Customers
+# ---------------------------------------------------------------------------
+
+
+class Account:
+    """One `BRANCH*CUSTID` bridge, and the party it belongs to."""
+
+    __slots__ = ("address", "b2b", "branch", "customer_id", "party_id", "person")
+
+    def __init__(
+        self,
+        branch: str,
+        customer_id: str,
+        party_id: str,
+        person: Person,
+        address: dict[str, str],
+        b2b: str,
+    ) -> None:
+        self.branch = branch
+        self.customer_id = customer_id
+        self.party_id = party_id
+        self.person = person
+        self.address = address
+        self.b2b = b2b
+
+    @property
+    def bridge(self) -> str:
+        return f"{self.branch}*{self.customer_id}"
+
+
+def _generate_customers(
+    count: int,
+    directory: PersonDirectory,
+    reserved_customer_ids: set[str],
+    reserved_party_ids: set[str],
+    rng: random.Random,
+    generated_at: datetime,
+) -> tuple[list[dict[str, Any]], list[Account]]:
+    """`customerOutboundCDM` documents shaped like the real master party.
+
+    One party, one to three `partyMainCusts` bridges. **The bridge is the real
+    one** -- `party[].partyMainCusts[].mainCusts` holding `BRANCH*CUSTID` -- not
+    the `party[].custAccts[].additionalCustomerInfo[]` path the previous
+    generator built. No real CDM document has a `custAccts` array at any level,
+    and manufacturing one cleared a validation error dishonestly: it produced
+    exactly the shape the declaration asserted and the source lacks. See D41 and
+    D48 in the execution state.
+
+    Orders are drawn from the accounts returned here, so `salesInv.custId` and
+    the CDM bridge agree by construction rather than by coincidence.
+    """
+    documents: list[dict[str, Any]] = []
+    accounts: list[Account] = []
+    next_customer = 600_001
+    next_party = 700_001
+    for _ in range(count):
+        person = directory.take()
+        while str(next_party) in reserved_party_ids:
+            next_party += 1
+        party_id = str(next_party)
+        next_party += 1
+        address = _address(rng)
+        b2b = "Y" if rng.random() < 0.72 else "N"
+
+        bridges: list[Account] = []
+        for _ in range(rng.choices((1, 2, 3), weights=(68, 24, 8), k=1)[0]):
+            while str(next_customer) in reserved_customer_ids:
+                next_customer += 1
+            customer_id = str(next_customer)
+            next_customer += 1
+            branch = _weighted(rng, BRANCH_WEIGHTS)
+            bridges.append(Account(branch, customer_id, party_id, person, address, b2b))
+        accounts.extend(bridges)
+
+        area, _, subscriber = person.phone.partition("-")
+        documents.append(
+            {
+                "_id": f"MASTER:{party_id}",
+                "partyId": party_id,
+                "lastUpdateDate": _moment(generated_at),
+                "num": None,
+                "type": "PARTY",
+                "expireDate": None,
+                "sourceSystem": "Trilogie",
+                "notSearchable": "N",
+                "status": None,
+                "customerParties": [
+                    {
+                        "partyName": person.display,
+                        "partyNumber": party_id,
+                        "personFirstName": person.given.upper(),
+                        "personLastName": person.family.upper(),
+                        "lastUpdateDate": _moment(generated_at),
+                    }
+                ],
+                "party": [
+                    {
+                        "partyNumber": party_id,
+                        "partyName": person.display,
+                        "organizationName": person.display,
+                        "nationalAccountIndicator": "N",
+                        "b2bCustomer": b2b,
+                        "partySites": [
+                            {
+                                "partySiteLocations": [
+                                    {
+                                        "country": "US",
+                                        "address1": address["address1"],
+                                        "city": address["city"],
+                                        "state": address["state"],
+                                        "postalCode": address["zipCode"],
+                                        "county": address["county"],
+                                        "lastUpdateDate": _moment(generated_at),
+                                    }
+                                ],
+                                "partySiteUses": [{"siteUseType": "BILL_TO"}],
+                                "lastUpdateDate": _moment(generated_at),
+                            }
+                        ],
+                        "customerContactPoints": [
+                            {
+                                "contactPointId": f"MASTER*{party_id}-0000*0",
+                                "contactPointType": "PHONE",
+                                "emailAddress": None,
+                                "phoneAreaCode": area,
+                                "phoneNumber": subscriber.replace("-", ""),
+                                "searchPhoneNumber": f"1{person.digits}",
+                                "phoneLineType": "GEN",
+                                "personFirstName": person.given.upper(),
+                                "personLastName": person.family.upper(),
+                                "lastUpdateDate": _moment(generated_at),
+                            },
+                            {
+                                "contactPointId": f"MASTER*{party_id}-0000*1",
+                                "contactPointType": "EMAIL",
+                                "emailAddress": person.email,
+                                "personFirstName": person.given.upper(),
+                                "personLastName": person.family.upper(),
+                                "lastUpdateDate": _moment(generated_at),
+                            },
+                        ],
+                        "partyMainCusts": [
+                            {
+                                "mainCusts": account.bridge,
+                                "mainCustsName": person.display,
+                                "mainCustJobs": [],
+                            }
+                            for account in bridges
+                        ],
+                        "additionalMcustomerInfo": {
+                            "mcustId": party_id,
+                            "mcustAlpha": "**B2B**" if b2b == "Y" else "**RES**",
+                            "mcustAddrType": "DOM",
+                            "mcustPhone": person.digits,
+                            "mcustJobFlag": "N",
+                            "searchMcustPhone": f"1{person.digits}",
+                            "lastUpdateDate": _moment(generated_at),
+                        },
+                        "lastUpdateDate": _moment(generated_at),
+                    }
+                ],
+                "__seed": True,
+            }
+        )
+    return documents, accounts
+
+
+# ---------------------------------------------------------------------------
+# Orders
+# ---------------------------------------------------------------------------
+
+
+class OrderNumbers:
+    """Globally unique order numbers, in the real two-letter series.
+
+    An order number is unique within an account and not globally in the real
+    ERP -- `sales_order.sales_order_number` says so -- but the copilot's search
+    takes a bare number, and a synthetic order sharing `CQ363350` would turn the
+    one order this environment is manually tested against into two candidates.
+    So the generated band is disjoint from every real number by construction and
+    asserted against the real set.
+    """
+
+    def __init__(self, reserved: Iterable[str]) -> None:
+        self._reserved = set(reserved)
+        self._next = 800_000
+
+    def take(self, rng: random.Random) -> str:
+        while True:
+            candidate = f"{rng.choice(ORDER_PREFIXES)}{self._next}"
+            self._next += 1
+            if candidate not in self._reserved:
+                self._reserved.add(candidate)
+                return candidate
+
+
+def _generate_orders(
+    count: int,
+    accounts: Sequence[Account],
+    products: Sequence[GeneratedProduct],
+    numbers: OrderNumbers,
+    earliest: datetime,
+    span_days: int,
+    shipped_fraction: float,
+    rng: random.Random,
+) -> list[dict[str, Any]]:
+    """`salesInv` documents in the real header/lines shape."""
+    documents: list[dict[str, Any]] = []
+    for _ in range(count):
+        account = rng.choice(accounts)
+        person = account.person
+        branch = account.branch
+        order_number = numbers.take(rng)
+        ordered_at = earliest + timedelta(
+            days=rng.randint(0, span_days), hours=rng.randint(7, 18), minutes=rng.randint(0, 59)
+        )
+        warehouse = _weighted(rng, WAREHOUSE_WEIGHTS)
+        ship_via_code, ship_via_desc = _weighted(
+            rng, tuple(((code, description), weight) for code, description, weight in SHIP_VIA)
+        )
+        line_count = rng.choice(LINES_PER_ORDER)
+        lines, subtotal, cost = _order_lines(
+            line_count, branch, order_number, warehouse, products, shipped_fraction, ordered_at, rng
+        )
+        tax = round(subtotal * rng.choice((0.0, 0.06, 0.0725, 0.0825)), 2)
+        address = account.address
+        status = _weighted(rng, ORDER_STATUS_WEIGHTS)
+        sales_type = _weighted(rng, SALES_TYPE_WEIGHTS)
+        associate = rng.choice(ASSOCIATES)
+        documents.append(
+            {
+                "_id": f"{branch}*{order_number}",
+                "salesHdrEventMeta": {
+                    "srcSyncId": int(ordered_at.timestamp() * 1000),
+                    "srcSyncTs": _moment(ordered_at),
+                    "rcvdTs": _moment(ordered_at),
+                    "insertTs": _moment(ordered_at),
+                    "lastUpdateTs": _moment(ordered_at + timedelta(minutes=7)),
+                    "updatedBy": "order-cashsale-writer-v4",
+                },
+                "salesHdrEventData": {
+                    "accountId": branch,
+                    "orderId": order_number,
+                    "sellWhseId": warehouse,
+                    "shipFromWhseId": warehouse,
+                    # The `sales_order` entity is gated on this discriminator. A
+                    # corpus that omits it produces zero orders in the graph and
+                    # no error anywhere.
+                    "docType": "headerLines",
+                    "salesType": sales_type,
+                    "salesCode": "CS",
+                    "numOfLines": str(len(lines)),
+                    "custType": "MAIN",
+                    "srcSysCode": "SOE",
+                    "srcErp": "Trilogie",
+                    "openFlag": status == "CALLCSR",
+                    "invoiced": status.startswith("INVOICE"),
+                    "orderStatus": status,
+                    "shipViaCode": ship_via_code,
+                    "totalPages": "1",
+                    "pageNumber": "1",
+                },
+                "salesHdr": {
+                    "salesHdrMeta": {
+                        "insertTs": _moment(ordered_at),
+                        "updateTs": _moment(ordered_at + timedelta(minutes=7)),
+                        "lastUpdatedBy": "order-cashsale-writer-v4",
+                    },
+                    "salesHdrData": {
+                        "orderCust": account.customer_id,
+                        "custId": account.customer_id,
+                        "custName": person.display,
+                        "custPONumber": rng.choice(PO_NUMBERS),
+                        "mcustId": account.party_id,
+                        "jobName": rng.choice(PO_NUMBERS),
+                        "b2bCustFlag": account.b2b == "Y",
+                        "transactionCurrencyCode": "USD",
+                        "transactionCurrencyName": "US Dollars",
+                        "transactionType": "Cash Sale" if sales_type == "CASH" else "Invoice",
+                        "entryDate": _day(ordered_at),
+                        "orderDate": _day(ordered_at),
+                        "invoiceDate": _day(ordered_at),
+                        "arAgingDate": _day(ordered_at),
+                        "priceSubtltAmt": subtotal,
+                        "costSubtltAmt": cost,
+                        "freightAmt": 0,
+                        "handlingAmt": 0,
+                        "orderTotalAmt": round(subtotal + tax, 2),
+                        "refundAmt": 0,
+                        "creditHoldFlag": False,
+                        "submittedFlag": True,
+                        "deleteFlag": False,
+                        "shipping": {
+                            "reqrdShipDate": _day(ordered_at),
+                            "shipViaCode": ship_via_code,
+                            "shipViaDesc": ship_via_desc,
+                            "shipCompleteFlag": False,
+                            "commitDate": _day(ordered_at),
+                            "shipDate": _day(ordered_at + timedelta(days=rng.randint(0, 3))),
+                            "shipTo": {
+                                "shipToSuffix": "0000",
+                                "address": {
+                                    "shipToKey": f"{branch}*{order_number}-0000",
+                                    "shipToName": person.display,
+                                    "address1": address["address1"],
+                                    "address2": f"{address['city']}, {address['state']} "
+                                    f"{address['zipCode']}",
+                                    "city": address["city"],
+                                    "state": address["state"],
+                                    "zipCode": address["zipCode"],
+                                    "county": address["county"],
+                                    "countryCode": "US",
+                                    "shipToPhone": person.phone,
+                                },
+                            },
+                        },
+                        "terms": {
+                            "termsCode": "COD" if sales_type == "CASH" else "N30",
+                            "termsDesc": "CASH ON DEMAND" if sales_type == "CASH" else "NET 30",
+                            "termsDiscPct": 0,
+                            "termsDate": _day(ordered_at),
+                        },
+                        "tax": {
+                            "taxAmt": tax,
+                            "taxableAmt": subtotal,
+                            "exemptAmt": 0,
+                            "combinedTaxRate": 0,
+                        },
+                        "salesPerson": {
+                            "empName": associate.title(),
+                            "salesmanName": associate,
+                            "placedByName": person.family.upper(),
+                            "writerInitials": "".join(word[0] for word in associate.split()),
+                        },
+                        "linesInfo": {
+                            "rLineNumber": [str(index + 1) for index in range(len(lines))]
+                        },
+                    },
+                },
+                # The real `customer.address` array repeats one postal address
+                # per contact. Two rows here: the first carries the email and
+                # the phone, the second the phone alone. `contact_value` is
+                # COALESCE(email, phone_number), so that is one contact point
+                # keyed on the address and one keyed on the number -- both of
+                # the identifiers the clarification policy ranks highest, and
+                # both resolving to the same customer.
+                "customer": {
+                    "address": [
+                        {
+                            "contactFirstName": person.given.upper(),
+                            "contactLastName": person.family.upper(),
+                            "address1": address["address1"],
+                            "city": address["city"],
+                            "state": address["state"],
+                            "postalCode": address["zipCode"],
+                            "county": address["county"],
+                            "country": "US",
+                            "phoneNumber": person.digits,
+                            "email": person.email,
+                        },
+                        {
+                            "contactFirstName": person.given.upper(),
+                            "contactLastName": person.family.upper(),
+                            "address1": address["address1"],
+                            "city": address["city"],
+                            "state": address["state"],
+                            "postalCode": address["zipCode"],
+                            "county": address["county"],
+                            "country": "US",
+                            "phoneNumber": person.digits,
+                        },
+                    ]
+                },
+                "salesInvHierarchy": {},
+                "salesLines": lines,
+                "__seed": True,
+            }
+        )
+    return documents
+
+
+def _order_lines(
+    line_count: int,
+    branch: str,
+    order_number: str,
+    warehouse: str,
+    products: Sequence[GeneratedProduct],
+    shipped_fraction: float,
+    ordered_at: datetime,
+    rng: random.Random,
+) -> tuple[list[dict[str, Any]], float, float]:
+    lines: list[dict[str, Any]] = []
+    subtotal = 0.0
+    cost = 0.0
+    for index in range(line_count):
+        product = rng.choice(products)
+        quantity = rng.choices(
+            (1, 2, 3, 4, 5, 6, 10, 12, 24), weights=(38, 18, 11, 7, 6, 4, 8, 4, 4)
+        )[0]
+        unit_price = round(
+            (product.list_price or rng.uniform(4.5, 240.0)) * rng.uniform(0.42, 0.96), 3
+        )
+        unit_cost = round(unit_price * rng.uniform(0.55, 0.86), 2)
+        shipped = quantity if rng.random() < shipped_fraction else 0
+        line_net = round(unit_price * quantity, 2)
+        subtotal = round(subtotal + line_net, 2)
+        cost = round(cost + unit_cost * quantity, 2)
+        lines.append(
+            {
+                "salesLnsEventData": {
+                    "account": branch,
+                    "orderId": order_number,
+                    "lineNumber": str(index + 1),
+                    "lineType": _weighted(rng, LINE_TYPE_WEIGHTS),
+                },
+                "lineMeta": {
+                    "insertTs": _moment(ordered_at),
+                    "updateTs": _moment(ordered_at + timedelta(minutes=7)),
+                    "lastUpdatedBy": "order-cashsale-writer-v4",
+                },
+                "lineData": {
+                    "productId": f"{product.product_id}*{warehouse}",
+                    "altCode1": product.sku,
+                    "masterProductId": product.product_id,
+                    "productDesc": product.description,
+                    "perQty": 1,
+                    "orderQty": quantity,
+                    "boQty": max(0, quantity - shipped),
+                    "shipQty": shipped,
+                    "prodAvailQty": rng.randint(0, 240),
+                    "netPrice": unit_price,
+                    "listPrice": product.list_price or unit_price,
+                    "unitCostAmt": unit_cost,
+                    "invenWhse": warehouse,
+                    "lineNetAmt": line_net,
+                    "lineTaxAmt": 0,
+                    "commitQty": shipped,
+                    "affectInvenFlag": False,
+                },
+            }
+        )
+    return lines, subtotal, cost
+
+
+# ---------------------------------------------------------------------------
+# Shipments and warehouses
+# ---------------------------------------------------------------------------
+
+
+def _generate_shipments(
+    orders: Sequence[Mapping[str, Any]], rng: random.Random
+) -> list[dict[str, Any]]:
+    """One `shipmentInfo` document per generated order that shipped something.
+
+    An order with no shipped line gets no shipment, deliberately: a shipment for
+    every order would make "the graph holds no shipment for this number" a state
+    the corpus can never produce.
+
+    `trilOrdNum` carries the **bare order number**, because
+    `order_shipped_as` joins `shipment.sales_order_number` to
+    `sales_order.sales_order_number`. The 100 real `shipmentInfo` rows put
+    `BRANCH*ORDER` there instead and can therefore never form that edge -- a
+    real-data finding, recorded rather than papered over by changing the join.
+    """
+    documents: list[dict[str, Any]] = []
+    for ordinal, order in enumerate(orders, start=1):
+        lines = order.get("salesLines") or []
+        if not any(int((line.get("lineData") or {}).get("shipQty") or 0) > 0 for line in lines):
+            continue
+        header = order["salesHdrEventData"]
+        account = str(header["accountId"])
+        order_number = str(header["orderId"])
+        # Convey brokers parcel carriers and carries their tracking numbers;
+        # DispatchTrack is own-fleet last mile and issues its own route
+        # references. One shape for both would make a tracking-number search
+        # look uniform in a way the real source is not.
+        convey = rng.random() < 0.34
+        tracking = (
+            f"1Z{rng.choice('ABCDEFGHJKLMNPQRSTUVWXYZ')}{rng.randint(10**11, 10**12 - 1)}"
+            if convey
+            else f"{3520000000 + ordinal}_474"
+        )
+        # The order already holds a real datetime here, so the carrier event is
+        # placed a few hours into that day rather than re-parsed out of a
+        # string.
+        shipped_at = _moment(
+            order["salesHdr"]["salesHdrData"]["shipping"]["shipDate"]
+            + timedelta(hours=rng.randint(8, 19), minutes=rng.randint(0, 59))
+        )
+        documents.append(
+            {
+                "_id": f"{account}*{order_number}*{tracking}",
+                "shipmentInfoEventMeta": {
+                    "srcSyncTs": shipped_at,
+                    "rcvdTs": shipped_at,
+                    "insertTs": shipped_at,
+                    "lastUpdateTs": shipped_at,
+                    "docType": "convey" if convey else "dispatchtrack",
+                    "updatedBy": "shipping-writer-v1",
+                },
+                "shipmentInfoEventData": {
+                    "acctId": account,
+                    "shipmentId": (
+                        f"shipid{ordinal:08d}" if convey else f"{account}:{order_number}:4"
+                    ),
+                    "trkNum": tracking,
+                    "trilOrdNum": order_number,
+                    "currentStatus": rng.choices(
+                        ("intransit", "delivered", "outfordelivery"), weights=(30, 62, 8)
+                    )[0],
+                    "srcSystem": "Convey" if convey else "DispatchTrack",
+                },
+                "shipmentInfo": [
+                    {
+                        "shipmentInfoDetail": {
+                            "createdDateTime": shipped_at,
+                            "carrierScac": rng.choice(("UPS", "FDEG", "FDE", "USPS", "SAIA")),
+                            "carrierName": rng.choice(
+                                (
+                                    "UNITED PARCEL SERVICE",
+                                    "FEDEX GROUND",
+                                    "FEDEX EXPRESS",
+                                    "US POSTAL SERVICE",
+                                    "SAIA MOTOR FREIGHT",
+                                )
+                            )
+                            if convey
+                            else "FERGUSON DELIVERY",
+                            "eventType": "tracking",
+                            "billOfLadingNum": f"{account}_{order_number}",
+                            "origOrdNum": f"{account}_{order_number}",
+                            "insertTs": shipped_at,
+                        },
+                        "shipmentInfo": {
+                            "carrierShipDate": shipped_at,
+                            "direction": "outbound",
+                            "carrierServLevel": "Ground" if convey else "Local Delivery",
+                        },
+                    }
+                ],
+                "__seed": True,
+            }
+        )
+    return documents
+
+
+def _generate_warehouses(
+    orders: Sequence[Mapping[str, Any]], rng: random.Random, generated_at: datetime
+) -> list[dict[str, Any]]:
+    """Provisional -- nothing reads this. See the module docstring.
+
+    The ids are at least the real inventory warehouse ids the order lines carry,
+    so a warehouse id on an order resolves to a document with the same
+    identifier rather than to a `WH001` that appears nowhere else.
+    """
+    identifiers: set[str] = set()
+    for order in orders:
+        header = order.get("salesHdrEventData") or {}
+        for key in ("sellWhseId", "shipFromWhseId"):
+            value = header.get(key)
+            if isinstance(value, str) and value:
+                identifiers.add(value)
+        for line in order.get("salesLines") or []:
+            value = (line.get("lineData") or {}).get("invenWhse")
+            if isinstance(value, str) and value:
+                identifiers.add(value)
+    documents: list[dict[str, Any]] = []
+    for identifier in sorted(identifiers):
+        city, state, zip_prefix = rng.choice(PLACES)
+        documents.append(
+            {
+                "_id": identifier,
+                "warehouseId": identifier,
+                "name": f"{city.title()} Distribution Center",
+                "address": {
+                    "line1": f"{rng.randint(100, 9899)} {rng.choice(STREET_NAMES)} "
+                    f"{rng.choice(STREET_TYPES)}",
+                    "city": city,
+                    "state": state,
+                    "postal_code": f"{zip_prefix}{rng.randint(10, 99)}",
+                },
+                "bays": [f"BAY-{bay:02d}" for bay in range(1, rng.randint(6, 24))],
+                "capacityUnits": rng.randint(500, 5000),
+                "acceptsHazmat": rng.random() < 0.3,
+                "acceptsOversize": rng.random() < 0.5,
+                "sourceUpdatedAt": generated_at,
+                "__seed": True,
+            }
+        )
+    return documents
+
+
+# ---------------------------------------------------------------------------
+# Verification and loading
+# ---------------------------------------------------------------------------
+
+
 def _verify(
     schema: ActiveSchema,
-    order: dict[str, Any],
-    customer: dict[str, Any],
-    product: dict[str, Any],
-    shipment: dict[str, Any],
+    order: Mapping[str, Any],
+    customer: Mapping[str, Any],
+    product: Mapping[str, Any],
+    shipment: Mapping[str, Any],
 ) -> None:
     """Every declared path must resolve, or the entity silently vanishes.
 
     Checked here rather than left to a graph build: a missing path produces an
     empty projection, and an empty projection is indistinguishable from a source
-    that had no data.
+    that had no data. Each path is checked against the document extraction reads
+    it from -- the exploded record for a `CURRENT_RECORD` path, the root for a
+    `ROOT_DOCUMENT` one -- because checking every path against one of them
+    passes a corpus the other half of the schema cannot read.
 
-    Each path is checked against the document extraction reads it from -- the
-    exploded record for a `CURRENT_RECORD` path, the root for a
-    `ROOT_DOCUMENT` one. Checking every path against one of them passes a corpus
-    the other half of the schema cannot read.
+    Fields with a `derive` block have no physical path and are skipped: they are
+    computed from a sibling that is checked.
     """
     by_source = {
         "source_sales": order,
@@ -903,8 +1515,6 @@ def _verify(
         document = by_source.get(entity.source_asset_id)
         if document is None:
             continue
-        # Extraction walks the record path only for an entity it explodes; for
-        # any other, every field is read from the root.
         record_path = entity.record_path if entity.explode else ()
         base: Any = document
         for part in record_path:
@@ -912,7 +1522,7 @@ def _verify(
             if isinstance(base, list):
                 base = base[0] if base else None
         if base is None:
-            missing.append(f"{entity_id}: record_path {record_path} absent")
+            missing.append(f"{entity_id}: record_path {tuple(record_path)} absent")
             continue
         for field_id, field in entity.fields.items():
             if field.physical_path is None:
@@ -922,19 +1532,210 @@ def _verify(
             elif field.path_origin is PathOrigin.ROOT_DOCUMENT:
                 node = document
             else:
-                # PARENT_RECORD resolves to one list level above the record,
-                # which is the root only when the record path crossed a single
-                # list. No entity declares one, so there is nothing to check
-                # and no reason to guess which level it would have been.
                 continue
             for part in field.physical_path:
                 node = node.get(part) if isinstance(node, dict) else None
             if node is None:
-                missing.append(f"{entity_id}.{field_id}")
+                missing.append(f"{entity_id}.{field_id} at {'.'.join(field.physical_path)}")
     if missing:
         raise SystemExit(
-            "generated documents do not satisfy the schema:\n  " + "\n  ".join(missing[:20])
+            "generated documents do not satisfy the active schema. The builders in this "
+            "script write a real-shape document, so a schema change needs a change here:\n  "
+            + "\n  ".join(missing[:30])
         )
+
+
+async def _load(
+    collection: Any,
+    documents: Sequence[Mapping[str, Any]],
+    real_ids: set[Any],
+    label: str,
+) -> None:
+    """Replace everything that is not a real document, and nothing that is.
+
+    Deletion is `_id $nin <the backed-up ids>` rather than a marker match: a
+    marker only removes what a previous run of *this* script wrote, and the
+    collections already hold documents from two earlier generators.
+    """
+    removed = await collection.delete_many({"_id": {"$nin": sorted(real_ids, key=str)}})
+    for start in range(0, len(documents), 1000):
+        batch = documents[start : start + 1000]
+        if batch:
+            await collection.insert_many(list(batch))
+    total = await collection.count_documents({})
+    print(
+        f"  {label:22s} removed {removed.deleted_count:6d}  inserted {len(documents):6d}"
+        f"  total {total:6d}"
+    )
+
+
+async def _replace_real(collection: Any, documents: Sequence[Mapping[str, Any]]) -> None:
+    for document in documents:
+        await collection.replace_one({"_id": document["_id"]}, dict(document), upsert=True)
+
+
+async def _run(config: Mapping[str, Any], config_name: str) -> None:
+    counts = config["counts"]
+    rng = random.Random(config["seed"])
+    domains = tuple(config["email_domains"])
+    names = config["collections"]
+    # The one value in the corpus that is not a function of `seed`. It stamps
+    # `lkpSearchProduct.eventMeta.lastUpdateTS` and `customerOutboundCDM
+    # .lastUpdateDate` -- the two source-change timestamps a product master and
+    # a party carry, which have no business date to derive from the way an
+    # order's do. Every identifier, SKU, description, name, email and address
+    # is seed-determined, so two runs produce the same corpus in every respect
+    # any consumer reads; only the "when did the source last change" stamp on
+    # those two collections moves.
+    generated_at = datetime.now(UTC).replace(tzinfo=None)
+
+    settings = Settings()
+    schema: ActiveSchema = load_active_schema(settings.dynamic_knowledge_schema_path)
+    client: AsyncMongoClient[dict[str, Any]] = AsyncMongoClient(
+        settings.source_mongo_dsn.get_secret_value()
+        if settings.source_mongo_dsn is not None
+        else settings.mongo_dsn.get_secret_value()
+    )
+    database = client[settings.source_mongo_database]
+
+    earliest = datetime.fromisoformat(config["order_dates"]["earliest"])
+    latest = datetime.fromisoformat(config["order_dates"]["latest"])
+    span_days = max(1, (latest - earliest).days)
+    shipped_fraction = float(config.get("shipped_fraction", 0.7))
+
+    try:
+        print(f"generating from {config_name} (seed {config['seed']})\n")
+        real = await _ensure_backup(database, names)
+        print(
+            f"  real documents: orders {len(real.orders)}  customers {len(real.customers)}"
+            f"  products {len(real.products)}  shipments {len(real.shipments)}"
+        )
+
+        directory = PersonDirectory(rng, domains)
+        renamed_orders, people, emails_added = _rename_real_orders(real.orders, directory)
+        renamed_customers = _rename_real_customers(real.customers, people, directory)
+        print(
+            f"\nrenamed {len(people)} real customer identities to individual people "
+            f"({emails_added} contact rows given a derived email)"
+        )
+
+        # A catalogue number that already has a real `lkpSearchProduct`
+        # document is dropped from the mined set. `2175168` / `PSRGW1212` is
+        # both: it is the one real product row *and* it appears on a real order
+        # line. The real document is the richer and the truer of the two, and
+        # `_load` preserves it, so deriving a second one from the order line
+        # would be a duplicate `_id` -- which is exactly how it announced
+        # itself.
+        already_real = {str(document["_id"]) for document in real.products}
+        real_products = [
+            product
+            for product in _mine_real_products(renamed_orders)
+            if product.product_id not in already_real
+        ]
+        reserved_products = {product.product_id for product in real_products} | already_real
+        reserved_skus = {product.sku for product in real_products}
+        generated_products = _generate_products(
+            max(0, counts["products"] - len(reserved_products)),
+            reserved_products | reserved_skus,
+            rng,
+        )
+        product_documents = [
+            _hydrate_real_product(product, generated_at) for product in real_products
+        ] + [_product_document(product, generated_at) for product in generated_products]
+        catalogue = [*real_products, *generated_products]
+        if not generated_products:
+            raise SystemExit(
+                "counts.products is at or below the number of real catalogue numbers "
+                f"({len(reserved_products)}); raise it in config/seed/generation.yaml"
+            )
+
+        reserved_customer_ids = {
+            str(((order.get("salesHdr") or {}).get("salesHdrData") or {}).get("custId"))
+            for order in renamed_orders
+        }
+        reserved_party_ids = {str(document.get("partyId")) for document in renamed_customers}
+        customer_documents, accounts = _generate_customers(
+            max(0, counts["customers"] - len(renamed_customers)),
+            directory,
+            reserved_customer_ids,
+            reserved_party_ids,
+            rng,
+            generated_at,
+        )
+
+        numbers = OrderNumbers(
+            str((order.get("salesHdrEventData") or {}).get("orderId") or "")
+            for order in renamed_orders
+        )
+        order_documents = _generate_orders(
+            max(0, counts["orders"] - len(renamed_orders)),
+            accounts,
+            catalogue,
+            numbers,
+            earliest,
+            span_days,
+            shipped_fraction,
+            rng,
+        )
+        shipment_documents = _generate_shipments(order_documents, rng)
+        warehouse_documents = _generate_warehouses(order_documents, rng, generated_at)
+        if not shipment_documents:
+            # A corpus with orders but no shipments is silent otherwise --
+            # fulfilment simply reports every return as awaiting handoff.
+            raise SystemExit("no shipments generated; check shipped_fraction and counts.orders")
+
+        print("\nverifying every declared path resolves against a generated document...")
+        _verify(
+            schema,
+            order_documents[0],
+            customer_documents[0],
+            next(document for document in product_documents if document.get("__seed")),
+            shipment_documents[0],
+        )
+        print("all declared paths resolve.\n")
+
+        await _load(
+            database[names["products"]],
+            product_documents,
+            real.identifiers("products"),
+            "lkpSearchProduct",
+        )
+        await _load(
+            database[names["customers"]],
+            customer_documents,
+            real.identifiers("customers"),
+            "customerOutboundCDM",
+        )
+        await _load(
+            database[names["orders"]], order_documents, real.identifiers("orders"), "salesInv"
+        )
+        await _load(
+            database[names["shipments"]],
+            shipment_documents,
+            real.identifiers("shipments"),
+            "shipmentInfo",
+        )
+        await _load(database[names["warehouses"]], warehouse_documents, set(), "warehouseMaster")
+
+        await _replace_real(database[names["orders"]], renamed_orders)
+        await _replace_real(database[names["customers"]], renamed_customers)
+        print("\nreal documents rewritten with person names, everything else preserved.")
+
+        lines = sum(len(document["salesLines"]) for document in order_documents)
+        finishes = {
+            product.colour_finish for product in catalogue if product.colour_finish is not None
+        }
+        print(
+            f"\norder lines generated  {lines}\n"
+            f"distinct SKUs          {len({product.sku for product in catalogue})}\n"
+            f"distinct finishes      {len(finishes)} {sorted(finishes)}\n"
+            f"products with a finish "
+            f"{sum(1 for product in catalogue if product.colour_finish)}\n"
+            f"customer accounts      {len(accounts)}"
+        )
+        print("\nNext: python backend/scripts/build_knowledge_graph.py 20000")
+    finally:
+        await client.close()
 
 
 def main() -> None:

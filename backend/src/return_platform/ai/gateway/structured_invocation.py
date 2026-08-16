@@ -20,13 +20,23 @@ response schema travels in the prompt as well as in the provider's native field,
 the response is parsed into a caller-supplied pydantic model, and exhaustion
 raises rather than returning a fabricated result. Callers own their payload and
 their result type; adding a third caller should not require editing this file.
+
+**A rejected parse is diagnosed, not merely retried.** Failing the schema parse
+used to move the loop to the next route with a byte-identical payload, so the
+next route repeated the mistake knowing nothing about the first. That is a
+tolerable waste when the next route is another model and a real defect when it is
+`MANUAL`: the "next route" is then a person, holding a request that says nothing
+about the answer they are being asked to improve on. `describe_parse_failure`
+turns the parse exception into the same `validationError` field the Order Agent's
+guard-rejection path already fills, so both kinds of "that answer was not usable"
+reach the operator console the same way.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
@@ -58,11 +68,29 @@ from return_platform.ai.safety.inspection import inspect_input
 from return_platform.configuration.settings import Settings
 
 __all__ = [
+    "VALIDATION_ERROR_KEY",
     "StructuredInvocation",
     "StructuredInvocationUnavailable",
     "StructuredOutputInvoker",
+    "describe_parse_failure",
     "parse_structured_response",
 ]
+
+#: The payload field that carries "the last answer was rejected, and here is
+#: why". Not invented here: it is already how the Order Agent's correction modes
+#: report a *guard* rejection (`model_gateway._invoke` fills it from
+#: `GuardRejected`), it is already declared in `ORDER_AGENT_REASONING_V1`'s
+#: `allowedInputKeys`, and the packaged prompt already instructs the model to
+#: "repair only the validation error supplied". A parse failure is the same kind
+#: of news arriving through a different door, so it uses the same door.
+VALIDATION_ERROR_KEY = "validationError"
+
+#: A diagnosis longer than this is truncated, matching the ceiling
+#: `model_gateway` applies to a guard rejection. A pydantic `ValidationError`
+#: over a large schema can run to thousands of characters, and a payload field
+#: that can grow without bound is a payload field that can push the real request
+#: past the model's input limit.
+_MAX_DIAGNOSIS_CHARS = 2_000
 
 
 class StructuredInvocationUnavailable(RuntimeError):
@@ -342,6 +370,38 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
     def dispatcher(self) -> FinalDispatcher:
         return self._dispatcher
 
+    def _diagnosis_hook(
+        self, task: TaskConfiguration
+    ) -> Callable[[Mapping[str, Any], BaseException], Mapping[str, Any]] | None:
+        """How a rejected response is described to whoever answers next.
+
+        **Gated on the task's own declared input contract.** `allowedInputKeys`
+        is what a task says it accepts, and `service.py` enforces it verbatim on
+        the decision path -- so a task that does not declare
+        `validationError` gets no hook at all rather than a key nobody wrote a
+        prompt for. Today that means the Order Agent carries a diagnosis and the
+        Graph Analyzer does not; giving the analyzer one is a configuration and
+        prompt change, not a change here.
+
+        Returning `None` rather than a no-op callable so that "this task cannot
+        carry a diagnosis" is visible at the boundary as an absent hook, and so
+        a dispatch for such a task does exactly what it did before -- no extra
+        call, no rebuilt payload, no second redaction pass.
+        """
+        if VALIDATION_ERROR_KEY not in task.allowedInputKeys:
+            return None
+
+        def diagnose(payload: Mapping[str, Any], error: BaseException) -> Mapping[str, Any]:
+            # A *replacement* payload rather than a mutation: `FinalDispatcher`
+            # hands over the payload the failed attempt sent, and the next
+            # attempt must differ from it in exactly this one field. Overwriting
+            # rather than appending because the field answers one question --
+            # "what was wrong with the last answer" -- and the last answer is
+            # the only one still worth correcting.
+            return {**payload, VALIDATION_ERROR_KEY: describe_parse_failure(error)}
+
+        return diagnose
+
     async def invoke(
         self,
         *,
@@ -424,6 +484,7 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
             temperature=0.0,
             response_schema=self._response_model.model_json_schema(),
             allow_tier_escalation=task.allowTierEscalation,
+            on_response_invalid=self._diagnosis_hook(task),
         )
 
         if not safety.allowed:
@@ -470,13 +531,44 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
                 f"failures={summary or 'none'}"
             )
 
+        # The route names what was *called*; the response names what the caller
+        # is actually holding. They differ in exactly one case -- a human edited
+        # the reply at the response interception point -- and in that case
+        # reporting the route would hand a reasoning loop a person's words under
+        # a model's name, which is the misattribution `HUMAN_EDITED` exists to
+        # prevent. For every other response the two agree, so this is not a
+        # behaviour change anywhere else.
+        edited = outcome.response.human_edit is not None
         return StructuredInvocation(
             value=outcome.value,
-            provider=outcome.route.provider_name,
-            model=outcome.route.model,
+            provider=outcome.response.provider if edited else outcome.route.provider_name,
+            model=outcome.response.model if edited else outcome.route.model,
             prompt_tokens=max(0, int(outcome.response.input_tokens or 0)),
             completion_tokens=max(0, int(outcome.response.output_tokens or 0)),
         )
+
+
+def describe_parse_failure(error: BaseException) -> str:
+    """The real reason a response was rejected, in one line, for a human.
+
+    **Nothing here is synthesised.** It is the exception type and the exception's
+    own message, truncated -- a `json.JSONDecodeError` naming the character
+    position where the JSON stopped being JSON, or a pydantic `ValidationError`
+    naming the field path, the type expected and what arrived instead. An
+    invented explanation of what the model "probably meant" would be worse than
+    the empty string this replaces: an operator would act on it.
+
+    The type name is kept because it is the difference an operator most needs and
+    cannot get from the message alone -- "the reply was not JSON at all" and "the
+    reply was JSON that does not match the schema" call for different corrections
+    and read almost identically in the message text.
+    """
+    detail = str(error).strip()
+    label = type(error).__name__
+    described = f"{label}: {detail}" if detail else label
+    if len(described) <= _MAX_DIAGNOSIS_CHARS:
+        return described
+    return f"{described[: _MAX_DIAGNOSIS_CHARS - 1]}…"
 
 
 def parse_structured_response[ResponseT: BaseModel](text: str, model: type[ResponseT]) -> ResponseT:

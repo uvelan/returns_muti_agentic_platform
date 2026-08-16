@@ -38,6 +38,21 @@ else
   fi
   POETRY="$ROOT/.tmp/poetry/bin/poetry"
 fi
+# Put the virtualenv at `backend/.venv`, and record the choice locally so every
+# later `poetry` invocation agrees.
+#
+# Poetry's default is a venv in its own cache directory, keyed by a hash of the
+# project path. Nothing in this repository can find that. Meanwhile
+# `run_backend_host.sh`, `run_worker_host.sh`, `prepare_runtime_configuration.sh`
+# and `reset_all.sh` all fall back to `backend/.venv` when `poetry` is not on
+# PATH -- and it is not on PATH, because the branch above deliberately installs
+# it into `.tmp/poetry`. On a genuinely clean machine that combination meant
+# bootstrap reported success and then nothing could start, with
+# "No backend Python environment" as the only clue.
+#
+# `--local` writes `backend/poetry.toml`, so phase 02's `poetry sync` and
+# `redeploy_app.sh --install-dependencies` resolve to the same environment.
+"$POETRY" config --local virtualenvs.in-project true
 "$POETRY" env use python3.13
 # `poetry sync`, not `poetry install --sync`: the flag is deprecated in
 # Poetry 2.x. Sync rather than install so a dependency removed from the

@@ -12,11 +12,31 @@ import "./index.css";
 
 import { APIError } from "./api/client";
 
+/**
+ * Reads recover from an outage; turns do not replay themselves.
+ *
+ * `refetchOnReconnect` is on and `refetchOnWindowFocus` stays off, and the
+ * asymmetry is deliberate. The Copilot is a screen an associate leaves open on
+ * a counter for an hour while they walk to the back of the shop; refetching
+ * every time the window regains focus would re-read every case on the platform
+ * all day for nothing. Losing the network is different -- it means the client
+ * has definitely missed whatever happened in the gap, which for a return
+ * mid-flight is exactly the RMA or the label it was waiting for.
+ *
+ * **Only reads refetch.** Mutations retry `false` here and are never refetched
+ * by either trigger, so a browser reconnecting cannot re-issue an agent turn:
+ * it would spend a model call and append a turn to the transcript that nobody
+ * typed, and on a confirmation turn it would be a second attempt at a write.
+ *
+ * The retry stays bounded, and 4xx is not retried at all: a refusal the backend
+ * has already explained does not become a different refusal on a second ask.
+ */
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,
       refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
       retry: (failureCount, error) => {
         if (error instanceof APIError && error.status >= 400 && error.status < 500) {
           return false;

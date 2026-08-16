@@ -51,6 +51,10 @@ def create_return_workflow_worker(
             case_activities.record_case_status,
             case_activities.resolve_business_deadline,
             case_activities.request_bay_assignment,
+            # The policy gate (3A.7). This list having exactly eight entries,
+            # none of which evaluated a rule set, was the audit's proof that no
+            # return on the case path was ever checked against a policy.
+            case_activities.evaluate_case_eligibility,
             case_activities.draft_support_request,
             case_activities.open_support_work_item,
             case_activities.send_support_reminder,

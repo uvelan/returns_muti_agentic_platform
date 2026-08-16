@@ -10,12 +10,24 @@ workflow/activity/coordinator/graph stack behind it.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, cast
+import logging
+from collections.abc import Collection
+from typing import Annotated, Any, Final, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from temporalio.client import Client
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
+from return_platform.api.dependency_probes import (
+    CONFIGURATION_HEALTH_ATTRIBUTE,
+    resolve_known_agent_policy_ids,
+)
+from return_platform.configuration.return_configuration import (
+    ConfigurationHealthFailure,
+    LoadedReturnConfiguration,
+    evaluate_configuration_health,
+)
+from return_platform.configuration.settings import Settings
 from return_platform.dynamic_knowledge.order_agent.contracts import (
     AgentTurnRequest,
     AgentTurnResult,
@@ -26,6 +38,7 @@ from return_platform.dynamic_knowledge.order_agent.conversation_repository impor
     ConversationSummary,
     ConversationTranscript,
 )
+from return_platform.resources import RuntimeResources
 from return_platform.security.principal import Principal
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 from return_platform.workflows.order_discovery_workflow import (
@@ -35,6 +48,8 @@ from return_platform.workflows.order_discovery_workflow import (
     SubmitOrderDiscoveryTurnCommand,
 )
 
+logger = logging.getLogger("return_platform.order_agent_api")
+
 router = APIRouter(prefix="/api/v2/order-agent", tags=["Order Agent"])
 
 _HTTP_STATUS_BY_CODE: dict[str, int] = {
@@ -42,6 +57,18 @@ _HTTP_STATUS_BY_CODE: dict[str, int] = {
     "CONVERSATION_VERSION_CONFLICT": status.HTTP_409_CONFLICT,
     "ORDER_AGENT_QUERY_BUDGET_EXCEEDED": status.HTTP_422_UNPROCESSABLE_CONTENT,
 }
+
+#: The one outcome code that can mean either "you named an agent that is not in
+#: scope" or "this deployment's Copilot mapping does not resolve". The turn route
+#: separates them below; everything else in `_HTTP_STATUS_BY_CODE` means exactly
+#: one thing.
+_UNRESOLVED_AGENT_CODE: Final = "ORDER_AGENT_OUT_OF_SCOPE"
+
+#: Which configuration check answers "is the Copilot's agent mapping usable?".
+#: `evaluate_configuration_health` runs the eligibility-policy check alongside
+#: it, and an unpublished eligibility policy is not a reason to refuse a
+#: discovery turn.
+_COPILOT_BINDING_CHECK: Final = "COPILOT_AGENT_BINDING"
 
 
 class DynamicOrderAgentRuntime:
@@ -186,6 +213,64 @@ def _meta(request: Request) -> ResponseMeta:
     return ResponseMeta(request_id=correlation_id if isinstance(correlation_id, str) else "unknown")
 
 
+def _binding_failure(
+    failures: Collection[ConfigurationHealthFailure],
+) -> ConfigurationHealthFailure | None:
+    return next((item for item in failures if item.check == _COPILOT_BINDING_CHECK), None)
+
+
+async def _copilot_agent_binding_failure(request: Request) -> ConfigurationHealthFailure | None:
+    """Is *this deployment's* Copilot mapping why the agent did not resolve?
+
+    Plan sect. 5.4 asks the turn route to answer `503
+    COPILOT_AGENT_CONFIGURATION_INVALID` for an unset or dangling
+    `copilot.order_discovery_agent_id`, and that is a different fact from the
+    one `ORDER_AGENT_OUT_OF_SCOPE` states. 422 says the caller named an agent
+    that is legitimately not in scope -- a client error, and the caller's to
+    fix. 503 says the deployment is misconfigured -- nobody's request is
+    wrong, no retry helps, and an operator has to publish a mapping. Both used
+    to leave here as 422, which is precisely what let the original P0 read as a
+    client bug for as long as it did: every turn 422'd because the shipped
+    mapping named a policy the active schema did not publish, and the status
+    code said the associate had asked for the wrong thing.
+
+    Evaluated on the failure path only. It resolves the active schema, which is
+    a Mongo read plus a YAML parse, and a turn that succeeded has already
+    proved the mapping resolves.
+
+    `evaluate_configuration_health` rather than a fourth resolver: it is the one
+    place that decides what configuration health means, and taking the message
+    and the wire code from it is what keeps this route, `/api/return-history`
+    and `/health/ready` reporting one fact rather than three spellings of it.
+    Falls back to the last recorded evaluation when the schema cannot be
+    resolved at all, so an unreachable release store degrades to the startup
+    gate's answer instead of turning a 422 into a 500.
+    """
+    loaded = getattr(request.app.state, "return_configuration", None)
+    resources = getattr(request.app.state, "resources", None)
+    settings = getattr(request.app.state, "settings", None)
+    if (
+        isinstance(loaded, LoadedReturnConfiguration)
+        and isinstance(resources, RuntimeResources)
+        and isinstance(settings, Settings)
+    ):
+        try:
+            known_agent_policy_ids = await resolve_known_agent_policy_ids(resources, settings)
+        except Exception as exc:  # noqa: BLE001 - degrade to the recorded answer
+            logger.warning(
+                "copilot_agent_binding_check_unresolved",
+                extra={"error_type": type(exc).__name__},
+            )
+        else:
+            return _binding_failure(
+                evaluate_configuration_health(loaded.configuration, known_agent_policy_ids)
+            )
+    recorded: Collection[ConfigurationHealthFailure] = getattr(
+        request.app.state, CONFIGURATION_HEALTH_ATTRIBUTE, ()
+    )
+    return _binding_failure(recorded)
+
+
 @router.post("/conversations/{conversation_id}/turns", response_model=APIResponse[AgentTurnResult])
 async def process_turn(
     conversation_id: str,
@@ -262,6 +347,30 @@ async def process_turn(
         ) from exc
 
     if outcome.error is not None:
+        if outcome.error.code == _UNRESOLVED_AGENT_CODE:
+            # An agent that did not resolve is two different failures wearing one
+            # code. Ask the configuration which one this is before answering.
+            binding_failure = await _copilot_agent_binding_failure(request)
+            if binding_failure is not None:
+                logger.error(
+                    "copilot_agent_configuration_invalid",
+                    extra={
+                        "check": binding_failure.check,
+                        "code": binding_failure.code,
+                        "requested_agent_id": payload.agent_id,
+                    },
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail={
+                        "code": binding_failure.code,
+                        "message": binding_failure.message,
+                        # Not retryable by the caller. `/api/return-history`
+                        # says the same for the same code: repeating the request
+                        # cannot help until an operator publishes a mapping.
+                        "retryable": False,
+                    },
+                )
         http_status = _HTTP_STATUS_BY_CODE.get(
             outcome.error.code,
             status.HTTP_503_SERVICE_UNAVAILABLE

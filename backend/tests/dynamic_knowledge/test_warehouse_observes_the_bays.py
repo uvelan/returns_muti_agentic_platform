@@ -335,8 +335,8 @@ async def test_both_reads_are_compiled_from_the_schema_and_anchored_on_the_wareh
     await _observations(descriptor, reader).observe(WAREHOUSE)
 
     assert len(reader.cyphers) == 2
-    assert "MATCH (n0:`Warehouse`)" in reader.cyphers[0]
-    assert "MATCH (n0:`Bay`)" in reader.cyphers[1]
+    assert "MATCH (n0:`Warehouse` {graph_generation_id: $graph_generation_id})" in reader.cyphers[0]
+    assert "MATCH (n0:`Bay` {graph_generation_id: $graph_generation_id})" in reader.cyphers[1]
     for cypher, parameters in zip(reader.cyphers, reader.parameters, strict=True):
         assert "n0.`warehouse_id` = $p0" in cypher
         assert parameters["p0"] == WAREHOUSE

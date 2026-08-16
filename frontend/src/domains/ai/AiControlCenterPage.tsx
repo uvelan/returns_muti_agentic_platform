@@ -4,6 +4,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   aiControlCenterApi,
   type AIUsageAttemptView,
+  type InterceptionPoint,
+  type InterceptionRequest,
   type InterceptionRow,
 } from "../../api/aiControlCenter";
 import { useCapabilities } from "../../hooks/capabilityContext";
@@ -17,6 +19,14 @@ import { useDomainSection } from "../useDomainSection";
  * request, and answer it -- so the manual response editor is real. Claim,
  * Generate Candidate and Release still have no route and are still named as
  * unavailable rather than rendered as buttons that would 404.
+ *
+ * **Both interception points share one queue.** A `REQUEST` hold is a call that
+ * has not been made; a `RESPONSE` hold is a reply that has come back and is
+ * waiting to be accepted, edited or rejected. Two queues would mean two screens
+ * to remember to open, so the rows are tagged rather than split, and every
+ * label -- the badge, the buttons, the reading of each status -- follows the
+ * point. Backed by the same three routes for both, because the operator's three
+ * actions are the same three actions.
  *
  * **Replay and Compare are wired (W4.12).** Both routes had shipped and neither
  * was reachable from here, so "was that a model problem or a prompt problem?"
@@ -380,18 +390,66 @@ function Field({ label, value, mono }: { label: string; value: string; mono?: bo
   );
 }
 
+/**
+ * The two hold points, as an operator reads them.
+ *
+ * The backend deliberately reuses one set of statuses for both points -- one
+ * state machine rather than two wearing one enum -- so the *labels* are where
+ * the difference has to appear. `ANSWERED` on a request means a human wrote the
+ * answer; on a response it means a human rewrote the model's. Showing the raw
+ * status for both would make an edit indistinguishable from a substitution on
+ * the one screen where that distinction is the entire point.
+ */
+const POINT_LABELS: Record<
+  InterceptionPoint,
+  {
+    readonly badge: string;
+    readonly open: string;
+    readonly accept: string;
+    readonly reject: string;
+    readonly submit: string;
+    readonly outcomes: Readonly<Record<string, string>>;
+  }
+> = {
+  REQUEST: {
+    badge: "Request",
+    open: "Respond manually",
+    accept: "Allow model",
+    reject: "Cancel",
+    submit: "Submit answer",
+    outcomes: { ANSWERED: "Answered by human", ALLOWED: "Allowed", CANCELLED: "Cancelled" },
+  },
+  RESPONSE: {
+    badge: "Response",
+    open: "Review response",
+    accept: "Accept unchanged",
+    reject: "Reject",
+    submit: "Submit edit",
+    outcomes: { ANSWERED: "Edited by human", ALLOWED: "Accepted", CANCELLED: "Rejected" },
+  },
+};
+
+function labelsFor(point: InterceptionPoint | undefined) {
+  return POINT_LABELS[point === "RESPONSE" ? "RESPONSE" : "REQUEST"];
+}
+
 function InterceptionsTab({ canRead }: { canRead: boolean }) {
   const { can } = useCapabilities();
   const canAct = can("ai.interception.act");
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [open, setOpen] = useState<InterceptionRow | null>(null);
   const interceptions = useQuery({
     queryKey: ["ai", "interceptions"],
     queryFn: aiControlCenterApi.listInterceptions,
     enabled: canRead,
   });
-  const onOpen = setOpenId;
   const cancel = useMutation({
     mutationFn: (interceptionId: string) => aiControlCenterApi.cancelInterception(interceptionId),
+    onSuccess: async () => {
+      await interceptions.refetch();
+    },
+  });
+  const allow = useMutation({
+    mutationFn: (interceptionId: string) => aiControlCenterApi.allowInterception(interceptionId),
     onSuccess: async () => {
       await interceptions.refetch();
     },
@@ -412,10 +470,12 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
   const rows: readonly InterceptionRow[] = interceptions.data ?? [];
   const byStatus = (status: string) =>
     rows.filter((row) => row.status.toUpperCase() === status).length;
+  const byPoint = (point: InterceptionPoint) =>
+    rows.filter((row) => labelsFor(row.point) === POINT_LABELS[point]).length;
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         {/* The four statuses `InterceptionStatus` actually has. This counted
             CLAIMED and RESPONDED, which the backend never emits -- both tiles
             read zero in every deployment, which is indistinguishable from a
@@ -424,6 +484,12 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
         <Stat label="Answered" value={byStatus("ANSWERED")} />
         <Stat label="Cancelled" value={byStatus("CANCELLED")} />
         <Stat label="Expired" value={byStatus("EXPIRED")} />
+        {/* One queue, two jobs. The split matters operationally: a held request
+            is waiting on somebody to write an answer, a held response is
+            waiting on somebody to read one, and the second kind is blocking a
+            live coroutine while it waits. */}
+        <Stat label="Held requests" value={byPoint("REQUEST")} />
+        <Stat label="Held responses" value={byPoint("RESPONSE")} />
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -431,39 +497,75 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
           <thead className="text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="p-2">Interception</th>
+              <th className="p-2">Point</th>
               <th className="p-2">Status</th>
               <th className="p-2">Task</th>
               <th className="p-2">Expires</th>
-              <th className="p-2">Answered by</th>
+              <th className="p-2">Actioned by</th>
               <th className="p-2" />
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="p-3 text-slate-600">No interceptions.</td>
+                <td colSpan={7} className="p-3 text-slate-600">No interceptions.</td>
               </tr>
             ) : null}
-            {rows.map((row) => (
+            {rows.map((row) => {
+              const labels = labelsFor(row.point);
+              const status = row.status.toUpperCase();
+              return (
               <tr key={row.interceptionId} className="border-t border-slate-200">
                 <td className="p-2 font-mono text-xs">{row.interceptionId}</td>
-                <td className="p-2">{row.status}</td>
+                <td className="p-2">
+                  <span
+                    className={
+                      labels === POINT_LABELS.RESPONSE
+                        ? "rounded bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-800"
+                        : "rounded bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800"
+                    }
+                  >
+                    {labels.badge}
+                  </span>
+                </td>
+                {/* The raw status, plus what it means at this point. An
+                    `ANSWERED` request is a substitution and an `ANSWERED`
+                    response is an edit, and the queue is where somebody has to
+                    be able to tell those apart. */}
+                <td className="p-2">
+                  {row.status}
+                  {labels.outcomes[status] ? (
+                    <span className="ml-1 text-xs text-slate-500">
+                      ({labels.outcomes[status]})
+                    </span>
+                  ) : null}
+                </td>
                 <td className="p-2">{row.taskId}</td>
                 <td className="p-2">{row.expiresAt}</td>
                 {/* A human answer must never read as a model's. `answeredBy` is
                     the operator's own subject, recorded by the backend. */}
                 <td className="p-2">{row.answeredBy ?? "-"}</td>
                 <td className="p-2">
-                  {row.status.toUpperCase() === "PENDING" && canAct ? (
+                  {status === "PENDING" && canAct ? (
                     <div className="flex gap-1">
                       <button
                         type="button"
                         className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
                         onClick={() => {
-                          onOpen(row.interceptionId);
+                          setOpen(row);
                         }}
                       >
-                        Respond manually
+                        {labels.open}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={allow.isPending}
+                        className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-40"
+                        onClick={() => {
+                          allow.mutate(row.interceptionId);
+                        }}
+                      >
+                        {labels.accept}
                       </button>
                       <button
                         type="button"
@@ -473,25 +575,27 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
                           cancel.mutate(row.interceptionId);
                         }}
                       >
-                        Cancel
+                        {labels.reject}
                       </button>
                     </div>
                   ) : null}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
 
-      {openId !== null ? (
+      {open !== null ? (
         <ManualResponder
-          interceptionId={openId}
+          key={open.interceptionId}
+          row={open}
           onClose={() => {
-            setOpenId(null);
+            setOpen(null);
           }}
           onAnswered={() => {
-            setOpenId(null);
+            setOpen(null);
             void interceptions.refetch();
           }}
         />
@@ -502,12 +606,21 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
           {cancel.error.message}
         </p>
       ) : null}
+      {allow.error ? (
+        <p role="alert" className="text-sm text-red-700">
+          {allow.error.message}
+        </p>
+      ) : null}
 
       <p className="text-sm text-slate-500">
-        Respond Manually and Cancel both go through the operator API. Answering or
-        cancelling transitions the interception, and the resume bridge signals the waiting
-        workflow separately, so the queue may show <code>ANSWERED</code> a moment before
-        the work resumes.
+        All three actions go through the operator API. A held <strong>request</strong>{" "}
+        transitions and the resume bridge signals the waiting workflow separately, so the
+        queue may show <code>ANSWERED</code> a moment before the work resumes. A held{" "}
+        <strong>response</strong> has a caller blocked on it right now: the moment you
+        decide, that caller continues. An edit is not trusted more than the model&apos;s
+        own reply -- it goes through the same schema parse and the same output safety
+        check, and a malformed edit fails validation exactly as a malformed completion
+        does.
       </p>
       <p className="text-sm text-slate-500">
         Claim, Generate Candidate, Replay and Release are still not offered.{" "}
@@ -609,26 +722,68 @@ function RoutesTab() {
 
 
 /**
- * Unseal one held request and answer it.
+ * The model's reply as it came back, if this hold has one.
  *
- * The prompt is fetched only when this opens, never with the queue: it is
+ * Read defensively rather than typed: the sealed payload's request half varies
+ * by task, and a hold written before response interception existed has no
+ * `modelResponse` at all. A missing or malformed one yields `null`, which the
+ * caller renders as "nothing to pre-fill" instead of crashing the one screen an
+ * operator has for unblocking a stuck caller.
+ */
+function modelResponseOf(payload: InterceptionRequest | undefined): {
+  readonly text: string;
+  readonly provider: string;
+  readonly model: string;
+} | null {
+  const raw: unknown = payload?.modelResponse;
+  if (typeof raw !== "object" || raw === null) return null;
+  const record = raw as Record<string, unknown>;
+  if (typeof record.text !== "string") return null;
+  return {
+    text: record.text,
+    provider: typeof record.provider === "string" ? record.provider : "unknown",
+    model: typeof record.model === "string" ? record.model : "unknown",
+  };
+}
+
+/**
+ * Unseal one held item and supply the text a caller will receive.
+ *
+ * The payload is fetched only when this opens, never with the queue: it is
  * sealed at rest because it can carry rows read out of a customer's database,
- * and decrypting every pending prompt to render a list would defeat that.
+ * and decrypting every pending item to render a list would defeat that. A held
+ * *response* is sealed for the same reason -- an answer summarising those rows
+ * carries them too.
  *
- * Submitting is disabled while the request is still loading. Answering a prompt
+ * **The pre-fill is the whole ergonomic difference between the two points.** At
+ * `REQUEST` an operator writes an answer from nothing. At `RESPONSE` they start
+ * from what the model actually said, because the job is to change it, not to
+ * retype it -- and an editor that made you retype it would produce edits that
+ * are rewrites, which is a different and worse provenance story.
+ *
+ * Submitting is disabled while the payload is still loading. Answering a prompt
  * you have not seen is exactly the failure a manual path exists to prevent, and
  * the backend cannot tell the difference.
  */
 function ManualResponder({
-  interceptionId,
+  row,
   onClose,
   onAnswered,
 }: {
-  interceptionId: string;
+  row: InterceptionRow;
   onClose: () => void;
   onAnswered: () => void;
 }) {
-  const [text, setText] = useState("");
+  const interceptionId = row.interceptionId;
+  const labels = labelsFor(row.point);
+  const isResponse = labels === POINT_LABELS.RESPONSE;
+  // The draft is what the operator has typed, or `null` for "has not typed".
+  // The pre-fill is then *derived* rather than copied into state by an effect:
+  // copying would mean deciding when to stop copying, and the obvious answers
+  // (on first arrival, on every settle) either discard a slow edit or fight the
+  // query cache. Nullable draft has neither problem -- before you type you see
+  // the model's reply, and the moment you type your text wins.
+  const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -636,6 +791,9 @@ function ManualResponder({
     queryKey: ["ai", "interception", interceptionId, "request"],
     queryFn: () => aiControlCenterApi.readInterceptionRequest(interceptionId),
   });
+  const original = modelResponseOf(request.data);
+  const text = draft ?? original?.text ?? "";
+  const setText = setDraft;
 
   const submit = async () => {
     setSubmitting(true);
@@ -657,7 +815,8 @@ function ManualResponder({
     <section className="flex flex-col gap-3 rounded-lg border border-slate-300 bg-white p-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold">
-          Respond to <code className="font-mono text-xs">{interceptionId}</code>
+          {isResponse ? "Review" : "Respond to"}{" "}
+          <code className="font-mono text-xs">{interceptionId}</code>
         </h3>
         <button type="button" className="text-xs text-slate-500 hover:underline" onClick={onClose}>
           Close
@@ -675,14 +834,18 @@ function ManualResponder({
       ) : null}
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="font-medium">Your answer</span>
+        <span className="font-medium">{isResponse ? "The response" : "Your answer"}</span>
         <textarea
           className="min-h-24 rounded border border-slate-300 p-2 text-sm"
           value={text}
           onChange={(event) => {
             setText(event.target.value);
           }}
-          placeholder="Answer as the model would have, in the shape the task expects."
+          placeholder={
+            isResponse
+              ? "Edit the model's reply. Leaving it unchanged still records it as edited -- use Accept unchanged instead."
+              : "Answer as the model would have, in the shape the task expects."
+          }
         />
       </label>
 
@@ -695,10 +858,21 @@ function ManualResponder({
           disabled={submitting || text.trim().length === 0 || !request.data}
           onClick={() => void submit()}
         >
-          {submitting ? "Submitting..." : "Submit answer"}
+          {submitting ? "Submitting..." : labels.submit}
         </button>
         <span className="text-xs text-slate-500">
-          Recorded as your own subject, never as a model response.
+          {isResponse && original !== null ? (
+            <>
+              Delivered as <code>HUMAN_EDITED</code>, recording that{" "}
+              <code>
+                {original.provider}/{original.model}
+              </code>{" "}
+              produced the substance and that you changed it. Never as the model, and never
+              as a plain manual answer.
+            </>
+          ) : (
+            "Recorded as your own subject, never as a model response."
+          )}
         </span>
       </div>
     </section>

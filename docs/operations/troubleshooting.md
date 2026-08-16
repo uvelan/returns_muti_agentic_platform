@@ -139,13 +139,36 @@ Wall-clock in this suite is dominated by **interpreter startup and import I/O on
 
 ### Exercising the AI path without API keys
 
-`ManualFileProvider` writes the request to `.manual_llm/requests/` and waits for a
-reply in `.manual_llm/responses/`. `ORDER_AGENT_REASONING_V1` already lists `MANUAL`
-in `allowedProviders`.
+`ORDER_AGENT_REASONING_V1` lists `MANUAL` in `allowedProviders` — but that alone is
+not enough, and this is the trap. **`MANUAL` must also be in
+`PLATFORM_AI_PROVIDER_ORDER`**, or no MANUAL route is ever *built* and a keyless turn
+dies with `attempts=0 last_error=PROVIDER_UNAVAILABLE` — nothing tried, because
+nothing was constructible. Put it last, so a deployment holding a real credential
+never reaches a human:
 
-Its directory is **not configurable** — always `.manual_llm` relative to CWD. Patch
-the module global in a test. See `tests/test_manual_provider_reasoning_e2e.py` and
-`backend/scripts/manual_llm_responder.py`.
+```bash
+PLATFORM_AI_PROVIDER_ORDER=GOOGLE,NVIDIA,SIMULATOR,MANUAL
+```
+
+Where the human answers is `PLATFORM_AI_MANUAL_HANDOFF`:
+
+* **`UI`** — the durable interception store, answered in the AI Control Center's
+  interceptions tab (`GET /api/ai/interceptions`, then `…/{id}/request` to unseal and
+  `…/{id}/answer` to paste the JSON). Requires an interception store; refused outright
+  rather than downgraded if the process has none.
+* **`FILE`** — `ManualFileProvider` writes the request to `.manual_llm/requests/` and
+  waits for a reply in `.manual_llm/responses/`. The directory is **not configurable**
+  — always `.manual_llm` relative to CWD. Patch the module global in a test. See
+  `tests/test_manual_provider_reasoning_e2e.py` and
+  `backend/scripts/manual_llm_responder.py`.
+* **`AUTO`** (default) — `UI` when the process has a store, `FILE` otherwise. The
+  order-discovery worker always has one.
+
+Raise `PLATFORM_AI_TIMEOUT_SECONDS` (the repository ships 280) — it, not the
+provider's own 600 s hold, bounds how long the operator actually has.
+
+Full walkthrough and the record/replay alternative:
+`docs/RETURN_COPILOT_EXECUTION_STATE.md` → "Running the reasoning path".
 
 ### Contract drift
 

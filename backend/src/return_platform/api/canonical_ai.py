@@ -158,7 +158,14 @@ async def list_interceptions(
     request: Request,
     _actor_id: str = Depends(require_read_roles),
 ) -> APIResponse[list[dict[str, Any]]]:
-    """Requests currently held waiting on a human.
+    """Work currently held waiting on a human -- both kinds, in one queue.
+
+    `point` says which: `REQUEST` is a call that has not been made and that a
+    human may answer in the model's place; `RESPONSE` is a reply that has come
+    back and that a human may accept, edit or reject. One queue rather than two
+    endpoints because an operator's question is "what is waiting on me", not
+    "what is waiting on me of each kind", and a second list is a second thing to
+    forget to open.
 
     **Identifiers and status only.** The held prompt is sealed at rest and is
     deliberately not on this surface: an operator listing the queue does not
@@ -181,6 +188,7 @@ async def list_interceptions(
                 "interceptionId": record.interception_id,
                 "taskId": record.task_id,
                 "status": record.status.value,
+                "point": record.point.value,
                 "createdAt": record.created_at.isoformat(),
                 "expiresAt": record.expires_at.isoformat(),
                 "answeredBy": record.answered_by,
@@ -231,7 +239,13 @@ async def read_interception_request(
     request: Request,
     _actor_id: str = Depends(require_capability(capabilities.AI_INTERCEPTION_ACT)),
 ) -> APIResponse[dict[str, Any]]:
-    """The held prompt, unsealed.
+    """The held prompt, unsealed -- and, at the response point, the reply too.
+
+    A `RESPONSE` hold seals the model's answer under `modelResponse` alongside
+    the request that produced it, because a reviewer cannot judge an answer
+    without the question. That is the whole ergonomic difference between the two
+    points: at `REQUEST` an operator writes from nothing, at `RESPONSE` they
+    start from what the model said.
 
     Gated on `ai.interception.act` rather than `ai.interception.read`, which is
     the narrower of the two on purpose. The payload can contain block 5
@@ -256,7 +270,21 @@ async def answer_interception(
     request: Request,
     actor_id: str = Depends(require_capability(capabilities.AI_INTERCEPTION_ACT)),
 ) -> APIResponse[dict[str, Any]]:
-    """Record a human answer to a held request.
+    """Record a human answer to a held request, or a human edit of a held response.
+
+    One endpoint for both, because the act is the same act: a person is
+    supplying the text a caller will receive, and the store records it under the
+    same conditional write with the same `answered_by`. What differs is
+    attribution, and that is decided by the record's `point` at the moment the
+    text is delivered, not here -- an edit comes back as `HUMAN_EDITED` naming
+    the model it started from, an answer comes back as `MANUAL`.
+
+    **Nothing is validated here, deliberately.** An edit is not trusted more
+    than the model's own reply: it goes back through the dispatch boundary's
+    `inspect_output` and the caller's schema parse, so a malformed edit fails as
+    `RESPONSE_INVALID` exactly as a malformed completion does. Validating at this
+    surface would mean two validators to keep in step, and the one that matters
+    is the one the model's output already faces.
 
     The store's `answer` is a conditional write filtered on `PENDING`, so two
     operators answering at once produce one winner and one 409 -- never a silent
@@ -295,7 +323,13 @@ async def allow_interception(
     request: Request,
     actor_id: str = Depends(require_capability(capabilities.AI_INTERCEPTION_ACT)),
 ) -> APIResponse[dict[str, Any]]:
-    """Approve the held request unchanged: let the model answer it after all.
+    """Approve the held item unchanged.
+
+    At `REQUEST`: let the model answer after all. At `RESPONSE`: the model's
+    reply stands and reaches the caller byte-identical, reported as the model.
+    The same status for both, because the operator did the same thing -- looked,
+    and substituted nothing -- and the result is attributed to the model in
+    either case.
 
     The third outcome, and until AI-01 the missing one. An operator could
     substitute a human answer or kill the request; "I have read this and it may
@@ -333,7 +367,13 @@ async def cancel_interception(
     request: Request,
     _actor_id: str = Depends(require_capability(capabilities.AI_INTERCEPTION_ACT)),
 ) -> APIResponse[dict[str, Any]]:
-    """Abandon a held request rather than answering it.
+    """Abandon a held request, or reject a held response.
+
+    At `RESPONSE` this is the third review outcome: the reply is discarded, the
+    attempt fails as `RESPONSE_REJECTED`, and -- because that code is terminal
+    for its route -- the dispatch loop moves to the next candidate rather than
+    asking the same model the same question again. If no route remains the
+    caller sees its ordinary unavailability, which is the honest report.
 
     The counterpart to `answer`, and it needs to exist for the same reason:
     without it the only way out of a PENDING interception is to answer it or

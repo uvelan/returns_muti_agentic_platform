@@ -37,6 +37,7 @@ from return_platform.ai.interception.records import InterceptionStatus, ResumeCo
 from return_platform.ai.interception.store import (
     AI_INTERCEPTIONS,
     METADATA_FIELDS,
+    InterceptionExpirySweep,
     InterceptionNotPending,
     SystemStoreInterceptionStore,
 )
@@ -311,6 +312,97 @@ async def test_an_answered_interception_leaves_the_queue(system_store: SystemSto
     await store.answer(interception_id=interception_id, response_text="done", answered_by="op-1")
 
     assert not any(r.interception_id == interception_id for r in await store.list_pending())
+
+
+# --- expiry (D6) -------------------------------------------------------------
+#
+# Only a database can settle these two: that `$lte` on a BSON date selects the
+# right rows, and that the transition's compare-and-set is MongoDB's rather than
+# a Python `if`. The platform-side logic around them is proved offline in
+# `tests/test_interception_expiry.py`.
+
+
+async def _open_lapsed(store: SystemStoreInterceptionStore, interception_id: str) -> None:
+    """A record written already past its deadline.
+
+    Exactly the state 48 of 49 rows on the live deployment were in: `PENDING`,
+    with an `expiresAt` in the past and nobody left to close it.
+    """
+    await store.open(
+        interception_id=interception_id,
+        task_id="ORDER_AGENT_REASONING_V1",
+        request_payload={"systemPrompt": SECRET_PROMPT, "userPayload": {"mode": "DECIDE"}},
+        resume=_resume(),
+        expires_at=datetime.now(UTC) - timedelta(days=3),
+    )
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_a_lapsed_request_never_reaches_the_operator_queue(
+    system_store: SystemStore,
+) -> None:
+    """The read-path half. Whatever the sweep has or has not done yet, a request
+    whose caller has given up is not offered to a human who would answer into
+    nothing."""
+    store = SystemStoreInterceptionStore(system_store, _encryptor())
+    interception_id = f"i-{uuid.uuid4().hex[:8]}"
+    await _open_lapsed(store, interception_id)
+
+    assert not any(r.interception_id == interception_id for r in await store.list_pending())
+    # Still stored, and still `PENDING`: hiding it is not the same as settling
+    # it, which is why the sweep below exists as well.
+    record = await store.get(interception_id)
+    assert record is not None and record.status is InterceptionStatus.PENDING
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_the_sweep_settles_a_lapsed_request_as_expired(system_store: SystemStore) -> None:
+    """The transition half, against the real conditional write.
+
+    `EXPIRED` rather than `CANCELLED`: "nobody got to it in time" is a staffing
+    fact and "the run that needed it went away" is not, and collapsing them
+    would hide a rota problem inside what looks like ordinary churn.
+    """
+    store = SystemStoreInterceptionStore(system_store, _encryptor())
+    sweep = InterceptionExpirySweep(system_store)
+    interception_id = f"i-{uuid.uuid4().hex[:8]}"
+    await _open_lapsed(store, interception_id)
+
+    assert await sweep.count_lapsed(limit=500) >= 1
+    assert await sweep.expire_lapsed(limit=500) >= 1
+
+    record = await store.get(interception_id)
+    assert record is not None
+    assert record.status is InterceptionStatus.EXPIRED
+    # The sealed payload survived a metadata-only transition -- the sweep holds
+    # no key and must not have touched the envelope.
+    raw = await system_store.read_only(AI_INTERCEPTIONS).find_one(
+        {"interception_id": interception_id}
+    )
+    assert raw is not None and "_envelope" in raw
+    assert SECRET_PROMPT not in str(raw)
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_the_sweep_cannot_discard_an_answer_that_landed_first(
+    system_store: SystemStore,
+) -> None:
+    """A late answer beats the reaper, because the reaper's write is filtered on
+    `status: PENDING` exactly as `cancel` is."""
+    store = SystemStoreInterceptionStore(system_store, _encryptor())
+    interception_id = f"i-{uuid.uuid4().hex[:8]}"
+    await _open_lapsed(store, interception_id)
+    await store.answer(
+        interception_id=interception_id, response_text="answered late", answered_by="op-1"
+    )
+
+    await InterceptionExpirySweep(system_store).expire_lapsed(limit=500)
+
+    record = await store.get(interception_id)
+    assert record is not None
+    assert record.status is InterceptionStatus.ANSWERED
+    payload = await store.request_payload(interception_id)
+    assert payload is not None and payload["responseText"] == "answered late"
 
 
 # --- the resume bridge -------------------------------------------------------

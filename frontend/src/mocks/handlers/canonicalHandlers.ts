@@ -431,6 +431,62 @@ function proposalSummary(proposal: (typeof PROPOSALS)[number]) {
   };
 }
 
+/**
+ * The graph generation every turn in this fixture reasoned over.
+ *
+ * One constant because `HallucinationGuard` compares the turn's
+ * `graph_generation_id` against each `QueryEvidence.graph_generation_id` and
+ * fails the statement when they differ -- "evidence belongs to a stale graph
+ * generation" is a real state, and two literals that happened to match were
+ * one edit away from mocking it by accident.
+ */
+const GRAPH_GENERATION_ID = "gen-0f3c9a11-mock";
+
+/**
+ * The copilot's conversations, transcripts and all.
+ *
+ * One store rather than two fixtures because the server derives the history
+ * row from the transcript: `ConversationRepository.list_recent` sets `title`
+ * to `transcript[0]["text"]` -- the associate's opening message, not a
+ * generated label -- and `messageCount` to the transcript's length. The
+ * previous fixture wrote a label by hand and served a `version` field that
+ * `ConversationSummary` does not declare and `extra="forbid"` would reject,
+ * while omitting the `messageCount` the model requires. Deriving both makes
+ * that particular disagreement unrepresentable.
+ */
+const CONVERSATIONS = [
+  {
+    conversationId: "conv-mock-101",
+    conversationVersion: 2,
+    updatedAt: "2026-08-14T10:30:00Z",
+    messages: [
+      { role: "associate", text: "Customer returning order CW273354 due to bearing damage." },
+      {
+        role: "agent",
+        text: "Located sales order CW273354 for Melgon Heating & Air with 2 line items.",
+      },
+    ],
+  },
+  {
+    conversationId: "conv-mock-102",
+    conversationVersion: 1,
+    updatedAt: "2026-08-13T14:15:00Z",
+    messages: [
+      { role: "associate", text: "Apex Mechanical wants to send a flange assembly back." },
+    ],
+  },
+];
+
+/** `ConversationSummary`, derived the way `list_recent` derives it. */
+function conversationSummary(conversation: (typeof CONVERSATIONS)[number]) {
+  return {
+    conversationId: conversation.conversationId,
+    title: conversation.messages[0].text,
+    messageCount: conversation.messages.length,
+    updatedAt: conversation.updatedAt,
+  };
+}
+
 export const canonicalHandlers = [
   /**
    * The shell's bootstrap payload, on the canonical versionless surface since
@@ -455,6 +511,50 @@ export const canonicalHandlers = [
             availableSourceTypes: ["MONGODB", "NEO4J", "SQLSERVER"],
             availableModelProviders: ["GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC"],
           },
+          // Which agent the Copilot addresses. Not decoration: the page fails
+          // closed when this is absent -- composer disabled, configuration
+          // error -- so omitting it here made `dev:mock` a dead screen rather
+          // than a mock of the running system. The value matches the id the
+          // shipped return configuration publishes, because a mock that
+          // exercises a *different* id exercises nothing.
+          agents: { orderDiscovery: "order-discovery-agent" },
+          // The released `selection_vocabulary`, which is what the
+          // item-selection pane builds its reason and condition pickers from.
+          // A subset of the shipped catalogue rather than all twenty-four
+          // entries: the point of the mock is that the pane reads a *served*
+          // list, and a full copy here would be the hardcoded catalogue plan
+          // sect. 12.4 removed, living in a second file.
+          selectionVocabulary: {
+            reasons: ["SHIPPING_DAMAGE", "ORDERED_IN_ERROR", "MANUFACTURING_DEFECT"],
+            conditions: ["NEW_IN_ORIGINAL_PACKAGING", "NEW_PACKAGING_OPENED", "USED"],
+          },
+          // `clarification_policy.fields` by descending priority, which is what
+          // the facts panel orders its rows by. The shipped ranking's own head,
+          // not a sequence chosen here: a mock that ranked the fields
+          // differently from the release would exercise the wrong order and
+          // hide exactly the defect this list exists to prevent.
+          factCatalogue: {
+            orderedFields: [
+              "order_number",
+              "customer_id",
+              "tracking_number",
+              "invoice_number",
+              "customer_po_number",
+              "email",
+              "phone",
+              "customer_name",
+              "company_name",
+              "zip_code",
+              "product_sku",
+              "product_description",
+              "approximate_purchase_date",
+              "shipping_address",
+              "product_colour",
+              "purchase_channel_hint",
+              "product_presence",
+              "return_reason",
+            ],
+          },
         },
         "runtime-config",
       ),
@@ -466,16 +566,155 @@ export const canonicalHandlers = [
    * clarifying question, the second returns candidates with evidence, so the
    * copilot's two reportable pipeline stages are both reachable in mock mode
    * without a model or a graph.
+   *
+   * **It only discovers orders.** This fixture used to grow two more branches
+   * on a keyword -- "rma"/"authorize" answered `Return Authorized. Generated
+   * RMA-2026-78901 with carrier tracking TRK-98421049281.`, and
+   * "policy"/"evaluate" answered a decision under `POL-STD-30D`. Three things
+   * were wrong with that, and each on its own is disqualifying:
+   *
+   * - The numbers were invented. An RMA and a tracking number are the exact
+   *   literals the audit found hardcoded in the panes; serving them back from
+   *   a fake backend is the same fabrication one layer down, and it is what
+   *   made a dead screen look like a working one.
+   * - Neither claim had evidence. Both were `GRAPH_FACT` statements citing
+   *   `qe-1` in turns that carried no query evidence at all, which
+   *   `HallucinationGuard` rejects outright.
+   * - `order-discovery-agent` cannot do either. Its
+   *   `allowed_business_capabilities` are the six discovery ones; the fixture
+   *   answered `RMA_ISSUANCE` and `POLICY_EVALUATION`, and
+   *   `ResponseSafetyGuard` refuses a capability outside that list before the
+   *   response is ever returned.
+   *
+   * Nothing is lost by deleting them: `ReturnCopilotPage` reads no state
+   * transition off a turn. The lifecycle moves because the *case* moved, which
+   * is what `GET /api/cases/{id}` is for.
    */
   http.post("/api/v2/order-agent/conversations/:id/turns", async ({ request, params }) => {
-    await delay(600);
-    const body = (await request.json()) as { message: string; expected_conversation_version: number };
+    await delay(300);
+    const body = (await request.json()) as {
+      message: string;
+      message_id?: string;
+      expected_conversation_version: number;
+      session_timezone?: string | null;
+    };
     const version = body.expected_conversation_version + 1;
-    const asked = body.expected_conversation_version > 0;
-    // A third turn narrows to one order, and that order is SESSION's, so the
-    // later milestones have a real return session to report on. Two candidates
-    // on turn two is the ambiguous case and must stay unresolved.
-    const narrowed = body.expected_conversation_version > 1;
+    const msg = body.message.toLowerCase();
+
+    const isDirectOrder =
+      msg.includes("cw273354") ||
+      msg.includes("ord-88123") ||
+      msg.includes("motor") ||
+      msg.includes("select") ||
+      msg.includes("item") ||
+      body.expected_conversation_version > 1;
+
+    const isCandidates =
+      msg.includes("atlas") ||
+      msg.includes("heating") ||
+      msg.includes("melgon") ||
+      msg.includes("charlotte") ||
+      msg.includes("order") ||
+      body.expected_conversation_version === 1;
+
+    const matchedCandidates = isDirectOrder
+      ? [
+          {
+            candidate_id: "CHARLOTTE*CW273354",
+            data: {
+              sales_order_number: "CW273354",
+              customer_id: "CUST-4417",
+              customer_name: "Melgon Heating & Air",
+              account_id: "ACC-991",
+              order_date: "2026-08-01",
+              delivery_date: "2026-08-04",
+              branch: "CLT-01 (Charlotte, NC)",
+              total_amount: 348.98,
+              items: [
+                {
+                  id: "item-1",
+                  sku: "EM-9821",
+                  name: "Emerson 1.5HP Motor",
+                  purchasedQty: 2,
+                  returnQty: 1,
+                  unitPrice: 149.99,
+                  reason: "Defective / Bearing seized",
+                  condition: "Opened - Damaged",
+                  isSelected: true,
+                },
+                {
+                  id: "item-2",
+                  sku: "FL-3304",
+                  name: "Flange Mount Assembly 3/4\"",
+                  purchasedQty: 4,
+                  returnQty: 0,
+                  unitPrice: 24.5,
+                  reason: "",
+                  condition: "Unopened",
+                  isSelected: false,
+                },
+              ],
+            },
+          },
+        ]
+      : isCandidates
+        ? [
+            {
+              candidate_id: "CHARLOTTE*CQ363350",
+              data: {
+                sales_order_number: "CQ363350",
+                account_id: "CHARLOTTE",
+                customer_name: "ATLAS MECHANICAL SERVICES",
+                order_status: "DELIVERED",
+              },
+            },
+            {
+              candidate_id: "LAKEWOOD*CT275260",
+              data: {
+                sales_order_number: "CT275260",
+                account_id: "LAKEWOOD",
+                customer_name: "ACED HEATING & COOLING",
+                order_status: "INVOICED",
+              },
+            },
+          ]
+        : [];
+
+    const hasCandidates = matchedCandidates.length > 0;
+
+    /**
+     * `EvidenceReference`, not a bare query id.
+     *
+     * The fixture used to say `evidence_refs: ["qe-1"]`, which the model
+     * forbids and, more to the point, could never be checked: a reference is a
+     * `result_path` into the named query's result plus the value the sentence
+     * claims to have read there, and `HallucinationGuard` resolves the one and
+     * compares the other. A string names a query without naming a fact, so a
+     * statement citing it is cited by nothing.
+     *
+     * Every path below lands on a field of `matchedCandidates`, so the claim
+     * and the evidence move together when the fixture changes.
+     */
+    const evidenceRefs = isDirectOrder
+      ? [
+          {
+            query_execution_id: "qe-1",
+            result_path: ["candidates", "0", "data", "sales_order_number"],
+            expected_value: "CW273354",
+          },
+          {
+            query_execution_id: "qe-1",
+            result_path: ["candidates", "0", "data", "customer_name"],
+            expected_value: "Melgon Heating & Air",
+          },
+        ]
+      : [
+          {
+            query_execution_id: "qe-1",
+            result_path: ["candidates", "0", "data", "customer_name"],
+            expected_value: "ATLAS MECHANICAL SERVICES",
+          },
+        ];
 
     return HttpResponse.json(
       envelope(
@@ -483,22 +722,39 @@ export const canonicalHandlers = [
           conversation_id: String(params.id),
           conversation_version: version,
           client_turn_id: `mock-turn-${String(version)}`,
-          graph_generation_id: "gen-0f3c9a11-mock",
+          graph_generation_id: GRAPH_GENERATION_ID,
           model_provider: "MOCK",
           model_name: "scripted",
-          pending_clarification_thread_id: asked ? null : "thread-mock-1",
+          pending_clarification_thread_id: hasCandidates ? null : "thread-mock-1",
+          // Set once the conversation has confirmed an order, which for this
+          // fixture is the single-candidate hit. Previously it appeared only
+          // when the associate typed "rma", which is backwards: the case is
+          // what raises the RMA, not what the word does.
+          case_id: isDirectOrder ? "case-mock-2026" : null,
+          as_of: new Date().toISOString(),
+          session_timezone: body.session_timezone ?? null,
           response: {
-            status: asked ? "RESOLVED" : "NEEDS_INPUT",
-            business_capability: "order_discovery",
-            suggestions: asked ? [] : ["Show next", "Search by SKU instead"],
-            requested_input: asked ? null : "Which branch was the order placed at?",
-            statements: asked
+            status: hasCandidates ? "RESOLVED" : "NEEDS_INPUT",
+            // From `agent_policies.order-discovery-agent
+            // .allowed_business_capabilities` in the active schema, which is
+            // the vocabulary `ResponseSafetyGuard` checks against. OpenAPI
+            // types this `str`, so nothing here would have caught the
+            // `order_discovery` this fixture used to send -- a real value with
+            // the wrong separator, which the guard rejects.
+            business_capability: isDirectOrder ? "order-discovery" : "candidate-disambiguation",
+            suggestions: hasCandidates
+              ? ["Select items", "Show the order lines"]
+              : ["Show next", "Search by SKU"],
+            requested_input: hasCandidates ? null : "Which branch was the order placed at?",
+            statements: hasCandidates
               ? [
                   {
-                    statement_id: "s-2",
+                    statement_id: `s-${String(version)}`,
                     statement_type: "GRAPH_FACT",
-                    text: "Found 2 orders for ATLAS MECHANICAL SERVICES in CHARLOTTE.",
-                    evidence_refs: ["qe-1"],
+                    text: isDirectOrder
+                      ? "Located Sales Order CW273354 with 2 line items for Melgon Heating & Air."
+                      : "Found 2 matching orders for ATLAS MECHANICAL SERVICES.",
+                    evidence_refs: evidenceRefs,
                   },
                 ]
               : [
@@ -506,6 +762,11 @@ export const canonicalHandlers = [
                     statement_id: "s-0",
                     statement_type: "USER_PROVIDED_FACT",
                     text: body.message,
+                    // Required by `ResponseStatement.validate_evidence_shape`:
+                    // a fact attributed to the associate must name the message
+                    // it was read from, or it is the agent's assertion wearing
+                    // the associate's name.
+                    source_message_id: body.message_id ?? `ui-${String(params.id)}-${String(version)}`,
                   },
                   {
                     statement_id: "s-1",
@@ -514,46 +775,26 @@ export const canonicalHandlers = [
                   },
                 ],
           },
-          query_evidence: asked
+          query_evidence: hasCandidates
             ? [
                 {
                   query_execution_id: "qe-1",
                   schema_version: "return-order-v2",
-                  graph_generation_id: "gen-0f3c9a11-mock",
-                  result_checksum: "mock",
+                  graph_generation_id: GRAPH_GENERATION_ID,
+                  // All three checksums are required and all three were
+                  // missing or stubbed. Fixed strings rather than computed
+                  // ones -- the real values are `sha256_digest` of the plan,
+                  // the compiled query and the result, none of which this
+                  // fixture has -- but sha256-shaped, because a console that
+                  // renders one must render the width it will really get.
+                  logical_plan_checksum:
+                    "7b1f0c9a4e2d5583a0c6d1f4b8e37a92c05d6417f9ab2e80c3d1547689aebf20",
+                  compiled_query_checksum:
+                    "2d84c15f7a3b9e60d4c8021f5b7e93a6c1d0f48b25e7a936c8d150f2ab34e971",
+                  result_checksum:
+                    "c3f9a10b6d24e857f0a3c19b45d8e72f6a0b3c5d1e94f728a6b0c3d5e178f492",
                   result: {
-                    candidates: narrowed
-                      ? [
-                          {
-                            candidate_id: "CHARLOTTE*ORD-88123",
-                            data: {
-                              sales_order_number: SESSION.orderReference,
-                              account_id: "CHARLOTTE",
-                              customer_name: "ATLAS MECHANICAL SERVICES",
-                              order_status: "CALLCSR",
-                            },
-                          },
-                        ]
-                      : [
-                          {
-                            candidate_id: "CHARLOTTE*CQ363350",
-                            data: {
-                              sales_order_number: "CQ363350",
-                              account_id: "CHARLOTTE",
-                              customer_name: "ATLAS MECHANICAL SERVICES",
-                              order_status: "CALLCSR",
-                            },
-                          },
-                          {
-                            candidate_id: "LAKEWOOD*CT275260",
-                            data: {
-                              sales_order_number: "CT275260",
-                              account_id: "LAKEWOOD",
-                              customer_name: "ACED HEATING & COOLING",
-                              order_status: "INVOICED",
-                            },
-                          },
-                        ],
+                    candidates: matchedCandidates,
                   },
                 },
               ]
@@ -782,11 +1023,82 @@ export const canonicalHandlers = [
       ),
     );
   }),
-  http.post("/api/config/releases/:releaseId/promote", async () => {
+  /**
+   * A refusal, deliberately -- but the refusal the request earns.
+   *
+   * There are two different 422s behind this path and the fixture used to
+   * serve the second one for every request, including requests that never
+   * reach it:
+   *
+   * 1. **`PromoteReleasePayload` rejects the body.** `status` is a required
+   *    `Literal["VALIDATED", "RELEASED", "ARCHIVED"]`, so a body without one
+   *    is refused by FastAPI before the route function runs, and the answer is
+   *    a `HTTPValidationError` -- `detail` as a *list* of `{loc, msg, type}`.
+   *    This is the shape the document declares for 422, and the only one it
+   *    can declare: FastAPI publishes it for every route with a body.
+   * 2. **The lifecycle rejects the promotion.** `promote_configuration_release`
+   *    raises `ReleasePromotionError("expected_head_revision is required to
+   *    publish a configuration release", 422)`, which FastAPI renders as
+   *    `detail` as a *string*.
+   *
+   * Both are real; only the first is describable in OpenAPI, because a
+   * hand-raised `HTTPException` detail is not part of the generated schema.
+   * Serving (2) unconditionally made the mock answer a body the document
+   * contradicts to a request that could never have produced it.
+   */
+  http.post("/api/config/releases/:releaseId/promote", async ({ params, request }) => {
     await delay(150);
+    const body = (await request.json().catch(() => ({}))) as {
+      status?: unknown;
+      expected_head_revision?: unknown;
+    };
+    const target = body.status;
+
+    if (target !== "VALIDATED" && target !== "RELEASED" && target !== "ARCHIVED") {
+      return HttpResponse.json(
+        {
+          detail: [
+            target === undefined
+              ? {
+                  type: "missing",
+                  loc: ["body", "status"],
+                  msg: "Field required",
+                  input: body,
+                }
+              : {
+                  type: "literal_error",
+                  loc: ["body", "status"],
+                  msg: "Input should be 'VALIDATED', 'RELEASED' or 'ARCHIVED'",
+                  input: target,
+                },
+          ],
+        },
+        { status: 422 },
+      );
+    }
+
+    if (target === "RELEASED" && body.expected_head_revision == null) {
+      // The lifecycle's own refusal, verbatim. Not schema-checked, and
+      // deliberately reachable: publishing without the revision you read is
+      // the conflict this rule exists to prevent, and it is worth seeing.
+      return HttpResponse.json(
+        { detail: "expected_head_revision is required to publish a configuration release" },
+        { status: 422 },
+      );
+    }
+
     return HttpResponse.json(
-      { detail: "expected_head_revision is required to publish a configuration release" },
-      { status: 422 },
+      envelope(
+        {
+          release_id: String(params.releaseId),
+          status: target,
+          checksum: "9f2c1a",
+          created_at: "2026-08-09T09:00:00Z",
+          domains: { return_platform: { workflow: { version: "2.1" } } },
+          head_revision: 7,
+        },
+        "promote",
+      ),
     );
   }),
   // --- data sources (UI-02) ---------------------------------------------------
@@ -892,11 +1204,48 @@ export const canonicalHandlers = [
       ),
     );
   }),
+  // `AuditLog`, field for field: `id`, `action`, `actor`, `target`, `timestamp`
+  // and `details` are all required and the model forbids extras. The previous
+  // fixture carried three of the six, so the screen rendered rows the real
+  // route cannot produce -- no id to address a record by and no timestamp to
+  // order one against, which is most of what an audit record is for.
+  //
+  // The `action` values are ones the platform actually writes
+  // (`GovernanceKernel._record`, `ai_gateway.py`), and each `details` block is
+  // the one that action records. `PROMOTE_RELEASE` -- what this fixture used to
+  // say -- is written by nothing.
   http.get("/api/config/audit", async () => {
     await delay(80);
     return HttpResponse.json(
       envelope(
-        [{ action: "PROMOTE_RELEASE", target: "rel-mock-1", actor: "mock-operator" }],
+        [
+          {
+            id: "6f1a3d20-8b47-4f0e-9d21-0c5b2a7e4411",
+            action: "PROPOSAL_APPROVED",
+            actor: "mock-operator",
+            target: "prop-mock-2",
+            timestamp: "2026-08-10T15:00:00Z",
+            details: {
+              proposal_type: "CONFIGURATION",
+              subject_id: "ORDER_AGENT_REASONING_V1",
+              status: "APPROVED",
+              risk: "MEDIUM",
+              evidence_digest: "3b7d0210f4a9",
+            },
+          },
+          {
+            id: "b2c94e77-0d13-4a86-a5f2-1e7c6b930d58",
+            action: "AI_INTERCEPT_ALLOW",
+            actor: "mock-operator",
+            target: "int-mock-1",
+            timestamp: "2026-08-11T08:12:00Z",
+            details: {
+              reason: null,
+              requestDigest: "9c1d0ae44d2b2372",
+              sessionId: null,
+            },
+          },
+        ],
         "audit",
       ),
     );
@@ -1055,8 +1404,22 @@ export const canonicalHandlers = [
             interceptionId: "int-mock-1",
             taskId: "GRAPH_SCHEMA_PROPOSAL_V1",
             status: "PENDING",
+            point: "REQUEST",
             createdAt: "2026-08-10T10:00:00Z",
             expiresAt: "2026-08-10T18:00:00Z",
+            answeredBy: null,
+          },
+          // The second hold point. One queue carries both, so the mock has to
+          // as well -- a fixture with only requests would let the response
+          // branch of the screen rot unseen in every environment that runs on
+          // mocks.
+          {
+            interceptionId: "air-mock-2",
+            taskId: "ORDER_AGENT_REASONING_V1",
+            status: "PENDING",
+            point: "RESPONSE",
+            createdAt: "2026-08-10T10:05:00Z",
+            expiresAt: "2026-08-10T18:05:00Z",
             answeredBy: null,
           },
         ],
@@ -1064,10 +1427,43 @@ export const canonicalHandlers = [
       ),
     );
   }),
-  http.get("/api/ai/interceptions/:id/request", async () => {
+  http.get("/api/ai/interceptions/:id/request", async ({ params }) => {
     await delay(80);
+    // A response hold seals the reply alongside the question, which is what the
+    // responder pre-fills from.
+    if (String(params.id).startsWith("air-")) {
+      return HttpResponse.json(
+        envelope(
+          {
+            systemPrompt: "Decide the next Order Agent action.",
+            payload: { contextJson: '{"orderId":"SO-1042"}' },
+            modelResponse: {
+              provider: "GOOGLE",
+              model: "gemini-2.5-flash",
+              text: '{"action":"SEARCH_ORDERS","rationale":"no order identified yet"}',
+              digest: "9f2c",
+            },
+          },
+          "request",
+        ),
+      );
+    }
     return HttpResponse.json(
       envelope({ prompt: "Propose a graph schema for the orders dataset." }, "request"),
+    );
+  }),
+  http.post("/api/ai/interceptions/:id/allow", async ({ params }) => {
+    await delay(120);
+    return HttpResponse.json(
+      envelope(
+        {
+          interceptionId: String(params.id),
+          status: "ALLOWED",
+          answeredBy: "mock-operator",
+          answeredAt: "2026-08-10T12:00:00Z",
+        },
+        "allow",
+      ),
     );
   }),
   http.post("/api/ai/interceptions/:id/answer", async () => {
@@ -1088,6 +1484,285 @@ export const canonicalHandlers = [
     await delay(120);
     return HttpResponse.json(
       envelope({ interceptionId: "int-mock-1", status: "CANCELLED" }, "cancel"),
+    );
+  }),
+
+  // --- order-agent & returns copilot (v2) -------------------------------------
+
+  http.get("/api/v2/order-agent/conversations", async () => {
+    await delay(80);
+    return HttpResponse.json(
+      envelope(CONVERSATIONS.map(conversationSummary), "conversations"),
+    );
+  }),
+
+  http.get("/api/v2/order-agent/conversations/:id/transcript", async ({ params }) => {
+    await delay(80);
+    const id = String(params.id);
+    // A conversation the fixture does not hold reads back as the first one
+    // rather than 404ing. `dev:mock` starts a fresh conversation with a
+    // generated id on every load and the history pane reads it straight back;
+    // answering 404 there would show a broken screen for the normal path
+    // rather than for the interesting one.
+    const conversation = CONVERSATIONS.find((row) => row.conversationId === id) ?? CONVERSATIONS[0];
+    return HttpResponse.json(
+      envelope(
+        {
+          conversationId: id,
+          conversationVersion: conversation.conversationVersion,
+          messages: conversation.messages,
+        },
+        "transcript",
+      ),
+    );
+  }),
+
+
+
+  // --- cases API -------------------------------------------------------------
+  //
+  // `GET /api/cases/{caseId}` serves `CaseProjection`, so the mock does too.
+  // It used to answer the legacy `CaseDetail` body with `RMA-2026-78901`,
+  // `TRK-98421049281` and a carrier in the shipping-instruction field -- the
+  // exact literals the audit found hardcoded in the panes, served back to them
+  // so the fabricated screen looked like a working one.
+
+  http.get("/api/cases", async () => {
+    await delay(80);
+    return HttpResponse.json(
+      envelope(
+        [
+          {
+            caseId: "case-mock-2026",
+            confirmedOrderReference: "CW273354",
+            channelAConversationId: "conv-mock-101",
+            status: "PROCESSING_RETURN",
+            stage: "AUTHORIZED_RMA",
+            isTerminal: false,
+            returnRecordCount: 1,
+            updatedAt: "2026-08-14T10:30:00Z",
+          },
+        ],
+        "cases-list",
+      ),
+    );
+  }),
+
+  /**
+   * The confirmed order's lines, and the selection write over them.
+   *
+   * Present so `dev:mock` can exercise the item-selection pane at all: without
+   * them the pane opens on a fetch failure, which is a worse mock than none --
+   * it shows the reconnected controls as broken.
+   *
+   * The write echoes the request rather than holding anything. The interesting
+   * half of the real route is its refusals -- `422 SELECTION_TERM_NOT_PUBLISHED`
+   * and `409 QUANTITY_UNAVAILABLE`, both decided inside a transaction against a
+   * released catalogue and a quantity ledger -- and a mock that guessed at
+   * either would be simulating the one part that has to be real.
+   */
+  http.get("/api/cases/:id/order-lines", async ({ params }) => {
+    await delay(80);
+    return HttpResponse.json(
+      envelope(
+        {
+          caseId: String(params.id),
+          orderReference: "CW273354",
+          lines: [
+            {
+              lineReference: "Line 1",
+              sku: "EM-9821",
+              description: "Mock line one",
+              orderedQuantity: 2,
+              // Absent, not "0.00": the source carries no price for this line,
+              // and nothing in the copilot renders one anyway.
+              unitPrice: null,
+              productReference: "EM-9821",
+              returnableQuantity: 1,
+              completedReturnQuantity: 0,
+              openAuthorizedQuantity: 1,
+              activeReservationQuantity: 0,
+              selfReservedQuantity: 1,
+              dataInconsistency: null,
+            },
+            {
+              lineReference: "Line 2",
+              sku: "FL-3304",
+              description: "Mock line two",
+              orderedQuantity: 4,
+              unitPrice: null,
+              productReference: "FL-3304",
+              returnableQuantity: 4,
+              completedReturnQuantity: 0,
+              openAuthorizedQuantity: 0,
+              activeReservationQuantity: 0,
+              selfReservedQuantity: 0,
+              dataInconsistency: null,
+            },
+          ],
+        },
+        "order-lines",
+      ),
+    );
+  }),
+
+  http.post("/api/cases/:id/selected-items", async ({ params, request }) => {
+    await delay(120);
+    const body = (await request.json()) as { items?: readonly Record<string, unknown>[] };
+    const items = body.items ?? [];
+    return HttpResponse.json(
+      envelope(
+        {
+          caseId: String(params.id),
+          revision: 8,
+          changed: items.length > 0,
+          items: items.map((item, index) => ({
+            returnItemId: `item-mock-${String(index + 1)}`,
+            orderLineReference:
+              typeof item.orderLineReference === "string" ? item.orderLineReference : "",
+            productReference: null,
+            quantity: typeof item.quantity === "number" ? item.quantity : null,
+            reason: typeof item.reason === "string" ? item.reason : null,
+            condition: typeof item.condition === "string" ? item.condition : null,
+            packageReference: null,
+          })),
+          lines: [],
+        },
+        "selected-items",
+      ),
+    );
+  }),
+
+  http.get("/api/cases/:id", async ({ params }) => {
+    await delay(80);
+    const id = String(params.id);
+    return HttpResponse.json(
+      envelope(
+        {
+          caseId: id,
+          tenantId: "tenant-mock",
+          principalId: "associate-mock",
+          conversationId: "conv-mock-101",
+          status: "PROCESSING_RETURN",
+          revision: 7,
+          updatedAt: "2026-08-14T10:30:00Z",
+          customer: {
+            customerReference: "CUST-4417",
+            accountReference: "ACC-991",
+            displayName: "Melgon Heating & Air",
+            branchReference: "CHARLOTTE",
+          },
+          confirmedOrder: {
+            orderReference: "CW273354",
+            orderSource: "ORDER_GRAPH",
+            sourceWebOrderNumber: null,
+            trilogieOrderNumber: null,
+            confirmationKey: null,
+            candidateSetId: null,
+            candidateId: "CHARLOTTE*CW273354",
+            confirmedAt: "2026-08-14T10:10:00Z",
+          },
+          selectedItems: [
+            {
+              returnItemId: "item-1",
+              orderLineReference: "Line 1",
+              productReference: "EM-9821",
+              quantity: 1,
+              reason: "DEFECTIVE",
+              condition: "OPEN_BOX",
+              packageReference: null,
+            },
+          ],
+          facts: [],
+          policyEvaluation: {
+            route: "STANDARD_RETURN",
+            originalDecision: "APPROVE",
+            effectiveDecision: "APPROVE",
+            override: null,
+            reasonCodes: null,
+            conditions: ["RESTOCKING_FEE_WAIVED"],
+            appliedRules: ["WITHIN_30_DAYS", "NEW_RESALEABLE_CONDITION"],
+            policyId: "return-policy-mock",
+            policyVersion: "v1",
+            evaluatedAt: "2026-08-14T10:15:00Z",
+          },
+          support: null,
+          returnRecords: [
+            {
+              returnRecordId: "rec-mock-2026",
+              returnReference: "RMA-MOCK-0001",
+              status: "ISSUED",
+              returnMethod: "PREPAID_PARCEL",
+              returnLocation: "DOCK-7",
+              approvedItems: [
+                {
+                  returnItemId: "item-1",
+                  orderLineReference: "Line 1",
+                  productReference: "EM-9821",
+                  quantityApproved: 1,
+                  disposition: null,
+                  itemStatus: null,
+                },
+              ],
+              shipments: [
+                {
+                  shipmentId: "SHP-MOCK-1",
+                  shipmentStatus: "AWAITING_HANDOFF",
+                  carrier: "MOCK_PARCEL",
+                  serviceLevel: "GROUND",
+                  // Null on purpose: a label with no tracking is the real
+                  // stuck state the audit found, and the mock must be able to
+                  // show it.
+                  trackingNumber: null,
+                  estimatedDeliveryAt: null,
+                  createdAt: "2026-08-14T10:20:00Z",
+                  updatedAt: "2026-08-14T10:20:00Z",
+                },
+              ],
+              artifacts: [
+                {
+                  artifactId: "art-mock-1",
+                  artifactType: "SHIPPING_LABEL",
+                  shipmentId: "SHP-MOCK-1",
+                  fileName: "return-label.pdf",
+                  mediaType: "application/pdf",
+                  version: 1,
+                  active: true,
+                  supersededBy: null,
+                  expiresAt: null,
+                  createdAt: "2026-08-14T10:20:00Z",
+                },
+              ],
+            },
+          ],
+          pickup: null,
+          warehouse: {
+            facilityId: null,
+            facilityName: null,
+            bayId: null,
+            // Placement runs before the goods exist, and says so.
+            bayReason: "PRE_ARRIVAL_NOT_ALLOWED",
+            receivedAt: null,
+            receivedQuantity: null,
+            inspectionStatus: null,
+            condition: null,
+            disposition: null,
+            qaStatus: null,
+            warehouseStatus: null,
+          },
+          settlement: {
+            status: "NOT_INTEGRATED",
+            creditMemoReference: null,
+            settledAmount: null,
+            settledAt: null,
+          },
+          stage: "AUTHORIZED_RMA",
+          awaiting: ["TRACKING"],
+          businessComplete: false,
+          isTerminal: false,
+        },
+        "case-projection",
+      ),
     );
   }),
 ];

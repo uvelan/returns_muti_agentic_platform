@@ -1,379 +1,542 @@
-import { useRef, useState } from "react";
-import { skipToken, useMutation, useQuery } from "@tanstack/react-query";
-import {
-  Bot,
-  CircleCheck,
-  CircleDashed,
-  History,
-  Plus,
-  Send,
-  ShieldCheck,
-  Tag,
-} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "wouter";
 
 import {
   newConversationId,
   orderAgentApi,
   type AgentTurnResult,
-  type ConversationSummary,
-  type ResponseStatement,
+  type CapturedFact,
+  type ConversationTranscript,
 } from "../../api/orderAgent";
-import { casesApi, type CaseReturnRecord, type CaseSummary } from "../../api/cases";
 import {
-  returnHistoryApi,
-  type ReturnHistory,
-  type ReturnHistoryCase,
-} from "../../api/returnHistory";
-import { returnsApi, type ReturnSessionView } from "../../api/returnsDomain";
+  caseLifecycle,
+  caseRefetchInterval,
+  caseRetry,
+  casesApi,
+  keepNewerRevision,
+  projectedFactString,
+  type CaseProjection,
+  type ConfirmedOrderProjection,
+} from "../../api/cases";
+import {
+  orderLinesApi,
+  type OrderLines,
+  type ReturnContactRequest,
+  type SelectedItemRequest,
+} from "../../api/orderLines";
+import {
+  capturedFactOrder,
+  selectionVocabulary,
+  type RuntimeConfig,
+} from "../../api/runtimeConfig";
+import { returnHistoryApi } from "../../api/returnHistory";
 import { useCapabilities } from "../../hooks/capabilityContext";
+import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
 import { DomainRail, RailFact, RailNote, RailSection } from "../DomainRail";
 
-/**
- * The Return Business Copilot: order discovery by conversation.
- *
- * **This screen replaces a queue browser that was never the copilot.** What
- * used to be here -- queues, a session list, a timeline and an event form --
- * is returns *operations*, and moved to that domain. The copilot's job is the
- * one the backend has had a durable agent for since Wave C3 and no UI at all:
- * take an associate's partial description of an order and find it.
- *
- * **Three panes, from the approved design.** Chat on the left, the agent's
- * progress in the middle, resolved context on the right.
- *
- * **The middle pane is progress, not a working trace.** It shows where the
- * return has got to and nothing about how -- no model name, no graph
- * generation, no note about which stages the API can report on. Those are
- * true and they are the platform talking about itself; an associate mid-return
- * needs the stage.
- *
- * Progress is still *derived*, never assumed: a clarifying question means the
- * agent is still identifying, evidence with candidates means it has searched,
- * and a stage the turn result cannot speak to stays pending. The temptation is
- * a bar that advances on a timer, which would look finished and mean nothing.
- */
+import { ReturnCopilotShell } from "./panes/ReturnCopilotShell";
+import { ConversationPane, type ChatHistoryEntry } from "./panes/ConversationPane";
+import { ProgressTruthPane } from "./panes/ProgressTruthPane";
+import { BusinessObjectPane } from "./panes/BusinessObjectPane";
+import { extractedReturnFields } from "./extractedFields";
+import { caseRecords, caseShipments, deriveCopilotMode } from "./types";
 
-type ChatMessage =
-  | { role: "associate"; id: string; text: string }
-  | { role: "agent"; id: string; statements: ResponseStatement[]; status: string }
-  // Replayed from a stored transcript. The record keeps role and text, not the
-  // typed statements, so a reopened conversation renders as plain speech --
-  // which is honest: the provenance markers below mean "this turn cited
-  // evidence", and a replay cannot vouch for that.
-  | { role: "restored"; id: string; author: "associate" | "agent"; text: string };
+import { DiscoveryMode } from "./modes/DiscoveryMode";
+import { CandidateOrderMode } from "./modes/CandidateOrderMode";
+import {
+  ItemSelectionMode,
+  type BranchAssociateContact,
+} from "./modes/ItemSelectionMode";
+import { ReturnEvaluationMode } from "./modes/ReturnEvaluationMode";
+import { AuthorizedRmaMode } from "./modes/AuthorizedRmaMode";
+import { CarrierTransitMode } from "./modes/CarrierTransitMode";
+import { WarehouseReceivingMode } from "./modes/WarehouseReceivingMode";
+import { ReturnSettlementMode } from "./modes/ReturnSettlementMode";
 
 /**
- * The return's milestones, in order, each owned by one agent.
+ * What the model has extracted from the conversation, for the
+ * "Extracted & Verified Facts" panel.
  *
- * These are business events, not the platform's internal workflow stages --
- * `ProductionReturnStage` has sixteen, most of which mean nothing to an
- * associate (`PRODUCT_DISPOSITION`, `VENDOR_RECOVERY`). Six are what someone
- * standing at a counter needs: has the order been found, is the case raised,
- * where is the parcel.
+ * **Captured facts, never statements, and that is the correction.** An earlier
+ * pass here filtered `history` for `GRAPH_FACT` and `USER_PROVIDED_FACT`
+ * statements and fed the panel their `text`. Statements are prose the agent
+ * uttered -- on a live run the panel read "Line 1 has no product, quantity or
+ * amount recorded against it", which is narration of the agent's own reasoning
+ * and exposes internal working under a heading promising extracted fields.
  *
- * `output` is what that agent produced, read from the return session rather
- * than described. A milestone with no output yet renders as the label alone.
+ * `AgentTurnResult.captured_facts` is the honest source: named values the model
+ * pulled out of the associate's sentence, accepted by the configured fact
+ * catalogue, merged across the whole conversation and flushed into the case
+ * fact log at confirmation. The turn carries the merged set, so the latest turn
+ * is the whole picture and nothing accumulates per mention.
  */
-type Milestone = {
-  readonly label: string;
-  readonly agent: string;
-  /** Reached only when this returns true. Absence of evidence is not progress. */
-  readonly reached: (context: ProgressContext) => boolean;
-  /** What the agent produced, as label/value pairs. */
-  readonly output: (context: ProgressContext) => readonly (readonly [string, string])[];
-};
-
-type ProgressContext = {
-  readonly turn: AgentTurnResult | null;
-  readonly candidates: readonly Record<string, unknown>[];
-  readonly session: ReturnSessionView | null;
-};
-
-/** Statuses that mean "nothing has happened here yet". */
-const IDLE = new Set(["NOT_STARTED", "NOT_REQUIRED_OR_PENDING", "PENDING", "OPEN", ""]);
-
-function live(value: string | null | undefined): value is string {
-  return typeof value === "string" && value.length > 0 && !IDLE.has(value);
-}
-
-/** The value if it means something, else nothing to show. */
-function shown(value: string | null | undefined): string | null {
-  return live(value) ? value : null;
-}
-
-function pairs(
-  ...entries: readonly (readonly [string, string | null | undefined])[]
-): readonly (readonly [string, string])[] {
-  return entries.flatMap(([label, value]) =>
-    value != null && value !== "" ? [[label, value] as const] : [],
-  );
-}
-
-const MILESTONES: readonly Milestone[] = [
-  {
-    label: "Orders identified",
-    agent: "Order Discovery",
-    reached: ({ candidates }) => candidates.length > 0,
-    output: ({ candidates }) =>
-      pairs(["Matches", candidates.length > 0 ? String(candidates.length) : null]),
-  },
-  {
-    label: "Order selected",
-    agent: "Order Discovery",
-    reached: ({ session }) => session !== null,
-    output: ({ session }) =>
-      pairs(["Order", session?.orderReference], ["Customer", session?.customerReference]),
-  },
-  {
-    label: "Case created",
-    agent: "Return Workflow",
-    reached: ({ session }) => live(session?.returnReference),
-    output: ({ session }) =>
-      pairs(
-        ["RMA", session?.returnReference],
-        ["Tracking", session?.trackingReference],
-        ["Support ticket", session?.supportTicketReference],
-      ),
-  },
-  {
-    label: "Shipment in progress",
-    agent: "Return Fulfillment",
-    reached: ({ session }) => live(session?.physicalReturnStatus),
-    output: ({ session }) =>
-      pairs(
-        ["Status", shown(session?.physicalReturnStatus)],
-        ["Method", session?.approvedReturnMethod],
-      ),
-  },
-  {
-    label: "Reached warehouse",
-    agent: "Bay Allocation",
-    reached: ({ session }) => live(session?.warehouseStatus),
-    output: ({ session }) =>
-      pairs(
-        ["Status", shown(session?.warehouseStatus)],
-        ["Bay", session?.bayReference],
-      ),
-  },
-  {
-    label: "Completed",
-    agent: "Return Session",
-    reached: ({ session }) => session?.status === "COMPLETED",
-    output: ({ session }) =>
-      pairs(
-        ["Resolution", shown(session?.customerResolutionStatus)],
-        ["Closure", shown(session?.caseClosureStatus)],
-      ),
-  },
-];
-
-/** Anchors the associate has supplied, as the agent recorded them. */
-function anchors(history: readonly ChatMessage[]): ResponseStatement[] {
-  return history
-    .filter((message): message is Extract<ChatMessage, { role: "agent" }> => message.role === "agent")
-    .flatMap((message) => message.statements)
-    .filter((statement) => statement.statement_type === "USER_PROVIDED_FACT");
+function capturedFacts(turn: AgentTurnResult | null): readonly CapturedFact[] {
+  return turn?.captured_facts ?? [];
 }
 
 /**
- * Rows the agent's searches returned, for the context pane.
+ * The branch associate the case has recorded, off the fact log.
  *
- * `QueryEvidence.result` is `unknown` in the contract because its shape
- * belongs to whichever query ran. Narrowed with a guard rather than a cast:
- * an ORDER_SEARCH carries `candidates[].data`, a GRAPH_QUERY does not, and
- * asserting the shape would render `[object Object]` for the second kind.
+ * The three names the selection write appends. Read from `CaseProjection.facts`
+ * rather than kept in client state, for the reason the bay recommendation is:
+ * the case is the record, and a second copy in the browser is the copy that can
+ * disagree with it. Absent is entirely ordinary -- the fields are optional --
+ * so every part is independently nullable and nothing is defaulted.
  */
+function branchAssociate(projection: CaseProjection | null): BranchAssociateContact {
+  const facts = projection?.facts ?? null;
+  return {
+    name: projectedFactString(facts, "branch_associate_name"),
+    email: projectedFactString(facts, "branch_associate_email"),
+    phone: projectedFactString(facts, "branch_associate_phone"),
+  };
+}
+
+/**
+ * The return reason the conversation captured, verbatim and unmapped.
+ *
+ * The case's recorded copy wins over the turn's, which is the rule
+ * `extractedFields.conversationalField` already applies and for the same
+ * reason: `confirm_case` flushes captured facts into the fact log the moment a
+ * case exists, so once there is one it is the authority and the conversation's
+ * copy covers the turns before it.
+ *
+ * **Handed on unchanged.** `return_reason` carries no validation pattern in
+ * `clarification_policy.fields`, so this is free text and may be anything the
+ * associate said. Deciding whether it is a term the release publishes belongs
+ * to the pane that owns the catalogue, and it is an exact match or nothing --
+ * a translation performed here would be a mapping invented in the client, one
+ * layer further from where anybody would look for it.
+ */
+function statedReturnReason(
+  turn: AgentTurnResult | null,
+  projection: CaseProjection | null,
+): string | null {
+  const recorded = projectedFactString(projection?.facts ?? null, "return_reason");
+  if (recorded !== null) return recorded;
+  const heard = capturedFacts(turn).find((fact) => fact.name === "return_reason");
+  return heard === undefined ? null : text(heard.value);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/**
- * What this turn's searches found, or `null` when the turn did not search.
- *
- * The distinction is the point. An identified order belongs to the
- * conversation, not to one turn: once the associate has narrowed to
- * CW273354, asking "and was it shipped" runs a GRAPH_QUERY whose evidence
- * carries `rows`, no `candidates`. Deriving the pane from the latest turn
- * alone made that follow-up read as "the agent has not matched an order yet"
- * and walked the progress rail backwards off *Orders identified* -- the
- * associate had lost nothing, only asked a question.
- *
- * An empty array is still an answer, so a search that genuinely finds nothing
- * clears the previous match rather than leaving a stale one on screen.
- */
-function turnCandidates(turn: AgentTurnResult): Record<string, unknown>[] | null {
-  // Collect the candidate arrays first rather than setting a flag inside the
-  // callback: whether the turn searched is then a property of the collection,
-  // which the type checker can see, instead of a mutation it cannot follow.
-  const searches = turn.query_evidence.flatMap((evidence) =>
-    isRecord(evidence.result) && Array.isArray(evidence.result.candidates)
-      ? [evidence.result.candidates]
-      : [],
-  );
-  if (searches.length === 0) return null;
-  return searches
-    .flat()
-    .flatMap((candidate: unknown) =>
-      isRecord(candidate) && isRecord(candidate.data) ? [candidate.data] : [],
-    );
+function text(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
 /**
- * The order reference discovery has settled on.
+ * What clicking a candidate should say in the conversation, or `null` when the
+ * row identifies nothing the agent could act on.
  *
- * Exactly one candidate, not "the top one": a ranked list with two entries has
- * not resolved anything, and picking its head would show a return session for
- * an order the associate never confirmed.
+ * Candidate rows are not one shape. Searching an order number returns rows with
+ * `sales_order_number`; searching a customer name returns rows with only
+ * `account_id`, `customer_id` and `customer_name`. Confirming an order is the
+ * stronger statement, so it wins whenever the row can support it.
+ *
+ * A customer row confirms the *customer*, which is the honest first step of a
+ * narrowing that has not reached an order yet -- and it is what lets the flow
+ * go name, then product, then order, rather than jumping to an order the
+ * associate has not chosen. `account_id` is included because a customer id is
+ * only unique within an account.
+ *
+ * Returning `null` rather than a vague sentence matters: an empty submission
+ * would put a meaningless turn on the record and cost a reasoning round trip.
  */
+function confirmationFor(chosen: Record<string, unknown>): string | null {
+  // Kept deliberately plain and minimal. This is a *button press* rendered as
+  // text so the agent can act on it -- an intent marker, not dialogue. Warm,
+  // natural conversation is the model's job, written under the tone rules in
+  // `ORDER_AGENT_REASONING_V1`'s system prompt; hardcoding friendly phrasing
+  // here would put conversation content in the client, where no release can
+  // change it and no prompt version governs it.
+  const order = text(chosen.sales_order_number);
+  if (order !== null) return `Confirm order ${order}.`;
+
+  // `customer_id` is deliberately not read here. By operator instruction
+  // (2026-08-15) the internal ERP customer number must not be exposed, and what
+  // is submitted goes into a stored, replayable transcript -- a more durable
+  // exposure than a table cell. The account narrows the name sufficiently, and
+  // the agent still holds the candidate set to resolve the exact row.
+  const name = text(chosen.customer_name);
+  if (name === null) return null;
+
+  const account = text(chosen.account_id);
+  return account !== null
+    ? `Confirm the customer ${name} on account ${account}.`
+    : `Confirm the customer ${name}.`;
+}
+
+/**
+ * The rows a turn's searches produced, and how many the graph actually matched.
+ *
+ * **The rows are a page, and the total says so.** `order_search` serves five
+ * candidates at a time out of at most twenty-five cached, and reports
+ * `total_found` on the same evidence record. A table headed by
+ * `candidates.length` would announce five matches for a search that found four
+ * hundred, contradicting the agent's own rules in the pane beside it. Where
+ * several evidence records carry a total -- a turn that paged -- the largest is
+ * the search's, since each page reports the same figure.
+ */
+type TurnCandidates = {
+  readonly rows: Record<string, unknown>[];
+  readonly totalFound: number | null;
+};
+
+function turnCandidates(turn: AgentTurnResult): TurnCandidates | null {
+  const searches = turn.query_evidence.flatMap((evidence) =>
+    isRecord(evidence.result) && Array.isArray(evidence.result.candidates)
+      ? [evidence.result]
+      : [],
+  );
+  if (searches.length === 0) return null;
+  const totals = searches.flatMap((result) =>
+    typeof result.total_found === "number" && Number.isFinite(result.total_found)
+      ? [result.total_found]
+      : [],
+  );
+  return {
+    rows: searches
+      .flatMap((result) => result.candidates as unknown[])
+      .flatMap((candidate: unknown) =>
+        isRecord(candidate) && isRecord(candidate.data) ? [candidate.data] : [],
+      ),
+    totalFound: totals.length === 0 ? null : Math.max(...totals),
+  };
+}
+
 function resolvedOrderReference(candidates: readonly Record<string, unknown>[]): string | null {
   if (candidates.length !== 1) return null;
   const value = candidates[0].sales_order_number;
   return typeof value === "string" ? value : null;
 }
 
-/** A graph row's string value, or null for anything blank or non-textual. */
-function rowText(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length === 0 ? null : trimmed;
+/**
+ * The confirmed order, rendered in the candidate pane's own shape.
+ *
+ * A resumed return has no search behind it: the associate did the search in a
+ * conversation that ended days ago, and `query_evidence` is not replayed. The
+ * candidate list therefore came back empty and the order the case was raised
+ * for -- which the platform knows perfectly well -- was nowhere on screen.
+ *
+ * Every value here is the case's. Nothing is defaulted, and a field the
+ * projection does not carry is simply not a column.
+ */
+function confirmedOrderRow(
+  order: ConfirmedOrderProjection | null,
+): Record<string, unknown>[] {
+  if (order === null) return [];
+  const row: Record<string, unknown> = { sales_order_number: order.orderReference };
+  if (order.orderSource !== null) row.order_source = order.orderSource;
+  if (order.sourceWebOrderNumber !== null) row.web_order_number = order.sourceWebOrderNumber;
+  if (order.trilogieOrderNumber !== null) row.trilogie_order_number = order.trilogieOrderNumber;
+  if (order.confirmedAt !== null) row.confirmed_at = order.confirmedAt;
+  return [row];
+}
+
+type HistoryAnchor =
+  | { orderReference: string; customerId: null; accountId: null }
+  | { orderReference: null; customerId: string; accountId: string };
+
+function historySearchKey(
+  candidates: readonly Record<string, unknown>[],
+): HistoryAnchor | null {
+  if (candidates.length !== 1) return null;
+  const candidate = candidates[0];
+  const order =
+    typeof candidate.sales_order_number === "string" &&
+    candidate.sales_order_number.length > 0
+      ? candidate.sales_order_number
+      : null;
+  const customer =
+    typeof candidate.customer_id === "string" && candidate.customer_id.length > 0
+      ? candidate.customer_id
+      : null;
+  const account =
+    typeof candidate.account_id === "string" && candidate.account_id.length > 0
+      ? candidate.account_id
+      : null;
+
+  if (customer !== null && account !== null) {
+    return { orderReference: null, customerId: customer, accountId: account };
+  }
+  if (order !== null) {
+    return { orderReference: order, customerId: null, accountId: null };
+  }
+  return null;
 }
 
 /**
- * What to ask the return-history endpoint about, from the resolved candidate.
+ * Which agent a turn is addressed to, and why it can be missing.
  *
- * Prefers the customer over the order, because the question worth answering is
- * the wider one: an associate weighing a return wants to know whether this
- * customer has sent things back before, not only whether *this* order has. The
- * order anchor is the fallback for a row that carries no customer.
+ * The page used to send the literal `"order_discovery"` while the active schema
+ * keys the policy `order-discovery-agent`, so every turn came back
+ * `422 ORDER_AGENT_OUT_OF_SCOPE`. The id is now served by
+ * `/api/runtime-config`, and the two ways it can be absent are different
+ * situations that deserve different sentences: the bootstrap fetch has not
+ * landed (ordinary, and momentary), or it landed and the deployment has not
+ * configured the mapping (a configuration defect an operator must fix).
  *
- * Both halves of the customer key or neither: an ERP customer number is unique
- * within a branch account and not across them, so an account-less lookup would
- * answer about a different customer with the same number in another branch.
+ * Neither one falls back to a literal. A second guessed id would fail exactly
+ * the same way as the first, several minutes later, in a conversation an
+ * associate had already started.
  */
-type ReturnHistoryAnchor =
-  | { kind: "customer"; accountId: string; customerId: string }
-  | { kind: "order"; orderReference: string };
-
-function returnHistoryAnchor(
-  candidates: readonly Record<string, unknown>[],
-): ReturnHistoryAnchor | null {
-  // Exactly one candidate, for the same reason `resolvedOrderReference` insists
-  // on it: a ranked list of three has not resolved anybody, and showing one of
-  // their return histories would be showing a stranger's.
-  if (candidates.length !== 1) return null;
-  const row = candidates[0];
-  const accountId = rowText(row.account_id);
-  const customerId = rowText(row.customer_id);
-  if (accountId !== null && customerId !== null) {
-    return { kind: "customer", accountId, customerId };
+function agentBinding(
+  runtimeConfig: RuntimeConfig | null,
+): { agentId: string; error: null } | { agentId: null; error: Error } {
+  const configured = runtimeConfig?.agents?.orderDiscovery ?? null;
+  if (configured !== null) {
+    return { agentId: configured, error: null };
   }
-  const orderReference = rowText(row.sales_order_number);
-  return orderReference === null ? null : { kind: "order", orderReference };
+  return {
+    agentId: null,
+    error: new Error(
+      runtimeConfig === null
+        ? "Runtime configuration has not loaded yet, so the copilot cannot address an agent."
+        : "This deployment has no copilot.order_discovery_agent_id configured, so no message " +
+          "can be sent. Set it in the return configuration release.",
+    ),
+  };
+}
+
+/**
+ * The two identifiers that survive a reload, and the only things that do.
+ *
+ * **IDs only, in the URL, and never business state in `localStorage`.** A cached
+ * RMA or policy decision is a copy of something the platform owns, and a copy
+ * outlives the fact -- an associate reloading after a cancellation would be
+ * shown the return as it was. Two ids cost one transcript read and one case
+ * read to rebuild everything from its source, and the URL makes the return
+ * shareable and back-button-able for free.
+ */
+const CONVERSATION_PARAM = "conversationId";
+const CASE_PARAM = "caseId";
+
+/**
+ * A stored transcript replayed as plain speech.
+ *
+ * `restored` rather than `agent`: the record keeps role and text, not the typed
+ * statements, so a replayed turn must not be able to claim it cited evidence it
+ * no longer carries.
+ */
+function restoredHistory(transcript: ConversationTranscript): ChatHistoryEntry[] {
+  return transcript.messages.map((message, index) => ({
+    role: "restored" as const,
+    id: `${transcript.conversationId}-${String(index)}`,
+    author: message.role,
+    text: message.text,
+  }));
 }
 
 export function ReturnCopilotPage() {
   const { can } = useCapabilities();
-  // Settable, not fixed at mount. A `useState(newConversationId)` with no
-  // setter meant one conversation per page load and no way to start another --
-  // an associate finishing one return had to reload the browser to begin the
-  // next, and the agent, whose memory is scoped to the conversation, would
-  // otherwise carry the last customer into this one.
-  const [conversationId, setConversationId] = useState(newConversationId);
-  const [history, setHistory] = useState<readonly ChatMessage[]>([]);
-  const [draft, setDraft] = useState("");
-  const [showHistory, setShowHistory] = useState(false);
+  const runtimeConfig = useRuntimeConfig();
+  const { agentId, error: agentConfigurationError } = agentBinding(runtimeConfig);
+  // The released reason and condition catalogues. Empty means the deployment
+  // has published none, which the pane says rather than substituting a list.
+  const vocabulary = selectionVocabulary(runtimeConfig);
+  // The release's own ranking of the conversation's facts. Empty means the
+  // deployment stated none, which the facts panel handles by falling back to a
+  // documented alphabetical order rather than to a list written in the client.
+  const factOrder = capturedFactOrder(runtimeConfig);
+  const queries = useQueryClient();
+  const [routeParams, setRouteParams] = useSearchParams();
+  const routeConversationId = routeParams.get(CONVERSATION_PARAM);
+  const routeCaseId = routeParams.get(CASE_PARAM);
+  // Minted, not chosen: a conversation the associate has not spoken into yet
+  // has no server-side transcript, so there is nothing to put in the URL until
+  // the first turn lands. Until then this is the id that turn will be sent
+  // under.
+  const [mintedConversationId, setMintedConversationId] = useState<string>(() =>
+    newConversationId(),
+  );
+  const conversationId = routeConversationId ?? mintedConversationId;
+  const [history, setHistory] = useState<readonly ChatHistoryEntry[]>([]);
+  const [draft, setDraft] = useState<string>("");
+  const [showHistory, setShowHistory] = useState<boolean>(false);
   const [turn, setTurn] = useState<AgentTurnResult | null>(null);
-  // The case a *reopened* conversation already had. A live turn's `case_id`
-  // wins over it, so confirming a second order in a resumed conversation moves
-  // the panel to the new case rather than leaving it on the old one.
-  const [resumedCaseId, setResumedCaseId] = useState<string | null>(null);
-  // Held across turns, not derived from the latest one: see `turnCandidates`.
   const [candidates, setCandidates] = useState<readonly Record<string, unknown>[]>([]);
-  // The backend rejects a turn built on a stale view, so the version from the
-  // last result is what the next request must carry.
-  const versionRef = useRef(0);
+  /** What the search matched, as opposed to what it handed over. `null` if unreported. */
+  const [candidateTotal, setCandidateTotal] = useState<number | null>(null);
+  const versionRef = useRef<number>(0);
+  /**
+   * The conversation whose transcript this mount has already dealt with.
+   *
+   * Set both by the rehydration effect and by every writer of the URL, because
+   * they are the same claim: "the history on screen is this conversation's".
+   * Without the second half, the first turn writes its id to the URL, the
+   * effect sees a conversation id appear and re-reads the transcript over the
+   * live exchange -- replacing typed statements with replayed plain text a
+   * second after they arrived.
+   */
+  const restoredConversation = useRef<string | null>(null);
 
-  const conversations = useQuery({
-    queryKey: ["order-agent", "conversations"],
-    queryFn: () => orderAgentApi.listConversations(),
-    enabled: can("returns.session.read"),
-  });
-
-  // The associate's own open returns, as returns rather than as chats.
-  //
-  // A conversation list answers "what did I talk about"; this answers "what
-  // have I got outstanding", which is the question someone picking the work
-  // back up is actually asking. Each row knows its Channel A conversation, so
-  // opening one is the same resume path as opening the chat.
-  const cases = useQuery({
-    queryKey: ["cases", "list"],
-    queryFn: () => casesApi.list(),
-    enabled: can("returns.session.read"),
-  });
-
-  function startNewReturn() {
-    setConversationId(newConversationId());
-    setHistory([]);
-    setTurn(null);
-    setCandidates([]);
-    setResumedCaseId(null);
-    setDraft("");
-    // Back to 0: a new conversation has no committed version, and carrying the
-    // previous one's would be rejected as stale on the very first turn.
-    versionRef.current = 0;
+  /** Write identity to the URL, replacing rather than pushing: resuming a return
+   * is not a navigation the back button should have to walk through. */
+  function rememberIdentity(next: { conversationId?: string; caseId?: string | null }) {
+    if (next.conversationId !== undefined) {
+      restoredConversation.current = next.conversationId;
+    }
+    setRouteParams(
+      (previous) => {
+        const updated = new URLSearchParams(previous);
+        if (next.conversationId !== undefined) {
+          updated.set(CONVERSATION_PARAM, next.conversationId);
+        }
+        if (next.caseId !== undefined) {
+          if (next.caseId === null) updated.delete(CASE_PARAM);
+          else updated.set(CASE_PARAM, next.caseId);
+        }
+        return updated;
+      },
+      { replace: true },
+    );
   }
 
+  // The turn that just confirmed knows the case first; the URL knows it across
+  // a reload. Nothing else does, and no third copy is kept in state.
+  const caseId = turn?.case_id ?? routeCaseId;
+  const caseRead = useQuery({
+    queryKey: ["cases", caseId],
+    // **The read.** One `GET /api/cases/{caseId}` carries enough authoritative
+    // state to drive the whole screen -- stage included -- with no
+    // `ReturnSession` read behind it, which is what the deleted
+    // `returnsApi.list()` scan used to attempt in the browser.
+    queryFn: caseId === null ? skipToken : () => casesApi.readProjection(caseId),
+    // Business truth, not array length. `caseRefetchInterval` carries the
+    // reasoning; the short version is that an RMA with no label is a case still
+    // being worked, and the shipped predicate stopped on it.
+    refetchInterval: (query) => caseRefetchInterval(query.state.data, query.state.error),
+    // A late response carrying a lower revision is discarded before it becomes
+    // query data, so it cannot walk the screen backwards.
+    structuralSharing: keepNewerRevision,
+    // A counter terminal loses its network for a minute; the case is re-read on
+    // the way back. **The agent turn is not re-issued** -- it is a mutation, and
+    // mutations are never refetched. Reconnecting must not spend a model call
+    // or append a turn nobody asked for.
+    refetchOnReconnect: true,
+    // Bounded, and never against a refusal the backend has already explained.
+    retry: caseRetry,
+  });
+
+  const projection = caseRead.data ?? null;
+  // Structural rather than a cast: a cache holding a body written before the
+  // route swap, or a decode that failed, must read as "no lifecycle" instead of
+  // asserting a stage that is not there.
+  const lifecycle = caseLifecycle(caseRead.data);
+
+  const historyAnchor = historySearchKey(candidates);
+  const returnHistory = useQuery({
+    queryKey: [
+      "return-history",
+      historyAnchor?.orderReference ?? null,
+      historyAnchor?.accountId ?? null,
+      historyAnchor?.customerId ?? null,
+    ],
+    queryFn:
+      historyAnchor === null
+        ? skipToken
+        : () =>
+            historyAnchor.customerId === null
+              ? returnHistoryApi.byOrder(historyAnchor.orderReference)
+              : returnHistoryApi.byCustomer(
+                  historyAnchor.accountId,
+                  historyAnchor.customerId,
+                ),
+  });
+
   /**
-   * Reopen a conversation *and* the return it raised.
+   * The confirmed order's lines, which is what the associate selects from.
    *
-   * Both, in one action. The case id arrives on the turn that confirmed the
-   * order, so a conversation reopened from history had none until the
-   * associate sent another message -- the RMA panel came back blank on a
-   * return that already had one, and the only way to see it was to type
-   * something. The lookup is by conversation, scoped server-side to the
-   * caller.
+   * Case-scoped, because that is the only shape the platform serves: there is
+   * deliberately no `/api/orders/{reference}/lines`, since a naked order number
+   * is not an authorization boundary. Nothing is asked for until there is a
+   * case, and a case with no confirmed order answers `409 ORDER_NOT_CONFIRMED`
+   * rather than an empty order.
+   *
+   * Not polled. Availability moves when somebody else selects the same line,
+   * and the write re-evaluates it inside its own transaction and refuses with
+   * the recomputed figures -- so a poll would spend requests to pre-empt a
+   * refusal the writer already explains.
    */
-  const open = useMutation({
-    mutationFn: async (id: string) => ({
-      transcript: await orderAgentApi.readTranscript(id),
-      // A conversation that never confirmed an order has no case, and that is
-      // an answer, not a failure.
-      raisedCase: (await casesApi.list(id)).at(0) ?? null,
-    }),
-    onSuccess: ({ transcript, raisedCase }) => {
-      setConversationId(transcript.conversationId);
-      setHistory(
-        transcript.messages.map((message, index) => ({
-          role: "restored" as const,
-          id: `${transcript.conversationId}-${String(index)}`,
-          author: message.role,
-          text: message.text,
-        })),
-      );
-      setTurn(null);
-      setCandidates([]);
-      setResumedCaseId(raisedCase === null ? null : raisedCase.caseId);
-      // Continue where it left off rather than at 0, or the next turn is
-      // rejected as built on a stale view of a conversation that has history.
-      versionRef.current = transcript.conversationVersion;
+  // Explicitly typed: `caseRetry` declares its error parameter `unknown`, which
+  // would otherwise widen the query's error type and leave the pane unable to
+  // read a `message` off the refusal the backend already wrote.
+  const orderLines = useQuery<OrderLines>({
+    queryKey: ["order-lines", caseId],
+    queryFn: caseId === null ? skipToken : () => orderLinesApi.read(caseId),
+    retry: caseRetry,
+  });
+
+  /**
+   * Record the whole selection against the case (plan sect. 12.4).
+   *
+   * **This is the write whose absence disabled the item-selection pane.** Its
+   * docstring said the controls were inert because no case-scoped selection
+   * write existed; `POST /api/cases/{caseId}/selected-items` is it, and it
+   * validates reason and condition against the released `selection_vocabulary`,
+   * refusing an unpublished term with `422 SELECTION_TERM_NOT_PUBLISHED`.
+   *
+   * On success both the case and the line availability are re-read rather than
+   * patched from the response. The response does carry them, but the case is
+   * the thing that moves this whole screen -- stage included -- and a
+   * client-side patch of the projection is exactly the copy that can disagree
+   * with the platform.
+   */
+  const selectItems = useMutation({
+    mutationFn: (submission: {
+      readonly items: readonly SelectedItemRequest[];
+      readonly contact: ReturnContactRequest | null;
+    }) => {
+      if (caseId === null) {
+        return Promise.reject(
+          new Error("No case has been raised yet, so no selection can be recorded."),
+        );
+      }
+      return orderLinesApi.replaceSelection(caseId, submission.items, submission.contact);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queries.invalidateQueries({ queryKey: ["cases", caseId] }),
+        queries.invalidateQueries({ queryKey: ["order-lines", caseId] }),
+      ]);
     },
   });
 
   const send = useMutation({
-    mutationFn: (message: string) =>
-      orderAgentApi.sendTurn({
+    mutationFn: (message: string) => {
+      // Fail closed. `submit` already refuses, so reaching here means a caller
+      // bypassed it -- and sending a guessed id would spend a real turn to
+      // learn what this branch already knows.
+      if (agentId === null) return Promise.reject(agentConfigurationError);
+      return orderAgentApi.sendTurn({
         conversationId,
         expectedConversationVersion: versionRef.current,
         message,
-        // Must match `agent_policies` in the active schema exactly. A mismatch
-        // is not a 404 -- the guard reports ORDER_AGENT_OUT_OF_SCOPE, which
-        // reads like a permissions problem rather than a typo.
-        agentId: "order-discovery-agent",
-      }),
+        agentId,
+      });
+    },
     onSuccess: (result) => {
       versionRef.current = result.conversation_version;
       setTurn(result);
+      // Only now does the conversation exist server-side, so only now is there
+      // a transcript for a reload to come back to.
+      rememberIdentity({
+        conversationId,
+        ...(result.case_id ? { caseId: result.case_id } : {}),
+      });
+      // **No state transition is read off the turn.** `response.status` and
+      // `business_capability` used to move this screen -- an `APPROVED` or an
+      // `ISSUED` from the model advanced the lifecycle and minted a policy
+      // decision out of nothing. They are conversational metadata; the case
+      // says what happened.
       const found = turnCandidates(result);
-      if (found !== null) setCandidates(found);
+      if (found !== null) {
+        setCandidates(found.rows);
+        setCandidateTotal(found.totalFound);
+      }
       setHistory((previous) => [
         ...previous,
         {
@@ -386,69 +549,107 @@ export function ReturnCopilotPage() {
     },
   });
 
-  const orderReference = resolvedOrderReference(candidates);
-
-  // The case, once the associate has confirmed an order.
-  //
-  // **This replaces a client-side join.** The copilot used to fetch every
-  // return session and match `session.orderReference` against the top search
-  // candidate -- so two open orders sharing a reference showed the wrong one,
-  // and closing the tab lost the link entirely. `case_id` comes back on the
-  // turn that confirmed, so there is nothing left to guess.
-  const caseId = turn?.case_id ?? resumedCaseId;
-  const caseDetail = useQuery({
-    queryKey: ["cases", caseId],
-    // `skipToken` rather than `enabled`, so the null case is narrowed by the
-    // type system instead of asserted away: with `enabled` the closure still
-    // sees `string | null` and needs a cast that says nothing the compiler can
-    // check.
-    queryFn: caseId === null ? skipToken : () => casesApi.read(caseId),
-    // Support answers on their own clock, and the associate is standing at a
-    // counter -- so the RMA has to appear without them sending a message to
-    // provoke it. Polling stops the moment there is a return record: the wait
-    // is for Support's first answer, not forever.
-    refetchInterval: (query) =>
-      (query.state.data?.returnRecords.length ?? 0) > 0 ? false : 10_000,
+  /**
+   * Resume a conversation, and the return it raised.
+   *
+   * **The lookup is for the rows that do not know.** The open-cases list knows
+   * the case id -- it draws each row with it -- and hands it over, so resuming
+   * an open return costs one transcript read and no case-discovery round trip
+   * at all. The conversation-history rows are past searches, most of which
+   * raised nothing, and there `casesApi.list(conversationId)` is the only way
+   * to find out; a conversation raises at most one case, which is what makes
+   * `.at(0)` a read of the whole answer rather than a pick from several.
+   *
+   * The difference is not only a request. When the id was thrown away and
+   * re-derived, a lookup that came back empty -- a case the principal cannot
+   * see, a list read that failed -- resolved to `null` and *cleared* the case
+   * from the URL, so a return the platform had open lost its case id on the way
+   * back in and the whole screen fell back to discovery.
+   */
+  const open = useMutation({
+    mutationFn: async ({ id, caseId: known }: { id: string; caseId?: string }) => {
+      const transcript = await orderAgentApi.readTranscript(id);
+      if (known !== undefined) {
+        return { transcript, raisedCase: { caseId: known } };
+      }
+      const caseList = await casesApi.list(id);
+      return {
+        transcript,
+        raisedCase: caseList.at(0) ?? null,
+      };
+    },
+    onSuccess: ({ transcript, raisedCase }) => {
+      setShowHistory(false);
+      setHistory(restoredHistory(transcript));
+      setTurn(null);
+      // `setCandidates([])` used to live here, and the search results of the
+      // previous conversation used to survive here. Neither is right: the
+      // resumed return's order comes off the case, through `confirmedOrderRow`
+      // below, so the stale list is dropped and the authoritative one takes
+      // its place.
+      setCandidates([]);
+      setCandidateTotal(null);
+      rememberIdentity({
+        conversationId: transcript.conversationId,
+        caseId: raisedCase === null ? null : raisedCase.caseId,
+      });
+      versionRef.current = transcript.conversationVersion;
+    },
   });
 
-  // The return session still backs the later milestones, which report on work
-  // other agents did and have no case-level equivalent yet. Read by the case's
-  // own order reference rather than by a search candidate, so it is at least
-  // anchored to something the associate confirmed.
-  const confirmedOrder = caseDetail.data?.case.confirmedOrderReference ?? orderReference;
-  const sessions = useQuery({
-    queryKey: ["returns", "list"],
-    queryFn: returnsApi.list,
-    enabled: confirmedOrder !== null,
+  /**
+   * Rebuild the conversation half of a reload.
+   *
+   * The case half needs nothing: `routeCaseId` feeds the case query directly,
+   * which is the point of putting it in the URL. Re-deriving it from
+   * `casesApi.list(conversationId)` -- what the history path does, because
+   * there the id is genuinely unknown -- would be a second round trip to
+   * re-learn something the address bar already says, and would clear the case
+   * on any read that came back empty.
+   */
+  const restore = useMutation({
+    mutationFn: (id: string) => orderAgentApi.readTranscript(id),
+    onSuccess: (transcript) => {
+      setHistory(restoredHistory(transcript));
+      versionRef.current = transcript.conversationVersion;
+    },
   });
-  const session =
-    (sessions.data ?? []).find((candidate) => candidate.orderReference === confirmedOrder) ?? null;
 
-  // What the graph knows about earlier returns, once one candidate is resolved.
-  //
-  // Not the same read as `caseDetail`. That one is *this* return, addressed by
-  // the case id the confirming turn handed back. This is every return against
-  // the customer or the order, including ones raised by another associate in a
-  // conversation this one has never seen -- which is the whole reason the case,
-  // RMA, item and handling-unit entities were projected into the graph.
-  const historyAnchor = returnHistoryAnchor(candidates);
-  const returnHistory = useQuery({
-    queryKey: ["return-history", historyAnchor],
-    queryFn:
-      historyAnchor === null
-        ? skipToken
-        : historyAnchor.kind === "customer"
-          ? () => returnHistoryApi.byCustomer(historyAnchor.accountId, historyAnchor.customerId)
-          : () => returnHistoryApi.byOrder(historyAnchor.orderReference),
+  const restoreTranscript = restore.mutate;
+  useEffect(() => {
+    // Once per conversation named in the URL. The transcript is immutable
+    // history and the mutation would otherwise refire on every state change.
+    if (routeConversationId === null) return;
+    if (restoredConversation.current === routeConversationId) return;
+    restoredConversation.current = routeConversationId;
+    restoreTranscript(routeConversationId);
+  }, [routeConversationId, restoreTranscript]);
+
+  const conversations = useQuery({
+    queryKey: ["order-agent", "conversations"],
+    queryFn: () => orderAgentApi.listConversations(),
+    enabled: showHistory,
+  });
+
+  const cases = useQuery({
+    queryKey: ["cases", "list"],
+    queryFn: () => casesApi.list(),
+    enabled: showHistory && can("returns.session.read"),
   });
 
   if (!can("returns.session.read")) {
-    return <p className="text-sm text-on-surface-variant">You do not have access to returns.</p>;
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <p className="text-sm text-outline">
+          You do not have access to the returns domain.
+        </p>
+      </div>
+    );
   }
 
   function submit(message: string) {
     const trimmed = message.trim();
-    if (trimmed.length === 0 || send.isPending) return;
+    if (trimmed.length === 0 || send.isPending || agentId === null) return;
     setHistory((previous) => [
       ...previous,
       { role: "associate", id: `me-${String(previous.length)}`, text: trimmed },
@@ -457,805 +658,205 @@ export function ReturnCopilotPage() {
     send.mutate(trimmed);
   }
 
+  function resetToFreshReturn() {
+    setShowHistory(false);
+    // The one place a new id is minted. The agent's memory is scoped to the
+    // conversation, so reusing one would let the previous customer's details
+    // inform this customer's search.
+    setMintedConversationId(newConversationId());
+    // Identity out of the URL as well, or a reload would resume the return the
+    // associate has just walked away from.
+    restoredConversation.current = null;
+    setRouteParams(
+      (previous) => {
+        const updated = new URLSearchParams(previous);
+        updated.delete(CONVERSATION_PARAM);
+        updated.delete(CASE_PARAM);
+        return updated;
+      },
+      { replace: true },
+    );
+    setHistory([]);
+    setDraft("");
+    setTurn(null);
+    setCandidates([]);
+    setCandidateTotal(null);
+    versionRef.current = 0;
+  }
+
+  // The case's own order wins over a search that may be several conversations
+  // old; the search list is what the associate is looking at *before* there is
+  // a case to be authoritative.
+  const confirmedOrder = projection?.confirmedOrder ?? null;
+  const shownCandidates =
+    confirmedOrder === null ? candidates : confirmedOrderRow(confirmedOrder);
+  const confirmedOrderReference =
+    confirmedOrder?.orderReference ?? resolvedOrderReference(candidates);
+
+  // **Mode comes from the backend stage and nothing else** once a case exists.
+  // `stage` is a pure projection with frozen precedence and monotonicity tests
+  // behind it; the screen's job is to draw it, not to re-derive it.
+  const activeMode = deriveCopilotMode({
+    stage: lifecycle?.stage ?? null,
+    candidates: shownCandidates,
+  });
+
   return (
-    <div className="grid h-[calc(100vh-8rem)] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,8fr)_minmax(0,7fr)]">
-      {/*
-        The identity of the return in hand, which the three panes cannot hold
-        still: chat scrolls, the middle pane is the agent's current step, and the
-        right pane is whichever candidate is resolved. An associate at a counter
-        who has scrolled up needs the conversation and case ids to stay put.
-      */}
+    <>
       <DomainRail>
-        <RailSection title="This return">
-          <RailFact label="Conversation" value={conversationId} />
+        <RailSection title="Return Copilot">
+          <RailFact label="Mode" value={activeMode} />
+          <RailFact label="Stage" value={lifecycle?.stage ?? null} />
           <RailFact label="Case" value={caseId} />
-          <RailFact label="Order" value={confirmedOrder} />
-          {caseId === null ? (
-            <RailNote>
-              Nothing is confirmed yet. A case is raised by the turn that confirms the order.
-            </RailNote>
-          ) : (
-            <>
-              <RailFact label="Status" value={caseDetail.data?.case.status ?? null} />
-              <RailFact
-                label="RMAs"
-                value={caseDetail.data === undefined ? null : caseDetail.data.returnRecords.length}
-              />
-              {caseDetail.data?.returnRecords.length === 0 ? (
-                // The poll in `caseDetail` is running for exactly this, and a
-                // silent wait at a counter reads as a hung screen.
-                <RailNote>Waiting for Support to issue the RMA.</RailNote>
-              ) : null}
-            </>
-          )}
-        </RailSection>
-        <RailSection title="Earlier returns">
-          {historyAnchor === null ? (
-            <RailNote>No candidate is resolved yet.</RailNote>
-          ) : returnHistory.error !== null ? (
-            <RailNote>The return history could not be read.</RailNote>
-          ) : returnHistory.data === undefined ? (
-            <RailNote>Loading...</RailNote>
-          ) : (
-            <RailFact label="On record" value={returnHistory.data.cases.length} />
-          )}
+          <RailFact label="Order" value={confirmedOrderReference} />
+          <RailNote>
+            Post-sidebar 40fr / 24fr / 36fr unified 8-mode lifecycle copilot.
+          </RailNote>
         </RailSection>
       </DomainRail>
-      <ChatPane
-        history={history}
-        draft={draft}
-        onDraftChange={setDraft}
-        onSubmit={submit}
-        isPending={send.isPending}
-        error={send.error}
-        suggestions={turn?.response.suggestions ?? []}
-        conversations={conversations.data ?? []}
-        openCases={cases.data ?? []}
-        caseId={caseId}
-        historyError={conversations.error}
-        historyLoading={conversations.isPending}
-        conversationId={conversationId}
-        showHistory={showHistory}
-        onToggleHistory={() => { setShowHistory((open) => !open); }}
-        onNewReturn={startNewReturn}
-        onOpen={(id) => { setShowHistory(false); open.mutate(id); }}
-      />
-      <ProgressPane
-        context={{ turn, candidates, session }}
-        anchors={anchors(history)}
-        returnRecords={caseDetail.data?.returnRecords ?? []}
-      />
-      <ContextPane
-        turn={turn}
-        rows={candidates}
-        returnHistory={returnHistory.data ?? null}
-        returnHistoryPending={historyAnchor !== null && returnHistory.isPending}
-        returnHistoryError={returnHistory.error}
-      />
-    </div>
-  );
-}
 
-function Pane({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest">
-      <h2 className="border-b border-outline-variant px-4 py-3 text-sm font-semibold text-on-surface">
-        {title}
-      </h2>
-      {children}
-    </section>
-  );
-}
-
-function ChatPane({
-  history,
-  draft,
-  onDraftChange,
-  onSubmit,
-  isPending,
-  error,
-  suggestions,
-  conversations,
-  openCases,
-  caseId,
-  historyError,
-  historyLoading,
-  conversationId,
-  showHistory,
-  onToggleHistory,
-  onNewReturn,
-  onOpen,
-}: {
-  history: readonly ChatMessage[];
-  draft: string;
-  onDraftChange: (value: string) => void;
-  onSubmit: (value: string) => void;
-  isPending: boolean;
-  error: Error | null;
-  suggestions: readonly string[];
-  conversations: readonly ConversationSummary[];
-  openCases: readonly CaseSummary[];
-  caseId: string | null;
-  historyError: Error | null;
-  historyLoading: boolean;
-  conversationId: string;
-  showHistory: boolean;
-  onToggleHistory: () => void;
-  onNewReturn: () => void;
-  onOpen: (conversationId: string) => void;
-}) {
-  return (
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest">
-      <header className="flex items-center gap-3 border-b border-outline-variant px-4 py-3">
-        <span className="flex size-9 items-center justify-center rounded-full bg-secondary-container text-primary">
-          <Bot size={18} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold text-on-surface">Discovery Agent</span>
-          <span className="flex items-center gap-1.5 text-xs text-outline">
-            <span
-              aria-hidden="true"
-              className={`size-1.5 rounded-full ${isPending ? "animate-pulse bg-tertiary" : "bg-primary"}`}
-            />
-            {isPending ? "Thinking..." : "Ready to help"}
-          </span>
-        </span>
-
-        <button
-          type="button"
-          onClick={onNewReturn}
-          className="flex items-center gap-1.5 rounded-full border border-outline-variant px-3 py-1.5 text-xs font-medium text-on-surface-variant transition hover:border-primary hover:text-primary"
-        >
-          <Plus size={14} />
-          New return
-        </button>
-        <button
-          type="button"
-          aria-label="Previous returns"
-          aria-expanded={showHistory}
-          onClick={onToggleHistory}
-          className={`flex size-8 items-center justify-center rounded-full border transition ${
-            showHistory
-              ? "border-primary text-primary"
-              : "border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary"
-          }`}
-        >
-          <History size={15} />
-        </button>
-      </header>
-
-      {showHistory ? (
-        <div className="border-b border-outline-variant bg-surface-container-low">
-          {/*
-            Open returns first, then the chats. Someone reopening the panel is
-            far more often picking up outstanding work than re-reading a
-            conversation, and a case row carries what they need to recognise it
-            -- the order and how many RMAs it has -- which a chat title does
-            not.
-          */}
-          {openCases.length === 0 ? null : (
-            <>
-              <p className="px-4 pt-3 text-[11px] font-medium uppercase tracking-wide text-outline">
-                Open returns
-              </p>
-              <ul className="max-h-40 overflow-y-auto py-1">
-                {openCases.map((openCase) => (
-                  <li key={openCase.caseId}>
-                    <button
-                      type="button"
-                      // A case with no Channel A conversation cannot be
-                      // resumed as a chat -- it was raised by another channel
-                      // -- so the row reads rather than pretending to open.
-                      disabled={openCase.channelAConversationId === null}
-                      onClick={() => {
-                        if (openCase.channelAConversationId !== null) {
-                          onOpen(openCase.channelAConversationId);
-                        }
-                      }}
-                      className={`flex w-full flex-col gap-0.5 px-4 py-2 text-left transition enabled:hover:bg-surface-container disabled:cursor-default ${
-                        openCase.caseId === caseId ? "bg-surface-container" : ""
-                      }`}
-                    >
-                      <span className="truncate text-sm text-on-surface">
-                        {openCase.confirmedOrderReference ?? "Order not yet confirmed"}
-                      </span>
-                      <span className="text-[11px] text-outline">
-                        {openCase.status.toLowerCase().replace(/_/g, " ")}
-                        {openCase.returnRecordCount === 0
-                          ? ""
-                          : ` -- ${String(openCase.returnRecordCount)} RMA${
-                              openCase.returnRecordCount === 1 ? "" : "s"
-                            }`}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-
-          <p className="px-4 pt-3 text-[11px] font-medium uppercase tracking-wide text-outline">
-            Previous returns
-          </p>
-          {/*
-            Three states, not two. `data ?? []` collapses "the request failed"
-            into "you have no history", which is a comfortable lie: the
-            associate is told their previous returns do not exist when the
-            truth is that we could not ask.
-          */}
-          {historyError !== null ? (
-            <p role="alert" className="px-4 py-3 text-sm text-error">
-              {historyError.message}
-            </p>
-          ) : historyLoading ? (
-            <p className="px-4 py-3 text-sm text-on-surface-variant">Loading...</p>
-          ) : conversations.length === 0 ? (
-            <p className="px-4 py-3 text-sm text-on-surface-variant">
-              Nothing yet. Conversations appear here once you have started one.
-            </p>
-          ) : (
-            <ul className="max-h-56 overflow-y-auto py-1">
-              {conversations.map((conversation) => (
-                <li key={conversation.conversationId}>
-                  <button
-                    type="button"
-                    onClick={() => { onOpen(conversation.conversationId); }}
-                    className={`flex w-full flex-col gap-0.5 px-4 py-2 text-left transition hover:bg-surface-container ${
-                      conversation.conversationId === conversationId ? "bg-surface-container" : ""
-                    }`}
-                  >
-                    <span className="truncate text-sm text-on-surface">{conversation.title}</span>
-                    <span className="text-[11px] text-outline">
-                      {conversation.messageCount} message
-                      {conversation.messageCount === 1 ? "" : "s"}
-                      {conversation.updatedAt === null
-                        ? ""
-                        : ` -- ${new Date(conversation.updatedAt).toLocaleString()}`}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ) : null}
-
-      <div className="flex-1 overflow-y-auto p-4">
-        <ol className="flex flex-col gap-5">
-          {history.length === 0 ? (
-            <li className="flex gap-3">
-              <AgentAvatar />
-              <p className="max-w-[85%] rounded-2xl rounded-tl-sm border border-outline-variant bg-surface-container-low px-3.5 py-2.5 text-sm leading-relaxed text-on-surface">
-                Hi -- let&apos;s find that order. Tell me whatever the customer gave you: an order
-                number, their name, the product, roughly when it arrived. Anything is a start.
-              </p>
-            </li>
-          ) : null}
-          {history.map((message) => {
-            if (message.role === "associate") return <Said key={message.id} text={message.text} />;
-            if (message.role === "restored") {
-              return message.author === "associate" ? (
-                <Said key={message.id} text={message.text} />
-              ) : (
-                <li key={message.id} className="flex gap-3">
-                  <AgentAvatar />
-                  <p className="max-w-[85%] rounded-2xl rounded-tl-sm border border-outline-variant bg-surface-container-low px-3.5 py-2.5 text-sm leading-relaxed text-on-surface">
-                    {message.text}
-                  </p>
-                </li>
-              );
-            }
-            return (
-              <li key={message.id} className="flex gap-3">
-                <AgentAvatar />
-                <div className="flex min-w-0 flex-col gap-2">
-                  {message.statements.map((statement) => (
-                    <Statement key={statement.statement_id} statement={statement} />
-                  ))}
-                </div>
-              </li>
-            );
-          })}
-          {isPending ? <Typing /> : null}
-          {error ? (
-            // Verbatim. The backend distinguishes a clarification budget from a
-            // stale version from an unavailable model, and flattening those
-            // loses the only thing that says what to do next.
-            <li role="alert" className="text-sm text-error">
-              {error.message}
-            </li>
-          ) : null}
-        </ol>
-      </div>
-
-      {suggestions.length > 0 ? (
-        <div className="flex flex-wrap gap-2 border-t border-outline-variant px-4 py-2">
-          {suggestions.map((suggestion) => (
-            <button
-              key={suggestion}
-              type="button"
-              onClick={() => { onSubmit(suggestion); }}
-              className="rounded-full border border-outline-variant px-3 py-1 text-xs text-on-surface-variant transition hover:border-primary hover:text-primary"
-            >
-              {suggestion}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      <form
-        className="border-t border-outline-variant p-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSubmit(draft);
-        }}
-      >
-        <div className="relative flex items-center">
-          <input
-            aria-label="Message the discovery agent"
-            value={draft}
-            onChange={(event) => { onDraftChange(event.target.value); }}
-            placeholder="Type an identifier or message..."
-            className="w-full rounded-lg border border-outline-variant bg-surface py-2.5 pl-3 pr-11 text-sm text-on-surface outline-none transition placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary"
+      <ReturnCopilotShell
+        conversationPane={
+          <ConversationPane
+            history={history}
+            draft={draft}
+            onDraftChange={setDraft}
+            onSubmit={submit}
+            onReset={resetToFreshReturn}
+            isPending={send.isPending}
+            // No agent id, no composer -- but no spinner either. Folding this
+            // into `isPending` disabled the box correctly and simultaneously
+            // claimed a search was running, next to an alert saying nothing
+            // could be sent. `disabled` takes the composer away and says
+            // nothing about what the agent is doing.
+            disabled={agentId === null}
+            error={agentConfigurationError ?? send.error}
+            conversations={conversations.data ?? []}
+            openCases={cases.data ?? []}
+            onOpen={(id, knownCaseId) => {
+              open.mutate({ id, ...(knownCaseId === undefined ? {} : { caseId: knownCaseId }) });
+            }}
+            showHistory={showHistory}
+            onToggleHistory={() => {
+              setShowHistory((openState) => !openState);
+            }}
           />
-          <button
-            type="submit"
-            aria-label="Send"
-            disabled={draft.trim().length === 0 || isPending}
-            className="absolute right-2 flex size-8 items-center justify-center rounded bg-primary text-on-primary transition disabled:opacity-40"
-          >
-            <Send size={15} />
-          </button>
-        </div>
-        <p className="mt-2 text-center text-[11px] text-outline">Press Enter to send</p>
-      </form>
-    </section>
-  );
-}
-
-function AgentAvatar() {
-  return (
-    <span
-      aria-hidden="true"
-      className="mt-1 flex size-6 shrink-0 items-center justify-center rounded bg-surface-container text-on-surface-variant"
-    >
-      <Bot size={14} />
-    </span>
-  );
-}
-
-/**
- * A statement, labelled by where it came from.
- *
- * The distinction is the point of the contract: a GRAPH_FACT is traceable to
- * query evidence and a REASONED_SUGGESTION is the model's inference. Rendering
- * them identically would throw away the one thing that says how much to trust
- * a line.
- */
-function Statement({ statement }: { statement: ResponseStatement }) {
-  const isQuestion = statement.statement_type === "CLARIFICATION_QUESTION";
-  const isEvidenced = statement.statement_type === "GRAPH_FACT";
-  return (
-    <div
-      className={[
-        "max-w-[85%] rounded-2xl rounded-tl-sm border px-3.5 py-2.5 text-sm leading-relaxed",
-        isQuestion
-          ? "border-primary/40 bg-secondary-container text-on-surface"
-          : "border-outline-variant bg-surface-container-low text-on-surface",
-      ].join(" ")}
-    >
-      {statement.text}
-      {/*
-        Provenance as a quiet mark, not a banner.
-        Every bubble used to be stamped with an uppercase GRAPH FACT /
-        CLARIFICATION QUESTION header, which is the single thing that made this
-        read like a machine filing a report rather than a colleague talking. The
-        distinction still matters -- a GRAPH_FACT is traceable to query evidence
-        and a REASONED_SUGGESTION is the model's inference -- so it stays, as a
-        small marked line rather than a label shouted over the sentence. A
-        question needs no label at all: it ends in a question mark.
-      */}
-      {isEvidenced ? (
-        <span className="mt-1.5 flex items-center gap-1 text-[11px] text-outline">
-          <ShieldCheck size={11} aria-hidden="true" />
-          From order records
-        </span>
-      ) : null}
-      {statement.statement_type === "REASONED_SUGGESTION" ? (
-        <span className="mt-1.5 block text-[11px] italic text-outline">Suggestion</span>
-      ) : null}
-    </div>
-  );
-}
-
-/** The associate's own message. */
-function Said({ text }: { text: string }) {
-  return (
-    <li className="flex justify-end">
-      <p className="max-w-[85%] rounded-2xl rounded-tr-sm bg-primary px-3.5 py-2.5 text-sm leading-relaxed text-on-primary">
-        {text}
-      </p>
-    </li>
-  );
-}
-
-/**
- * Three drifting dots while the agent works.
- *
- * A spinner labelled "Searching..." states what the machine is doing. This is
- * the convention every person already reads as "they are replying", and a turn
- * here can take a while -- the wait is the part of the conversation most likely
- * to feel like talking to nothing.
- */
-function Typing() {
-  return (
-    <li className="flex gap-3" aria-live="polite" aria-label="The agent is replying">
-      <AgentAvatar />
-      <span className="flex items-center gap-1 rounded-2xl rounded-tl-sm border border-outline-variant bg-surface-container-low px-3.5 py-3">
-        {[0, 150, 300].map((delay) => (
-          <span
-            key={delay}
-            aria-hidden="true"
-            className="size-1.5 animate-bounce rounded-full bg-outline"
-            style={{ animationDelay: `${String(delay)}ms` }}
+        }
+        progressTruthPane={
+          <ProgressTruthPane
+            candidates={shownCandidates}
+            fields={extractedReturnFields({
+              captured: capturedFacts(turn),
+              projection,
+              factOrder,
+            })}
+            projection={projection}
+            caseId={caseId}
           />
-        ))}
-      </span>
-    </li>
-  );
-}
-
-/**
- * The RMAs raised for this case, each with what belongs to it.
- *
- * One panel per record, not one panel with the fields of the "current" RMA. A
- * multi-item return can produce two RMAs with different labels going to
- * different locations, and a single-valued panel has to pick one -- which would
- * send half the shipment to the wrong dock and look correct doing it.
- */
-function ReturnRecordsPanel({ records }: { records: readonly CaseReturnRecord[] }) {
-  if (records.length === 0) return null;
-  return (
-    <div className="mt-3 flex flex-col gap-2">
-      {records.map(({ record, items }) => (
-        <div
-          key={record.returnRecordId}
-          className="rounded border border-outline-variant bg-surface-container-low p-2"
-        >
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="truncate text-xs font-semibold text-on-surface">
-              {record.returnReference ?? "RMA pending"}
-            </span>
-            <span className="shrink-0 text-[11px] text-outline">{record.status}</span>
-          </div>
-          <dl className="mt-1 flex flex-col gap-0.5">
-            {(
-              [
-                ["Tracking", record.trackingReference],
-                ["Label", record.labelReference],
-                ["Return to", record.returnLocation],
-                ["Pickup", record.shippingInstructionReference],
-              ] as const
-            ).flatMap(([label, value]) =>
-              value == null || value === ""
-                ? []
-                : [
-                    <div key={label} className="flex gap-2 text-[11px]">
-                      <dt className="shrink-0 text-outline">{label}</dt>
-                      <dd className="min-w-0 truncate text-on-surface" title={value}>
-                        {value}
-                      </dd>
-                    </div>,
-                  ],
+        }
+        businessObjectPane={
+          <BusinessObjectPane activeMode={activeMode} candidateCount={shownCandidates.length}>
+            {activeMode === "DISCOVERY" && <DiscoveryMode turn={turn} />}
+            {activeMode === "CANDIDATE_ORDER" && (
+              <CandidateOrderMode
+                candidates={shownCandidates}
+                // The search's own count, so the header cannot announce a page
+                // as the whole match set. Absent once the case's confirmed
+                // order is what is on screen -- one row is the whole of it.
+                totalFound={confirmedOrder === null ? candidateTotal : null}
+                returnHistory={returnHistory.data ?? null}
+                returnHistoryPending={historyAnchor !== null && returnHistory.isPending}
+                returnHistoryError={returnHistory.error}
+                onSelectCandidate={(chosen) => {
+                  // Only the agent can confirm an order -- confirmation is what
+                  // raises the case. The button says which one, in the
+                  // conversation, rather than mutating a client-side copy of
+                  // the return into the next mode.
+                  //
+                  // **Candidate shape depends on what was searched.** An order
+                  // anchor yields rows carrying `sales_order_number`; a name or
+                  // other customer anchor yields customer rows that carry no
+                  // order at all. This used to read `sales_order_number` and
+                  // silently do nothing when it was absent -- so on a name
+                  // search the button rendered enabled and was inert, with no
+                  // error and no feedback. Confirming the customer is the real
+                  // first step of that narrowing, so say that instead.
+                  const confirmation = confirmationFor(chosen);
+                  if (confirmation !== null) {
+                    submit(confirmation);
+                  }
+                }}
+              />
             )}
-          </dl>
-          {items.length > 0 ? (
-            // Which lines this RMA covers. Without it, two RMAs on one case are
-            // indistinguishable to whoever has to pack the boxes.
-            <p className="mt-1 truncate text-[11px] text-outline">
-              Covers {items.map((item) => item.orderLineReference).join(", ")}
-            </p>
-          ) : null}
-        </div>
-      ))}
-    </div>
+            {activeMode === "ITEM_SELECTION" && (
+              <ItemSelectionMode
+                orderReference={confirmedOrderReference}
+                lines={orderLines.data?.lines ?? []}
+                linesPending={caseId !== null && orderLines.isPending}
+                linesError={orderLines.error}
+                items={projection?.selectedItems ?? []}
+                // Optional, and absent rather than defaulted: `confirm_case`
+                // records a branch only when the principal is scoped to exactly
+                // one, and an invented hub routes freight.
+                branchReference={projection?.customer?.branchReference ?? null}
+                // Optional in the same way and for the same reason: Fergusonhome
+                // marks the associate's details optional, and an invented email
+                // addresses a UPS label to nobody. Read off the case's fact log,
+                // so the pane opens on what was recorded rather than on a copy
+                // this page kept.
+                contact={branchAssociate(projection)}
+                reasons={vocabulary.reasons}
+                conditions={vocabulary.conditions}
+                // Free text, handed over unmapped. The pane pre-selects it only
+                // if it is exactly one of the published terms above.
+                capturedReason={statedReturnReason(turn, projection)}
+                submitting={selectItems.isPending}
+                submitError={selectItems.error}
+                onSubmitSelection={(items, contact) => {
+                  // The write, and nothing more. Policy evaluation belongs to
+                  // `ReturnCaseWorkflow`, which runs it on the case and opens
+                  // the Support work item itself; the earlier hook here posted
+                  // the words "evaluate policy" into the conversation, which
+                  // asked a discovery agent to do something it cannot do.
+                  selectItems.mutate({ items, contact });
+                }}
+              />
+            )}
+            {activeMode === "RETURN_EVALUATION" && (
+              <ReturnEvaluationMode
+                evaluation={projection?.policyEvaluation ?? null}
+                awaiting={projection?.awaiting ?? []}
+                support={projection?.support ?? null}
+                // No `onIssueRma`. It submitted the words "authorize rma" into
+                // the discovery conversation, and nothing downstream of that
+                // sentence issues an RMA: `ReturnCaseWorkflow.run` has already
+                // taken the case through the policy gate to `_open_support` by
+                // the time this pane is drawn, and the RMA is written by
+                // `record_support_outcome` when Support answers the work item.
+                // Same defect as the `onEvaluate` that posted "evaluate policy"
+                // and was deleted this morning -- a control that asks a
+                // discovery agent to do something it cannot reach.
+              />
+            )}
+            {activeMode === "AUTHORIZED_RMA" && (
+              <AuthorizedRmaMode returnRecords={caseRecords(projection)} />
+            )}
+            {activeMode === "CARRIER_TRANSIT" && (
+              <CarrierTransitMode shipments={caseShipments(projection)} />
+            )}
+            {activeMode === "WAREHOUSE_RECEIVING" && (
+              <WarehouseReceivingMode warehouse={projection?.warehouse ?? null} />
+            )}
+            {activeMode === "RETURN_SETTLEMENT" && (
+              <ReturnSettlementMode
+                settlement={projection?.settlement ?? null}
+                caseStatus={projection?.status ?? null}
+                onStartNewReturn={resetToFreshReturn}
+              />
+            )}
+          </BusinessObjectPane>
+        }
+      />
+    </>
   );
-}
-
-function ProgressPane({
-  context,
-  anchors: supplied,
-  returnRecords,
-}: {
-  context: ProgressContext;
-  anchors: readonly ResponseStatement[];
-  returnRecords: readonly CaseReturnRecord[];
-}) {
-  // The furthest milestone reached, not the count of reached ones. A later
-  // milestone can report before an earlier one does -- a warehouse scan can
-  // land before the fulfillment status updates -- and counting would then show
-  // a gap in the middle of a return that is demonstrably further along.
-  const furthest = MILESTONES.reduce(
-    (best, milestone, index) => (milestone.reached(context) ? index : best),
-    -1,
-  );
-
-  return (
-    <Pane title="Progress">
-      <div className="flex-1 overflow-y-auto p-4">
-        <ol className="flex flex-col">
-          {MILESTONES.map((milestone, index) => {
-            const done = index <= furthest;
-            const active = index === furthest + 1 && context.session !== null;
-            const output = milestone.output(context);
-            return (
-              <li key={milestone.label} className="flex gap-3">
-                <span className="flex flex-col items-center">
-                  <span
-                    className={[
-                      "flex size-7 shrink-0 items-center justify-center rounded-full",
-                      done
-                        ? "bg-primary text-on-primary"
-                        : active
-                          ? "bg-secondary-container text-primary"
-                          : "bg-surface-container text-outline",
-                    ].join(" ")}
-                  >
-                    {done ? <CircleCheck size={15} /> : <CircleDashed size={15} />}
-                  </span>
-                  {index < MILESTONES.length - 1 ? (
-                    <span aria-hidden="true" className="my-1 w-px flex-1 bg-outline-variant" />
-                  ) : null}
-                </span>
-
-                <span className="min-w-0 pb-5">
-                  <span
-                    className={`block text-sm font-medium ${done || active ? "text-on-surface" : "text-outline"}`}
-                  >
-                    {milestone.label}
-                  </span>
-                  <span className="block text-xs text-outline">{milestone.agent}</span>
-
-                  {output.length > 0 && !(milestone.label === "Case created" && returnRecords.length > 0) ? (
-                    <dl className="mt-2 flex flex-col gap-1">
-                      {output.map(([label, value]) => (
-                        <div key={label} className="flex gap-2 text-xs">
-                          <dt className="shrink-0 text-outline">{label}</dt>
-                          <dd className="min-w-0 truncate font-medium text-on-surface" title={value}>
-                            {value}
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                  ) : null}
-
-                  {/*
-                    Under "Case created", because that is the milestone these
-                    belong to. Rendered instead of the milestone's own scalar
-                    RMA/Tracking pair whenever records exist: those come from
-                    `ReturnSessionView`, which can hold one of each, and showing
-                    both would put a single-valued summary next to the list that
-                    contradicts it.
-                  */}
-                  {milestone.label === "Case created" ? (
-                    <ReturnRecordsPanel records={returnRecords} />
-                  ) : null}
-
-                  {index === 0 && supplied.length > 0 ? (
-                    <span className="mt-2 flex flex-wrap gap-1.5">
-                      {supplied.map((anchor) => (
-                        <span
-                          key={anchor.statement_id}
-                          className="inline-flex items-center gap-1 rounded border border-outline-variant bg-surface-container-low px-2 py-0.5 text-xs text-on-surface-variant"
-                        >
-                          <Tag size={11} />
-                          {anchor.text}
-                        </span>
-                      ))}
-                    </span>
-                  ) : null}
-                </span>
-              </li>
-            );
-          })}
-        </ol>
-      </div>
-    </Pane>
-  );
-}
-
-function ContextPane({
-  turn,
-  rows,
-  returnHistory,
-  returnHistoryPending,
-  returnHistoryError,
-}: {
-  turn: AgentTurnResult | null;
-  rows: readonly Record<string, unknown>[];
-  returnHistory: ReturnHistory | null;
-  returnHistoryPending: boolean;
-  returnHistoryError: Error | null;
-}) {
-  if (turn === null || rows.length === 0) {
-    return (
-      <Pane title="Context">
-        <div className="flex flex-1 items-center justify-center p-6 text-center">
-          <p className="max-w-xs text-sm text-on-surface-variant">
-            {turn === null
-              ? "Start by describing the order in the chat. Matches and their evidence appear here."
-              : "The agent has not matched an order yet."}
-          </p>
-        </div>
-      </Pane>
-    );
-  }
-
-  const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
-
-  return (
-    <Pane title={`Candidates (${String(rows.length)})`}>
-      <div className="flex-1 overflow-auto p-2">
-        <table className="w-full text-left text-xs">
-          <thead>
-            <tr className="text-outline">
-              {columns.map((column) => (
-                <th key={column} className="px-2 py-1.5 font-medium">
-                  {column}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, index) => (
-              <tr key={index} className="border-t border-outline-variant">
-                {columns.map((column) => (
-                  <td key={column} className="px-2 py-1.5 text-on-surface">
-                    {scalar(row[column])}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <ReturnHistoryPanel
-          history={returnHistory}
-          pending={returnHistoryPending}
-          error={returnHistoryError}
-        />
-      </div>
-    </Pane>
-  );
-}
-
-/**
- * Earlier returns, from the graph.
- *
- * Deliberately says "No earlier returns" rather than rendering nothing when the
- * answer is empty. Absence is the useful answer half the time -- an associate
- * deciding whether this is a serial returner needs to be told that it is not,
- * and a panel that vanishes is indistinguishable from one that failed to load.
- *
- * Only rendered once a single candidate is resolved, so `history === null` with
- * `pending === false` means "nothing has been asked yet", not "nothing found".
- */
-function ReturnHistoryPanel({
-  history,
-  pending,
-  error,
-}: {
-  history: ReturnHistory | null;
-  pending: boolean;
-  error: Error | null;
-}) {
-  if (error !== null) {
-    return (
-      <section className="mt-3 border-t border-outline-variant pt-3">
-        <h3 className="px-2 text-xs font-semibold text-on-surface">Return history</h3>
-        <p className="px-2 pt-1 text-xs text-error">
-          Earlier returns could not be read. {error.message}
-        </p>
-      </section>
-    );
-  }
-  if (pending) {
-    return (
-      <section className="mt-3 border-t border-outline-variant pt-3">
-        <h3 className="px-2 text-xs font-semibold text-on-surface">Return history</h3>
-        <p className="px-2 pt-1 text-xs text-outline">Checking earlier returns...</p>
-      </section>
-    );
-  }
-  if (history === null) return null;
-
-  return (
-    <section className="mt-3 border-t border-outline-variant pt-3">
-      <h3 className="px-2 text-xs font-semibold text-on-surface">
-        Return history ({String(history.cases.length)})
-      </h3>
-      {history.cases.length === 0 ? (
-        <p className="px-2 pt-1 text-xs text-outline">
-          No earlier returns
-          {history.customerId === null ? " against this order." : " for this customer."}
-        </p>
-      ) : (
-        <div className="mt-2 flex flex-col gap-2 px-2 pb-2">
-          {history.cases.map((entry) => (
-            <ReturnHistoryCaseCard key={entry.caseId} entry={entry} />
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function ReturnHistoryCaseCard({ entry }: { entry: ReturnHistoryCase }) {
-  return (
-    <article className="rounded border border-outline-variant bg-surface-container-low p-2">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate text-xs font-semibold text-on-surface">
-          {entry.confirmedOrderReference ?? "Order not recorded"}
-        </span>
-        <span className="shrink-0 text-[11px] text-outline">{entry.status ?? "-"}</span>
-      </div>
-      {entry.createdAt === null ? null : (
-        <p className="text-[11px] text-outline">Raised {entry.createdAt}</p>
-      )}
-
-      {entry.returnRecords.map((record) => (
-        <div key={record.returnRecordId} className="mt-1.5 border-l-2 border-outline-variant pl-2">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="truncate text-[11px] font-medium text-on-surface">
-              {record.returnReference ?? "RMA pending"}
-            </span>
-            <span className="shrink-0 text-[11px] text-outline">{record.status ?? "-"}</span>
-          </div>
-          {record.returnLocation === null ? null : (
-            <p className="truncate text-[11px] text-outline" title={record.returnLocation}>
-              Return to {record.returnLocation}
-            </p>
-          )}
-          {record.items.length > 0 ? (
-            // Which lines this RMA covers. One RMA covers many items, so a bare
-            // count would not tell the associate whether the line in front of
-            // them is already on a return somebody else raised.
-            <p className="truncate text-[11px] text-outline">
-              Covers{" "}
-              {record.items
-                .map((item) => item.orderLineReference ?? item.returnItemId)
-                .join(", ")}
-            </p>
-          ) : null}
-        </div>
-      ))}
-
-      {entry.unassignedItems.length > 0 ? (
-        <p className="mt-1 text-[11px] text-outline">
-          {String(entry.unassignedItems.length)} line
-          {entry.unassignedItems.length === 1 ? "" : "s"} not yet on an RMA
-        </p>
-      ) : null}
-
-      {entry.placements.map((placement) => (
-        <p
-          key={placement.handlingUnitId}
-          className="mt-1 truncate text-[11px] text-outline"
-          title={placement.handlingUnitId}
-        >
-          {/* Where the parcel is, not where it was told to go. */}
-          {[placement.physicalStatus, placement.warehouseId, placement.bayId]
-            .filter((part): part is string => part !== null && part !== "")
-            .join(" - ") || "Placement unknown"}
-        </p>
-      ))}
-    </article>
-  );
-}
-
-/** Graph rows are `unknown`; `String()` on an object yields "[object Object]". */
-function scalar(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return "-";
 }

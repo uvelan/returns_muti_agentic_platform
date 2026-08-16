@@ -75,6 +75,21 @@ class GenerationDraining(RuntimeError):
         )
 
 
+class GenerationResolutionError(RuntimeError):
+    """The active generation could not be determined, so no read may proceed.
+
+    Raised when the `ActiveRuntimeSnapshot` read itself fails -- a Mongo
+    outage, a timeout, an unresolved credential. Deliberately *not* degraded to
+    the legacy resolver: after the first cutover that resolver names a drained,
+    RETIRED generation, so degrading would answer every order search with zero
+    results. A dependency failure reported as "no such order" is worse than one
+    reported as a failure, because only the first looks like an answer.
+
+    Retryable in the same sense `GenerationDraining` is -- the fault is in
+    reaching the snapshot, not in the graph or the source.
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class GenerationHandle:
     """One request's pinned view of which generation serves it.
@@ -264,24 +279,87 @@ class GenerationHandleProvider:
         else would let a request read a generation the cutover has already
         replaced.
 
-        The legacy resolver stays as the fallback rather than being deleted:
-        until a rebuild has ever run there is no snapshot, and that is still the
-        state of production today (see `LEGACY_GENERATION_ID`). Activation
-        version 0 means "resolved without a snapshot" and is never a real
-        version -- `ActiveRuntimeSnapshot.activation_version` is `ge=1`.
+        **The snapshot is the live path, not a future one.** A rebuild activates
+        by compare-and-swapping this exact document (`orchestrator.py`'s
+        `build_and_activate` and `adopt_existing_generation` are its only two
+        writers), so once any rebuild has run, every request resolves through
+        the branch above and the legacy resolver is never consulted. An earlier
+        version of this docstring claimed the fallback was "still the state of
+        production today"; that stopped being true at the first cutover, and the
+        stale claim reads as though the dead collection below were the live
+        mechanism.
+
+        **Nothing in this repository writes `dynamic_graph_generations`.** The
+        collection is a read-only inheritance from the pre-blue/green design, so
+        `active_generation` cannot find a row and always returns
+        `LEGACY_GENERATION_ID`. That is *correct* before the first cutover --
+        `GraphSyncService._ensure_generation_marker` creates a marker under
+        exactly that id, so writer and reader agree -- and it is why the
+        fallback is kept rather than deleted.
+
+        After a cutover it is no longer correct: `legacy-live` has been drained
+        and RETIRED, and resolving it would serve an empty generation. Reaching
+        this line at all therefore means either a genuinely pre-cutover
+        deployment or a snapshot read that failed, and the two are not
+        distinguishable here -- which is why taking the fallback is logged
+        rather than silent. See the caller's comment on the read-failure branch.
+
+        Activation version 0 means "resolved without a snapshot" and is never a
+        real version -- `ActiveRuntimeSnapshot.activation_version` is `ge=1`.
         """
         if self._snapshot_store is not None:
             try:
                 snapshot = await self._snapshot_store.read(snapshot_name=self._snapshot_name)
-            except Exception:
+            except Exception as exc:
+                # FAIL CLOSED. This used to degrade to the legacy resolver, on
+                # the reasoning that a Mongo blip should not take order search
+                # down. That was right while `legacy-live` held the live data:
+                # degrading meant *slightly stale results*.
+                #
+                # The first cutover inverted it. `legacy-live` is drained and
+                # RETIRED, so degrading now resolves an empty generation and the
+                # answer is "no orders found" -- which an associate cannot tell
+                # apart from "this order does not exist". A read failure would
+                # therefore present as a confident, wrong negative, and send them
+                # off to re-key an order number that was correct all along.
+                #
+                # This is not hypothetical, and not a production-only concern.
+                # On 2026-08-15 this dev stack ran for two hours with Vault
+                # sealed: the Mongo DSN resolved to the literal placeholder host
+                # `vault-resolved.invalid`, so every Mongo read raised
+                # ServerSelectionTimeoutError. Any snapshot read in that window
+                # took this branch -- with 5,978 nodes sitting in Neo4j and
+                # search answering nothing.
+                #
+                # An error says "something is broken, retry". A zero-result says
+                # "the order is not real". The second is worse precisely because
+                # it is actionable, in the wrong direction. So: raise, and let
+                # the caller surface a dependency failure honestly.
                 _LOGGER.exception(
-                    "Could not read ActiveRuntimeSnapshot %r; falling back to the legacy resolver",
+                    "Could not read ActiveRuntimeSnapshot %r; failing the request rather than "
+                    "resolving a generation no activation published",
                     self._snapshot_name,
                 )
+                raise GenerationResolutionError(
+                    f"could not resolve the active graph generation: reading "
+                    f"ActiveRuntimeSnapshot {self._snapshot_name!r} failed"
+                ) from exc
             else:
                 if snapshot is not None:
                     return snapshot.graph_generation_id, snapshot.activation_version
-        return await self._resolver.active_generation(schema), 0
+        graph_generation_id = await self._resolver.active_generation(schema)
+        # Loud, because reaching here after the first cutover means a request is
+        # about to be served from a generation no activation ever published.
+        # Silently returning `legacy-live` is how "the graph has 6,000 nodes and
+        # search finds nothing" becomes an unexplainable report.
+        _LOGGER.warning(
+            "Resolved generation %s from the legacy resolver rather than ActiveRuntimeSnapshot %r. "
+            "Nothing writes `dynamic_graph_generations`, so this is correct only on a deployment "
+            "that has never completed a rebuild; after a cutover it names a retired generation.",
+            graph_generation_id,
+            self._snapshot_name,
+        )
+        return graph_generation_id, 0
 
     async def _try_acquire(
         self, graph_generation_id: str, *, snapshot_activation_version: int = 0

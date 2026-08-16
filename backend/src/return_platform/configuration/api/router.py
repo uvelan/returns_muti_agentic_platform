@@ -14,12 +14,14 @@ foot of this file. The Data Console router stays until Wave F deletes it.
 values. `redact_secret_values` runs on the way out so that is a property of the
 response rather than a claim about every path that contributed to it.
 
-Reads require read roles and promotion requires write roles, matching the rest of
-the platform. Backend authorization is authoritative; the frontend's capability
-hook is presentation only.
+Reads require read roles and every mutation requires write roles, matching the
+rest of the platform. Backend authorization is authoritative; the frontend's
+capability hook is presentation only.
 
-The one mutation is `POST /releases/{id}/promote`, which drives the single graph
-release lifecycle D3 settled on. It delegates for the same reason the reads do.
+The mutations are `POST /releases`, `PATCH /releases/{id}/domains/{key}` and
+`POST /releases/{id}/promote` -- draft, edit, publish, which is the whole graph
+release lifecycle D3 settled on. All three delegate for the same reason the
+reads do.
 """
 
 from __future__ import annotations
@@ -32,8 +34,16 @@ from return_platform.configuration.api.audit import AuditLog
 from return_platform.configuration.api.audit import get_audit_log as console_get_audit_log
 from return_platform.configuration.api.audit import list_audit_logs as console_list_audit_logs
 from return_platform.configuration.api.releases import (
+    CreateReleasePayload,
+    PatchDomainPayload,
     PromoteReleasePayload,
     resolve_configuration_repository,
+)
+from return_platform.configuration.api.releases import (
+    create_release as console_create_release,
+)
+from return_platform.configuration.api.releases import (
+    patch_domain_config as console_patch_domain_config,
 )
 from return_platform.configuration.api.releases import (
     promote_release_status as console_promote_release_status,
@@ -162,6 +172,80 @@ async def get_release(
     data = release.model_dump(mode="json")
     data["domains"] = await repository.get_all_domain_configs(release_id)
     return _ok(request, data)
+
+
+# --- drafting -----------------------------------------------------------------
+#
+# Wave F1 unmounted the Data Console routers and re-exported four modules'
+# handlers through this router. `releases.py` was not among the four, so the
+# lifecycle arrived here with its last third missing: a release could be
+# promoted over HTTP but neither created nor edited. Every published change to a
+# prompt, a routing policy or an eligibility rule therefore needed a source
+# edit, an image rebuild and a republish -- for configuration whose entire point
+# is that it is data rather than code.
+#
+# Both handlers existed and were tested the whole time. The tests invoked the
+# handler *function*, never a route, which is a green suite over an unreachable
+# capability; `tests/test_every_console_path_is_mounted.py` now pins the paths.
+#
+# Delegated, not reimplemented, exactly like promotion below: `create_release`
+# clones the active release's domain payloads so a draft starts from what is
+# serving, and `patch_domain_config` re-validates the *merged* document against
+# the owning domain model before it is stored. Reimplementing either here would
+# be a second way to write a release, and the whole reason this surface
+# delegates is that one lifecycle is the invariant worth keeping.
+
+
+@router.post(
+    "/releases",
+    response_model=APIResponse[dict[str, Any]],
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_release(
+    payload: CreateReleasePayload,
+    request: Request,
+    user_id: str = Depends(require_write_roles),
+) -> APIResponse[Any]:
+    """Open a draft, cloned from the active release or the validated baseline.
+
+    A draft is the only writable release: `save_draft_domain` refuses a release
+    that has left DRAFT, so this is the entry point to changing anything, and a
+    409 here means the id is taken rather than that the write was rejected.
+
+    Scrubbed on the way out like every other response on this router -- the
+    body echoes the cloned domain payloads, which are the same documents
+    `GET /releases/{id}` redacts.
+    """
+    response = await console_create_release(payload, request, user_id)
+    return _ok(request, response.data)
+
+
+@router.patch(
+    "/releases/{release_id}/domains/{domain_key}",
+    response_model=APIResponse[dict[str, Any]],
+)
+async def patch_release_domain(
+    release_id: str,
+    domain_key: str,
+    body: PatchDomainPayload,
+    request: Request,
+    user_id: str = Depends(require_write_roles),
+) -> APIResponse[Any]:
+    """Merge-patch one behaviour domain of a draft.
+
+    RFC 7396 semantics against the stored document, then full validation of the
+    *result* against `ReturnPlatformConfiguration`, `AIGatewayConfiguration` or
+    `DependencySimulationConfiguration` -- a patch that would leave the domain
+    invalid is a 422 and nothing is stored. Patch rather than replace because an
+    operator changing one prompt should not have to round-trip a whole domain
+    document and risk clobbering a field they never looked at.
+
+    The full-document `PUT` the console router also declares is deliberately not
+    republished here: it has no consumer, and a whole-document overwrite is a
+    strictly larger blast radius than a merge patch for the same outcome.
+    """
+    response = await console_patch_domain_config(release_id, domain_key, body, request, user_id)
+    return _ok(request, response.data)
 
 
 # --- promotion ---------------------------------------------------------------

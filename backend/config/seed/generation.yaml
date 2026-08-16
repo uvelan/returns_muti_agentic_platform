@@ -5,19 +5,31 @@
 
 # Fixed so two runs produce the same corpus. Change it to get a different one;
 # a run is reproducible from this number alone.
+#
+# Every identifier, SKU, description, name, email and address is a function of
+# this number. The one exception is the source-change timestamp on the product
+# master and the CDM party -- neither has a business date to derive from, so
+# both are stamped at run time. See `_run` in the generator.
 seed: 20260812
 
+# Totals, not additions. Each count is the size of the finished collection,
+# real documents included: `products: 1000` with 483 real catalogue numbers
+# generates 517. The generator never drops a real document, so a count below
+# the number of real ones is refused rather than silently satisfied.
+#
+# `warehouses` is gone: warehouse documents are now minted per distinct
+# inventory warehouse id actually used by the generated orders, so the number
+# is an outcome of the corpus rather than a free choice. Nothing reads that
+# collection -- see the note in the generator's docstring.
 counts:
   customers: 1000
-  products: 10000
+  products: 1000
   orders: 10000
-  warehouses: 100
 
-# Lines per order, inclusive. An order with no lines cannot be returned, so the
-# floor is 1 rather than 0.
-lines_per_order:
-  minimum: 1
-  maximum: 8
+# Lines per order is no longer a range. `seed_ferguson_idiom.LINES_PER_ORDER`
+# is the real empirical multiset from the 101 real orders -- 29 of them carry a
+# single line and one carries 49 -- because drawing uniformly from a range makes
+# single-line orders, the commonest return case, rare.
 
 # How many of an order's lines carry a shipment. The rest are still open, which
 # is the state most returns are raised against.
@@ -49,6 +61,9 @@ collections:
   # docs/SEED_DATA_GENERATION.md. No warehouse source exists in the schema yet.
   warehouses: warehouseMaster
 
-# Replace the target collections rather than adding to them. False appends,
-# which is how a "10,000 order" corpus quietly becomes 20,000 on the second run.
-replace: true
+# `replace` is gone. It was a choice between dropping the collection and
+# appending to it, and both are wrong now that real Ferguson documents share
+# these collections: dropping destroys them and appending doubles the corpus on
+# the second run. The generator instead deletes exactly what is not in
+# `backend/fixtures/real_ferguson_source/` and reinserts, which is idempotent
+# and cannot touch a real document.

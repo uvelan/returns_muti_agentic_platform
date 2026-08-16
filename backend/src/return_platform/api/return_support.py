@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
+from return_platform.operations.models import CaseStatus
 from return_platform.operations.production_event_authorization import (
     unauthorized_events_for,
 )
@@ -22,6 +23,11 @@ from return_platform.operations.return_support.service import (
     SupportWorkItemView,
     production_events_for_support_action,
 )
+from return_platform.operations.support_events import (
+    DurableSupportEventStore,
+    IdempotencyConflictError,
+    support_return_record,
+)
 from return_platform.resources import RuntimeResources
 from return_platform.security.authorization import (
     actor_roles,
@@ -32,13 +38,18 @@ from return_platform.security.authorization import (
 )
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 from return_platform.workflows.production_return_workflow import ProductionReturnEventType
-from return_platform.workflows.return_case_workflow import (
-    SupportResponseNotice,
-    SupportReturnRecord,
-    return_case_workflow_id,
-)
+from return_platform.workflows.return_case_workflow import return_case_workflow_id
 
 router = APIRouter(prefix="/api/v1/return-support", tags=["Returns Support"])
+
+#: Case states in which the workflow is gone for good, so an outcome sent to it
+#: would be dead-lettered rather than applied. Refused here rather than queued,
+#: because a refusal Support can read is worth more than a durable record of a
+#: reply nobody will ever act on. Only these two: every other status is a case
+#: whose execution is running or recoverable.
+_TERMINAL_CASE_STATUSES: frozenset[str] = frozenset(
+    {CaseStatus.CLOSED.value, CaseStatus.CANCELLED.value}
+)
 
 
 def _meta(request: Request) -> ResponseMeta:
@@ -310,6 +321,51 @@ class ReturnOutcomeRecord(BaseModel):
     labelReference: str | None = Field(default=None, max_length=256)
     returnLocation: str | None = Field(default=None, max_length=128)
     shippingInstructionReference: str | None = Field(default=None, max_length=128)
+    #: How the goods come back, as Support decided it (D23).
+    #:
+    #: **No `pattern=`.** The vocabulary is
+    #: `return_policy.normalized_return_methods` in the active configuration, and
+    #: it is operator-owned through the Control Centre. A regex here would refuse
+    #: every method added after the day it was written and would advertise the
+    #: stale set through OpenAPI as authoritative -- the defect
+    #: `return_creation_policy.py` removed from `shippingPathExpectation` (CFG-03).
+    #: `_reject_unconfigured_return_methods` below resolves the catalogue from the
+    #: snapshot the process is serving, on the request path, so activating a
+    #: release is enough to accept a new method.
+    #:
+    #: 64 characters to match `dbo.return_record.return_method`, so a value this
+    #: model accepts is a value the authoritative store can hold.
+    returnMethod: str | None = Field(default=None, min_length=1, max_length=64)
+    #: Who is carrying the goods back, as Support arranged it (audit finding #9).
+    #:
+    #: The sender the case path never had. `SupportActionRequest.carrier` exists
+    #: and reaches a production-workflow business payload, but only under
+    #: `data.sessionId is not None`, and a Copilot case has no session -- so
+    #: `ShipmentProjection.carrier` was `None` on every case and the Copilot's
+    #: "Carrier & Service" tile was filled from `session.orderSource`, an order's
+    #: source system rendered as a carrier. This field is the honest producer;
+    #: nothing derives the value from anything else.
+    #:
+    #: **No `pattern=`, and no catalogue check either.** There is no
+    #: operator-owned carrier vocabulary anywhere in the platform --
+    #: `return_policy` declares none, and `dbo.return_tracking`'s `carrier_code`
+    #: is a free column with no CHECK. A regex or an in-code list here would pin
+    #: a runtime-owned vocabulary to the day it was written and advertise the
+    #: stale set through OpenAPI as authoritative, which is the defect
+    #: `return_creation_policy.py` removed from `shippingPathExpectation`
+    #: (CFG-03). Carriers are also not a closed set the way return methods are:
+    #: a method with no row in the requirement table makes a case permanently
+    #: unresolvable, whereas an unrecognised carrier name is just a carrier
+    #: nobody has heard of yet, and refusing it would lose Support's reply over
+    #: a label on a screen.
+    #:
+    #: `min_length=1` because a blank string is not a statement. The merge
+    #: treats `None` as "Support did not say" and leaves a value already present
+    #: standing; `""` is not `None`, so it would sail through the merge and
+    #: erase a carrier -- the exact deletion the merge exists to prevent.
+    #: 64 characters to match `dbo.return_record.carrier`, so a value this model
+    #: accepts is a value the authoritative store can hold.
+    carrier: str | None = Field(default=None, min_length=1, max_length=64)
     orderLineReferences: tuple[str, ...] = Field(default=(), max_length=200)
 
 
@@ -326,10 +382,112 @@ class ReturnOutcomeRequest(BaseModel):
     records: tuple[ReturnOutcomeRecord, ...] = Field(default=(), max_length=100)
     rejected: bool = False
     reason: str | None = Field(default=None, max_length=2_000)
+    #: The identity of this Support mutation, supplied by the caller.
+    #:
+    #: Caller-supplied and not server-minted, because a server-minted id is a
+    #: new id on every retry and therefore no idempotency at all -- the console
+    #: that lost its response and pressed send again would issue a second RMA.
+    #: `Idempotency-Key` is accepted as an equivalent, for callers that carry
+    #: idempotency in a header across every endpoint they speak to.
+    supportEventId: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class ReturnOutcomeAcceptedView(BaseModel):
+    """The receipt for a durably recorded Support event.
+
+    Says what committed, and nothing about what the workflow has done with it.
+    Delivery happens after this response is written, so any field here claiming
+    the workflow had been told would be a claim the handler cannot make.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    caseId: str
+    supportEventId: str
+    #: `RECORDED` the first time, `DUPLICATE` for a resend of the same event.
+    #: Both are successes and both leave exactly one business mutation behind.
+    disposition: str
+    #: The outbox command that will carry it to the case workflow. Queued here;
+    #: its state is readable at `GET /api/v1/integration-outbox`.
+    outboxCommandId: str
+
+
+def _support_event_id(payload: ReturnOutcomeRequest, header_value: str | None) -> str:
+    """The body field, or the header, or a refusal.
+
+    Required rather than defaulted. The whole mechanism below is keyed on this
+    string, and a handler that invents one when the caller omits it would give
+    every duplicate send a fresh identity and quietly restore the defect.
+    """
+    supplied = payload.supportEventId or header_value
+    if supplied is None or not supplied.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "SUPPORT_EVENT_ID_REQUIRED",
+                "message": (
+                    "Supply supportEventId in the body or an Idempotency-Key header. "
+                    "It is what makes a resent reply a no-op instead of a second RMA."
+                ),
+                "retryable": False,
+            },
+        )
+    return supplied.strip()
+
+
+def _reject_unconfigured_return_methods(request: Request, payload: ReturnOutcomeRequest) -> None:
+    """Check every method named against the running configuration (D23).
+
+    Resolved from `app.state.return_configuration` in the handler, after model
+    validation, for the reason `return_creation_policy.apply_active_return_policy`
+    documents at length: a pydantic validator has no request and no application
+    state, so nothing it can read is runtime-owned -- which is the whole defect.
+    `main.py`'s correlation middleware refreshes the activator before every
+    handler, so the snapshot read here is the one this process is serving at that
+    moment rather than one captured at import.
+
+    Only reached when a method was actually named. A reply that says nothing
+    about the method needs no catalogue to validate against, and demanding a
+    loaded snapshot for it would make an unconfigured process refuse replies it
+    is perfectly able to record. When one *is* named and no snapshot is loaded
+    the answer is 503 and not 422: this process cannot say whether the method is
+    valid, so it must not say it is not.
+    """
+    named = sorted(
+        {record.returnMethod for record in payload.records if record.returnMethod is not None}
+    )
+    if not named:
+        return
+    loaded = getattr(request.app.state, "return_configuration", None)
+    if not isinstance(loaded, LoadedReturnConfiguration):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "RETURN_CONFIGURATION_UNAVAILABLE",
+                "message": (
+                    "No return configuration is loaded, so a return method cannot be validated."
+                ),
+                "retryable": True,
+            },
+        )
+    catalogue = loaded.configuration.return_policy.normalized_return_methods
+    unknown = [method for method in named if method not in catalogue]
+    if unknown:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "UNCONFIGURED_RETURN_METHOD",
+                "message": (
+                    f"returnMethod must be one of {sorted(catalogue)}; this reply named {unknown}"
+                ),
+                "retryable": False,
+            },
+        )
 
 
 @router.post(
-    "/work-items/{work_item_id}/return-outcome", response_model=APIResponse[dict[str, str]]
+    "/work-items/{work_item_id}/return-outcome",
+    response_model=APIResponse[ReturnOutcomeAcceptedView],
 )
 async def submit_return_outcome(
     work_item_id: str,
@@ -337,20 +495,40 @@ async def submit_return_outcome(
     request: Request,
     # Support roles only: issuing an RMA is Support's act, and the same gate
     # every other outcome-recording action on this router uses.
-    _actor_id: str = Depends(require_support_roles),
-) -> APIResponse[dict[str, str]]:
-    """Send Support's answer to the case that asked for it.
+    actor_id: str = Depends(require_support_roles),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> APIResponse[ReturnOutcomeAcceptedView]:
+    """Write Support's answer down, and let the outbox deliver it.
 
-    This is the step that made Channel B -> Channel A possible. The work item
-    knows its case, the case knows its workflow, and the workflow is waiting on
-    a durable timer for exactly this signal -- so the outcome reaches the
-    associate's original conversation instead of the browser trying to match an
-    order reference across two collections.
+    This used to signal Temporal directly from the handler. When the case
+    workflow had already closed, `handle.signal` raised a raw `RPCError`, the
+    caller got an HTTP 500, and the RMA existed nowhere -- Support had no way to
+    know their reply had evaporated. Worse, the shape was a dual write: persist,
+    then signal, with a crash in between leaving a stored event that the retry
+    recognised as a duplicate and reported as success while the workflow had
+    never received it.
 
-    A signal, not a write. `ReturnCaseWorkflow` owns what happens next: it
-    records the return records, moves the case status and stops the reminder
-    cadence, and it does so once however many times Support presses send --
-    duplicate responses are ignored by the workflow, not deduplicated here.
+    So the handler no longer signals. One MongoDB transaction writes the Support
+    event and the outbox command that delivers it, and the response is returned
+    the moment that commits. `TemporalSignalDispatcher` picks the command up,
+    retries a Temporal outage with bounded backoff, and dead-letters a workflow
+    that is permanently gone into a state Phase 10 reconciles -- rather than
+    losing the reply to a 500.
+
+    The guarantee that comes out of this is stated the way it actually holds,
+    and no stronger:
+
+        transport (outbox -> Temporal):  at least once
+        business processing:             effectively once, keyed on supportEventId
+
+    A dispatcher that signals and then loses its process before it can
+    acknowledge will signal again. What stops that from becoming a second RMA
+    is the event id travelling with the notice, not the transport.
+
+    `409 CASE_WORKFLOW_CLOSED` survives only where it is still reachable from
+    here -- a case the platform already knows is terminal. A workflow that
+    closed without the case knowing is no longer this handler's failure to
+    detect; it is the dispatcher's, and it surfaces as a dead-lettered command.
     """
     item = await _service(request).get_work_item(work_item_id)
     if item is None:
@@ -371,35 +549,87 @@ async def submit_return_outcome(
             },
         )
 
+    support_event_id = _support_event_id(payload, idempotency_key)
+    # Before anything is recorded. A method the operator has not configured
+    # resolves to no row in the requirement table, so recording it would leave
+    # the case permanently unresolvable with a durable event behind it.
+    _reject_unconfigured_return_methods(request, payload)
+
     resources = getattr(request.app.state, "resources", None)
-    if not isinstance(resources, RuntimeResources) or resources.temporal is None:
+    if not isinstance(resources, RuntimeResources) or resources.mongo is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
-                "code": "WORKFLOW_HOST_UNAVAILABLE",
-                "message": "The case workflow cannot be reached from this process.",
+                "code": "SUPPORT_EVENT_STORE_UNAVAILABLE",
+                "message": "The Support event cannot be recorded durably from this process.",
                 "retryable": True,
             },
         )
+    # Deliberately *not* `resources.temporal`. Recording the event no longer
+    # touches Temporal, and requiring a Temporal connection to accept a write
+    # that does not use one would reintroduce the coupling this phase removes:
+    # Support could not file a reply during a Temporal outage, which is the
+    # exact outage the outbox is here to absorb.
 
-    handle = resources.temporal.get_workflow_handle(return_case_workflow_id(item.caseId))
-    await handle.signal(
-        "support_response",
-        SupportResponseNotice(
+    repository = OperationalRepository(resources.mongo, resources.settings, resources.source_mongo)
+    case = await repository.get_case(item.caseId)
+    if case is not None and str(case.get("status")) in _TERMINAL_CASE_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "CASE_WORKFLOW_CLOSED",
+                "message": (
+                    "This case is already closed; its workflow will not accept an outcome. "
+                    "Reopen the case or raise a new one."
+                ),
+                "retryable": False,
+            },
+        )
+
+    store = DurableSupportEventStore(resources.mongo, resources.settings)
+    try:
+        receipt = await store.record_support_response(
+            case_id=item.caseId,
             work_item_id=work_item_id,
-            records=tuple(
-                SupportReturnRecord(
+            support_event_id=support_event_id,
+            records=[
+                support_return_record(
                     return_reference=record.returnReference,
                     tracking_reference=record.trackingReference,
                     label_reference=record.labelReference,
                     return_location=record.returnLocation,
                     shipping_instruction_reference=record.shippingInstructionReference,
+                    return_method=record.returnMethod,
+                    carrier=record.carrier,
                     order_line_references=record.orderLineReferences,
                 )
                 for record in payload.records
-            ),
+            ],
             rejected=payload.rejected,
             reason=payload.reason,
+            workflow_id=return_case_workflow_id(item.caseId),
+            actor_id=actor_id,
+            correlation_id=_meta(request).request_id,
+        )
+    except IdempotencyConflictError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "IDEMPOTENCY_CONFLICT",
+                "message": (
+                    "This supportEventId was already recorded for this case with a different "
+                    "payload. Use a new id for a new reply."
+                ),
+                "retryable": False,
+            },
+        ) from error
+
+    return APIResponse(
+        data=ReturnOutcomeAcceptedView(
+            caseId=receipt.case_id,
+            supportEventId=receipt.support_event_id,
+            disposition="DUPLICATE" if receipt.duplicate else "RECORDED",
+            outboxCommandId=receipt.outbox_command_id,
         ),
+        meta=_meta(request),
     )
-    return APIResponse(data={"caseId": item.caseId}, meta=_meta(request))

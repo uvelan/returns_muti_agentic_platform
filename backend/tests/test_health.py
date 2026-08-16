@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import AnyHttpUrl, SecretStr
 
+from return_platform.api.dependency_probes import ConfigurationHealthReport
 from return_platform.configuration.settings import Settings
 from return_platform.data_governance import LoadedAssetCatalog
 from return_platform.main import create_app
@@ -155,6 +156,18 @@ def test_readiness_endpoint_succeeds_with_resources(
     ):
         monkeypatch.setattr(f"return_platform.main.{name}", healthy_probe)
 
+    async def healthy_configuration(*_args: object, **_kwargs: object) -> ConfigurationHealthReport:
+        return ConfigurationHealthReport(
+            result=DependencyProbeResult(
+                status=DependencyStatus.HEALTHY,
+                latency_ms=1,
+                checked_at=datetime.now(UTC),
+            ),
+            failures=(),
+        )
+
+    monkeypatch.setattr("return_platform.main.probe_configuration", healthy_configuration)
+
     try:
         response = client.get("/health/ready")
 
@@ -169,8 +182,11 @@ def test_readiness_endpoint_succeeds_with_resources(
             "neo4j",
             "valkey",
             "temporal",
+            "configuration",
         }
         assert all(item["status"] == "HEALTHY" for item in body["dependencies"].values())
+        assert body["configuration"]["healthy"] is True
+        assert body["configuration"]["failed_checks"] == []
     finally:
         resources.sql_manager.executor.shutdown(
             wait=False,

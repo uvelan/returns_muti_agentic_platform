@@ -120,7 +120,28 @@ class MongoAtomicConversationStore:
 
 
 class MongoGraphStateProvider:
-    """Resolve the active graph generation, with a stable legacy-generation bridge."""
+    """Resolve the active graph generation, with a stable legacy-generation bridge.
+
+    **This is the pre-blue/green resolver, and it is not what serves production
+    reads.** `GenerationHandleProvider` consults `ActiveRuntimeSnapshot` first
+    and only reaches this when no snapshot exists; the snapshot is what an
+    activation's compare-and-swap moves. See `lifecycle/handle.py::_resolve`.
+
+    **Nothing in this repository writes `dynamic_graph_generations`.** Grep it:
+    there is this reader, `ensure_indexes` above it, and no writer anywhere. The
+    collection is inherited from the design that predates generations, so
+    `active_generation` never matches a row and always returns
+    `LEGACY_GENERATION_ID`.
+
+    That is deliberate rather than broken, but only for one window: before any
+    rebuild has completed, `LEGACY_GENERATION_ID` is exactly the id
+    `GraphSyncService._ensure_generation_marker` creates a Neo4j marker under, so
+    reader, writer and fence all agree on it. After the first cutover that
+    generation is drained and RETIRED, and this answer would name a generation
+    that no longer serves -- which is why the caller logs a warning when it has
+    to use it, and why the fix for a stale answer here is to publish an
+    `ActiveRuntimeSnapshot`, never to start writing this collection.
+    """
 
     def __init__(
         self,

@@ -103,6 +103,30 @@ describe("Configuration promotion", () => {
     mocks.promote.mockResolvedValue({ release_id: "rel-1", status: "VALIDATED" });
   });
 
+  it("makes a release selectable through a real control, not a bare row", async () => {
+    // Promotion is reachable only after a release is selected, and selection
+    // was a click handler on a `<tr>`: not focusable, no role, no accessible
+    // name. On a keyboard the whole write surface was unreachable, and an audit
+    // of the rendered page found no interactive controls anywhere in it --
+    // correctly, because there were none. Asserted by role so a regression to a
+    // plain cell fails here rather than in an accessibility review.
+    mocks.releases.mockResolvedValue([release("VALIDATED")]);
+    mocks.release.mockResolvedValue(release("VALIDATED"));
+    goToSection("/config", "releases");
+    render(<ConfigurationPage />, { wrapper });
+
+    const selector = await screen.findByRole("button", { name: "rel-1" });
+    fireEvent.click(selector);
+
+    expect(await screen.findByText("Checksum")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "rel-1" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+  });
+
   it("recognises RELEASED as the published status", async () => {
     // Against the old union this said "No RELEASED release found", because the
     // page looked for "ACTIVE" -- a status the graph lifecycle never produces.

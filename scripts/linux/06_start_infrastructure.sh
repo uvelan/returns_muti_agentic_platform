@@ -7,7 +7,14 @@ readonly infrastructure_timeout_seconds=420
 readonly init_timeout_seconds=300
 readonly poll_interval_seconds=5
 
+# `vault` belongs here and was missing. Every phase after this one -- 07's seed,
+# 08's backend, 09's workers -- resolves its datastore credentials through
+# Vault, and with no Vault running they all fail on the `.env` sentinel
+# `mongodb://vault-resolved.invalid/...`. The pipeline could not bring up a
+# clean machine at all; it only ever appeared to work where `infra.sh start`
+# (which does list `vault`) had been run by hand first.
 readonly -a base_services=(
+  vault
   sqlserver
   mongodb
   neo4j
@@ -19,6 +26,7 @@ readonly -a init_services=(
   mongodb-rs-init
 )
 readonly -a steady_state_services=(
+  vault
   sqlserver
   mongodb
   neo4j
@@ -29,14 +37,19 @@ readonly -a steady_state_services=(
 )
 
 container_id_for() {
-  docker compose ps --all --quiet "$1" | head -n 1
+  # `--profile dev-tools` so `temporal-ui` is visible here. Without it the
+  # lookup returns nothing, the readiness loop reads that as "not created yet",
+  # and the phase burns its full seven-minute timeout on a container that is
+  # running perfectly well.
+  docker compose --profile dev-tools ps --all --quiet "$1" | head -n 1
 }
 
 dump_infrastructure_diagnostics() {
   printf '\n[infra] compose state\n' >&2
   docker compose ps --all >&2 || true
   printf '\n[infra] recent logs\n' >&2
-  docker compose logs --no-color --tail=200 \
+  docker compose --profile dev-tools logs --no-color --tail=200 \
+    vault \
     sqlserver sqlserver-init \
     mongodb mongodb-rs-init \
     neo4j valkey \
@@ -163,6 +176,23 @@ if ! wait_for_services_ready \
   exit 1
 fi
 
+# Vault's healthcheck passes while SEALED -- deliberately, because a sealed
+# Vault is a live server. So "vault is healthy" is not "vault is usable", and
+# every later phase needs the second. Initialize, unseal and seed here, then
+# state the result in one line, because a sealed Vault otherwise presents as six
+# unrelated worker crash-loops three phases later.
+printf '[infra] initializing, unsealing and seeding Vault\n'
+if command -v python3.13 >/dev/null 2>&1; then
+  vault_python=python3.13
+else
+  vault_python=python3
+fi
+if ! "$vault_python" "$REPO_ROOT/scripts/vault/bootstrap_local_vault.py"; then
+  dump_infrastructure_diagnostics
+  exit 1
+fi
+assert_vault_unsealed
+
 printf '[infra] running one-shot initialization services\n'
 docker compose up -d "${init_services[@]}"
 if ! wait_for_init_success "$init_timeout_seconds" "${init_services[@]}"; then
@@ -177,8 +207,11 @@ if ! wait_for_services_ready "$infrastructure_timeout_seconds" temporal; then
   exit 1
 fi
 
+# `--profile dev-tools` is required now that `temporal-ui` carries that profile.
+# Whether naming a profiled service on the command line implicitly enables its
+# profile depends on the Compose version; stating the profile does not.
 printf '[infra] starting Temporal UI\n'
-docker compose up -d temporal-ui
+docker compose --profile dev-tools up -d temporal-ui
 if ! wait_for_services_ready "$infrastructure_timeout_seconds" temporal-ui; then
   dump_infrastructure_diagnostics
   exit 1
@@ -191,6 +224,6 @@ if ! wait_for_services_ready \
 fi
 
 readonly tmp_evidence="$EVIDENCE_DIR/infrastructure-services.json.tmp"
-docker compose ps --all --format json >"$tmp_evidence"
+docker compose --profile dev-tools ps --all --format json >"$tmp_evidence"
 mv "$tmp_evidence" "$EVIDENCE_DIR/infrastructure-services.json"
 printf '[infra] all infrastructure services reached steady state\n'

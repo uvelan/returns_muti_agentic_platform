@@ -12,10 +12,21 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type * as CasesModuleNamespace from "../../api/cases";
 import type * as ActualModuleNamespace from "../../api/orderAgent";
 import type { AgentTurnResult, SendTurnInput } from "../../api/orderAgent";
 import type { ReturnHistory } from "../../api/returnHistory";
+import type { RuntimeConfig } from "../../api/runtimeConfig";
+import { RuntimeConfigContext } from "../../hooks/useRuntimeConfig";
 import { ReturnCopilotPage } from "./ReturnCopilotPage";
+import {
+  approvedItem,
+  artifact,
+  caseProjection,
+  confirmedOrder,
+  returnRecord,
+  shipment,
+} from "./fixtures/modeFixtures";
 
 type ActualModule = typeof ActualModuleNamespace;
 
@@ -43,8 +54,13 @@ vi.mock("../../api/orderAgent", async (importOriginal) => ({
   newConversationId: () => `disc-${String(conversationCounter++)}`,
 }));
 
-vi.mock("../../api/cases", () => ({
-  casesApi: { read: mocks.readCase, list: mocks.listCases },
+// Only the transport is stubbed. `caseRefetchInterval` and `keepNewerRevision`
+// are the real contract behaviour -- the screen decides when to ask again and
+// which answer to believe through them, and a stub would make those decisions
+// disappear from every test in this file.
+vi.mock("../../api/cases", async (importOriginal) => ({
+  ...(await importOriginal<typeof CasesModuleNamespace>()),
+  casesApi: { readProjection: mocks.readCase, list: mocks.listCases },
 }));
 
 // Mocked rather than left to MSW, even though a fixture handler exists. These
@@ -59,10 +75,36 @@ vi.mock("../../hooks/capabilityContext", () => ({
   useCapabilities: () => ({ can: mocks.can, principal: { subject: "tester" } }),
 }));
 
-function wrapper({ children }: { children: ReactNode }) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+/**
+ * The bootstrap payload the shell publishes to every screen.
+ *
+ * Supplied through the context rather than left to MSW because the agent id is
+ * the thing under test in two of these cases, and a fixture handler answering
+ * one value for all of them could not tell them apart.
+ */
+function runtimeConfig(agents: RuntimeConfig["agents"]): RuntimeConfig {
+  return {
+    releaseId: "release-under-test",
+    environment: "test",
+    apiBasePath: "/api",
+    features: { orderDiscoveryCopilot: true },
+    capabilities: { availableSourceTypes: [], availableModelProviders: [] },
+    agents,
+  };
 }
+
+function wrapperWith(config: RuntimeConfig | null) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return (
+      <QueryClientProvider client={client}>
+        <RuntimeConfigContext.Provider value={config}>{children}</RuntimeConfigContext.Provider>
+      </QueryClientProvider>
+    );
+  };
+}
+
+const wrapper = wrapperWith(runtimeConfig({ orderDiscovery: "order-discovery-agent" }));
 
 function turn(overrides: Partial<AgentTurnResult> = {}): AgentTurnResult {
   return {
@@ -73,17 +115,21 @@ function turn(overrides: Partial<AgentTurnResult> = {}): AgentTurnResult {
     model_provider: "MOCK",
     model_name: "scripted",
     query_evidence: [],
-    response: { status: "OK", business_capability: "order_discovery", statements: [] },
+    response: { status: "OK", business_capability: "order-discovery", statements: [] },
     ...overrides,
   };
 }
 
 beforeEach(() => {
+  // The screen keeps the conversation and case ids in the URL, and jsdom's
+  // location outlives a test. Without this, one test's resumed return is the
+  // next test's reload.
+  window.history.replaceState(null, "", "/returns");
   mocks.can.mockReturnValue(true);
   mocks.sendTurn.mockReset();
   mocks.listConversations.mockReset().mockResolvedValue([]);
   mocks.readTranscript.mockReset();
-  mocks.readCase.mockReset();
+  mocks.readCase.mockReset().mockResolvedValue(caseProjection({ caseId: "case-1" }));
   // Resuming a conversation asks whether it raised a case. Most conversations
   // did not, and that answer is an empty list -- not an absent one.
   mocks.listCases.mockReset().mockResolvedValue([]);
@@ -129,7 +175,7 @@ describe("the discovery copilot", () => {
       turn({
         response: {
           status: "NEEDS_INPUT",
-          business_capability: "order_discovery",
+          business_capability: "order-discovery",
           statements: [
             { statement_id: "a", statement_type: "USER_PROVIDED_FACT", text: "Atlas Mechanical" },
             { statement_id: "b", statement_type: "CLARIFICATION_QUESTION", text: "Which branch?" },
@@ -153,9 +199,9 @@ describe("the discovery copilot", () => {
       turn({
         response: {
           status: "RESOLVED",
-          business_capability: "order_discovery",
+          business_capability: "order-discovery",
           statements: [
-            { statement_id: "g", statement_type: "GRAPH_FACT", text: "Order CW273354." },
+            { statement_id: "g", statement_type: "GRAPH_FACT", text: "Order SO-A1." },
             { statement_id: "s", statement_type: "REASONED_SUGGESTION", text: "Probably that one." },
           ],
         },
@@ -174,7 +220,7 @@ describe("the discovery copilot", () => {
         pending_clarification_thread_id: "thread-1",
         response: {
           status: "NEEDS_INPUT",
-          business_capability: "order_discovery",
+          business_capability: "order-discovery",
           statements: [
             { statement_id: "b", statement_type: "CLARIFICATION_QUESTION", text: "Which branch?" },
           ],
@@ -193,7 +239,7 @@ describe("the discovery copilot", () => {
       turn({
         response: {
           status: "RESOLVED",
-          business_capability: "order_discovery",
+          business_capability: "order-discovery",
           statements: [{ statement_id: "c", statement_type: "GRAPH_FACT", text: "Found 1." }],
         },
         query_evidence: [
@@ -201,6 +247,8 @@ describe("the discovery copilot", () => {
             query_execution_id: "qe-1",
             schema_version: "v2",
             graph_generation_id: "gen-abc12345",
+            logical_plan_checksum: "plan-x",
+            compiled_query_checksum: "compiled-x",
             result_checksum: "x",
             result: {
               candidates: [{ data: { sales_order_number: "CQ363350", account_id: "CHARLOTTE" } }],
@@ -229,6 +277,8 @@ describe("the discovery copilot", () => {
             query_execution_id: "qe-1",
             schema_version: "v2",
             graph_generation_id: "gen-abc12345",
+            logical_plan_checksum: "plan-x",
+            compiled_query_checksum: "compiled-x",
             result_checksum: "x",
             result: { candidates: [{ data: { sales_order_number: "CQ363350" } }] },
           },
@@ -243,6 +293,8 @@ describe("the discovery copilot", () => {
             query_execution_id: "qe-2",
             schema_version: "v2",
             graph_generation_id: "gen-abc12345",
+            logical_plan_checksum: "plan-x",
+            compiled_query_checksum: "compiled-x",
             result_checksum: "y",
             result: { rows: [{ order_status: "CALLCSR" }], count: 1 },
           },
@@ -273,6 +325,8 @@ describe("the discovery copilot", () => {
             query_execution_id: "qe-1",
             schema_version: "v2",
             graph_generation_id: "gen-abc12345",
+            logical_plan_checksum: "plan-x",
+            compiled_query_checksum: "compiled-x",
             result_checksum: "x",
             result: { candidates: [{ data: { sales_order_number: "CQ363350" } }] },
           },
@@ -287,6 +341,8 @@ describe("the discovery copilot", () => {
             query_execution_id: "qe-2",
             schema_version: "v2",
             graph_generation_id: "gen-abc12345",
+            logical_plan_checksum: "plan-x",
+            compiled_query_checksum: "compiled-x",
             result_checksum: "y",
             result: { candidates: [] },
           },
@@ -335,17 +391,22 @@ describe("the discovery copilot", () => {
       turn({
         response: {
           status: "RESOLVED",
-          business_capability: "order_discovery",
+          business_capability: "order-discovery",
           statements: [{ statement_id: "g", statement_type: "GRAPH_FACT", text: "Order CW1." }],
         },
       }),
     );
     const { container } = render(<ReturnCopilotPage />, { wrapper });
     fire(container, "melgon");
-    expect(await screen.findByText("Order CW1.")).toBeInTheDocument();
+    // A `GRAPH_FACT` now appears twice by design -- once in the conversation and
+    // once as an established-fact chip in the Extracted & Verified Facts panel,
+    // which previously admitted only `USER_PROVIDED_FACT` and so sat empty while
+    // the agent had established plenty. `findAllByText` is the assertion that
+    // survives that, and clearing must still remove *every* copy.
+    expect(await screen.findAllByText("Order CW1.")).not.toHaveLength(0);
 
     fireEvent.click(screen.getByRole("button", { name: "New return" }));
-    expect(screen.queryByText("Order CW1.")).not.toBeInTheDocument();
+    expect(screen.queryAllByText("Order CW1.")).toHaveLength(0);
     expect(screen.getByText(/let's find that order/)).toBeInTheDocument();
   });
 
@@ -363,7 +424,7 @@ describe("the discovery copilot", () => {
       conversationVersion: 3,
       messages: [
         { role: "associate", text: "melgon heating draft motor" },
-        { role: "agent", text: "Order CW273354." },
+        { role: "agent", text: "Order SO-A1." },
       ],
     });
     render(<ReturnCopilotPage />, { wrapper });
@@ -373,7 +434,7 @@ describe("the discovery copilot", () => {
 
     // Replayed as plain speech: the record keeps role and text, not the typed
     // statements, so a reopened turn cannot claim it cited evidence.
-    expect(await screen.findByText("Order CW273354.")).toBeInTheDocument();
+    expect(await screen.findByText("Order SO-A1.")).toBeInTheDocument();
     expect(screen.queryByText("From order records")).not.toBeInTheDocument();
   });
 
@@ -485,6 +546,92 @@ describe("the discovery copilot", () => {
 });
 
 /**
+ * Which agent a turn is addressed to.
+ *
+ * The page sent the literal `"order_discovery"`. The active schema keys the
+ * policy `order-discovery-agent`, so `agent_policies.get` missed and every turn
+ * came back `422 ORDER_AGENT_OUT_OF_SCOPE` -- the copilot could not complete a
+ * single conversation. The id is served by `/api/runtime-config` now, and these
+ * assert the two halves of that: it is used when present, and nothing is sent
+ * when it is not.
+ */
+describe("the agent the copilot addresses", () => {
+  beforeEach(() => {
+    mocks.sendTurn.mockResolvedValue(turn());
+  });
+
+  it("addresses the agent the runtime configuration names", async () => {
+    render(<ReturnCopilotPage />, {
+      wrapper: wrapperWith(runtimeConfig({ orderDiscovery: "some-other-agent" })),
+    });
+    fire(document.body, "Atlas");
+
+    await waitFor(() => {
+      expect(mocks.sendTurn).toHaveBeenCalledTimes(1);
+    });
+    const [input] = mocks.sendTurn.mock.calls[0] as [SendTurnInput];
+    // Deliberately not the shipped id: matching `order-discovery-agent` would
+    // also pass if the literal had merely been swapped for a newer literal.
+    expect(input.agentId).toBe("some-other-agent");
+  });
+
+  it("sends nothing when no agent is configured", async () => {
+    render(<ReturnCopilotPage />, {
+      wrapper: wrapperWith(runtimeConfig({ orderDiscovery: null })),
+    });
+
+    expect(screen.getByLabelText("Message the discovery agent")).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Message the discovery agent"), {
+      target: { value: "Atlas" },
+    });
+    fireEvent.click(screen.getByLabelText("Send"));
+
+    // A guessed id would spend a real turn to discover what the missing setting
+    // already says.
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/order_discovery_agent_id/);
+    });
+    expect(mocks.sendTurn).not.toHaveBeenCalled();
+  });
+
+  it("claims no search is running while the composer is disabled", () => {
+    // The disable used to be spelled `isPending`, which is also what draws
+    // "Searching order graph..." -- so the unconfigured screen showed a
+    // configuration error and a spinner for a search that had never started.
+    // Nothing was in flight, and saying otherwise is the fabrication this
+    // programme exists to remove.
+    render(<ReturnCopilotPage />, {
+      wrapper: wrapperWith(runtimeConfig({ orderDiscovery: null })),
+    });
+
+    expect(screen.getByLabelText("Message the discovery agent")).toBeDisabled();
+    expect(screen.getByLabelText("Send")).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/order_discovery_agent_id/);
+    expect(screen.queryByText(/Searching order graph/)).not.toBeInTheDocument();
+  });
+
+  it("sends nothing while the bootstrap payload is still in flight", () => {
+    render(<ReturnCopilotPage />, { wrapper: wrapperWith(null) });
+
+    fireEvent.click(screen.getByLabelText("Send"));
+
+    expect(mocks.sendTurn).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/has not loaded yet/);
+    expect(screen.queryByText(/Searching order graph/)).not.toBeInTheDocument();
+  });
+
+  it("survives a backend that does not serve the agent block at all", () => {
+    // An older API answers without `agents`. Reading straight through it would
+    // be a TypeError on first render -- a blank screen instead of a named
+    // configuration problem.
+    render(<ReturnCopilotPage />, { wrapper: wrapperWith(runtimeConfig(undefined)) });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/order_discovery_agent_id/);
+    expect(mocks.sendTurn).not.toHaveBeenCalled();
+  });
+});
+
+/**
  * Type into the controlled input and submit, the way an associate would.
  *
  * `fireEvent.change` rather than setting `.value` directly: React tracks the
@@ -506,51 +653,36 @@ describe("the RMA panel", () => {
    * the wrong dock while looking correct.
    */
   function record(reference: string, label: string, location: string, lines: string[]) {
-    return {
-      record: {
-        returnRecordId: `rec-${reference}`,
-        caseId: "case-1",
-        returnReference: reference,
-        status: "OPEN",
-        returnLocation: location,
-        trackingReference: `TRK-${reference}`,
-        labelReference: label,
-        shippingInstructionReference: null,
-        sourceSystem: null,
-        version: 0,
-        createdAt: "2026-08-12T00:00:00Z",
-        updatedAt: "2026-08-12T00:00:00Z",
-      },
-      items: lines.map((line) => ({
-        returnItemId: `item-${line}`,
-        orderLineReference: line,
-        productReference: null,
-        quantity: 1,
-        reason: null,
-        condition: null,
-        packageReference: null,
-      })),
-    };
+    const shipmentId = `SHP-${reference}`;
+    return returnRecord({
+      returnRecordId: `rec-${reference}`,
+      returnReference: reference,
+      status: "OPEN",
+      returnLocation: location,
+      shipments: [shipment({ shipmentId, trackingNumber: `1Z-${reference}` })],
+      // Attributed to this record's own package, which is what makes "label
+      // LBL-1 belongs to RMA-2" unsayable rather than merely unlikely.
+      artifacts: [artifact({ artifactId: label, fileName: label, shipmentId })],
+      approvedItems: lines.map((line) =>
+        approvedItem({ returnItemId: `item-${line}`, orderLineReference: line }),
+      ),
+    });
   }
 
   function renderWithCase(returnRecords: ReturnType<typeof record>[]) {
-    mocks.readCase.mockResolvedValue({
-      case: {
+    mocks.readCase.mockResolvedValue(
+      caseProjection({
         caseId: "case-1",
-        tenantId: "tenant-a",
-        principalId: "tester",
-        branchId: null,
         status: "AWAITING_SUPPORT",
-        channelAConversationId: "disc-0",
-        channelBWorkItemId: null,
-        confirmedOrderReference: "CW273354",
-        createdAt: "2026-08-12T00:00:00Z",
-        updatedAt: "2026-08-12T00:00:00Z",
-      },
-      returnRecords,
-      unassignedItems: [],
-      facts: [],
-    });
+        // The real `aec15726…` shape: RMAs on the case while Support still
+        // holds it. The panel under test is the progress rail's, which shows
+        // every record whatever pane the stage happens to be drawing.
+        stage: "AWAITING_SUPPORT",
+        conversationId: "disc-0",
+        confirmedOrder: confirmedOrder(),
+        returnRecords,
+      }),
+    );
     mocks.sendTurn.mockResolvedValue(turn({ case_id: "case-1" }));
 
     render(<ReturnCopilotPage />, { wrapper });
@@ -614,7 +746,7 @@ describe("resuming a return", () => {
   const OPEN_CASE = {
     caseId: "case-9",
     status: "AWAITING_SUPPORT",
-    confirmedOrderReference: "CW273354",
+    confirmedOrderReference: "SO-A1",
     channelAConversationId: "disc-old",
     returnRecordCount: 2,
     updatedAt: "2026-08-12T00:00:00Z",
@@ -666,7 +798,7 @@ describe("resuming a return", () => {
 
     // The order reference and the RMA count are what identify outstanding
     // work; "earlier" is what the conversation happened to be called.
-    expect(await screen.findByText("CW273354")).toBeInTheDocument();
+    expect(await screen.findByText("SO-A1")).toBeInTheDocument();
     expect(screen.getByText(/2 RMAs/)).toBeInTheDocument();
   });
 
@@ -676,7 +808,7 @@ describe("resuming a return", () => {
     render(<ReturnCopilotPage />, { wrapper });
 
     fireEvent.click(screen.getByRole("button", { name: "Previous returns" }));
-    fireEvent.click(await screen.findByText("CW273354"));
+    fireEvent.click(await screen.findByText("SO-A1"));
 
     // Not a new chat about an existing return: the same Channel A thread the
     // case has always pointed at.
@@ -686,41 +818,18 @@ describe("resuming a return", () => {
   it("drops the resumed case when the associate starts a new return", async () => {
     withHistory();
     mocks.listCases.mockResolvedValue([OPEN_CASE]);
-    mocks.readCase.mockResolvedValue({
-      case: {
+    mocks.readCase.mockResolvedValue(
+      caseProjection({
         caseId: "case-9",
-        tenantId: "tenant-a",
-        principalId: "tester",
-        branchId: null,
         status: "AWAITING_SUPPORT",
-        channelAConversationId: "disc-old",
-        channelBWorkItemId: null,
-        confirmedOrderReference: "CW273354",
-        createdAt: "2026-08-12T00:00:00Z",
-        updatedAt: "2026-08-12T00:00:00Z",
-      },
-      returnRecords: [
-        {
-          record: {
-            returnRecordId: "rr-1",
-            caseId: "case-9",
-            returnReference: "RMA-RESUMED",
-            status: "ISSUED",
-            returnLocation: null,
-            trackingReference: null,
-            labelReference: null,
-            shippingInstructionReference: null,
-            sourceSystem: "RETURN_SUPPORT",
-            version: 0,
-            createdAt: "2026-08-12T00:00:00Z",
-            updatedAt: "2026-08-12T00:00:00Z",
-          },
-          items: [],
-        },
-      ],
-      unassignedItems: [],
-      facts: [],
-    });
+        stage: "AWAITING_SUPPORT",
+        conversationId: "disc-old",
+        confirmedOrder: confirmedOrder(),
+        returnRecords: [
+          returnRecord({ returnRecordId: "rr-1", returnReference: "RMA-RESUMED" }),
+        ],
+      }),
+    );
     render(<ReturnCopilotPage />, { wrapper });
 
     fireEvent.click(screen.getByRole("button", { name: "Previous returns" }));
@@ -754,7 +863,7 @@ describe("the return history panel", () => {
     return turn({
       response: {
         status: "RESOLVED",
-        business_capability: "order_discovery",
+        business_capability: "order-discovery",
         statements: [{ statement_id: "c", statement_type: "GRAPH_FACT", text: "Found 1." }],
       },
       query_evidence: [
@@ -762,6 +871,8 @@ describe("the return history panel", () => {
           query_execution_id: "qe-1",
           schema_version: "v2",
           graph_generation_id: "gen-abc12345",
+          logical_plan_checksum: "plan-x",
+          compiled_query_checksum: "compiled-x",
           result_checksum: "x",
           result: { candidates: [{ data }] },
         },
@@ -774,6 +885,72 @@ describe("the return history panel", () => {
     account_id: "CHARLOTTE",
     customer_id: "9911",
   };
+
+  it("confirms the order when the chosen candidate carries one", async () => {
+    mocks.sendTurn.mockResolvedValue(candidateTurn(RESOLVED_CUSTOMER));
+    const { container } = render(<ReturnCopilotPage />, { wrapper });
+    fire(container, "Atlas");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Select" }));
+
+    await waitFor(() => {
+      expect(mocks.sendTurn).toHaveBeenLastCalledWith(
+        expect.objectContaining({ message: "Confirm order CQ363350." }),
+      );
+    });
+  });
+
+  it("confirms the customer when the chosen candidate carries no order", async () => {
+    /**
+     * A name search returns customer rows -- `account_id`, `customer_id`,
+     * `customer_name` and nothing else. The handler used to read
+     * `sales_order_number`, find nothing and return silently, so Select
+     * rendered enabled and was **inert**: no turn, no error, no feedback.
+     * Observed live on a search for "Melgon Heating & Cooling".
+     *
+     * Confirming the customer is the honest first step of a narrowing that has
+     * not reached an order yet, and it is what lets the flow run name, then
+     * product, then order.
+     */
+    mocks.sendTurn.mockResolvedValue(
+      candidateTurn({
+        account_id: "OHVAL",
+        customer_id: "471565",
+        customer_name: "MELGON HEATING & COOLING",
+      }),
+    );
+    const { container } = render(<ReturnCopilotPage />, { wrapper });
+    fire(container, "Melgon Heating");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Select" }));
+
+    await waitFor(() => {
+      expect(mocks.sendTurn).toHaveBeenLastCalledWith(
+        // No `customer_id` in the sentence: the internal ERP customer number is
+        // not exposed, and this text lands in a stored, replayable transcript.
+        expect.objectContaining({
+          message: "Confirm the customer MELGON HEATING & COOLING on account OHVAL.",
+        }),
+      );
+    });
+  });
+
+  it("submits nothing when a candidate identifies neither an order nor a customer", async () => {
+    // Better a dead button than a meaningless turn on the record: an empty
+    // submission would cost a reasoning round trip and say nothing.
+    mocks.sendTurn.mockResolvedValue(candidateTurn({ source_updated_at: "2025-10-14T15:03:28Z" }));
+    const { container } = render(<ReturnCopilotPage />, { wrapper });
+    fire(container, "something vague");
+
+    // Count *after* the search turn has landed, or the baseline races it.
+    const select = await screen.findByRole("button", { name: "Select" });
+    const before = mocks.sendTurn.mock.calls.length;
+    fireEvent.click(select);
+
+    await waitFor(() => {
+      expect(mocks.sendTurn.mock.calls.length).toBe(before);
+    });
+  });
 
   it("asks about the customer, not only the order, when the candidate names one", async () => {
     // The wider question is the useful one: "has this customer returned before"
@@ -810,7 +987,7 @@ describe("the return history panel", () => {
       turn({
         response: {
           status: "NEEDS_INPUT",
-          business_capability: "order_discovery",
+          business_capability: "order-discovery",
           statements: [{ statement_id: "c", statement_type: "GRAPH_FACT", text: "Found 2." }],
         },
         query_evidence: [
@@ -818,6 +995,8 @@ describe("the return history panel", () => {
             query_execution_id: "qe-1",
             schema_version: "v2",
             graph_generation_id: "gen-abc12345",
+            logical_plan_checksum: "plan-x",
+            compiled_query_checksum: "compiled-x",
             result_checksum: "x",
             result: {
               candidates: [

@@ -17,6 +17,9 @@ it("loads runtime configuration from the canonical versionless path", async () =
             availableSourceTypes: ["MONGODB"],
             availableModelProviders: [],
           },
+          agents: {
+            orderDiscovery: "order-discovery-agent",
+          },
         },
         page: null,
         meta: {
@@ -40,6 +43,10 @@ it("loads runtime configuration from the canonical versionless path", async () =
 
   await expect(fetchRuntimeConfig()).resolves.toMatchObject({
     releaseId: "release-test",
+    // The copilot's agent id travels on this payload rather than being compiled
+    // into the shell -- the literal that did was `"order_discovery"`, which the
+    // active schema has never known by that name.
+    agents: { orderDiscovery: "order-discovery-agent" },
   });
   // The point of the assertion: no `/v1`. This was the shell's last hard
   // dependency on a versioned route.

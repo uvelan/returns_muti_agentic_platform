@@ -34,7 +34,7 @@ from typing import Any
 
 from pymongo.errors import DuplicateKeyError
 
-from return_platform.ai.interception.records import RESUMABLE
+from return_platform.ai.interception.records import RESUMABLE, InterceptionPoint
 from return_platform.ai.interception.store import AI_INTERCEPTIONS, METADATA_FIELDS
 from return_platform.platform.system_store.repository import SystemStore
 
@@ -75,10 +75,22 @@ class InterceptionResumeDispatcher:
         # an answered one until its run is signalled. Enqueueing only answers
         # would make "allow this through" a decision that is recorded and then
         # never acted on, which is worse than not offering it.
+        #
+        # **Held responses are not resumed, and must not be enqueued.** A
+        # `RESPONSE` hold blocks its caller inside the dispatch boundary: the
+        # coroutine is still there, still holding its route, waiting on the
+        # store. Nothing is suspended, so there is nothing to signal, and
+        # enqueueing one would deliver a `resume_reasoning` signal to a workflow
+        # that never paused -- at best ignored, at worst a duplicate turn.
+        #
+        # `$ne` rather than `$eq: REQUEST` on purpose: every record written
+        # before this field existed was a held request and has no `point`, and
+        # `$ne` matches a missing field where `$eq` would silently strand them.
         cursor = (
             self._interceptions.find(
                 {
                     "status": {"$in": sorted(status.value for status in RESUMABLE)},
+                    "point": {"$ne": InterceptionPoint.RESPONSE.value},
                     "resume_enqueued_at": {"$exists": False},
                 }
             )

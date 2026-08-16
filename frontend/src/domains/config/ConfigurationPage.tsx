@@ -260,7 +260,26 @@ function ReleasesTab({ canRead }: { canRead: boolean }) {
                 onClick={() => { setSelectedId(release.release_id ?? null); }}
                 className="cursor-pointer border-t border-slate-200 hover:bg-slate-50"
               >
-                <td className="p-2 font-mono text-xs">{release.release_id ?? "-"}</td>
+                <td className="p-2 font-mono text-xs">
+                  {/*
+                    A real control, not a bare cell. Selecting a release is the
+                    only way to reach the promotion panel, and the row's onClick
+                    was the only way to select one -- a `<tr>` is not focusable
+                    and carries no role, so an operator on a keyboard could not
+                    promote anything, and every audit of this page reported no
+                    interactive controls in the document because there were
+                    none. The row handler stays for click-anywhere; this is what
+                    makes the same action reachable and announceable.
+                  */}
+                  <button
+                    type="button"
+                    aria-pressed={release.release_id === selectedId}
+                    onClick={() => { setSelectedId(release.release_id ?? null); }}
+                    className="w-full text-left"
+                  >
+                    {release.release_id ?? "-"}
+                  </button>
+                </td>
                 <td className="p-2">
                   <StatusBadge status={release.status} />
                 </td>

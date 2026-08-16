@@ -46,9 +46,16 @@ from return_platform.operations.sql_business_state import (
 _CONNECT_DEADLINE_SECONDS = 30
 CASE_DATABASE = "return_case_probe"
 
-#: The migration under test. Applied here rather than assumed, so this suite
-#: does not depend on whoever last ran the migration CLI against this server.
-_MIGRATION = "005_case_return_records.sql"
+#: The migrations under test, in the order the CLI applies them. Applied here
+#: rather than assumed, so this suite does not depend on whoever last ran the
+#: migration CLI against this server.
+#:
+#: 007 is forward-only over 005: it adds `dbo.return_record.return_method`, the
+#: column the completion profile is computed from (D23). Both are applied because
+#: `persist_case_return_records` writes that column on every RMA, so a throwaway
+#: database built from 005 alone would fail every write here on an invalid column
+#: name -- and would be reporting the schema of a release nobody runs.
+_MIGRATIONS = ("005_case_return_records.sql", "007_return_record_method.sql")
 
 
 def _connect(settings: Settings, database: str) -> Any:
@@ -98,9 +105,9 @@ def _open_with_retry(settings: Settings, database: str) -> Any:
 
 
 def _migration_batches() -> tuple[str, ...]:
-    """The migration's own SQL, minus its `USE`.
+    """Every migration's own SQL, in order, minus its `USE`.
 
-    Reusing the real file rather than restating its DDL is the point: a test
+    Reusing the real files rather than restating their DDL is the point: a test
     with its own copy of the schema proves the copy works, not the migration.
 
     The `USE [return_platform]` statement is stripped so the DDL lands in the
@@ -113,23 +120,26 @@ def _migration_batches() -> tuple[str, ...]:
     import re
     from importlib.resources import files
 
-    text = (
-        files("return_platform")
-        .joinpath("configuration/sql_migrations")
-        .joinpath(_MIGRATION)
-        .read_text(encoding="utf-8")
-    )
-    without_use = re.sub(
-        r"^\s*USE\s+\[?[A-Za-z0-9_]+\]?\s*;?\s*$",
-        "",
-        text,
-        flags=re.IGNORECASE | re.MULTILINE,
-    )
-    return tuple(
-        batch.strip()
-        for batch in re.split(r"^\s*GO\s*$", without_use, flags=re.IGNORECASE | re.MULTILINE)
-        if batch.strip()
-    )
+    batches: list[str] = []
+    for migration in _MIGRATIONS:
+        text = (
+            files("return_platform")
+            .joinpath("configuration/sql_migrations")
+            .joinpath(migration)
+            .read_text(encoding="utf-8")
+        )
+        without_use = re.sub(
+            r"^\s*USE\s+\[?[A-Za-z0-9_]+\]?\s*;?\s*$",
+            "",
+            text,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        batches.extend(
+            batch.strip()
+            for batch in re.split(r"^\s*GO\s*$", without_use, flags=re.IGNORECASE | re.MULTILINE)
+            if batch.strip()
+        )
+    return tuple(batches)
 
 
 @pytest.fixture
@@ -187,6 +197,7 @@ def _two_rma_outcome(case_id: str) -> CaseReturnRecordsWrite:
                 tracking_reference="TRACK-A",
                 return_location="LOC-A",
                 shipping_instruction_reference="SHIP-A",
+                return_method="PREPAID_PARCEL",
                 items=(
                     ReturnRecordItemWrite(
                         return_item_id=f"{case_id}-item-a1",
@@ -211,6 +222,7 @@ def _two_rma_outcome(case_id: str) -> CaseReturnRecordsWrite:
                 tracking_reference="TRACK-B",
                 return_location="LOC-B",
                 shipping_instruction_reference="SHIP-B",
+                return_method="CUSTOMER_KEEP",
                 items=(
                     ReturnRecordItemWrite(
                         return_item_id=f"{case_id}-item-b1",
@@ -247,6 +259,11 @@ async def test_two_rmas_on_one_case_keep_their_own_label_tracking_and_location(
         rma_a["shipping_instruction_reference"],
         rma_b["shipping_instruction_reference"],
     ) == ("SHIP-A", "SHIP-B")
+    # The method is per record for the same reason the label is (D23): one case
+    # can hold a `CUSTOMER_KEEP` RMA and a `PREPAID_PARCEL` one, and completion
+    # is evaluated against each record's own requirement row. A case-level
+    # column would complete the first against the second's requirement set.
+    assert (rma_a["return_method"], rma_b["return_method"]) == ("PREPAID_PARCEL", "CUSTOMER_KEEP")
 
     # Items stay nested under the record that owns them.
     assert [item["order_line_id"] for item in rma_a["items"]] == ["LINE-1", "LINE-2"]
@@ -292,6 +309,11 @@ async def test_an_updated_outcome_rewrites_the_same_rma_in_place(
         tracking_reference="TRACK-A-REISSUED",
         return_location="LOC-A",
         shipping_instruction_reference="SHIP-A",
+        # Carried through rather than dropped. The upsert below is a whole-row
+        # `SET`, so this repository does not merge -- `record_support_outcome`
+        # computes the merge once and hands the merged values to both stores,
+        # and a caller that omitted a field here would blank its column.
+        return_method="PREPAID_PARCEL",
         items=amended.records[0].items,
     )
     await repository.persist_case_return_records(
@@ -311,6 +333,8 @@ async def test_an_updated_outcome_rewrites_the_same_rma_in_place(
     # And the other RMA was not touched by its neighbour's amendment.
     assert by_reference["RMA-B"]["label_reference"] == "LABEL-B"
     assert by_reference["RMA-B"]["tracking_reference"] == "TRACK-B"
+    assert by_reference["RMA-B"]["return_method"] == "CUSTOMER_KEEP"
+    assert by_reference["RMA-A"]["return_method"] == "PREPAID_PARCEL"
 
 
 @pytest.mark.asyncio

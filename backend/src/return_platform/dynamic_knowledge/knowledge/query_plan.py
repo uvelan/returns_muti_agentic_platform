@@ -99,6 +99,14 @@ class LogicalQueryPlan(BaseModel):
             QueryOperation.AVERAGE,
             QueryOperation.DISTINCT_VALUES,
             QueryOperation.TOP_VALUES,
+            # `MISSING_VALUE_COUNT` belongs here and was absent. The compiler
+            # raises `QueryCompilationError("MISSING_VALUE_COUNT requires
+            # aggregation_field_id")`, so a plan omitting it validated cleanly
+            # and failed one layer later -- spending a correction attempt on a
+            # fault the model could have been told about immediately. Newly
+            # load-bearing: the reasoning prompt now names this operation, so
+            # the model will actually emit it.
+            QueryOperation.MISSING_VALUE_COUNT,
         }
         if self.operation in aggregate_ops and self.aggregation_field_id is None:
             raise ValueError(f"{self.operation.value} requires aggregation_field_id")

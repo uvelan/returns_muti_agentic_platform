@@ -43,6 +43,7 @@ from return_platform.workflows.return_case_workflow import (
 
 __all__ = [
     "CaseWorkflowRepositoryPort",
+    "CaseWorkflowResume",
     "StartedCaseWorkflow",
     "TemporalCaseWorkflowLauncher",
     "case_timings_from_configuration",
@@ -63,6 +64,51 @@ class StartedCaseWorkflow:
 
     workflow_id: str
     already_running: bool
+
+
+@dataclass(frozen=True, slots=True)
+class CaseWorkflowResume:
+    """Where a recovered case was, so its new execution does not start over.
+
+    Only ever supplied by recovery (plan sect. 13, Phase 10). A confirmation
+    passes nothing and gets exactly the input it always got.
+
+    **Why this is not optional decoration.** `ReturnCaseWorkflow.run` branches
+    on `resumed_work_item_id`: with one it goes straight to `_serve_case`, and
+    without one it requests a bay, evaluates the policy and calls
+    `_open_support`. Restarting an orphaned `AWAITING_SUPPORT` case with an
+    empty input would therefore open a *second* Support work item for a return
+    Support already has, and evaluate a policy that was already decided. Those
+    are the two harms a re-launch can do, and this is what prevents both.
+
+    **Every field is reconstructed from Mongo, never guessed.** `status` is
+    `cases.status`, `work_item_id` is `cases.channelBWorkItemId`, and
+    `lifetime_start_iso` is the case's own `createdAt`.
+
+    `lifetime_start_iso` deserves its reason. The workflow uses it for the
+    absolute lifetime cap -- the point past which the platform stops holding a
+    case open however many times its history has been reset. The stranded
+    execution's own start is unrecoverable (nothing persists it), so the case's
+    creation time is used: it is earlier than the true value, which makes the
+    cap arrive sooner rather than never. Passing `None` would hand every
+    recovered case a fresh thirty days, and a case that orphans repeatedly would
+    never reach the cap at all -- which is precisely the failure the cap exists
+    for.
+
+    **What is deliberately absent: the applied-event set.**
+    `resumed_support_event_ids` is the workflow's redelivery guard, and it
+    cannot be reconstructed honestly -- Mongo records that a Support event was
+    *delivered*, not that the workflow *applied* it before it died, and those
+    differ exactly in the window recovery exists for. Claiming an event was
+    applied would silently drop an RMA. So nothing is claimed, and safety comes
+    from the other side instead: recovery requeues only the commands that never
+    delivered, so a delivered event is never re-signalled and the empty set is
+    never consulted for one.
+    """
+
+    status: str | None = None
+    work_item_id: str | None = None
+    lifetime_start_iso: str | None = None
 
 
 class CaseWorkflowRepositoryPort(Protocol):
@@ -121,6 +167,7 @@ class TemporalCaseWorkflowLauncher:
         principal_id: str,
         conversation_id: str,
         configuration_release_id: str,
+        resume: CaseWorkflowResume | None = None,
     ) -> StartedCaseWorkflow:
         """Start the case's workflow, or adopt the one already running.
 
@@ -129,8 +176,25 @@ class TemporalCaseWorkflowLauncher:
         case that exists without its workflow is unreachable by every
         downstream agent, and `return_case_recovery` is what eventually starts
         it.
+
+        `resume` is recovery's, and defaults to `None` so the confirmation path
+        builds precisely the input it built before. See `CaseWorkflowResume` for
+        why a re-launch that omitted it would open a second Support work item.
+
+        **The duplicate-execution guard is Temporal's, and it covers exactly one
+        case: an execution that is still open.** A start against a live id
+        raises `WorkflowAlreadyStartedError` and is adopted below, so no caller
+        of this method can fork a second live execution. It says nothing about a
+        *closed* id -- Temporal permits reuse after close, which is what makes
+        recovery possible at all and also what makes an unguarded re-launch able
+        to restart a finished case. That guard cannot live here: this method is
+        on the confirmation hot path, where the id is new by construction and a
+        `describe` round-trip per confirmation would buy nothing. It lives in
+        `return_case_recovery`, on the one caller that re-launches ids that may
+        already have run.
         """
         workflow_id = return_case_workflow_id(case_id)
+        resumption = resume or CaseWorkflowResume()
         already_running = False
         try:
             await self._client.start_workflow(
@@ -142,6 +206,9 @@ class TemporalCaseWorkflowLauncher:
                     conversation_id=conversation_id,
                     configuration_release_id=configuration_release_id,
                     timings=case_timings_from_configuration(self._timings),
+                    resumed_status=resumption.status,
+                    resumed_work_item_id=resumption.work_item_id,
+                    resumed_lifetime_start_iso=resumption.lifetime_start_iso,
                 ),
                 id=workflow_id,
                 task_queue=self._task_queue,
@@ -166,6 +233,7 @@ class TemporalCaseWorkflowLauncher:
                 "case_id": case_id,
                 "workflow_id": workflow_id,
                 "already_running": already_running,
+                "resumed": resume is not None,
             },
         )
         return StartedCaseWorkflow(workflow_id=workflow_id, already_running=already_running)

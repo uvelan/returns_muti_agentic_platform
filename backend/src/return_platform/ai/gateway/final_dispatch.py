@@ -22,13 +22,22 @@ So this module owns everything that happens between "a caller has a payload" and
 "a provider answered":
 
   interception decision -> precondition -> route selection -> acquire ->
-  recursive redaction -> **the single `provider.generate` call** -> output
-  safety -> caller validation -> failover bookkeeping -> priced telemetry
+  recursive redaction -> **the single `provider.generate` call** -> response
+  review -> output safety -> caller validation -> failover bookkeeping ->
+  priced telemetry
 
 and callers own only what genuinely differs between them: how the payload is
 built, how the response is parsed, and what else must be persisted alongside.
 Those arrive as `DispatchRequest`, a `validate` callable and a
 `DispatchObserver`. A fourth caller should need no edit to this file.
+
+**There are two interception points, and they answer different questions.** The
+first, before the call, decides whether the provider may be reached at all --
+and if not, a human may answer in its place. The second, after the call and
+before anything consumes the reply, decides what happens to what came back:
+accept it, edit it, or reject it. The ordering above is the whole design: review
+sits *before* output safety and caller validation, so a human's edit is checked
+by exactly the machinery that checks a model's answer.
 
 **Why the interception decision lives here rather than in each caller.** C7
 requires exactly one of `ALLOW_PROVIDER`, `HUMAN_RESPONSE` or `REJECT` before any
@@ -51,6 +60,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import random
 import time
 from collections import Counter
@@ -67,7 +77,11 @@ from return_platform.ai.gateway.telemetry import (
     InvocationCorrelation,
 )
 from return_platform.ai.pricing import AICostEstimate
-from return_platform.ai.providers import ProviderError, ProviderRequest, ProviderResponse
+from return_platform.ai.providers import (
+    ProviderError,
+    ProviderRequest,
+    ProviderResponse,
+)
 from return_platform.ai.routing.routes import AIRoute
 from return_platform.ai.routing.selection import AIRoutePool
 from return_platform.ai.routing.tasks import (
@@ -80,6 +94,8 @@ from return_platform.configuration.settings import Settings
 
 __all__ = [
     "ALLOW_ALL",
+    "RESPONSE_REJECTED",
+    "RESPONSE_REVIEW_EXPIRED",
     "DispatchDecision",
     "DispatchObserver",
     "DispatchOutcome",
@@ -87,7 +103,31 @@ __all__ = [
     "FinalDispatcher",
     "InterceptionPolicy",
     "InterceptionVerdict",
+    "ResponseDecision",
+    "ResponseVerdict",
 ]
+
+#: The boundary's own logger, used for exactly one thing: a caller-supplied
+#: callback that raised. Every *narrative* event here belongs to the caller and
+#: goes through `DispatchObserver`, because the same dispatch serves callers
+#: whose log context is different. A hook that threw is not narrative -- it is a
+#: bug in code this module called, with nowhere else to surface.
+logger = logging.getLogger("return_platform.ai.gateway.final_dispatch")
+
+#: An operator read the model's answer and refused it. An attempt error code
+#: rather than a dispatch-level decision, because that is what it is: a
+#: statement about *this* answer from *this* route, not about the request. The
+#: request point already has a way to refuse a request (cancel), and conflating
+#: the two would let one rejected answer suppress a healthy fallback route that
+#: might have answered correctly.
+RESPONSE_REJECTED = "RESPONSE_REJECTED"
+
+#: Nobody reviewed the held response before its deadline. Distinct from a
+#: rejection for the same reason `EXPIRED` is distinct from `CANCELLED` in the
+#: store: "nobody got to it" is a staffing fact and "we looked and said no" is a
+#: quality one, and one reported as the other hides a rota problem inside what
+#: looks like ordinary model failure.
+RESPONSE_REVIEW_EXPIRED = "RESPONSE_REVIEW_EXPIRED"
 
 
 class DispatchDecision(StrEnum):
@@ -114,19 +154,77 @@ class InterceptionVerdict:
     reason: str | None = None
 
 
+class ResponseDecision(StrEnum):
+    """The three outcomes of reviewing a response, and no fourth.
+
+    Deliberately parallel to `DispatchDecision` without being it. The request
+    point decides whether a model may be *called*; this one decides what happens
+    to what it *said*. `ALLOW_PROVIDER` has no meaning after the provider has
+    already answered, and `HUMAN_RESPONSE` cannot express "a human changed the
+    model's words" -- which is the whole reason this point exists.
+    """
+
+    ACCEPTED = "ACCEPTED"
+    EDITED = "EDITED"
+    REJECTED = "REJECTED"
+
+
+@dataclass(frozen=True, slots=True)
+class ResponseVerdict:
+    """One review answer.
+
+    `response` is populated only for `EDITED`, and it is a *replacement*
+    `ProviderResponse` carrying the third identity -- `HUMAN_EDITED` with a
+    `HumanEdit` naming the model it came from -- rather than the edited text on
+    its own. Handing back bare text here would leave it to this module to
+    reattach provenance, which is exactly the step a future edit forgets.
+    """
+
+    decision: ResponseDecision
+    response: ProviderResponse | None = None
+    reason: str | None = None
+
+
 class InterceptionPolicy:
-    """Consulted once per invocation, before a route is even selected.
+    """Consulted once per invocation, before a route is even selected -- and,
+    if it says so, once more after the provider has answered.
 
     A class with a permissive default rather than a Protocol so that
     `ALLOW_ALL` is a real object a test can assert identity against, and so a
     caller that wants interception overrides one method.
+
+    **Two points, one object.** `review` lives here rather than on a second
+    constructor argument because a process that can hold a request is exactly a
+    process that can hold a response: it has the store, the queue, the operator
+    endpoints and the sealing. A separate `response_interception=` parameter
+    would have been a second thing every one of the platform's dispatcher
+    construction sites had to remember, and "a control each caller opts into is
+    a control each caller can forget" is the finding this whole boundary exists
+    to answer.
     """
+
+    #: Whether `review` does anything. Read once per attempt, and the entire
+    #: cost of this feature when it is off.
+    #:
+    #: A flag rather than "just call `review` and let the base class return
+    #: immediately" because the requirement is that a deployment with response
+    #: interception disabled behaves *identically to today* -- no extra await,
+    #: no extra store write, no extra latency. One attribute read is a claim a
+    #: test can make; "an await that usually returns fast" is not.
+    reviews_responses: bool = False
 
     async def decide(self, request: DispatchRequest) -> InterceptionVerdict:
         return _ALLOW_VERDICT
 
+    async def review(self, request: DispatchRequest, response: ProviderResponse) -> ResponseVerdict:
+        """What to do with what the provider said. Never reached unless
+        `reviews_responses` is true."""
+        del request, response
+        return _ACCEPT_UNCHANGED
+
 
 _ALLOW_VERDICT = InterceptionVerdict(decision=DispatchDecision.ALLOW_PROVIDER)
+_ACCEPT_UNCHANGED = ResponseVerdict(decision=ResponseDecision.ACCEPTED)
 
 #: The explicit "this path is not intercepted yet" marker. AI-01 replaces these
 #: with real policies; until it does, `grep ALLOW_ALL` enumerates exactly which
@@ -180,6 +278,31 @@ class DispatchRequest:
     #: error code to abort as `REJECT`, or `None` to proceed. This is where a
     #: quota lives: it must not be spent on a request a human intercepted.
     precondition: Callable[[], Awaitable[str | None]] | None = None
+    #: Rebuilds the payload after `validate` rejected a response, given the
+    #: payload that produced it and the exception that rejected it. What comes
+    #: back is what every *subsequent* attempt sends.
+    #:
+    #: This exists because retrying an identical payload on the next route makes
+    #: the second route repeat the first one's mistake with no way of knowing
+    #: there was one -- and when the next route is MANUAL, the "next route" is a
+    #: person. A human answering a hold that carries no diagnosis is being asked
+    #: to correct a response they were never shown, which is what
+    #: `breakdown=RESPONSE_INVALIDx2` looked like from the operator console.
+    #:
+    #: Caller-supplied because the boundary must not learn any caller's payload
+    #: vocabulary; the boundary owns *when* it fires, that the result is
+    #: redacted before it is sent or sealed, and that a hook which raises cannot
+    #: take the failover loop down with it.
+    #:
+    #: `request_digest` is deliberately *not* recomputed when this fires. It
+    #: identifies the invocation -- it is what ties every attempt row of one
+    #: dispatch together and what `interception_id_for` derives a resumable
+    #: identity from -- so a diagnosis appended between attempts must not split
+    #: one turn into two identities, which would have the resumed call open a
+    #: second interception and ask a human the same question twice.
+    on_response_invalid: Callable[[Mapping[str, Any], BaseException], Mapping[str, Any]] | None = (
+        None
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,8 +380,22 @@ class DispatchObserver:
 
 #: Errors that mean "this route will fail the same way if asked again". Retrying
 #: the same route on any of them spends the global deadline to learn nothing.
+#:
+#: The two review codes are here for a sharper version of the same reason. Asking
+#: the same model the same question again would produce the same answer and put
+#: it in front of the same operator a second time -- so a retry does not spend
+#: the deadline to learn nothing, it spends a *human's* time to learn nothing.
+#: Moving to the next route is what the loop already does for `RESPONSE_INVALID`,
+#: which is the same category of event with a worse judge.
 _TERMINAL_FOR_ROUTE = frozenset(
-    {"AUTH_FAILED", "RATE_LIMITED", "POLICY_BLOCKED", "RESPONSE_INVALID"}
+    {
+        "AUTH_FAILED",
+        "RATE_LIMITED",
+        "POLICY_BLOCKED",
+        "RESPONSE_INVALID",
+        RESPONSE_REJECTED,
+        RESPONSE_REVIEW_EXPIRED,
+    }
 )
 
 
@@ -412,6 +549,10 @@ class FinalDispatcher:
             request_digest=request.request_digest,
             response_digest=response_digest,
             error_code=error_code,
+            # Carried from the response rather than passed separately, so a row
+            # cannot report a provider's answer while the object it was built
+            # from says a human rewrote it.
+            human_edit=response.human_edit if response else None,
         )
         try:
             await self._recorder.record(record)
@@ -467,7 +608,7 @@ class FinalDispatcher:
 
         deadline = time.monotonic() + self._settings.ai_global_timeout_seconds
         failures: Counter[str] = Counter()
-        state = _LoopState(attempts=0, last_error="PROVIDER_UNAVAILABLE")
+        state = _LoopState(attempts=0, last_error="PROVIDER_UNAVAILABLE", payload=request.payload)
 
         candidates = await self._candidates(request, tier=None)
         outcome = await self._attempt_routes(
@@ -609,11 +750,19 @@ class FinalDispatcher:
                                 # could persist it. Masking here instead would
                                 # leave the held-request store richer than the
                                 # provider, which is the one place it must never
-                                # be.
-                                user_payload=dict(request.payload),
+                                # be. Read off the loop state rather than the
+                                # request because a rejected response may have
+                                # added a diagnosis for this attempt to carry;
+                                # `_diagnosed` redacts that addition the same
+                                # way before it lands here.
+                                user_payload=dict(state.payload),
                                 max_output_tokens=request.max_output_tokens,
                                 temperature=request.temperature,
                                 response_schema=request.response_schema,
+                                # Per-invocation, because one route can serve
+                                # several tasks and a provider built at
+                                # `build_routes` time cannot know which.
+                                task_id=request.task_id,
                             )
                         ),
                         timeout=attempt_timeout,
@@ -632,6 +781,23 @@ class FinalDispatcher:
                         latency_ms=latency,
                         cost=cost,
                     )
+                    # The second interception point. Placed here, after the
+                    # provider answered and *before* `inspect_output` and
+                    # `validate`, so an edited response is not trusted more than
+                    # the model's was: whatever comes back from the review goes
+                    # through the identical safety inspection and the identical
+                    # schema parse, and a malformed edit fails as
+                    # `RESPONSE_INVALID` exactly as a malformed model answer
+                    # does. Reviewing *after* validation would have made a human
+                    # the one contributor who could put unparsed text into a
+                    # caller's result type.
+                    #
+                    # It is also outside the `wait_for` above, which times the
+                    # provider and not the operator, and outside the pricing
+                    # call, because the call happened and is billable however
+                    # the review goes.
+                    if getattr(self._interception, "reviews_responses", False):
+                        response = await self._reviewed(request, response)
                     output_safety = inspect_output(response.text)
                     if not output_safety.allowed:
                         raise ProviderError("POLICY_BLOCKED")
@@ -710,11 +876,80 @@ class FinalDispatcher:
                     fallback_reason=fallback_reason,
                     observer=observer,
                 )
+                # After the row is written, so the attempt that failed is
+                # recorded against the payload that actually produced it, and
+                # before the loop moves on, so whoever answers next -- the next
+                # provider, or the operator holding the next MANUAL request --
+                # is told what was wrong with the last answer.
+                if state.last_error == "RESPONSE_INVALID" and error is not None:
+                    state.payload = self._diagnosed(request, state.payload, error)
+
                 if state.last_error in _TERMINAL_FOR_ROUTE:
                     break
                 if route_attempt + 1 < retry.maximumAttemptsPerRoute:
                     await asyncio.sleep(self._backoff_seconds(route_attempt))
         return None
+
+    def _diagnosed(
+        self, request: DispatchRequest, payload: Mapping[str, Any], error: BaseException
+    ) -> Mapping[str, Any]:
+        """The payload the next attempt sends, carrying why the last one failed.
+
+        Redacted on the way out, exactly like the original: the diagnosis is
+        built from a rejected *response*, and a response is derived from a prompt
+        that can carry rows read out of a customer's database. Running it through
+        the same masker keeps "nothing unredacted leaves the platform, and
+        nothing unredacted is sealed into the interception store" one claim
+        provable in one place rather than one claim per contributor.
+
+        A hook that raises is swallowed with its traceback logged. Failover is
+        the work; annotating it is not, and a caller whose diagnosis builder has
+        a bug must still get its next route rather than an exception thrown from
+        inside the retry loop.
+        """
+        if request.on_response_invalid is None:
+            return payload
+        try:
+            return redact_payload(dict(request.on_response_invalid(payload, error)))
+        except Exception:  # noqa: BLE001 - a diagnosis must never break failover
+            logger.exception("ai_dispatch_diagnosis_failed", extra={"task_id": request.task_id})
+            return payload
+
+    async def _reviewed(
+        self, request: DispatchRequest, response: ProviderResponse
+    ) -> ProviderResponse:
+        """Hold the response for a human, and return what the caller gets.
+
+        Blocking, unlike the request point, and the asymmetry is forced rather
+        than chosen. A held *request* can be released and resumed because
+        re-entering `dispatch()` costs nothing -- the provider was never called.
+        A held *response* has already been paid for; releasing the turn and
+        letting it re-enter would call the provider a second time to obtain a
+        reply the store is already holding, so the coroutine waits.
+
+        The cost of waiting is real and is named here rather than hidden: the
+        route stays acquired for the duration, so a pool with a small
+        concurrency ceiling can be occupied by operators rather than by work.
+        That is survivable only because this point is refused outside
+        development and test by the same two mechanisms that refuse MANUAL.
+
+        `REJECTED` raises, which fails *this attempt* and -- because the code is
+        terminal for the route -- moves the loop to the next candidate. If none
+        remains the dispatch exhausts and the caller sees its ordinary
+        unavailability, which is the honest report: nothing usable was produced.
+        """
+        verdict = await self._interception.review(request, response)
+        if verdict.decision is ResponseDecision.REJECTED:
+            raise ProviderError(verdict.reason or RESPONSE_REJECTED)
+        if verdict.decision is ResponseDecision.EDITED:
+            if verdict.response is None:
+                # A policy that reports EDITED without a replacement has lost
+                # the edit. Failing the attempt is the only safe reading:
+                # falling through would deliver the model's original text as
+                # though the operator had approved it.
+                raise ProviderError(RESPONSE_REJECTED)
+            return verdict.response
+        return response
 
     def _backoff_seconds(self, route_attempt: int) -> float:
         retry = self.configuration.retry
@@ -728,7 +963,8 @@ class FinalDispatcher:
 
 @dataclass(slots=True)
 class _LoopState:
-    """Attempt count and last error, carried across a tier escalation.
+    """Attempt count, last error and current payload, carried across a tier
+    escalation.
 
     Mutable and passed by reference so the escalated pass continues the same
     attempt budget rather than starting a second one -- `maximumTotalAttempts`
@@ -737,6 +973,13 @@ class _LoopState:
 
     attempts: int
     last_error: str
+    #: What the next attempt sends. Starts as the request's own redacted payload
+    #: and is replaced only by `on_response_invalid`, so a dispatch with no hook
+    #: sends the identical bytes on every attempt exactly as it always did. It
+    #: lives here rather than on the frozen `DispatchRequest` for the same reason
+    #: the attempt count does: the escalated pass must continue the diagnosis the
+    #: standard pass accumulated, not start again from the original question.
+    payload: Mapping[str, Any]
 
 
 def _elapsed_ms(started: float) -> int:

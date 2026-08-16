@@ -502,3 +502,84 @@ async def test_return_records_without_an_rma_yet_do_not_collide(
     )
 
     assert len(await repository.list_return_records(case["caseId"])) == 2
+
+
+async def test_one_rma_carries_two_parcels_and_a_replay_adds_neither(
+    repository: OperationalRepository, principal: str
+) -> None:
+    """`record_case_shipment` against real MongoDB (D1, D4).
+
+    The normal-suite doubles reproduce the operator set this writes -- an
+    `$elemMatch` with a positional `$` update, and a `$ne` on a dotted array
+    path guarding a `$push` -- and a double that reproduced them *wrongly* would
+    agree with itself all day. This is the only place those update documents
+    meet a server that decides what they mean.
+
+    Four claims, and each was a way the carrier's tracking number failed to
+    reach the case:
+
+    * a parcel a carrier filed lands on the RMA at all;
+    * a **second** parcel on the same RMA is a second entry rather than an
+      overwrite -- the shape the single `trackingReference` column could not
+      express;
+    * a replay of either adds nothing and moves no revision, which matters
+      because the canonical read is reachable without a carrier event;
+    * a corrected carrier reaches the parcel it belongs to and no other.
+    """
+    case = await _case(repository, principal)
+    record = await repository.create_return_record(
+        return_record_id=str(uuid.uuid4()), case_id=case["caseId"], return_reference="RMA-SPLIT"
+    )
+    record_id = str(record["returnRecordId"])
+
+    assert await repository.record_case_shipment(
+        return_record_id=record_id, tracking_reference="TRK-A", carrier="UPS"
+    )
+    assert await repository.record_case_shipment(
+        return_record_id=record_id, tracking_reference="TRK-B", carrier="FEDEX"
+    )
+
+    stored = (await repository.list_return_records(case["caseId"]))[0]
+    assert [entry["trackingReference"] for entry in stored["shipments"]] == ["TRK-A", "TRK-B"]
+    assert [entry["carrier"] for entry in stored["shipments"]] == ["UPS", "FEDEX"]
+    revision = int((await repository.get_case(case["caseId"]))["version"])
+
+    # A replay of each. Neither matches, so neither writes.
+    assert not await repository.record_case_shipment(
+        return_record_id=record_id, tracking_reference="TRK-A", carrier="UPS"
+    )
+    # And a later scan that names no carrier does not blank the one recorded.
+    assert not await repository.record_case_shipment(
+        return_record_id=record_id, tracking_reference="TRK-B"
+    )
+    replayed = (await repository.list_return_records(case["caseId"]))[0]
+    assert replayed["shipments"] == stored["shipments"]
+    assert int((await repository.get_case(case["caseId"]))["version"]) == revision
+
+    # A carrier the feed does state corrects the parcel it names, and only it.
+    assert await repository.record_case_shipment(
+        return_record_id=record_id, tracking_reference="TRK-A", carrier="DHL"
+    )
+    corrected = (await repository.list_return_records(case["caseId"]))[0]
+    assert [entry["carrier"] for entry in corrected["shipments"]] == ["DHL", "FEDEX"]
+    assert int((await repository.get_case(case["caseId"]))["version"]) > revision
+
+    # The stored document is still the declared contract, parcels and all.
+    ReturnRecordView.model_validate(_stored(corrected))
+
+
+async def test_a_parcel_for_a_record_the_case_store_does_not_hold_writes_nothing(
+    repository: OperationalRepository, principal: str
+) -> None:
+    """`dbo.return_tracking` needs no `dbo.return_record` row, and this is that state.
+
+    Reported as `False` rather than raised, and nothing is created: a record
+    invented to hold a parcel would be an RMA the platform never issued.
+    """
+    case = await _case(repository, principal)
+
+    assert not await repository.record_case_shipment(
+        return_record_id=str(uuid.uuid4()), tracking_reference="TRK-ORPHAN", carrier="UPS"
+    )
+
+    assert await repository.list_return_records(case["caseId"]) == []

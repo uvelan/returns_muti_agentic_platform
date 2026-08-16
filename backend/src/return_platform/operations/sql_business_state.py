@@ -94,6 +94,29 @@ class ReturnRecordWrite:
     tracking_reference: str | None = None
     return_location: str | None = None
     shipping_instruction_reference: str | None = None
+    #: How the goods come back, as Support decided it (D23). Per record for the
+    #: same reason the label is: completion is evaluated per RMA against this
+    #: value, so one case holding a `CUSTOMER_KEEP` record and a
+    #: `PREPAID_PARCEL` one must be able to say so. `None` means Support has not
+    #: said, which is the state that reports `RETURN_METHOD` outstanding.
+    #:
+    #: Not validated here. The vocabulary is
+    #: `return_policy.normalized_return_methods` in the active configuration and
+    #: the check belongs at the request boundary, where a snapshot can be read.
+    return_method: str | None = None
+    #: Who is carrying the goods back, as Support arranged it (audit finding #9).
+    #:
+    #: Per record, beside the tracking reference it belongs with: a split return
+    #: travels back on two carriers and one column on the case could not say so.
+    #:
+    #: Distinct from `dbo.return_tracking.carrier_code`, which is a property of
+    #: one *observation* -- the carrier that filed a scan for one tracking
+    #: number, written by `record_shipment_update` with a required
+    #: `tracking_type` beside it. This is Support's statement about the RMA, made
+    #: before any carrier has filed anything, and `persist_case_return_records`
+    #: could not write the tracking row anyway without inventing the
+    #: `tracking_type` and `event_at` that row requires (CFG-03).
+    carrier: str | None = None
     items: tuple[ReturnRecordItemWrite, ...] = ()
 
 
@@ -800,7 +823,8 @@ class SQLBusinessStateRepository:
                             UPDATE dbo.return_record WITH (UPDLOCK, SERIALIZABLE)
                             SET case_id=%s, return_reference=%s, label_reference=%s,
                                 tracking_reference=%s, return_location=%s,
-                                shipping_instruction_reference=%s, record_status=%s,
+                                shipping_instruction_reference=%s, return_method=%s,
+                                carrier=%s, record_status=%s,
                                 source_system=%s, row_version=row_version+1,
                                 updated_at=SYSUTCDATETIME()
                             WHERE return_record_id=%s;
@@ -808,8 +832,9 @@ class SQLBusinessStateRepository:
                             INSERT INTO dbo.return_record (
                                 return_record_id, case_id, return_reference, label_reference,
                                 tracking_reference, return_location,
-                                shipping_instruction_reference, record_status, source_system
-                            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s);
+                                shipping_instruction_reference, return_method, carrier,
+                                record_status, source_system
+                            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);
                             """,
                             (
                                 write.case_id,
@@ -818,6 +843,8 @@ class SQLBusinessStateRepository:
                                 record.tracking_reference,
                                 record.return_location,
                                 record.shipping_instruction_reference,
+                                record.return_method,
+                                record.carrier,
                                 record.record_status,
                                 record.source_system,
                                 record.return_record_id,
@@ -828,6 +855,8 @@ class SQLBusinessStateRepository:
                                 record.tracking_reference,
                                 record.return_location,
                                 record.shipping_instruction_reference,
+                                record.return_method,
+                                record.carrier,
                                 record.record_status,
                                 record.source_system,
                             ),
@@ -1082,8 +1111,8 @@ class SQLBusinessStateRepository:
                         """
                         SELECT return_record_id, case_id, return_reference, label_reference,
                                tracking_reference, return_location,
-                               shipping_instruction_reference, record_status, source_system,
-                               row_version
+                               shipping_instruction_reference, return_method, carrier,
+                               record_status, source_system, row_version
                         FROM dbo.return_record
                         WHERE case_id=%s
                         ORDER BY created_at ASC, return_record_id ASC

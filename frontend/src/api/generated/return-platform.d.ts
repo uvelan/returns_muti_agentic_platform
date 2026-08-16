@@ -56,7 +56,14 @@ export interface paths {
         };
         /**
          * List Interceptions
-         * @description Requests currently held waiting on a human.
+         * @description Work currently held waiting on a human -- both kinds, in one queue.
+         *
+         *     `point` says which: `REQUEST` is a call that has not been made and that a
+         *     human may answer in the model's place; `RESPONSE` is a reply that has come
+         *     back and that a human may accept, edit or reject. One queue rather than two
+         *     endpoints because an operator's question is "what is waiting on me", not
+         *     "what is waiting on me of each kind", and a second list is a second thing to
+         *     forget to open.
          *
          *     **Identifiers and status only.** The held prompt is sealed at rest and is
          *     deliberately not on this surface: an operator listing the queue does not
@@ -89,7 +96,13 @@ export interface paths {
         put?: never;
         /**
          * Allow Interception
-         * @description Approve the held request unchanged: let the model answer it after all.
+         * @description Approve the held item unchanged.
+         *
+         *     At `REQUEST`: let the model answer after all. At `RESPONSE`: the model's
+         *     reply stands and reaches the caller byte-identical, reported as the model.
+         *     The same status for both, because the operator did the same thing -- looked,
+         *     and substituted nothing -- and the result is attributed to the model in
+         *     either case.
          *
          *     The third outcome, and until AI-01 the missing one. An operator could
          *     substitute a human answer or kill the request; "I have read this and it may
@@ -123,7 +136,21 @@ export interface paths {
         put?: never;
         /**
          * Answer Interception
-         * @description Record a human answer to a held request.
+         * @description Record a human answer to a held request, or a human edit of a held response.
+         *
+         *     One endpoint for both, because the act is the same act: a person is
+         *     supplying the text a caller will receive, and the store records it under the
+         *     same conditional write with the same `answered_by`. What differs is
+         *     attribution, and that is decided by the record's `point` at the moment the
+         *     text is delivered, not here -- an edit comes back as `HUMAN_EDITED` naming
+         *     the model it started from, an answer comes back as `MANUAL`.
+         *
+         *     **Nothing is validated here, deliberately.** An edit is not trusted more
+         *     than the model's own reply: it goes back through the dispatch boundary's
+         *     `inspect_output` and the caller's schema parse, so a malformed edit fails as
+         *     `RESPONSE_INVALID` exactly as a malformed completion does. Validating at this
+         *     surface would mean two validators to keep in step, and the one that matters
+         *     is the one the model's output already faces.
          *
          *     The store's `answer` is a conditional write filtered on `PENDING`, so two
          *     operators answering at once produce one winner and one 409 -- never a silent
@@ -154,7 +181,13 @@ export interface paths {
         put?: never;
         /**
          * Cancel Interception
-         * @description Abandon a held request rather than answering it.
+         * @description Abandon a held request, or reject a held response.
+         *
+         *     At `RESPONSE` this is the third review outcome: the reply is discarded, the
+         *     attempt fails as `RESPONSE_REJECTED`, and -- because that code is terminal
+         *     for its route -- the dispatch loop moves to the next candidate rather than
+         *     asking the same model the same question again. If no route remains the
+         *     caller sees its ordinary unavailability, which is the honest report.
          *
          *     The counterpart to `answer`, and it needs to exist for the same reason:
          *     without it the only way out of a PENDING interception is to answer it or
@@ -191,7 +224,13 @@ export interface paths {
         };
         /**
          * Read Interception Request
-         * @description The held prompt, unsealed.
+         * @description The held prompt, unsealed -- and, at the response point, the reply too.
+         *
+         *     A `RESPONSE` hold seals the model's answer under `modelResponse` alongside
+         *     the request that produced it, because a reviewer cannot judge an answer
+         *     without the question. That is the whole ergonomic difference between the two
+         *     points: at `REQUEST` an operator writes from nothing, at `RESPONSE` they
+         *     start from what the model said.
          *
          *     Gated on `ai.interception.act` rather than `ai.interception.read`, which is
          *     the narrower of the two on purpose. The payload can contain block 5
@@ -392,15 +431,259 @@ export interface paths {
         };
         /**
          * Get Case
-         * @description One case, with each RMA carrying the items it covers.
+         * @description One case as the Copilot read contract sees it (plan sect. 6.3).
          *
-         *     Someone else's case is reported as absent, not as forbidden. A 403 on a
-         *     guessed id confirms the id, and the list above is deliberately scoped so
-         *     that no caller learns of a case that is not theirs.
+         *     Four steps and no fifth. The state comes from the one sanctioned assembler,
+         *     ownership is checked here because the assembler mirrors `get_case` and takes
+         *     no principal, the operator's requirement table comes from the active
+         *     release, and `project_case` derives everything derived. Every block it
+         *     carries is **absent rather than defaulted** when the platform has not
+         *     computed it: `artifacts: null` is "nobody has asked", `artifacts: []` is
+         *     "asked, and there are none", and collapsing the two is how a pane renders
+         *     "no label" for a case whose label nobody looked for.
+         *
+         *     Someone else's case is reported as absent, not as forbidden.
          */
         get: operations["get_case_api_cases__case_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cases/{case_id}/order-lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Case Order Lines
+         * @description The lines of the order this case confirmed, with what is still returnable.
+         *
+         *     Four steps and no fifth: resolve the case under the caller's scope, take the
+         *     confirmed order off it, project the lines from the source through the active
+         *     schema, and ask the repository for the arithmetic. Nothing is derived in this
+         *     handler.
+         *
+         *     The read is not a promise. Two associates can both see the same
+         *     `returnableQuantity` and both submit it; `POST /selected-items`
+         *     re-evaluates and commits atomically, and one of them gets a 409 carrying the
+         *     recomputed figure.
+         */
+        get: operations["read_case_order_lines_api_cases__case_id__order_lines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cases/{case_id}/policy-override": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Override Case Policy
+         * @description A supervisor's decision on a case the evaluator sent to review (3A.8).
+         *
+         *     **Append-only.** The evaluator's `policy_decision` is never rewritten. The
+         *     override is appended beside it and a later `policy_effective_decision`
+         *     supersedes the earlier one in the fact projection, so "what the policy said"
+         *     and "what stands now" are both recoverable afterwards -- which is the whole
+         *     difference between an override and an edit.
+         *
+         *     **Server-derived attribution.** `actor` is the authenticated principal and
+         *     `overriddenAt` is the server clock. Neither can be supplied, for the same
+         *     reason `order_agent.py` derives `correlation_id`: a client-supplied audit
+         *     field is not audit.
+         *
+         *     **Scoped by tenant, gated by capability, and deliberately not by principal.**
+         *     The associate who raised the return is exactly the person who must not be
+         *     able to overrule the policy on it, so `_belongs_to`'s principal check would
+         *     refuse the only caller this endpoint is for. `returns.policy.override` is the
+         *     gate, and it is held by supervisors and by no service account.
+         *
+         *     Records the override before it signals. A Temporal outage then leaves an
+         *     audited decision that has not yet moved the case, which an operator can see
+         *     and retry; signalling first would leave a case that moved with nothing
+         *     written down.
+         */
+        post: operations["override_case_policy_api_cases__case_id__policy_override_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cases/{case_id}/recovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Case Recovery
+         * @description Read one case against the execution that is supposed to own it.
+         *
+         *     **Reads, and writes nothing.** Looking at a stuck case must never be the
+         *     thing that restarts it, which is why this and the relaunch below are two
+         *     routes rather than one that repairs as a side effect of being asked.
+         *
+         *     Same gate as the integration-outbox listing: this is operational visibility
+         *     over a delivery failure, and it is the other half of the
+         *     `reconciliationState` that surface already reports.
+         */
+        get: operations["read_case_recovery_api_cases__case_id__recovery_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cases/{case_id}/recovery/relaunch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Relaunch Case Workflow
+         * @description Start the execution an orphaned case is owed, and re-drive what was lost.
+         *
+         *     **Refuses far more often than it acts, and that is the feature.** The
+         *     service probes the derived execution id first and relaunches only when the
+         *     execution is closed or absent *and* the case is not terminal. A live
+         *     execution answers `ALREADY_RUNNING`, a finished case answers
+         *     `REFUSED_TERMINAL` and stays finished, and an unreachable Temporal answers
+         *     `DEFERRED_UNKNOWN` without touching anything. None of those are errors --
+         *     they are the answer -- so all of them are a 200 carrying the action.
+         *
+         *     Idempotent by consequence rather than by a key: the second call finds a
+         *     running execution and reports `ALREADY_RUNNING` with nothing requeued.
+         */
+        post: operations["relaunch_case_workflow_api_cases__case_id__recovery_relaunch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cases/{case_id}/returns/{return_record_id}/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Return Artifact
+         * @description One RMA's document, through an opaque authenticated endpoint (plan sect. 11).
+         *
+         *     The route the label action needs. Before it existed the Copilot's print
+         *     button called `window.print()` -- it printed the web page, because there was
+         *     nowhere to ask for the label.
+         *
+         *     **Authorization is four checks and the fourth is the point.** Tenant and
+         *     principal, exactly as `get_case` does them and through the same
+         *     `_belongs_to`; then that the return record is *on this case*; then that the
+         *     artifact is *on that record*. Never on artifact id alone: an id is a
+         *     guessable string and an artifact validated on its own id is an artifact
+         *     servable to whoever guesses it. Because the lookup walks the projection --
+         *     case, then its records, then that record's artifacts -- the containment is
+         *     structural rather than a comparison somebody has to remember to write.
+         *
+         *     **Every refusal is a 404.** Someone else's case, a record on another case,
+         *     an artifact on another record and an artifact that does not exist are one
+         *     answer, matching `get_case`: a 403 on a guessed id confirms the id exists,
+         *     which is most of what an enumerator wants.
+         *
+         *     **What comes back, honestly.** There is no document. `labelReference` is a
+         *     string Support typed into `ReturnOutcomeRecord`, and this platform has no
+         *     object store, no bucket and no provider URL behind it; see
+         *     `ArtifactContentState`. So the response is the reference and the metadata
+         *     the projection holds, marked `REFERENCE_ONLY` -- which is what an associate
+         *     can act on today, because the reference is what a carrier desk and a
+         *     warehouse ticket are keyed by. No file is invented, and the two branches a
+         *     real document would take are written below rather than left to be
+         *     rediscovered:
+         *
+         *     ```text
+         *     stored bytes      -> Response(content, media_type=artifact.mediaType,
+         *                          headers={"Content-Disposition":
+         *                                   f'attachment; filename="{artifact.fileName}"'})
+         *     provider-owned    -> 307 to a short-lived provider URL
+         *     expired provider  -> 409 RETURN_ARTIFACT_EXPIRED, never a broken link
+         *     ```
+         *
+         *     The expiry branch is live now, because `expiresAt` is on the contract even
+         *     though nothing sets it yet: an artifact past its expiry is refused with a
+         *     re-issue hint rather than served as a reference an operator would take to a
+         *     counter and be turned away from.
+         */
+        get: operations["read_return_artifact_api_cases__case_id__returns__return_record_id__artifacts__artifact_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cases/{case_id}/selected-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace Case Selected Items
+         * @description Record the case's selection and hold the quantity, or refuse it (plan sect. 12.4).
+         *
+         *     **The write re-evaluates; the read did not promise.** Availability is
+         *     recomputed inside the transaction that commits the selection, so two
+         *     associates submitting the same last unit produce exactly one hold. The loser
+         *     gets `409 QUANTITY_UNAVAILABLE` carrying the recomputed quantity per line,
+         *     which is what lets the client re-render instead of guessing.
+         *
+         *     **Idempotent by consequence rather than by a key.** The payload is the whole
+         *     selection, so re-sending it changes nothing, moves no revision, and answers
+         *     `changed: false`. The optional `contact` keeps that property: it appends a
+         *     fact only where the value differs from what the case already holds.
+         *
+         *     **`changed` is about the items and stays about the items.** A submission
+         *     that alters only the branch associate answers `changed: false` and a moved
+         *     revision, because the selection genuinely did not change; the contact is not
+         *     part of the item ledger and `SelectedItems` does not carry it. The client
+         *     re-reads the case, where `CaseProjection.facts` serves it like every other
+         *     case-level detail.
+         *
+         *     Gated on the associate roles rather than on read: naming the lines of a
+         *     return is the associate's act, and a console viewer holding quantity out of
+         *     a branch's reach is not a read. The contact is the same act, by the same
+         *     person, in the same breath -- which is why it arrives here rather than
+         *     through a second route the pane's one button would have to drive with no
+         *     story for a half-failure.
+         */
+        post: operations["replace_case_selected_items_api_cases__case_id__selected_items_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -490,7 +773,19 @@ export interface paths {
         /** List Releases */
         get: operations["list_releases_api_config_releases_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Release
+         * @description Open a draft, cloned from the active release or the validated baseline.
+         *
+         *     A draft is the only writable release: `save_draft_domain` refuses a release
+         *     that has left DRAFT, so this is the entry point to changing anything, and a
+         *     409 here means the id is taken rather than that the write was rejected.
+         *
+         *     Scrubbed on the way out like every other response on this router -- the
+         *     body echoes the cloned domain payloads, which are the same documents
+         *     `GET /releases/{id}` redacts.
+         */
+        post: operations["create_release_api_config_releases_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -512,6 +807,37 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/config/releases/{release_id}/domains/{domain_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Release Domain
+         * @description Merge-patch one behaviour domain of a draft.
+         *
+         *     RFC 7396 semantics against the stored document, then full validation of the
+         *     *result* against `ReturnPlatformConfiguration`, `AIGatewayConfiguration` or
+         *     `DependencySimulationConfiguration` -- a patch that would leave the domain
+         *     invalid is a 422 and nothing is stored. Patch rather than replace because an
+         *     operator changing one prompt should not have to round-trip a whole domain
+         *     document and risk clobbering a field they never looked at.
+         *
+         *     The full-document `PUT` the console router also declares is deliberately not
+         *     republished here: it has no consumer, and a whole-document overwrite is a
+         *     strictly larger blast radius than a merge patch for the same outcome.
+         */
+        patch: operations["patch_release_domain_api_config_releases__release_id__domains__domain_key__patch"];
         trace?: never;
     };
     "/api/config/releases/{release_id}/promote": {
@@ -2388,18 +2714,37 @@ export interface paths {
         put?: never;
         /**
          * Submit Return Outcome
-         * @description Send Support's answer to the case that asked for it.
+         * @description Write Support's answer down, and let the outbox deliver it.
          *
-         *     This is the step that made Channel B -> Channel A possible. The work item
-         *     knows its case, the case knows its workflow, and the workflow is waiting on
-         *     a durable timer for exactly this signal -- so the outcome reaches the
-         *     associate's original conversation instead of the browser trying to match an
-         *     order reference across two collections.
+         *     This used to signal Temporal directly from the handler. When the case
+         *     workflow had already closed, `handle.signal` raised a raw `RPCError`, the
+         *     caller got an HTTP 500, and the RMA existed nowhere -- Support had no way to
+         *     know their reply had evaporated. Worse, the shape was a dual write: persist,
+         *     then signal, with a crash in between leaving a stored event that the retry
+         *     recognised as a duplicate and reported as success while the workflow had
+         *     never received it.
          *
-         *     A signal, not a write. `ReturnCaseWorkflow` owns what happens next: it
-         *     records the return records, moves the case status and stops the reminder
-         *     cadence, and it does so once however many times Support presses send --
-         *     duplicate responses are ignored by the workflow, not deduplicated here.
+         *     So the handler no longer signals. One MongoDB transaction writes the Support
+         *     event and the outbox command that delivers it, and the response is returned
+         *     the moment that commits. `TemporalSignalDispatcher` picks the command up,
+         *     retries a Temporal outage with bounded backoff, and dead-letters a workflow
+         *     that is permanently gone into a state Phase 10 reconciles -- rather than
+         *     losing the reply to a 500.
+         *
+         *     The guarantee that comes out of this is stated the way it actually holds,
+         *     and no stronger:
+         *
+         *         transport (outbox -> Temporal):  at least once
+         *         business processing:             effectively once, keyed on supportEventId
+         *
+         *     A dispatcher that signals and then loses its process before it can
+         *     acknowledge will signal again. What stops that from becoming a second RMA
+         *     is the event id travelling with the notice, not the transport.
+         *
+         *     `409 CASE_WORKFLOW_CLOSED` survives only where it is still reachable from
+         *     here -- a case the platform already knows is terminal. A workflow that
+         *     closed without the case knowing is no longer this handler's failure to
+         *     detect; it is the dispatcher's, and it surfaces as a dead-lettered command.
          */
         post: operations["submit_return_outcome_api_v1_return_support_work_items__work_item_id__return_outcome_post"];
         delete?: never;
@@ -3385,9 +3730,21 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
-        /** APIResponse[CaseDetail] */
-        APIResponse_CaseDetail_: {
-            data?: components["schemas"]["CaseDetail"] | null;
+        /** APIResponse[CaseProjection] */
+        APIResponse_CaseProjection_: {
+            data?: components["schemas"]["CaseProjection"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[CaseRecoveryResult] */
+        APIResponse_CaseRecoveryResult_: {
+            data?: components["schemas"]["CaseRecoveryResult"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[CaseRecoveryView] */
+        APIResponse_CaseRecoveryView_: {
+            data?: components["schemas"]["CaseRecoveryView"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -3439,6 +3796,18 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[OrderLines] */
+        APIResponse_OrderLines_: {
+            data?: components["schemas"]["OrderLines"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[PolicyOverrideResult] */
+        APIResponse_PolicyOverrideResult_: {
+            data?: components["schemas"]["PolicyOverrideResult"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[PrincipalView] */
         APIResponse_PrincipalView_: {
             data?: components["schemas"]["PrincipalView"] | null;
@@ -3457,6 +3826,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[ReturnArtifactView] */
+        APIResponse_ReturnArtifactView_: {
+            data?: components["schemas"]["ReturnArtifactView"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[ReturnEventResult] */
         APIResponse_ReturnEventResult_: {
             data?: components["schemas"]["ReturnEventResult"] | null;
@@ -3472,6 +3847,12 @@ export interface components {
         /** APIResponse[ReturnHistory] */
         APIResponse_ReturnHistory_: {
             data?: components["schemas"]["ReturnHistory"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[ReturnOutcomeAcceptedView] */
+        APIResponse_ReturnOutcomeAcceptedView_: {
+            data?: components["schemas"]["ReturnOutcomeAcceptedView"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -3508,6 +3889,12 @@ export interface components {
         /** APIResponse[SeedStatusView] */
         APIResponse_SeedStatusView_: {
             data?: components["schemas"]["SeedStatusView"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[SelectedItems] */
+        APIResponse_SelectedItems_: {
+            data?: components["schemas"]["SelectedItems"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -4013,6 +4400,11 @@ export interface components {
         AgentTurnResult: {
             /** As Of */
             as_of?: string | null;
+            /**
+             * Captured Facts
+             * @default []
+             */
+            captured_facts: components["schemas"]["CapturedTurnFact"][];
             /** Case Id */
             case_id?: string | null;
             /** Client Turn Id */
@@ -4083,6 +4475,53 @@ export interface components {
             /** Note */
             note?: string | null;
         };
+        /**
+         * ApprovedItemProjection
+         * @description One line an RMA authorized, at the quantity it authorized.
+         */
+        ApprovedItemProjection: {
+            /** Disposition */
+            disposition?: string | null;
+            /** Itemstatus */
+            itemStatus?: string | null;
+            /** Orderlinereference */
+            orderLineReference?: string | null;
+            /** Productreference */
+            productReference?: string | null;
+            /** Quantityapproved */
+            quantityApproved?: number | null;
+            /** Returnitemid */
+            returnItemId: string;
+        };
+        /**
+         * ArtifactContentState
+         * @description What this platform can actually hand over for one artifact.
+         *
+         *     **One member, because one is the truth.** Nothing in this platform stores a
+         *     label document. `ReturnRecordView.labelReference` is a bare string --
+         *     `LBL-OPS01` on the real record `4e372a39...` -- written by Support through
+         *     `ReturnOutcomeRecord.labelReference`, and there is no object store, no
+         *     GridFS bucket, no provider URL and no bytes anywhere behind it. So the only
+         *     thing this route can serve is the reference itself and the metadata the
+         *     projection holds about it.
+         *
+         *     `REFERENCE_ONLY` says exactly that, positively, in the same spirit as
+         *     `SettlementStatus.NOT_INTEGRATED`: not "the document is missing", which
+         *     would read as a failure somebody should retry, but "this platform holds a
+         *     reference and no document", which is a fact about the system. A route that
+         *     404'd instead would be indistinguishable from a wrong artifact id, and one
+         *     that returned an empty PDF would be the audit's fabrications in a new
+         *     costume.
+         *
+         *     Members land here when producers do, and the handler's branches are already
+         *     written against them -- stored bytes become a `Response` with a media type
+         *     and a `Content-Disposition`, and a provider-owned file becomes a short-lived
+         *     redirect. Neither can be built today: there is no byte source, and
+         *     `ReturnArtifactProjection` deliberately carries no `url` field for a
+         *     redirect target to hide in.
+         * @enum {string}
+         */
+        ArtifactContentState: "REFERENCE_ONLY";
         /** AssociateChatTurnRequest */
         AssociateChatTurnRequest: {
             /** Expectedversion */
@@ -4183,6 +4622,25 @@ export interface components {
              */
             timestamp: string;
         };
+        /**
+         * AwaitingDimension
+         * @description What the platform is still waiting for before the return is complete.
+         *
+         *     Two kinds of member, and the difference matters:
+         *
+         *     * **Unresolved** -- `POLICY`, `RETURN_METHOD`, `RECOVERY`, and the two
+         *       verification dimensions. These say the completion *profile* cannot be
+         *       computed yet, so no requirement set has been consulted at all.
+         *     * **Required** -- `RMA`, `LABEL`, `TRACKING`, `BOL`, `PICKUP`,
+         *       `RETURN_LOCATION`. These come out of the return-method requirement table
+         *       and are the only members a table row may name.
+         *
+         *     Settlement is deliberately absent. It never enters `awaiting` and never
+         *     blocks completion (plan sect. 13, Phase 9): a case whose settlement is
+         *     `NOT_INTEGRATED` reaches `COMPLETED_EXTERNAL_SETTLEMENT`, it does not hang.
+         * @enum {string}
+         */
+        AwaitingDimension: "POLICY" | "RETURN_METHOD" | "WARRANTY_VERIFICATION" | "DELIVERY_CLAIM_VERIFICATION" | "RECOVERY" | "RMA" | "LABEL" | "TRACKING" | "BOL" | "PICKUP" | "RETURN_LOCATION";
         /** BayAssessment */
         BayAssessment: {
             decision: components["schemas"]["AgentDecisionView"];
@@ -4306,111 +4764,238 @@ export interface components {
             stagingLocation: string;
         };
         /**
+         * CapturedTurnFact
+         * @description One fact this conversation has established, reported back to the caller.
+         *
+         *     **The only wire form of `observedFacts`.** The conversation's captured facts
+         *     are merged and kept on the conversation document, flushed into the case fact
+         *     log at confirmation, and shown to the model every turn -- and until this
+         *     field existed none of that was visible to the console. A screen whose
+         *     heading promises *extracted facts* therefore had nothing to read but
+         *     statement prose, and rendering the agent's narration ("Line 1 has no product
+         *     recorded against it") as an extracted field is the same defect as a
+         *     fabricated value wearing a different hat.
+         *
+         *     `name` is the `clarification_policy.fields` field name, so it is the
+         *     operator's vocabulary and not a second one; `label` is that field's
+         *     associate-facing wording. `status` is `FactStatus`, and it is carried rather
+         *     than filtered here because a `CONFLICTING` or `AMBIGUOUS` fact is something
+         *     the conversation still owes the associate a question about -- a caller that
+         *     rendered it as settled would be asserting more than the platform knows.
+         *
+         *     Provenance is deliberately narrow: no `turnId`, no `sourceMessageId`, no
+         *     `observedAt`. Those are audit fields the case fact log already keeps, and
+         *     the caller of a turn has no use for them that is worth widening the
+         *     conversation's wire surface for.
+         */
+        CapturedTurnFact: {
+            /**
+             * Acquisition
+             * @default STATED
+             */
+            acquisition: string;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+            /** Value */
+            value?: unknown;
+        };
+        /**
          * Cardinality
          * @enum {string}
          */
         Cardinality: "ONE_TO_ONE" | "ONE_TO_MANY" | "MANY_TO_ONE" | "MANY_TO_MANY";
-        /** CaseDetail */
-        CaseDetail: {
-            case: components["schemas"]["CaseView"];
-            /** Facts */
-            facts: components["schemas"]["CaseFactView"][];
-            /** Returnrecords */
-            returnRecords: components["schemas"]["CaseReturnRecord"][];
-            /** Unassigneditems */
-            unassignedItems: components["schemas"]["CaseReturnItem"][];
-        };
         /**
-         * CaseFactView
-         * @description One observation about a case, with how it was obtained.
-         *
-         *     **Append-only.** Bay, Support, Fulfillment and Channel A all write facts
-         *     concurrently; a single mutable `facts` sub-document would make the last
-         *     writer win and silently drop what the others learned. Current state is a
-         *     projection over this log (`latest_case_facts`), so provenance is never
-         *     destroyed to record a newer value -- a correction supersedes rather than
-         *     overwrites.
+         * CaseDivergence
+         * @description The reading of one case against its execution.
+         * @enum {string}
          */
-        CaseFactView: {
-            acquisitionMethod: components["schemas"]["FactAcquisition"];
+        CaseDivergence: "HEALTHY" | "RECOVERY_REQUIRED" | "CASE_TERMINAL" | "INDETERMINATE";
+        /**
+         * CaseExecutionState
+         * @description What the workflow host says about the execution that owns a case.
+         *
+         *     Four members, and the fourth is the important one. `UNKNOWN` is not a
+         *     failure to look -- it is the honest answer when the host could not be
+         *     reached, and it is what stops a Temporal outage from being read as "every
+         *     case is an orphan" and restarting the whole estate.
+         *
+         *     `CLOSED` collapses `COMPLETED`, `FAILED`, `TERMINATED`, `CANCELED` and
+         *     `TIMED_OUT` on purpose. They differ in why the execution ended and not at
+         *     all in what this module decides: none of them will accept a signal, and a
+         *     classification that branched on which of them it was would be inventing a
+         *     distinction the recovery rule does not have. The workflow host's own status
+         *     name travels separately, on `CaseDivergenceAssessment.execution_detail`, for
+         *     the operator who does want to know.
+         *
+         *     `ABSENT` is separate from `CLOSED` because it is a different fact: no
+         *     execution with this id exists at all -- never started, or aged out of
+         *     retention. Both mean the case is unreachable; only `ABSENT` means there is
+         *     nothing left to read.
+         * @enum {string}
+         */
+        CaseExecutionState: "RUNNING" | "CLOSED" | "ABSENT" | "UNKNOWN";
+        /**
+         * CaseFactProjection
+         * @description One fact at its latest value, with the provenance that decides trust.
+         *
+         *     Serves the existing `latest_case_facts` projection. The backend already
+         *     computes it and the console duplicates it client-side in `latestFacts`;
+         *     serving it here is what deletes the duplicate.
+         *
+         *     `value` is deliberately untyped -- the fact log is heterogeneous by design --
+         *     but every provenance field beside it is not, because provenance is what makes
+         *     a fact admissible to policy evaluation (plan sect. 7.3).
+         */
+        CaseFactProjection: {
+            /** Acquisitionmethod */
+            acquisitionMethod?: string | null;
             /** Agentid */
-            agentId: string;
-            /** Caseid */
-            caseId: string;
-            channel: components["schemas"]["FactChannel"];
-            /** Correlationid */
-            correlationId?: string | null;
+            agentId?: string | null;
+            /** Channel */
+            channel?: string | null;
             /** Factid */
             factId: string;
             /** Factname */
             factName: string;
-            /**
-             * Observedat
-             * Format: date-time
-             */
-            observedAt: string;
-            /**
-             * Recordedat
-             * Format: date-time
-             */
-            recordedAt: string;
-            /** Sourcepath */
-            sourcePath?: string | null;
+            /** Observedat */
+            observedAt?: string | null;
+            /** Recordedat */
+            recordedAt?: string | null;
             /** Sourcesystem */
             sourceSystem?: string | null;
             /** Supersedesfactid */
             supersedesFactId?: string | null;
-            /** Turnid */
-            turnId?: string | null;
             /** Value */
-            value?: unknown;
-        };
-        /** CaseReturnItem */
-        CaseReturnItem: {
-            /** Condition */
-            condition?: string | null;
-            /** Orderlinereference */
-            orderLineReference: string;
-            /** Packagereference */
-            packageReference?: string | null;
-            /** Productreference */
-            productReference?: string | null;
-            /**
-             * Quantity
-             * @default 1
-             */
-            quantity: number;
-            /** Reason */
-            reason?: string | null;
-            /** Returnitemid */
-            returnItemId: string;
+            value?: string | number | boolean | null;
         };
         /**
-         * CaseReturnRecord
-         * @description One RMA and everything that belongs to it rather than to the case.
-         */
-        CaseReturnRecord: {
-            /** Items */
-            items: components["schemas"]["CaseReturnItem"][];
-            record: components["schemas"]["ReturnRecordView"];
-        };
-        /**
-         * CaseStatus
-         * @description Where a return has got to, as an associate would describe it.
+         * CaseProjection
+         * @description The wire contract: the state above plus the four derived values.
          *
-         *     Deliberately not `ReturnStatus`, which is the *session's* execution status
-         *     (QUEUED, RUNNING, INTERCEPTION_PENDING). A case outlives any one execution
-         *     and can sit for days in a state no execution status can express -- the
-         *     associate is not waiting on a queue, they are waiting on Support.
-         * @enum {string}
+         *     Build it with `project_case`. Constructing one directly is legal -- a test
+         *     fixture and the mock server both need to -- but nothing in the platform
+         *     should, because the four fields below are a function of the ones above and a
+         *     hand-written pair that disagree is exactly the class of defect this contract
+         *     was written to end.
          */
-        CaseStatus: "GATHERING_INFO" | "AWAITING_BAY" | "AWAITING_SUPPORT" | "RMA_RECEIVED" | "IN_TRANSIT" | "CLOSED" | "CANCELLED";
+        CaseProjection: {
+            /** Awaiting */
+            awaiting: components["schemas"]["AwaitingDimension"][];
+            /** Businesscomplete */
+            businessComplete: boolean;
+            /** Caseid */
+            caseId: string;
+            confirmedOrder?: components["schemas"]["ConfirmedOrderProjection"] | null;
+            /** Conversationid */
+            conversationId?: string | null;
+            customer?: components["schemas"]["CustomerProjection"] | null;
+            /** Facts */
+            facts?: components["schemas"]["CaseFactProjection"][] | null;
+            /** Isterminal */
+            isTerminal: boolean;
+            pickup?: components["schemas"]["PickupProjection"] | null;
+            policyEvaluation?: components["schemas"]["PolicyEvaluationProjection"] | null;
+            /** Principalid */
+            principalId: string;
+            /** Returnrecords */
+            returnRecords?: components["schemas"]["ReturnRecordProjection"][] | null;
+            /** Revision */
+            revision: number;
+            /** Selecteditems */
+            selectedItems?: components["schemas"]["SelectedItemProjection"][] | null;
+            settlement?: components["schemas"]["SettlementProjection"] | null;
+            stage: components["schemas"]["CopilotStage"];
+            status: components["schemas"]["ReturnCaseStatus"];
+            support?: components["schemas"]["SupportProjection"] | null;
+            /** Tenantid */
+            tenantId: string;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+            warehouse?: components["schemas"]["WarehouseProjection"] | null;
+        };
+        /**
+         * CaseRecoveryResult
+         * @description What a relaunch actually did. Never a bare 200.
+         *
+         *     `action` rather than a success flag, because "did not relaunch" has four
+         *     meanings -- already running, legitimately terminal, host unreachable, start
+         *     refused -- and an operator who cannot tell them apart cannot act on any of
+         *     them.
+         */
+        CaseRecoveryResult: {
+            action: components["schemas"]["RecoveryAction"];
+            /** Caseid */
+            caseId: string;
+            recovery?: components["schemas"]["CaseRecoveryView"] | null;
+            /** Rejectedsupportevents */
+            rejectedSupportEvents: number;
+            /** Requeuedsupportevents */
+            requeuedSupportEvents: number;
+            /** Workflowid */
+            workflowId?: string | null;
+        };
+        /**
+         * CaseRecoveryView
+         * @description Why a case is stuck, in terms an operator can act on.
+         *
+         *     A separate resource from `CaseProjection` rather than a block on it, and
+         *     that is the boundary the whole read contract rests on: **the case read never
+         *     calls Temporal.** `project_case` derives `status`, `stage`, `awaiting` and
+         *     `isTerminal` from persisted state alone, and adding an execution probe to it
+         *     would make the workflow host a synchronous dependency of every Copilot poll
+         *     -- the exact coupling `case_projection/vocabulary.py` refuses. The
+         *     projection already says *that* a case is stuck, through
+         *     `status: RECOVERY_REQUIRED` and `awaiting: [RECOVERY]`. This says *why*, on
+         *     a route an operator opens deliberately.
+         *
+         *     Nothing here is derived in this module. Every field comes off
+         *     `CaseDivergenceAssessment`, which is pure and tested on its own.
+         */
+        CaseRecoveryView: {
+            /** Caseid */
+            caseId: string;
+            divergence: components["schemas"]["CaseDivergence"];
+            executionState: components["schemas"]["CaseExecutionState"];
+            /** Executionstatus */
+            executionStatus?: string | null;
+            /** Isrecoverable */
+            isRecoverable: boolean;
+            lateEventDisposition: components["schemas"]["LateEventDisposition"];
+            /** Persistedstatus */
+            persistedStatus: string;
+            reason: components["schemas"]["DivergenceReason"];
+            status: components["schemas"]["ReturnCaseStatus"];
+            /** Workflowid */
+            workflowId: string;
+        };
         /**
          * CaseSummary
          * @description A row in the associate's case list.
          *
          *     Carries the counts rather than the records: a list of twenty cases must not
          *     pull every RMA and item to render twenty lines.
+         *
+         *     **`stage` and `isTerminal` travel with the row** so that a list can show the
+         *     polling stop without reading each case in full. `isTerminal` is the same
+         *     value `caseRefetchInterval` reads on the detail, derived by the same
+         *     function, so a row that says "finished" and a detail that says "still
+         *     running" cannot disagree.
+         *
+         *     **`status` is the projected `ReturnCaseStatus`, not the persisted
+         *     `CaseStatus`.** The detail serves the projected vocabulary, and a list that
+         *     served the persisted one would show `CLOSED` beside a detail saying
+         *     `COMPLETED_EXTERNAL_SETTLEMENT` for the same case -- two names for one state,
+         *     which is the drift `status_mapping` exists to end rather than to relocate.
          */
         CaseSummary: {
             /** Caseid */
@@ -4419,63 +5004,14 @@ export interface components {
             channelAConversationId?: string | null;
             /** Confirmedorderreference */
             confirmedOrderReference?: string | null;
+            /** Isterminal */
+            isTerminal: boolean;
             /** Returnrecordcount */
             returnRecordCount: number;
-            /** Status */
-            status: string;
+            stage: components["schemas"]["CopilotStage"];
+            status: components["schemas"]["ReturnCaseStatus"];
             /** Updatedat */
             updatedAt: string;
-        };
-        /**
-         * CaseView
-         * @description One return, owning every fact about it.
-         *
-         *     The two channel pointers are what make Channel B -> Channel A possible at
-         *     all: today the only link between a support outcome and the associate's
-         *     conversation is the browser matching an order reference client-side.
-         */
-        CaseView: {
-            /** Branchid */
-            branchId?: string | null;
-            /** Caseid */
-            caseId: string;
-            /** Channelaconversationid */
-            channelAConversationId?: string | null;
-            /** Channelbworkitemid */
-            channelBWorkItemId?: string | null;
-            /** Configurationreleaseid */
-            configurationReleaseId?: string | null;
-            /** Confirmationkey */
-            confirmationKey?: string | null;
-            /** Confirmedorderreference */
-            confirmedOrderReference?: string | null;
-            /**
-             * Createdat
-             * Format: date-time
-             */
-            createdAt: string;
-            /** Graphgenerationid */
-            graphGenerationId?: string | null;
-            /** Principalid */
-            principalId: string;
-            /** Sessionid */
-            sessionId?: string | null;
-            /** @default GATHERING_INFO */
-            status: components["schemas"]["CaseStatus"];
-            /** Tenantid */
-            tenantId: string;
-            /**
-             * Updatedat
-             * Format: date-time
-             */
-            updatedAt: string;
-            /**
-             * Version
-             * @default 0
-             */
-            version: number;
-            /** Workflowid */
-            workflowId?: string | null;
         };
         /** ChangeCardinality */
         ChangeCardinality: {
@@ -4648,6 +5184,32 @@ export interface components {
             /** Orderlineid */
             orderLineId: string;
         };
+        /**
+         * ConfirmedOrderProjection
+         * @description The order the associate confirmed, and the confirmation that created the case.
+         *
+         *     Present only after `CONFIRM_ORDER`. Its absence is what distinguishes
+         *     discovery from confirmation, so a candidate the associate is still looking at
+         *     must never be projected here.
+         */
+        ConfirmedOrderProjection: {
+            /** Candidateid */
+            candidateId?: string | null;
+            /** Candidatesetid */
+            candidateSetId?: string | null;
+            /** Confirmationkey */
+            confirmationKey?: string | null;
+            /** Confirmedat */
+            confirmedAt?: string | null;
+            /** Orderreference */
+            orderReference: string;
+            /** Ordersource */
+            orderSource?: string | null;
+            /** Sourcewebordernumber */
+            sourceWebOrderNumber?: string | null;
+            /** Trilogieordernumber */
+            trilogieOrderNumber?: string | null;
+        };
         /** ContinueAssociateConversationRequest */
         ContinueAssociateConversationRequest: {
             anchorType: components["schemas"]["AnchorType"];
@@ -4699,10 +5261,30 @@ export interface components {
                 [key: string]: string;
             }[];
         };
+        /**
+         * CopilotStage
+         * @description Which mode the Copilot renders. Derived on read, never stored.
+         *
+         *     Declared in lifecycle order, earliest first. `STAGE_PRECEDENCE` is this
+         *     tuple reversed, because the frozen precedence of plan sect. 6.6 is exactly
+         *     "the furthest-progressed thing that is true wins".
+         * @enum {string}
+         */
+        CopilotStage: "DISCOVERY" | "ORDER_CONFIRMATION" | "ITEM_SELECTION" | "RETURN_FACTS" | "POLICY_EVALUATION" | "APPROVAL_REQUIRED" | "AWAITING_SUPPORT" | "AUTHORIZED_RMA" | "CARRIER_TRANSIT" | "WAREHOUSE_RECEIVING" | "RETURN_SETTLEMENT" | "COMPLETED";
         /** CreateAnalysisRequest */
         CreateAnalysisRequest: {
             /** Source Refs */
             source_refs: string[];
+        };
+        /** CreateReleasePayload */
+        CreateReleasePayload: {
+            /**
+             * From Active
+             * @default true
+             */
+            from_active: boolean;
+            /** Release Id */
+            release_id: string;
         };
         /** CreateSupportMessageRequest */
         CreateSupportMessageRequest: {
@@ -4739,6 +5321,26 @@ export interface components {
             /** Supportdraft */
             supportDraft: string;
         };
+        /**
+         * CustomerProjection
+         * @description Who the return is for, as the platform resolved them.
+         */
+        CustomerProjection: {
+            /** Accountreference */
+            accountReference?: string | null;
+            /** Branchreference */
+            branchReference?: string | null;
+            /** Customerreference */
+            customerReference?: string | null;
+            /** Displayname */
+            displayName?: string | null;
+        };
+        /**
+         * DataInconsistency
+         * @description Why a line's arithmetic could not be trusted. Reported, never swallowed.
+         * @enum {string}
+         */
+        DataInconsistency: "ORDERED_QUANTITY_UNKNOWN" | "COMMITMENTS_EXCEED_ORDERED_QUANTITY" | "HOLDING_QUANTITY_UNREADABLE" | "CASE_STATUS_UNREADABLE";
         /** DecisionRequest */
         DecisionRequest: {
             /** Note */
@@ -4840,6 +5442,18 @@ export interface components {
             /** Trilogieordernumber */
             trilogieOrderNumber?: string | null;
         };
+        /**
+         * DivergenceReason
+         * @description *Why* the reading came out that way, in the words an operator needs.
+         *
+         *     `CaseDivergence` answers "what do we do"; this answers "what is wrong", and
+         *     the two are separate because one divergence has several causes and an
+         *     operator staring at a stuck case needs the cause. `RECOVERY_REQUIRED` from a
+         *     terminated execution and `RECOVERY_REQUIRED` from a case whose workflow was
+         *     never started are the same action and completely different incidents.
+         * @enum {string}
+         */
+        DivergenceReason: "EXECUTION_LIVE" | "EXECUTION_CLOSED_UNDER_ACTIVE_CASE" | "EXECUTION_MISSING_UNDER_ACTIVE_CASE" | "TERMINAL_CASE_SETTLED" | "TERMINAL_CASE_WITH_OPEN_EXECUTION" | "EXECUTION_STATE_UNKNOWN";
         /** DocumentArtifactRegistration */
         DocumentArtifactRegistration: {
             /** Artifactid */
@@ -4922,6 +5536,12 @@ export interface components {
             /** Element */
             element: string;
         };
+        /**
+         * EligibilityDecision
+         * @description Fail-safe eligibility outcomes.
+         * @enum {string}
+         */
+        EligibilityDecision: "APPROVE" | "REJECT" | "REVIEW_REQUIRED";
         /** EntityShapeView */
         EntityShapeView: {
             /** Identifier Properties */
@@ -4949,32 +5569,20 @@ export interface components {
             result_path: string[];
         };
         /**
-         * FactAcquisition
-         * @description How a fact came to be known -- the part of provenance that decides trust.
-         *
-         *     `STATED` is what someone typed and nothing has verified. `OBSERVED` came
-         *     from a source system. `DERIVED` was computed from other facts. `INFERRED` is
-         *     a model's suggestion. An agent deciding whether to re-ask needs this: a
-         *     STATED order number that found nothing is worth re-asking; an OBSERVED one
-         *     is not.
-         * @enum {string}
-         */
-        FactAcquisition: "STATED" | "OBSERVED" | "DERIVED" | "INFERRED";
-        /**
-         * FactChannel
-         * @description Which conversation a fact arrived on, or that no conversation did.
-         *
-         *     `SYSTEM` covers facts derived from a source system or computed by an agent
-         *     without anyone being asked -- a graph lookup, a sync result, a policy
-         *     decision. Recording that as "channel A" would make provenance a lie.
-         * @enum {string}
-         */
-        FactChannel: "CHANNEL_A" | "CHANNEL_B" | "SYSTEM";
-        /**
          * FallbackStrategy
          * @enum {string}
          */
         FallbackStrategy: "TEMPLATE" | "MANUAL_REVIEW";
+        /**
+         * FeeAmountSource
+         * @description Where a fee amount may legitimately come from (baseline 3).
+         *
+         *     There is no fourth member and there is deliberately no `POLICY_DEFAULT`:
+         *     Ferguson publishes no universal restocking percentage, so the engine has
+         *     nowhere to read one from and must not invent one.
+         * @enum {string}
+         */
+        FeeAmountSource: "SELLER_CONFIGURATION" | "SELLER_OVERRIDE" | "MANUFACTURER";
         /** FeedbackAssessment */
         FeedbackAssessment: {
             decision: components["schemas"]["AgentDecisionView"];
@@ -5217,6 +5825,16 @@ export interface components {
             records: number | null;
         };
         /**
+         * LateEventDisposition
+         * @description What to do with a durable event whose delivery has permanently failed.
+         *
+         *     The outbox already knows the delivery cannot succeed as written; that is
+         *     what `REQUIRES_RECONCILIATION` records. This says what the *business* answer
+         *     is, which the outbox has no way to know.
+         * @enum {string}
+         */
+        LateEventDisposition: "DELIVERABLE" | "DRIVES_RECOVERY" | "PERMANENTLY_REJECTED" | "INDETERMINATE";
+        /**
          * MigrationPlan
          * @description What activating `to_release_id` does to the graph.
          *
@@ -5299,6 +5917,16 @@ export interface components {
          */
         ModelTier: "LIGHTWEIGHT" | "STANDARD";
         /**
+         * MonetaryAmount
+         * @description One money value and its currency. Never a bare number.
+         */
+        MonetaryAmount: {
+            /** Amount */
+            amount: string;
+            /** Currency */
+            currency: string;
+        };
+        /**
          * NormalizedReturnMethod
          * @enum {string}
          */
@@ -5368,6 +5996,58 @@ export interface components {
             sku?: string | null;
         };
         /**
+         * OrderLineView
+         * @description One line of the confirmed order, with the arithmetic behind its availability.
+         *
+         *     **The four terms travel with the answer.** A pane that showed only
+         *     `returnableQuantity` could not tell an associate why a line of eight shows
+         *     two, and the difference between "six were already returned" and "six are
+         *     held by another counter right now" is the difference between explaining and
+         *     waiting.
+         *
+         *     `unitPrice` is a **decimal string**, never a JSON number. A refund basis
+         *     that round-trips through binary floating point disagrees with the invoice by
+         *     a cent on some orders and not others, and the client has no way to tell
+         *     which. Absent when the source carries no price -- never `"0.00"`.
+         */
+        OrderLineView: {
+            /** Activereservationquantity */
+            activeReservationQuantity: number;
+            /** Completedreturnquantity */
+            completedReturnQuantity: number;
+            dataInconsistency?: components["schemas"]["DataInconsistency"] | null;
+            /** Description */
+            description?: string | null;
+            /** Linereference */
+            lineReference: string;
+            /** Openauthorizedquantity */
+            openAuthorizedQuantity: number;
+            /** Orderedquantity */
+            orderedQuantity?: number | null;
+            /** Productreference */
+            productReference?: string | null;
+            /** Returnablequantity */
+            returnableQuantity: number;
+            /** Selfreservedquantity */
+            selfReservedQuantity: number;
+            /** Sku */
+            sku?: string | null;
+            /** Unitprice */
+            unitPrice?: string | null;
+        };
+        /** OrderLines */
+        OrderLines: {
+            /** Caseid */
+            caseId: string;
+            /**
+             * Lines
+             * @default []
+             */
+            lines: components["schemas"]["OrderLineView"][];
+            /** Orderreference */
+            orderReference: string;
+        };
+        /**
          * OrderSource
          * @enum {string}
          */
@@ -5398,6 +6078,8 @@ export interface components {
              * Format: date-time
              */
             nextAttemptAt: string;
+            /** Reconciliationstate */
+            reconciliationState?: string | null;
             /** Status */
             status: string;
             /** Topic */
@@ -5427,6 +6109,13 @@ export interface components {
              * @default 50
              */
             page_size: number;
+        };
+        /** PatchDomainPayload */
+        PatchDomainPayload: {
+            /** Patch */
+            patch: {
+                [key: string]: unknown;
+            };
         };
         /**
          * PickupAction
@@ -5459,6 +6148,191 @@ export interface components {
             /** Servicelevel */
             serviceLevel?: string | null;
         };
+        /**
+         * PickupProjection
+         * @description A collection somebody scheduled. Freight and offsite returns wait on this.
+         */
+        PickupProjection: {
+            /** Contactname */
+            contactName?: string | null;
+            /** Contactphone */
+            contactPhone?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Pickupreference */
+            pickupReference?: string | null;
+            /** Scheduledat */
+            scheduledAt?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Windowendsat */
+            windowEndsAt?: string | null;
+            /** Windowstartsat */
+            windowStartsAt?: string | null;
+        };
+        /**
+         * PolicyCondition
+         * @description Something that must hold for the decision to stand as issued.
+         *
+         *     `RESTOCKING_FEE_APPLIES` is the whole reason this list exists: the engine
+         *     can determine *that* a fee applies without being able to determine what it
+         *     is, and saying so is honest where naming a percentage would be fabrication.
+         * @enum {string}
+         */
+        PolicyCondition: "RESTOCKING_FEE_APPLIES" | "RESTOCKING_FEE_WAIVED" | "MANUFACTURER_FEE_ACCEPTED" | "MANUFACTURER_FEE_NOT_APPLICABLE";
+        /**
+         * PolicyEvaluationProjection
+         * @description What the deterministic evaluator decided, and what stands after any override.
+         *
+         *     `effectiveDecision` is what completion reads and it is enforced here rather
+         *     than trusted: with an override it *is* the override's decision, without one
+         *     it *is* the original. Two fields that can disagree are two fields that will,
+         *     and the disagreement would be invisible -- an overridden `REVIEW_REQUIRED ->
+         *     APPROVE` that never resolved the completion profile looks exactly like a
+         *     case still waiting for a supervisor.
+         *
+         *     A non-standard route carries no decision, matching `PolicyOutcome`'s own
+         *     invariant, and carries no override either: warranty and delivery claims are
+         *     verified by Support, and a policy override on one of them would be a
+         *     supervisor approving a claim the verification exists to test.
+         *
+         *     **The restocking fee is carried as a rate and never as a currency figure.**
+         *     `rateBasisPoints` and `rateSource` mirror `FeeDetermination.rate_basis_points`
+         *     and `.rate_source` and stop exactly where those do. The evaluator is pure and
+         *     holds no line prices -- `quantity` is carried and read by no rule -- so the
+         *     rate is the policy answer and the money is arithmetic belonging where prices
+         *     live. There is deliberately no `restockingFeeAmount` here for a downstream
+         *     reader to fill from something plausible, and nothing in this contract may
+         *     multiply the rate by anything: the audit's `18.75` is what a projected
+         *     currency figure looks like once nobody can say which price produced it.
+         *
+         *     Applicability is **not** repeated as a field of its own. It already travels
+         *     as `RESTOCKING_FEE_APPLIES` / `RESTOCKING_FEE_WAIVED` in `conditions`, which
+         *     is where the evaluator puts it, and a second home for one fact is how the two
+         *     come to disagree.
+         */
+        PolicyEvaluationProjection: {
+            /** Appliedrules */
+            appliedRules?: components["schemas"]["PolicyRule"][] | null;
+            /** Conditions */
+            conditions?: components["schemas"]["PolicyCondition"][] | null;
+            effectiveDecision?: components["schemas"]["EligibilityDecision"] | null;
+            /** Evaluatedat */
+            evaluatedAt?: string | null;
+            originalDecision?: components["schemas"]["EligibilityDecision"] | null;
+            override?: components["schemas"]["PolicyOverrideProjection"] | null;
+            /** Policyid */
+            policyId?: string | null;
+            /** Policyversion */
+            policyVersion?: string | null;
+            /** Ratebasispoints */
+            rateBasisPoints?: number | null;
+            rateSource?: components["schemas"]["FeeAmountSource"] | null;
+            /** Reasoncodes */
+            reasonCodes?: components["schemas"]["PolicyReasonCode"][] | null;
+            route: components["schemas"]["PolicyRoute"];
+        };
+        /** PolicyOverrideDetail */
+        PolicyOverrideDetail: {
+            /** Actor */
+            actor: string;
+            /** Overriddenat */
+            overriddenAt: string;
+            /** Overridedecision */
+            overrideDecision: string;
+            /** Reason */
+            reason?: string | null;
+            /** Reasoncode */
+            reasonCode: string;
+        };
+        /**
+         * PolicyOverrideProjection
+         * @description A supervisor's departure from the evaluator's answer. Append-only.
+         *
+         *     Every field here is **server-derived** except the decision and the reason:
+         *     `actor` comes from the authenticated principal and `overriddenAt` from the
+         *     server clock, for the same reason `order_agent.py` derives `correlation_id`.
+         *     A client-supplied audit field is not audit.
+         */
+        PolicyOverrideProjection: {
+            /** Actor */
+            actor: string;
+            /**
+             * Overriddenat
+             * Format: date-time
+             */
+            overriddenAt: string;
+            overrideDecision: components["schemas"]["EligibilityDecision"];
+            /** Reason */
+            reason?: string | null;
+            /** Reasoncode */
+            reasonCode: string;
+        };
+        /**
+         * PolicyOverrideRequest
+         * @description What a supervisor supplies. Everything else is derived by the server.
+         *
+         *     `extra="ignore"`, alone among the models in this module, and deliberately.
+         *     The audit fields a caller might try to set -- `actor`, a timestamp, the
+         *     original decision, a tenant -- are server-derived, and dropping them is what
+         *     "the server derives it" means. Refusing the request instead would tell the
+         *     caller the field exists and is merely mis-typed, which invites the next
+         *     attempt to guess the right spelling.
+         */
+        PolicyOverrideRequest: {
+            /** Expectedrevision */
+            expectedRevision: number;
+            /** Idempotencykey */
+            idempotencyKey: string;
+            /**
+             * Overridedecision
+             * @enum {string}
+             */
+            overrideDecision: "APPROVE" | "REJECT";
+            /** Reason */
+            reason?: string | null;
+            /** Reasoncode */
+            reasonCode: string;
+        };
+        /**
+         * PolicyOverrideResult
+         * @description Both readings of the decision, because the original is never overwritten.
+         */
+        PolicyOverrideResult: {
+            /** Caseid */
+            caseId: string;
+            /** Effectivedecision */
+            effectiveDecision: string;
+            /** Originaldecision */
+            originalDecision: string;
+            override: components["schemas"]["PolicyOverrideDetail"];
+            /** Revision */
+            revision: number;
+            /** Signaldelivered */
+            signalDelivered: boolean;
+        };
+        /**
+         * PolicyReasonCode
+         * @description Why the evaluation reached the answer it did.
+         * @enum {string}
+         */
+        PolicyReasonCode: "WITHIN_STANDARD_RETURN_WINDOW" | "OUTSIDE_STANDARD_RETURN_WINDOW" | "PURCHASE_DATE_UNKNOWN" | "DELIVERY_DATE_UNKNOWN" | "STANDARD_RETURN_CONDITION_FAILED" | "REQUIRED_FACT_UNKNOWN" | "SPECIAL_ORDER_STATUS_UNKNOWN" | "STOCK_STATUS_UNKNOWN" | "DAMAGE_CAUSE_UNKNOWN" | "MANUFACTURER_ACCEPTANCE_REQUIRED" | "MANUFACTURER_ACCEPTED_RETURN" | "MANUFACTURER_REJECTED_RETURN" | "MANUFACTURER_FEE_UNKNOWN" | "BUYER_FEE_ACCEPTANCE_UNKNOWN" | "BUYER_REJECTED_MANUFACTURER_FEE" | "DELIVERY_CLAIM_WITHIN_REPORTING_WINDOW" | "DELIVERY_CLAIM_REPORTING_WINDOW_ELAPSED" | "DELIVERY_CLAIM_REPORTING_WINDOW_UNDETERMINED" | "WARRANTY_VERIFICATION_REQUIRED" | "CUSTOMER_CONTRACT_OVERRIDE_REQUIRES_REVIEW" | "NO_RULE_MATCHED";
+        /**
+         * PolicyRoute
+         * @description Which business path the eligibility evaluation hands the case to.
+         *
+         *     Warranty and delivery claim are *routes*, not decisions and not terminal
+         *     states: Support verifies both inside this application and approved cases
+         *     rejoin the ordinary RMA lifecycle.
+         * @enum {string}
+         */
+        PolicyRoute: "STANDARD_RETURN" | "WARRANTY" | "DELIVERY_CLAIM";
+        /**
+         * PolicyRule
+         * @description The named rules an evaluation applied, persisted as provenance (baseline 16).
+         * @enum {string}
+         */
+        PolicyRule: "POLICY_RELEASE_VALIDATED" | "CUSTOMER_CONTRACT_OVERRIDE" | "DELIVERY_CLAIM_ROUTING" | "WARRANTY_ROUTING" | "DAMAGE_CAUSE_ROUTING" | "SPECIAL_ORDER_MANUFACTURER_POLICY" | "STANDARD_STOCK_ITEM" | "NEW_RESALEABLE_CONDITION" | "WITHIN_30_DAYS" | "OUTSIDE_STANDARD_WINDOW" | "RESTOCKING_FEE_APPLIES" | "STOCK_CLASS_FROM_CONFIGURATION" | "CONDITION_FACTS_NOT_EVALUATED" | "FAIL_SAFE_REVIEW";
         /**
          * PrincipalView
          * @description Typed so it lands in the OpenAPI snapshot the frontend generates from.
@@ -5753,6 +6627,16 @@ export interface components {
             /** Sourceassetid */
             sourceAssetId: string;
         };
+        /**
+         * RecoveryAction
+         * @description What reconciliation actually did to one case. One member per outcome.
+         *
+         *     An enum rather than a boolean, because "did not relaunch" has four
+         *     completely different meanings and an operator who cannot tell them apart
+         *     cannot act on any of them.
+         * @enum {string}
+         */
+        RecoveryAction: "RELAUNCHED" | "ALREADY_RUNNING" | "REFUSED_TERMINAL" | "DEFERRED_UNKNOWN" | "RELAUNCH_FAILED" | "CASE_NOT_FOUND";
         /** RelationshipShapeView */
         RelationshipShapeView: {
             /** Cardinality */
@@ -5924,6 +6808,150 @@ export interface components {
             statement_type: components["schemas"]["StatementType"];
             /** Text */
             text: string;
+        };
+        /**
+         * ReturnArtifactProjection
+         * @description One document belonging to one RMA, and to one of its packages once there is one.
+         *
+         *     It lives on `ReturnRecordProjection.artifacts`. `shipmentId` is the
+         *     attribution and it is genuinely optional: `None` says the RMA has this
+         *     document and no package is known yet -- a printed label before anything was
+         *     tendered -- and a value says which package it goes on. Authorization is
+         *     record-scoped for the same reason (plan sect. 11: the artifact must belong
+         *     to *that return*, never validated on artifact id alone).
+         *
+         *     Served through an opaque authenticated endpoint, never a storage URL -- so
+         *     there is deliberately no `url` field to put one in.
+         *
+         *     `supersededBy` rather than deletion: a replaced label stays auditable, and
+         *     the active artifact is the one with `active` true and `supersededBy` null.
+         *     **Never `labels[0]`.**
+         */
+        ReturnArtifactProjection: {
+            /** Active */
+            active?: boolean | null;
+            /** Artifactid */
+            artifactId: string;
+            artifactType: components["schemas"]["ReturnArtifactType"];
+            /** Createdat */
+            createdAt?: string | null;
+            /** Expiresat */
+            expiresAt?: string | null;
+            /** Filename */
+            fileName?: string | null;
+            /** Mediatype */
+            mediaType?: string | null;
+            /** Shipmentid */
+            shipmentId?: string | null;
+            /** Supersededby */
+            supersededBy?: string | null;
+            /** Version */
+            version?: number | null;
+        };
+        /**
+         * ReturnArtifactType
+         * @description What a shipment artifact is. The three the completion rules distinguish.
+         *
+         *     A bill of lading is not a shipping label, and `bol_tendering_instruction_types`
+         *     in the return configuration already treats them as different documents. A
+         *     freight return whose BOL requirement were satisfied by a parcel label would
+         *     complete with nothing to hand the driver.
+         * @enum {string}
+         */
+        ReturnArtifactType: "SHIPPING_LABEL" | "BILL_OF_LADING" | "RETURN_INSTRUCTIONS";
+        /**
+         * ReturnArtifactView
+         * @description One document belonging to one RMA, as much of it as exists.
+         *
+         *     The response of the artifact route. Deliberately **not**
+         *     `ReturnArtifactProjection` re-served: the projection is what the case read
+         *     carries, and this adds the three things a retrieval answer needs and the
+         *     projection has no business holding -- the scope that was validated
+         *     (`caseId`, `returnRecordId`), the backend's own verdict on whether this is
+         *     the live artifact (`isActive`), and what can be handed over
+         *     (`contentState`).
+         *
+         *     **`isActive` is computed here and never by the client.** Plan sect. 11 is
+         *     explicit that the single label action resolves to the backend-declared
+         *     active artifact -- `active == true AND supersededBy == null`, never
+         *     `labels[0]` -- so the pair of clauses is evaluated once, on the server, by
+         *     `ReturnArtifactProjection.is_active`. `supersededBy` travels beside it so an
+         *     auditor reading a superseded artifact can follow it to its replacement
+         *     without a second request.
+         */
+        ReturnArtifactView: {
+            /** Artifactid */
+            artifactId: string;
+            artifactType: components["schemas"]["ReturnArtifactType"];
+            /** Caseid */
+            caseId: string;
+            contentState: components["schemas"]["ArtifactContentState"];
+            /** Createdat */
+            createdAt?: string | null;
+            /** Expiresat */
+            expiresAt?: string | null;
+            /** Filename */
+            fileName?: string | null;
+            /** Isactive */
+            isActive: boolean;
+            /** Mediatype */
+            mediaType?: string | null;
+            /** Returnrecordid */
+            returnRecordId: string;
+            /** Shipmentid */
+            shipmentId?: string | null;
+            /** Supersededby */
+            supersededBy?: string | null;
+            /** Version */
+            version?: number | null;
+        };
+        /**
+         * ReturnCaseStatus
+         * @description Where the workflow says the case is. Persisted, and the only authority.
+         *
+         *     Complete as declared. In particular there are **no `ROUTED_*` members**:
+         *     warranty and delivery claims are `AWAITING_SUPPORT` carrying an `awaiting`
+         *     dimension, because Support verifies both inside this application and an
+         *     approved case rejoins the ordinary RMA lifecycle. A routed terminal status
+         *     would end a case that is only halfway through its own happy path.
+         * @enum {string}
+         */
+        ReturnCaseStatus: "GATHERING_INFO" | "AWAITING_POLICY_REVIEW" | "AWAITING_SUPPORT" | "PROCESSING_RETURN" | "COMPLETED" | "COMPLETED_EXTERNAL_SETTLEMENT" | "POLICY_REJECTED" | "CANCELLED" | "EXPIRED" | "RECOVERY_REQUIRED";
+        /**
+         * ReturnContactRequest
+         * @description The branch associate a carrier can reach about this return.
+         *
+         *     **Case-level, and a sibling of `items` rather than a field on one.** One
+         *     associate raises one return; a contact per line would let a two-line
+         *     selection carry two different people and give the label writer no rule for
+         *     picking between them. The shape says so, so the wrong thing is unsayable.
+         *
+         *     **Every field optional, by operator instruction**, exactly as the branch
+         *     number is. A return whose associate is not recorded is an ordinary return
+         *     and must not be blocked, and none of these may ever acquire a default: an
+         *     invented associate email routes a UPS label to nobody, which is the same
+         *     failure `ItemSelectionMode` refuses a default branch for.
+         *
+         *     **Shape is checked; existence is not.** An email that is not an email is
+         *     refused here as well as at entry -- the console cannot be the only thing
+         *     standing between a typo and a carrier -- while a name and a phone are only
+         *     length-bounded. There is no honest format rule for either: branch phone
+         *     numbers in the reference extract are written half a dozen ways, and a
+         *     pattern invented here would reject the ones a carrier can actually dial.
+         *
+         *     The empty string is accepted and is not a null. It is how a recorded value
+         *     is retracted: the fact log is append-only, so an associate correcting a
+         *     contact they entered by mistake appends an empty value over it rather than
+         *     deleting anything. `null` -- the field simply absent -- says this
+         *     submission makes no statement about it at all.
+         */
+        ReturnContactRequest: {
+            /** Email */
+            email?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Phone */
+            phone?: string | null;
         };
         /** ReturnCreateRequest */
         ReturnCreateRequest: {
@@ -6228,10 +7256,30 @@ export interface components {
             shippedQuantity?: number | null;
         };
         /**
+         * ReturnOutcomeAcceptedView
+         * @description The receipt for a durably recorded Support event.
+         *
+         *     Says what committed, and nothing about what the workflow has done with it.
+         *     Delivery happens after this response is written, so any field here claiming
+         *     the workflow had been told would be a claim the handler cannot make.
+         */
+        ReturnOutcomeAcceptedView: {
+            /** Caseid */
+            caseId: string;
+            /** Disposition */
+            disposition: string;
+            /** Outboxcommandid */
+            outboxCommandId: string;
+            /** Supporteventid */
+            supportEventId: string;
+        };
+        /**
          * ReturnOutcomeRecord
          * @description One RMA as Support is issuing it.
          */
         ReturnOutcomeRecord: {
+            /** Carrier */
+            carrier?: string | null;
             /** Labelreference */
             labelReference?: string | null;
             /**
@@ -6241,6 +7289,8 @@ export interface components {
             orderLineReferences: string[];
             /** Returnlocation */
             returnLocation?: string | null;
+            /** Returnmethod */
+            returnMethod?: string | null;
             /** Returnreference */
             returnReference: string;
             /** Shippinginstructionreference */
@@ -6269,53 +7319,38 @@ export interface components {
              * @default false
              */
             rejected: boolean;
+            /** Supporteventid */
+            supportEventId?: string | null;
         };
         /**
-         * ReturnRecordView
-         * @description One RMA, and everything that belongs to that RMA rather than to the case.
+         * ReturnRecordProjection
+         * @description One RMA and everything belonging to it rather than to the case.
          *
-         *     First-class because one RMA covers N items and one case can carry N RMAs:
-         *     a multi-item return can produce several RMAs with different labels and
-         *     different return locations, and putting these on the case (one each) or on
-         *     the item (one per item) can express neither.
+         *     `returnMethod` is a plain string, not the `NormalizedReturnMethod` enum,
+         *     and that is deliberate. The catalogue is operator-owned in
+         *     `return_policy.normalized_return_methods`; a closed enum here would refuse
+         *     to *render* a case whose method an operator added through the Control
+         *     Centre, which is the same failure the removed `pattern=` on
+         *     `shippingPathExpectation` caused on the write path. A method the requirement
+         *     table does not know is treated as unresolved, not as invalid.
          */
-        ReturnRecordView: {
-            /** Caseid */
-            caseId: string;
-            /**
-             * Createdat
-             * Format: date-time
-             */
-            createdAt: string;
-            /** Labelreference */
-            labelReference?: string | null;
+        ReturnRecordProjection: {
+            /** Approveditems */
+            approvedItems?: components["schemas"]["ApprovedItemProjection"][] | null;
+            /** Artifacts */
+            artifacts?: components["schemas"]["ReturnArtifactProjection"][] | null;
             /** Returnlocation */
             returnLocation?: string | null;
+            /** Returnmethod */
+            returnMethod?: string | null;
             /** Returnrecordid */
             returnRecordId: string;
             /** Returnreference */
             returnReference?: string | null;
-            /** Shippinginstructionreference */
-            shippingInstructionReference?: string | null;
-            /** Sourcesystem */
-            sourceSystem?: string | null;
-            /**
-             * Status
-             * @default DRAFT
-             */
-            status: string;
-            /** Trackingreference */
-            trackingReference?: string | null;
-            /**
-             * Updatedat
-             * Format: date-time
-             */
-            updatedAt: string;
-            /**
-             * Version
-             * @default 0
-             */
-            version: number;
+            /** Shipments */
+            shipments?: components["schemas"]["ShipmentProjection"][] | null;
+            /** Status */
+            status?: string | null;
         };
         /** ReturnSessionView */
         ReturnSessionView: {
@@ -6540,6 +7575,7 @@ export interface components {
         };
         /** RuntimeConfig */
         RuntimeConfig: {
+            agents: components["schemas"]["RuntimeConfigAgents"];
             /**
              * Apibasepath
              * @constant
@@ -6548,9 +7584,25 @@ export interface components {
             capabilities: components["schemas"]["RuntimeConfigCapabilities"];
             /** Environment */
             environment: string;
+            factCatalogue: components["schemas"]["RuntimeConfigFactCatalogue"];
             features: components["schemas"]["RuntimeConfigFeatures"];
             /** Releaseid */
             releaseId: string;
+            selectionVocabulary: components["schemas"]["RuntimeConfigSelectionVocabulary"];
+        };
+        /**
+         * RuntimeConfigAgents
+         * @description Which agent the shell addresses, served rather than compiled into it.
+         *
+         *     The Copilot sent the literal `"order_discovery"` while the active schema
+         *     keys the policy `order-discovery-agent`, so every turn 422'd. `None` is the
+         *     honest answer when no configuration is loaded or the deployment has not
+         *     stated the mapping -- the shell fails closed on it, and there is deliberately
+         *     no server-side default to fall back to.
+         */
+        RuntimeConfigAgents: {
+            /** Orderdiscovery */
+            orderDiscovery: string | null;
         };
         /** RuntimeConfigCapabilities */
         RuntimeConfigCapabilities: {
@@ -6559,10 +7611,82 @@ export interface components {
             /** Availablesourcetypes */
             availableSourceTypes: string[];
         };
+        /**
+         * RuntimeConfigFactCatalogue
+         * @description The order the operator ranked the conversation's facts in.
+         *
+         *     `clarification_policy.fields[].priority` is the operator's own statement of
+         *     how badly each fact is wanted, and `build_fact_catalogue` binds that very
+         *     list into the catalogue that decides which fact names a turn may capture at
+         *     all -- a name it does not define is reported and discarded rather than
+         *     stored. So this is not a new configuration surface: it is the ranking of
+         *     the exact key space `captured_facts` is already written in.
+         *
+         *     Served rather than compiled into the console for the reason
+         *     `selectionVocabulary` is. The facts panel listed its rows in an order
+         *     written into a TypeScript array, which meant an operator who re-ranked
+         *     `clarification_policy` changed what the agent asks for next and changed
+         *     nothing about the panel that reports what it got -- and could not correct
+         *     the panel at all without a frontend release.
+         *
+         *     **Why the priority and not `discovery.anchor_weights` or
+         *     `identification_fields[].clarification_priority`.** Neither is keyed by a
+         *     fact name. `anchor_weights` is per anchor *type* -- eight entries scoring
+         *     candidate matches, with no entry for a return reason, which is not an
+         *     anchor and never will be. `identification_fields[].clarification_priority`
+         *     is keyed by the discovery catalogue's own `field_id` (`sku`, `postal_code`,
+         *     `free_text`), a namespace that overlaps this one only by coincidence and
+         *     that omits `return_reason`, `product_sku`, `customer_id` and
+         *     `tracking_number` outright. Ordering by either would leave most of what the
+         *     panel renders unranked.
+         *
+         *     `orderedFields` is descending priority with ties broken by field name, so
+         *     the sequence is total and every client agrees on it without re-implementing
+         *     the comparison. It is the configured ranking verbatim, including names a
+         *     given screen chooses to withhold: what a panel suppresses is that panel's
+         *     decision, not the contract's.
+         *
+         *     **Empty means no configuration is loaded**, the same as every other block
+         *     here, and carries the same instruction: a client must fall back to an order
+         *     it can defend rather than substitute a ranking of its own.
+         *
+         *     Non-secret: a list of configured field names, no values.
+         */
+        RuntimeConfigFactCatalogue: {
+            /** Orderedfields */
+            orderedFields: string[];
+        };
         /** RuntimeConfigFeatures */
         RuntimeConfigFeatures: {
             /** Orderdiscoverycopilot */
             orderDiscoveryCopilot: boolean;
+        };
+        /**
+         * RuntimeConfigSelectionVocabulary
+         * @description The reason and condition catalogues an associate may pick a line from.
+         *
+         *     Served rather than compiled into the console for the same reason
+         *     `agents.orderDiscovery` is: `selection_vocabulary` is operator-owned and
+         *     changes in a release, and `POST /api/cases/{id}/selected-items` refuses
+         *     anything the active release does not publish with
+         *     `422 SELECTION_TERM_NOT_PUBLISHED`. A picker built from a list in the
+         *     browser would therefore offer terms the writer rejects the moment an
+         *     operator edits the catalogue -- which is the hardcoded catalogue plan
+         *     sect. 12.4 removed from the item-selection pane.
+         *
+         *     **Empty means "no catalogue is published", not "nothing is allowed".** That
+         *     is the release's own reading -- `unknown_reasons` refuses nothing for an
+         *     unpublished catalogue -- and a client seeing empty lists must fall back to
+         *     the free-text behaviour a pre-12.4 release still has, not to a list of its
+         *     own.
+         *
+         *     Non-secret: two lists of enum tokens an associate reads off a dropdown.
+         */
+        RuntimeConfigSelectionVocabulary: {
+            /** Conditions */
+            conditions: string[];
+            /** Reasons */
+            reasons: string[];
         };
         /**
          * SafetyStatus
@@ -6682,15 +7806,216 @@ export interface components {
             version: string;
         };
         /**
+         * SelectedItemProjection
+         * @description One order line the associate named, before any RMA covers it.
+         */
+        SelectedItemProjection: {
+            /** Condition */
+            condition?: string | null;
+            /** Orderlinereference */
+            orderLineReference: string;
+            /** Packagereference */
+            packageReference?: string | null;
+            /** Productreference */
+            productReference?: string | null;
+            /** Quantity */
+            quantity?: number | null;
+            /** Reason */
+            reason?: string | null;
+            /** Returnitemid */
+            returnItemId: string;
+        };
+        /**
+         * SelectedItemRequest
+         * @description One line the associate is naming. Server-derived fields are absent.
+         *
+         *     No product reference and no price: both are properties of the order line,
+         *     resolved from the source, and a client that could state them could record a
+         *     return against a product the order does not contain.
+         */
+        SelectedItemRequest: {
+            /** Condition */
+            condition?: string | null;
+            /** Orderlinereference */
+            orderLineReference: string;
+            /** Packagereference */
+            packageReference?: string | null;
+            /** Quantity */
+            quantity: number;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** SelectedItemView */
+        SelectedItemView: {
+            /** Condition */
+            condition?: string | null;
+            /** Orderlinereference */
+            orderLineReference: string;
+            /** Packagereference */
+            packageReference?: string | null;
+            /** Productreference */
+            productReference?: string | null;
+            /** Quantity */
+            quantity?: number | null;
+            /** Reason */
+            reason?: string | null;
+            /** Returnitemid */
+            returnItemId: string;
+        };
+        /**
+         * SelectedItems
+         * @description What the case now holds, and what the order now has left.
+         *
+         *     The refreshed lines travel with the write deliberately. The next thing the
+         *     client does after selecting is render the line list, and a response that
+         *     made it poll for that would leave the pane showing the availability the
+         *     associate selected *against* for as long as the round trip took.
+         */
+        SelectedItems: {
+            /** Caseid */
+            caseId: string;
+            /** Changed */
+            changed: boolean;
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["SelectedItemView"][];
+            /**
+             * Lines
+             * @default []
+             */
+            lines: components["schemas"]["OrderLineView"][];
+            /** Revision */
+            revision: number;
+        };
+        /**
+         * SelectedItemsRequest
+         * @description The **whole** selection, not an addition to it.
+         *
+         *     Replace-set semantics, stated in the shape: a line the associate removed is
+         *     a line absent from `items`, and the writer releases its hold in the same
+         *     transaction that records the ones they kept. An append endpoint would leave
+         *     withdrawn lines holding quantity nobody was going to return.
+         *
+         *     **`contact` is deliberately not part of that replace set.** The selection is
+         *     a ledger with a hold behind it, so the whole of it has to arrive at once;
+         *     the contact is a statement about the case, kept on the append-only fact log
+         *     where every other case-level detail lives. Omitting it therefore means "this
+         *     submission says nothing about the associate", and leaves whatever the case
+         *     already holds standing -- never "clear it". Retraction is an explicit empty
+         *     value; see `ReturnContactRequest`.
+         */
+        SelectedItemsRequest: {
+            contact?: components["schemas"]["ReturnContactRequest"] | null;
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["SelectedItemRequest"][];
+        };
+        /**
          * SessionStatus
          * @enum {string}
          */
         SessionStatus: "DRAFT" | "DISCOVERING" | "ANALYZING" | "NEEDS_CLARIFICATION" | "NEEDS_HUMAN_REVIEW" | "READY_FOR_APPROVAL" | "APPROVED" | "ABANDONED" | "FAILED";
         /**
+         * SettlementProjection
+         * @description The credit. `NOT_INTEGRATED`, because there is no settlement producer.
+         *
+         *     Not `NOT_STARTED`. That would say a producer exists and has not run yet,
+         *     which is a false statement about the system: nothing in this platform issues
+         *     a credit memo, computes a settled amount or records a settlement date. The
+         *     audit found a pane displaying `249.99`, `18.75` and `CM-2026-88192` with no
+         *     backend contract behind any of it; the honest contract for those three fields
+         *     is this block saying, positively, that the integration does not exist.
+         *
+         *     `status` is required and always populated, so this block is **not** the
+         *     "every field null" shape the module docstring forbids -- `NOT_INTEGRATED` is
+         *     an answer, not an absence. The three fields beside it stay `None` under the
+         *     ordinary rule, and nothing may ever fill them until a producer does.
+         *
+         *     Three consequences, and each is asserted in the projection tests:
+         *
+         *     * Settlement never enters `awaiting` and never blocks `businessComplete`.
+         *       `AwaitingDimension` has no settlement member, so it cannot.
+         *     * `businessComplete` means **completion within configured platform
+         *       responsibility** -- every requirement the return method and policy place
+         *       on *this* platform is satisfied. Settlement is outside that boundary, so a
+         *       return can be business-complete with its credit unissued. That boundary is
+         *       the load-bearing assumption of the whole completion rule.
+         *     * A case whose settlement is `NOT_INTEGRATED` reaches
+         *       `COMPLETED_EXTERNAL_SETTLEMENT`, never plain `COMPLETED`, so a
+         *       completed-return count can never be read as a settled-return count.
+         */
+        SettlementProjection: {
+            /** Creditmemoreference */
+            creditMemoReference?: string | null;
+            settledAmount?: components["schemas"]["MonetaryAmount"] | null;
+            /** Settledat */
+            settledAt?: string | null;
+            status: components["schemas"]["SettlementStatus"];
+        };
+        /**
+         * SettlementStatus
+         * @description Where the credit stands.
+         *
+         *     `NOT_INTEGRATED`, never `NOT_STARTED`. The latter implies a producer that
+         *     has not run; there is no producer at all, and the distinction is the whole
+         *     reason plan sect. 13 Phase 9 names it.
+         * @enum {string}
+         */
+        SettlementStatus: "NOT_INTEGRATED" | "PENDING" | "SETTLED";
+        /**
          * Severity
          * @enum {string}
          */
         Severity: "ERROR" | "WARNING";
+        /**
+         * ShipmentProjection
+         * @description One package. Explicit fields only.
+         *
+         *     `carrier` is a carrier, not `orderSource`; `serviceLevel` is a carrier
+         *     service, not a return method; `estimatedDeliveryAt` is an estimate somebody
+         *     gave for this package, not `shippingPathExpectation` reinterpreted. All
+         *     three substitutions were live defects and none can be repeated here, because
+         *     no source field for any of them exists on this model.
+         *
+         *     **Two of the three are `None` on every assembled case today, and honestly
+         *     so.** `carrier` gained a producer: Support states it on the RMA and it
+         *     travels `ReturnOutcomeRecord` -> `SupportReturnRecord` ->
+         *     `RETURN_RECORD_MERGED_FIELDS` -> `ReturnRecordView` -> here. Nothing
+         *     case-keyed produces a service level or a return-leg delivery estimate --
+         *     the only service level is `PickupRequest.serviceLevel`, which is the service
+         *     a freight *collection* was booked at rather than the service a parcel moves
+         *     under, and no estimate is computed or received at all;
+         *     `assembly.project_shipments` names the missing producer for each one. They stay declared for the reason the eight producerless
+         *     `WarehouseProjection` fields do: the contract is where a producer lands, and
+         *     a field the model cannot express is a field a writer cannot deliver.
+         *
+         *     **No `labelArtifacts`.** Documents hang off the return record and name their
+         *     package through `ReturnArtifactProjection.shipmentId`; this package's are
+         *     `record.active_artifacts_for_shipment(type, shipment.shipmentId)`. A label
+         *     that exists before any package must still be expressible, and one home for
+         *     the fact is what stops it being attributed to the wrong package.
+         */
+        ShipmentProjection: {
+            /** Carrier */
+            carrier?: string | null;
+            /** Createdat */
+            createdAt?: string | null;
+            /** Estimateddeliveryat */
+            estimatedDeliveryAt?: string | null;
+            /** Servicelevel */
+            serviceLevel?: string | null;
+            /** Shipmentid */
+            shipmentId: string;
+            shipmentStatus?: components["schemas"]["ShipmentStatus"] | null;
+            /** Trackingnumber */
+            trackingNumber?: string | null;
+            /** Updatedat */
+            updatedAt?: string | null;
+        };
         /**
          * ShipmentReadingView
          * @description What the graph said about the parcel, and who was told.
@@ -6709,6 +8034,22 @@ export interface components {
             /** Observedstatus */
             observedStatus: string | null;
         };
+        /**
+         * ShipmentStatus
+         * @description One package's progress. Aligned with `FulfillmentTrackingStatus` where they overlap.
+         *
+         *     `AWAITING_HANDOFF` and `IN_TRANSIT` are spelled as
+         *     `workflows/fulfillment_tracking.py` already spells them, so the case
+         *     projection and the legacy session path do not describe the same parcel with
+         *     two words.
+         *
+         *     `DELIVERED` and `RECEIVED` are separate because they are separate events:
+         *     the carrier delivering to a dock is not the warehouse booking the goods in,
+         *     and a return that is delivered but unbooked is exactly the state a receiving
+         *     supervisor needs to see.
+         * @enum {string}
+         */
+        ShipmentStatus: "AWAITING_HANDOFF" | "IN_TRANSIT" | "DELIVERED" | "RECEIVED" | "CANCELLED";
         /**
          * ShipmentUpdateRequest
          * @description One carrier observation of one return parcel.
@@ -7316,10 +8657,41 @@ export interface components {
             reason: string;
         };
         /**
+         * SupportProjection
+         * @description The open work item, if Support has one.
+         *
+         *     Distinguished by `queue`, never by a type field. `SupportWorkItemView` has no
+         *     `type` and route context travels as a configured queue
+         *     (`RETURNS_SUPPORT | WARRANTY_SUPPORT | DELIVERY_CLAIM_SUPPORT`), so adding one
+         *     here would create the field plan sect. 7.6 says not to add.
+         */
+        SupportProjection: {
+            /** Assignedto */
+            assignedTo?: string | null;
+            /** Openedat */
+            openedAt?: string | null;
+            /** Priority */
+            priority?: string | null;
+            /** Queue */
+            queue?: string | null;
+            /** Resolvedat */
+            resolvedAt?: string | null;
+            /** Sladueat */
+            slaDueAt?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Subject */
+            subject?: string | null;
+            /** Threadid */
+            threadId?: string | null;
+            /** Workitemid */
+            workItemId: string;
+        };
+        /**
          * SupportWorkItemStatus
          * @enum {string}
          */
-        SupportWorkItemStatus: "NEW" | "ACKNOWLEDGED" | "CLARIFICATION_REQUIRED" | "IN_PROGRESS" | "RETURN_CREATION_PENDING" | "RETURN_CREATED" | "SHIPPING_INSTRUCTIONS_PENDING" | "READY_FOR_ASSOCIATE" | "COMPLETED" | "REJECTED" | "CANCELLED";
+        SupportWorkItemStatus: "NEW" | "ACKNOWLEDGED" | "CLARIFICATION_REQUIRED" | "IN_PROGRESS" | "RETURN_CREATION_PENDING" | "EXTERNAL_PARTY_REVIEW" | "RETURN_CREATED" | "SHIPPING_INSTRUCTIONS_PENDING" | "READY_FOR_ASSOCIATE" | "COMPLETED" | "REJECTED" | "CANCELLED";
         /** SupportWorkItemView */
         SupportWorkItemView: {
             /** Acknowledgedat */
@@ -7489,6 +8861,61 @@ export interface components {
             result_id: string;
             /** Revision Id */
             revision_id: string;
+        };
+        /**
+         * WarehouseProjection
+         * @description Receiving, inspection and disposition. Only fields current backend flows produce.
+         *
+         *     Bay data comes from the facts `ReturnCaseWorkflow` already writes -- there is
+         *     no separate bay service to read, and inventing one here would put a field on
+         *     the contract that nothing can ever fill. `assembly.project_warehouse` names
+         *     the producing fact for every field it fills and names the absence for every
+         *     field it does not; the seven receipt fields below currently have **no
+         *     case-keyed producer anywhere in the platform** and are therefore always
+         *     `None` on an assembled case. They stay declared because the contract is the
+         *     place a producer will land, and a field the model cannot express is a field
+         *     a writer cannot deliver.
+         *
+         *     **A case with no bay is a normal state.** Bay placement is advisory and
+         *     best-effort by declared policy (`CaseBayPlacement`), and it runs before the
+         *     goods exist, so "no bay" is the ordinary answer for most of a case's life.
+         *     `bayReason` is what makes that readable: it carries the state the placement
+         *     engine named -- `RECOMMENDED`, `NO_ELIGIBLE_BAY`, `PRE_ARRIVAL_NOT_ALLOWED`,
+         *     `WAREHOUSE_ABSENT_NO_WAREHOUSE_REFERENCE`, `BAY_PLACEMENT_NOT_CONFIGURED`
+         *     and their siblings -- so a reader has an explanation rather than a blank
+         *     where a bay would be. **It is not an error field**, and a `bayReason` with
+         *     no `bayId` beside it is the platform working, not failing.
+         *
+         *     `bayReason` is deliberately a field of its own rather than folded into
+         *     `warehouseStatus`. `has_receipt` reads `warehouseStatus`, so writing a
+         *     placement reason there would make every case that merely *asked* for a bay
+         *     report goods booked in and jump the Copilot to `WAREHOUSE_RECEIVING` -- a
+         *     receiving pane lit by a recommendation, which is the fabrication this block
+         *     exists to prevent.
+         */
+        WarehouseProjection: {
+            /** Bayid */
+            bayId?: string | null;
+            /** Bayreason */
+            bayReason?: string | null;
+            /** Condition */
+            condition?: string | null;
+            /** Disposition */
+            disposition?: string | null;
+            /** Facilityid */
+            facilityId?: string | null;
+            /** Facilityname */
+            facilityName?: string | null;
+            /** Inspectionstatus */
+            inspectionStatus?: string | null;
+            /** Qastatus */
+            qaStatus?: string | null;
+            /** Receivedat */
+            receivedAt?: string | null;
+            /** Receivedquantity */
+            receivedQuantity?: number | null;
+            /** Warehousestatus */
+            warehouseStatus?: string | null;
         };
         /** WarningMeta */
         WarningMeta: {
@@ -7954,7 +9381,203 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["APIResponse_CaseDetail_"];
+                    "application/json": components["schemas"]["APIResponse_CaseProjection_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_case_order_lines_api_cases__case_id__order_lines_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_OrderLines_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    override_case_policy_api_cases__case_id__policy_override_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyOverrideRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_PolicyOverrideResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_case_recovery_api_cases__case_id__recovery_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_CaseRecoveryView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    relaunch_case_workflow_api_cases__case_id__recovery_relaunch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_CaseRecoveryResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_return_artifact_api_cases__case_id__returns__return_record_id__artifacts__artifact_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                return_record_id: string;
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ReturnArtifactView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_case_selected_items_api_cases__case_id__selected_items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelectedItemsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_SelectedItems_"];
                 };
             };
             /** @description Validation Error */
@@ -8070,6 +9693,39 @@ export interface operations {
             };
         };
     };
+    create_release_api_config_releases_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateReleasePayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_release_api_config_releases__release_id__get: {
         parameters: {
             query?: never;
@@ -8080,6 +9736,42 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_release_domain_api_config_releases__release_id__domains__domain_key__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                release_id: string;
+                domain_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchDomainPayload"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -11089,7 +12781,9 @@ export interface operations {
     submit_return_outcome_api_v1_return_support_work_items__work_item_id__return_outcome_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 work_item_id: string;
             };
@@ -11107,7 +12801,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["APIResponse_dict_str__str__"];
+                    "application/json": components["schemas"]["APIResponse_ReturnOutcomeAcceptedView_"];
                 };
             };
             /** @description Validation Error */

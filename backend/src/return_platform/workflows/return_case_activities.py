@@ -20,46 +20,204 @@ reaching whatever it was retried to do.
 
 from __future__ import annotations
 
+import inspect
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Any, Protocol
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
+from typing import Any, Final, Protocol
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pymongo.errors import DuplicateKeyError
 from temporalio import activity
 
-from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
+from return_platform.configuration.return_configuration import (
+    ReturnPlatformConfiguration,
+    build_return_method_requirement_table,
+)
 from return_platform.operations.business_calendar import (
     BusinessCalendar,
     WorkingPeriod,
     advance_business_time,
 )
+from return_platform.operations.case_projection.assembly import (
+    SUPPORT_OUTCOME_FACT,
+    SUPPORT_OUTCOME_REASON_FACT,
+)
+from return_platform.operations.case_projection.completion import ReturnMethodRequirementTable
+from return_platform.operations.case_projection.projection import project_case
+from return_platform.operations.case_projection.vocabulary import SupportOutcome
+from return_platform.operations.errors import ConcurrencyConflictError
 from return_platform.operations.models import FactAcquisition, FactChannel
+from return_platform.operations.order_lines.reservations import (
+    QuantityReservationExpiredError,
+    ReservationState,
+    is_held,
+)
 from return_platform.operations.repository import OperationalRepository
+from return_platform.policy.evaluator import PolicyClock, evaluate_return_eligibility
+from return_platform.policy.outcome import PolicyOutcome
+from return_platform.policy.vocabulary import PolicyRoute
+from return_platform.workflows.case_order_date import resolve_confirmed_order_purchase_date
+from return_platform.workflows.case_policy_facts import (
+    AssembledPolicyFacts,
+    assemble_policy_evaluation_input,
+)
 from return_platform.workflows.return_case_workflow import (
     BayResultNotice,
+    CaseEligibilityOutcome,
     DraftSupportRequestInput,
+    EvaluateCaseEligibilityInput,
     OpenSupportWorkItemInput,
+    PolicyGateState,
     RecordCaseStatusInput,
     RecordSupportOutcomeInput,
     RequestBayAssignmentInput,
     ResolveBusinessDeadlineInput,
     ResolvedBusinessDeadline,
     SendSupportReminderInput,
+    SupportOutcomeReceipt,
+    SupportReturnRecord,
     SynchronizeReturnRecordsInput,
 )
 
 __all__ = [
+    "RETURN_RECORD_MERGED_FIELDS",
     "CaseBayPlacementPort",
     "ReturnCaseActivities",
     "ReturnRecordGraphSyncPort",
     "ReturnRecordStorePort",
     "ReturnRecordSyncOutcome",
+    "SupportSlaBasis",
 ]
 
 logger = logging.getLogger("return_platform.workflows.return_case_activities")
+
+
+class SupportSlaBasis(StrEnum):
+    """Where a Support work item's `slaDueAt` came from. Recorded, never inferred.
+
+    A deadline is only as good as the question it answers, and the values below
+    answer different ones. `SUPPORT_ACKNOWLEDGEMENT` is the desk's own promise
+    -- `workflow.sla_minutes.support_acknowledgement`, a fixed offset from the
+    moment the thread opened. `DELIVERY_CLAIM_REPORTING_WINDOW` is the
+    customer's: `delivery_claim.reporting_window` business days after delivery,
+    computed once by the policy evaluation that routed the case and carried to
+    the work item rather than recomputed, because a deadline computed twice
+    against two calendars is a deadline nobody can reconcile.
+
+    The third value is the one that matters most. A delivery claim whose
+    `delivery_date` the platform never learned has **no** reporting deadline --
+    `DeliveryClaimWindow` reports `UNDETERMINED` rather than inventing one --
+    and the work item falls back to the acknowledgement SLA. That fallback is
+    honest, but it has to be legible *as* a fallback: a work item silently
+    carrying the desk's five minutes where the customer's two business days
+    were expected is indistinguishable from one whose window was computed and
+    happened to be short.
+
+    Recorded as the case fact `support_sla_basis`, beside the
+    `policy_delivery_claim_window_state` it follows from.
+    """
+
+    #: The generic desk SLA. Every ordinary work item, and what a delivery claim
+    #: falls back to -- distinguished from a computed window by the third member
+    #: rather than by nothing.
+    SUPPORT_ACKNOWLEDGEMENT = "SUPPORT_ACKNOWLEDGEMENT"
+    #: `slaDueAt` is the configured delivery-claim reporting deadline.
+    DELIVERY_CLAIM_REPORTING_WINDOW = "DELIVERY_CLAIM_REPORTING_WINDOW"
+    #: A delivery claim with no computable window. `slaDueAt` is the generic
+    #: desk SLA and this says so.
+    DELIVERY_CLAIM_REPORTING_WINDOW_UNDETERMINED = "DELIVERY_CLAIM_REPORTING_WINDOW_UNDETERMINED"
+
+
+def _fact_text(facts: Mapping[str, Mapping[str, Any]], name: str) -> str | None:
+    """One latest fact's value as text, or `None` when it is absent or blank.
+
+    Blank counts as absent: `_append_policy_facts` never writes an empty string,
+    so one in the log is not a value anybody stated.
+    """
+    fact = facts.get(name)
+    if fact is None:
+        return None
+    value = fact.get("value")
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+#: The queue each non-standard route is verified on, by name.
+#:
+#: The names are matched against `support.queues` in the active release rather
+#: than assumed: a queue this deployment has not declared is a work item nobody
+#: is looking at, which is worse than one on the default queue with the route
+#: recorded beside it on the case. `STANDARD_RETURN` is absent because it is not
+#: a routing decision -- it is the ordinary path, on the ordinary queue.
+_ROUTE_QUEUES: Final[dict[PolicyRoute, str]] = {
+    PolicyRoute.WARRANTY: "WARRANTY_SUPPORT",
+    PolicyRoute.DELIVERY_CLAIM: "DELIVERY_CLAIM_SUPPORT",
+}
+
+#: The fields a Support notice may carry about one RMA, and the fact name each
+#: is recorded under. Stored key first, then the `SupportReturnRecord`
+#: attribute, then the case-fact name.
+#:
+#: **Merged, never replaced.** Support answers repeatedly, and a later notice
+#: says only what it knows: a tracking number arriving two hours after the RMA
+#: carries `label_reference=None`, and applying that null over the label already
+#: on the record would delete it. So every write below is "this field, if the
+#: notice gave one", and a `None` is the absence of a statement rather than a
+#: statement of absence -- exactly the reading `support_events._canonical`
+#: already takes when it drops nulls before hashing.
+#:
+#: `return_method` is the fact name deliberately, and not `approved_return_method`
+#: (D23). `warehouse/case_placement.py` already reads a case fact of that name to
+#: choose a bay, so the other spelling would resolve the Copilot's completion
+#: profile while bay placement still normalized `None`.
+RETURN_RECORD_MERGED_FIELDS: Final[tuple[tuple[str, str, str], ...]] = (
+    ("trackingReference", "tracking_reference", "tracking_reference"),
+    ("labelReference", "label_reference", "label_reference"),
+    ("returnLocation", "return_location", "return_location"),
+    (
+        "shippingInstructionReference",
+        "shipping_instruction_reference",
+        "shipping_instruction_reference",
+    ),
+    ("returnMethod", "return_method", "return_method"),
+    #: Audit finding #9. `ShipmentProjection.carrier` had a declared field and no
+    #: chain to reach it; this row is the link that carries Support's answer from
+    #: `SupportReturnRecord.carrier` to `ReturnRecordView.carrier`, from which
+    #: `assembly.project_shipments` reads it. Merged like everything above, so a
+    #: later notice arriving with `carrier=None` -- a tracking number two hours
+    #: after the RMA -- does not blank a carrier already on the record.
+    ("carrier", "carrier", "carrier"),
+)
+
+
+@dataclass
+class _RecordPlan:
+    """One RMA of one notice, resolved against what the case already holds.
+
+    Mutable, unlike everything else here, because the create path can lose a
+    race to a concurrent writer and has to become an update path -- and a plan
+    that could not be corrected in place would need a second copy of the merge
+    to do it.
+    """
+
+    #: The id the record actually lives under: the existing one where the case
+    #: already holds this RMA, the workflow's minted one where it does not.
+    record_id: str
+    incoming: SupportReturnRecord
+    #: The stored document, or `None` for an RMA the case has not seen.
+    existing: dict[str, Any] | None
+    #: Stored key -> value after merging the notice over the record. Only ever
+    #: non-null values; a field neither side has is simply absent.
+    merged: dict[str, Any]
+    #: The subset of `merged` that is new information. Empty for a redelivery,
+    #: which is what makes a replay write nothing and bump no revision.
+    changed: dict[str, Any]
 
 
 class SupportDraftPort:
@@ -128,6 +286,51 @@ class CaseBayPlacementPort(Protocol):
     """
 
     async def recommend(self, case_id: str) -> Any: ...
+
+
+def _stated(facts: Mapping[str, Any], name: str) -> str | None:
+    """One fact as a non-empty string, or nothing.
+
+    The empty string reads as absent, which is what makes a retraction work:
+    `api/order_lines.py` records a cleared contact by appending an empty value
+    over it, because the fact log is insert-only and there is nothing to delete.
+    """
+    value = facts.get(name)
+    if not isinstance(value, str):
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
+def _branch_associate_sentence(facts: Mapping[str, Any]) -> str:
+    """Who to contact about the label, in the words the case actually holds.
+
+    Ends with a trailing space and is `""` when the case names nobody, so the
+    template above reads correctly either way. **Nothing is filled in**: a
+    return with a name and no phone says the name and stops. An address
+    manufactured to complete the sentence is precisely the failure the whole
+    optionality of these three fields exists to prevent.
+    """
+    name = _stated(facts, "branch_associate_name")
+    reachable = [
+        value
+        for value in (
+            _stated(facts, "branch_associate_email"),
+            _stated(facts, "branch_associate_phone"),
+        )
+        if value is not None
+    ]
+    if name is None and not reachable:
+        return ""
+    joined = ", ".join(reachable)
+    if name is None:
+        return f"The branch associate for this return can be reached at {joined}. "
+    if not reachable:
+        # A name and no way to reach them. Said anyway rather than dropped: it
+        # is who Support should ask for at the branch, and leaving it out to
+        # keep the sentence tidy would withhold the only thing we were told.
+        return f"The branch associate for this return is {name}. "
+    return f"The branch associate for this return is {name} ({joined}). "
 
 
 class ReturnCaseActivities:
@@ -406,6 +609,306 @@ class ReturnCaseActivities:
             )
         return None
 
+    # --- the policy gate (3A.7) ---------------------------------------------
+
+    @activity.defn(name="evaluate_case_eligibility")
+    async def evaluate_case_eligibility(
+        self, request: EvaluateCaseEligibilityInput
+    ) -> CaseEligibilityOutcome:
+        """Evaluate one case against the published rule set, and record why.
+
+        The ninth activity, and the one whose absence the audit measured: this
+        worker registered exactly eight, none of which evaluated a policy, so
+        every return reached Support whatever the facts said.
+
+        The evaluation itself is `policy.evaluator`, which is pure. Everything
+        this method adds is the IO the evaluator may not do -- reading the fact
+        log, resolving the zone and the business calendar, reading the active
+        configuration, and persisting the outcome as case facts.
+
+        **Two failures, kept apart.** No published policy answers
+        `POLICY_NOT_CONFIGURED` and the workflow parks the case; anything else
+        going wrong answers `EVALUATION_FAILED` and the workflow holds it for a
+        supervisor. Neither ever answers with a decision, so no path through here
+        can approve a return, and both are recorded on the case before this
+        returns -- a case parked for a reason nobody wrote down is a case nobody
+        can act on.
+
+        It does not raise for either. A raised activity reaches the workflow as
+        an `ActivityError` carrying a message, and the workflow would have to
+        parse the message to tell "no rule set was published" from "Mongo was
+        briefly unavailable" -- two situations with different operational
+        answers. The retry policy still covers the transient case; what is left
+        is reported as a value.
+        """
+        evaluated_at = datetime.fromisoformat(request.evaluated_at_iso)
+        configuration = self._configuration() if self._configuration is not None else None
+        if configuration is None or configuration.return_eligibility_policy is None:
+            logger.error(
+                "return_eligibility_policy_not_configured", extra={"case_id": request.case_id}
+            )
+            await self._record_policy_failure(
+                request,
+                state=PolicyGateState.POLICY_NOT_CONFIGURED,
+                reason="RETURN_ELIGIBILITY_POLICY_NOT_PUBLISHED",
+            )
+            return CaseEligibilityOutcome(
+                state=PolicyGateState.POLICY_NOT_CONFIGURED.value,
+                failure_reason="RETURN_ELIGIBILITY_POLICY_NOT_PUBLISHED",
+            )
+
+        policy = configuration.return_eligibility_policy
+        log = await self._repository.list_case_facts(request.case_id)
+        # The authoritative basis of the standard return window, and the reason
+        # the gate stopped reviewing every case on `PURCHASE_DATE_UNKNOWN`. It is
+        # resolved *outside* the try below on purpose: every failure mode inside
+        # the resolver already answers `None` and logs, so anything that did
+        # escape it would be a defect in this platform rather than a
+        # contradiction in the case's facts, and reporting it as
+        # `POLICY_FACTS_INCONSISTENT` would name the wrong thing.
+        purchase_date = await resolve_confirmed_order_purchase_date(
+            self._repository,
+            case_id=request.case_id,
+            order_date_paths=configuration.source_resolution.order_date_paths,
+        )
+        try:
+            assembled = assemble_policy_evaluation_input(
+                log,
+                request_date=evaluated_at,
+                confirmed_order_purchase_date=purchase_date,
+                configuration_release_id=request.configuration_release_id,
+                policy_version=policy.version,
+            )
+        except Exception as error:  # noqa: BLE001 - see the docstring
+            logger.warning(
+                "policy_facts_inconsistent",
+                extra={"case_id": request.case_id},
+                exc_info=True,
+            )
+            await self._record_policy_failure(
+                request,
+                state=PolicyGateState.EVALUATION_FAILED,
+                reason=f"POLICY_FACTS_INCONSISTENT:{type(error).__name__}",
+            )
+            return CaseEligibilityOutcome(
+                state=PolicyGateState.EVALUATION_FAILED.value,
+                failure_reason="POLICY_FACTS_INCONSISTENT",
+            )
+
+        try:
+            outcome = evaluate_return_eligibility(
+                policy,
+                assembled.facts,
+                PolicyClock(
+                    evaluated_at=evaluated_at,
+                    local_zone=self._local_zone(request.timezone),
+                    business_calendar=self._business_calendar(
+                        request.business_calendar_id, request.timezone
+                    ),
+                ),
+            )
+        except Exception as error:  # noqa: BLE001 - fail closed to review, never to approval
+            logger.error(
+                "policy_evaluation_failed", extra={"case_id": request.case_id}, exc_info=True
+            )
+            await self._record_policy_failure(
+                request,
+                state=PolicyGateState.EVALUATION_FAILED,
+                reason=f"POLICY_EVALUATOR_RAISED:{type(error).__name__}",
+            )
+            return CaseEligibilityOutcome(
+                state=PolicyGateState.EVALUATION_FAILED.value,
+                failure_reason="POLICY_EVALUATOR_RAISED",
+            )
+
+        queue = self._route_queue(outcome.route, configuration)
+        await self._record_policy_outcome(request, outcome, assembled, queue)
+        return CaseEligibilityOutcome(
+            state=PolicyGateState.EVALUATED.value,
+            route=outcome.route.value,
+            decision=outcome.decision.value if outcome.decision is not None else None,
+            reason_codes=tuple(code.value for code in outcome.reason_codes),
+            support_queue=queue,
+            failure_reason=None,
+        )
+
+    @staticmethod
+    def _local_zone(timezone: str) -> ZoneInfo:
+        """The case's business zone, or UTC when the release names one that is not
+        installed.
+
+        UTC rather than a raised error, because the alternative is a case that
+        cannot be evaluated at all over a misconfigured zone name -- and the
+        substitution is logged and recorded, so a window decided in the wrong
+        zone is visible rather than silent.
+        """
+        try:
+            return ZoneInfo(timezone)
+        except (ZoneInfoNotFoundError, ValueError):
+            logger.warning("policy_timezone_not_resolvable", extra={"timezone": timezone})
+            return ZoneInfo("UTC")
+
+    @staticmethod
+    def _route_queue(route: PolicyRoute, configuration: ReturnPlatformConfiguration) -> str | None:
+        """The Support queue that verifies this route, if the release declares one.
+
+        Route context travels as a *configured* queue and never as a work-item
+        type field -- `SupportWorkItemView` has none, and adding one is the thing
+        plan sect. 7.6 rules out. A release that has not declared the queue yet
+        gets `None`, which leaves the support service's own default standing: a
+        warranty verification on the ordinary returns queue is a queue-routing
+        gap, while a queue name the deployment never declared would be a work
+        item nobody is looking at.
+        """
+        preferred = _ROUTE_QUEUES.get(route)
+        if preferred is None:
+            return None
+        if preferred in configuration.support.queues:
+            return preferred
+        logger.warning(
+            "policy_route_queue_not_configured",
+            extra={"route": route.value, "queue": preferred},
+        )
+        return None
+
+    async def _record_policy_failure(
+        self, request: EvaluateCaseEligibilityInput, *, state: PolicyGateState, reason: str
+    ) -> None:
+        await self._append_policy_facts(
+            request,
+            (
+                ("policy_evaluation_state", state.value),
+                ("policy_evaluation_failure", reason),
+            ),
+        )
+
+    async def _record_policy_outcome(
+        self,
+        request: EvaluateCaseEligibilityInput,
+        outcome: PolicyOutcome,
+        assembled: AssembledPolicyFacts,
+        queue: str | None,
+    ) -> None:
+        """The decision, and everything needed to defend it later (3A.8).
+
+        Written as case facts because that is where provenance that must survive
+        a correction lives: the log is insert-only, so a supervisor's override
+        appends over this rather than replacing it, and both readings stay
+        recoverable.
+
+        Scalars, one fact per field. Code *lists* are joined rather than stored
+        as arrays because `CaseFactProjection.value` is typed
+        `str | int | float | bool | None` -- a list would parse today and fail
+        the projection the console reads. The join is on `,` with the evaluator's
+        own ordering preserved, which is the order the rules fired in.
+        """
+        provenance = outcome.provenance
+        values: list[tuple[str, Any]] = [
+            ("policy_evaluation_state", PolicyGateState.EVALUATED.value),
+            ("policy_route", outcome.route.value),
+            ("policy_reason_codes", ",".join(code.value for code in outcome.reason_codes)),
+            ("policy_conditions", ",".join(condition.value for condition in outcome.conditions)),
+            (
+                "policy_exceptions",
+                ";".join(
+                    f"{item.code.value}:{item.authority.value}:{item.reference}"
+                    for item in outcome.exceptions
+                ),
+            ),
+            ("policy_applied_rules", ",".join(rule.value for rule in outcome.applied_rules)),
+            ("policy_id", provenance.policy_id),
+            ("policy_version", provenance.policy_version),
+            ("policy_authority", provenance.authority),
+            ("policy_source_document", provenance.source_document),
+            ("policy_source_revision", provenance.source_revision),
+            ("policy_evaluated_at", provenance.evaluated_at.isoformat()),
+            ("policy_configuration_release_id", provenance.configuration_release_id),
+            ("policy_facts_admitted", ",".join(assembled.admitted)),
+            (
+                "policy_facts_excluded",
+                ",".join(f"{name}:{state}" for name, state in assembled.excluded),
+            ),
+            ("policy_support_queue", queue),
+        ]
+        if outcome.decision is not None:
+            # `policy_decision` is the evaluator's answer and is never rewritten.
+            # `policy_effective_decision` is the same value until an override
+            # appends a later one -- two names so that reading "what stands now"
+            # can never destroy "what the policy said".
+            values.append(("policy_decision", outcome.decision.value))
+            values.append(("policy_effective_decision", outcome.decision.value))
+        if outcome.restocking_fee is not None:
+            values.append(("policy_restocking_fee_applies", outcome.restocking_fee.applies))
+            values.append(("policy_restocking_fee_waived", outcome.restocking_fee.waived))
+            # The rate is recorded **as evaluated** and never re-read at request
+            # time. `_seller_restocking_fee` produced it from
+            # `restocking_fee.seller_schedule` in the release this evaluation
+            # ran under; reading the live release when the projection is built
+            # would report today's rate for a case decided under a release that
+            # had a different one -- the provenance failure `policy_version`
+            # exists to make visible. The fact log is the provenance, so the
+            # rate is written here beside the decision it belongs to.
+            #
+            # Both or neither. `_append_policy_facts` drops `None`, and
+            # `FeeDetermination` already refuses a rate with no source, so a
+            # schedule-less policy appends nothing and
+            # `assembly._restocking_rate` reads `(None, None)` exactly as it did
+            # before this line existed.
+            values.append(
+                (
+                    "policy_restocking_fee_rate_basis_points",
+                    outcome.restocking_fee.rate_basis_points,
+                )
+            )
+            values.append(
+                (
+                    "policy_restocking_fee_rate_source",
+                    outcome.restocking_fee.rate_source.value
+                    if outcome.restocking_fee.rate_source is not None
+                    else None,
+                )
+            )
+        window = outcome.delivery_claim_window
+        if window is not None:
+            # 3A.6 sets the work item's `slaDueAt` from this rather than
+            # recomputing it: a deadline computed twice against two calendars is
+            # a deadline nobody can reconcile.
+            values.append(("policy_delivery_claim_window_state", window.state.value))
+            values.append(("policy_delivery_claim_business_days", window.business_days))
+            values.append(
+                (
+                    "policy_delivery_claim_reporting_deadline",
+                    window.reporting_deadline.isoformat()
+                    if window.reporting_deadline is not None
+                    else None,
+                )
+            )
+        await self._append_policy_facts(request, tuple(values))
+
+    async def _append_policy_facts(
+        self, request: EvaluateCaseEligibilityInput, values: tuple[tuple[str, Any], ...]
+    ) -> None:
+        """Append each named value once, under an id the workflow's seed derives.
+
+        `fact_id_seed` is a `workflow.uuid4()`, so an activity retry writes the
+        same ids and `_append_fact_once` recognises the second arrival instead of
+        failing the attempt on the record of the first.
+        """
+        for name, value in values:
+            if value is None or value == "":
+                continue
+            await self._append_fact_once(
+                fact_id=f"{name}-{request.fact_id_seed}",
+                case_id=request.case_id,
+                fact_name=name,
+                value=value,
+                agent_id="return-eligibility-policy",
+                channel=FactChannel.SYSTEM,
+                acquisition_method=FactAcquisition.DERIVED,
+                source_system="RETURN_ELIGIBILITY_POLICY",
+                source_path="DETERMINISTIC_POLICY_EVALUATION",
+            )
+
     @activity.defn(name="draft_support_request")
     async def draft_support_request(self, request: DraftSupportRequestInput) -> str:
         """The message Support will read.
@@ -413,6 +916,17 @@ class ReturnCaseActivities:
         Falls back to a deterministic template when no drafter is configured or
         the model is unavailable. Support being asked in plainer words is a far
         better outcome than a return that stops because a provider is down.
+
+        **The branch associate travels in the message text, because the message
+        text is the whole of what Support receives.** `SupportWorkItemView`
+        carries a subject, a queue and a status and no case detail at all, and
+        the opening message's `businessPayload` is `{"caseId": ...}`; a human on
+        the Returns Support desk reads the thread. So a contact recorded on the
+        case and left out of the draft is a contact that reached a database and
+        not a person -- and the entire reason Fergusonhome asks for it is that a
+        UPS label or an LTL bill of lading cannot be raised without someone to
+        address. The model drafter already receives every fact and can phrase it
+        itself; this is the path that has to be told.
         """
         facts = await self._repository.latest_case_facts(request.case_id)
         plain = {name: fact.get("value") for name, fact in facts.items()}
@@ -429,8 +943,8 @@ class ReturnCaseActivities:
         return (
             f"Hello -- we have a return to raise against {order}. "
             "Could you create the RMA and send the return label or pickup "
-            "instructions when you have a moment? Happy to supply anything else "
-            "you need. Thank you."
+            f"instructions when you have a moment? {_branch_associate_sentence(plain)}"
+            "Happy to supply anything else you need. Thank you."
         )
 
     @activity.defn(name="open_support_work_item")
@@ -440,14 +954,59 @@ class ReturnCaseActivities:
         `idempotency_key` comes from the case, so a retry or a replay after
         `continue_as_new` re-reads the existing thread instead of starting a
         second conversation with a person.
+
+        `queue` is passed only when the support service accepts it. The
+        signature is inspected rather than assumed because the argument is new
+        with the policy gate and several support doubles predate it -- and a
+        `TypeError` here would fail a return over a routing hint, which is the
+        wrong direction to fail in. A service without the argument opens the
+        thread on its own default queue and the route stays recorded on the case.
+
+        `sla_due_at` travels the same way and for the same reason. It is the
+        delivery-claim reporting deadline (D2); see `_support_sla` for where it
+        comes from and why it is read here rather than recomputed.
+
+        The basis is recorded **after** the thread opens, and it is allowed to
+        fail the activity. Recording it first would put a statement about a work
+        item on the case before the work item existed; swallowing its failure
+        would leave a delivery claim carrying the desk's five minutes with
+        nothing on the case saying which of the two deadlines that is, which is
+        the silent substitution this argument exists to remove. The write is one
+        insert against the same database `open_case_thread` just committed to,
+        under `_PERSIST_RETRY`, and a duplicate -- the ordinary retry -- is
+        absorbed by `_append_fact_once`.
         """
-        work_item_id = await self._support.open_case_thread(
-            case_id=request.case_id,
-            tenant_id=request.tenant_id,
-            principal_id=request.principal_id,
-            support_draft=request.support_draft,
-            idempotency_key=request.idempotency_key,
-        )
+        deadline, basis = await self._support_sla(request.case_id)
+        arguments: dict[str, Any] = {
+            "case_id": request.case_id,
+            "tenant_id": request.tenant_id,
+            "principal_id": request.principal_id,
+            "support_draft": request.support_draft,
+            "idempotency_key": request.idempotency_key,
+        }
+        if request.queue is not None and self._support_accepts_queue():
+            arguments["queue"] = request.queue
+        elif request.queue is not None:
+            logger.warning(
+                "support_service_ignores_queue",
+                extra={"case_id": request.case_id, "queue": request.queue},
+            )
+        if deadline is not None and self._support_accepts("sla_due_at"):
+            arguments["sla_due_at"] = deadline
+        elif deadline is not None:
+            # A support service that cannot take the deadline is a wiring fault,
+            # not a business state: the window *was* computed, so recording
+            # `UNDETERMINED` would be a second untruth on top of the dropped
+            # deadline. The work item gets the generic SLA and the basis says so
+            # -- beside `policy_delivery_claim_window_state: WITHIN`, which is
+            # what makes the pair legible as the anomaly it is.
+            logger.error(
+                "support_service_ignores_sla_due_at",
+                extra={"case_id": request.case_id, "sla_due_at": deadline.isoformat()},
+            )
+            basis = SupportSlaBasis.SUPPORT_ACKNOWLEDGEMENT
+        work_item_id = await self._support.open_case_thread(**arguments)
+        await self._record_support_sla_basis(request.case_id, basis)
         case = await self._repository.get_case(request.case_id)
         if case is not None and case.get("channelBWorkItemId") != work_item_id:
             # The link that makes a support outcome reachable from the
@@ -458,6 +1017,108 @@ class ReturnCaseActivities:
                 expected_version=int(case["version"]),
             )
         return str(work_item_id)
+
+    def _support_accepts_queue(self) -> bool:
+        return self._support_accepts("queue")
+
+    def _support_accepts(self, argument: str) -> bool:
+        """Whether `open_case_thread` takes this keyword.
+
+        Inspected rather than assumed, because a `TypeError` raised here would
+        fail a return over an argument that only refines how the thread is
+        opened -- and because the support doubles in this repository were
+        written against successive versions of the signature.
+        """
+        try:
+            signature = inspect.signature(self._support.open_case_thread)
+        except (TypeError, ValueError):  # pragma: no cover - a builtin or a C callable
+            return False
+        return argument in signature.parameters or any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in signature.parameters.values()
+        )
+
+    async def _support_sla(self, case_id: str) -> tuple[datetime | None, SupportSlaBasis]:
+        """The deadline this case's work item should carry, and where it came from.
+
+        **D2: the configured delivery-claim reporting window had no reader.**
+        `policy_delivery_claim_reporting_deadline` was written by
+        `_record_policy_outcome` and consumed by nothing, so every delivery
+        claim opened on the generic `support_acknowledgement` SLA --
+        `reporting_window: { business_days: 2, basis: DELIVERY_DATE }` sitting in
+        the release while the work item was due five minutes after it opened.
+
+        **Read, never recomputed.** The deadline is business-day arithmetic over
+        a business calendar (`policy.evaluator.reporting_window_deadline`), and
+        it was already done on the right side of the determinism boundary: by
+        `evaluate_case_eligibility`, an activity, which resolves the zone and
+        the holiday list that a workflow body may not touch. Doing it again here
+        would resolve a *second* calendar -- the live release's, which a
+        correction may have moved since the case was evaluated -- and produce
+        two deadlines for one claim, which is precisely what
+        `PolicyOutcome.delivery_claim_window` warns against. So this reads the
+        answer the evaluation recorded.
+
+        **`None` is a real answer.** A claim whose `delivery_date` the platform
+        never learned has no computable deadline; the evaluation records
+        `policy_delivery_claim_window_state: UNDETERMINED` and writes no
+        deadline fact, and nothing here invents one. The generic SLA stands and
+        the returned basis says that it is standing as a fallback.
+        """
+        facts = await self._repository.latest_case_facts(case_id)
+        route = _fact_text(facts, "policy_route")
+        if route != PolicyRoute.DELIVERY_CLAIM.value:
+            return None, SupportSlaBasis.SUPPORT_ACKNOWLEDGEMENT
+
+        recorded = _fact_text(facts, "policy_delivery_claim_reporting_deadline")
+        if recorded is None:
+            return None, SupportSlaBasis.DELIVERY_CLAIM_REPORTING_WINDOW_UNDETERMINED
+        try:
+            deadline = datetime.fromisoformat(recorded)
+        except ValueError:
+            logger.warning(
+                "delivery_claim_reporting_deadline_unreadable",
+                extra={"case_id": case_id, "value": recorded},
+            )
+            return None, SupportSlaBasis.DELIVERY_CLAIM_REPORTING_WINDOW_UNDETERMINED
+        if deadline.utcoffset() is None:
+            # `reporting_window_deadline` returns UTC. A naive value here is a
+            # fact somebody else wrote, and guessing its zone would move the
+            # deadline by hours in silence.
+            logger.warning(
+                "delivery_claim_reporting_deadline_not_aware",
+                extra={"case_id": case_id, "value": recorded},
+            )
+            return None, SupportSlaBasis.DELIVERY_CLAIM_REPORTING_WINDOW_UNDETERMINED
+        return deadline, SupportSlaBasis.DELIVERY_CLAIM_REPORTING_WINDOW
+
+    async def _record_support_sla_basis(self, case_id: str, basis: SupportSlaBasis) -> None:
+        """Put the basis on the case, beside the window state it follows from.
+
+        The work item carries the deadline; the fact log carries why it is that
+        deadline. One home for each, and this is the one a reader already
+        consults for provenance -- `policy_delivery_claim_window_state` is two
+        rows above it.
+
+        Written for every route, not only for claims. "This work item is on the
+        desk's own SLA" is a statement, and a basis recorded only when it is
+        interesting is a basis whose absence has to be interpreted.
+
+        Keyed on the case rather than on the attempt, because there is one
+        Channel B thread per case and therefore one basis; a retry re-derives
+        the same id and `_append_fact_once` recognises it.
+        """
+        await self._append_fact_once(
+            fact_id=f"support_sla_basis-{case_id}",
+            case_id=case_id,
+            fact_name="support_sla_basis",
+            value=basis.value,
+            agent_id="return-case-workflow",
+            channel=FactChannel.SYSTEM,
+            acquisition_method=FactAcquisition.DERIVED,
+            source_system="RETURN_CASE_WORKFLOW",
+            source_path="SUPPORT_WORK_ITEM_OPENED",
+        )
 
     @activity.defn(name="send_support_reminder")
     async def send_support_reminder(self, request: SendSupportReminderInput) -> None:
@@ -470,12 +1131,34 @@ class ReturnCaseActivities:
         )
 
     @activity.defn(name="record_support_outcome")
-    async def record_support_outcome(self, request: RecordSupportOutcomeInput) -> None:
-        """One return record per RMA Support issued.
+    async def record_support_outcome(
+        self, request: RecordSupportOutcomeInput
+    ) -> SupportOutcomeReceipt:
+        """Merge one Support notice into the case's RMAs, and say where it stands.
 
-        The ids are supplied by the workflow, so a retry re-uses them and the
-        unique index turns the second attempt into a no-op rather than a
-        duplicate RMA.
+        **Upsert by business identity** (plan sect. 10.2). The stable key is
+        `(caseId, returnReference)`, under the unique partial index
+        `repository.ensure_indexes` already declares -- the one whose comment
+        says a record "gets its RMA later from Support". What this replaces
+        swallowed the duplicate-key error and `continue`d, which is precisely
+        what made a second reply a no-op: the tracking number Support sent two
+        hours after the RMA reached the record for the first RMA and stopped
+        there, so a real case sits today with a label, an RMA and
+        `trackingReference: null`.
+
+        **A field arriving `null` never overwrites a value already present.** A
+        later notice states what it knows; the rest of it is silence, and
+        silence is not a deletion. The merge is computed once and used for both
+        stores, so the authoritative SQL row and the platform case cannot
+        disagree about which of the two a null meant.
+
+        **A replay writes nothing.** `changed` is the merge minus what the
+        record already holds, and it is empty for a redelivery -- so no update
+        runs, no fact is appended, and `cases.version` does not move. The
+        durable dedup is the unique `(caseId, supportEventId)` index in
+        `case_support_events`; this is the second line of it, and the one that
+        keeps a redelivered command from manufacturing a revision change on an
+        unchanged projection.
         """
         # T-14: the authoritative SQL return store commits FIRST, in one
         # transaction covering every RMA of this outcome. Only then is the
@@ -493,78 +1176,496 @@ class ReturnCaseActivities:
                 f"the RMAs for case {request.case_id} would exist in MongoDB and not "
                 "in the authoritative SQL return store"
             )
-        await self._persist_records_to_return_store(request)
+        plans = await self._plan_support_outcome(request)
+        await self._persist_records_to_return_store(request, plans)
 
-        for record, record_id in zip(request.records, request.return_record_ids, strict=False):
+        applied = False
+        for plan in plans:
+            if await self._apply_record(request, plan):
+                applied = True
+            await self._append_record_facts(request, plan)
+            await self._assign_items_to_record(request, plan)
+
+        await self._record_support_answer(request, issued=bool(plans))
+        completion = await self._assess_completion(request.case_id)
+        return SupportOutcomeReceipt(
+            record_ids=tuple(plan.record_id for plan in plans),
+            applied=applied,
+            completion_known=completion[0],
+            business_complete=completion[1],
+            awaiting=completion[2],
+            revision=completion[3],
+        )
+
+    async def _record_support_answer(
+        self, request: RecordSupportOutcomeInput, *, issued: bool
+    ) -> None:
+        """Write down what Support answered, before anything acts on it.
+
+        **`rejected` and `reason` arrive on every notice and used to be thrown
+        away.** The workflow read `rejected` to choose a status and this
+        activity read neither, so a refusal left exactly one trace on the case:
+        `cases.status: CLOSED` -- the same value `_close_business_complete`
+        writes for a return that finished. The projection could not tell them
+        apart and reported the refusal as `COMPLETED_EXTERNAL_SETTLEMENT`, a
+        credit settled outside the platform, while `awaiting` still named the
+        verification the refusal had just answered. This is the writer that
+        makes the two distinguishable; `status_mapping` is the reader.
+
+        **Ordered before `_assess_completion` and therefore before the
+        workflow's `_set_status`.** The status write is the workflow's next act
+        after this activity returns, so recording the answer afterwards would
+        leave a window in which the case is `CLOSED` with no answer beside it --
+        and a poll landing in that window reads a refused return as a completed
+        one. The fact is durable first, and the status catches up.
+
+        **Silence is not an answer.** `AUTHORIZED` is written only when Support
+        actually issued something, so a notice carrying neither a rejection nor
+        a record -- which states nothing about the case -- records nothing.
+
+        **The instant is the fact's, and the actor is nobody's.**
+        `append_case_fact` stamps `recordedAt`, so when Support answered needs
+        no field of its own. Who answered has no honest source here:
+        `SupportResponseNotice` carries no actor, and the person is known only
+        to `case_support_events.actorId`, on the far side of the signal. The
+        provenance below is therefore the same `return-support` / Channel B /
+        `SUPPORT_REPLY` the RMA facts carry -- it says who *recorded* the
+        answer, and claims nothing about who reached it.
+
+        Keyed on the Support event, exactly as `_append_record_facts` is: the
+        log is insert-only, so a second notice correcting the first needs its
+        own id or it would be absorbed as a duplicate and the correction lost.
+        A sender with no event id keeps the unsuffixed id, because for that
+        sender there is only ever one notice.
+        """
+        outcome: SupportOutcome | None = None
+        if request.rejected:
+            outcome = SupportOutcome.REJECTED
+        elif issued:
+            outcome = SupportOutcome.AUTHORIZED
+        if outcome is None:
+            return
+
+        suffix = f"-{request.support_event_id}" if request.support_event_id else ""
+        await self._append_fact_once(
+            fact_id=f"{SUPPORT_OUTCOME_FACT}-{request.case_id}{suffix}",
+            case_id=request.case_id,
+            fact_name=SUPPORT_OUTCOME_FACT,
+            value=outcome.value,
+            agent_id="return-support",
+            channel=FactChannel.CHANNEL_B,
+            acquisition_method=FactAcquisition.OBSERVED,
+            source_system="RETURN_SUPPORT",
+            source_path="SUPPORT_REPLY",
+        )
+        reason = (request.reason or "").strip()
+        if not reason:
+            # Support gave no reason. An empty one recorded beside the outcome
+            # would read as a reason that says nothing, which is worse than the
+            # absence it would be hiding.
+            return
+        await self._append_fact_once(
+            fact_id=f"{SUPPORT_OUTCOME_REASON_FACT}-{request.case_id}{suffix}",
+            case_id=request.case_id,
+            fact_name=SUPPORT_OUTCOME_REASON_FACT,
+            value=reason,
+            agent_id="return-support",
+            channel=FactChannel.CHANNEL_B,
+            acquisition_method=FactAcquisition.OBSERVED,
+            source_system="RETURN_SUPPORT",
+            source_path="SUPPORT_REPLY",
+        )
+
+    async def _plan_support_outcome(self, request: RecordSupportOutcomeInput) -> list[_RecordPlan]:
+        """Resolve each RMA of the notice against what the case already holds.
+
+        One read of the case's records, keyed by `returnReference`. That is the
+        business identity plan sect. 10.2 names, and it is the reason a second
+        reply about `RMA-1` updates `RMA-1` rather than colliding with it: the
+        workflow's minted id identifies an *attempt*, while the RMA identifies
+        the thing Support issued.
+        """
+        stored = await self._repository.list_return_records(request.case_id)
+        by_reference = {
+            str(document["returnReference"]): document
+            for document in stored
+            if document.get("returnReference")
+        }
+        plans: list[_RecordPlan] = []
+        for record, minted_id in zip(request.records, request.return_record_ids, strict=False):
+            existing = by_reference.get(record.return_reference)
+            plans.append(self._plan_for(record, existing, minted_id))
+        return plans
+
+    @staticmethod
+    def _plan_for(
+        record: SupportReturnRecord, existing: dict[str, Any] | None, minted_id: str
+    ) -> _RecordPlan:
+        merged: dict[str, Any] = {}
+        changed: dict[str, Any] = {}
+        for stored_key, attribute, _fact_name in RETURN_RECORD_MERGED_FIELDS:
+            incoming = getattr(record, attribute, None)
+            held = existing.get(stored_key) if existing is not None else None
+            value = incoming if incoming is not None else held
+            if value is None:
+                continue
+            merged[stored_key] = value
+            if held != value:
+                changed[stored_key] = value
+        return _RecordPlan(
+            record_id=(str(existing["returnRecordId"]) if existing is not None else minted_id),
+            incoming=record,
+            existing=existing,
+            merged=merged,
+            changed=changed,
+        )
+
+    async def _apply_record(self, request: RecordSupportOutcomeInput, plan: _RecordPlan) -> bool:
+        """Create the RMA or update it in place. Returns whether anything moved.
+
+        The create path is tried only for an RMA the case does not hold, and a
+        duplicate key there means a concurrent writer got in first -- so the
+        record is re-read and the plan becomes an update rather than being
+        abandoned. Abandoning it is the old behaviour, and it is what lost the
+        second reply.
+        """
+        if plan.existing is None:
             try:
                 created = await self._repository.create_return_record(
-                    return_record_id=record_id,
+                    return_record_id=plan.record_id,
                     case_id=request.case_id,
-                    return_reference=record.return_reference,
+                    return_reference=plan.incoming.return_reference,
                     status="ISSUED",
                     source_system="RETURN_SUPPORT",
                 )
-            except Exception:  # noqa: BLE001 - a replay re-issuing the same RMA
+            except Exception:  # noqa: BLE001 - a replay, or a concurrent writer
                 logger.info(
                     "return_record_already_recorded",
-                    extra={"case_id": request.case_id, "rma": record.return_reference},
+                    extra={"case_id": request.case_id, "rma": plan.incoming.return_reference},
                 )
-                continue
+                current = await self._stored_record(request.case_id, plan.incoming.return_reference)
+                if current is None:  # pragma: no cover - the insert failed for another reason
+                    raise
+                refreshed = self._plan_for(plan.incoming, current, plan.record_id)
+                plan.record_id = refreshed.record_id
+                plan.existing = refreshed.existing
+                plan.merged = refreshed.merged
+                plan.changed = refreshed.changed
+            else:
+                plan.record_id = str(created["returnRecordId"])
+                if plan.merged:
+                    await self._repository.update_return_record(
+                        plan.record_id, dict(plan.merged), expected_version=0
+                    )
+                return True
+
+        if not plan.changed:
+            # A redelivery, or a notice that repeats what the record already
+            # says. Nothing to write, and therefore no revision to move.
+            return False
+        return await self._update_record_once_retried(request, plan)
+
+    async def _update_record_once_retried(
+        self, request: RecordSupportOutcomeInput, plan: _RecordPlan
+    ) -> bool:
+        """Update at the version we read, and retry exactly once on a conflict.
+
+        One retry, and it re-reads rather than re-sending: the loser of the
+        compare-and-set is looking at a record another writer has moved, and
+        re-applying the same `$set` at a guessed version would be the lost
+        update the optimistic check exists to catch. If the winner already wrote
+        what this notice carries, the retry has nothing left to do and says so.
+
+        A second conflict propagates. The activity runs under `_PERSIST_RETRY`,
+        so Temporal re-runs the whole body -- which re-reads the record and
+        recomputes the merge, which is a better answer than a loop here that
+        could spin against a busy case.
+        """
+        expected = int((plan.existing or {}).get("version", 0))
+        try:
             await self._repository.update_return_record(
-                created["returnRecordId"],
-                {
-                    "trackingReference": record.tracking_reference,
-                    "labelReference": record.label_reference,
-                    "returnLocation": record.return_location,
-                    "shippingInstructionReference": record.shipping_instruction_reference,
-                },
-                expected_version=0,
+                plan.record_id, dict(plan.changed), expected_version=expected
             )
-            # Also a fact, and this is the step that reaches Channel A. The
-            # agent's turn context is built from the case's fact projection, so
-            # writing the RMA here is what makes it appear in the associate's
-            # *original* conversation on their next turn -- no new chat, no
-            # client-side join, no poll.
+            return True
+        except ConcurrencyConflictError:
+            current = await self._stored_record(request.case_id, plan.incoming.return_reference)
+            if current is None:  # pragma: no cover - the record vanished mid-update
+                raise
+            refreshed = self._plan_for(plan.incoming, current, plan.record_id)
+            plan.record_id = refreshed.record_id
+            plan.existing = refreshed.existing
+            plan.merged = refreshed.merged
+            plan.changed = refreshed.changed
+            if not plan.changed:
+                logger.info(
+                    "return_record_update_already_applied",
+                    extra={"case_id": request.case_id, "rma": plan.incoming.return_reference},
+                )
+                return False
+            await self._repository.update_return_record(
+                plan.record_id,
+                dict(plan.changed),
+                expected_version=int(current.get("version", 0)),
+            )
+            return True
+
+    async def _stored_record(self, case_id: str, return_reference: str) -> dict[str, Any] | None:
+        """The case's record for one RMA, read back under the business key."""
+        for document in await self._repository.list_return_records(case_id):
+            if document.get("returnReference") == return_reference:
+                return document
+        return None
+
+    async def _append_record_facts(
+        self, request: RecordSupportOutcomeInput, plan: _RecordPlan
+    ) -> None:
+        """The observation log for this RMA, and the step that reaches Channel A.
+
+        The agent's turn context is built from the case's fact projection, so
+        writing here is what makes a delayed tracking number appear in the
+        associate's *original* conversation on their next turn -- no new chat,
+        no client-side join, no poll.
+
+        **The fact id carries the Support event.** The log is insert-only
+        against a unique `factId`, so a second tracking number written under the
+        first one's id would be absorbed as a duplicate and lost -- the fact
+        would say what Support first said and never what it corrected. With the
+        event in the id, each notice appends its own observation and
+        `latest_case_facts` resolves which one stands. A sender with no event id
+        keeps the old shape, because for that sender there is only ever one
+        notice.
+
+        Only *changed* fields are appended. A notice repeating what the record
+        already holds is not a new observation, and writing it would move the
+        revision on a projection nothing changed.
+        """
+        await self._append_fact_once(
+            fact_id=f"rma-{plan.record_id}",
+            case_id=request.case_id,
+            fact_name="return_reference",
+            value=plan.incoming.return_reference,
+            agent_id="return-support",
+            channel=FactChannel.CHANNEL_B,
+            acquisition_method=FactAcquisition.OBSERVED,
+            source_system="RETURN_SUPPORT",
+            source_path="SUPPORT_REPLY",
+        )
+        suffix = f"-{request.support_event_id}" if request.support_event_id else ""
+        for stored_key, _attribute, fact_name in RETURN_RECORD_MERGED_FIELDS:
+            value = plan.changed.get(stored_key)
+            if value is None:
+                continue
             await self._append_fact_once(
-                fact_id=f"rma-{record_id}",
+                fact_id=f"{fact_name}-{plan.record_id}{suffix}",
                 case_id=request.case_id,
-                fact_name="return_reference",
-                value=record.return_reference,
+                fact_name=fact_name,
+                value=value,
                 agent_id="return-support",
                 channel=FactChannel.CHANNEL_B,
                 acquisition_method=FactAcquisition.OBSERVED,
                 source_system="RETURN_SUPPORT",
                 source_path="SUPPORT_REPLY",
             )
-            for name, value in (
-                ("tracking_reference", record.tracking_reference),
-                ("label_reference", record.label_reference),
-                ("return_location", record.return_location),
-            ):
-                if value is None:
-                    continue
-                await self._append_fact_once(
-                    fact_id=f"{name}-{record_id}",
-                    case_id=request.case_id,
-                    fact_name=name,
-                    value=value,
-                    agent_id="return-support",
-                    channel=FactChannel.CHANNEL_B,
-                    acquisition_method=FactAcquisition.OBSERVED,
-                    source_system="RETURN_SUPPORT",
-                    source_path="SUPPORT_REPLY",
-                )
-            for line in record.order_line_references:
-                for item in await self._repository.list_case_return_items(request.case_id):
-                    if item.get("orderLineId") == line and not item.get("returnRecordId"):
-                        await self._repository.assign_return_item_to_record(
-                            str(item["returnItemId"]),
-                            return_record_id=created["returnRecordId"],
-                            expected_version=int(item.get("version", 0)),
-                        )
-                        break
 
-    async def _persist_records_to_return_store(self, request: RecordSupportOutcomeInput) -> None:
+    async def _assign_items_to_record(
+        self, request: RecordSupportOutcomeInput, plan: _RecordPlan
+    ) -> None:
+        """Attach the RMA's order lines to the items that stand for them.
+
+        **A live hold is consumed by the assignment that supersedes it, in one
+        transaction** (plan sect. 12.3). `authorize_reserved_line` is the only
+        writer that moves `ACTIVE -> CONSUMED` and sets `returnRecordId` together,
+        and going around it is what would let the same units be counted twice:
+        `case_line_holdings` partitions a `(case, line)` pair onto *either* the
+        authorized item *or* the hold, so a line that gained an RMA while its
+        hold stayed `ACTIVE` would be subtracted once here and once again by
+        every other case's availability read until the TTL lapsed.
+
+        **A line with no live hold is still assigned, and that is deliberate.**
+        The hold's job is to keep two associates from selecting the same units
+        before either has an authorization; it is sized for a counter
+        conversation (`item_reservation_ttl_seconds`, thirty minutes) while
+        Support answers on a business-hours clock
+        (`support_response_wait_seconds`, eight *working* hours). By the time a
+        reply lands the hold has usually lapsed, and refusing the assignment then
+        would refuse an RMA that Support has already issued and that the
+        authoritative SQL return store already carries -- `record_support_outcome`
+        commits there first (T-14). The case would sit permanently out of step
+        with the authoritative store, and `_PERSIST_RETRY` would fail the
+        workflow after five attempts over a hold that lapsed hours earlier.
+
+        Nothing is double counted on that path either: `is_held` already reports
+        a lapsed hold as holding nothing, so the units it stood for are back in
+        everyone's availability read and the item is the only claim on them.
+
+        The two calls are not interchangeable and the choice is made per line,
+        from the reservation state read once for the whole outcome. Losing the
+        consume to the expiry sweep between that read and the write is not an
+        error either -- the sweep and the authorization contend on one document
+        by design -- so it falls through to the same assignment a never-held line
+        would take, and says so in the log.
+        """
+        if not plan.incoming.order_line_references:
+            return
+        held = await self._held_lines(request.case_id)
+        for line in plan.incoming.order_line_references:
+            for item in await self._repository.list_case_return_items(request.case_id):
+                if item.get("orderLineId") != line or item.get("returnRecordId"):
+                    continue
+                if line in held and await self._authorize_held_line(request, plan, line):
+                    break
+                await self._repository.assign_return_item_to_record(
+                    str(item["returnItemId"]),
+                    return_record_id=plan.record_id,
+                    expected_version=int(item.get("version", 0)),
+                )
+                break
+
+    async def _held_lines(self, case_id: str) -> frozenset[str]:
+        """The lines this case still holds an unexpired `ACTIVE` reservation on.
+
+        `is_held` rather than the stored state alone: a hold past its deadline is
+        `ACTIVE` in the document and holds nothing in the arithmetic, and treating
+        it as live here would route the assignment through a consume that the
+        conditional update is guaranteed to refuse.
+
+        Read through `getattr` for the reason `_assess_completion` does: several
+        suites register this activity set against a narrower repository port, and
+        a case with no reservation collection behind it must record its outcome
+        exactly as it did before the reservation lifecycle existed.
+        """
+        lister = getattr(self._repository, "list_case_reservations", None)
+        if lister is None:
+            return frozenset()
+        now = datetime.now(UTC)
+        return frozenset(
+            view.order_line_reference
+            for view in await lister(case_id, states=(ReservationState.ACTIVE,))
+            if is_held(view, now=now)
+        )
+
+    async def _authorize_held_line(
+        self, request: RecordSupportOutcomeInput, plan: _RecordPlan, line: str
+    ) -> bool:
+        """Consume the hold and attach the item in one transaction. Did it win?
+
+        `False` means the hold was settled between the read above and this write
+        -- the expiry sweep, or a concurrent authorization -- and the caller
+        falls back to the plain assignment. It never means "assigned"; the two
+        outcomes of this method are "the item now carries the RMA and the hold is
+        `CONSUMED`" and "nothing was written".
+        """
+        authorize = getattr(self._repository, "authorize_reserved_line", None)
+        if authorize is None:
+            return False
+        try:
+            await authorize(
+                case_id=request.case_id,
+                order_line_reference=line,
+                return_record_id=plan.record_id,
+            )
+        except QuantityReservationExpiredError as lost:
+            logger.info(
+                "order_line_hold_settled_before_authorization",
+                extra={
+                    "case_id": request.case_id,
+                    "order_line_reference": line,
+                    "reservation_state": (lost.state.value if lost.state is not None else "ABSENT"),
+                },
+            )
+            return False
+        return True
+
+    def _requirement_table(self) -> ReturnMethodRequirementTable | None:
+        """The released return-method requirement table, for the completion read.
+
+        `None` means **this worker has no configuration source at all** -- the
+        activity set was constructed without the `configuration` callable. That
+        is a property of the wiring, not of the moment: it is true for every
+        pre-Phase-4 activity double and for any worker registered against a
+        narrower surface, it is identical on every retry, and no amount of
+        retrying makes a table appear. It is the same class of fact as a
+        repository with no `load_case_projection_state`, so `_assess_completion`
+        reports it the same way -- as "we cannot tell".
+
+        **A wired worker whose configuration is not available raises instead.**
+        The callable is bound to the activation state in
+        `scripts/run_return_workflow_worker.py`, so `None` from it means a
+        release is not active *right now* -- startup, or an activation that has
+        not landed. That is the situation `api/cases.py::_requirement_table`
+        answers `503 ... "retryable": True` to, and the activity's equivalent of
+        a retryable 503 is to fail the attempt and let `_PERSIST_RETRY` run it
+        again. Reporting it as "we cannot tell" would be worse than untrue: a
+        drained case whose completion is unknown makes the run loop return its
+        outcome and stop (`return self._outcome()`), so a transient
+        configuration gap would leave every case Support answered during it
+        open, unassessed and with no execution watching it -- permanently, and
+        behind nothing louder than a warning log.
+
+        What it must never do is substitute `DEFAULT_RETURN_METHOD_REQUIREMENTS`.
+        The workflow's "keep waiting or close" and the API's `businessComplete`
+        would then be two answers computed from two tables, and the operator's
+        release would govern only one of them.
+        """
+        if self._configuration is None:
+            return None
+        configuration = self._configuration()
+        if configuration is None:
+            raise RuntimeError(
+                "no return configuration is active, so the return-method requirement table "
+                "cannot be resolved and case completion cannot be assessed; the attempt is "
+                "failed rather than assessed from a code constant"
+            )
+        return build_return_method_requirement_table(configuration)
+
+    async def _assess_completion(self, case_id: str) -> tuple[bool, bool, tuple[str, ...], int]:
+        """Where the case stands, as the read contract computes it.
+
+        `(known, businessComplete, awaiting, revision)`. The workflow needs this
+        to decide whether to keep waiting, and it may not compute it itself: the
+        answer is a set difference over the requirement table, the policy
+        decision and every child collection of the case.
+
+        `known` is `False` rather than a guess whenever the repository cannot
+        assemble the projection -- an activity double, a worker wired to a
+        narrower port. The run loop then behaves exactly as it did before this
+        phase. Reported rather than defaulted, because "not complete" and "we
+        cannot tell" send a case to opposite fates: one keeps waiting and the
+        other closes.
+
+        The requirement table is resolved **before** the guard below and
+        deliberately outside it. `_requirement_table` raising is the one failure
+        here that must reach Temporal: the guard exists to stop an unreadable
+        case from being called complete, and swallowing a missing release into
+        it would turn "this platform has not been told what a return needs" into
+        a warning log and an unsupervised case.
+        """
+        loader = getattr(self._repository, "load_case_projection_state", None)
+        if loader is None:
+            return (False, False, (), 0)
+        requirements = self._requirement_table()
+        if requirements is None:
+            return (False, False, (), 0)
+        try:
+            state = await loader(case_id)
+            if state is None:
+                return (False, False, (), 0)
+            projection = project_case(state, requirements=requirements)
+        except Exception:  # noqa: BLE001 - a completion we cannot read is not a completion
+            logger.warning(
+                "case_completion_not_assessable", extra={"case_id": case_id}, exc_info=True
+            )
+            return (False, False, (), 0)
+        return (
+            True,
+            projection.businessComplete,
+            tuple(str(dimension) for dimension in projection.awaiting),
+            projection.revision,
+        )
+
+    async def _persist_records_to_return_store(
+        self, request: RecordSupportOutcomeInput, plans: list[_RecordPlan]
+    ) -> None:
         """Project the support outcome onto the SQL return store's contract.
 
         Item ids are derived with `uuid5` from the record id and the order
@@ -574,6 +1675,31 @@ class ReturnCaseActivities:
 
         Items keep their record. Nothing here promotes a label, tracking
         reference or return location onto the case (contract C3).
+
+        **The merged values go to SQL, not the notice's.** The upsert here is a
+        whole-row `UPDATE ... SET`, so sending the notice's raw nulls would
+        blank the label column of a record whose second reply carried only a
+        tracking number -- the same erasure the Mongo merge exists to prevent,
+        in the store that is authoritative. One merge, computed once, used by
+        both writers, so the two cannot disagree about what a null meant.
+
+        `return_method` joins that merge (D23). Its column landed in
+        `sql_migrations/007_return_record_method.sql`, so the authoritative row
+        now carries the value the completion profile is computed from rather
+        than only the platform case and the per-record fact. It goes through
+        `plan.merged` like every other field for the reason above: a second
+        reply carrying a tracking number and no method would otherwise blank the
+        method column of a record Support has already decided.
+
+        `carrier` joins it on the same terms (audit finding #9). Its column
+        landed in `sql_migrations/008_return_record_carrier.sql`, so the
+        authoritative row carries the carrier `ShipmentProjection.carrier`
+        reports rather than only the platform case -- and it goes through
+        `plan.merged` so a later notice with no carrier cannot blank it either.
+
+        The ordering is unchanged and load-bearing (T-14): this runs before the
+        platform case is updated, so a Mongo case can never report a method the
+        SQL return store never received.
 
         The adapter's contracts are imported here rather than at module scope
         so `workflows` does not pull `pymssql` in just by being imported --
@@ -596,7 +1722,9 @@ class ReturnCaseActivities:
         }
 
         records: list[ReturnRecordWrite] = []
-        for record, record_id in zip(request.records, request.return_record_ids, strict=False):
+        for plan in plans:
+            record = plan.incoming
+            record_id = plan.record_id
             items: list[ReturnRecordItemWrite] = []
             for line in record.order_line_references:
                 source = items_by_line.get(str(line), {})
@@ -623,10 +1751,12 @@ class ReturnCaseActivities:
                 ReturnRecordWrite(
                     return_record_id=record_id,
                     return_reference=record.return_reference,
-                    label_reference=record.label_reference,
-                    tracking_reference=record.tracking_reference,
-                    return_location=record.return_location,
-                    shipping_instruction_reference=record.shipping_instruction_reference,
+                    label_reference=plan.merged.get("labelReference"),
+                    tracking_reference=plan.merged.get("trackingReference"),
+                    return_location=plan.merged.get("returnLocation"),
+                    shipping_instruction_reference=plan.merged.get("shippingInstructionReference"),
+                    return_method=plan.merged.get("returnMethod"),
+                    carrier=plan.merged.get("carrier"),
                     items=tuple(items),
                 )
             )

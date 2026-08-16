@@ -244,7 +244,18 @@ async def _run() -> None:
         )
         activities = OrderDiscoveryActivities(coordinator=coordinator, schema=schema)
 
-        worker = create_order_discovery_worker(temporal, activities)
+        # The queue the *dispatching* side already reads from settings
+        # (`main.py` starts the workflow on
+        # `settings.order_discovery_workflow_task_queue`). Listening on the
+        # module default instead made the setting half-wired: pointing a
+        # deployment at its own queue moved the dispatch and left every worker
+        # polling `return-platform-order-discovery-v1`, so the turns went
+        # nowhere and the workflow simply never got picked up. It is also what
+        # makes a second worker on a private queue possible, which is how the
+        # MANUAL reasoning path is exercised without diverting the shared one.
+        worker = create_order_discovery_worker(
+            temporal, activities, task_queue=settings.order_discovery_workflow_task_queue
+        )
         operational_repository = OperationalRepository(platform_mongo, settings)
         instance_id = f"{socket.gethostname()}-{uuid.uuid4().hex[:8]}"
 

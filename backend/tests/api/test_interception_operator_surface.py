@@ -179,6 +179,11 @@ def test_the_queue_listing_never_carries_the_payload(
             "interceptionId",
             "taskId",
             "status",
+            # Which hold point this is: a request that has not been sent, or a
+            # response that has come back. A routing label like `taskId`, and
+            # like `taskId` it says nothing about the content -- which is what
+            # keeps this an allowlist rather than a growing leak.
+            "point",
             "createdAt",
             "expiresAt",
             "answeredBy",

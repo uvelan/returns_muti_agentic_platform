@@ -31,16 +31,20 @@ from return_platform.api.canonical_session import router as canonical_session_ro
 from return_platform.api.cases import router as cases_router
 from return_platform.api.dependencies import router as dependencies_router
 from return_platform.api.dependency_probes import (
+    CONFIGURATION_HEALTH_ATTRIBUTE,
+    probe_configuration,
     probe_mongodb,
     probe_neo4j,
     probe_source_mongodb,
     probe_sqlserver,
     probe_temporal,
     probe_valkey,
+    resolve_known_agent_policy_ids,
 )
 from return_platform.api.dependency_simulator import router as dependency_simulator_router
 from return_platform.api.graph_sync import router as graph_sync_router
 from return_platform.api.integration_outbox import router as integration_outbox_router
+from return_platform.api.order_lines import router as order_lines_router
 from return_platform.api.physical_operations import router as physical_operations_router
 from return_platform.api.production_workflow import router as production_workflow_router
 from return_platform.api.proposals import router as governance_proposals_router
@@ -111,6 +115,7 @@ from return_platform.configuration.process_adoption import (
 from return_platform.configuration.return_configuration import (
     LoadedReturnConfiguration,
     load_return_configuration,
+    require_healthy_configuration,
 )
 from return_platform.configuration.runtime_activation import (
     ApplicationAdoptionState,
@@ -121,7 +126,7 @@ from return_platform.configuration.runtime_integrations import (
     apply_graph_runtime_configuration,
     verify_runtime_validation_receipts,
 )
-from return_platform.configuration.settings import BACKEND_ROOT, Settings
+from return_platform.configuration.settings import Settings
 from return_platform.configuration.snapshot import (
     AGENT_MODULES_DOMAIN_KEY,
     ConfigurationSnapshotBuilder,
@@ -536,8 +541,17 @@ async def lifespan(
             modules = payloads.get(AGENT_MODULES_DOMAIN_KEY) if isinstance(payloads, dict) else None
             return modules if isinstance(modules, Mapping) else {}
 
+        # `settings.configuration_directory`, not `BACKEND_ROOT / "config"`.
+        # `BACKEND_ROOT` is `parents[3]` of the settings module, which is the
+        # backend root from a source checkout and `/usr/local/lib/python3.13`
+        # inside the image -- the runtime stage copies `config` and `scripts`
+        # but not `src`, so `return_platform` imports from site-packages. The
+        # seven single-file defaults are each overridden by a `PLATFORM_*_PATH`
+        # env var and so never noticed; this one was not a setting at all, so
+        # the Configuration screen's Agents section answered 500 in every
+        # container while every test -- which runs from the checkout -- passed.
         app.state.agent_configuration = AgentConfigurationService(
-            BACKEND_ROOT / "config", overlay=_released_agent_modules
+            settings.configuration_directory, overlay=_released_agent_modules
         )
 
         await _initialize_mongodb(
@@ -591,6 +605,29 @@ async def lifespan(
             dependency_simulation_baseline_path=(baseline_dependency_simulation_configuration.path),
             resources=resources,
         )
+
+        # Plan sect. 5.4's production/dev split, run once the released
+        # configuration and the active schema both exist -- which is why it is
+        # here and not in `Settings.validate_relationships`, whose Vault rule it
+        # otherwise copies exactly. In production an unset or dangling Copilot
+        # agent mapping, or an unpublished eligibility policy, refuses the
+        # process; everywhere else the failures are recorded, `/health/ready`
+        # reports the configuration probe unhealthy, and the turn route 503s.
+        configuration_failures = require_healthy_configuration(
+            return_configuration.configuration,
+            await resolve_known_agent_policy_ids(resources, settings),
+            environment=settings.environment,
+        )
+        setattr(app.state, CONFIGURATION_HEALTH_ATTRIBUTE, configuration_failures)
+        for configuration_failure in configuration_failures:
+            logger.error(
+                "configuration_health_check_failed",
+                extra={
+                    "check": configuration_failure.check,
+                    "code": configuration_failure.code,
+                },
+            )
+
         if resources.mongo is not None:
             await verify_runtime_validation_receipts(
                 resources.mongo,
@@ -631,6 +668,12 @@ async def lifespan(
                 behavior_domains=configuration_snapshot.domain_payloads,
             )
             await MongoSimulationRepository(resources.mongo, settings).ensure_indexes()
+            # Support's own queue indexes only. This used to rebuild the whole
+            # integration outbox as well -- a second, differently-shaped copy of
+            # what `operational_repository.ensure_indexes()` above had already
+            # built moments earlier. The outbox definition now lives in
+            # `operations.integrations.outbox.ensure_integration_outbox_indexes`
+            # and this process builds it exactly once, from the repository.
             await ReturnSupportService(
                 client=resources.mongo,
                 settings=settings,
@@ -1202,8 +1245,22 @@ def create_app(
                 },
             )
 
-        probe_names = ("mongodb", "source_mongodb", "sqlserver", "neo4j", "valkey", "temporal")
-        probe_results = await asyncio.gather(
+        # Configuration validity is a probe like any other (plan sect. 5.4), so
+        # a monitor that trips on an unavailable dependency trips on a dangling
+        # agent mapping too. Started first and awaited last so it runs
+        # concurrently with the six network probes; it is kept out of the
+        # `gather` only because it returns a report rather than a bare result.
+        configuration_task = asyncio.create_task(probe_configuration(request))
+        probe_names = (
+            "mongodb",
+            "source_mongodb",
+            "sqlserver",
+            "neo4j",
+            "valkey",
+            "temporal",
+            "configuration",
+        )
+        dependency_results = await asyncio.gather(
             probe_mongodb(request),
             probe_source_mongodb(request),
             probe_sqlserver(request),
@@ -1211,6 +1268,8 @@ def create_app(
             probe_valkey(request),
             probe_temporal(request),
         )
+        configuration_report = await configuration_task
+        probe_results = (*dependency_results, configuration_report.result)
         dependencies = {
             name: result.model_dump(mode="json")
             for name, result in zip(probe_names, probe_results, strict=True)
@@ -1236,6 +1295,15 @@ def create_app(
                         "source",
                         "unknown",
                     ),
+                    "healthy": (configuration_report.result.status is DependencyStatus.HEALTHY),
+                    # Each failing check named individually. The probe's
+                    # `error_code` is one closed-enum value for the whole
+                    # dependency, and "the agent mapping is dangling" and "no
+                    # eligibility policy is published" have different operators
+                    # and different fixes.
+                    "failed_checks": [
+                        failure.model_dump(mode="json") for failure in configuration_report.failures
+                    ],
                 },
             },
         )
@@ -1275,6 +1343,11 @@ def create_app(
     fastapi_app.include_router(agent_configuration_router)
     fastapi_app.include_router(canonical_returns_router)
     fastapi_app.include_router(cases_router)
+    # The order's lines and the selection that holds quantity against them
+    # (plan sect. 12). Mounted on the same `/api/cases` prefix because the case
+    # is the authorization boundary; a separate router because the resource is
+    # the order rather than the case projection.
+    fastapi_app.include_router(order_lines_router)
     # SHIP-01's last link. The whole chain below this route -- SQL write,
     # APPLIED-only targeted graph sync, fulfilment read, case facts -- existed
     # and was proven on real infrastructure with no way in; a carrier event could

@@ -36,6 +36,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from neo4j import AsyncDriver
 from pydantic import BaseModel, ConfigDict
 
+from return_platform.configuration.return_configuration import (
+    LoadedReturnConfiguration,
+    validate_copilot_agent_binding,
+)
 from return_platform.configuration.settings import Settings
 from return_platform.dynamic_knowledge.config_loader import resolve_active_schema
 from return_platform.dynamic_knowledge.graph.generation import LEGACY_GENERATION_ID
@@ -55,6 +59,11 @@ from return_platform.dynamic_knowledge.knowledge.query_plan import (
     QueryOperation,
     TraversalStep,
 )
+from return_platform.dynamic_knowledge.lifecycle.handle import DEFAULT_SNAPSHOT_NAME
+from return_platform.dynamic_knowledge.lifecycle.mongo_store import (
+    ACTIVE_RUNTIME_SNAPSHOTS_COLLECTION,
+    MongoActiveRuntimeSnapshotStore,
+)
 from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 from return_platform.resources import RuntimeResources
@@ -63,10 +72,6 @@ from return_platform.security.principal import Principal
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 router = APIRouter(prefix="/api/return-history", tags=["Return History"])
-
-# The policy this surface answers to. The console is a second caller of the same
-# knowledge, not a second set of permissions over it -- see the module docstring.
-_AGENT_ID = "order-discovery-agent"
 
 # One page of history. Deliberately well under QuerySafetyPolicy.max_rows: a
 # customer with two hundred returns is a report, not a counter conversation, and
@@ -175,12 +180,76 @@ async def _active_schema(resources: RuntimeResources, settings: Settings) -> Act
     return await resolve_active_schema(settings.dynamic_knowledge_schema_path, releases)
 
 
-def _guard_context(request: Request, schema: ActiveSchema) -> GuardContext:
+async def _active_generation(resources: RuntimeResources, settings: Settings) -> str:
+    """Which generation serves this request.
+
+    The same pointer `lifecycle/handle.py` resolves -- the `ActiveRuntimeSnapshot`
+    the activation compare-and-swap moves -- so this surface and the order agent
+    cannot disagree about what is live. No lease is taken: this is a single
+    bounded read that completes inside one request, not a reasoning turn a
+    retirement could outlive, and `acquire_read` yields unleased handles anyway
+    when no lease store is configured.
+
+    Falls back to `LEGACY_GENERATION_ID` when no rebuild has ever activated,
+    which is what `MongoGraphStateProvider.active_generation` falls back to and
+    what a graph predating the protocol is actually written under.
+    """
+    if resources.mongo is None:
+        return LEGACY_GENERATION_ID
+    snapshots = MongoActiveRuntimeSnapshotStore(
+        resources.mongo[settings.mongo_database][ACTIVE_RUNTIME_SNAPSHOTS_COLLECTION]
+    )
+    snapshot = await snapshots.read(snapshot_name=DEFAULT_SNAPSHOT_NAME)
+    return LEGACY_GENERATION_ID if snapshot is None else snapshot.graph_generation_id
+
+
+def _copilot_agent_id(request: Request, schema: ActiveSchema) -> str:
+    """Which policy bounds this surface -- resolved, never assumed.
+
+    The console answers to the Order Discovery agent's own policy (see the module
+    docstring), and *which* agent that is, is a deployment statement:
+    `copilot.order_discovery_agent_id` in the active return configuration, the
+    same value `/api/runtime-config` republishes to the Copilot. Read here rather
+    than restated as a literal, because a literal is only correct until the next
+    schema release renames the agent -- at which point the Copilot would follow
+    the renamed mapping and this surface would keep naming a policy that no
+    longer exists, failing with a `KeyError` and a 500. Same defect Phase 1
+    removed from the frontend, one module further back.
+
+    Not a fallback either. `validate_copilot_agent_binding` refuses an unset
+    binding and one that names no published policy; both end as 503 with the
+    guard's own sentence, because a console that quietly picks some other agent's
+    permissions is worse than a console that says it is misconfigured.
+    """
+    loaded = getattr(request.app.state, "return_configuration", None)
+    if not isinstance(loaded, LoadedReturnConfiguration):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "RETURN_HISTORY_UNAVAILABLE",
+                "message": "The return configuration is not loaded.",
+                "retryable": True,
+            },
+        )
+    try:
+        return validate_copilot_agent_binding(loaded.configuration, schema.agent_policies.keys())
+    except ValueError as invalid:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "COPILOT_AGENT_CONFIGURATION_INVALID",
+                "message": str(invalid),
+                "retryable": False,
+            },
+        ) from invalid
+
+
+def _guard_context(request: Request, schema: ActiveSchema, agent_id: str) -> GuardContext:
     principal = cast(Principal, request.state.principal)
     branch_ids_raw: Any = getattr(request.state, "branch_ids", ())
     return GuardContext(
         schema=schema,
-        agent_policy=schema.agent_policies[_AGENT_ID],
+        agent_policy=schema.agent_policies[agent_id],
         principal=PrincipalContext(
             principal_id=principal.subject,
             tenant_id=str(getattr(request.state, "tenant_id", "default")),
@@ -200,10 +269,18 @@ class _GraphReader:
         database: str,
         schema: ActiveSchema,
         guard_context: GuardContext,
+        graph_generation_id: str,
     ) -> None:
         self._gateway = Neo4jKnowledgeGateway(driver, database=database)
         self._schema = schema
         self._guard_context = guard_context
+        # Which generation this surface answers from. It used to be
+        # `LEGACY_GENERATION_ID` with a comment saying the value was
+        # documentation because the compiler emitted no generation predicate and
+        # the gateway discarded the argument. Both of those are now false: a
+        # compiled read is pinned to this id, so passing a literal here would
+        # answer every question from whatever `legacy-live` happens to hold.
+        self._graph_generation_id = graph_generation_id
         self._schema_guard = SchemaQueryGuard()
         self._safety_guard = QuerySafetyGuard(QuerySafetyPolicy())
         self._compiler = CypherCompiler()
@@ -214,12 +291,7 @@ class _GraphReader:
         compiled = self._compiler.compile_read(self._schema, plan)
         result = await self._gateway.execute(
             schema=self._schema,
-            # The generation this graph is written into. `CypherCompiler` does
-            # not generation-scope a read and the gateway discards the argument,
-            # so this documents which generation the answer belongs to rather
-            # than constraining it -- exactly the property the agent's own reads
-            # have, and not something to diverge from here.
-            graph_generation_id=LEGACY_GENERATION_ID,
+            graph_generation_id=self._graph_generation_id,
             plan=plan,
             compiled_cypher=compiled.cypher,
             parameters=compiled.parameters,
@@ -425,7 +497,8 @@ async def read_return_history(
         driver=resources.neo4j,
         database=settings.neo4j_database,
         schema=schema,
-        guard_context=_guard_context(request, schema),
+        guard_context=_guard_context(request, schema, _copilot_agent_id(request, schema)),
+        graph_generation_id=await _active_generation(resources, settings),
     )
 
     start_entity_id: str

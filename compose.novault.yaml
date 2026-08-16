@@ -30,6 +30,14 @@
 # The values come from the same `.env` the datastore containers are configured
 # with, so they match by construction rather than by being copied.
 #
+# It also drops `runtime-configuration-init`'s `depends_on: vault`. That gate is
+# the last thread tying this profile to a service it does not use: Vault's
+# healthcheck passes while sealed, but it cannot pass while Vault is *stopped*,
+# and "stopped" is the state a developer who wants Vault out of the loop will
+# actually leave it in. Nothing else in `compose.yaml` waits on Vault, so this is
+# the only edge that needed cutting. The `vault` service itself is left alone --
+# it can run, sealed and ignored, or not run at all.
+#
 # SECURITY NOTE
 # -------------
 # This puts real credentials in the container environment instead of a sealed
@@ -62,6 +70,15 @@ x-novault-environment: &novault-environment
 services:
   runtime-configuration-init:
     environment: *novault-environment
+    # `!override` replaces the mapping instead of merging into it, which is the
+    # only way to REMOVE a dependency from an override file. Every entry except
+    # `vault` is restated verbatim from `compose.yaml`; the migrations this init
+    # runs still need Neo4j up and the SQL Server database created first.
+    depends_on: !override
+      neo4j:
+        condition: service_healthy
+      sqlserver-init:
+        condition: service_completed_successfully
   backend:
     environment: *novault-environment
   return-workflow-worker:

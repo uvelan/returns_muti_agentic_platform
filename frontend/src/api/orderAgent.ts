@@ -20,11 +20,29 @@ export type StatementType =
   | "REASONED_SUGGESTION"
   | "CLARIFICATION_QUESTION";
 
+/**
+ * One citation: a path into a named query's result, and the value read there.
+ *
+ * Not a bare query id. `HallucinationGuard` resolves `result_path` against the
+ * result of `query_execution_id` and compares what it finds to
+ * `expected_value`, so a reference that named only the query would name a
+ * search without naming a fact -- uncheckable by construction. This type was
+ * `string[]` here for long enough that a mock was written to match it; the
+ * backend model has always been this shape.
+ */
+export type EvidenceReference = {
+  query_execution_id: string;
+  /** Segments, not a dotted string -- array indices are their own segment. */
+  result_path: string[];
+  /** Absent for a citation that points at a subtree rather than a scalar. */
+  expected_value?: unknown;
+};
+
 export type ResponseStatement = {
   statement_id: string;
   statement_type: StatementType;
   text: string;
-  evidence_refs?: string[];
+  evidence_refs?: EvidenceReference[];
   source_message_id?: string | null;
 };
 
@@ -32,6 +50,13 @@ export type QueryEvidence = {
   query_execution_id: string;
   schema_version: string;
   graph_generation_id: string;
+  /**
+   * All three checksums are required by the contract. The two plan checksums
+   * were missing from this type entirely, which is why fixtures could omit
+   * them and still type-check.
+   */
+  logical_plan_checksum: string;
+  compiled_query_checksum: string;
   result: unknown;
   result_checksum: string;
 };
@@ -42,6 +67,32 @@ export type StructuredAgentResponse = {
   statements: ResponseStatement[];
   requested_input?: string | null;
   suggestions?: string[];
+};
+
+/**
+ * One thing the conversation has established, as the model reported it.
+ *
+ * **This is the honest source of "extracted facts", and it is not the
+ * statements.** A `ResponseStatement` is prose the agent said; a captured fact
+ * is a named value the model pulled out of the associate's own sentence,
+ * validated against `clarification_policy.fields` and merged across turns. The
+ * copilot's facts panel briefly rendered statements instead and showed the
+ * agent narrating its own reasoning -- "Line 1 has no product recorded against
+ * it" -- under a heading promising extracted fields.
+ *
+ * `name` is the configured field name (`product_sku`, `return_reason`, …) and
+ * `label` its associate-facing wording. `status` is the re-ask rule's verdict:
+ * anything other than `USABLE` is a fact the conversation still owes the
+ * associate a question about, so it must not be rendered as settled.
+ */
+export type CapturedFact = {
+  name: string;
+  value?: unknown;
+  /** `USABLE` | `CONFLICTING` | `INVALID` | `AMBIGUOUS` | `STALE` | `CONFIRMATION_REQUIRED`. */
+  status: string;
+  label?: string;
+  /** `STATED` or `DERIVED`. Never `OBSERVED` -- no source system said this. */
+  acquisition?: string;
 };
 
 export type AgentTurnResult = {
@@ -61,6 +112,12 @@ export type AgentTurnResult = {
    */
   case_id?: string | null;
   query_evidence: QueryEvidence[];
+  /**
+   * Everything this conversation has established, not only this turn's
+   * additions. Optional because a turn committed before the backend carried
+   * the field replays without it.
+   */
+  captured_facts?: CapturedFact[];
   model_provider: string;
   model_name: string;
   /**

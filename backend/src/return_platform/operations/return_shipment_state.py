@@ -8,7 +8,16 @@ of C4 -- **fulfilment-readable**, and reaching the person who asked.
 The chain, in order, and each link is somewhere you can stand and look at it:
 
     update -> dbo.return_tracking -> targeted graph sync -> fulfilment read
+           -> the parcel on the case's return record
            -> case fact -> the associate's next turn
+
+The parcel link was missing until D1 was found against the running stack. Facts
+reach `facts[]` and nothing else; `returnRecords[].shipments` is assembled from
+the case aggregate's return records, so an accepted carrier update left the read
+model with no package at all -- `awaiting` stayed `['LABEL', 'TRACKING']` for a
+return that had been tendered, and only a second Support reply repeating the
+tracking number closed it. `_mirror_parcels` is that link, and it mirrors the
+authoritative rows rather than the update in hand.
 
 The last link is the one that is easy to miss and is the whole point. A shipment
 status sitting in SQL, or even in the graph, is invisible to the person who asked
@@ -38,6 +47,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
@@ -79,6 +89,19 @@ FULFILLMENT_EVIDENCE_FACT = "shipment_evidence"
 UNRESOLVED_GENERATION = "UNRESOLVED"
 
 
+def _reference(value: object) -> str | None:
+    """A non-blank identifier out of a SQL row, or nothing.
+
+    Blank reads as absent for the reason `case_projection/assembly.py::_text`
+    gives: a `tracking_reference` of `""` would satisfy "this RMA has a parcel"
+    and complete a return that has none.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 class ShipmentStatePort(Protocol):
     """The slice of `SQLBusinessStateRepository` this service uses.
 
@@ -93,9 +116,31 @@ class ShipmentStatePort(Protocol):
         self, return_reference: str
     ) -> dict[str, Any] | None: ...
 
+    #: Every parcel the authoritative store holds for this RMA. Read rather than
+    #: taken from the update in hand, so what the case aggregate ends up holding
+    #: is `dbo.return_tracking` itself and not one caller's memory of it -- an
+    #: RMA whose second parcel was recorded while the case was unresolvable is
+    #: mirrored whole on the next reading rather than staying half-visible.
+    async def read_shipment_state(self, return_reference: str) -> list[dict[str, Any]]: ...
 
-class CaseFactPort(Protocol):
-    """The one write this service makes to the case, and nothing more."""
+
+class CaseWritePort(Protocol):
+    """The two writes this service makes to the case, and nothing more.
+
+    Both are needed and neither substitutes for the other. The facts say what
+    the platform concluded about the parcel; `record_case_shipment` says the
+    parcel *exists*, which is the half that was missing (D1) -- facts do not
+    reach `returnRecords[].shipments`, so the tracking number a carrier filed
+    was invisible to `awaiting` and to every client polling for it.
+    """
+
+    async def record_case_shipment(
+        self,
+        *,
+        return_record_id: str,
+        tracking_reference: str,
+        carrier: str | None = ...,
+    ) -> bool: ...
 
     async def append_case_fact(
         self,
@@ -150,7 +195,7 @@ class ReturnShipmentStateService:
         self,
         *,
         business_state: ShipmentStatePort,
-        repository: CaseFactPort,
+        repository: CaseWritePort,
         observations: ShipmentObservationPort | None = None,
     ) -> None:
         self._business_state = business_state
@@ -212,6 +257,7 @@ class ReturnShipmentStateService:
             current_status=observation.current_status if observation else None,
         )
         if case_id is not None:
+            await self._mirror_parcels(return_reference, record)
             await self._record_on_case(case_id, reading)
         else:
             logger.info(
@@ -256,6 +302,57 @@ class ReturnShipmentStateService:
                 # audit trail nothing was read at.
                 graph_generation_id=UNRESOLVED_GENERATION,
                 unavailable_reason=type(error).__name__.upper(),
+            )
+
+    async def _mirror_parcels(
+        self, return_reference: str, record: Mapping[str, Any] | None
+    ) -> None:
+        """Put this RMA's authoritative parcels onto the case's return record (D1).
+
+        The link that was missing. `record_shipment_update` writes
+        `dbo.return_tracking`, the sync writes the graph, and
+        `_record_on_case` writes what the platform concluded -- but nothing wrote
+        the *parcel*, and `returnRecords[].shipments` is assembled from the case
+        aggregate alone. So a carrier update left `awaiting` reporting
+        `['LABEL', 'TRACKING']` for a return that had demonstrably been tendered,
+        and only a second Support reply repeating the tracking number closed it.
+        A Copilot polling for tracking after a carrier update polled forever.
+
+        **Every parcel, not the one in hand.** The rows come from the
+        authoritative store rather than from the `ShipmentUpdate` that prompted
+        the reading, so an RMA that gained a second parcel while its case was
+        unresolvable -- `dbo.return_tracking` is keyed on the RMA and needs no
+        `dbo.return_record` row -- is mirrored whole the next time anything
+        reads it, instead of staying permanently half-visible.
+
+        **Oldest observation first**, so a split return's parcels are appended in
+        the order the carrier filed them. Order only matters on the first write:
+        `record_case_shipment` never reorders entries it already holds.
+
+        Not best-effort, unlike the graph read below it. A parcel the case
+        cannot see is the defect this closes, so failing to record one is
+        reported the way failing to record the facts already is -- loudly --
+        rather than returning a reading that quietly changed nothing.
+        """
+        return_record_id = _reference(record.get("return_record_id")) if record else None
+        if return_record_id is None:
+            # The case owns the RMA -- `case_id` was read off the same row -- but
+            # the row carries no record id to attach a parcel to. Nothing here
+            # mints one: a package hung off an invented record id would be a
+            # package on no RMA.
+            logger.warning(
+                "return_shipment_parcel_has_no_return_record",
+                extra={"return_reference": return_reference},
+            )
+            return
+        for row in reversed(await self._business_state.read_shipment_state(return_reference)):
+            tracking_reference = _reference(row.get("tracking_reference"))
+            if tracking_reference is None:
+                continue
+            await self._repository.record_case_shipment(
+                return_record_id=return_record_id,
+                tracking_reference=tracking_reference,
+                carrier=_reference(row.get("carrier_code")),
             )
 
     async def _record_on_case(self, case_id: str, reading: CaseShipmentReading) -> None:

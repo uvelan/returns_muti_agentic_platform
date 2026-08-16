@@ -8,19 +8,15 @@ docker compose --profile containerized-app config --quiet
 # removed along with all seventy-six legacy routes. `validate_stage4_source.py`
 # below now owns the frontend-route assertion, against the four-domain registry,
 # so restating it here would be a second list to keep correct.
-if command -v poetry >/dev/null 2>&1; then
-  POETRY=(poetry)
-elif [[ -x "$RUNTIME_ROOT/tooling/bin/poetry" ]]; then
-  POETRY=("$RUNTIME_ROOT/tooling/bin/poetry")
-else
-  echo "Poetry is required for contract validation." >&2
-  exit 2
-fi
 cd "$REPO_ROOT/backend"
-"${POETRY[@]}" run python ../scripts/validate_stage4_source.py
-"${POETRY[@]}" run python ../scripts/validate_stage4_contracts.py
-"${POETRY[@]}" run python ../scripts/validate_stage4m_dependency_simulation.py
-"${POETRY[@]}" run python ../scripts/validate_stage4n_ai_gateway.py
-"${POETRY[@]}" run python ../scripts/check_openapi_drift.py
+# These are plain `python script.py` invocations, so the backend venv serves
+# them as well as Poetry does. That matters: `bootstrap_host.sh` leaves Poetry
+# off PATH, and this phase used to exit 2 on a correctly bootstrapped host.
+backend_python
+"${BACKEND_PYTHON[@]}" ../scripts/validate_stage4_source.py
+"${BACKEND_PYTHON[@]}" ../scripts/validate_stage4_contracts.py
+"${BACKEND_PYTHON[@]}" ../scripts/validate_stage4m_dependency_simulation.py
+"${BACKEND_PYTHON[@]}" ../scripts/validate_stage4n_ai_gateway.py
+"${BACKEND_PYTHON[@]}" ../scripts/check_openapi_drift.py
 cd "$REPO_ROOT"
 git diff --check

@@ -120,6 +120,9 @@ class GatewaySchemaReasoningAdapter:
                 store=interception_store,
                 settings_source=gateway_settings,
                 subject="analyzer_schema_proposal",
+                # Carries the response-review switch as well. Off unless
+                # `ai_response_interception` is set, which production refuses.
+                settings=settings,
             ),
         )
 

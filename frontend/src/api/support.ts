@@ -73,7 +73,33 @@ export type ReturnOutcomeInput = {
   records: ReturnOutcomeRecordInput[];
   rejected?: boolean;
   reason?: string;
+  /**
+   * The identity of *this* Support answer. Required, never optional.
+   *
+   * The backend refuses the write without it (`422 SUPPORT_EVENT_ID_REQUIRED`)
+   * and will not mint one itself, because a server-minted id is a fresh id on
+   * every retry and therefore no idempotency at all. Typed as required here so
+   * the compiler, not a 422 in production, is what catches a caller that forgot.
+   */
+  supportEventId: string;
 };
+
+/**
+ * A stable identity for one Support answer.
+ *
+ * **Call this at the user-action boundary, never inside a request function or a
+ * render.** Everything the id buys depends on where it is minted: generated per
+ * send, a resend after a lost response is a second RMA; generated per render,
+ * so is a re-render. Minted once when the operator opens the form and carried
+ * through the mutation's variables, a React Query retry, a double click and a
+ * manual resend after a timeout all reuse it and collapse into one event, while
+ * a deliberately new answer -- a new form, a new business act -- is a new id.
+ *
+ * Same shape as `orderAgent.ts::sendTurn`'s turn id, and for the same reason.
+ */
+export function newSupportEventId(workItemId: string): string {
+  return `ui-${workItemId}-${crypto.randomUUID()}`;
+}
 
 export const supportApi = {
   async listWorkItems(status?: string): Promise<SupportWorkItem[]> {
@@ -121,6 +147,12 @@ export const supportApi = {
    * itself, this one signals the case's workflow, which is what carries the RMA
    * into the associate's original conversation. A list of records, because one
    * reply can issue several RMAs.
+   *
+   * The call is durable rather than synchronous: it commits a Support event and
+   * an outbox command in one transaction and returns, and the outbox delivers
+   * to the workflow at least once afterwards. `input.supportEventId` is what
+   * makes that redelivery -- and any resend from here -- exactly one business
+   * mutation, so it is a caller's value and is deliberately not defaulted here.
    */
   async submitReturnOutcome(workItemId: string, input: ReturnOutcomeInput): Promise<void> {
     await apiClient(

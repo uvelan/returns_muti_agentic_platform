@@ -103,6 +103,48 @@ class ObservedFact(BaseModel):
     ambiguous: bool = False
 
 
+class CapturedTurnFact(BaseModel):
+    """One fact this conversation has established, reported back to the caller.
+
+    **The only wire form of `observedFacts`.** The conversation's captured facts
+    are merged and kept on the conversation document, flushed into the case fact
+    log at confirmation, and shown to the model every turn -- and until this
+    field existed none of that was visible to the console. A screen whose
+    heading promises *extracted facts* therefore had nothing to read but
+    statement prose, and rendering the agent's narration ("Line 1 has no product
+    recorded against it") as an extracted field is the same defect as a
+    fabricated value wearing a different hat.
+
+    `name` is the `clarification_policy.fields` field name, so it is the
+    operator's vocabulary and not a second one; `label` is that field's
+    associate-facing wording. `status` is `FactStatus`, and it is carried rather
+    than filtered here because a `CONFLICTING` or `AMBIGUOUS` fact is something
+    the conversation still owes the associate a question about -- a caller that
+    rendered it as settled would be asserting more than the platform knows.
+
+    Provenance is deliberately narrow: no `turnId`, no `sourceMessageId`, no
+    `observedAt`. Those are audit fields the case fact log already keeps, and
+    the caller of a turn has no use for them that is worth widening the
+    conversation's wire surface for.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    #: Whatever the associate said, as the catalogue parsed it. `Any` because
+    #: an identification field may be configured as a list or an integer.
+    value: Any = None
+    #: `FactStatus`. Not narrowed to a `Literal`: the statuses are the fact
+    #: module's and re-declaring them here would be a second copy to drift.
+    status: str
+    #: The configured `label` of the field, or empty for a conversation
+    #: captured before its field carried one.
+    label: str = ""
+    #: `STATED` or `DERIVED`. Never `OBSERVED` -- nothing a model heard in a
+    #: conversation is a source system's report.
+    acquisition: str = "STATED"
+
+
 class OrderConfirmation(BaseModel):
     """What the associate confirmed they are raising a return against.
 
@@ -310,6 +352,12 @@ class AgentTurnResult(BaseModel):
     # discovery hangs off.
     case_id: str | None = None
     query_evidence: tuple[QueryEvidence, ...]
+    # Everything this conversation has established so far, not only what this
+    # turn heard: the merged set is what the case receives at confirmation and
+    # what the console's extracted-facts panel is a view of. Defaults empty so a
+    # turn committed before the field existed still validates on an idempotent
+    # replay.
+    captured_facts: tuple[CapturedTurnFact, ...] = ()
     model_provider: str
     model_name: str
     # What "now" meant while this turn reasoned, and in whose calendar. Carried

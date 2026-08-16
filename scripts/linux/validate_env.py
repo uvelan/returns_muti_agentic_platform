@@ -9,6 +9,7 @@ import re
 import stat
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ASSIGNMENT = re.compile(r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
 PLACEHOLDER_MARKERS = (
@@ -75,9 +76,7 @@ def _normalize(raw_value: str) -> ParsedValue:
 
 def _parse(path: Path) -> dict[str, ParsedValue]:
     values: dict[str, ParsedValue] = {}
-    for line_number, raw_line in enumerate(
-        path.read_text(encoding="utf-8").splitlines(), 1
-    ):
+    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         stripped = raw_line.strip()
         if not stripped or stripped.startswith("#"):
             continue
@@ -97,9 +96,7 @@ def _parse(path: Path) -> dict[str, ParsedValue]:
 def _validate_permissions(path: Path) -> None:
     mode = stat.S_IMODE(path.stat().st_mode)
     if mode & 0o077:
-        raise ValueError(
-            ".env must not be accessible by group/other; run chmod 600 .env"
-        )
+        raise ValueError(".env must not be accessible by group/other; run chmod 600 .env")
 
 
 def _validate_non_placeholder(name: str, value: str) -> None:
@@ -110,9 +107,7 @@ def _validate_non_placeholder(name: str, value: str) -> None:
         raise ValueError(f"{name} still contains a placeholder value")
 
 
-def _parse_json_list(
-    name: str, parsed_value: ParsedValue, *, require_non_empty: bool
-) -> list[str]:
+def _parse_json_list(name: str, parsed_value: ParsedValue, *, require_non_empty: bool) -> list[str]:
     if not parsed_value.single_quoted:
         raise ValueError(f"{name} must wrap its JSON array in single quotes")
     try:
@@ -125,6 +120,35 @@ def _parse_json_list(
     if any(not isinstance(item, str) or not item.strip() for item in parsed):
         raise ValueError(f"{name} must contain only non-empty strings")
     return parsed
+
+
+def _validate_published_port_coherence(values: dict[str, ParsedValue]) -> None:
+    """Refuse a Neo4j Bolt port that Compose publishes and nothing connects to.
+
+    ``compose.yaml`` publishes Bolt on ``${NEO4J_BOLT_PORT:-7687}`` because
+    Windows can make 7687 unbindable, but ``PLATFORM_NEO4J_URI`` carries its own
+    port and nothing keeps the two in step. Moving one and not the other leaves
+    every host process dialling a port with no listener: no error at startup,
+    Order Discovery simply finds nothing, and the graph looks empty rather than
+    unreachable.
+
+    Only checked when the override is actually set. Unset means Compose uses
+    7687, which is what the default URI already says.
+    """
+    bolt_port = values.get("NEO4J_BOLT_PORT")
+    if bolt_port is None or not bolt_port.value.strip():
+        return
+    published = bolt_port.value.strip()
+    uri = values.get("PLATFORM_NEO4J_URI")
+    if uri is None or not uri.value.strip():
+        raise ValueError("NEO4J_BOLT_PORT is set but PLATFORM_NEO4J_URI is missing")
+    parsed = urlsplit(uri.value.strip())
+    configured = str(parsed.port) if parsed.port is not None else "7687"
+    if configured != published:
+        raise ValueError(
+            f"NEO4J_BOLT_PORT publishes Neo4j on {published} but PLATFORM_NEO4J_URI "
+            f"connects to {configured}; host processes would reach no listener"
+        )
 
 
 def validate(path: Path, *, simulation: bool, template_mode: bool = False) -> int:
@@ -176,6 +200,8 @@ def validate(path: Path, *, simulation: bool, template_mode: bool = False) -> in
             raise ValueError(f"{name} is missing")
         if not template_mode:
             _validate_non_placeholder(name, parsed_value.value)
+
+    _validate_published_port_coherence(values)
 
     print(f"Validated {len(values)} dotenv assignments without displaying values.")
     return len(values)

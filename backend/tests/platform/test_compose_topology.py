@@ -177,3 +177,65 @@ def test_nothing_outside_dev_tools_depends_on_a_dev_tool() -> None:
         if dependency in dev_tools
     )
     assert offenders == []
+
+
+def test_every_packaged_path_default_is_overridden_in_compose() -> None:
+    """`BACKEND_ROOT` is wrong inside the image, so no default may survive there.
+
+    `BACKEND_ROOT` is `parents[3]` of the settings module. From a checkout that
+    is `backend/`; inside the runtime image it is `/usr/local/lib/python3.13`,
+    because the Dockerfile copies `config` and `scripts` but not `src` and
+    `return_platform` therefore imports from site-packages. Every default that
+    hangs off it points at a path that does not exist in any container.
+
+    That has now shipped twice. `PLATFORM_SYSTEM_STORE_MANIFEST_PATH` was
+    missing and crash-looped two workers; `configuration_directory` was not even
+    a setting -- `main.py` passed `BACKEND_ROOT / "config"` to the agent
+    configuration service directly -- and the Configuration screen's Agents
+    section answered 500 in every container. Both suites were green throughout,
+    because tests run from the checkout where `BACKEND_ROOT` is correct.
+
+    So this asserts the class instead of the two instances: any Settings field
+    whose *default* lies under `BACKEND_ROOT` must be overridden by an
+    environment entry in compose. A new packaged path fails here on the commit
+    that adds it rather than on the next deployment.
+    """
+    from return_platform.configuration.settings import BACKEND_ROOT, Settings
+
+    environment = yaml.safe_load(_COMPOSE.read_text(encoding="utf-8"))["x-platform-environment"]
+
+    packaged = {
+        name
+        for name, field in Settings.model_fields.items()
+        if isinstance(field.default, Path) and field.default.is_relative_to(BACKEND_ROOT)
+    }
+    assert packaged, "no packaged-path settings found -- this test has lost its subject"
+
+    missing = sorted(
+        f"{name} (expected PLATFORM_{name.upper()})"
+        for name in packaged
+        if f"PLATFORM_{name.upper()}" not in environment
+    )
+    assert not missing, (
+        "these settings default to a path under BACKEND_ROOT, which does not exist "
+        f"inside the image, and compose does not override them: {missing}"
+    )
+
+
+def test_no_compose_path_override_points_outside_the_packaged_config_tree() -> None:
+    """The override is only worth having if it names a path the image contains.
+
+    `/app/config` and `/app/scripts` are what the runtime stage copies. An
+    override pointing anywhere else is the same failure with a different path in
+    the message.
+    """
+    environment = yaml.safe_load(_COMPOSE.read_text(encoding="utf-8"))["x-platform-environment"]
+    stray = sorted(
+        f"{key}={value}"
+        for key, value in environment.items()
+        if key.endswith(("_PATH", "_DIRECTORY"))
+        and isinstance(value, str)
+        and value.startswith("/")
+        and not value.startswith(("/app/config", "/app/scripts", "/run/"))
+    )
+    assert stray == [], stray

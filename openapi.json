@@ -1587,13 +1587,13 @@
         "title": "APIResponse[BayAssessment]",
         "type": "object"
       },
-      "APIResponse_CaseDetail_": {
+      "APIResponse_CaseProjection_": {
         "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/CaseDetail"
+                "$ref": "#/components/schemas/CaseProjection"
               },
               {
                 "type": "null"
@@ -1617,7 +1617,73 @@
         "required": [
           "meta"
         ],
-        "title": "APIResponse[CaseDetail]",
+        "title": "APIResponse[CaseProjection]",
+        "type": "object"
+      },
+      "APIResponse_CaseRecoveryResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CaseRecoveryResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[CaseRecoveryResult]",
+        "type": "object"
+      },
+      "APIResponse_CaseRecoveryView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CaseRecoveryView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[CaseRecoveryView]",
         "type": "object"
       },
       "APIResponse_ConversationTranscript_": {
@@ -1884,6 +1950,72 @@
         "title": "APIResponse[MigrationPlan]",
         "type": "object"
       },
+      "APIResponse_OrderLines_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrderLines"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[OrderLines]",
+        "type": "object"
+      },
+      "APIResponse_PolicyOverrideResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PolicyOverrideResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[PolicyOverrideResult]",
+        "type": "object"
+      },
       "APIResponse_PrincipalView_": {
         "additionalProperties": false,
         "properties": {
@@ -1983,6 +2115,39 @@
         "title": "APIResponse[ReleaseListView]",
         "type": "object"
       },
+      "APIResponse_ReturnArtifactView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReturnArtifactView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ReturnArtifactView]",
+        "type": "object"
+      },
       "APIResponse_ReturnEventResult_": {
         "additionalProperties": false,
         "properties": {
@@ -2080,6 +2245,39 @@
           "meta"
         ],
         "title": "APIResponse[ReturnHistory]",
+        "type": "object"
+      },
+      "APIResponse_ReturnOutcomeAcceptedView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReturnOutcomeAcceptedView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ReturnOutcomeAcceptedView]",
         "type": "object"
       },
       "APIResponse_ReturnSessionView_": {
@@ -2278,6 +2476,39 @@
           "meta"
         ],
         "title": "APIResponse[SeedStatusView]",
+        "type": "object"
+      },
+      "APIResponse_SelectedItems_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectedItems"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[SelectedItems]",
         "type": "object"
       },
       "APIResponse_ShipmentUpdateResult_": {
@@ -4033,6 +4264,14 @@
             ],
             "title": "As Of"
           },
+          "captured_facts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CapturedTurnFact"
+            },
+            "title": "Captured Facts",
+            "type": "array"
+          },
           "case_id": {
             "anyOf": [
               {
@@ -4342,6 +4581,95 @@
         "title": "ApproveRequest",
         "type": "object"
       },
+      "ApprovedItemProjection": {
+        "additionalProperties": false,
+        "description": "One line an RMA authorized, at the quantity it authorized.",
+        "properties": {
+          "disposition": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disposition"
+          },
+          "itemStatus": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Itemstatus"
+          },
+          "orderLineReference": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orderlinereference"
+          },
+          "productReference": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productreference"
+          },
+          "quantityApproved": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantityapproved"
+          },
+          "returnItemId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Returnitemid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "returnItemId"
+        ],
+        "title": "ApprovedItemProjection",
+        "type": "object"
+      },
+      "ArtifactContentState": {
+        "description": "What this platform can actually hand over for one artifact.\n\n**One member, because one is the truth.** Nothing in this platform stores a\nlabel document. `ReturnRecordView.labelReference` is a bare string --\n`LBL-OPS01` on the real record `4e372a39...` -- written by Support through\n`ReturnOutcomeRecord.labelReference`, and there is no object store, no\nGridFS bucket, no provider URL and no bytes anywhere behind it. So the only\nthing this route can serve is the reference itself and the metadata the\nprojection holds about it.\n\n`REFERENCE_ONLY` says exactly that, positively, in the same spirit as\n`SettlementStatus.NOT_INTEGRATED`: not \"the document is missing\", which\nwould read as a failure somebody should retry, but \"this platform holds a\nreference and no document\", which is a fact about the system. A route that\n404'd instead would be indistinguishable from a wrong artifact id, and one\nthat returned an empty PDF would be the audit's fabrications in a new\ncostume.\n\nMembers land here when producers do, and the handler's branches are already\nwritten against them -- stored bytes become a `Response` with a media type\nand a `Content-Disposition`, and a provider-owned file becomes a short-lived\nredirect. Neither can be built today: there is no byte source, and\n`ReturnArtifactProjection` deliberately carries no `url` field for a\nredirect target to hide in.",
+        "enum": [
+          "REFERENCE_ONLY"
+        ],
+        "title": "ArtifactContentState",
+        "type": "string"
+      },
       "AssociateChatTurnRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4641,6 +4969,24 @@
         "title": "AuditLog",
         "type": "object"
       },
+      "AwaitingDimension": {
+        "description": "What the platform is still waiting for before the return is complete.\n\nTwo kinds of member, and the difference matters:\n\n* **Unresolved** -- `POLICY`, `RETURN_METHOD`, `RECOVERY`, and the two\n  verification dimensions. These say the completion *profile* cannot be\n  computed yet, so no requirement set has been consulted at all.\n* **Required** -- `RMA`, `LABEL`, `TRACKING`, `BOL`, `PICKUP`,\n  `RETURN_LOCATION`. These come out of the return-method requirement table\n  and are the only members a table row may name.\n\nSettlement is deliberately absent. It never enters `awaiting` and never\nblocks completion (plan sect. 13, Phase 9): a case whose settlement is\n`NOT_INTEGRATED` reaches `COMPLETED_EXTERNAL_SETTLEMENT`, it does not hang.",
+        "enum": [
+          "POLICY",
+          "RETURN_METHOD",
+          "WARRANTY_VERIFICATION",
+          "DELIVERY_CLAIM_VERIFICATION",
+          "RECOVERY",
+          "RMA",
+          "LABEL",
+          "TRACKING",
+          "BOL",
+          "PICKUP",
+          "RETURN_LOCATION"
+        ],
+        "title": "AwaitingDimension",
+        "type": "string"
+      },
       "BayAssessment": {
         "additionalProperties": false,
         "properties": {
@@ -4905,6 +5251,39 @@
         "title": "BranchStagingRequest",
         "type": "object"
       },
+      "CapturedTurnFact": {
+        "additionalProperties": false,
+        "description": "One fact this conversation has established, reported back to the caller.\n\n**The only wire form of `observedFacts`.** The conversation's captured facts\nare merged and kept on the conversation document, flushed into the case fact\nlog at confirmation, and shown to the model every turn -- and until this\nfield existed none of that was visible to the console. A screen whose\nheading promises *extracted facts* therefore had nothing to read but\nstatement prose, and rendering the agent's narration (\"Line 1 has no product\nrecorded against it\") as an extracted field is the same defect as a\nfabricated value wearing a different hat.\n\n`name` is the `clarification_policy.fields` field name, so it is the\noperator's vocabulary and not a second one; `label` is that field's\nassociate-facing wording. `status` is `FactStatus`, and it is carried rather\nthan filtered here because a `CONFLICTING` or `AMBIGUOUS` fact is something\nthe conversation still owes the associate a question about -- a caller that\nrendered it as settled would be asserting more than the platform knows.\n\nProvenance is deliberately narrow: no `turnId`, no `sourceMessageId`, no\n`observedAt`. Those are audit fields the case fact log already keeps, and\nthe caller of a turn has no use for them that is worth widening the\nconversation's wire surface for.",
+        "properties": {
+          "acquisition": {
+            "default": "STATED",
+            "title": "Acquisition",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "name",
+          "status"
+        ],
+        "title": "CapturedTurnFact",
+        "type": "object"
+      },
       "Cardinality": {
         "enum": [
           "ONE_TO_ONE",
@@ -4915,104 +5294,112 @@
         "title": "Cardinality",
         "type": "string"
       },
-      "CaseDetail": {
-        "additionalProperties": false,
-        "properties": {
-          "case": {
-            "$ref": "#/components/schemas/CaseView"
-          },
-          "facts": {
-            "items": {
-              "$ref": "#/components/schemas/CaseFactView"
-            },
-            "title": "Facts",
-            "type": "array"
-          },
-          "returnRecords": {
-            "items": {
-              "$ref": "#/components/schemas/CaseReturnRecord"
-            },
-            "title": "Returnrecords",
-            "type": "array"
-          },
-          "unassignedItems": {
-            "items": {
-              "$ref": "#/components/schemas/CaseReturnItem"
-            },
-            "title": "Unassigneditems",
-            "type": "array"
-          }
-        },
-        "required": [
-          "case",
-          "returnRecords",
-          "unassignedItems",
-          "facts"
+      "CaseDivergence": {
+        "description": "The reading of one case against its execution.",
+        "enum": [
+          "HEALTHY",
+          "RECOVERY_REQUIRED",
+          "CASE_TERMINAL",
+          "INDETERMINATE"
         ],
-        "title": "CaseDetail",
-        "type": "object"
+        "title": "CaseDivergence",
+        "type": "string"
       },
-      "CaseFactView": {
+      "CaseExecutionState": {
+        "description": "What the workflow host says about the execution that owns a case.\n\nFour members, and the fourth is the important one. `UNKNOWN` is not a\nfailure to look -- it is the honest answer when the host could not be\nreached, and it is what stops a Temporal outage from being read as \"every\ncase is an orphan\" and restarting the whole estate.\n\n`CLOSED` collapses `COMPLETED`, `FAILED`, `TERMINATED`, `CANCELED` and\n`TIMED_OUT` on purpose. They differ in why the execution ended and not at\nall in what this module decides: none of them will accept a signal, and a\nclassification that branched on which of them it was would be inventing a\ndistinction the recovery rule does not have. The workflow host's own status\nname travels separately, on `CaseDivergenceAssessment.execution_detail`, for\nthe operator who does want to know.\n\n`ABSENT` is separate from `CLOSED` because it is a different fact: no\nexecution with this id exists at all -- never started, or aged out of\nretention. Both mean the case is unreachable; only `ABSENT` means there is\nnothing left to read.",
+        "enum": [
+          "RUNNING",
+          "CLOSED",
+          "ABSENT",
+          "UNKNOWN"
+        ],
+        "title": "CaseExecutionState",
+        "type": "string"
+      },
+      "CaseFactProjection": {
         "additionalProperties": false,
-        "description": "One observation about a case, with how it was obtained.\n\n**Append-only.** Bay, Support, Fulfillment and Channel A all write facts\nconcurrently; a single mutable `facts` sub-document would make the last\nwriter win and silently drop what the others learned. Current state is a\nprojection over this log (`latest_case_facts`), so provenance is never\ndestroyed to record a newer value -- a correction supersedes rather than\noverwrites.",
+        "description": "One fact at its latest value, with the provenance that decides trust.\n\nServes the existing `latest_case_facts` projection. The backend already\ncomputes it and the console duplicates it client-side in `latestFacts`;\nserving it here is what deletes the duplicate.\n\n`value` is deliberately untyped -- the fact log is heterogeneous by design --\nbut every provenance field beside it is not, because provenance is what makes\na fact admissible to policy evaluation (plan sect. 7.3).",
         "properties": {
           "acquisitionMethod": {
-            "$ref": "#/components/schemas/FactAcquisition"
-          },
-          "agentId": {
-            "title": "Agentid",
-            "type": "string"
-          },
-          "caseId": {
-            "title": "Caseid",
-            "type": "string"
-          },
-          "channel": {
-            "$ref": "#/components/schemas/FactChannel"
-          },
-          "correlationId": {
             "anyOf": [
               {
+                "maxLength": 256,
+                "minLength": 1,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Correlationid"
+            "title": "Acquisitionmethod"
+          },
+          "agentId": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agentid"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
           },
           "factId": {
+            "maxLength": 256,
+            "minLength": 1,
             "title": "Factid",
             "type": "string"
           },
           "factName": {
+            "maxLength": 256,
+            "minLength": 1,
             "title": "Factname",
             "type": "string"
           },
           "observedAt": {
-            "format": "date-time",
-            "title": "Observedat",
-            "type": "string"
-          },
-          "recordedAt": {
-            "format": "date-time",
-            "title": "Recordedat",
-            "type": "string"
-          },
-          "sourcePath": {
             "anyOf": [
               {
+                "format": "date-time",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Sourcepath"
+            "title": "Observedat"
+          },
+          "recordedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recordedat"
           },
           "sourceSystem": {
             "anyOf": [
               {
+                "maxLength": 256,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -5024,6 +5411,8 @@
           "supersedesFactId": {
             "anyOf": [
               {
+                "maxLength": 256,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -5032,300 +5421,194 @@
             ],
             "title": "Supersedesfactid"
           },
-          "turnId": {
+          "value": {
             "anyOf": [
               {
                 "type": "string"
               },
               {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
                 "type": "null"
               }
             ],
-            "title": "Turnid"
-          },
-          "value": {
             "title": "Value"
           }
         },
         "required": [
           "factId",
-          "caseId",
-          "factName",
-          "agentId",
-          "channel",
-          "acquisitionMethod",
-          "observedAt",
-          "recordedAt"
+          "factName"
         ],
-        "title": "CaseFactView",
+        "title": "CaseFactProjection",
         "type": "object"
       },
-      "CaseReturnItem": {
+      "CaseProjection": {
         "additionalProperties": false,
+        "description": "The wire contract: the state above plus the four derived values.\n\nBuild it with `project_case`. Constructing one directly is legal -- a test\nfixture and the mock server both need to -- but nothing in the platform\nshould, because the four fields below are a function of the ones above and a\nhand-written pair that disagree is exactly the class of defect this contract\nwas written to end.",
         "properties": {
-          "condition": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Condition"
-          },
-          "orderLineReference": {
-            "title": "Orderlinereference",
-            "type": "string"
-          },
-          "packageReference": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Packagereference"
-          },
-          "productReference": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Productreference"
-          },
-          "quantity": {
-            "default": 1,
-            "title": "Quantity",
-            "type": "integer"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "returnItemId": {
-            "title": "Returnitemid",
-            "type": "string"
-          }
-        },
-        "required": [
-          "returnItemId",
-          "orderLineReference"
-        ],
-        "title": "CaseReturnItem",
-        "type": "object"
-      },
-      "CaseReturnRecord": {
-        "additionalProperties": false,
-        "description": "One RMA and everything that belongs to it rather than to the case.",
-        "properties": {
-          "items": {
+          "awaiting": {
             "items": {
-              "$ref": "#/components/schemas/CaseReturnItem"
+              "$ref": "#/components/schemas/AwaitingDimension"
             },
-            "title": "Items",
+            "title": "Awaiting",
             "type": "array"
           },
-          "record": {
-            "$ref": "#/components/schemas/ReturnRecordView"
-          }
-        },
-        "required": [
-          "record",
-          "items"
-        ],
-        "title": "CaseReturnRecord",
-        "type": "object"
-      },
-      "CaseStatus": {
-        "description": "Where a return has got to, as an associate would describe it.\n\nDeliberately not `ReturnStatus`, which is the *session's* execution status\n(QUEUED, RUNNING, INTERCEPTION_PENDING). A case outlives any one execution\nand can sit for days in a state no execution status can express -- the\nassociate is not waiting on a queue, they are waiting on Support.",
-        "enum": [
-          "GATHERING_INFO",
-          "AWAITING_BAY",
-          "AWAITING_SUPPORT",
-          "RMA_RECEIVED",
-          "IN_TRANSIT",
-          "CLOSED",
-          "CANCELLED"
-        ],
-        "title": "CaseStatus",
-        "type": "string"
-      },
-      "CaseSummary": {
-        "additionalProperties": false,
-        "description": "A row in the associate's case list.\n\nCarries the counts rather than the records: a list of twenty cases must not\npull every RMA and item to render twenty lines.",
-        "properties": {
+          "businessComplete": {
+            "title": "Businesscomplete",
+            "type": "boolean"
+          },
           "caseId": {
+            "maxLength": 256,
+            "minLength": 1,
             "title": "Caseid",
             "type": "string"
           },
-          "channelAConversationId": {
+          "confirmedOrder": {
             "anyOf": [
               {
+                "$ref": "#/components/schemas/ConfirmedOrderProjection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "conversationId": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Channelaconversationid"
+            "title": "Conversationid"
           },
-          "confirmedOrderReference": {
+          "customer": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/CustomerProjection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "facts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CaseFactProjection"
+                },
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Confirmedorderreference"
+            "title": "Facts"
           },
-          "returnRecordCount": {
-            "title": "Returnrecordcount",
-            "type": "integer"
+          "isTerminal": {
+            "title": "Isterminal",
+            "type": "boolean"
           },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "updatedAt": {
-            "title": "Updatedat",
-            "type": "string"
-          }
-        },
-        "required": [
-          "caseId",
-          "status",
-          "returnRecordCount",
-          "updatedAt"
-        ],
-        "title": "CaseSummary",
-        "type": "object"
-      },
-      "CaseView": {
-        "additionalProperties": false,
-        "description": "One return, owning every fact about it.\n\nThe two channel pointers are what make Channel B -> Channel A possible at\nall: today the only link between a support outcome and the associate's\nconversation is the browser matching an order reference client-side.",
-        "properties": {
-          "branchId": {
+          "pickup": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/PickupProjection"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Branchid"
+            ]
           },
-          "caseId": {
-            "title": "Caseid",
-            "type": "string"
-          },
-          "channelAConversationId": {
+          "policyEvaluation": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/PolicyEvaluationProjection"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Channelaconversationid"
-          },
-          "channelBWorkItemId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Channelbworkitemid"
-          },
-          "configurationReleaseId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Configurationreleaseid"
-          },
-          "confirmationKey": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Confirmationkey"
-          },
-          "confirmedOrderReference": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Confirmedorderreference"
-          },
-          "createdAt": {
-            "format": "date-time",
-            "title": "Createdat",
-            "type": "string"
-          },
-          "graphGenerationId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Graphgenerationid"
+            ]
           },
           "principalId": {
+            "maxLength": 256,
+            "minLength": 1,
             "title": "Principalid",
             "type": "string"
           },
-          "sessionId": {
+          "returnRecords": {
             "anyOf": [
               {
-                "type": "string"
+                "items": {
+                  "$ref": "#/components/schemas/ReturnRecordProjection"
+                },
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Sessionid"
+            "title": "Returnrecords"
+          },
+          "revision": {
+            "minimum": 0.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "selectedItems": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SelectedItemProjection"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selecteditems"
+          },
+          "settlement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SettlementProjection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stage": {
+            "$ref": "#/components/schemas/CopilotStage"
           },
           "status": {
-            "$ref": "#/components/schemas/CaseStatus",
-            "default": "GATHERING_INFO"
+            "$ref": "#/components/schemas/ReturnCaseStatus"
+          },
+          "support": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SupportProjection"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "tenantId": {
+            "maxLength": 256,
+            "minLength": 1,
             "title": "Tenantid",
             "type": "string"
           },
@@ -5334,9 +5617,59 @@
             "title": "Updatedat",
             "type": "string"
           },
-          "version": {
-            "default": 0,
-            "title": "Version",
+          "warehouse": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WarehouseProjection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "caseId",
+          "tenantId",
+          "principalId",
+          "status",
+          "revision",
+          "updatedAt",
+          "stage",
+          "awaiting",
+          "businessComplete",
+          "isTerminal"
+        ],
+        "title": "CaseProjection",
+        "type": "object"
+      },
+      "CaseRecoveryResult": {
+        "additionalProperties": false,
+        "description": "What a relaunch actually did. Never a bare 200.\n\n`action` rather than a success flag, because \"did not relaunch\" has four\nmeanings -- already running, legitimately terminal, host unreachable, start\nrefused -- and an operator who cannot tell them apart cannot act on any of\nthem.",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/RecoveryAction"
+          },
+          "caseId": {
+            "title": "Caseid",
+            "type": "string"
+          },
+          "recovery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CaseRecoveryView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rejectedSupportEvents": {
+            "title": "Rejectedsupportevents",
+            "type": "integer"
+          },
+          "requeuedSupportEvents": {
+            "title": "Requeuedsupportevents",
             "type": "integer"
           },
           "workflowId": {
@@ -5353,12 +5686,132 @@
         },
         "required": [
           "caseId",
-          "tenantId",
-          "principalId",
-          "createdAt",
+          "action",
+          "requeuedSupportEvents",
+          "rejectedSupportEvents"
+        ],
+        "title": "CaseRecoveryResult",
+        "type": "object"
+      },
+      "CaseRecoveryView": {
+        "additionalProperties": false,
+        "description": "Why a case is stuck, in terms an operator can act on.\n\nA separate resource from `CaseProjection` rather than a block on it, and\nthat is the boundary the whole read contract rests on: **the case read never\ncalls Temporal.** `project_case` derives `status`, `stage`, `awaiting` and\n`isTerminal` from persisted state alone, and adding an execution probe to it\nwould make the workflow host a synchronous dependency of every Copilot poll\n-- the exact coupling `case_projection/vocabulary.py` refuses. The\nprojection already says *that* a case is stuck, through\n`status: RECOVERY_REQUIRED` and `awaiting: [RECOVERY]`. This says *why*, on\na route an operator opens deliberately.\n\nNothing here is derived in this module. Every field comes off\n`CaseDivergenceAssessment`, which is pure and tested on its own.",
+        "properties": {
+          "caseId": {
+            "title": "Caseid",
+            "type": "string"
+          },
+          "divergence": {
+            "$ref": "#/components/schemas/CaseDivergence"
+          },
+          "executionState": {
+            "$ref": "#/components/schemas/CaseExecutionState"
+          },
+          "executionStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executionstatus"
+          },
+          "isRecoverable": {
+            "title": "Isrecoverable",
+            "type": "boolean"
+          },
+          "lateEventDisposition": {
+            "$ref": "#/components/schemas/LateEventDisposition"
+          },
+          "persistedStatus": {
+            "title": "Persistedstatus",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/DivergenceReason"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReturnCaseStatus"
+          },
+          "workflowId": {
+            "title": "Workflowid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "caseId",
+          "status",
+          "persistedStatus",
+          "executionState",
+          "workflowId",
+          "divergence",
+          "reason",
+          "isRecoverable",
+          "lateEventDisposition"
+        ],
+        "title": "CaseRecoveryView",
+        "type": "object"
+      },
+      "CaseSummary": {
+        "additionalProperties": false,
+        "description": "A row in the associate's case list.\n\nCarries the counts rather than the records: a list of twenty cases must not\npull every RMA and item to render twenty lines.\n\n**`stage` and `isTerminal` travel with the row** so that a list can show the\npolling stop without reading each case in full. `isTerminal` is the same\nvalue `caseRefetchInterval` reads on the detail, derived by the same\nfunction, so a row that says \"finished\" and a detail that says \"still\nrunning\" cannot disagree.\n\n**`status` is the projected `ReturnCaseStatus`, not the persisted\n`CaseStatus`.** The detail serves the projected vocabulary, and a list that\nserved the persisted one would show `CLOSED` beside a detail saying\n`COMPLETED_EXTERNAL_SETTLEMENT` for the same case -- two names for one state,\nwhich is the drift `status_mapping` exists to end rather than to relocate.",
+        "properties": {
+          "caseId": {
+            "title": "Caseid",
+            "type": "string"
+          },
+          "channelAConversationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channelaconversationid"
+          },
+          "confirmedOrderReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmedorderreference"
+          },
+          "isTerminal": {
+            "title": "Isterminal",
+            "type": "boolean"
+          },
+          "returnRecordCount": {
+            "title": "Returnrecordcount",
+            "type": "integer"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/CopilotStage"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReturnCaseStatus"
+          },
+          "updatedAt": {
+            "title": "Updatedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "caseId",
+          "status",
+          "stage",
+          "isTerminal",
+          "returnRecordCount",
           "updatedAt"
         ],
-        "title": "CaseView",
+        "title": "CaseSummary",
         "type": "object"
       },
       "ChangeCardinality": {
@@ -5773,6 +6226,113 @@
         "title": "ConfirmDiscoveryRequest",
         "type": "object"
       },
+      "ConfirmedOrderProjection": {
+        "additionalProperties": false,
+        "description": "The order the associate confirmed, and the confirmation that created the case.\n\nPresent only after `CONFIRM_ORDER`. Its absence is what distinguishes\ndiscovery from confirmation, so a candidate the associate is still looking at\nmust never be projected here.",
+        "properties": {
+          "candidateId": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidateid"
+          },
+          "candidateSetId": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidatesetid"
+          },
+          "confirmationKey": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmationkey"
+          },
+          "confirmedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmedat"
+          },
+          "orderReference": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Orderreference",
+            "type": "string"
+          },
+          "orderSource": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordersource"
+          },
+          "sourceWebOrderNumber": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcewebordernumber"
+          },
+          "trilogieOrderNumber": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trilogieordernumber"
+          }
+        },
+        "required": [
+          "orderReference"
+        ],
+        "title": "ConfirmedOrderProjection",
+        "type": "object"
+      },
       "ContinueAssociateConversationRequest": {
         "additionalProperties": false,
         "properties": {
@@ -5897,6 +6457,25 @@
         "title": "ConversationTranscript",
         "type": "object"
       },
+      "CopilotStage": {
+        "description": "Which mode the Copilot renders. Derived on read, never stored.\n\nDeclared in lifecycle order, earliest first. `STAGE_PRECEDENCE` is this\ntuple reversed, because the frozen precedence of plan sect. 6.6 is exactly\n\"the furthest-progressed thing that is true wins\".",
+        "enum": [
+          "DISCOVERY",
+          "ORDER_CONFIRMATION",
+          "ITEM_SELECTION",
+          "RETURN_FACTS",
+          "POLICY_EVALUATION",
+          "APPROVAL_REQUIRED",
+          "AWAITING_SUPPORT",
+          "AUTHORIZED_RMA",
+          "CARRIER_TRANSIT",
+          "WAREHOUSE_RECEIVING",
+          "RETURN_SETTLEMENT",
+          "COMPLETED"
+        ],
+        "title": "CopilotStage",
+        "type": "string"
+      },
       "CreateAnalysisRequest": {
         "additionalProperties": false,
         "properties": {
@@ -5913,6 +6492,28 @@
           "source_refs"
         ],
         "title": "CreateAnalysisRequest",
+        "type": "object"
+      },
+      "CreateReleasePayload": {
+        "additionalProperties": false,
+        "properties": {
+          "from_active": {
+            "default": true,
+            "title": "From Active",
+            "type": "boolean"
+          },
+          "release_id": {
+            "maxLength": 128,
+            "minLength": 3,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]+$",
+            "title": "Release Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "release_id"
+        ],
+        "title": "CreateReleasePayload",
         "type": "object"
       },
       "CreateSupportMessageRequest": {
@@ -6003,6 +6604,76 @@
         ],
         "title": "CreateSupportWorkItemRequest",
         "type": "object"
+      },
+      "CustomerProjection": {
+        "additionalProperties": false,
+        "description": "Who the return is for, as the platform resolved them.",
+        "properties": {
+          "accountReference": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accountreference"
+          },
+          "branchReference": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branchreference"
+          },
+          "customerReference": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customerreference"
+          },
+          "displayName": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Displayname"
+          }
+        },
+        "title": "CustomerProjection",
+        "type": "object"
+      },
+      "DataInconsistency": {
+        "description": "Why a line's arithmetic could not be trusted. Reported, never swallowed.",
+        "enum": [
+          "ORDERED_QUANTITY_UNKNOWN",
+          "COMMITMENTS_EXCEED_ORDERED_QUANTITY",
+          "HOLDING_QUANTITY_UNREADABLE",
+          "CASE_STATUS_UNREADABLE"
+        ],
+        "title": "DataInconsistency",
+        "type": "string"
       },
       "DecisionRequest": {
         "additionalProperties": false,
@@ -6279,6 +6950,19 @@
         "title": "DiscoveryLock",
         "type": "object"
       },
+      "DivergenceReason": {
+        "description": "*Why* the reading came out that way, in the words an operator needs.\n\n`CaseDivergence` answers \"what do we do\"; this answers \"what is wrong\", and\nthe two are separate because one divergence has several causes and an\noperator staring at a stuck case needs the cause. `RECOVERY_REQUIRED` from a\nterminated execution and `RECOVERY_REQUIRED` from a case whose workflow was\nnever started are the same action and completely different incidents.",
+        "enum": [
+          "EXECUTION_LIVE",
+          "EXECUTION_CLOSED_UNDER_ACTIVE_CASE",
+          "EXECUTION_MISSING_UNDER_ACTIVE_CASE",
+          "TERMINAL_CASE_SETTLED",
+          "TERMINAL_CASE_WITH_OPEN_EXECUTION",
+          "EXECUTION_STATE_UNKNOWN"
+        ],
+        "title": "DivergenceReason",
+        "type": "string"
+      },
       "DocumentArtifactRegistration": {
         "additionalProperties": false,
         "properties": {
@@ -6482,6 +7166,16 @@
         "title": "ElementChange",
         "type": "object"
       },
+      "EligibilityDecision": {
+        "description": "Fail-safe eligibility outcomes.",
+        "enum": [
+          "APPROVE",
+          "REJECT",
+          "REVIEW_REQUIRED"
+        ],
+        "title": "EligibilityDecision",
+        "type": "string"
+      },
       "EntityShapeView": {
         "additionalProperties": false,
         "properties": {
@@ -6552,33 +7246,22 @@
         "title": "EvidenceReference",
         "type": "object"
       },
-      "FactAcquisition": {
-        "description": "How a fact came to be known -- the part of provenance that decides trust.\n\n`STATED` is what someone typed and nothing has verified. `OBSERVED` came\nfrom a source system. `DERIVED` was computed from other facts. `INFERRED` is\na model's suggestion. An agent deciding whether to re-ask needs this: a\nSTATED order number that found nothing is worth re-asking; an OBSERVED one\nis not.",
-        "enum": [
-          "STATED",
-          "OBSERVED",
-          "DERIVED",
-          "INFERRED"
-        ],
-        "title": "FactAcquisition",
-        "type": "string"
-      },
-      "FactChannel": {
-        "description": "Which conversation a fact arrived on, or that no conversation did.\n\n`SYSTEM` covers facts derived from a source system or computed by an agent\nwithout anyone being asked -- a graph lookup, a sync result, a policy\ndecision. Recording that as \"channel A\" would make provenance a lie.",
-        "enum": [
-          "CHANNEL_A",
-          "CHANNEL_B",
-          "SYSTEM"
-        ],
-        "title": "FactChannel",
-        "type": "string"
-      },
       "FallbackStrategy": {
         "enum": [
           "TEMPLATE",
           "MANUAL_REVIEW"
         ],
         "title": "FallbackStrategy",
+        "type": "string"
+      },
+      "FeeAmountSource": {
+        "description": "Where a fee amount may legitimately come from (baseline 3).\n\nThere is no fourth member and there is deliberately no `POLICY_DEFAULT`:\nFerguson publishes no universal restocking percentage, so the engine has\nnowhere to read one from and must not invent one.",
+        "enum": [
+          "SELLER_CONFIGURATION",
+          "SELLER_OVERRIDE",
+          "MANUFACTURER"
+        ],
+        "title": "FeeAmountSource",
         "type": "string"
       },
       "FeedbackAssessment": {
@@ -7272,6 +7955,17 @@
         "title": "InventoryTotals",
         "type": "object"
       },
+      "LateEventDisposition": {
+        "description": "What to do with a durable event whose delivery has permanently failed.\n\nThe outbox already knows the delivery cannot succeed as written; that is\nwhat `REQUIRES_RECONCILIATION` records. This says what the *business* answer\nis, which the outbox has no way to know.",
+        "enum": [
+          "DELIVERABLE",
+          "DRIVES_RECOVERY",
+          "PERMANENTLY_REJECTED",
+          "INDETERMINATE"
+        ],
+        "title": "LateEventDisposition",
+        "type": "string"
+      },
       "MigrationPlan": {
         "additionalProperties": false,
         "description": "What activating `to_release_id` does to the graph.\n\n`from_release_id` is None when nothing is active yet, which is the state\nevery installation starts in and is always a FULL_REBUILD -- there is no\ngraph to migrate, only one to build.",
@@ -7413,6 +8107,31 @@
         ],
         "title": "ModelTier",
         "type": "string"
+      },
+      "MonetaryAmount": {
+        "additionalProperties": false,
+        "description": "One money value and its currency. Never a bare number.",
+        "properties": {
+          "amount": {
+            "decimal_places": 4,
+            "ge": 0,
+            "max_digits": 18,
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "currency": {
+            "pattern": "^[A-Za-z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "title": "MonetaryAmount",
+        "type": "object"
       },
       "NormalizedReturnMethod": {
         "enum": [
@@ -7676,6 +8395,143 @@
         "title": "OrderLineCandidate",
         "type": "object"
       },
+      "OrderLineView": {
+        "additionalProperties": false,
+        "description": "One line of the confirmed order, with the arithmetic behind its availability.\n\n**The four terms travel with the answer.** A pane that showed only\n`returnableQuantity` could not tell an associate why a line of eight shows\ntwo, and the difference between \"six were already returned\" and \"six are\nheld by another counter right now\" is the difference between explaining and\nwaiting.\n\n`unitPrice` is a **decimal string**, never a JSON number. A refund basis\nthat round-trips through binary floating point disagrees with the invoice by\na cent on some orders and not others, and the client has no way to tell\nwhich. Absent when the source carries no price -- never `\"0.00\"`.",
+        "properties": {
+          "activeReservationQuantity": {
+            "minimum": 0.0,
+            "title": "Activereservationquantity",
+            "type": "integer"
+          },
+          "completedReturnQuantity": {
+            "minimum": 0.0,
+            "title": "Completedreturnquantity",
+            "type": "integer"
+          },
+          "dataInconsistency": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DataInconsistency"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "lineReference": {
+            "title": "Linereference",
+            "type": "string"
+          },
+          "openAuthorizedQuantity": {
+            "minimum": 0.0,
+            "title": "Openauthorizedquantity",
+            "type": "integer"
+          },
+          "orderedQuantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orderedquantity"
+          },
+          "productReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productreference"
+          },
+          "returnableQuantity": {
+            "minimum": 0.0,
+            "title": "Returnablequantity",
+            "type": "integer"
+          },
+          "selfReservedQuantity": {
+            "minimum": 0.0,
+            "title": "Selfreservedquantity",
+            "type": "integer"
+          },
+          "sku": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sku"
+          },
+          "unitPrice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unitprice"
+          }
+        },
+        "required": [
+          "lineReference",
+          "returnableQuantity",
+          "completedReturnQuantity",
+          "openAuthorizedQuantity",
+          "activeReservationQuantity",
+          "selfReservedQuantity"
+        ],
+        "title": "OrderLineView",
+        "type": "object"
+      },
+      "OrderLines": {
+        "additionalProperties": false,
+        "properties": {
+          "caseId": {
+            "title": "Caseid",
+            "type": "string"
+          },
+          "lines": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/OrderLineView"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "orderReference": {
+            "title": "Orderreference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "caseId",
+          "orderReference"
+        ],
+        "title": "OrderLines",
+        "type": "object"
+      },
       "OrderSource": {
         "enum": [
           "FERGUSONHOME_WEB",
@@ -7742,6 +8598,17 @@
             "format": "date-time",
             "title": "Nextattemptat",
             "type": "string"
+          },
+          "reconciliationState": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciliationstate"
           },
           "status": {
             "title": "Status",
@@ -7811,6 +8678,21 @@
           }
         },
         "title": "PageMeta",
+        "type": "object"
+      },
+      "PatchDomainPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "patch": {
+            "additionalProperties": true,
+            "title": "Patch",
+            "type": "object"
+          }
+        },
+        "required": [
+          "patch"
+        ],
+        "title": "PatchDomainPayload",
         "type": "object"
       },
       "PickupAction": {
@@ -7957,6 +8839,504 @@
         ],
         "title": "PickupActionRequest",
         "type": "object"
+      },
+      "PickupProjection": {
+        "additionalProperties": false,
+        "description": "A collection somebody scheduled. Freight and offsite returns wait on this.",
+        "properties": {
+          "contactName": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contactname"
+          },
+          "contactPhone": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contactphone"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "pickupReference": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickupreference"
+          },
+          "scheduledAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduledat"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "windowEndsAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Windowendsat"
+          },
+          "windowStartsAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Windowstartsat"
+          }
+        },
+        "title": "PickupProjection",
+        "type": "object"
+      },
+      "PolicyCondition": {
+        "description": "Something that must hold for the decision to stand as issued.\n\n`RESTOCKING_FEE_APPLIES` is the whole reason this list exists: the engine\ncan determine *that* a fee applies without being able to determine what it\nis, and saying so is honest where naming a percentage would be fabrication.",
+        "enum": [
+          "RESTOCKING_FEE_APPLIES",
+          "RESTOCKING_FEE_WAIVED",
+          "MANUFACTURER_FEE_ACCEPTED",
+          "MANUFACTURER_FEE_NOT_APPLICABLE"
+        ],
+        "title": "PolicyCondition",
+        "type": "string"
+      },
+      "PolicyEvaluationProjection": {
+        "additionalProperties": false,
+        "description": "What the deterministic evaluator decided, and what stands after any override.\n\n`effectiveDecision` is what completion reads and it is enforced here rather\nthan trusted: with an override it *is* the override's decision, without one\nit *is* the original. Two fields that can disagree are two fields that will,\nand the disagreement would be invisible -- an overridden `REVIEW_REQUIRED ->\nAPPROVE` that never resolved the completion profile looks exactly like a\ncase still waiting for a supervisor.\n\nA non-standard route carries no decision, matching `PolicyOutcome`'s own\ninvariant, and carries no override either: warranty and delivery claims are\nverified by Support, and a policy override on one of them would be a\nsupervisor approving a claim the verification exists to test.\n\n**The restocking fee is carried as a rate and never as a currency figure.**\n`rateBasisPoints` and `rateSource` mirror `FeeDetermination.rate_basis_points`\nand `.rate_source` and stop exactly where those do. The evaluator is pure and\nholds no line prices -- `quantity` is carried and read by no rule -- so the\nrate is the policy answer and the money is arithmetic belonging where prices\nlive. There is deliberately no `restockingFeeAmount` here for a downstream\nreader to fill from something plausible, and nothing in this contract may\nmultiply the rate by anything: the audit's `18.75` is what a projected\ncurrency figure looks like once nobody can say which price produced it.\n\nApplicability is **not** repeated as a field of its own. It already travels\nas `RESTOCKING_FEE_APPLIES` / `RESTOCKING_FEE_WAIVED` in `conditions`, which\nis where the evaluator puts it, and a second home for one fact is how the two\ncome to disagree.",
+        "properties": {
+          "appliedRules": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PolicyRule"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appliedrules"
+          },
+          "conditions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PolicyCondition"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conditions"
+          },
+          "effectiveDecision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EligibilityDecision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evaluatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluatedat"
+          },
+          "originalDecision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EligibilityDecision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PolicyOverrideProjection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "policyId": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policyid"
+          },
+          "policyVersion": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policyversion"
+          },
+          "rateBasisPoints": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratebasispoints"
+          },
+          "rateSource": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeeAmountSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reasonCodes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PolicyReasonCode"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoncodes"
+          },
+          "route": {
+            "$ref": "#/components/schemas/PolicyRoute"
+          }
+        },
+        "required": [
+          "route"
+        ],
+        "title": "PolicyEvaluationProjection",
+        "type": "object"
+      },
+      "PolicyOverrideDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "overriddenAt": {
+            "title": "Overriddenat",
+            "type": "string"
+          },
+          "overrideDecision": {
+            "title": "Overridedecision",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "reasonCode": {
+            "title": "Reasoncode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "overrideDecision",
+          "reasonCode",
+          "actor",
+          "overriddenAt"
+        ],
+        "title": "PolicyOverrideDetail",
+        "type": "object"
+      },
+      "PolicyOverrideProjection": {
+        "additionalProperties": false,
+        "description": "A supervisor's departure from the evaluator's answer. Append-only.\n\nEvery field here is **server-derived** except the decision and the reason:\n`actor` comes from the authenticated principal and `overriddenAt` from the\nserver clock, for the same reason `order_agent.py` derives `correlation_id`.\nA client-supplied audit field is not audit.",
+        "properties": {
+          "actor": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Actor",
+            "type": "string"
+          },
+          "overriddenAt": {
+            "format": "date-time",
+            "title": "Overriddenat",
+            "type": "string"
+          },
+          "overrideDecision": {
+            "$ref": "#/components/schemas/EligibilityDecision"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "reasonCode": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Reasoncode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "overrideDecision",
+          "reasonCode",
+          "actor",
+          "overriddenAt"
+        ],
+        "title": "PolicyOverrideProjection",
+        "type": "object"
+      },
+      "PolicyOverrideRequest": {
+        "description": "What a supervisor supplies. Everything else is derived by the server.\n\n`extra=\"ignore\"`, alone among the models in this module, and deliberately.\nThe audit fields a caller might try to set -- `actor`, a timestamp, the\noriginal decision, a tenant -- are server-derived, and dropping them is what\n\"the server derives it\" means. Refusing the request instead would tell the\ncaller the field exists and is merely mis-typed, which invites the next\nattempt to guess the right spelling.",
+        "properties": {
+          "expectedRevision": {
+            "minimum": 0.0,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "idempotencyKey": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Idempotencykey",
+            "type": "string"
+          },
+          "overrideDecision": {
+            "enum": [
+              "APPROVE",
+              "REJECT"
+            ],
+            "title": "Overridedecision",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "reasonCode": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Reasoncode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "overrideDecision",
+          "reasonCode",
+          "idempotencyKey"
+        ],
+        "title": "PolicyOverrideRequest",
+        "type": "object"
+      },
+      "PolicyOverrideResult": {
+        "additionalProperties": false,
+        "description": "Both readings of the decision, because the original is never overwritten.",
+        "properties": {
+          "caseId": {
+            "title": "Caseid",
+            "type": "string"
+          },
+          "effectiveDecision": {
+            "title": "Effectivedecision",
+            "type": "string"
+          },
+          "originalDecision": {
+            "title": "Originaldecision",
+            "type": "string"
+          },
+          "override": {
+            "$ref": "#/components/schemas/PolicyOverrideDetail"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "signalDelivered": {
+            "title": "Signaldelivered",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "caseId",
+          "revision",
+          "originalDecision",
+          "effectiveDecision",
+          "override",
+          "signalDelivered"
+        ],
+        "title": "PolicyOverrideResult",
+        "type": "object"
+      },
+      "PolicyReasonCode": {
+        "description": "Why the evaluation reached the answer it did.",
+        "enum": [
+          "WITHIN_STANDARD_RETURN_WINDOW",
+          "OUTSIDE_STANDARD_RETURN_WINDOW",
+          "PURCHASE_DATE_UNKNOWN",
+          "DELIVERY_DATE_UNKNOWN",
+          "STANDARD_RETURN_CONDITION_FAILED",
+          "REQUIRED_FACT_UNKNOWN",
+          "SPECIAL_ORDER_STATUS_UNKNOWN",
+          "STOCK_STATUS_UNKNOWN",
+          "DAMAGE_CAUSE_UNKNOWN",
+          "MANUFACTURER_ACCEPTANCE_REQUIRED",
+          "MANUFACTURER_ACCEPTED_RETURN",
+          "MANUFACTURER_REJECTED_RETURN",
+          "MANUFACTURER_FEE_UNKNOWN",
+          "BUYER_FEE_ACCEPTANCE_UNKNOWN",
+          "BUYER_REJECTED_MANUFACTURER_FEE",
+          "DELIVERY_CLAIM_WITHIN_REPORTING_WINDOW",
+          "DELIVERY_CLAIM_REPORTING_WINDOW_ELAPSED",
+          "DELIVERY_CLAIM_REPORTING_WINDOW_UNDETERMINED",
+          "WARRANTY_VERIFICATION_REQUIRED",
+          "CUSTOMER_CONTRACT_OVERRIDE_REQUIRES_REVIEW",
+          "NO_RULE_MATCHED"
+        ],
+        "title": "PolicyReasonCode",
+        "type": "string"
+      },
+      "PolicyRoute": {
+        "description": "Which business path the eligibility evaluation hands the case to.\n\nWarranty and delivery claim are *routes*, not decisions and not terminal\nstates: Support verifies both inside this application and approved cases\nrejoin the ordinary RMA lifecycle.",
+        "enum": [
+          "STANDARD_RETURN",
+          "WARRANTY",
+          "DELIVERY_CLAIM"
+        ],
+        "title": "PolicyRoute",
+        "type": "string"
+      },
+      "PolicyRule": {
+        "description": "The named rules an evaluation applied, persisted as provenance (baseline 16).",
+        "enum": [
+          "POLICY_RELEASE_VALIDATED",
+          "CUSTOMER_CONTRACT_OVERRIDE",
+          "DELIVERY_CLAIM_ROUTING",
+          "WARRANTY_ROUTING",
+          "DAMAGE_CAUSE_ROUTING",
+          "SPECIAL_ORDER_MANUFACTURER_POLICY",
+          "STANDARD_STOCK_ITEM",
+          "NEW_RESALEABLE_CONDITION",
+          "WITHIN_30_DAYS",
+          "OUTSIDE_STANDARD_WINDOW",
+          "RESTOCKING_FEE_APPLIES",
+          "STOCK_CLASS_FROM_CONFIGURATION",
+          "CONDITION_FACTS_NOT_EVALUATED",
+          "FAIL_SAFE_REVIEW"
+        ],
+        "title": "PolicyRule",
+        "type": "string"
       },
       "PrincipalView": {
         "additionalProperties": false,
@@ -8730,6 +10110,19 @@
         "title": "RebindRequest",
         "type": "object"
       },
+      "RecoveryAction": {
+        "description": "What reconciliation actually did to one case. One member per outcome.\n\nAn enum rather than a boolean, because \"did not relaunch\" has four\ncompletely different meanings and an operator who cannot tell them apart\ncannot act on any of them.",
+        "enum": [
+          "RELAUNCHED",
+          "ALREADY_RUNNING",
+          "REFUSED_TERMINAL",
+          "DEFERRED_UNKNOWN",
+          "RELAUNCH_FAILED",
+          "CASE_NOT_FOUND"
+        ],
+        "title": "RecoveryAction",
+        "type": "string"
+      },
       "RelationshipShapeView": {
         "additionalProperties": false,
         "properties": {
@@ -9125,6 +10518,311 @@
           "text"
         ],
         "title": "ResponseStatement",
+        "type": "object"
+      },
+      "ReturnArtifactProjection": {
+        "additionalProperties": false,
+        "description": "One document belonging to one RMA, and to one of its packages once there is one.\n\nIt lives on `ReturnRecordProjection.artifacts`. `shipmentId` is the\nattribution and it is genuinely optional: `None` says the RMA has this\ndocument and no package is known yet -- a printed label before anything was\ntendered -- and a value says which package it goes on. Authorization is\nrecord-scoped for the same reason (plan sect. 11: the artifact must belong\nto *that return*, never validated on artifact id alone).\n\nServed through an opaque authenticated endpoint, never a storage URL -- so\nthere is deliberately no `url` field to put one in.\n\n`supersededBy` rather than deletion: a replaced label stays auditable, and\nthe active artifact is the one with `active` true and `supersededBy` null.\n**Never `labels[0]`.**",
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "artifactId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Artifactid",
+            "type": "string"
+          },
+          "artifactType": {
+            "$ref": "#/components/schemas/ReturnArtifactType"
+          },
+          "createdAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdat"
+          },
+          "expiresAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiresat"
+          },
+          "fileName": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "mediaType": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mediatype"
+          },
+          "shipmentId": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shipmentid"
+          },
+          "supersededBy": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersededby"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "artifactId",
+          "artifactType"
+        ],
+        "title": "ReturnArtifactProjection",
+        "type": "object"
+      },
+      "ReturnArtifactType": {
+        "description": "What a shipment artifact is. The three the completion rules distinguish.\n\nA bill of lading is not a shipping label, and `bol_tendering_instruction_types`\nin the return configuration already treats them as different documents. A\nfreight return whose BOL requirement were satisfied by a parcel label would\ncomplete with nothing to hand the driver.",
+        "enum": [
+          "SHIPPING_LABEL",
+          "BILL_OF_LADING",
+          "RETURN_INSTRUCTIONS"
+        ],
+        "title": "ReturnArtifactType",
+        "type": "string"
+      },
+      "ReturnArtifactView": {
+        "additionalProperties": false,
+        "description": "One document belonging to one RMA, as much of it as exists.\n\nThe response of the artifact route. Deliberately **not**\n`ReturnArtifactProjection` re-served: the projection is what the case read\ncarries, and this adds the three things a retrieval answer needs and the\nprojection has no business holding -- the scope that was validated\n(`caseId`, `returnRecordId`), the backend's own verdict on whether this is\nthe live artifact (`isActive`), and what can be handed over\n(`contentState`).\n\n**`isActive` is computed here and never by the client.** Plan sect. 11 is\nexplicit that the single label action resolves to the backend-declared\nactive artifact -- `active == true AND supersededBy == null`, never\n`labels[0]` -- so the pair of clauses is evaluated once, on the server, by\n`ReturnArtifactProjection.is_active`. `supersededBy` travels beside it so an\nauditor reading a superseded artifact can follow it to its replacement\nwithout a second request.",
+        "properties": {
+          "artifactId": {
+            "title": "Artifactid",
+            "type": "string"
+          },
+          "artifactType": {
+            "$ref": "#/components/schemas/ReturnArtifactType"
+          },
+          "caseId": {
+            "title": "Caseid",
+            "type": "string"
+          },
+          "contentState": {
+            "$ref": "#/components/schemas/ArtifactContentState"
+          },
+          "createdAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdat"
+          },
+          "expiresAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiresat"
+          },
+          "fileName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "isActive": {
+            "title": "Isactive",
+            "type": "boolean"
+          },
+          "mediaType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mediatype"
+          },
+          "returnRecordId": {
+            "title": "Returnrecordid",
+            "type": "string"
+          },
+          "shipmentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shipmentid"
+          },
+          "supersededBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersededby"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "caseId",
+          "returnRecordId",
+          "artifactId",
+          "artifactType",
+          "isActive",
+          "contentState"
+        ],
+        "title": "ReturnArtifactView",
+        "type": "object"
+      },
+      "ReturnCaseStatus": {
+        "description": "Where the workflow says the case is. Persisted, and the only authority.\n\nComplete as declared. In particular there are **no `ROUTED_*` members**:\nwarranty and delivery claims are `AWAITING_SUPPORT` carrying an `awaiting`\ndimension, because Support verifies both inside this application and an\napproved case rejoins the ordinary RMA lifecycle. A routed terminal status\nwould end a case that is only halfway through its own happy path.",
+        "enum": [
+          "GATHERING_INFO",
+          "AWAITING_POLICY_REVIEW",
+          "AWAITING_SUPPORT",
+          "PROCESSING_RETURN",
+          "COMPLETED",
+          "COMPLETED_EXTERNAL_SETTLEMENT",
+          "POLICY_REJECTED",
+          "CANCELLED",
+          "EXPIRED",
+          "RECOVERY_REQUIRED"
+        ],
+        "title": "ReturnCaseStatus",
+        "type": "string"
+      },
+      "ReturnContactRequest": {
+        "additionalProperties": false,
+        "description": "The branch associate a carrier can reach about this return.\n\n**Case-level, and a sibling of `items` rather than a field on one.** One\nassociate raises one return; a contact per line would let a two-line\nselection carry two different people and give the label writer no rule for\npicking between them. The shape says so, so the wrong thing is unsayable.\n\n**Every field optional, by operator instruction**, exactly as the branch\nnumber is. A return whose associate is not recorded is an ordinary return\nand must not be blocked, and none of these may ever acquire a default: an\ninvented associate email routes a UPS label to nobody, which is the same\nfailure `ItemSelectionMode` refuses a default branch for.\n\n**Shape is checked; existence is not.** An email that is not an email is\nrefused here as well as at entry -- the console cannot be the only thing\nstanding between a typo and a carrier -- while a name and a phone are only\nlength-bounded. There is no honest format rule for either: branch phone\nnumbers in the reference extract are written half a dozen ways, and a\npattern invented here would reject the ones a carrier can actually dial.\n\nThe empty string is accepted and is not a null. It is how a recorded value\nis retracted: the fact log is append-only, so an associate correcting a\ncontact they entered by mistake appends an empty value over it rather than\ndeleting anything. `null` -- the field simply absent -- says this\nsubmission makes no statement about it at all.",
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "maxLength": 320,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          }
+        },
+        "title": "ReturnContactRequest",
         "type": "object"
       },
       "ReturnCreateRequest": {
@@ -9979,10 +11677,53 @@
         "title": "ReturnItemInput",
         "type": "object"
       },
+      "ReturnOutcomeAcceptedView": {
+        "additionalProperties": false,
+        "description": "The receipt for a durably recorded Support event.\n\nSays what committed, and nothing about what the workflow has done with it.\nDelivery happens after this response is written, so any field here claiming\nthe workflow had been told would be a claim the handler cannot make.",
+        "properties": {
+          "caseId": {
+            "title": "Caseid",
+            "type": "string"
+          },
+          "disposition": {
+            "title": "Disposition",
+            "type": "string"
+          },
+          "outboxCommandId": {
+            "title": "Outboxcommandid",
+            "type": "string"
+          },
+          "supportEventId": {
+            "title": "Supporteventid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "caseId",
+          "supportEventId",
+          "disposition",
+          "outboxCommandId"
+        ],
+        "title": "ReturnOutcomeAcceptedView",
+        "type": "object"
+      },
       "ReturnOutcomeRecord": {
         "additionalProperties": false,
         "description": "One RMA as Support is issuing it.",
         "properties": {
+          "carrier": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier"
+          },
           "labelReference": {
             "anyOf": [
               {
@@ -10015,6 +11756,19 @@
               }
             ],
             "title": "Returnlocation"
+          },
+          "returnMethod": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnmethod"
           },
           "returnReference": {
             "maxLength": 128,
@@ -10082,38 +11836,61 @@
             "default": false,
             "title": "Rejected",
             "type": "boolean"
-          }
-        },
-        "title": "ReturnOutcomeRequest",
-        "type": "object"
-      },
-      "ReturnRecordView": {
-        "additionalProperties": false,
-        "description": "One RMA, and everything that belongs to that RMA rather than to the case.\n\nFirst-class because one RMA covers N items and one case can carry N RMAs:\na multi-item return can produce several RMAs with different labels and\ndifferent return locations, and putting these on the case (one each) or on\nthe item (one per item) can express neither.",
-        "properties": {
-          "caseId": {
-            "title": "Caseid",
-            "type": "string"
           },
-          "createdAt": {
-            "format": "date-time",
-            "title": "Createdat",
-            "type": "string"
-          },
-          "labelReference": {
+          "supportEventId": {
             "anyOf": [
               {
+                "maxLength": 128,
+                "minLength": 1,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Labelreference"
+            "title": "Supporteventid"
+          }
+        },
+        "title": "ReturnOutcomeRequest",
+        "type": "object"
+      },
+      "ReturnRecordProjection": {
+        "additionalProperties": false,
+        "description": "One RMA and everything belonging to it rather than to the case.\n\n`returnMethod` is a plain string, not the `NormalizedReturnMethod` enum,\nand that is deliberate. The catalogue is operator-owned in\n`return_policy.normalized_return_methods`; a closed enum here would refuse\nto *render* a case whose method an operator added through the Control\nCentre, which is the same failure the removed `pattern=` on\n`shippingPathExpectation` caused on the write path. A method the requirement\ntable does not know is treated as unresolved, not as invalid.",
+        "properties": {
+          "approvedItems": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ApprovedItemProjection"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approveditems"
+          },
+          "artifacts": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ReturnArtifactProjection"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifacts"
           },
           "returnLocation": {
             "anyOf": [
               {
+                "maxLength": 256,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -10122,13 +11899,30 @@
             ],
             "title": "Returnlocation"
           },
+          "returnMethod": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnmethod"
+          },
           "returnRecordId": {
+            "maxLength": 256,
+            "minLength": 1,
             "title": "Returnrecordid",
             "type": "string"
           },
           "returnReference": {
             "anyOf": [
               {
+                "maxLength": 256,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -10137,62 +11931,38 @@
             ],
             "title": "Returnreference"
           },
-          "shippingInstructionReference": {
+          "shipments": {
             "anyOf": [
               {
-                "type": "string"
+                "items": {
+                  "$ref": "#/components/schemas/ShipmentProjection"
+                },
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Shippinginstructionreference"
-          },
-          "sourceSystem": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sourcesystem"
+            "title": "Shipments"
           },
           "status": {
-            "default": "DRAFT",
-            "title": "Status",
-            "type": "string"
-          },
-          "trackingReference": {
             "anyOf": [
               {
+                "maxLength": 256,
+                "minLength": 1,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Trackingreference"
-          },
-          "updatedAt": {
-            "format": "date-time",
-            "title": "Updatedat",
-            "type": "string"
-          },
-          "version": {
-            "default": 0,
-            "title": "Version",
-            "type": "integer"
+            "title": "Status"
           }
         },
         "required": [
-          "returnRecordId",
-          "caseId",
-          "createdAt",
-          "updatedAt"
+          "returnRecordId"
         ],
-        "title": "ReturnRecordView",
+        "title": "ReturnRecordProjection",
         "type": "object"
       },
       "ReturnSessionView": {
@@ -10852,6 +12622,9 @@
       },
       "RuntimeConfig": {
         "properties": {
+          "agents": {
+            "$ref": "#/components/schemas/RuntimeConfigAgents"
+          },
           "apiBasePath": {
             "const": "/api",
             "title": "Apibasepath",
@@ -10864,12 +12637,18 @@
             "title": "Environment",
             "type": "string"
           },
+          "factCatalogue": {
+            "$ref": "#/components/schemas/RuntimeConfigFactCatalogue"
+          },
           "features": {
             "$ref": "#/components/schemas/RuntimeConfigFeatures"
           },
           "releaseId": {
             "title": "Releaseid",
             "type": "string"
+          },
+          "selectionVocabulary": {
+            "$ref": "#/components/schemas/RuntimeConfigSelectionVocabulary"
           }
         },
         "required": [
@@ -10877,9 +12656,33 @@
           "environment",
           "apiBasePath",
           "features",
-          "capabilities"
+          "capabilities",
+          "agents",
+          "selectionVocabulary",
+          "factCatalogue"
         ],
         "title": "RuntimeConfig",
+        "type": "object"
+      },
+      "RuntimeConfigAgents": {
+        "description": "Which agent the shell addresses, served rather than compiled into it.\n\nThe Copilot sent the literal `\"order_discovery\"` while the active schema\nkeys the policy `order-discovery-agent`, so every turn 422'd. `None` is the\nhonest answer when no configuration is loaded or the deployment has not\nstated the mapping -- the shell fails closed on it, and there is deliberately\nno server-side default to fall back to.",
+        "properties": {
+          "orderDiscovery": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orderdiscovery"
+          }
+        },
+        "required": [
+          "orderDiscovery"
+        ],
+        "title": "RuntimeConfigAgents",
         "type": "object"
       },
       "RuntimeConfigCapabilities": {
@@ -10906,6 +12709,23 @@
         "title": "RuntimeConfigCapabilities",
         "type": "object"
       },
+      "RuntimeConfigFactCatalogue": {
+        "description": "The order the operator ranked the conversation's facts in.\n\n`clarification_policy.fields[].priority` is the operator's own statement of\nhow badly each fact is wanted, and `build_fact_catalogue` binds that very\nlist into the catalogue that decides which fact names a turn may capture at\nall -- a name it does not define is reported and discarded rather than\nstored. So this is not a new configuration surface: it is the ranking of\nthe exact key space `captured_facts` is already written in.\n\nServed rather than compiled into the console for the reason\n`selectionVocabulary` is. The facts panel listed its rows in an order\nwritten into a TypeScript array, which meant an operator who re-ranked\n`clarification_policy` changed what the agent asks for next and changed\nnothing about the panel that reports what it got -- and could not correct\nthe panel at all without a frontend release.\n\n**Why the priority and not `discovery.anchor_weights` or\n`identification_fields[].clarification_priority`.** Neither is keyed by a\nfact name. `anchor_weights` is per anchor *type* -- eight entries scoring\ncandidate matches, with no entry for a return reason, which is not an\nanchor and never will be. `identification_fields[].clarification_priority`\nis keyed by the discovery catalogue's own `field_id` (`sku`, `postal_code`,\n`free_text`), a namespace that overlaps this one only by coincidence and\nthat omits `return_reason`, `product_sku`, `customer_id` and\n`tracking_number` outright. Ordering by either would leave most of what the\npanel renders unranked.\n\n`orderedFields` is descending priority with ties broken by field name, so\nthe sequence is total and every client agrees on it without re-implementing\nthe comparison. It is the configured ranking verbatim, including names a\ngiven screen chooses to withhold: what a panel suppresses is that panel's\ndecision, not the contract's.\n\n**Empty means no configuration is loaded**, the same as every other block\nhere, and carries the same instruction: a client must fall back to an order\nit can defend rather than substitute a ranking of its own.\n\nNon-secret: a list of configured field names, no values.",
+        "properties": {
+          "orderedFields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Orderedfields",
+            "type": "array"
+          }
+        },
+        "required": [
+          "orderedFields"
+        ],
+        "title": "RuntimeConfigFactCatalogue",
+        "type": "object"
+      },
       "RuntimeConfigFeatures": {
         "properties": {
           "orderDiscoveryCopilot": {
@@ -10917,6 +12737,31 @@
           "orderDiscoveryCopilot"
         ],
         "title": "RuntimeConfigFeatures",
+        "type": "object"
+      },
+      "RuntimeConfigSelectionVocabulary": {
+        "description": "The reason and condition catalogues an associate may pick a line from.\n\nServed rather than compiled into the console for the same reason\n`agents.orderDiscovery` is: `selection_vocabulary` is operator-owned and\nchanges in a release, and `POST /api/cases/{id}/selected-items` refuses\nanything the active release does not publish with\n`422 SELECTION_TERM_NOT_PUBLISHED`. A picker built from a list in the\nbrowser would therefore offer terms the writer rejects the moment an\noperator edits the catalogue -- which is the hardcoded catalogue plan\nsect. 12.4 removed from the item-selection pane.\n\n**Empty means \"no catalogue is published\", not \"nothing is allowed\".** That\nis the release's own reading -- `unknown_reasons` refuses nothing for an\nunpublished catalogue -- and a client seeing empty lists must fall back to\nthe free-text behaviour a pre-12.4 release still has, not to a list of its\nown.\n\nNon-secret: two lists of enum tokens an associate reads off a dropdown.",
+        "properties": {
+          "conditions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Conditions",
+            "type": "array"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "reasons",
+          "conditions"
+        ],
+        "title": "RuntimeConfigSelectionVocabulary",
         "type": "object"
       },
       "SafetyStatus": {
@@ -11220,6 +13065,296 @@
         "title": "SeedStatusView",
         "type": "object"
       },
+      "SelectedItemProjection": {
+        "additionalProperties": false,
+        "description": "One order line the associate named, before any RMA covers it.",
+        "properties": {
+          "condition": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "orderLineReference": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Orderlinereference",
+            "type": "string"
+          },
+          "packageReference": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Packagereference"
+          },
+          "productReference": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productreference"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "returnItemId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Returnitemid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "returnItemId",
+          "orderLineReference"
+        ],
+        "title": "SelectedItemProjection",
+        "type": "object"
+      },
+      "SelectedItemRequest": {
+        "additionalProperties": false,
+        "description": "One line the associate is naming. Server-derived fields are absent.\n\nNo product reference and no price: both are properties of the order line,\nresolved from the source, and a client that could state them could record a\nreturn against a product the order does not contain.",
+        "properties": {
+          "condition": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "orderLineReference": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Orderlinereference",
+            "type": "string"
+          },
+          "packageReference": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Packagereference"
+          },
+          "quantity": {
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "orderLineReference",
+          "quantity"
+        ],
+        "title": "SelectedItemRequest",
+        "type": "object"
+      },
+      "SelectedItemView": {
+        "additionalProperties": false,
+        "properties": {
+          "condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "orderLineReference": {
+            "title": "Orderlinereference",
+            "type": "string"
+          },
+          "packageReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Packagereference"
+          },
+          "productReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productreference"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "returnItemId": {
+            "title": "Returnitemid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "returnItemId",
+          "orderLineReference"
+        ],
+        "title": "SelectedItemView",
+        "type": "object"
+      },
+      "SelectedItems": {
+        "additionalProperties": false,
+        "description": "What the case now holds, and what the order now has left.\n\nThe refreshed lines travel with the write deliberately. The next thing the\nclient does after selecting is render the line list, and a response that\nmade it poll for that would leave the pane showing the availability the\nassociate selected *against* for as long as the round trip took.",
+        "properties": {
+          "caseId": {
+            "title": "Caseid",
+            "type": "string"
+          },
+          "changed": {
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SelectedItemView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "lines": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/OrderLineView"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "caseId",
+          "revision",
+          "changed"
+        ],
+        "title": "SelectedItems",
+        "type": "object"
+      },
+      "SelectedItemsRequest": {
+        "additionalProperties": false,
+        "description": "The **whole** selection, not an addition to it.\n\nReplace-set semantics, stated in the shape: a line the associate removed is\na line absent from `items`, and the writer releases its hold in the same\ntransaction that records the ones they kept. An append endpoint would leave\nwithdrawn lines holding quantity nobody was going to return.\n\n**`contact` is deliberately not part of that replace set.** The selection is\na ledger with a hold behind it, so the whole of it has to arrive at once;\nthe contact is a statement about the case, kept on the append-only fact log\nwhere every other case-level detail lives. Omitting it therefore means \"this\nsubmission says nothing about the associate\", and leaves whatever the case\nalready holds standing -- never \"clear it\". Retraction is an explicit empty\nvalue; see `ReturnContactRequest`.",
+        "properties": {
+          "contact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReturnContactRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SelectedItemRequest"
+            },
+            "maxItems": 200,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "title": "SelectedItemsRequest",
+        "type": "object"
+      },
       "SessionStatus": {
         "enum": [
           "DRAFT",
@@ -11235,6 +13370,65 @@
         "title": "SessionStatus",
         "type": "string"
       },
+      "SettlementProjection": {
+        "additionalProperties": false,
+        "description": "The credit. `NOT_INTEGRATED`, because there is no settlement producer.\n\nNot `NOT_STARTED`. That would say a producer exists and has not run yet,\nwhich is a false statement about the system: nothing in this platform issues\na credit memo, computes a settled amount or records a settlement date. The\naudit found a pane displaying `249.99`, `18.75` and `CM-2026-88192` with no\nbackend contract behind any of it; the honest contract for those three fields\nis this block saying, positively, that the integration does not exist.\n\n`status` is required and always populated, so this block is **not** the\n\"every field null\" shape the module docstring forbids -- `NOT_INTEGRATED` is\nan answer, not an absence. The three fields beside it stay `None` under the\nordinary rule, and nothing may ever fill them until a producer does.\n\nThree consequences, and each is asserted in the projection tests:\n\n* Settlement never enters `awaiting` and never blocks `businessComplete`.\n  `AwaitingDimension` has no settlement member, so it cannot.\n* `businessComplete` means **completion within configured platform\n  responsibility** -- every requirement the return method and policy place\n  on *this* platform is satisfied. Settlement is outside that boundary, so a\n  return can be business-complete with its credit unissued. That boundary is\n  the load-bearing assumption of the whole completion rule.\n* A case whose settlement is `NOT_INTEGRATED` reaches\n  `COMPLETED_EXTERNAL_SETTLEMENT`, never plain `COMPLETED`, so a\n  completed-return count can never be read as a settled-return count.",
+        "properties": {
+          "creditMemoReference": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creditmemoreference"
+          },
+          "settledAmount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MonetaryAmount"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settledAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settledat"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SettlementStatus"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "SettlementProjection",
+        "type": "object"
+      },
+      "SettlementStatus": {
+        "description": "Where the credit stands.\n\n`NOT_INTEGRATED`, never `NOT_STARTED`. The latter implies a producer that\nhas not run; there is no producer at all, and the distinction is the whole\nreason plan sect. 13 Phase 9 names it.",
+        "enum": [
+          "NOT_INTEGRATED",
+          "PENDING",
+          "SETTLED"
+        ],
+        "title": "SettlementStatus",
+        "type": "string"
+      },
       "Severity": {
         "enum": [
           "ERROR",
@@ -11242,6 +13436,108 @@
         ],
         "title": "Severity",
         "type": "string"
+      },
+      "ShipmentProjection": {
+        "additionalProperties": false,
+        "description": "One package. Explicit fields only.\n\n`carrier` is a carrier, not `orderSource`; `serviceLevel` is a carrier\nservice, not a return method; `estimatedDeliveryAt` is an estimate somebody\ngave for this package, not `shippingPathExpectation` reinterpreted. All\nthree substitutions were live defects and none can be repeated here, because\nno source field for any of them exists on this model.\n\n**Two of the three are `None` on every assembled case today, and honestly\nso.** `carrier` gained a producer: Support states it on the RMA and it\ntravels `ReturnOutcomeRecord` -> `SupportReturnRecord` ->\n`RETURN_RECORD_MERGED_FIELDS` -> `ReturnRecordView` -> here. Nothing\ncase-keyed produces a service level or a return-leg delivery estimate --\nthe only service level is `PickupRequest.serviceLevel`, which is the service\na freight *collection* was booked at rather than the service a parcel moves\nunder, and no estimate is computed or received at all;\n`assembly.project_shipments` names the missing producer for each one. They stay declared for the reason the eight producerless\n`WarehouseProjection` fields do: the contract is where a producer lands, and\na field the model cannot express is a field a writer cannot deliver.\n\n**No `labelArtifacts`.** Documents hang off the return record and name their\npackage through `ReturnArtifactProjection.shipmentId`; this package's are\n`record.active_artifacts_for_shipment(type, shipment.shipmentId)`. A label\nthat exists before any package must still be expressible, and one home for\nthe fact is what stops it being attributed to the wrong package.",
+        "properties": {
+          "carrier": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier"
+          },
+          "createdAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdat"
+          },
+          "estimatedDeliveryAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimateddeliveryat"
+          },
+          "serviceLevel": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Servicelevel"
+          },
+          "shipmentId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Shipmentid",
+            "type": "string"
+          },
+          "shipmentStatus": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShipmentStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trackingNumber": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trackingnumber"
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updatedat"
+          }
+        },
+        "required": [
+          "shipmentId"
+        ],
+        "title": "ShipmentProjection",
+        "type": "object"
       },
       "ShipmentReadingView": {
         "additionalProperties": false,
@@ -11303,6 +13599,18 @@
         ],
         "title": "ShipmentReadingView",
         "type": "object"
+      },
+      "ShipmentStatus": {
+        "description": "One package's progress. Aligned with `FulfillmentTrackingStatus` where they overlap.\n\n`AWAITING_HANDOFF` and `IN_TRANSIT` are spelled as\n`workflows/fulfillment_tracking.py` already spells them, so the case\nprojection and the legacy session path do not describe the same parcel with\ntwo words.\n\n`DELIVERED` and `RECEIVED` are separate because they are separate events:\nthe carrier delivering to a dock is not the warehouse booking the goods in,\nand a return that is delivered but unbooked is exactly the state a receiving\nsupervisor needs to see.",
+        "enum": [
+          "AWAITING_HANDOFF",
+          "IN_TRANSIT",
+          "DELIVERED",
+          "RECEIVED",
+          "CANCELLED"
+        ],
+        "title": "ShipmentStatus",
+        "type": "string"
       },
       "ShipmentUpdateRequest": {
         "additionalProperties": false,
@@ -12866,6 +15174,136 @@
         "title": "SupportOperationRequest",
         "type": "object"
       },
+      "SupportProjection": {
+        "additionalProperties": false,
+        "description": "The open work item, if Support has one.\n\nDistinguished by `queue`, never by a type field. `SupportWorkItemView` has no\n`type` and route context travels as a configured queue\n(`RETURNS_SUPPORT | WARRANTY_SUPPORT | DELIVERY_CLAIM_SUPPORT`), so adding one\nhere would create the field plan sect. 7.6 says not to add.",
+        "properties": {
+          "assignedTo": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignedto"
+          },
+          "openedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openedat"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "queue": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue"
+          },
+          "resolvedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolvedat"
+          },
+          "slaDueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sladueat"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          },
+          "threadId": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threadid"
+          },
+          "workItemId": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Workitemid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workItemId"
+        ],
+        "title": "SupportProjection",
+        "type": "object"
+      },
       "SupportWorkItemStatus": {
         "enum": [
           "NEW",
@@ -12873,6 +15311,7 @@
           "CLARIFICATION_REQUIRED",
           "IN_PROGRESS",
           "RETURN_CREATION_PENDING",
+          "EXTERNAL_PARTY_REVIEW",
           "RETURN_CREATED",
           "SHIPPING_INSTRUCTIONS_PENDING",
           "READY_FOR_ASSOCIATE",
@@ -13390,6 +15829,154 @@
         "title": "ValidationResultView",
         "type": "object"
       },
+      "WarehouseProjection": {
+        "additionalProperties": false,
+        "description": "Receiving, inspection and disposition. Only fields current backend flows produce.\n\nBay data comes from the facts `ReturnCaseWorkflow` already writes -- there is\nno separate bay service to read, and inventing one here would put a field on\nthe contract that nothing can ever fill. `assembly.project_warehouse` names\nthe producing fact for every field it fills and names the absence for every\nfield it does not; the seven receipt fields below currently have **no\ncase-keyed producer anywhere in the platform** and are therefore always\n`None` on an assembled case. They stay declared because the contract is the\nplace a producer will land, and a field the model cannot express is a field\na writer cannot deliver.\n\n**A case with no bay is a normal state.** Bay placement is advisory and\nbest-effort by declared policy (`CaseBayPlacement`), and it runs before the\ngoods exist, so \"no bay\" is the ordinary answer for most of a case's life.\n`bayReason` is what makes that readable: it carries the state the placement\nengine named -- `RECOMMENDED`, `NO_ELIGIBLE_BAY`, `PRE_ARRIVAL_NOT_ALLOWED`,\n`WAREHOUSE_ABSENT_NO_WAREHOUSE_REFERENCE`, `BAY_PLACEMENT_NOT_CONFIGURED`\nand their siblings -- so a reader has an explanation rather than a blank\nwhere a bay would be. **It is not an error field**, and a `bayReason` with\nno `bayId` beside it is the platform working, not failing.\n\n`bayReason` is deliberately a field of its own rather than folded into\n`warehouseStatus`. `has_receipt` reads `warehouseStatus`, so writing a\nplacement reason there would make every case that merely *asked* for a bay\nreport goods booked in and jump the Copilot to `WAREHOUSE_RECEIVING` -- a\nreceiving pane lit by a recommendation, which is the fabrication this block\nexists to prevent.",
+        "properties": {
+          "bayId": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bayid"
+          },
+          "bayReason": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bayreason"
+          },
+          "condition": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "disposition": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disposition"
+          },
+          "facilityId": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Facilityid"
+          },
+          "facilityName": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Facilityname"
+          },
+          "inspectionStatus": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inspectionstatus"
+          },
+          "qaStatus": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qastatus"
+          },
+          "receivedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receivedat"
+          },
+          "receivedQuantity": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receivedquantity"
+          },
+          "warehouseStatus": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warehousestatus"
+          }
+        },
+        "title": "WarehouseProjection",
+        "type": "object"
+      },
       "WarningMeta": {
         "additionalProperties": false,
         "properties": {
@@ -13546,7 +16133,7 @@
     },
     "/api/ai/interceptions": {
       "get": {
-        "description": "Requests currently held waiting on a human.\n\n**Identifiers and status only.** The held prompt is sealed at rest and is\ndeliberately not on this surface: an operator listing the queue does not\nneed to see every pending prompt, and decrypting them all to render a list\nwould defeat sealing them. Whoever actually answers one fetches its payload\nexplicitly through the store.\n\nReturns an empty list rather than 503 when no store is configured. A\ndeployment with no interception store has no pending interceptions, which is\na true answer; failing here would break the AI screen for every environment\nthat never uses the manual path.",
+        "description": "Work currently held waiting on a human -- both kinds, in one queue.\n\n`point` says which: `REQUEST` is a call that has not been made and that a\nhuman may answer in the model's place; `RESPONSE` is a reply that has come\nback and that a human may accept, edit or reject. One queue rather than two\nendpoints because an operator's question is \"what is waiting on me\", not\n\"what is waiting on me of each kind\", and a second list is a second thing to\nforget to open.\n\n**Identifiers and status only.** The held prompt is sealed at rest and is\ndeliberately not on this surface: an operator listing the queue does not\nneed to see every pending prompt, and decrypting them all to render a list\nwould defeat sealing them. Whoever actually answers one fetches its payload\nexplicitly through the store.\n\nReturns an empty list rather than 503 when no store is configured. A\ndeployment with no interception store has no pending interceptions, which is\na true answer; failing here would break the AI screen for every environment\nthat never uses the manual path.",
         "operationId": "list_interceptions_api_ai_interceptions_get",
         "responses": {
           "200": {
@@ -13568,7 +16155,7 @@
     },
     "/api/ai/interceptions/{interception_id}/allow": {
       "post": {
-        "description": "Approve the held request unchanged: let the model answer it after all.\n\nThe third outcome, and until AI-01 the missing one. An operator could\nsubstitute a human answer or kill the request; \"I have read this and it may\nproceed\" had no representation, so interception could only ever divert\ntraffic, never approve it -- which makes turning it on in production a choice\nbetween inspecting nothing and hand-answering everything.\n\nSame capability as answering, deliberately: approving a request that carries\na customer's data is an act on that data, not a lesser read.\n\nLike `answer`, this only transitions the record. The resume dispatcher turns\nan `ALLOWED` interception into a resume command exactly as it does an\n`ANSWERED` one, and the resumed dispatch finds `ALLOW_PROVIDER` waiting for\nit. The provider is called once, after the approval, and not before.",
+        "description": "Approve the held item unchanged.\n\nAt `REQUEST`: let the model answer after all. At `RESPONSE`: the model's\nreply stands and reaches the caller byte-identical, reported as the model.\nThe same status for both, because the operator did the same thing -- looked,\nand substituted nothing -- and the result is attributed to the model in\neither case.\n\nThe third outcome, and until AI-01 the missing one. An operator could\nsubstitute a human answer or kill the request; \"I have read this and it may\nproceed\" had no representation, so interception could only ever divert\ntraffic, never approve it -- which makes turning it on in production a choice\nbetween inspecting nothing and hand-answering everything.\n\nSame capability as answering, deliberately: approving a request that carries\na customer's data is an act on that data, not a lesser read.\n\nLike `answer`, this only transitions the record. The resume dispatcher turns\nan `ALLOWED` interception into a resume command exactly as it does an\n`ANSWERED` one, and the resumed dispatch finds `ALLOW_PROVIDER` waiting for\nit. The provider is called once, after the approval, and not before.",
         "operationId": "allow_interception_api_ai_interceptions__interception_id__allow_post",
         "parameters": [
           {
@@ -13611,7 +16198,7 @@
     },
     "/api/ai/interceptions/{interception_id}/answer": {
       "post": {
-        "description": "Record a human answer to a held request.\n\nThe store's `answer` is a conditional write filtered on `PENDING`, so two\noperators answering at once produce one winner and one 409 -- never a silent\noverwrite of somebody's text. That is the store's guarantee; this surface\nonly has to report it honestly.\n\n**Answering does not resume the workflow here.** It transitions the\ninterception, and `InterceptionResumeDispatcher` turns answered records into\nresume commands, which the reasoning resume worker delivers as Temporal\nsignals. Doing the enqueue inline would put a cross-collection write on the\nrequest path and lose the at-least-once replay that makes the bridge safe.",
+        "description": "Record a human answer to a held request, or a human edit of a held response.\n\nOne endpoint for both, because the act is the same act: a person is\nsupplying the text a caller will receive, and the store records it under the\nsame conditional write with the same `answered_by`. What differs is\nattribution, and that is decided by the record's `point` at the moment the\ntext is delivered, not here -- an edit comes back as `HUMAN_EDITED` naming\nthe model it started from, an answer comes back as `MANUAL`.\n\n**Nothing is validated here, deliberately.** An edit is not trusted more\nthan the model's own reply: it goes back through the dispatch boundary's\n`inspect_output` and the caller's schema parse, so a malformed edit fails as\n`RESPONSE_INVALID` exactly as a malformed completion does. Validating at this\nsurface would mean two validators to keep in step, and the one that matters\nis the one the model's output already faces.\n\nThe store's `answer` is a conditional write filtered on `PENDING`, so two\noperators answering at once produce one winner and one 409 -- never a silent\noverwrite of somebody's text. That is the store's guarantee; this surface\nonly has to report it honestly.\n\n**Answering does not resume the workflow here.** It transitions the\ninterception, and `InterceptionResumeDispatcher` turns answered records into\nresume commands, which the reasoning resume worker delivers as Temporal\nsignals. Doing the enqueue inline would put a cross-collection write on the\nrequest path and lose the at-least-once replay that makes the bridge safe.",
         "operationId": "answer_interception_api_ai_interceptions__interception_id__answer_post",
         "parameters": [
           {
@@ -13664,7 +16251,7 @@
     },
     "/api/ai/interceptions/{interception_id}/cancel": {
       "post": {
-        "description": "Abandon a held request rather than answering it.\n\nThe counterpart to `answer`, and it needs to exist for the same reason:\nwithout it the only way out of a PENDING interception is to answer it or\nwait for `expiresAt`, and an operator who can see the prompt is wrong has no\nway to say so. The caller that is blocked on it fails fast instead of\nholding a workflow open until the expiry sweeps it.\n\nSame conditional-write discipline as `answer` -- filtered on PENDING, so\ncancelling an already-answered interception cannot overwrite the answer.\n\n**`store.cancel` reports nothing, so the outcome is read back.** It returns\nsilently when the record is missing or already terminal, because its other\ncaller is the expiry sweep, for which \"somebody got there first\" is a normal\noutcome and not an error. An operator pressing Cancel needs the opposite:\nbeing told their cancel did nothing because an answer landed first. Checking\nthe state *before* cancelling would be a race; reading it back after reports\nwhat actually happened.\n\nGated on `.act`, not `.read`: this ends somebody's request.",
+        "description": "Abandon a held request, or reject a held response.\n\nAt `RESPONSE` this is the third review outcome: the reply is discarded, the\nattempt fails as `RESPONSE_REJECTED`, and -- because that code is terminal\nfor its route -- the dispatch loop moves to the next candidate rather than\nasking the same model the same question again. If no route remains the\ncaller sees its ordinary unavailability, which is the honest report.\n\nThe counterpart to `answer`, and it needs to exist for the same reason:\nwithout it the only way out of a PENDING interception is to answer it or\nwait for `expiresAt`, and an operator who can see the prompt is wrong has no\nway to say so. The caller that is blocked on it fails fast instead of\nholding a workflow open until the expiry sweeps it.\n\nSame conditional-write discipline as `answer` -- filtered on PENDING, so\ncancelling an already-answered interception cannot overwrite the answer.\n\n**`store.cancel` reports nothing, so the outcome is read back.** It returns\nsilently when the record is missing or already terminal, because its other\ncaller is the expiry sweep, for which \"somebody got there first\" is a normal\noutcome and not an error. An operator pressing Cancel needs the opposite:\nbeing told their cancel did nothing because an answer landed first. Checking\nthe state *before* cancelling would be a race; reading it back after reports\nwhat actually happened.\n\nGated on `.act`, not `.read`: this ends somebody's request.",
         "operationId": "cancel_interception_api_ai_interceptions__interception_id__cancel_post",
         "parameters": [
           {
@@ -13707,7 +16294,7 @@
     },
     "/api/ai/interceptions/{interception_id}/request": {
       "get": {
-        "description": "The held prompt, unsealed.\n\nGated on `ai.interception.act` rather than `ai.interception.read`, which is\nthe narrower of the two on purpose. The payload can contain block 5\nUNTRUSTED SOURCE SAMPLE -- rows read out of a customer's database -- which is\nwhy it is sealed at rest at all. You unseal it because you are about to\nanswer it; browsing the queue needs only the read capability.",
+        "description": "The held prompt, unsealed -- and, at the response point, the reply too.\n\nA `RESPONSE` hold seals the model's answer under `modelResponse` alongside\nthe request that produced it, because a reviewer cannot judge an answer\nwithout the question. That is the whole ergonomic difference between the two\npoints: at `REQUEST` an operator writes from nothing, at `RESPONSE` they\nstart from what the model said.\n\nGated on `ai.interception.act` rather than `ai.interception.read`, which is\nthe narrower of the two on purpose. The payload can contain block 5\nUNTRUSTED SOURCE SAMPLE -- rows read out of a customer's database -- which is\nwhy it is sealed at rest at all. You unseal it because you are about to\nanswer it; browsing the queue needs only the read capability.",
         "operationId": "read_interception_request_api_ai_interceptions__interception_id__request_get",
         "parameters": [
           {
@@ -14051,7 +16638,7 @@
     },
     "/api/cases/{case_id}": {
       "get": {
-        "description": "One case, with each RMA carrying the items it covers.\n\nSomeone else's case is reported as absent, not as forbidden. A 403 on a\nguessed id confirms the id, and the list above is deliberately scoped so\nthat no caller learns of a case that is not theirs.",
+        "description": "One case as the Copilot read contract sees it (plan sect. 6.3).\n\nFour steps and no fifth. The state comes from the one sanctioned assembler,\nownership is checked here because the assembler mirrors `get_case` and takes\nno principal, the operator's requirement table comes from the active\nrelease, and `project_case` derives everything derived. Every block it\ncarries is **absent rather than defaulted** when the platform has not\ncomputed it: `artifacts: null` is \"nobody has asked\", `artifacts: []` is\n\"asked, and there are none\", and collapsing the two is how a pane renders\n\"no label\" for a case whose label nobody looked for.\n\nSomeone else's case is reported as absent, not as forbidden.",
         "operationId": "get_case_api_cases__case_id__get",
         "parameters": [
           {
@@ -14069,7 +16656,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse_CaseDetail_"
+                  "$ref": "#/components/schemas/APIResponse_CaseProjection_"
                 }
               }
             },
@@ -14089,6 +16676,302 @@
         "summary": "Get Case",
         "tags": [
           "Cases"
+        ]
+      }
+    },
+    "/api/cases/{case_id}/order-lines": {
+      "get": {
+        "description": "The lines of the order this case confirmed, with what is still returnable.\n\nFour steps and no fifth: resolve the case under the caller's scope, take the\nconfirmed order off it, project the lines from the source through the active\nschema, and ask the repository for the arithmetic. Nothing is derived in this\nhandler.\n\nThe read is not a promise. Two associates can both see the same\n`returnableQuantity` and both submit it; `POST /selected-items`\nre-evaluates and commits atomically, and one of them gets a 409 carrying the\nrecomputed figure.",
+        "operationId": "read_case_order_lines_api_cases__case_id__order_lines_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_OrderLines_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Case Order Lines",
+        "tags": [
+          "Order Lines"
+        ]
+      }
+    },
+    "/api/cases/{case_id}/policy-override": {
+      "post": {
+        "description": "A supervisor's decision on a case the evaluator sent to review (3A.8).\n\n**Append-only.** The evaluator's `policy_decision` is never rewritten. The\noverride is appended beside it and a later `policy_effective_decision`\nsupersedes the earlier one in the fact projection, so \"what the policy said\"\nand \"what stands now\" are both recoverable afterwards -- which is the whole\ndifference between an override and an edit.\n\n**Server-derived attribution.** `actor` is the authenticated principal and\n`overriddenAt` is the server clock. Neither can be supplied, for the same\nreason `order_agent.py` derives `correlation_id`: a client-supplied audit\nfield is not audit.\n\n**Scoped by tenant, gated by capability, and deliberately not by principal.**\nThe associate who raised the return is exactly the person who must not be\nable to overrule the policy on it, so `_belongs_to`'s principal check would\nrefuse the only caller this endpoint is for. `returns.policy.override` is the\ngate, and it is held by supervisors and by no service account.\n\nRecords the override before it signals. A Temporal outage then leaves an\naudited decision that has not yet moved the case, which an operator can see\nand retry; signalling first would leave a case that moved with nothing\nwritten down.",
+        "operationId": "override_case_policy_api_cases__case_id__policy_override_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyOverrideRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_PolicyOverrideResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Override Case Policy",
+        "tags": [
+          "Cases"
+        ]
+      }
+    },
+    "/api/cases/{case_id}/recovery": {
+      "get": {
+        "description": "Read one case against the execution that is supposed to own it.\n\n**Reads, and writes nothing.** Looking at a stuck case must never be the\nthing that restarts it, which is why this and the relaunch below are two\nroutes rather than one that repairs as a side effect of being asked.\n\nSame gate as the integration-outbox listing: this is operational visibility\nover a delivery failure, and it is the other half of the\n`reconciliationState` that surface already reports.",
+        "operationId": "read_case_recovery_api_cases__case_id__recovery_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_CaseRecoveryView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Case Recovery",
+        "tags": [
+          "Cases"
+        ]
+      }
+    },
+    "/api/cases/{case_id}/recovery/relaunch": {
+      "post": {
+        "description": "Start the execution an orphaned case is owed, and re-drive what was lost.\n\n**Refuses far more often than it acts, and that is the feature.** The\nservice probes the derived execution id first and relaunches only when the\nexecution is closed or absent *and* the case is not terminal. A live\nexecution answers `ALREADY_RUNNING`, a finished case answers\n`REFUSED_TERMINAL` and stays finished, and an unreachable Temporal answers\n`DEFERRED_UNKNOWN` without touching anything. None of those are errors --\nthey are the answer -- so all of them are a 200 carrying the action.\n\nIdempotent by consequence rather than by a key: the second call finds a\nrunning execution and reports `ALREADY_RUNNING` with nothing requeued.",
+        "operationId": "relaunch_case_workflow_api_cases__case_id__recovery_relaunch_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_CaseRecoveryResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Relaunch Case Workflow",
+        "tags": [
+          "Cases"
+        ]
+      }
+    },
+    "/api/cases/{case_id}/returns/{return_record_id}/artifacts/{artifact_id}": {
+      "get": {
+        "description": "One RMA's document, through an opaque authenticated endpoint (plan sect. 11).\n\nThe route the label action needs. Before it existed the Copilot's print\nbutton called `window.print()` -- it printed the web page, because there was\nnowhere to ask for the label.\n\n**Authorization is four checks and the fourth is the point.** Tenant and\nprincipal, exactly as `get_case` does them and through the same\n`_belongs_to`; then that the return record is *on this case*; then that the\nartifact is *on that record*. Never on artifact id alone: an id is a\nguessable string and an artifact validated on its own id is an artifact\nservable to whoever guesses it. Because the lookup walks the projection --\ncase, then its records, then that record's artifacts -- the containment is\nstructural rather than a comparison somebody has to remember to write.\n\n**Every refusal is a 404.** Someone else's case, a record on another case,\nan artifact on another record and an artifact that does not exist are one\nanswer, matching `get_case`: a 403 on a guessed id confirms the id exists,\nwhich is most of what an enumerator wants.\n\n**What comes back, honestly.** There is no document. `labelReference` is a\nstring Support typed into `ReturnOutcomeRecord`, and this platform has no\nobject store, no bucket and no provider URL behind it; see\n`ArtifactContentState`. So the response is the reference and the metadata\nthe projection holds, marked `REFERENCE_ONLY` -- which is what an associate\ncan act on today, because the reference is what a carrier desk and a\nwarehouse ticket are keyed by. No file is invented, and the two branches a\nreal document would take are written below rather than left to be\nrediscovered:\n\n```text\nstored bytes      -> Response(content, media_type=artifact.mediaType,\n                     headers={\"Content-Disposition\":\n                              f'attachment; filename=\"{artifact.fileName}\"'})\nprovider-owned    -> 307 to a short-lived provider URL\nexpired provider  -> 409 RETURN_ARTIFACT_EXPIRED, never a broken link\n```\n\nThe expiry branch is live now, because `expiresAt` is on the contract even\nthough nothing sets it yet: an artifact past its expiry is refused with a\nre-issue hint rather than served as a reference an operator would take to a\ncounter and be turned away from.",
+        "operationId": "read_return_artifact_api_cases__case_id__returns__return_record_id__artifacts__artifact_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "return_record_id",
+            "required": true,
+            "schema": {
+              "title": "Return Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ReturnArtifactView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Return Artifact",
+        "tags": [
+          "Cases"
+        ]
+      }
+    },
+    "/api/cases/{case_id}/selected-items": {
+      "post": {
+        "description": "Record the case's selection and hold the quantity, or refuse it (plan sect. 12.4).\n\n**The write re-evaluates; the read did not promise.** Availability is\nrecomputed inside the transaction that commits the selection, so two\nassociates submitting the same last unit produce exactly one hold. The loser\ngets `409 QUANTITY_UNAVAILABLE` carrying the recomputed quantity per line,\nwhich is what lets the client re-render instead of guessing.\n\n**Idempotent by consequence rather than by a key.** The payload is the whole\nselection, so re-sending it changes nothing, moves no revision, and answers\n`changed: false`. The optional `contact` keeps that property: it appends a\nfact only where the value differs from what the case already holds.\n\n**`changed` is about the items and stays about the items.** A submission\nthat alters only the branch associate answers `changed: false` and a moved\nrevision, because the selection genuinely did not change; the contact is not\npart of the item ledger and `SelectedItems` does not carry it. The client\nre-reads the case, where `CaseProjection.facts` serves it like every other\ncase-level detail.\n\nGated on the associate roles rather than on read: naming the lines of a\nreturn is the associate's act, and a console viewer holding quantity out of\na branch's reach is not a read. The contact is the same act, by the same\nperson, in the same breath -- which is why it arrives here rather than\nthrough a second route the pane's one button would have to drive with no\nstory for a half-failure.",
+        "operationId": "replace_case_selected_items_api_cases__case_id__selected_items_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectedItemsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SelectedItems_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace Case Selected Items",
+        "tags": [
+          "Order Lines"
         ]
       }
     },
@@ -14221,6 +17104,46 @@
         "tags": [
           "Configuration"
         ]
+      },
+      "post": {
+        "description": "Open a draft, cloned from the active release or the validated baseline.\n\nA draft is the only writable release: `save_draft_domain` refuses a release\nthat has left DRAFT, so this is the entry point to changing anything, and a\n409 here means the id is taken rather than that the write was rejected.\n\nScrubbed on the way out like every other response on this router -- the\nbody echoes the cloned domain payloads, which are the same documents\n`GET /releases/{id}` redacts.",
+        "operationId": "create_release_api_config_releases_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReleasePayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Release",
+        "tags": [
+          "Configuration"
+        ]
       }
     },
     "/api/config/releases/{release_id}": {
@@ -14260,6 +17183,68 @@
           }
         },
         "summary": "Get Release",
+        "tags": [
+          "Configuration"
+        ]
+      }
+    },
+    "/api/config/releases/{release_id}/domains/{domain_key}": {
+      "patch": {
+        "description": "Merge-patch one behaviour domain of a draft.\n\nRFC 7396 semantics against the stored document, then full validation of the\n*result* against `ReturnPlatformConfiguration`, `AIGatewayConfiguration` or\n`DependencySimulationConfiguration` -- a patch that would leave the domain\ninvalid is a 422 and nothing is stored. Patch rather than replace because an\noperator changing one prompt should not have to round-trip a whole domain\ndocument and risk clobbering a field they never looked at.\n\nThe full-document `PUT` the console router also declares is deliberately not\nrepublished here: it has no consumer, and a whole-document overwrite is a\nstrictly larger blast radius than a merge patch for the same outcome.",
+        "operationId": "patch_release_domain_api_config_releases__release_id__domains__domain_key__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "release_id",
+            "required": true,
+            "schema": {
+              "title": "Release Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "domain_key",
+            "required": true,
+            "schema": {
+              "title": "Domain Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchDomainPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Release Domain",
         "tags": [
           "Configuration"
         ]
@@ -18631,7 +21616,7 @@
     },
     "/api/v1/return-support/work-items/{work_item_id}/return-outcome": {
       "post": {
-        "description": "Send Support's answer to the case that asked for it.\n\nThis is the step that made Channel B -> Channel A possible. The work item\nknows its case, the case knows its workflow, and the workflow is waiting on\na durable timer for exactly this signal -- so the outcome reaches the\nassociate's original conversation instead of the browser trying to match an\norder reference across two collections.\n\nA signal, not a write. `ReturnCaseWorkflow` owns what happens next: it\nrecords the return records, moves the case status and stops the reminder\ncadence, and it does so once however many times Support presses send --\nduplicate responses are ignored by the workflow, not deduplicated here.",
+        "description": "Write Support's answer down, and let the outbox deliver it.\n\nThis used to signal Temporal directly from the handler. When the case\nworkflow had already closed, `handle.signal` raised a raw `RPCError`, the\ncaller got an HTTP 500, and the RMA existed nowhere -- Support had no way to\nknow their reply had evaporated. Worse, the shape was a dual write: persist,\nthen signal, with a crash in between leaving a stored event that the retry\nrecognised as a duplicate and reported as success while the workflow had\nnever received it.\n\nSo the handler no longer signals. One MongoDB transaction writes the Support\nevent and the outbox command that delivers it, and the response is returned\nthe moment that commits. `TemporalSignalDispatcher` picks the command up,\nretries a Temporal outage with bounded backoff, and dead-letters a workflow\nthat is permanently gone into a state Phase 10 reconciles -- rather than\nlosing the reply to a 500.\n\nThe guarantee that comes out of this is stated the way it actually holds,\nand no stronger:\n\n    transport (outbox -> Temporal):  at least once\n    business processing:             effectively once, keyed on supportEventId\n\nA dispatcher that signals and then loses its process before it can\nacknowledge will signal again. What stops that from becoming a second RMA\nis the event id travelling with the notice, not the transport.\n\n`409 CASE_WORKFLOW_CLOSED` survives only where it is still reachable from\nhere -- a case the platform already knows is terminal. A workflow that\nclosed without the case knowing is no longer this handler's failure to\ndetect; it is the dispatcher's, and it surfaces as a dead-lettered command.",
         "operationId": "submit_return_outcome_api_v1_return_support_work_items__work_item_id__return_outcome_post",
         "parameters": [
           {
@@ -18641,6 +21626,22 @@
             "schema": {
               "title": "Work Item Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           }
         ],
@@ -18659,7 +21660,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse_dict_str__str__"
+                  "$ref": "#/components/schemas/APIResponse_ReturnOutcomeAcceptedView_"
                 }
               }
             },

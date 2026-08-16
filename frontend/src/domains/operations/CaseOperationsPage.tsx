@@ -5,9 +5,9 @@ import {
   bayRecommendation,
   casesApi,
   hasBayResult,
-  latestFacts,
-  type CaseDetail,
-  type CaseFact,
+  projectedFactString,
+  type CaseFactProjection,
+  type CaseProjection,
   type CaseSummary,
 } from "../../api/cases";
 import {
@@ -34,20 +34,47 @@ import { DomainRail, RailFact, RailNote, RailSection } from "../DomainRail";
  *
  *   - **Live workflow execution status.** `ReturnCaseWorkflow` has an
  *     `execution_state` query carrying status, reminders sent, and whether bay
- *     and support resolved -- and no HTTP route calls it. The case's
- *     `workflowId` proves an execution was *started*; nothing published proves
- *     it is still running.
+ *     and support resolved -- and no HTTP route calls it.
  *   - **The business-calendar deadline.** `ReturnCaseTimings` is workflow input.
  *     The Channel B work item's `slaDueAt` is a real deadline and is shown as
  *     what it is -- the support SLA -- not relabelled as the workflow's.
  *   - **A failure or blocker code.** No case field and no fact carries one.
  *
- * The case fact log is the case-scoped audit trail. `/api/config/audit` is
- * platform-scoped -- promotions and source edits -- so it is deliberately not
- * queried here; it would answer a different question and look like this one's.
+ * **This screen reads `CaseProjection`.** That changed what it can say, in both
+ * directions, and the change is stated on each panel rather than papered over.
+ *
+ * *Gained:* `stage`, `awaiting`, `businessComplete` and `isTerminal` -- computed
+ * by the backend from the release's return-method requirement table. "What is
+ * this case waiting on" is the question this screen exists to answer, and it is
+ * now answered by a computation instead of inferred from which fields happen to
+ * be null.
+ *
+ * *Lost:* the persistence and sync fields (`workflowId`, `sessionId`,
+ * `configurationReleaseId`, `graphGenerationId`) and the **append-only** fact
+ * log. `CaseProjection` is the business read: it carries facts as the
+ * latest-per-name projection with provenance, and it carries nothing about how
+ * the case was stored or which execution owns it. Both absences are named where
+ * they bite, because a panel that quietly showed less would be worse than one
+ * that says what it can no longer see.
+ *
+ * `/api/config/audit` is still deliberately not queried here: it is
+ * platform-scoped -- promotions and source edits -- so it would answer a
+ * different question while looking like this one's.
  */
 
-const STATUS_FILTERS = ["All", "GATHERING_INFO", "AWAITING_SUPPORT", "COMPLETED"] as const;
+//: The **projected** vocabulary, which is what `CaseSummary.status` now
+//: carries. `COMPLETED` used to be listed here and matched nothing: the
+//: persisted status for a finished case is `CLOSED`, so the filter was dead the
+//: whole time. It works now, and `COMPLETED_EXTERNAL_SETTLEMENT` is beside it
+//: because that is where every closed case actually lands while no settlement
+//: producer exists.
+const STATUS_FILTERS = [
+  "All",
+  "GATHERING_INFO",
+  "AWAITING_SUPPORT",
+  "PROCESSING_RETURN",
+  "COMPLETED_EXTERNAL_SETTLEMENT",
+] as const;
 
 export function CaseOperationsPage() {
   const { can } = useCapabilities();
@@ -64,7 +91,7 @@ export function CaseOperationsPage() {
 
   const detail = useQuery({
     queryKey: ["cases", selectedId],
-    queryFn: selectedId === null ? skipToken : () => casesApi.read(selectedId),
+    queryFn: selectedId === null ? skipToken : () => casesApi.readProjection(selectedId),
   });
 
   const adoption = useQuery({
@@ -277,7 +304,7 @@ function CaseDetailPane({
   adoptionError,
   adoptionLoading,
 }: {
-  detail: CaseDetail | null;
+  detail: CaseProjection | null;
   loading: boolean;
   error: Error | null;
   adoption: ReleaseAdoptionState | null;
@@ -313,13 +340,8 @@ function CaseDetailPane({
   return (
     <div className="flex max-h-[calc(100vh-8rem)] flex-col gap-3 overflow-y-auto rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
       <StatePanel detail={detail} />
-      <ExecutionPanel detail={detail} />
-      <ReleasePanel
-        detail={detail}
-        adoption={adoption}
-        error={adoptionError}
-        loading={adoptionLoading}
-      />
+      <LifecyclePanel detail={detail} />
+      <ReleasePanel adoption={adoption} error={adoptionError} loading={adoptionLoading} />
       <GraphPanel detail={detail} />
       <RmaPanel detail={detail} />
       <ChannelBPanel detail={detail} />
@@ -329,22 +351,21 @@ function CaseDetailPane({
   );
 }
 
-function StatePanel({ detail }: { detail: CaseDetail }) {
-  const record = detail.case;
+function StatePanel({ detail }: { detail: CaseProjection }) {
   const bay = bayRecommendation(detail.facts);
   return (
     <Panel title="Case">
       <dl className="flex flex-col gap-1 text-[11px]">
-        <Field label="Status" value={record.status} />
-        <Field label="Order" value={record.confirmedOrderReference} />
-        <Field label="Case" value={record.caseId} />
-        <Field label="Tenant" value={record.tenantId} />
-        <Field label="Owner" value={record.principalId} />
-        <Field label="Branch" value={record.branchId} />
-        <Field label="Version" value={record.version} />
-        <Field label="Created" value={record.createdAt} />
-        <Field label="Updated" value={record.updatedAt} />
-        <Field label="Confirmation key" value={record.confirmationKey} />
+        <Field label="Status" value={detail.status} />
+        <Field label="Order" value={detail.confirmedOrder?.orderReference ?? null} />
+        <Field label="Case" value={detail.caseId} />
+        <Field label="Tenant" value={detail.tenantId} />
+        <Field label="Owner" value={detail.principalId} />
+        <Field label="Branch" value={detail.customer?.branchReference ?? null} />
+        <Field label="Customer" value={detail.customer?.customerReference ?? null} />
+        <Field label="Revision" value={detail.revision} />
+        <Field label="Updated" value={detail.updatedAt} />
+        <Field label="Confirmation key" value={detail.confirmedOrder?.confirmationKey ?? null} />
         <Field
           label="Bay"
           value={
@@ -366,30 +387,51 @@ function StatePanel({ detail }: { detail: CaseDetail }) {
   );
 }
 
-function ExecutionPanel({ detail }: { detail: CaseDetail }) {
-  const record = detail.case;
+/**
+ * Where the case is, and what it is waiting for. Replaces the execution panel.
+ *
+ * The execution panel read `workflowId` and `sessionId` off `CaseView` and used
+ * a null `workflowId` as a proxy for "nothing is going to happen to this case".
+ * `CaseProjection` carries neither field -- it is the business read, and the
+ * durable execution is how the platform runs the case rather than what the case
+ * is -- so the proxy is gone.
+ *
+ * What replaces it is better than what it approximated. `awaiting` is computed
+ * from the release's return-method requirement table, `stage` from the frozen
+ * precedence, and `isTerminal` from the persisted status alone. A case waiting
+ * on nothing while neither complete nor terminal is exactly the stuck state the
+ * missing-workflow alert was reaching for, and it is now a statement rather than
+ * an inference.
+ */
+function LifecyclePanel({ detail }: { detail: CaseProjection }) {
+  const stalled = detail.awaiting.length === 0 && !detail.businessComplete && !detail.isTerminal;
   return (
-    <Panel title="Execution">
-      {record.workflowId === null ? (
-        // The one failure this screen cannot infer from anything else on it: a
-        // case with no durable execution looks identical to a waiting one until
-        // the deadline that never fires.
+    <Panel title="Lifecycle">
+      <dl className="flex flex-col gap-1 text-[11px]">
+        <Field label="Stage" value={detail.stage} />
+        <Field label="Waiting on" value={detail.awaiting.join(", ")} />
+        <Field label="Business complete" value={detail.businessComplete ? "yes" : "no"} />
+        <Field label="Terminal" value={detail.isTerminal ? "yes" : "no"} />
+      </dl>
+      {stalled ? (
         <p role="alert" className="text-[11px] text-error">
-          No durable workflow is recorded for this case. Nothing is waiting on a support answer
-          and no deadline will fire.
+          This case is waiting on nothing, is not complete, and is not finished. Nothing will move
+          it without an intervention below.
         </p>
-      ) : (
-        <dl className="flex flex-col gap-1 text-[11px]">
-          <Field label="Workflow" value={record.workflowId} />
-          <Field label="Session" value={record.sessionId} />
-        </dl>
-      )}
+      ) : null}
+      <NotPublished
+        what="Durable execution"
+        because={
+          "CaseProjection carries no workflowId or sessionId -- it is the business read, not the "
+          + "persistence record. The lifecycle above is what the case is waiting for; it does not "
+          + "prove a Temporal execution is alive."
+        }
+      />
       <NotPublished
         what="Live execution state"
         because={
           "ReturnCaseWorkflow answers an execution_state query carrying status, reminders sent "
-          + "and whether bay and support resolved, and no HTTP route calls it. The workflow id "
-          + "above proves an execution was started, not that it is still running."
+          + "and whether bay and support resolved, and no HTTP route calls it."
         }
       />
       <NotPublished
@@ -401,30 +443,33 @@ function ExecutionPanel({ detail }: { detail: CaseDetail }) {
 }
 
 /**
- * Which release this case ran under, and whether that release is actually live.
+ * Whether the release the platform says it activated is the one running.
  *
- * Two different questions on purpose. A case carries the release it was
- * *created* under; adoption says which release the running processes are on.
- * They disagree during an `ACTIVATING` window, and that disagreement is the
- * whole reason contract C5 exists.
+ * It used to also show which release *this case* was created under, read from
+ * `CaseView.configurationReleaseId`, and compare the two -- the disagreement
+ * during an `ACTIVATING` window being the reason contract C5 exists.
+ * `CaseProjection` does not carry that field, so the comparison is gone and the
+ * panel is stated as answering the platform-wide half only. Inventing the
+ * missing half from the activated release would make every case look adopted.
  */
 function ReleasePanel({
-  detail,
   adoption,
   error,
   loading,
 }: {
-  detail: CaseDetail;
   adoption: ReleaseAdoptionState | null;
   error: Error | null;
   loading: boolean;
 }) {
-  const caseRelease = detail.case.configurationReleaseId;
   return (
     <Panel title="Configuration release and adoption">
-      <dl className="flex flex-col gap-1 text-[11px]">
-        <Field label="Case ran under" value={caseRelease} />
-      </dl>
+      <NotPublished
+        what="The release this case ran under"
+        because={
+          "CaseProjection carries no configurationReleaseId, so this case cannot be compared "
+          + "against the activated release. Adoption below is platform-wide."
+        }
+      />
       {error !== null ? (
         // Reporting unavailable, not "everything adopted". The route 503s when
         // the adoption store is absent, and an empty state rendered as LIVE
@@ -439,7 +484,7 @@ function ReleasePanel({
           Adoption requires config.runtime.read, which you do not hold.
         </p>
       ) : (
-        <AdoptionDetail adoption={adoption} caseRelease={caseRelease} />
+        <AdoptionDetail adoption={adoption} />
       )}
     </Panel>
   );
@@ -534,76 +579,104 @@ function ProcessClassRow({ adoption }: { adoption: ProcessClassAdoption }) {
   );
 }
 
-function GraphPanel({ detail }: { detail: CaseDetail }) {
-  const latest = latestFacts(detail.facts);
-  const projected = latest.get("return_graph_generation_id")?.value;
-  const projectedId = typeof projected === "string" ? projected : null;
-  const caseGeneration = detail.case.graphGenerationId;
+function GraphPanel({ detail }: { detail: CaseProjection }) {
+  const projectedId = projectedFactString(detail.facts, "return_graph_generation_id");
   return (
     <Panel title="Graph and sync">
       <dl className="flex flex-col gap-1 text-[11px]">
-        <Field label="Case generation" value={caseGeneration} />
         <Field label="Projected into" value={projectedId} />
       </dl>
-      {caseGeneration === null && projectedId === null ? (
+      {projectedId === null ? (
         <p className="text-[11px] text-on-surface-variant">
           Nothing about this case has been projected into a graph generation yet.
         </p>
-      ) : projectedId !== null && caseGeneration !== null && projectedId !== caseGeneration ? (
-        <p className="text-[11px] text-on-surface-variant">
-          The case was created against one generation and projected into another. That is normal
-          after a generation swap; it is only a problem if reads disagree.
-        </p>
       ) : null}
+      <NotPublished
+        what="The generation this case was created against"
+        because={
+          "CaseProjection carries no graphGenerationId, so a case created against one generation "
+          + "and projected into another can no longer be told apart here."
+        }
+      />
     </Panel>
   );
 }
 
-function RmaPanel({ detail }: { detail: CaseDetail }) {
-  const latest = latestFacts(detail.facts);
-  const fulfillment = latest.get("fulfillment_status")?.value;
-  const evidence = latest.get("shipment_evidence")?.value;
+function RmaPanel({ detail }: { detail: CaseProjection }) {
+  const records = detail.returnRecords ?? [];
+  const unassigned = detail.selectedItems ?? [];
+  const fulfillment = projectedFactString(detail.facts, "fulfillment_status");
+  const evidence = projectedFactString(detail.facts, "shipment_evidence");
   return (
-    <Panel title={`RMAs (${String(detail.returnRecords.length)})`}>
-      {detail.returnRecords.length === 0 ? (
+    <Panel title={`RMAs (${String(records.length)})`}>
+      {records.length === 0 ? (
         <p className="text-[11px] text-on-surface-variant">No RMA has been issued yet.</p>
       ) : (
         <ul className="flex flex-col gap-1.5">
-          {detail.returnRecords.map((entry) => (
-            <li
-              key={entry.record.returnRecordId}
-              className="flex min-w-0 flex-col gap-0.5 rounded bg-surface-container-low px-2 py-1.5 text-[11px]"
-            >
-              <span className="flex flex-wrap items-baseline gap-2">
-                <span className="min-w-0 break-all font-mono text-on-surface">
-                  {entry.record.returnReference ?? "not yet numbered"}
+          {records.map((record) => {
+            const lines = record.approvedItems ?? [];
+            const shipments = record.shipments ?? [];
+            // The live label, never `artifacts[0]`: a replaced one stays on the
+            // record for audit, and the first is whichever Mongo returned.
+            const label =
+              record.artifacts?.find(
+                (artifact) =>
+                  artifact.artifactType === "SHIPPING_LABEL"
+                  && artifact.active === true
+                  && artifact.supersededBy === null,
+              ) ?? null;
+            return (
+              <li
+                key={record.returnRecordId}
+                className="flex min-w-0 flex-col gap-0.5 rounded bg-surface-container-low px-2 py-1.5 text-[11px]"
+              >
+                <span className="flex flex-wrap items-baseline gap-2">
+                  <span className="min-w-0 break-all font-mono text-on-surface">
+                    {record.returnReference ?? "not yet numbered"}
+                  </span>
+                  <span className="text-outline">{record.status}</span>
+                  <span className="text-outline">
+                    {lines.length} line{lines.length === 1 ? "" : "s"}
+                  </span>
                 </span>
-                <span className="text-outline">{entry.record.status}</span>
-                <span className="text-outline">
-                  {entry.items.length} line{entry.items.length === 1 ? "" : "s"}
-                </span>
-              </span>
-              {/* RMA-scoped, and shown inside the RMA for that reason. */}
-              <dl className="flex flex-col gap-0.5">
-                <Field label="Label" value={entry.record.labelReference} />
-                <Field label="Tracking" value={entry.record.trackingReference} />
-                <Field label="Return to" value={entry.record.returnLocation} />
-              </dl>
-            </li>
-          ))}
+                {/* RMA-scoped, and shown inside the RMA for that reason. */}
+                <dl className="flex flex-col gap-0.5">
+                  <Field label="Label" value={label?.artifactId ?? null} />
+                  <Field
+                    label="Tracking"
+                    value={
+                      shipments
+                        .map((shipment) => shipment.trackingNumber)
+                        .filter((tracking) => tracking !== null)
+                        .join(", ") || null
+                    }
+                  />
+                  <Field label="Method" value={record.returnMethod} />
+                  <Field label="Return to" value={record.returnLocation} />
+                </dl>
+                {label !== null && shipments.length === 0 ? (
+                  // The real stuck shape. Said out loud rather than left as two
+                  // fields where one is filled and one is blank.
+                  <p className="text-on-surface-variant">
+                    A label exists and no package has been tendered, so there is no tracking
+                    number to show.
+                  </p>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       )}
-      {detail.unassignedItems.length > 0 ? (
+      {unassigned.length > 0 ? (
         <p className="text-[11px] text-on-surface-variant">
-          {detail.unassignedItems.length} line
-          {detail.unassignedItems.length === 1 ? "" : "s"} that no RMA covers yet.
+          {unassigned.length} line{unassigned.length === 1 ? "" : "s"} that no RMA covers yet.
         </p>
       ) : null}
       <dl className="flex flex-col gap-1 text-[11px]">
-        <Field label="Fulfilment" value={typeof fulfillment === "string" ? fulfillment : null} />
-        <Field label="Shipment evidence" value={typeof evidence === "string" ? evidence : null} />
+        <Field label="Fulfilment" value={fulfillment} />
+        <Field label="Shipment evidence" value={evidence} />
       </dl>
-      {fulfillment === undefined ? (
+      {fulfillment === null ? (
         <p className="text-[11px] text-on-surface-variant">
           No shipment has been observed against this case.
         </p>
@@ -620,8 +693,10 @@ function RmaPanel({ detail }: { detail: CaseDetail }) {
  * relabelling this one as it would put a number next to a name that does not
  * describe it.
  */
-function ChannelBPanel({ detail }: { detail: CaseDetail }) {
-  const workItemId = detail.case.channelBWorkItemId;
+function ChannelBPanel({ detail }: { detail: CaseProjection }) {
+  // The `support` block is the projection's home for the Channel B link;
+  // `channelBWorkItemId` was the case document's.
+  const workItemId = detail.support?.workItemId ?? null;
 
   const workItem = useQuery({
     queryKey: ["support", "work-item", workItemId],
@@ -718,11 +793,12 @@ function ReminderSummary({
  * case's state makes impossible is listed as unavailable with the reason, which
  * is more useful than a hidden button.
  */
-function InterventionPanel({ detail }: { detail: CaseDetail }) {
+function InterventionPanel({ detail }: { detail: CaseProjection }) {
   const { can } = useCapabilities();
-  const numbered = detail.returnRecords.filter(
-    (entry) => entry.record.returnReference !== null,
+  const numbered = (detail.returnRecords ?? []).filter(
+    (record) => record.returnReference !== null,
   ).length;
+  const workItemId = detail.support?.workItemId ?? null;
 
   const interventions = [
     {
@@ -730,9 +806,7 @@ function InterventionPanel({ detail }: { detail: CaseDetail }) {
       capability: "returns.support.act" as const,
       route: "POST /api/v1/return-support/work-items/{id}/return-outcome",
       blocked:
-        detail.case.channelBWorkItemId === null
-          ? "No support request has been raised for this case."
-          : null,
+        workItemId === null ? "No support request has been raised for this case." : null,
     },
     {
       name: "Record or correct a shipment",
@@ -744,10 +818,7 @@ function InterventionPanel({ detail }: { detail: CaseDetail }) {
       name: "Reply on the support thread",
       capability: "returns.session.write" as const,
       route: "POST /api/v1/return-support/work-items/{id}/messages",
-      blocked:
-        detail.case.channelBWorkItemId === null
-          ? "No support thread exists for this case."
-          : null,
+      blocked: workItemId === null ? "No support thread exists for this case." : null,
     },
   ];
 
@@ -788,25 +859,41 @@ function InterventionPanel({ detail }: { detail: CaseDetail }) {
 }
 
 /**
- * The case's audit history: every fact, newest first, with its provenance.
+ * What the platform currently believes about this case, with the provenance.
  *
- * Not the newest-per-name projection the other panels use. This is the log, and
- * the point of a log is that a superseded value is still in it -- a correction
- * supersedes rather than overwrites, and an auditor's question is what the
- * platform believed *then*.
+ * **This was the append-only log and now it is not, and the title says so.**
+ * `CaseProjection.facts` is the backend's `latest_case_facts` -- one entry per
+ * name, the newest -- so a superseded value is no longer here. `supersedesFactId`
+ * still is, which is what makes a corrected fact readable as a correction rather
+ * than as the only thing ever said.
+ *
+ * The whole log has no route. Serving `latest_case_facts` is what plan sect. 6.3
+ * says deletes the console's client-side duplicate, and it does; the log itself
+ * was never part of the projection contract, and this panel names its absence
+ * rather than quietly rendering the shorter list under the old heading.
+ *
+ * `/api/config/audit` is still not queried here: platform-scoped promotions and
+ * source edits answer a different question.
  */
-function AuditPanel({ facts }: { facts: readonly CaseFact[] }) {
+function AuditPanel({ facts }: { facts: readonly CaseFactProjection[] | null }) {
   const ordered = useMemo(
-    () => [...facts].sort((left, right) => right.recordedAt.localeCompare(left.recordedAt)),
+    () =>
+      [...(facts ?? [])].sort((left, right) =>
+        (right.recordedAt ?? "").localeCompare(left.recordedAt ?? ""),
+      ),
     [facts],
   );
 
   return (
     <Panel
-      title={`Case history (${String(facts.length)})`}
-      note="The case fact log. /api/config/audit is platform-scoped -- promotions and source edits -- and answers a different question."
+      title={`Case facts (${String(ordered.length)})`}
+      note="The latest value of each fact, newest first. Not the append-only log: no route publishes it, and a superseded value is no longer shown."
     >
-      {ordered.length === 0 ? (
+      {facts === null ? (
+        <p className="text-[11px] text-on-surface-variant">
+          The platform has not computed any facts for this case.
+        </p>
+      ) : ordered.length === 0 ? (
         <p className="text-[11px] text-on-surface-variant">Nothing has been recorded yet.</p>
       ) : (
         <ol className="flex flex-col gap-1.5 text-[11px]">
@@ -831,7 +918,7 @@ function AuditPanel({ facts }: { facts: readonly CaseFact[] }) {
                     believe it, which is the difference between an agent's
                     decision and a customer's claim. */}
                 <span>{entry.acquisitionMethod}</span>
-                {entry.sourcePath === null ? null : <span>{entry.sourcePath}</span>}
+                {entry.sourceSystem === null ? null : <span>{entry.sourceSystem}</span>}
                 {entry.supersedesFactId === null ? null : <span>supersedes earlier</span>}
               </span>
             </li>

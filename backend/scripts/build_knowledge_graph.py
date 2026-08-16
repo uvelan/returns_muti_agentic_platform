@@ -85,6 +85,15 @@ async def main() -> int:
     print(f"relationshipWrites   {run.relationshipWrites}")
     print(f"constraintsApplied   {len(run.constraintsApplied)}")
     print(f"errorCode            {run.errorCode}")
+    # Which generation this run built and cut over to, what it replaced, and how
+    # far the cutover got. A full scan is a blue/green rebuild, so "the sync
+    # wrote 6,000 nodes" and "a generation activated" are different claims --
+    # and the second is the one that decides whether anything can read them.
+    print(f"graphGenerationId    {run.graphGenerationId}")
+    print(f"activeGenerationId   {run.activeGenerationId}")
+    print(f"cutoverStage         {run.cutoverStage}")
+    print(f"previousGeneration   {run.previousGenerationStatus}")
+    print(f"failureReason        {run.failureReason}")
 
     # A sync that reports COMPLETED while writing nothing is the failure this
     # whole exercise kept producing: plausible seed data whose joins resolve to

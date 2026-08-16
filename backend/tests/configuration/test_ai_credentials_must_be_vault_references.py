@@ -57,6 +57,31 @@ _PRODUCTION_BASELINE: dict[str, object] = {
     # on the developer's `.env`, so the same commit passed on one machine and
     # failed on the next. Stating it makes the result the test's own.
     "vault_enabled": True,
+    # The same lesson, a second time, for the same reason. Production requires
+    # these seven references and `Settings` reads `env_file=.env`, so until now
+    # they arrived from the repository `.env` by luck rather than by statement.
+    # Running the backend on the host means commenting them out -- a `vault://`
+    # reference with no resolver behind it hangs startup -- and the moment that
+    # happened, every production case here failed on "Production Vault
+    # references are missing" instead of the credential rule under test.
+    #
+    # Stated rather than inherited, so this file asserts production behaviour on
+    # any machine, whatever a developer's `.env` happens to say today.
+    "mongo_dsn_secret_reference": "vault://secret/production/data-sources/mongodb#dsn",
+    "source_mongo_dsn_secret_reference": (
+        "vault://secret/production/data-sources/mongodb#source_dsn"
+    ),
+    "neo4j_password_secret_reference": "vault://secret/production/data-sources/neo4j#password",
+    "valkey_password_secret_reference": "vault://secret/production/data-sources/valkey#password",
+    "sqlserver_password_secret_reference": (
+        "vault://secret/production/data-sources/sqlserver#password"
+    ),
+    "validation_fingerprint_key_secret_reference": (
+        "vault://secret/production/platform/validation#fingerprint_key"
+    ),
+    "contact_lookup_hmac_key_secret_reference": (
+        "vault://secret/production/platform/contact-lookup#hmac_key"
+    ),
 }
 
 

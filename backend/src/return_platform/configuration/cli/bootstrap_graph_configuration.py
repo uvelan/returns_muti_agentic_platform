@@ -45,13 +45,33 @@ from return_platform.secrets.vault import SecretResolver
 logger = logging.getLogger(__name__)
 
 
+def _require_secret_resolver(resolver: SecretResolver | None) -> SecretResolver:
+    """Return the resolver, or refuse the AI paths that cannot run without one.
+
+    Publishing a configuration release needs no secrets beyond the ones the
+    process was already started with. Recording AI provider routes does: every
+    provider credential is held as a `vault://` reference and only a resolver can
+    turn one into a key. So the resolver is required here, at the point of use,
+    rather than for the command as a whole -- which is what lets the ordinary
+    `--if-missing` publish run on a stack with `PLATFORM_VAULT_ENABLED=false`.
+    """
+
+    if resolver is None:
+        raise RuntimeError(
+            "AI provider validation and route refresh resolve provider credentials "
+            "from Vault, so they cannot run while PLATFORM_VAULT_ENABLED is false. "
+            "Publish without --validate-ai/--refresh-ai-routes, or enable Vault."
+        )
+    return resolver
+
+
 async def _prepare_return_configuration(
     *,
     validate_ai: bool,
     force_ai_validation: bool = False,
     refresh_ai_routes: bool = False,
     settings: Settings,
-    resolver: SecretResolver,
+    resolver: SecretResolver | None,
     loaded_ai_gateway: LoadedAIGatewayConfiguration,
     configuration: ReturnPlatformConfiguration,
     existing_configuration: ReturnPlatformConfiguration | None = None,
@@ -60,7 +80,7 @@ async def _prepare_return_configuration(
         print("ai_bootstrap_validation=SKIPPED reason=receipt-and-configuration-refresh")
         return await build_configured_runtime_configuration(
             settings=settings,
-            resolver=resolver,
+            resolver=_require_secret_resolver(resolver),
             loaded_ai_gateway=loaded_ai_gateway,
             configuration=configuration,
             existing_configuration=existing_configuration,
@@ -72,7 +92,7 @@ async def _prepare_return_configuration(
     if validate_ai and not isinstance(settings, Settings):
         return await build_bootstrap_runtime_configuration(
             settings=settings,
-            resolver=resolver,
+            resolver=_require_secret_resolver(resolver),
             loaded_ai_gateway=loaded_ai_gateway,
             configuration=configuration,
         )
@@ -89,7 +109,7 @@ async def _prepare_return_configuration(
         )
         return await build_configured_runtime_configuration(
             settings=settings,
-            resolver=resolver,
+            resolver=_require_secret_resolver(resolver),
             loaded_ai_gateway=loaded_ai_gateway,
             configuration=configuration,
             existing_configuration=existing_configuration,
@@ -101,7 +121,7 @@ async def _prepare_return_configuration(
     try:
         prepared = await build_bootstrap_runtime_configuration(
             settings=settings,
-            resolver=resolver,
+            resolver=_require_secret_resolver(resolver),
             loaded_ai_gateway=loaded_ai_gateway,
             configuration=configuration,
         )
@@ -133,8 +153,28 @@ async def main(
         Settings(),
         resolve_ai_credentials=False,
     )
+    # `resolve_runtime_settings_from_vault` returns no resolver for exactly one
+    # reason: `PLATFORM_VAULT_ENABLED` is false, so the process was started with
+    # its credentials already in the environment rather than behind references.
+    # Refusing outright was wrong. This command is what `runtime-configuration-init`
+    # runs, and every application service waits on that init completing, so the
+    # refusal took the whole profile down with it -- including the deliberate
+    # `compose.novault.yaml` path, which supplies those credentials precisely so a
+    # sealed Vault cannot wedge a local stack.
+    #
+    # Publishing needs no resolver: the release is built from the packaged YAML
+    # and the active release's own payload. Only the AI validation paths do, and
+    # `_require_secret_resolver` refuses those individually.
+    #
+    # This cannot become a production hole. Running without Vault means
+    # `vault_enabled` is false, and `Settings.validate_relationships` refuses to
+    # construct settings at all when that is false in production -- the `Settings()`
+    # call above raises before this line is reached. The relaxation is only
+    # available where the platform already permits Vault to be absent, and it
+    # matches what `main.py` and `runtime_loader.py` already do with a `None`
+    # resolver rather than inventing a second rule.
     if resolver is None:
-        raise RuntimeError("Runtime bootstrap requires the Vault secret resolver")
+        print("vault_secret_resolver=DISABLED reason=PLATFORM_VAULT_ENABLED-false")
 
     driver = AsyncGraphDatabase.driver(
         settings.neo4j_uri,
@@ -187,9 +227,32 @@ async def main(
                 # and it is loud rather than silent: the operator values in that
                 # release ARE being dropped, which is a real loss and must be
                 # read, not discovered later.
+                #
+                # The packaged document underneath is the second half of the
+                # same problem, and it was missing. A key added to
+                # `config/returns/production.yaml` after the active release was
+                # cut is simply not in `active_payload`, so validating that
+                # payload alone produced a configuration holding the *model*
+                # default for the new key -- and republishing wrote that default
+                # back. The new setting could never reach a deployment that had
+                # ever published a release, which is every deployment.
+                #
+                # Observed with `copilot.order_discovery_agent_id`: the value was
+                # in the YAML, the endpoint that serves it was correct, and
+                # `/api/runtime-config` still answered `null`.
+                #
+                # A top-level merge, at the same granularity the rest of this
+                # function works at. Every key the release carries wins, so an
+                # operator's edits are still authoritative; keys it predates come
+                # from the packaged file. A release already carrying every key
+                # merges to itself and still reports UNCHANGED.
+                merged_payload = {
+                    **loaded.configuration.model_dump(mode="json"),
+                    **active_payload,
+                }
                 try:
                     existing_configuration = ReturnPlatformConfiguration.model_validate(
-                        active_payload
+                        merged_payload
                     )
                 except ValidationError as error:
                     logger.error(

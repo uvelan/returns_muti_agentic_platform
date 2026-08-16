@@ -12,6 +12,14 @@ answer, so "record the answer" and "mark it answered" cannot come apart. Two
 operators racing to answer the same interception is a real scenario -- the loser
 is told the interception is no longer pending rather than silently overwriting
 the winner's text.
+
+**A lapsed request is closed in two places, and both are needed.**
+`InterceptionExpirySweep` performs the `PENDING -> EXPIRED` transition on a
+housekeeping interval, and `list_pending` hides a record whose deadline has
+passed regardless of when the sweep last ran. Either alone is wrong: without the
+sweep the rows accumulate `PENDING` forever and the status is a lie, and without
+the read filter every interval opens a window in which the queue still offers
+work whose caller has already given up.
 """
 
 from __future__ import annotations
@@ -23,6 +31,7 @@ from typing import Any, Protocol
 
 from return_platform.ai.interception.records import (
     Interception,
+    InterceptionPoint,
     InterceptionStatus,
     ResumeCommand,
 )
@@ -41,6 +50,11 @@ METADATA_FIELDS = frozenset(
         "interception_id",
         "task_id",
         "status",
+        # Which of the two hold points this is. Metadata rather than sealed
+        # content for the same reason `task_id` is: it is a routing label an
+        # operator filters the queue on, and it says nothing about what the
+        # request asked or what the model replied.
+        "point",
         "resume",
         "created_at",
         "expires_at",
@@ -68,6 +82,9 @@ class InterceptionStore(Protocol):
         request_payload: Mapping[str, Any],
         resume: ResumeCommand,
         expires_at: datetime,
+        #: Defaulted so every existing caller keeps compiling and keeps meaning
+        #: what it meant. Only the response-review policy passes `RESPONSE`.
+        point: InterceptionPoint = InterceptionPoint.REQUEST,
     ) -> Interception: ...
 
     async def get(self, interception_id: str) -> Interception | None: ...
@@ -117,12 +134,19 @@ class SystemStoreInterceptionStore:
         request_payload: Mapping[str, Any],
         resume: ResumeCommand,
         expires_at: datetime,
+        point: InterceptionPoint = InterceptionPoint.REQUEST,
     ) -> Interception:
         """Write the held request and its resume command as one document.
 
         The resume command travels *with* the request precisely so a crash
         between "held the request" and "recorded how to resume it" is not
         representable.
+
+        At `RESPONSE` the sealed payload also carries the model's reply under
+        `modelResponse`. The parameter is still called `request_payload` because
+        the request is still in there -- an operator judging an answer needs the
+        question -- and renaming it would touch every caller to say the same
+        thing.
         """
         now = datetime.now(UTC)
         raw = json.dumps(dict(request_payload), sort_keys=True).encode("utf-8")
@@ -133,6 +157,7 @@ class SystemStoreInterceptionStore:
                 "interception_id": interception_id,
                 "task_id": task_id,
                 "status": InterceptionStatus.PENDING.value,
+                "point": point.value,
                 "resume": {
                     "run_id": resume.run_id,
                     "thread_id": resume.thread_id,
@@ -153,6 +178,7 @@ class SystemStoreInterceptionStore:
             resume=resume,
             created_at=now,
             expires_at=expires_at,
+            point=point,
         )
 
     async def get(self, interception_id: str) -> Interception | None:
@@ -189,6 +215,12 @@ class SystemStoreInterceptionStore:
         human answer to a prompt containing customer data is itself likely to
         contain customer data, and sealing one while leaving the other in the
         clear would be theatre.
+
+        **The same write serves both points.** At `REQUEST` this records an
+        answer a human wrote; at `RESPONSE` it records a human's edit of what
+        the model returned. The store does not need to know which -- the
+        transition, the sealing and the race are identical -- and the record's
+        `point` is what tells a reader how to attribute the text.
         """
         now = datetime.now(UTC)
         document = await self._store.read_only(AI_INTERCEPTIONS).find_one(
@@ -283,10 +315,24 @@ class SystemStoreInterceptionStore:
 
         Oldest first because the queue is worked in arrival order and the oldest
         item is the one closest to expiring unanswered.
+
+        **Lapsed records are excluded even while they are still `PENDING`.**
+        `InterceptionExpirySweep` settles them, but a sweep runs on an interval
+        and this read runs on a click, so between the two there is a window in
+        which a record whose deadline has passed is still stored `PENDING`.
+        Offering one would hand the operator -- or an automated harness taking
+        "the first PENDING" -- work whose caller has already given up, and the
+        answer they wrote would go nowhere. The status filter alone was what
+        made a three-day-old record the head of this queue.
         """
         cursor = (
             self._store.read_only(AI_INTERCEPTIONS)
-            .find({"status": InterceptionStatus.PENDING.value})
+            .find(
+                {
+                    "status": InterceptionStatus.PENDING.value,
+                    "expires_at": {"$gt": datetime.now(UTC)},
+                }
+            )
             .sort("created_at", 1)
             .limit(limit)
         )
@@ -314,6 +360,88 @@ class SystemStoreInterceptionStore:
         )
 
 
+def lapsed_filter(now: datetime) -> dict[str, Any]:
+    """The one definition of "this interception is over".
+
+    A module-level function rather than a method so the read path and the sweep
+    cannot drift: `list_pending` hides exactly the records `expire_lapsed`
+    settles, which is the property that makes running both non-redundant instead
+    of contradictory.
+    """
+    return {"status": InterceptionStatus.PENDING.value, "expires_at": {"$lte": now}}
+
+
+class InterceptionExpirySweep:
+    """Settles `PENDING` interceptions whose deadline has passed.
+
+    **No encryptor, deliberately.** Expiry is a metadata transition: it reads
+    `status` and `expires_at` and writes `status`, and it never opens the
+    envelope. Requiring a key to run it would mean the housekeeping worker had
+    to hold the reasoning encryption key to reap records it must never read --
+    the exact opposite of what sealing them is for. The sealed payload is
+    carried through the replace untouched, and `EncryptionGuard` still checks
+    the replacement document's envelope shape on the way out.
+
+    **The transition follows `DurableInterceptionProvider`'s precedent rather
+    than inventing a second one.** That provider already closes its *own* record
+    with `cancel(..., status=EXPIRED)` when it gives up waiting, and this is the
+    same compare-and-set against `status: PENDING` -- so a sweep racing a late
+    answer loses, and the human's text is never discarded. What the sweep adds
+    is the records no caller is left to close: a provider whose process died
+    mid-wait, and every request `DurableInterceptionPolicy` opened, which is
+    non-blocking by design and therefore has no coroutine to come back and
+    settle it.
+    """
+
+    def __init__(self, system_store: SystemStore) -> None:
+        self._store = system_store
+        self._interceptions = system_store.read_only(AI_INTERCEPTIONS)
+
+    async def count_lapsed(self, *, limit: int) -> int:
+        """How many lapsed records this pass could settle, capped at `limit`.
+
+        Bounded rather than a true backlog count: an unbounded
+        `count_documents` over a collection that has been accumulating corpses
+        for days is a full scan to produce a number nothing acts on.
+        """
+        return await self._interceptions.count_documents(
+            lapsed_filter(datetime.now(UTC)), limit=limit
+        )
+
+    async def expire_lapsed(self, *, limit: int) -> int:
+        """Move up to `limit` lapsed records to `EXPIRED`, oldest deadline first.
+
+        Returns how many transitions actually landed. A record that stopped
+        being `PENDING` between the read and the write -- an operator answering
+        the one this pass had just selected -- is simply not counted. Nothing
+        went wrong: the compare-and-set is what makes the sweep safe to run
+        beside live operators, and the caller reports the difference as
+        contention rather than as failure.
+        """
+        cursor = (
+            self._interceptions.find(lapsed_filter(datetime.now(UTC)))
+            .sort("expires_at", 1)
+            .limit(limit)
+        )
+        documents = [document async for document in cursor]
+        expired = 0
+        for document in documents:
+            updated = dict(document)
+            updated["status"] = InterceptionStatus.EXPIRED.value
+            result = await self._store.replace_one(
+                AI_INTERCEPTIONS,
+                {
+                    "interception_id": document["interception_id"],
+                    "status": InterceptionStatus.PENDING.value,
+                },
+                updated,
+                allowed_metadata_fields=METADATA_FIELDS,
+            )
+            if getattr(result, "matched_count", 0) == 1:
+                expired += 1
+        return expired
+
+
 def _from_document(
     document: Mapping[str, Any], *, response_text: str | None = None
 ) -> Interception:
@@ -332,6 +460,10 @@ def _from_document(
         answered_at=_aware(document["answered_at"]) if document.get("answered_at") else None,
         answered_by=document.get("answered_by"),
         response_text=response_text,
+        # A document written before response interception existed has no
+        # `point`, and it was a held request. Defaulting rather than raising
+        # keeps those readable.
+        point=InterceptionPoint(document.get("point") or InterceptionPoint.REQUEST.value),
     )
 
 

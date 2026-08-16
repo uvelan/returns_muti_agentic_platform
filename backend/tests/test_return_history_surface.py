@@ -14,8 +14,11 @@ exercising one more line of the thing being asserted.
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
+from fastapi import HTTPException, Request
 
 from return_platform.api.return_history import (
     _CASE_FIELDS,
@@ -26,8 +29,14 @@ from return_platform.api.return_history import (
     _TO_ITEM,
     _TO_PLACEMENT,
     _TO_RECORD,
+    _copilot_agent_id,
     _plan,
 )
+from return_platform.configuration.return_configuration import (
+    LoadedReturnConfiguration,
+    load_return_configuration,
+)
+from return_platform.configuration.settings import DEFAULT_RETURN_CONFIGURATION_PATH
 from return_platform.dynamic_knowledge.config_loader import load_active_schema
 from return_platform.dynamic_knowledge.knowledge.cypher_compiler import CypherCompiler
 from return_platform.dynamic_knowledge.knowledge.guards import (
@@ -166,8 +175,14 @@ def test_the_customer_read_goes_through_the_order_to_reach_the_case(
     who placed it."""
     compiled = CypherCompiler().compile_read(schema, _customer_plan((_TO_CASE,), _CASE_FIELDS))
 
-    assert "MATCH (n0)-[r1:`PLACED_ORDER`]->(n1:`SalesOrder`)" in compiled.cypher
-    assert "MATCH (n1)<-[r2:`COVERS_ORDER`]-(n2:`ReturnCase`)" in compiled.cypher
+    assert (
+        "MATCH (n0)-[r1:`PLACED_ORDER`]->(n1:`SalesOrder` {graph_generation_id: $graph_generation_id})"
+        in compiled.cypher
+    )
+    assert (
+        "MATCH (n1)<-[r2:`COVERS_ORDER`]-(n2:`ReturnCase` {graph_generation_id: $graph_generation_id})"
+        in compiled.cypher
+    )
 
 
 def test_the_item_read_reaches_items_through_the_case_not_the_rma(
@@ -244,3 +259,82 @@ def test_a_read_outside_the_policy_is_refused_rather_than_compiled(
         SchemaQueryGuard().validate(guard_context, plan)
 
     assert rejected.value.code == "ORDER_AGENT_OUT_OF_SCOPE"
+
+
+def _shipped_configuration(*, agent_id: str | None) -> LoadedReturnConfiguration:
+    shipped = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH)
+    return shipped.model_copy(
+        update={
+            "configuration": shipped.configuration.model_copy(
+                update={
+                    "copilot": shipped.configuration.copilot.model_copy(
+                        update={"order_discovery_agent_id": agent_id}
+                    )
+                }
+            )
+        }
+    )
+
+
+def _request(configuration: object) -> Request:
+    """Enough of a request to reach `app.state.return_configuration`.
+
+    The resolver reads one attribute off application state and nothing off the
+    connection, so a real `Request` would add a scope, a lifespan and a client
+    without exercising another line.
+    """
+    state = SimpleNamespace(return_configuration=configuration)
+    return cast(Request, SimpleNamespace(app=SimpleNamespace(state=state)))
+
+
+def test_the_surface_answers_to_the_agent_the_configuration_names(
+    schema: ActiveSchema,
+) -> None:
+    """The policy is resolved from configuration, not restated as a literal.
+
+    This module used to hold its own `_AGENT_ID = "order-discovery-agent"`
+    beside the Copilot's configured mapping. Correct on the day it was written,
+    and one schema release away from the Copilot following a renamed agent while
+    the console kept naming a policy that no longer exists.
+    """
+    shipped = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH)
+
+    resolved = _copilot_agent_id(_request(shipped), schema)
+
+    # The shipped configuration's own value, not this file's constant -- which
+    # is exactly the pair that used to be able to drift apart.
+    assert resolved == shipped.configuration.copilot.order_discovery_agent_id
+    assert resolved in schema.agent_policies
+
+
+def test_a_dangling_mapping_is_a_named_503_not_a_key_error(schema: ActiveSchema) -> None:
+    """A rename that missed this file must read as a configuration fault.
+
+    Indexing `agent_policies` with an unknown id raises `KeyError`, which reaches
+    an associate as an unexplained 500.
+    """
+    with pytest.raises(HTTPException) as refused:
+        _copilot_agent_id(_request(_shipped_configuration(agent_id="order_discovery")), schema)
+
+    assert refused.value.status_code == 503
+    assert refused.value.detail["code"] == "COPILOT_AGENT_CONFIGURATION_INVALID"  # type: ignore[index]
+
+
+def test_an_unconfigured_mapping_does_not_fall_back_to_some_other_agent(
+    schema: ActiveSchema,
+) -> None:
+    """Borrowing whichever policy happens to exist would silently widen or
+    narrow what the console may read."""
+    with pytest.raises(HTTPException) as refused:
+        _copilot_agent_id(_request(_shipped_configuration(agent_id=None)), schema)
+
+    assert refused.value.status_code == 503
+    assert refused.value.detail["code"] == "COPILOT_AGENT_CONFIGURATION_INVALID"  # type: ignore[index]
+
+
+def test_a_process_with_no_configuration_loaded_is_unavailable(schema: ActiveSchema) -> None:
+    with pytest.raises(HTTPException) as refused:
+        _copilot_agent_id(_request(None), schema)
+
+    assert refused.value.status_code == 503
+    assert refused.value.detail["code"] == "RETURN_HISTORY_UNAVAILABLE"  # type: ignore[index]

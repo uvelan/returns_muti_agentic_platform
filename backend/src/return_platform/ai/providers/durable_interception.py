@@ -83,7 +83,11 @@ class DurableInterceptionProvider:
         expires_at = datetime.now(UTC) + timedelta(seconds=self._timeout_seconds)
         await self._store.open(
             interception_id=interception_id,
-            task_id=self._task_id,
+            # The request wins. This provider is built once per route, but one
+            # route serves every task that permits MANUAL -- so the
+            # construction-time id is a fallback for callers that predate
+            # `ProviderRequest.task_id`, never the better answer.
+            task_id=request.task_id or self._task_id,
             request_payload={
                 "systemPrompt": request.system_prompt,
                 "userPayload": request.user_payload,

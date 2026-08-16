@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from return_platform.dynamic_knowledge.knowledge.cypher_compiler import CypherCompiler
+from return_platform.dynamic_knowledge.knowledge.cypher_compiler import (
+    FULLTEXT_GENERATION_HEADROOM,
+    FULLTEXT_MAX_INDEX_ROWS,
+    GENERATION_PARAMETER,
+    CypherCompiler,
+)
 from return_platform.dynamic_knowledge.knowledge.query_plan import (
     LogicalQueryPlan,
     QueryCondition,
@@ -136,3 +141,87 @@ def test_unimplemented_operations_fail_loudly_instead_of_silently(
     plan = LogicalQueryPlan(operation=operation, start_entity_id="entity_a", **kwargs)
     with pytest.raises(Exception, match="not implemented"):
         CypherCompiler().compile_read(active_schema, plan)
+
+
+# --- generation scoping -----------------------------------------------------
+#
+# `lifecycle/handle.py` resolves and leases exactly one generation per request,
+# and until this the whole apparatus stopped at the compiler: `compile_read`
+# emitted `MATCH (n0:ConfiguredAlpha)` with no generation predicate and
+# `Neo4jKnowledgeGateway.execute` deleted the id it was handed. A read therefore
+# saw every generation the database held -- retired ones, half-built ones, and
+# candidates that failed validation and were never activated.
+
+
+def test_a_read_is_pinned_to_one_generation(active_schema: ActiveSchema) -> None:
+    plan = LogicalQueryPlan(
+        operation=QueryOperation.SEARCH,
+        start_entity_id="entity_a",
+        fields=("id", "name"),
+        limit=10,
+    )
+    compiled = CypherCompiler().compile_read(active_schema, plan)
+    assert f"{{{GENERATION_PARAMETER}: ${GENERATION_PARAMETER}}}" in compiled.cypher
+    # The value is bound at the read boundary, never here: the compiler is pure
+    # and has no business knowing which generation serves a request.
+    assert GENERATION_PARAMETER not in compiled.parameters
+
+
+def test_every_alias_in_a_traversal_is_pinned_not_just_the_start(
+    active_schema: ActiveSchema,
+) -> None:
+    """A traversal scoped only at its start entity hops straight out of its
+    generation on the first relationship, which is the bleed the scoping exists
+    to prevent rather than a lesser version of it."""
+    plan = LogicalQueryPlan(
+        operation=QueryOperation.TRAVERSE,
+        start_entity_id="entity_a",
+        fields=("id",),
+        traversal=(
+            TraversalStep(
+                relationship_id="a_to_b", direction="OUTBOUND", target_entity_id="entity_b"
+            ),
+        ),
+    )
+    compiled = CypherCompiler().compile_read(active_schema, plan)
+    scoped = f"{{{GENERATION_PARAMETER}: ${GENERATION_PARAMETER}}}"
+    assert compiled.cypher.count(scoped) == 2
+    assert f"(n0:`ConfiguredAlpha` {scoped})" in compiled.cypher
+    assert f"(n1:`ConfiguredBeta` {scoped})" in compiled.cypher
+
+
+def test_a_full_text_read_is_pinned_and_over_fetches_to_stay_ranked(
+    active_schema: ActiveSchema,
+) -> None:
+    """The index spans every generation that ever wrote into the label, and the
+    generation predicate can only be applied after `queryNodes` has truncated to
+    its own limit. Asking the index for exactly `$limit` rows would let a
+    retired generation's rows fill the window and return nothing."""
+    plan = LogicalQueryPlan(
+        operation=QueryOperation.FULLTEXT_SEARCH,
+        start_entity_id="entity_a",
+        fields=("id", "name"),
+        fulltext_index="configured_name_search",
+        fulltext_field_id="name",
+        fulltext_query="Smi*",
+        limit=25,
+    )
+    compiled = CypherCompiler().compile_read(active_schema, plan)
+    assert f"n0.{GENERATION_PARAMETER} = ${GENERATION_PARAMETER}" in compiled.cypher
+    assert "{limit: $fulltext_index_rows}" in compiled.cypher
+    assert compiled.parameters["fulltext_index_rows"] == 25 * FULLTEXT_GENERATION_HEADROOM
+    assert compiled.parameters["limit"] == 25
+
+
+def test_the_full_text_index_page_stays_bounded(active_schema: ActiveSchema) -> None:
+    plan = LogicalQueryPlan(
+        operation=QueryOperation.FULLTEXT_SEARCH,
+        start_entity_id="entity_a",
+        fields=("id", "name"),
+        fulltext_index="configured_name_search",
+        fulltext_field_id="name",
+        fulltext_query="Smi*",
+        limit=1000,
+    )
+    compiled = CypherCompiler().compile_read(active_schema, plan)
+    assert compiled.parameters["fulltext_index_rows"] == FULLTEXT_MAX_INDEX_ROWS

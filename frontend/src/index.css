@@ -78,4 +78,11 @@
     box-shadow: 0 18px 45px -32px rgb(11 31 28 / 0.34), 0 1px 3px rgb(11 31 28 / 0.06);
   }
 
+  .hide-scrollbar, .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .hide-scrollbar::-webkit-scrollbar, .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }

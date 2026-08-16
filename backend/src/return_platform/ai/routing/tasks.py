@@ -68,7 +68,21 @@ class RateLimitConfiguration(StrictModel):
 class TaskConfiguration(StrictModel):
     tier: ModelTier
     promptVersion: str = Field(min_length=1, max_length=128)
-    systemPrompt: str = Field(min_length=20, max_length=12_000)
+    #: A budget, not a provider limit, and it is worth saying which.
+    #:
+    #: Nothing rejects a prompt at 12,000 characters: what a request is actually
+    #: bounded by is `maximumInputTokens` below, and the largest prompt here --
+    #: `ORDER_AGENT_REASONING_V1` -- assembles to roughly 22,200 characters once
+    #: the response schema and the temporal addendum are appended, inside a turn
+    #: that spends about 16,750 of its 32,000-token allowance, most of it
+    #: `contextJson`. The cap exists so a prompt cannot grow without anyone
+    #: noticing, and so a task with a small `maximumInputTokens` (1,000, for
+    #: `RETURN_DISCOVERY_INTENT_V1`) cannot be handed a prompt that alone exceeds
+    #: it. Raised from 12,000 when Order Discovery's progressive-narrowing and
+    #: aggregation rules were written: the prompt they went into had 67
+    #: characters of headroom, and the alternative to raising it was dropping
+    #: rules to fit a number no provider enforces.
+    systemPrompt: str = Field(min_length=20, max_length=14_000)
     fallbackStrategy: FallbackStrategy
     fallbackTemplate: str = Field(min_length=1, max_length=128)
     maximumOutputTokens: int = Field(ge=32, le=8192)
