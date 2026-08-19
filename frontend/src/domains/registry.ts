@@ -99,6 +99,17 @@ function sections(labels: readonly string[]): readonly DomainSection[] {
  */
 export const SUPPORT_SECTIONS = ["Work Queue", "RMA Tickets"] as const;
 
+/**
+ * The analyzer flow, in the order it is walked.
+ *
+ * These were a tab strip inside the workspace header, which made the analyzer
+ * the only domain navigating itself: every other domain puts its sections in
+ * the rail, so the analyzer had two navigations stacked -- the rail showing
+ * nothing, and a second row of tabs below it. The registry entry below already
+ * said this rail "goes here when they land"; the screens have landed.
+ */
+export const GRAPH_SCHEMA_SECTIONS = ["Graph Analyzer", "Schema", "Sync"] as const;
+
 export const CONFIG_SECTIONS = [
   "Overview",
   "Agents",
@@ -211,11 +222,10 @@ export const DOMAINS: readonly DomainDefinition[] = [
     icon: Network,
     requires: "graph_schema.draft.read",
     screenPhase: 20,
-    // The analyzer's tabs (Validation, Versions, Mapping, ...) belong to a
-    // selected draft, not to the domain, so they are not sections. The Stitch
-    // kit's own rail -- Sources, Context, Schema, Validation, Indexes, Sync --
-    // is the flow those screens will introduce; it goes here when they land.
-    sections: [],
+    // The three workspaces the analyzer flow moves between. Draft-scoped tabs
+    // (Validation, Versions, Mapping) still belong to a selected draft rather
+    // than to the domain, so they are not sections and stay inside the screen.
+    sections: sections(GRAPH_SCHEMA_SECTIONS),
   },
   {
     path: "/ai",

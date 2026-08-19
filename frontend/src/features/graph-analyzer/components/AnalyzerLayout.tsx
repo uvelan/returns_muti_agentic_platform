@@ -1,15 +1,9 @@
-import { Bot, Check, CircleAlert, Database, Network, RefreshCw, ShieldCheck } from "lucide-react";
-import { Link, useLocation } from "wouter";
+import { Bot, Check, CircleAlert, Network, ShieldCheck } from "lucide-react";
+import { useLocation } from "wouter";
 import type { ReactNode } from "react";
 import { useAnalyzerBootstrap } from "../analyzerQueries";
 import { useGraphAnalyzer } from "../GraphAnalyzerContext";
 import { AgentDrawer } from "./AgentDrawer";
-
-const tabs = [
-  { path: "/graph-schema", label: "Graph Analyzer", icon: Database },
-  { path: "/graph-schema/schema", label: "Schema", icon: Network },
-  { path: "/graph-schema/sync", label: "Sync", icon: RefreshCw },
-] as const;
 
 export function AnalyzerLayout({ children }: { readonly children: ReactNode }) {
   const [location] = useLocation();
@@ -34,12 +28,6 @@ export function AnalyzerLayout({ children }: { readonly children: ReactNode }) {
             <Bot size={16} /> Ask Analyzer
           </button>
         </div>
-        <nav className="mt-5 flex gap-1" aria-label="Graph Schema Analyzer workflows">
-          {tabs.map((tab) => {
-            const active = tab.path === "/graph-schema" ? location === tab.path : location.startsWith(tab.path);
-            return <Link key={tab.path} href={tab.path} className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition ${active ? "bg-emerald-400 text-emerald-950 shadow-lg shadow-emerald-950" : "text-slate-400 hover:bg-white/5 hover:text-white"}`}><tab.icon size={15} />{tab.label}</Link>;
-          })}
-        </nav>
       </header>
 
       <div className="border-b border-emerald-950/80 bg-[#0a1714] px-5 py-3 lg:px-7">
