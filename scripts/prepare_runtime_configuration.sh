@@ -14,7 +14,7 @@ Usage:
   ./scripts/prepare_runtime_configuration.sh --force-ai-validation
   ./scripts/prepare_runtime_configuration.sh --refresh-ai-routes
 
-Prepare Vault, Neo4j migrations, and the active graph configuration.
+Prepare SQL and Neo4j migrations, and the active graph configuration.
 
 Normal preparation never calls an AI provider.
 --validate-ai runs live validation only when the 24-hour interval has elapsed.
@@ -74,7 +74,6 @@ fi
   --env-file "$ROOT/.env" \
   --example-file "$ROOT/.env.example"
 
-source "$ROOT/scripts/vault/export_runtime_vault_env.sh"
 export PYTHONPATH="$ROOT/backend/src${PYTHONPATH:+:$PYTHONPATH}"
 
 if command -v poetry >/dev/null; then
@@ -90,7 +89,6 @@ else
   PYTHON=(python3)
 fi
 
-"${PYTHON[@]}" "$ROOT/scripts/vault/bootstrap_local_vault.py"
 # SQL migrations run here, not only in compose's `runtime-configuration-init`.
 # Until now this was the one preparation step the host path did not do, so a
 # host-run platform got its SQL schema only as a side effect of that init

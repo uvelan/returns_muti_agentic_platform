@@ -43,7 +43,7 @@ class PlatformDomainApiAdapter:
         return CompensationCapability.DOMAIN_COMPENSATE
 
     async def is_ready(self) -> bool:
-        if not os.environ.get("VAULT_DOMAIN_API_CREDENTIALS"):
+        if not os.environ.get("PLATFORM_DOMAIN_API_CREDENTIALS"):
             return False
         return True
 

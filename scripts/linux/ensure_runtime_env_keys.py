@@ -2,8 +2,7 @@
 """Synchronize missing repository environment keys from .env.example.
 
 Existing values are never replaced or printed. Missing assignments are appended
-using their version-controlled example defaults. Selected runtime-safe sentinel
-values remain authoritative for Vault-resolved settings.
+using their version-controlled example defaults.
 """
 
 from __future__ import annotations
@@ -17,10 +16,6 @@ import stat
 from pathlib import Path
 
 ASSIGNMENT = re.compile(r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
-SAFE_OVERRIDES: dict[str, str] = {
-    "PLATFORM_VALIDATION_FINGERPRINT_KEY": "vault-resolved",
-    "PLATFORM_CONTACT_LOOKUP_HMAC_KEY": "vault-resolved",
-}
 MIGRATABLE_JSON_LISTS = {
     "PLATFORM_AI_ALLOWED_ENDPOINT_HOSTS": (
         '\'["generativelanguage.googleapis.com","integrate.api.nvidia.com",'
@@ -86,7 +81,7 @@ def update(path: Path, example_path: Path) -> tuple[str, ...]:
     missing: list[tuple[str, str]] = []
     for name, example_value in assignments(example_path):
         if name not in present:
-            missing.append((name, SAFE_OVERRIDES.get(name, example_value)))
+            missing.append((name, example_value))
 
     if missing:
         with path.open("a", encoding="utf-8", newline="\n") as stream:

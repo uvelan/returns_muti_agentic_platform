@@ -14,20 +14,16 @@ order:
 ```text
 1. stop the host processes
 2. reset and start infrastructure          (destroys volumes)
-3. re-seed Vault                           (step 2 destroyed its volume)
-4. load the reference dataset
-5. start the host processes
-6. build the knowledge graph
+3. load the reference dataset
+4. start the host processes
+5. build the knowledge graph
 ```
 
-**Step 6 is the one that had no script at all.** Loading the source collections
+**Step 5 is the one that had no script at all.** Loading the source collections
 leaves Neo4j **empty**, so the copilot searches a graph with no nodes and truthfully
 reports finding nothing — which reads as a broken agent rather than a missing build.
 That is the single most confusing state this platform has: every service is up,
 every health check passes, and discovery finds nothing.
-
-**Step 3 is not optional and nothing else does it.** Step 2 destroys Vault's volume,
-and without re-seeding, every credential resolution fails.
 
 ## The steps individually
 
@@ -43,8 +39,9 @@ CONFIRM_RESET=YES ./scripts/infra.sh reset
 ```
 
 **Deletes local infrastructure volumes.** Requires the explicit confirmation
-variable — the guard exists because this destroys Vault, and Vault is the only place
-the generated infrastructure credentials live.
+variable — the guard exists because this destroys every datastore's data. The
+generated credentials in `.env` are untouched, so the rebuilt services come back on
+the same ones the platform is configured with.
 
 `./scripts/linux/reset_docker_environment.sh` resets the Docker environment more
 broadly.
@@ -52,7 +49,6 @@ broadly.
 After any volume reset:
 
 ```bash
-python3.13 scripts/vault/bootstrap_local_vault.py
 ./scripts/prepare_runtime_configuration.sh
 ```
 
@@ -98,7 +94,7 @@ manifest and `PLATFORM_SEED_RECORD_LIMIT` remain **hard upper bounds**, so the U
 cannot exceed the configured environment capacity. The page polls the active
 operation, shows progress, and can request a cooperative stop.
 
-Seed evidence uses the Vault-aware validation fingerprint key to produce a keyed
+Seed evidence uses `PLATFORM_VALIDATION_FINGERPRINT_KEY` to produce a keyed
 digest. Graph synchronization selects every record matching the active seed version
 and digest, **rejects digest drift**, and does not use an arbitrary record limit for
 an active seed projection.

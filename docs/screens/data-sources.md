@@ -30,7 +30,7 @@ health.
 
 - connection metadata (**non-secret only** — the frontend never receives a secret
   value);
-- the Vault reference and its version, as a reference, never a value;
+- the credential profile it uses, as an identity, never a value;
 - the validation receipt: what was verified and when;
 - **what the source exposes** — the collections, tables and indexes it declares;
 - health and last check.
@@ -109,8 +109,8 @@ outage look like a total data-layer outage.
 
 ## Persistence and data source
 
-Source configuration lives in the **Neo4j configuration control plane**. Vault
-holds credential values; Neo4j holds only versioned references. Health results and
+Source configuration lives in the **Neo4j configuration control plane**. The
+process environment holds credential values; Neo4j holds none. Health results and
 validation receipts are stored with the configuration.
 
 Dataset bindings are configuration, versioned with the release.
@@ -121,7 +121,7 @@ Binding and clearing a dataset are administrative actions and are audited —
 readable at `/api/config/audit`.
 
 Source activation records a receipt bound to connector type, endpoint,
-configuration checksum and the exact Vault secret version.
+configuration checksum and the secret's fingerprint.
 
 ## Configuration dependencies
 

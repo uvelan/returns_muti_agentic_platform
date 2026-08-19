@@ -23,7 +23,7 @@ Login failed for user 'sa'
 
 That is a **write failure whose real cause is only visible in the server's own
 log**. It reads as a credential problem. Every instinct it triggers — check the
-password, check Vault, check the connection string — is wrong, and the actual cause
+password, check the connection string — is wrong, and the actual cause
 is that the platform opened more connections than the server would accept.
 
 This is why an unbounded resource is not merely a performance issue. It produces a

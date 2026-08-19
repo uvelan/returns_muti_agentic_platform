@@ -451,8 +451,8 @@ def main() -> int:
         print(
             "\nThe value itself is deliberately not printed. To resolve:\n"
             "  1. Revoke the credential at its provider console FIRST.\n"
-            "  2. Remove it from the change; load it from Vault instead\n"
-            "     (see scripts/vault/export_runtime_vault_env.sh).\n"
+            "  2. Remove it from the change; put it in the untracked `.env`\n"
+            "     instead, which is where the platform reads credentials from.\n"
             "  3. If it already reached a pushed branch, follow\n"
             "     scripts/security/SEC-01_HISTORY_PURGE_RUNBOOK.md.\n"
             "  4. Only if this is a false positive, add it to\n"

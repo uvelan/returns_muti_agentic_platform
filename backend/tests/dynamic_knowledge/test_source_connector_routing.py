@@ -70,7 +70,6 @@ def test_an_unoverridden_source_of_the_same_type_still_uses_the_default(
     raw["sources"]["source_c"] = {
         "source_asset_id": "source_c",
         "connector_type": "MONGODB",
-        "connection_ref": "vault://source/c",
         "object_ref": {"database": "elsewhere", "name": "other_objects"},
     }
     schema = ActiveSchema.model_validate(raw)

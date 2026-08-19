@@ -1,6 +1,5 @@
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-. (Join-Path $Root "scripts\vault\export_runtime_vault_env.ps1")
 
 Write-Host "Preparing runtime configuration..." -ForegroundColor Cyan
 Push-Location (Join-Path $Root "backend")
@@ -11,7 +10,6 @@ try {
   # is the sequence `prepare_runtime_configuration.sh` runs on Linux, including
   # the SQL migrations that neither branch had.
   $preparation = @(
-    (Join-Path $Root "scripts\vault\bootstrap_local_vault.py"),
     (Join-Path "scripts" "apply_sql_migrations.py"),
     (Join-Path "scripts" "apply_neo4j_migrations.py"),
     (Join-Path "scripts" "bootstrap_graph_configuration.py")

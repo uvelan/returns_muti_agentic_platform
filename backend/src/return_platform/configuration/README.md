@@ -19,9 +19,9 @@ BOOTSTRAP_ENV  →  BASELINE  →  ACTIVE_RELEASE  →  (output) RuntimeSnapshot
 
 `application/precedence.py::ConfigurationPrecedenceEvaluator` enforces this. `BOOTSTRAP_ENV` may
 only supply an explicit allowlisted set of deployment/bootstrap fields (region, host, port,
-log_level, Vault URI references, …) — business configuration must never come from environment
+log_level, credentials, …) — business configuration must never come from environment
 variables, and `ACTIVE_RELEASE` may never override a bootstrap-only key. Secret values never enter
-a snapshot; only `vault://` URI references are permitted through.
+a snapshot; only non-secret references are permitted through.
 
 ## Manifest and compatibility translation
 

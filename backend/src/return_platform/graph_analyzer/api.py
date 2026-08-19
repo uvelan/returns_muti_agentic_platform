@@ -35,7 +35,7 @@ from return_platform.shared.contracts import APIResponse, ResponseMeta
 require_analyzer_read = require_capability(GRAPH_SCHEMA_DRAFT_READ)
 require_analyzer_write = require_capability(GRAPH_SCHEMA_DRAFT_WRITE)
 
-router = APIRouter(prefix="/graph-analyzer/v1", tags=["Graph Schema Analyzer"])
+router = APIRouter(prefix="/api/graph-analyzer/v1", tags=["Graph Schema Analyzer"])
 
 
 def _resources(request: Request) -> RuntimeResources:

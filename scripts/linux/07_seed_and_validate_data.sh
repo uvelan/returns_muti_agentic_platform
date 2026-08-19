@@ -2,11 +2,6 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
-# Seeding resolves every datastore credential through Vault, so a sealed Vault
-# fails here with a connection error naming `vault-resolved.invalid` -- the
-# `.env` sentinel, not a host. Say which it is before spending the timeout.
-assert_vault_unsealed
-
 cd "$REPO_ROOT/backend"
 backend_python
 "${BACKEND_PYTHON[@]}" scripts/seed_e2e_data.py >"$EVIDENCE_DIR/seed-status.json"

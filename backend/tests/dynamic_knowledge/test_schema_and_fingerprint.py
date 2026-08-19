@@ -22,11 +22,21 @@ def test_graph_fingerprint_changes_when_projection_changes(active_schema: Active
     assert graph_schema_fingerprint(changed) != baseline
 
 
-def test_graph_fingerprint_ignores_connection_secret_reference_change(
+def test_graph_fingerprint_ignores_release_metadata(
     active_schema: ActiveSchema,
 ) -> None:
+    """Who approved a release does not change what the graph means.
+
+    This used to rotate `connection_ref`, which the fingerprint excluded because
+    a credential is not graph meaning. That field is gone -- credentials come
+    from the environment now -- and every field left on a source *is*
+    fingerprinted. So the property is asserted where exclusion still lives: the
+    fingerprint is built from a named allowlist, and release metadata outside it
+    must not invalidate a published graph.
+    """
     baseline = graph_schema_fingerprint(active_schema)
     raw = active_schema.model_dump(mode="json")
-    raw["sources"]["source_a"]["connection_ref"] = "vault://rotated/secret"
+    raw["approved_by"] = "a-different-approver"
+    raw["configuration_release_id"] = "release-2"
     changed = ActiveSchema.model_validate(raw)
     assert graph_schema_fingerprint(changed) == baseline

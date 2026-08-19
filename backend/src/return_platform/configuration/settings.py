@@ -31,16 +31,16 @@ DEFAULT_SYSTEM_STORE_MANIFEST_PATH = BACKEND_ROOT / "config" / "platform" / "sys
 #: Agents section answered 500 in every container while passing every test.
 DEFAULT_CONFIGURATION_DIRECTORY = BACKEND_ROOT / "config"
 # Base64-encoded, deterministically-derived 32 raw bytes -- development-only. Never a
-# valid production value (rejected explicitly below when vault_secrets_resolved).
+# valid production value (rejected explicitly by `validate_relationships` below).
 DEV_DEFAULT_REASONING_ENCRYPTION_KEY_B64 = "z4hdfhOkyWNWVgigtCB8skElDHzOmAVUs6NEYWF+WQo="
 #: The one environment in which a missing prerequisite refuses the process
 #: rather than degrading it -- the rule `validate_relationships` below applies to
-#: Vault, spelled out here so the same rule can be applied elsewhere without
-#: being restated as a literal.
+#: development-default secrets, spelled out here so the same rule can be applied
+#: elsewhere without being restated as a literal.
 #:
 #: `require_healthy_configuration` is the elsewhere: an unset or dangling Copilot
 #: agent mapping and an unpublished eligibility policy refuse production startup
-#: exactly as a missing Vault reference does. It cannot live in
+#: exactly as an unreplaced `change-me` key does. It cannot live in
 #: `validate_relationships` because Settings holds neither the released return
 #: configuration nor the active schema -- both arrive inside the lifespan.
 PRODUCTION_ENVIRONMENT = "production"
@@ -797,45 +797,39 @@ class Settings(BaseSettings):
         return self.ollama_standard_models or ((self.ollama_model,) if self.ollama_model else ())
 
     def _reject_inline_ai_credentials(self) -> None:
-        """Outside development and test, provider keys must be Vault references.
+        """Refuse inline provider keys only where a secret resolver is in play.
 
         `PLATFORM_*_API_KEYS` holds the key *value*; `PLATFORM_*_API_KEY_REFERENCES`
-        holds a `vault://` pointer the platform resolves at startup. Both are
-        accepted, which is how live Google and NVIDIA keys came to sit in a
-        plaintext `.env` -- duplicated into `backend/.env`, mounted read-only
-        into the test-runner container, and (for keys of the same providers)
-        committed to a fixture and removed again in `fbfcf05`, which puts them
-        in git history permanently.
+        holds a `vault://` pointer resolved at startup. Supplying both is always
+        a configuration mistake -- whichever one the resolver writes last wins,
+        which is exactly the ambiguity that put live keys into a plaintext
+        `.env` once already.
 
-        The six infrastructure secrets already use the reference mechanism
-        exclusively. This makes the AI credentials match, and it fails at
-        construction rather than at first use, so a misconfigured deployment
-        cannot start and quietly serve traffic on an inline key.
-
-        Development and test are exempt on purpose: a contributor with no Vault
-        should be able to run the stack, and every non-production path already
-        degrades when Vault is unavailable. The exemption is what keeps this
-        from being routed around with `PLATFORM_ENVIRONMENT=production` on a
-        laptop.
+        This used to forbid inline keys outright outside development and test,
+        which only made sense while Vault was mandatory. It is not any more:
+        the platform reads its credentials from the environment, and an inline
+        key is now the ordinary way to configure a provider. So the rule
+        narrows to the case that is still incoherent -- a reference *and* a
+        value for the same provider, with `vault_enabled` set.
         """
-        if self.environment in {"development", "test"}:
+        if not self.vault_enabled:
             return
-        inline = [
+        conflicting = [
             name
-            for name, values in (
-                ("PLATFORM_GOOGLE_API_KEYS", self.google_api_keys),
-                ("PLATFORM_NVIDIA_API_KEYS", self.nvidia_api_keys),
-                ("PLATFORM_OPENAI_API_KEYS", self.openai_api_keys),
-                ("PLATFORM_ANTHROPIC_API_KEYS", self.anthropic_api_keys),
+            for name, values, references in (
+                ("GOOGLE", self.google_api_keys, self.google_api_key_references),
+                ("NVIDIA", self.nvidia_api_keys, self.nvidia_api_key_references),
+                ("OPENAI", self.openai_api_keys, self.openai_api_key_references),
+                ("ANTHROPIC", self.anthropic_api_keys, self.anthropic_api_key_references),
             )
-            if values
+            if values and references
         ]
-        if inline:
+        if conflicting:
             # Names only. The whole point is that the value must not be handled.
             raise ValueError(
-                "AI provider credentials must be supplied as Vault references "
-                f"outside development and test; remove {', '.join(sorted(inline))} "
-                "and populate the matching *_API_KEY_REFERENCES instead."
+                "With Vault enabled, a provider must be configured by value or by "
+                f"reference, not both; {', '.join(sorted(conflicting))} has "
+                "PLATFORM_*_API_KEYS and PLATFORM_*_API_KEY_REFERENCES set together."
             )
 
     @model_validator(mode="after")
@@ -871,51 +865,19 @@ class Settings(BaseSettings):
         ):
             raise ValueError("Configured external Return Support integration requires a base URL.")
         if self.environment == "production":
-            if not self.vault_enabled:
-                raise ValueError("Vault must be enabled in production.")
-            required_references = {
-                "mongo_dsn_secret_reference": self.mongo_dsn_secret_reference,
-                "source_mongo_dsn_secret_reference": self.source_mongo_dsn_secret_reference,
-                "neo4j_password_secret_reference": self.neo4j_password_secret_reference,
-                "valkey_password_secret_reference": self.valkey_password_secret_reference,
-                "sqlserver_password_secret_reference": self.sqlserver_password_secret_reference,
-                "validation_fingerprint_key_secret_reference": (
-                    self.validation_fingerprint_key_secret_reference
-                ),
-                "contact_lookup_hmac_key_secret_reference": (
-                    self.contact_lookup_hmac_key_secret_reference
-                ),
-                "reasoning_encryption_key_secret_reference": (
-                    self.reasoning_encryption_key_secret_reference
-                ),
-            }
-            missing = sorted(name for name, value in required_references.items() if not value)
-            if missing:
-                raise ValueError("Production Vault references are missing: " + ", ".join(missing))
-            if self.vault_secrets_resolved:
-                if self.validation_fingerprint_key.get_secret_value().endswith("change-me"):
-                    raise ValueError("Production validation fingerprint key must be replaced.")
-                if self.contact_lookup_hmac_key.get_secret_value().endswith("change-me"):
-                    raise ValueError("Production contact lookup HMAC key must be replaced.")
-                if (
-                    self.reasoning_encryption_key.get_secret_value()
-                    == DEV_DEFAULT_REASONING_ENCRYPTION_KEY_B64
-                ):
-                    raise ValueError("Production reasoning encryption key must be replaced.")
-            hosted_ai_keys_present = any(
-                (
-                    self.google_api_keys,
-                    self.nvidia_api_keys,
-                    self.openai_api_keys,
-                    self.anthropic_api_keys,
-                    (self.google_api_key,) if self.google_api_key else (),
-                    (self.nvidia_api_key,) if self.nvidia_api_key else (),
-                    (self.openai_api_key,) if self.openai_api_key else (),
-                    (self.anthropic_api_key,) if self.anthropic_api_key else (),
-                )
-            )
-            if hosted_ai_keys_present and not self.vault_secrets_resolved:
-                raise ValueError(
-                    "Production AI keys must be resolved from validated Vault references"
-                )
+            # What production refuses to start on is a *development* secret, not
+            # a secret from the wrong store. Vault is optional now -- these keys
+            # arrive from the environment unless `vault_enabled` is set -- so the
+            # check that carried real weight is kept and the one that only
+            # enforced the mechanism is gone. It no longer hides behind
+            # `vault_secrets_resolved`, which was never a property of the key.
+            if self.validation_fingerprint_key.get_secret_value().endswith("change-me"):
+                raise ValueError("Production validation fingerprint key must be replaced.")
+            if self.contact_lookup_hmac_key.get_secret_value().endswith("change-me"):
+                raise ValueError("Production contact lookup HMAC key must be replaced.")
+            if (
+                self.reasoning_encryption_key.get_secret_value()
+                == DEV_DEFAULT_REASONING_ENCRYPTION_KEY_B64
+            ):
+                raise ValueError("Production reasoning encryption key must be replaced.")
         return self

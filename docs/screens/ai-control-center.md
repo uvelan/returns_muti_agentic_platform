@@ -139,7 +139,7 @@ Pricing `UNKNOWN`/null is a preserved semantic. Rendering an unpriced call as
   `FinalDispatcher` telemetry.
 - Route pool and task bindings: the `AI_GATEWAY` domain of the active
   configuration release, in **Neo4j**.
-- Keys: **Vault**. Neo4j stores only versioned references, and the frontend
+- Keys: **the process environment**. Neo4j stores no key value, and the frontend
   receives neither.
 
 Each request record carries provider, model, tokens, latency, cost, outcome and
@@ -167,7 +167,7 @@ Production and staging **fail closed** when `AI_GATEWAY` is absent from the acti
 release.
 
 A key/model/task route is usable only after live validation produced a receipt
-bound to provider, model, task, secret fingerprint, Vault version and
+bound to provider, model, task, secret fingerprint and
 configuration checksum. Publication is refused while any active route lacks one.
 
 ## Known constraints

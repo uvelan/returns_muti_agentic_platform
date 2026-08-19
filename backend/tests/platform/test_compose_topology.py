@@ -110,7 +110,6 @@ def test_the_default_profile_is_infrastructure_and_bootstrap_only() -> None:
     stack that cannot serve configuration to anything.
     """
     assert _in_profile("(default)") == {
-        "vault",
         "mongodb",
         "mongodb-rs-init",
         "neo4j",

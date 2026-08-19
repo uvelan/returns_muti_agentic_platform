@@ -45,11 +45,12 @@ x-platform-environment: &platform-environment
   PLATFORM_PROBE_TIMEOUT_SECONDS: ${PLATFORM_PROBE_TIMEOUT_SECONDS:-5}
   PLATFORM_DEPENDENCY_CONNECT_TIMEOUT_SECONDS: ${PLATFORM_DEPENDENCY_CONNECT_TIMEOUT_SECONDS:-10}
   PLATFORM_OPERATION_TIMEOUT_SECONDS: ${PLATFORM_OPERATION_TIMEOUT_SECONDS:-15}
-  # Runtime credentials are resolved from Vault before dependency clients are created.
-  # These non-secret sentinels only satisfy startup schema validation.
-  PLATFORM_MONGO_DSN: mongodb://vault-resolved.invalid/return_platform
+  # Runtime credentials come from the process environment. These are the same
+  # values the datastore containers are configured with, read from the one
+  # `.env`, so they match by construction rather than by being copied.
+  PLATFORM_MONGO_DSN: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongodb:27017/${PLATFORM_MONGO_DATABASE:-return_platform}?authSource=admin&directConnection=true
   PLATFORM_MONGO_DATABASE: ${PLATFORM_MONGO_DATABASE:-return_platform}
-  PLATFORM_SOURCE_MONGO_DSN: mongodb://vault-resolved.invalid/return_source
+  PLATFORM_SOURCE_MONGO_DSN: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongodb:27017/${PLATFORM_SOURCE_MONGO_DATABASE:-return_source}?authSource=admin&directConnection=true
   PLATFORM_SOURCE_MONGO_DATABASE: ${PLATFORM_SOURCE_MONGO_DATABASE:-return_source}
   PLATFORM_GRAPH_EVIDENCE_COLLECTION: ${PLATFORM_GRAPH_EVIDENCE_COLLECTION:-graph_evidence_runs}
   PLATFORM_GRAPH_EVIDENCE_QUERY_TIMEOUT_SECONDS: ${PLATFORM_GRAPH_EVIDENCE_QUERY_TIMEOUT_SECONDS:-5}
@@ -66,11 +67,11 @@ x-platform-environment: &platform-environment
   PLATFORM_FEEDBACK_LEARNING_ENABLED: ${PLATFORM_FEEDBACK_LEARNING_ENABLED:-true}
   PLATFORM_NEO4J_URI: bolt://neo4j:7687
   PLATFORM_NEO4J_USER: neo4j
-  PLATFORM_NEO4J_PASSWORD: vault-resolved
+  PLATFORM_NEO4J_PASSWORD: ${GRAPH_PASSWORD}
   PLATFORM_NEO4J_DATABASE: ${PLATFORM_NEO4J_DATABASE:-neo4j}
   PLATFORM_VALKEY_HOST: valkey
   PLATFORM_VALKEY_PORT: 6379
-  PLATFORM_VALKEY_PASSWORD: vault-resolved
+  PLATFORM_VALKEY_PASSWORD: ${VALKEY_PASSWORD}
   PLATFORM_EVENT_STREAM_RETENTION: ${PLATFORM_EVENT_STREAM_RETENTION:-10000}
   PLATFORM_SSE_HEARTBEAT_SECONDS: ${PLATFORM_SSE_HEARTBEAT_SECONDS:-15}
   PLATFORM_SSE_REPLAY_LIMIT: ${PLATFORM_SSE_REPLAY_LIMIT:-1000}
@@ -81,7 +82,7 @@ x-platform-environment: &platform-environment
   PLATFORM_SQLSERVER_HOST: sqlserver
   PLATFORM_SQLSERVER_PORT: 1433
   PLATFORM_SQLSERVER_USER: sa
-  PLATFORM_SQLSERVER_PASSWORD: vault-resolved
+  PLATFORM_SQLSERVER_PASSWORD: ${MSSQL_SA_PASSWORD}
   PLATFORM_SQLSERVER_DATABASE: ${PLATFORM_SQLSERVER_DATABASE:-return_platform}
   PLATFORM_AI_PROVIDER_ORDER: ${PLATFORM_AI_PROVIDER_ORDER:-NONE}
   PLATFORM_AI_TIMEOUT_SECONDS: ${PLATFORM_AI_TIMEOUT_SECONDS:-12}
@@ -123,19 +124,8 @@ x-platform-environment: &platform-environment
   PLATFORM_SEED_VERSION: ${PLATFORM_SEED_VERSION:-e2e-v2}
   PLATFORM_SEED_RECORD_LIMIT: ${PLATFORM_SEED_RECORD_LIMIT:-}
   PLATFORM_AUDIT_RETENTION_DAYS: ${PLATFORM_AUDIT_RETENTION_DAYS:-90}
-  PLATFORM_VAULT_ENABLED: "true"
-  PLATFORM_VAULT_ADDRESS: http://vault:8200
-  PLATFORM_VAULT_TOKEN_FILE: /run/return-platform/vault.token
-  PLATFORM_VAULT_VERIFY_TLS: "false"
-  PLATFORM_MONGO_DSN_SECRET_REFERENCE: vault://secret/production/data-sources/mongodb#container_dsn
-  PLATFORM_SOURCE_MONGO_DSN_SECRET_REFERENCE: vault://secret/production/data-sources/mongodb#container_source_dsn
-  PLATFORM_NEO4J_PASSWORD_SECRET_REFERENCE: vault://secret/production/data-sources/neo4j#password
-  PLATFORM_VALKEY_PASSWORD_SECRET_REFERENCE: vault://secret/production/data-sources/valkey#password
-  PLATFORM_SQLSERVER_PASSWORD_SECRET_REFERENCE: vault://secret/production/data-sources/sqlserver#password
-  PLATFORM_VALIDATION_FINGERPRINT_KEY_SECRET_REFERENCE: vault://secret/production/platform/validation#fingerprint_key
-  PLATFORM_VALIDATION_FINGERPRINT_KEY: vault-resolved
-  PLATFORM_CONTACT_LOOKUP_HMAC_KEY_SECRET_REFERENCE: vault://secret/production/platform/contact-lookup#hmac_key
-  PLATFORM_CONTACT_LOOKUP_HMAC_KEY: vault-resolved
+  PLATFORM_VALIDATION_FINGERPRINT_KEY: ${PLATFORM_VALIDATION_FINGERPRINT_KEY}
+  PLATFORM_CONTACT_LOOKUP_HMAC_KEY: ${PLATFORM_CONTACT_LOOKUP_HMAC_KEY}
 
 x-backend-base: &backend-base
   image: return-platform-backend:local
@@ -153,34 +143,9 @@ x-backend-base: &backend-base
   networks: [platform]
   extra_hosts:
     - "host.docker.internal:host-gateway"
-  volumes:
-    - ./.vault-local/return-platform.token:/run/return-platform/vault.token:ro
   logging: *default-logging
 
 services:
-  vault:
-    image: hashicorp/vault:${VAULT_VERSION:-2.0.3}
-    cap_add:
-      - IPC_LOCK
-    command: ["vault", "server", "-config=/vault/config/vault.hcl"]
-    ports:
-      - "127.0.0.1:8200:8200"
-    volumes:
-      - ./infra/vault/config:/vault/config:ro
-      - vault_data:/vault/file
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - >-
-          vault status -address=http://127.0.0.1:8200 >/dev/null 2>&1;
-          code=$$?; [ "$$code" -eq 0 ] || [ "$$code" -eq 2 ]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-      start_period: 5s
-    restart: unless-stopped
-    networks: [platform]
-    logging: *default-logging
 
   sqlserver:
     image: mcr.microsoft.com/mssql/server:${MSSQL_VERSION:-2025-CU4-ubuntu-22.04}
@@ -426,8 +391,6 @@ services:
     depends_on:
       neo4j:
         condition: service_healthy
-      vault:
-        condition: service_healthy
       sqlserver-init:
         condition: service_completed_successfully
     restart: "no"
@@ -590,8 +553,7 @@ services:
   # there is no legitimate writer left. `tmp_path` and `/tmp` are unaffected.
   #
   # Not `*backend-base`: that anchor's config paths point into `/app/config`,
-  # which exists in the runtime image and not in this one, and its Vault
-  # sentinels are for a server this container never starts. The suite's own
+  # which exists in the runtime image and not in this one. The suite's own
   # conftest resolves configuration relative to the working tree.
   diagnostics:
     profiles: ["dev-tools"]
@@ -648,7 +610,6 @@ networks:
     driver: bridge
 
 volumes:
-  vault_data:
   sqlserver_data:
   neo4j_data:
   neo4j_logs:

@@ -12,10 +12,9 @@
 # Order matters and is not arbitrary:
 #   1. stop the host, so nothing writes while the stores are being dropped
 #   2. reset and start infrastructure, so the datastores exist and are healthy
-#   3. seed Vault, which step 2 destroyed along with its volume
-#   4. load the reference dataset, which drops every database first
-#   5. start the host, whose bootstrap recreates the system store it just lost
-#   6. build the graph, which needs the source collections from (4)
+#   3. load the reference dataset, which drops every database first
+#   4. start the host, whose bootstrap recreates the system store it just lost
+#   5. build the graph, which needs the source collections from (3)
 #
 #   Usage: ./scripts/linux/reset_all.sh [options]
 #
@@ -83,48 +82,29 @@ else
     fail "backend/.venv is missing. Run scripts/bootstrap_host.sh first."
 fi
 
-log "1/6  Stopping host processes"
+log "1/5  Stopping host processes"
 scripts/linux/17_stop_host_processes.sh || true
 
-log "2/6  Resetting and starting infrastructure"
+log "2/5  Resetting and starting infrastructure"
 reset_args=(--no-bootstrap)
 [[ "${KEEP_IMAGES}" == true ]] && reset_args+=(--no-pull)
 scripts/linux/reset_docker_environment.sh "${reset_args[@]}"
 
-# `docker compose down --volumes` in step 2 takes the Vault volume with it, and
-# nothing else in the chain puts it back. Every step after this one resolves its
-# datastore credentials through Vault, so without this they all fail on
-# "Required Vault secret is unavailable" -- an error that points at secrets
-# management rather than at the reset that removed them. Idempotent: a Vault
-# that is already initialised and unsealed is left alone.
-log "3/6  Initialising and seeding the local Vault"
-"${PYTHON}" scripts/vault/bootstrap_local_vault.py
-# Not redundant with the line above. The bootstrap unseals only when it observes
-# `sealed: true`, and it does not re-check afterwards -- an unseal that was
-# accepted but did not open Vault (a wrong or partial key) leaves it sealed with
-# no error here. Everything from step 4 on then fails against the `.env`
-# sentinel `mongodb://vault-resolved.invalid/...`, which reads as a dozen
-# separate connection bugs rather than as one sealed store.
-source "${REPO_ROOT}/scripts/linux/lib/common.sh"
-# `common.sh` runs `set -euo pipefail`, which drops the `-E` this script opened
-# with. Restore it rather than inherit a quietly weaker shell.
-set -Eeuo pipefail
-assert_vault_unsealed || fail "Vault did not open. Run: ./scripts/infra.sh unseal"
 
-log "4/6  Loading the reference dataset (drops every database first)"
+log "3/5  Loading the reference dataset (drops every database first)"
 dataset_args=()
 [[ -n "${DATASET}" ]] && dataset_args+=("${DATASET}")
 "${PYTHON}" backend/scripts/load_reference_dataset.py "${dataset_args[@]}"
 
 if [[ "${START_HOST}" == true ]]; then
-    log "5/6  Starting backend, workers and frontend"
+    log "4/5  Starting backend, workers and frontend"
     # `--no-supervise`, and without it this whole script was broken. The
     # supervising form never returns, so step 6 -- the graph build, the one step
     # this script exists to add -- was unreachable, and the Ctrl-C that ended
     # the apparent hang ran the supervisor's EXIT trap and stopped everything.
     scripts/run_all_host.sh --no-supervise
 else
-    log "5/6  Skipping host start (--no-host)"
+    log "4/5  Skipping host start (--no-host)"
 fi
 
 # Last, and only after the load: the graph is built from the source collections
@@ -135,7 +115,7 @@ fi
 # and MongoDB compares only within BSON type brackets, so a timestamp stored as
 # a STRING matches no date bound at all. Zero records scanned, run status
 # COMPLETED, and a graph holding nothing gets activated.
-log "6/6  Building the knowledge graph (cap ${GRAPH_RECORDS} records per asset)"
+log "5/5  Building the knowledge graph (cap ${GRAPH_RECORDS} records per asset)"
 # The env var raises the second ceiling. `maxRecordsPerAsset` alone cannot get
 # past `PLATFORM_GRAPH_SYNC_MAX_RECORDS`, so passing 30000 without this would
 # still clamp to 10,000.

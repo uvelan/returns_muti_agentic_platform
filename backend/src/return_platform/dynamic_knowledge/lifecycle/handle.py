@@ -324,12 +324,11 @@ class GenerationHandleProvider:
                 # off to re-key an order number that was correct all along.
                 #
                 # This is not hypothetical, and not a production-only concern.
-                # On 2026-08-15 this dev stack ran for two hours with Vault
-                # sealed: the Mongo DSN resolved to the literal placeholder host
-                # `vault-resolved.invalid`, so every Mongo read raised
-                # ServerSelectionTimeoutError. Any snapshot read in that window
-                # took this branch -- with 5,978 nodes sitting in Neo4j and
-                # search answering nothing.
+                # On 2026-08-15 this dev stack ran for two hours with a Mongo DSN
+                # pointing at a host that did not exist, so every Mongo read
+                # raised ServerSelectionTimeoutError. Any snapshot read in that
+                # window took this branch -- with 5,978 nodes sitting in Neo4j
+                # and search answering nothing.
                 #
                 # An error says "something is broken, retry". A zero-result says
                 # "the order is not real". The second is worse precisely because

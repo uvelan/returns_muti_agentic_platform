@@ -33,12 +33,11 @@ Every conversation and every case pins:
 
 ```text
 load version-controlled baseline schema
-  → resolve bootstrap credentials from Vault
+  → read credentials from the process environment
   → connect to Neo4j
   → load the active ConfigurationHead release
   → verify release checksum
   → validate the complete configuration model
-  → resolve graph-declared Vault references
   → create immutable process snapshot
   → initialize dependency clients
 ```
@@ -153,20 +152,18 @@ implications are in [`../configuration/families.md`](../configuration/families.m
 
 ## Secrets
 
-Vault KV v2 is the exclusive runtime source for credential values. Neo4j stores
-only references:
+**The process environment is the runtime source for credential values.** Neo4j
+stores no credential value and no pointer to one: a `credential` block on a data
+source carries a `profile_key`, which is an identity AI route bindings address, and
+nothing else.
 
-```text
-vault://secret/production/data-sources/sqlserver#password?version=3
-vault://secret/production/ai/google/key-01#api_key?version=2
-```
+Runtime processes read credentials once, when creating or refreshing clients — not
+per business query.
 
-Vault writes use compare-and-swap versioning. Existing secret documents are
-merged so sibling fields are preserved. If receipt persistence fails, the staged
-write is rolled back without exposing the secret.
-
-Runtime processes fetch credentials when creating or refreshing clients — not per
-business query.
+**Vault is optional and disabled by default.** Set `PLATFORM_VAULT_ENABLED=true`
+and give each credential a `*_SECRET_REFERENCE` holding a
+`vault://secret/production/<path>#<key>` URI, and those references are resolved
+into memory during the startup sequence above, before any client is created.
 
 **Secrets must never be stored in** Neo4j, MongoDB documents, Valkey, Temporal
 payloads, frontend storage, logs, evidence files or AI traces.

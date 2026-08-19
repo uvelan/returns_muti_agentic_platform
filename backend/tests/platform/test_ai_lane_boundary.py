@@ -80,9 +80,14 @@ def test_the_deprecated_shim_package_is_gone() -> None:
     twice: every re-export is a second name for one object, and two names is
     how the AI lane ended up with three provider dispatch loops.
     """
-    assert not (_SRC / "ai_gateway").exists(), (
+    # Source files, not the directory. A tree left holding nothing but stale
+    # `__pycache__` from a checkout that predates the deletion is not the
+    # package coming back, and failing on it sends the reader looking for a
+    # re-export that does not exist.
+    resurrected = sorted(path.name for path in (_SRC / "ai_gateway").rglob("*.py"))
+    assert not resurrected, (
         "return_platform/ai_gateway/ is back. It was a pure re-export of ai/; a second "
-        "import path for the same objects is what the consolidation removed."
+        f"import path for the same objects is what the consolidation removed: {resurrected}"
     )
 
 

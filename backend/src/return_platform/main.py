@@ -609,8 +609,8 @@ async def lifespan(
 
         # Plan sect. 5.4's production/dev split, run once the released
         # configuration and the active schema both exist -- which is why it is
-        # here and not in `Settings.validate_relationships`, whose Vault rule it
-        # otherwise copies exactly. In production an unset or dangling Copilot
+        # here and not in `Settings.validate_relationships`, whose production rule
+        # it otherwise copies exactly. In production an unset or dangling Copilot
         # agent mapping, or an unpublished eligibility policy, refuses the
         # process; everywhere else the failures are recorded, `/health/ready`
         # reports the configuration probe unhealthy, and the turn route 503s.

@@ -11,8 +11,8 @@ Infrastructure runs in Docker Compose.
 - Docker Engine with the Compose plugin
 - `flock` (from `util-linux`) on Linux
 - Git
-- Enough RAM for SQL Server, Neo4j, MongoDB, Temporal, PostgreSQL, Valkey and
-  Vault simultaneously
+- Enough RAM for SQL Server, Neo4j, MongoDB, Temporal, PostgreSQL and Valkey
+  simultaneously
 
 ```bash
 python3.13 --version && node --version && npm --version
@@ -28,17 +28,18 @@ docker --version && docker compose version && flock --version
 Windows: `scripts/bootstrap_host.ps1`.
 
 It checks toolchain versions; creates `.env` from `.env.example` when absent;
-**upgrades** an existing `.env` by appending missing non-secret Vault references
-without changing existing values; generates missing or placeholder local
-infrastructure credentials **without printing them**; generates the MongoDB
-replica-set key when required; and installs backend and frontend dependencies.
+**upgrades** an existing `.env` by appending missing non-secret settings without
+changing existing values; generates missing or placeholder local credentials
+**without printing them**; generates the MongoDB replica-set key when required; and
+installs backend and frontend dependencies.
 
-Generated infrastructure credentials initialize the local services and are copied
-into Vault. Runtime processes then use **Vault references**, not `.env`
-credentials.
+The generated credentials initialize the local services **and are what the platform
+authenticates with** — nothing resolves them at startup, so the value in `.env` is
+the credential. That includes `PLATFORM_VALIDATION_FINGERPRINT_KEY` and
+`PLATFORM_CONTACT_LOOKUP_HMAC_KEY`, which are generated for the same reason.
 
-**Never commit** `.env`, `.vault-local/`, generated tokens, unseal material, or
-credentials.
+**Never commit** `.env`, generated tokens, or credentials. `.env` is the credential
+store; keep it `chmod 600`.
 
 ## The startup sequence, in order
 
@@ -54,9 +55,8 @@ credentials.
 ./scripts/infra.sh start
 ```
 
-Starts Vault, SQL Server, the MongoDB replica set, Neo4j, Valkey, Temporal
-PostgreSQL and Temporal. Also initializes and unseals Vault and stores local
-infrastructure credentials under the approved production Vault paths.
+Starts SQL Server, the MongoDB replica set, Neo4j, Valkey, Temporal PostgreSQL
+and Temporal.
 
 **Datastores only — no application image is built.** That is worth stating because
 it was not always true. `infra.sh start` used to be a bare `docker compose up -d`,
@@ -85,19 +85,18 @@ is explicitly supplied by the aggregate launcher.
 
 It applies checksum-tracked Neo4j migrations, applies SQL migrations, and publishes
 and validates the initial graph configuration **only when no active release
-exists**. Normal restarts reuse the active release and its Vault references, and
+exists**. Normal restarts reuse the active release and
 **do not** rerun live AI provider/model validation.
 
 The per-process sequence:
 
 ```text
 load version-controlled baseline schema
-  → resolve bootstrap credentials from Vault
+  → read credentials from the process environment
   → connect to Neo4j
   → load the active ConfigurationHead release
   → verify release checksum
   → validate the complete configuration model
-  → resolve graph-declared Vault references
   → create the immutable process snapshot
   → initialize dependency clients
 ```
@@ -112,8 +111,8 @@ A checksum mismatch **refuses startup**. It does not warn.
 
 Before starting processes it stops previously managed application processes; closes
 repository-owned listeners on ports `8000` and `5173` while **refusing to terminate
-unrelated processes**; serializes initialization with `flock`; verifies Vault
-access; applies Neo4j migrations; publishes initial configuration if none is
+unrelated processes**; serializes initialization with `flock`; applies Neo4j
+migrations; publishes initial configuration if none is
 active; then starts the API, the workers and the frontend.
 
 To run live provider and model validation once before startup:
@@ -203,10 +202,9 @@ configuration look healthy.
 | API docs | `http://localhost:8000/docs` |
 | Neo4j Browser | `http://localhost:7474` |
 | Temporal UI | `http://localhost:8080` (dev-tools profile) |
-| Vault API | `http://127.0.0.1:8200` |
 
 SQL Server is `14330` on the host and `1433` in-network. Temporal is
-`127.0.0.1:7233`, Neo4j `7687`, Valkey `6379`, Vault `8200`, Mongo `27017`.
+`127.0.0.1:7233`, Neo4j `7687`, Valkey `6379`, Mongo `27017`.
 
 **On Windows, several of these ports may be unavailable through no fault of the
 platform.** See [`troubleshooting.md`](troubleshooting.md) — Windows dynamically
@@ -245,7 +243,7 @@ private key is the secret, and that is not this.
 Compose order:
 
 ```text
-infrastructure health → Vault init → Neo4j migrations
+infrastructure health → Neo4j migrations
   → graph configuration publication → seed init → backend and workers → frontend
 ```
 

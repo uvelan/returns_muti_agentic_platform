@@ -216,7 +216,7 @@ async def _cards(request: Request) -> list[dict[str, Any]]:
                     "provider": provider,
                     "configured": configured,
                     "interceptMode": ai_settings.interceptMode,
-                    "validationLevel": "VALIDATED_VAULT_BINDING"
+                    "validationLevel": "VALIDATED_CREDENTIAL_BINDING"
                     if configured and not is_simulator
                     else "LOCAL_POLICY_CHECK",
                 },

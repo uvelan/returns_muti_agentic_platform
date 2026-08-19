@@ -156,23 +156,15 @@ async def main(
     # `resolve_runtime_settings_from_vault` returns no resolver for exactly one
     # reason: `PLATFORM_VAULT_ENABLED` is false, so the process was started with
     # its credentials already in the environment rather than behind references.
-    # Refusing outright was wrong. This command is what `runtime-configuration-init`
-    # runs, and every application service waits on that init completing, so the
-    # refusal took the whole profile down with it -- including the deliberate
-    # `compose.novault.yaml` path, which supplies those credentials precisely so a
-    # sealed Vault cannot wedge a local stack.
+    # That is now the default and the only configuration this repository ships.
+    #
+    # Refusing outright would be wrong even so. This command is what
+    # `runtime-configuration-init` runs, and every application service waits on
+    # that init completing, so a refusal takes the whole profile down with it.
     #
     # Publishing needs no resolver: the release is built from the packaged YAML
     # and the active release's own payload. Only the AI validation paths do, and
     # `_require_secret_resolver` refuses those individually.
-    #
-    # This cannot become a production hole. Running without Vault means
-    # `vault_enabled` is false, and `Settings.validate_relationships` refuses to
-    # construct settings at all when that is false in production -- the `Settings()`
-    # call above raises before this line is reached. The relaxation is only
-    # available where the platform already permits Vault to be absent, and it
-    # matches what `main.py` and `runtime_loader.py` already do with a `None`
-    # resolver rather than inventing a second rule.
     if resolver is None:
         print("vault_secret_resolver=DISABLED reason=PLATFORM_VAULT_ENABLED-false")
 

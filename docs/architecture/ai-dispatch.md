@@ -119,9 +119,9 @@ A key/model/task route is usable only after the backend has:
 4. verified the exact model id;
 5. run a minimal synthetic inference;
 6. verified required structured output and task capability;
-7. stored the key in Vault — **only after all checks pass**;
-8. created a receipt bound to provider, model, task, secret fingerprint, Vault
-   version and configuration checksum.
+7. recorded the key as usable — **only after all checks pass**;
+8. created a receipt bound to provider, model, task, secret fingerprint and
+   configuration checksum.
 
 Publication is allowed only when every active key/model/task route has a valid
 receipt.

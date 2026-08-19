@@ -54,7 +54,6 @@ class SourceBindingView(BaseModel):
     dataset: str
     sourceAssetId: str
     connectorType: str
-    connectionRef: str
     objectRef: dict[str, str]
     incrementalCursorField: str | None = None
     # Whether someone changed this, or it is what the configured schema says.
@@ -67,7 +66,6 @@ class RebindRequest(BaseModel):
 
     sourceAssetId: str
     connectorType: str
-    connectionRef: str
     objectRef: dict[str, str]
     incrementalCursorField: str | None = None
 
@@ -105,7 +103,6 @@ def _view(binding: SourceBinding, *, overridden: bool) -> SourceBindingView:
         dataset=binding.dataset,
         sourceAssetId=asset.source_asset_id,
         connectorType=asset.connector_type.value,
-        connectionRef=asset.connection_ref,
         objectRef=dict(asset.object_ref),
         incrementalCursorField=asset.incremental_cursor_field,
         overridden=overridden,
@@ -161,7 +158,6 @@ async def rebind(
             {
                 "source_asset_id": payload.sourceAssetId,
                 "connector_type": payload.connectorType,
-                "connection_ref": payload.connectionRef,
                 "object_ref": payload.objectRef,
                 "incremental_cursor_field": payload.incrementalCursorField,
             }

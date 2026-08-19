@@ -33,9 +33,8 @@ WORKER="${1:-}"
 
 # Help and validation BEFORE any side effect. `--help` used to be accepted as
 # the worker name: the script shifted it away, found no options, and went
-# straight on to source the Vault environment and run
-# `prepare_runtime_configuration.sh` -- which rewrites `.env`, resolves Vault,
-# and applies the SQL and Neo4j migrations -- only to fall through to the
+# straight on to run `prepare_runtime_configuration.sh` -- which rewrites
+# `.env` and applies the SQL and Neo4j migrations -- only to fall through to the
 # `usage` branch and exit 2. Asking a script what it does should not migrate a
 # database.
 case "$WORKER" in
@@ -75,7 +74,6 @@ while (($# > 0)); do
   shift
 done
 
-source "$ROOT/scripts/vault/export_runtime_vault_env.sh"
 if [[ "${PLATFORM_SKIP_RUNTIME_PREPARE:-false}" != "true" ]]; then
   prepare_args=()
   [[ "$validate_ai" == true ]] && prepare_args+=(--validate-ai)

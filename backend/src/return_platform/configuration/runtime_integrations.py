@@ -78,7 +78,9 @@ def apply_graph_runtime_configuration(
         if not platform_mongo.bootstrap_managed and platform_mongo.database is not None:
             updates["mongo_database"] = platform_mongo.database
         if not platform_mongo.bootstrap_managed and platform_mongo.credential is not None:
-            updates["mongo_dsn_secret_reference"] = platform_mongo.credential.vault_reference
+            reference = platform_mongo.credential.vault_reference
+            if reference:
+                updates["mongo_dsn_secret_reference"] = reference
 
     source_mongo = sources.get("source-mongodb")
     if source_mongo is not None:
@@ -87,7 +89,9 @@ def apply_graph_runtime_configuration(
         if not source_mongo.bootstrap_managed and source_mongo.database is not None:
             updates["source_mongo_database"] = source_mongo.database
         if not source_mongo.bootstrap_managed and source_mongo.credential is not None:
-            updates["source_mongo_dsn_secret_reference"] = source_mongo.credential.vault_reference
+            reference = source_mongo.credential.vault_reference
+            if reference:
+                updates["source_mongo_dsn_secret_reference"] = reference
 
     neo4j = sources.get("configuration-neo4j") or sources.get("neo4j")
     if neo4j is not None:
@@ -98,7 +102,9 @@ def apply_graph_runtime_configuration(
         if not neo4j.bootstrap_managed and neo4j.database is not None:
             updates["neo4j_database"] = neo4j.database
         if not neo4j.bootstrap_managed and neo4j.credential is not None:
-            updates["neo4j_password_secret_reference"] = neo4j.credential.vault_reference
+            reference = neo4j.credential.vault_reference
+            if reference:
+                updates["neo4j_password_secret_reference"] = reference
 
     sqlserver = sources.get("omc-sqlserver") or sources.get("sqlserver")
     if sqlserver is not None:
@@ -111,7 +117,9 @@ def apply_graph_runtime_configuration(
         if not sqlserver.bootstrap_managed and sqlserver.database is not None:
             updates["sqlserver_database"] = sqlserver.database
         if not sqlserver.bootstrap_managed and sqlserver.credential is not None:
-            updates["sqlserver_password_secret_reference"] = sqlserver.credential.vault_reference
+            reference = sqlserver.credential.vault_reference
+            if reference:
+                updates["sqlserver_password_secret_reference"] = reference
 
     valkey = sources.get("valkey")
     if valkey is not None:
@@ -120,7 +128,9 @@ def apply_graph_runtime_configuration(
         if not valkey.bootstrap_managed and valkey.port is not None:
             updates["valkey_port"] = valkey.port
         if not valkey.bootstrap_managed and valkey.credential is not None:
-            updates["valkey_password_secret_reference"] = valkey.credential.vault_reference
+            reference = valkey.credential.vault_reference
+            if reference:
+                updates["valkey_password_secret_reference"] = reference
 
     temporal = sources.get("temporal")
     if (
@@ -139,7 +149,7 @@ def apply_graph_runtime_configuration(
         updates[f"{key}_base_url"] = provider.base_url
         if provider.provider_key != "OLLAMA":
             updates[f"{key}_api_key_references"] = tuple(
-                item.vault_reference for item in provider.credentials
+                item.vault_reference for item in provider.credentials if item.vault_reference
             )
             credential_ordinals = {
                 item.profile_key: index for index, item in enumerate(provider.credentials)
@@ -198,9 +208,17 @@ def _receipt_matches(
     *,
     subject_type: str,
     subject_key: str,
-    target_uri: str,
+    target_uri: str | None,
     configuration_checksum: str,
 ) -> bool:
+    # A receipt attests that the secret behind a *reference* was validated. A
+    # credential with no reference -- the shape every configuration here now
+    # ships, with Vault off -- has nothing for a receipt to be about, so one
+    # naming it cannot match. This is only reached when a release asks for a
+    # receipt anyway; the ordinary path returns early on an empty requirement
+    # set and never gets here.
+    if target_uri is None:
+        return False
     if document.get("status") != "PASSED":
         return False
     if document.get("subject_type") != subject_type:

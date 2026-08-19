@@ -37,7 +37,6 @@ venv_python() {
   fi
 }
 
-source "$ROOT/scripts/vault/export_runtime_vault_env.sh"
 if [[ "${PLATFORM_SKIP_RUNTIME_PREPARE:-false}" != "true" ]]; then
   prepare_args=()
   [[ "$validate_ai" == true ]] && prepare_args+=(--validate-ai)

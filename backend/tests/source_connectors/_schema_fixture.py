@@ -28,14 +28,12 @@ def build_active_schema(*, mongo_collection: str, sql_table: str, sql_schema: st
                 "source_mongo": {
                     "source_asset_id": "source_mongo",
                     "connector_type": "MONGODB",
-                    "connection_ref": "vault://source/mongo",
                     "object_ref": {"database": "db", "name": mongo_collection},
                     "incremental_cursor_field": "changed_at",
                 },
                 "source_sql": {
                     "source_asset_id": "source_sql",
                     "connector_type": "MSSQL",
-                    "connection_ref": "vault://source/sql",
                     "object_ref": {
                         "database": "db",
                         "namespace": sql_schema,

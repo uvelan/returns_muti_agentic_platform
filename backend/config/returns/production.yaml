@@ -1220,10 +1220,6 @@ runtime_integrations:
       uri: mongodb://runtime-resolved.invalid/return_platform
       database: return_platform
       bootstrap_managed: true
-      credential:
-        profile_key: platform-mongodb-runtime
-        vault_reference: vault://secret/production/data-sources/mongodb#dsn
-        bootstrap_managed: true
       required_datasets:
         - associate_conversations
         - discovery_locks
@@ -1234,10 +1230,6 @@ runtime_integrations:
       uri: mongodb://runtime-resolved.invalid/return_source
       database: return_source
       bootstrap_managed: true
-      credential:
-        profile_key: source-mongodb-runtime
-        vault_reference: vault://secret/production/data-sources/mongodb#source_dsn
-        bootstrap_managed: true
       required_datasets:
         - customers
         - salesInv
@@ -1250,10 +1242,6 @@ runtime_integrations:
       username: neo4j
       database: neo4j
       bootstrap_managed: true
-      credential:
-        profile_key: neo4j-runtime
-        vault_reference: vault://secret/production/data-sources/neo4j#password
-        bootstrap_managed: true
       required_datasets:
         - customer_name_search_v2
         - product_description_search_v2
@@ -1266,10 +1254,6 @@ runtime_integrations:
       username: sa
       database: return_platform
       bootstrap_managed: true
-      credential:
-        profile_key: omc-sqlserver-runtime
-        vault_reference: vault://secret/production/data-sources/sqlserver#password
-        bootstrap_managed: true
     - source_key: valkey
       source_type: VALKEY
       enabled: true
@@ -1277,10 +1261,6 @@ runtime_integrations:
       host: runtime-resolved.invalid
       port: 6379
       bootstrap_managed: true
-      credential:
-        profile_key: valkey-runtime
-        vault_reference: vault://secret/production/data-sources/valkey#password
-        bootstrap_managed: true
     - source_key: temporal
       source_type: TEMPORAL
       enabled: true

@@ -982,18 +982,37 @@ class CopilotConfiguration(StrictConfigModel):
 
 
 class CredentialBindingConfiguration(StrictConfigModel):
-    """One Vault reference whose value never enters graph configuration."""
+    """One named credential whose value never enters graph configuration.
+
+    `profile_key` is the identity: AI route bindings address a credential by it,
+    and it is what survives into runtime routing. The value behind it comes from
+    the process environment.
+
+    `vault_reference` is now optional, and empty in every configuration this
+    repository ships. It is retained for deployments that opt back into Vault
+    with `PLATFORM_VAULT_ENABLED=true`, where it is the pointer the resolver
+    dereferences at startup. With Vault off it is `None` and nothing reads it --
+    which is why it may not be *required*: a release that had to name a Vault
+    path in order to parse would make Vault mandatory again through the back
+    door.
+    """
 
     profile_key: NonBlank
-    vault_reference: Annotated[
-        str,
-        StringConstraints(
-            strip_whitespace=True,
-            min_length=16,
-            max_length=768,
-            pattern=r"^vault://secret/production/[A-Za-z0-9_./-]+#[A-Za-z0-9_-]+(?:\?version=\d+)?$",
-        ),
-    ]
+    vault_reference: (
+        Annotated[
+            str,
+            StringConstraints(
+                strip_whitespace=True,
+                min_length=16,
+                max_length=768,
+                pattern=(
+                    r"^vault://secret/production/[A-Za-z0-9_./-]+"
+                    r"#[A-Za-z0-9_-]+(?:\?version=\d+)?$"
+                ),
+            ),
+        ]
+        | None
+    ) = None
     validation_receipt_id: NonBlank | None = None
     validation_configuration_checksum: (
         Annotated[
@@ -1157,7 +1176,7 @@ class DataSourceRuntimeConfiguration(StrictConfigModel):
                 "control-plane data sources require a validation receipt and configuration checksum"
             )
         if self.enabled and not self.bootstrap_managed and self.credential is None:
-            raise ValueError("control-plane data sources require a Vault credential binding")
+            raise ValueError("control-plane data sources require a credential binding")
         if self.credential is not None and (
             self.credential.bootstrap_managed != self.bootstrap_managed
         ):
@@ -1463,7 +1482,8 @@ def require_healthy_configuration(
     """Refuse to start in production; report the failures anywhere else.
 
     The split plan sect. 5.4 asks for, and it follows the precedent
-    `Settings.validate_relationships` sets for Vault: production is the
+    `Settings.validate_relationships` sets for development-default secrets:
+    production is the
     environment where a missing prerequisite is a startup failure rather than a
     degraded mode, because there is nobody at the keyboard to read a warning and
     the alternative is serving returns nobody can route.

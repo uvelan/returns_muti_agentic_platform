@@ -25,14 +25,12 @@ def active_schema() -> ActiveSchema:
                 "source_a": {
                     "source_asset_id": "source_a",
                     "connector_type": "MONGODB",
-                    "connection_ref": "vault://source/a",
                     "object_ref": {"database": "db", "name": "objects"},
                     "incremental_cursor_field": "changed_at",
                 },
                 "source_b": {
                     "source_asset_id": "source_b",
                     "connector_type": "POSTGRESQL",
-                    "connection_ref": "vault://source/b",
                     "object_ref": {
                         "database": "db",
                         "namespace": "public",

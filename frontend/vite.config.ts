@@ -68,10 +68,6 @@ export default defineConfig(({ mode, command }) => {
           target: backendTarget,
           changeOrigin: true,
         },
-        "/graph-analyzer/v1": {
-          target: backendTarget,
-          changeOrigin: true,
-        },
         "/data-console/v1": {
           target: backendTarget,
           changeOrigin: true,

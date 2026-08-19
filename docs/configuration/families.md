@@ -37,7 +37,7 @@ facts.
 
 | Column | Values |
 |---|---|
-| **Security** | `PUBLIC` (non-sensitive) · `INTERNAL` (operationally sensitive) · `SECURITY` (a control — changing it changes what the platform will permit) · `SECRET-REF` (holds Vault references, never values) |
+| **Security** | `PUBLIC` (non-sensitive) · `INTERNAL` (operationally sensitive) · `SECURITY` (a control — changing it changes what the platform will permit) · `SECRET-REF` (holds a credential identity, never a value) |
 | **Editable** | `BOOTSTRAP` (startup only) · `RUNTIME` (via a release) · `RESTART` (release-editable, takes effect on restart) |
 | **Hot: API** / **Hot: worker** | Whether a published change takes effect without restarting that process class |
 | **In-flight cases** | `PINNED` (existing cases keep the old value) · `IMMEDIATE` (applies to work already running) |
@@ -133,7 +133,7 @@ pool rebuilt at a different moment would route on one release's providers with
 another's limits.
 
 A route is usable only after live validation produced a receipt bound to provider,
-model, task, secret fingerprint, Vault version and configuration checksum.
+model, task, secret fingerprint and configuration checksum.
 Publication is refused while any active route lacks one.
 
 **Production and staging fail closed when `AI_GATEWAY` is absent.**
@@ -168,7 +168,7 @@ an absent block.
 | SQL pool sizing (`sqlserver_pool_*`) | `INTERNAL` | `BOOTSTRAP` (env) | Per-process resource ceiling |
 | `PLATFORM_GRAPH_SYNC_BATCH_SIZE` | `INTERNAL` | `BOOTSTRAP` (env) | Default 250, range 1–5,000 |
 | `PLATFORM_SEED_RECORD_LIMIT` | `INTERNAL` | `BOOTSTRAP` (env) | A hard upper bound the Seed Data UI cannot exceed |
-| Vault addresses and tokens | **`SECRET-REF`** | `BOOTSTRAP` | — |
+| Credentials (`PLATFORM_*_PASSWORD`, `*_DSN`, `*_API_KEYS`) | **`SECRET-REF`** | `BOOTSTRAP` (env) | Read from the process environment; never held in graph configuration |
 | DB schema, graph migrations, deployment wiring | `INTERNAL` | Version-controlled | **Infrastructure contracts, not agent behaviour.** Checksum-tracked in `ConfigurationMigration` nodes; a modified migration file is rejected after application |
 
 ---

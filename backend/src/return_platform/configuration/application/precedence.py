@@ -7,7 +7,7 @@ RuntimeSnapshot is the FROZEN OUTPUT of resolution, never another input layer.
 
 BOOTSTRAP_ENV may only supply an explicit allowlist of deployment/bootstrap
 fields.  Business configuration must not come from environment variables.
-Secret values must never enter the snapshot; only Vault URI references are allowed.
+Secret values must never enter the snapshot; only non-secret references are allowed.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ BOOTSTRAP_ENV_ALLOWLIST: set[str] = {
     "port",
     # Logging
     "log_level",
-    # Bootstrap connection references (Vault URI strings, not resolved values)
+    # Bootstrap connection references (pointers, not resolved values)
     "vault_address",
     "mongodb_bootstrap_connection_reference",
     "temporal_bootstrap_endpoint",

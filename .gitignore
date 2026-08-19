@@ -30,6 +30,9 @@ backend/poetry.toml
 # match is the point -- the next variant will not be called `.env` either.
 .env.*
 !.env.example
+# Kept although nothing in the repository creates this any more: it held Vault
+unseal material, and an ignore rule guarding against committing a secret costs
+nothing to leave in place for anyone who turns PLATFORM_VAULT_ENABLED back on.
 .vault-local/
 
 # Generated validation and test output

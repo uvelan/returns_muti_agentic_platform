@@ -43,7 +43,7 @@ import { JsonView } from "./JsonView";
  * an operator is not shown a promotion that will be refused.
  *
  * **Redaction is server-side and stays there.** `redact_secret_values` scrubs
- * resolved secrets before the response is built and leaves `vault://`
+ * secrets before the response is built and leaves non-secret
  * references intact so an operator can see which secret a binding points at.
  * This screen adds no masking of its own; pretending the browser is a security
  * boundary would be worse than useless.

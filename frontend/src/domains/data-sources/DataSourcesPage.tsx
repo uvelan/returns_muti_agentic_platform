@@ -30,10 +30,10 @@ import { SourceBindingsPanel } from "./SourceBindingsPanel";
  * four connections themselves are infrastructure the runtime settings name, and
  * a console form that invented a fifth would have nothing to write it to.
  *
- * **No credential is asked for, shown, or sent.** The backend resolves secrets
- * from Vault server-side; `connectionRef` is a `vault://` pointer, and no
- * request or response model on either surface has a field a credential could
- * travel in. A password box here would be a box with nowhere to post.
+ * **No credential is asked for, shown, or sent.** The backend takes its
+ * credentials from the process environment; a binding names a source *asset*,
+ * and no request or response model on either surface has a field a credential
+ * could travel in. A password box here would be a box with nowhere to post.
  */
 
 const HEALTH_ORDER: Readonly<Record<string, number>> = {
@@ -436,14 +436,13 @@ function BindingsSection() {
       </h3>
       <p className="text-xs text-on-surface-variant">
         {/*
-          Stated on the screen, not only in a code comment: a connection
-          reference is a pointer the platform resolves from Vault, and an
-          operator who expects to type a password here needs to know why there
-          is no box for one.
+          Stated on the screen, not only in a code comment: a binding names
+          which registered asset answers for a dataset, and an operator who
+          expects to type a password here needs to know why there is no box for
+          one.
         */}
-        A connection is a <code className="font-mono">vault://</code> reference. The platform
-        resolves it server-side, so no credential is ever entered here or returned to this
-        browser.
+        A binding names a registered source asset. The platform holds the credentials for it
+        in its own environment, so none is ever entered here or returned to this browser.
       </p>
       <SourceBindingsPanel />
     </section>

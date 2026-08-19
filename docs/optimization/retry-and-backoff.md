@@ -43,7 +43,7 @@ justification is what decides whether a failure is retryable.
 | `STALE` shipment update | The observation is genuinely older. Retrying re-rejects it. |
 | Rejected AI key | Open its circuit and rotate. Retrying the same key re-learns the same rejection. |
 | Integration topic with no registered adapter | Marked non-retryable and abandoned |
-| Vault unavailable **before** client creation | Fail the dependency. Never fall back to `.env`. |
+| A required credential is missing or empty | Fail the dependency rather than connecting anonymously. |
 
 ### Special — bounded, non-retryable-by-design
 

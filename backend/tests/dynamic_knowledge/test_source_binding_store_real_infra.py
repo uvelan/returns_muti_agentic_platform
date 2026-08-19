@@ -65,11 +65,10 @@ def baseline() -> ActiveSchema:
     return load_active_schema(DEFAULT_DYNAMIC_KNOWLEDGE_SCHEMA_PATH)
 
 
-def _asset(source_asset_id: str, connection: str) -> SourceAssetDefinition:
+def _asset(source_asset_id: str) -> SourceAssetDefinition:
     return SourceAssetDefinition(
         source_asset_id=source_asset_id,
         connector_type="MONGODB",
-        connection_ref=connection,
         object_ref={"database": "restore_2026", "name": "salesInv"},
     )
 
@@ -79,12 +78,13 @@ async def test_a_rebinding_round_trips(context: Any) -> None:
     dataset = f"dataset_{uuid.uuid4().hex[:8]}"
 
     await bindings.rebind(
-        SourceBinding(dataset=dataset, asset=_asset("restored", "vault://restored")),
+        SourceBinding(dataset=dataset, asset=_asset("restored")),
         changed_by="operator-1",
     )
 
     stored = {binding.dataset: binding for binding in await bindings.list()}
-    assert stored[dataset].asset.connection_ref == "vault://restored"
+    assert stored[dataset].asset.source_asset_id == "restored"
+    assert stored[dataset].asset.object_ref == {"database": "restore_2026", "name": "salesInv"}
 
 
 async def test_rebinding_twice_replaces_rather_than_duplicates(context: Any) -> None:
@@ -93,11 +93,11 @@ async def test_rebinding_twice_replaces_rather_than_duplicates(context: Any) -> 
     dataset = f"dataset_{uuid.uuid4().hex[:8]}"
 
     await bindings.rebind(
-        SourceBinding(dataset=dataset, asset=_asset("first", "vault://first")),
+        SourceBinding(dataset=dataset, asset=_asset("first")),
         changed_by="operator-1",
     )
     await bindings.rebind(
-        SourceBinding(dataset=dataset, asset=_asset("second", "vault://second")),
+        SourceBinding(dataset=dataset, asset=_asset("second")),
         changed_by="operator-2",
     )
 
@@ -112,7 +112,7 @@ async def test_clearing_returns_a_dataset_to_configuration(
     bindings, _ = context
     dataset = next(iter(baseline.sources))
     await bindings.rebind(
-        SourceBinding(dataset=dataset, asset=_asset("restored", "vault://restored")),
+        SourceBinding(dataset=dataset, asset=_asset("restored")),
         changed_by="operator-1",
     )
 
@@ -152,13 +152,13 @@ async def test_a_rebinding_does_not_repoint_a_published_release(
     await releases.activate(release_id)
 
     await bindings.rebind(
-        SourceBinding(dataset=dataset, asset=_asset("restored", "vault://restored")),
+        SourceBinding(dataset=dataset, asset=_asset("restored")),
         changed_by="operator-1",
     )
 
     active = await releases.active()
     assert active is not None
-    assert active.sources[dataset].connection_ref == baseline.sources[dataset].connection_ref
+    assert active.sources[dataset] == baseline.sources[dataset]
     # The rebinding is real; it simply reaches the runtime at the next publish.
     assert (
         catalogue_from(baseline, await bindings.list()).resolve(dataset)

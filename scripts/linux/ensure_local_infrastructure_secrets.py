@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Generate missing local infrastructure credentials without displaying them.
 
-Existing non-placeholder values are preserved. These bootstrap credentials are
-used to initialize local infrastructure and are then stored in Vault for runtime
-resolution.
+Existing non-placeholder values are preserved. These credentials initialize the
+local infrastructure and are also what the platform processes authenticate with:
+nothing resolves them at startup, so the value written here is the credential.
 """
 
 from __future__ import annotations
@@ -20,6 +20,12 @@ SECRET_KEYS = (
     "MONGO_ROOT_PASSWORD",
     "TEMPORAL_DB_PASSWORD",
     "VALKEY_PASSWORD",
+    # Not infrastructure credentials -- platform-owned keys. They belong here
+    # because they have the same property that matters: no resolver stands
+    # behind them, so a placeholder left in place is a real weak key rather
+    # than a value someone will substitute later.
+    "PLATFORM_VALIDATION_FINGERPRINT_KEY",
+    "PLATFORM_CONTACT_LOOKUP_HMAC_KEY",
 )
 
 

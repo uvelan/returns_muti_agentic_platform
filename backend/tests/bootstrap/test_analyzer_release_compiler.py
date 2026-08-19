@@ -290,7 +290,6 @@ def test_a_rebinding_changes_where_a_release_reads_from(baseline: ActiveSchema) 
     restored = SourceAssetDefinition(
         source_asset_id="restored_orders",
         connector_type=original.connector_type,
-        connection_ref="vault://data-sources/restored-mongodb",
         object_ref={"database": "restore_2026", "name": "salesInv"},
         incremental_cursor_field=original.incremental_cursor_field,
     )
@@ -307,9 +306,10 @@ def test_a_rebinding_changes_where_a_release_reads_from(baseline: ActiveSchema) 
     )
 
     assert release.entities["Order"].source_asset_id == "restored_orders"
-    assert release.sources["restored_orders"].connection_ref == (
-        "vault://data-sources/restored-mongodb"
-    )
+    assert release.sources["restored_orders"].object_ref == {
+        "database": "restore_2026",
+        "name": "salesInv",
+    }
     # And the shape is untouched: same entities, same projections, same joins.
     unbound = _compile(shape, baseline)
     assert set(release.entities) == set(unbound.entities)

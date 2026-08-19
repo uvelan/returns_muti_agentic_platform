@@ -135,7 +135,7 @@ cost, outcome and correlation metadata.
 | Route pool | Rebuilt at the configuration **activation boundary**, in the same swap that applies the release |
 | Task/prompt resolution | Same boundary. `promptVersion`, tier, token ceilings and allowed providers are resolved once per dispatch rather than per attempt |
 | Circuit state | Per-key, time-based recovery |
-| Vault-resolved keys | Fetched when creating or refreshing clients, not per request |
+| Provider keys | Read from the environment when creating or refreshing clients, not per request |
 
 The route pool and the configuration snapshot swap **together**. A pool rebuilt at
 a different moment than the release it belongs to would route on one release's
@@ -164,7 +164,7 @@ until every required class has adopted. See
 ## The limits
 
 - A route is usable only after live validation produced a receipt bound to
-  provider, model, task, secret fingerprint, Vault version and configuration
+  provider, model, task, secret fingerprint and configuration
   checksum. Publication is refused while an active route lacks one.
 - Candidate lists are **bounded**. Failover does not walk an unbounded set.
 - Raw keys are accepted only by the backend validation control plane. Never in a

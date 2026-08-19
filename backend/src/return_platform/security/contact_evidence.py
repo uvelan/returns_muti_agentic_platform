@@ -1,4 +1,4 @@
-"""Non-reversible contact lookup evidence derived with a Vault-managed HMAC key."""
+"""Non-reversible contact lookup evidence derived with the configured HMAC key."""
 
 from __future__ import annotations
 

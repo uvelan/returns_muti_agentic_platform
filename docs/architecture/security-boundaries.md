@@ -13,7 +13,6 @@
 | Neo4j | Runtime configuration control plane, and the discovery/knowledge graph | Controlled read/write |
 | Temporal | Workflow execution, retries, timers | Execution only |
 | Valkey | Event streams and non-secret runtime coordination | Read/write |
-| Vault | Database credentials, AI keys, tokens, certificates, validation fingerprint material | Path-scoped read/write |
 
 ### The distinction that was being conflated
 
@@ -62,7 +61,7 @@ A data source cannot be activated until the backend verifies:
 - a safe health query;
 - required databases, collections, tables or indexes;
 - the requested access mode against the **code-owned connector capability**;
-- configuration checksum and exact Vault secret version.
+- configuration checksum and the secret's fingerprint.
 
 A source endpoint must appear in `PLATFORM_DATA_SOURCE_ALLOWED_HOSTS`. Production
 changes should use explicit hostnames or CIDR ranges rather than broad network
@@ -70,25 +69,31 @@ ranges.
 
 ## Secrets
 
-Vault KV v2 is the exclusive runtime source for credential values. Neo4j stores
-only versioned references.
+**The process environment is the runtime source for credential values.** Every DSN,
+password and API key is read from it directly into `Settings`; there is no resolver
+in between. Graph configuration holds no credential values — a `credential` block
+names a `profile_key` and nothing else.
 
 **Secrets must never be stored in** Neo4j, MongoDB documents, Valkey, Temporal
 payloads, frontend storage, logs, evidence files or AI traces. The frontend never
-receives a secret value.
+receives a secret value. That boundary is unchanged and is enforced the same way:
+`SecretStr` at the edges, recursive redaction before every provider call, and no
+request or response model with a field a credential could travel in.
 
-Vault writes use compare-and-swap versioning. If receipt persistence fails, the
-staged write is rolled back without exposing the secret.
+Entries marked `bootstrap_managed` still cannot override deployment-specific
+endpoints — host processes use loopback DSNs, container processes use Docker
+service DNS names, and a published graph release may not rewrite either.
 
-The local Vault bootstrap stores separate MongoDB connection references for host
-and container execution — host processes resolve loopback DSNs, container
-processes resolve Docker service DNS names. Published graph entries marked
-`bootstrap_managed` cannot override these deployment-specific endpoints.
+**Vault is optional and disabled by default.** With `PLATFORM_VAULT_ENABLED=true`,
+each `*_SECRET_REFERENCE` naming a `vault://secret/production/<path>#<key>` URI is
+resolved into memory at startup, before any client is created, and takes precedence
+over the plain value beside it. A reference set while Vault is off is inert.
 
 ## Contact evidence and HMAC
 
 Phone and email lookup evidence is stored in Neo4j as normalized,
-**domain-separated HMAC-SHA256** values, keyed by a Vault-managed key. Raw contact
+**domain-separated HMAC-SHA256** values, keyed by `PLATFORM_CONTACT_LOOKUP_HMAC_KEY`.
+Raw contact
 details are not projected.
 
 **Rotating that key requires a complete customer graph reprojection before
@@ -139,8 +144,7 @@ may touch. All administrative actions are audited.
 |---|---|
 | Configuration checksum mismatch | Refuse startup or activation |
 | Stale configuration head revision | Configuration revision conflict |
-| Vault unavailable **before** client creation | Fail the affected dependency initialization. **Never** fall back to `.env` credentials. |
-| Vault temporarily unavailable **with** initialized client pools | Continue bounded use of already-established clients |
+| A required credential is missing or empty | Fail the affected dependency initialization rather than connecting anonymously |
 | `AI_GATEWAY` or `DEPENDENCY_SIMULATION` absent in production/staging | Fail closed |
 | Stale candidate card | Reject on candidate-set id, expiry, or conversation version |
 | Duplicate message | Return the prior idempotent result rather than applying it twice |

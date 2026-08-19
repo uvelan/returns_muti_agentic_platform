@@ -11,7 +11,6 @@ sources:
   source_alpha:
     source_asset_id: source_alpha
     connector_type: MONGODB
-    connection_ref: vault://data-sources/source-alpha
     object_ref:
       database: configured_database
       name: configured_object
@@ -149,4 +148,4 @@ agent_policies:
     allowed_roles:
     - associate
     - support
-configuration_checksum: f885ec4c647213c0c13c02d565fd639abede475bb9004092b7156f8dc707d5f7
+configuration_checksum: 1becd2d356693312c8ac404c9f56a2b9f830ad352493b9a4ac651ed05529b186

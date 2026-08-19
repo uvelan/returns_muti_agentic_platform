@@ -270,13 +270,12 @@ function sourceItem(source: (typeof SOURCES)[number]) {
   };
 }
 
-/** `SourceBindingView`. `connectionRef` is a pointer, never a resolved secret. */
+/** `SourceBindingView`. Names which asset answers, never a credential. */
 const BINDINGS = [
   {
     dataset: "source_sales",
     sourceAssetId: "salesInv",
     connectorType: "MONGODB",
-    connectionRef: "vault://return-platform/sources#salesInv",
     objectRef: { database: "source_db", collection: "salesInv" },
     incrementalCursorField: "updated_at",
     overridden: false,
@@ -285,7 +284,6 @@ const BINDINGS = [
     dataset: "sql_bay_assignment",
     sourceAssetId: "BayAssignment",
     connectorType: "MSSQL",
-    connectionRef: "vault://return-platform/sources#bay-assignment-restored",
     objectRef: { schema: "dbo", table: "BayAssignment" },
     incrementalCursorField: null,
     overridden: true,

@@ -228,7 +228,6 @@ const ROUTES: readonly Route[] = [
     body: {
       sourceAssetId: "salesInv",
       connectorType: "MONGODB",
-      connectionRef: "vault://return-platform/sources#salesInv",
       objectRef: { database: "source_db", collection: "salesInv" },
       incrementalCursorField: "updated_at",
     },

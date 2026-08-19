@@ -10,7 +10,7 @@
  * authoritative is an open decision, so nothing here promotes anything.
  *
  * Secrets are scrubbed server-side by `redact_secret_values` before the
- * response is built, and a `vault://` reference is deliberately left intact so
+ * response is built, and a non-secret reference is deliberately left intact so
  * an operator can see *which* secret a binding points at. This client does no
  * masking of its own -- doing so would imply the frontend is a security
  * boundary, which it is not.

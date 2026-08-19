@@ -146,7 +146,11 @@ def test_router_mounting_is_the_bulk_of_create_app_and_that_is_allowed() -> None
     # `api/cases.py` because the case is the authorization boundary, and kept a
     # separate router because the resource is the order rather than the case
     # projection -- so the count moves even though the prefix does not.
-    assert len(mounts) == 31, (
-        f"{len(mounts)} routers are mounted, expected 31; if Wave F deleted one, "
+    # 31 -> 32 for the Graph Schema Analyzer's `/api/graph-analyzer/v1` surface,
+    # mounted beside the existing `graph_schema_analyzer` router rather than
+    # inside it: the two are separate surfaces over the same domain until one
+    # replaces the other.
+    assert len(mounts) == 32, (
+        f"{len(mounts)} routers are mounted, expected 32; if Wave F deleted one, "
         "update this number in the same commit"
     )

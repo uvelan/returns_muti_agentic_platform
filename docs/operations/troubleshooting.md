@@ -130,7 +130,7 @@ Three requirements, and the first one fails **silently** if you miss it:
 
 Real-infra tests **do** run on the host. Mongo `localhost:27017`
 (`PLATFORM_TEST_MONGO_HOST`, `directConnection=true`), Temporal `127.0.0.1:7233`,
-Neo4j `7687`, Valkey `6379`, Vault `8200`, SQL Server **`14330` on the host** and
+Neo4j `7687`, Valkey `6379`, SQL Server **`14330` on the host** and
 `1433` in-network. The in-network port is the one to use from inside a container and
 the commonest source of a "SQL Server is down" that is really a port mix-up.
 
@@ -228,8 +228,8 @@ serving the previous release.
 platform opened more than it will accept, and the real cause is only visible in the
 server's own log.
 
-Every instinct the message triggers — check the password, check Vault, check the
-connection string — is wrong.
+Every instinct the message triggers — check the password, check the connection
+string — is wrong.
 
 Check `sqlserver_pool_max_size` (default 8) against replica count:
 `max_size × (API replicas + worker replicas)` must stay under the server's limit with
@@ -282,14 +282,6 @@ That is different from a recommendation made with low confidence, and the two mu
 be read as the same thing. It is never a constant — it is the computed margin of the
 winner over the runner-up.
 
-### Vault token file missing
-
-```bash
-./scripts/infra.sh start
-python3.13 scripts/vault/bootstrap_local_vault.py
-ls -l .vault-local/return-platform.token
-```
-
 ### Graph configuration release missing
 
 ```bash
@@ -320,7 +312,8 @@ in `platform.schema_migrations`. Safe to rerun.
 
 The key is intentionally non-recoverable from graph evidence — that is what makes the
 evidence safe to store. Existing evidence **cannot be recomputed in place**. Rebuild
-the customer projection with the current Vault key, validate graph freshness, then
+the customer projection with the current `PLATFORM_CONTACT_LOOKUP_HMAC_KEY`,
+validate graph freshness, then
 re-enable contact lookup.
 
 ### The containerized build fails on certificates

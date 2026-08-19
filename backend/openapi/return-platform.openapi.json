@@ -1455,6 +1455,39 @@
         "title": "APIResponse[AgentConfigurationView]",
         "type": "object"
       },
+      "APIResponse_AgentReply_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentReply"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[AgentReply]",
+        "type": "object"
+      },
       "APIResponse_AgentTurnResult_": {
         "additionalProperties": false,
         "properties": {
@@ -1486,6 +1519,138 @@
           "meta"
         ],
         "title": "APIResponse[AgentTurnResult]",
+        "type": "object"
+      },
+      "APIResponse_AnalysisRun_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[AnalysisRun]",
+        "type": "object"
+      },
+      "APIResponse_AnalyzerBootstrap_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalyzerBootstrap"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[AnalyzerBootstrap]",
+        "type": "object"
+      },
+      "APIResponse_AnalyzerGraphSchema_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalyzerGraphSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[AnalyzerGraphSchema]",
+        "type": "object"
+      },
+      "APIResponse_AnalyzerSource_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalyzerSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[AnalyzerSource]",
         "type": "object"
       },
       "APIResponse_AssociateConversationView_": {
@@ -1950,6 +2115,33 @@
         "title": "APIResponse[MigrationPlan]",
         "type": "object"
       },
+      "APIResponse_NoneType_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "title": "Data",
+            "type": "null"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[NoneType]",
+        "type": "object"
+      },
       "APIResponse_OrderLines_": {
         "additionalProperties": false,
         "properties": {
@@ -2016,6 +2208,39 @@
         "title": "APIResponse[PolicyOverrideResult]",
         "type": "object"
       },
+      "APIResponse_PreviewPage_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreviewPage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[PreviewPage]",
+        "type": "object"
+      },
       "APIResponse_PrincipalView_": {
         "additionalProperties": false,
         "properties": {
@@ -2080,6 +2305,39 @@
           "meta"
         ],
         "title": "APIResponse[ProposalDetailView]",
+        "type": "object"
+      },
+      "APIResponse_RecommendationResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecommendationResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[RecommendationResult]",
         "type": "object"
       },
       "APIResponse_ReleaseListView_": {
@@ -2412,6 +2670,39 @@
         "title": "APIResponse[RuntimeConfig]",
         "type": "object"
       },
+      "APIResponse_SchemaValidation_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SchemaValidation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[SchemaValidation]",
+        "type": "object"
+      },
       "APIResponse_SeedOperationView_": {
         "additionalProperties": false,
         "properties": {
@@ -2742,6 +3033,39 @@
         "title": "APIResponse[SupportWorkItemView]",
         "type": "object"
       },
+      "APIResponse_SyncRun_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[SyncRun]",
+        "type": "object"
+      },
       "APIResponse_Union_dict_str__Any___NoneType__": {
         "additionalProperties": false,
         "properties": {
@@ -2810,6 +3134,50 @@
           "meta"
         ],
         "title": "APIResponse[dict[str, Any]]",
+        "type": "object"
+      },
+      "APIResponse_dict_str__Union_AnalyzerGraphSchema__NoneType___": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AnalyzerGraphSchema"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[dict[str, Union[AnalyzerGraphSchema, NoneType]]]",
         "type": "object"
       },
       "APIResponse_dict_str__bool__": {
@@ -4066,6 +4434,83 @@
         "title": "AgentConfigurationView",
         "type": "object"
       },
+      "AgentContext": {
+        "additionalProperties": false,
+        "properties": {
+          "selectedGraphObjectId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selectedgraphobjectid"
+          },
+          "selectedObjectId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selectedobjectid"
+          },
+          "selectedScope": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selectedscope"
+          },
+          "selectedSourceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selectedsourceid"
+          },
+          "syncRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Syncrunid"
+          },
+          "workspace": {
+            "enum": [
+              "ANALYZER",
+              "SCHEMA",
+              "SYNC"
+            ],
+            "title": "Workspace",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace"
+        ],
+        "title": "AgentContext",
+        "type": "object"
+      },
       "AgentDecisionView": {
         "additionalProperties": false,
         "properties": {
@@ -4145,6 +4590,133 @@
         ],
         "title": "AgentExecutionMode",
         "type": "string"
+      },
+      "AgentMessage": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "USER",
+              "AGENT"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "content",
+          "createdAt"
+        ],
+        "title": "AgentMessage",
+        "type": "object"
+      },
+      "AgentRecommendation": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "operations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Operations",
+            "type": "array"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PENDING",
+              "APPLIED",
+              "REJECTED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "target": {
+            "const": "SYSTEM_GRAPH",
+            "default": "SYSTEM_GRAPH",
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "summary",
+          "rationale",
+          "status",
+          "operations"
+        ],
+        "title": "AgentRecommendation",
+        "type": "object"
+      },
+      "AgentReply": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/AgentMessage"
+          },
+          "recommendation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentRecommendation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "message",
+          "recommendation"
+        ],
+        "title": "AgentReply",
+        "type": "object"
+      },
+      "AgentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/AgentContext"
+          },
+          "message": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "context"
+        ],
+        "title": "AgentRequest",
+        "type": "object"
       },
       "AgentSummary": {
         "additionalProperties": false,
@@ -4353,6 +4925,107 @@
         "title": "AgentTurnResult",
         "type": "object"
       },
+      "AnalysisRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "context": {
+            "default": "",
+            "maxLength": 12000,
+            "title": "Context",
+            "type": "string"
+          },
+          "selectedObjectIds": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10000,
+            "minItems": 1,
+            "title": "Selectedobjectids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "selectedObjectIds"
+        ],
+        "title": "AnalysisRequest",
+        "type": "object"
+      },
+      "AnalysisRun": {
+        "additionalProperties": false,
+        "properties": {
+          "completedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completedat"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "selectedObjectIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Selectedobjectids",
+            "type": "array"
+          },
+          "stage": {
+            "enum": [
+              "PREPARING",
+              "READING_METADATA",
+              "EVALUATING_IDENTIFIERS",
+              "DISCOVERING_ENTITIES",
+              "EVALUATING_RELATIONSHIPS",
+              "BUILDING_PROPOSAL",
+              "COMPARING_EXISTING",
+              "REVIEWING_INDEXES",
+              "VALIDATING",
+              "COMPLETE",
+              "FAILED"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "title": "Startedat",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "RUNNING",
+              "COMPLETED",
+              "PARTIALLY_COMPLETED",
+              "FAILED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "warningCount": {
+            "minimum": 0.0,
+            "title": "Warningcount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "stage",
+          "selectedObjectIds",
+          "startedAt",
+          "completedAt",
+          "warningCount"
+        ],
+        "title": "AnalysisRun",
+        "type": "object"
+      },
       "AnalysisSessionView": {
         "additionalProperties": false,
         "properties": {
@@ -4435,6 +5108,230 @@
           "failure_reason"
         ],
         "title": "AnalysisSessionView",
+        "type": "object"
+      },
+      "AnalyzerBootstrap": {
+        "additionalProperties": false,
+        "properties": {
+          "activeAnalysis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "activeSync": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "existingSchema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalyzerGraphSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "proposedSchema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalyzerGraphSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyzerSource"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "syncHistory": {
+            "items": {
+              "$ref": "#/components/schemas/SyncRun"
+            },
+            "title": "Synchistory",
+            "type": "array"
+          },
+          "validation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SchemaValidation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "sources",
+          "existingSchema",
+          "proposedSchema",
+          "validation",
+          "activeAnalysis",
+          "activeSync",
+          "syncHistory"
+        ],
+        "title": "AnalyzerBootstrap",
+        "type": "object"
+      },
+      "AnalyzerGraphSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "entities": {
+            "items": {
+              "$ref": "#/components/schemas/GraphEntity"
+            },
+            "title": "Entities",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "relationships": {
+            "items": {
+              "$ref": "#/components/schemas/GraphRelationship"
+            },
+            "title": "Relationships",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "VALIDATION_REQUIRED",
+              "READY",
+              "FINALIZED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "status",
+          "updatedAt",
+          "entities",
+          "relationships"
+        ],
+        "title": "AnalyzerGraphSchema",
+        "type": "object"
+      },
+      "AnalyzerSource": {
+        "additionalProperties": false,
+        "properties": {
+          "database": {
+            "title": "Database",
+            "type": "string"
+          },
+          "engine": {
+            "enum": [
+              "MONGODB",
+              "POSTGRESQL",
+              "SQLSERVER",
+              "NEO4J"
+            ],
+            "title": "Engine",
+            "type": "string"
+          },
+          "host": {
+            "title": "Host",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lastValidatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastvalidatedat"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "objectCount": {
+            "minimum": 0.0,
+            "title": "Objectcount",
+            "type": "integer"
+          },
+          "objects": {
+            "items": {
+              "$ref": "#/components/schemas/SourceObject"
+            },
+            "title": "Objects",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "NOT_VALIDATED",
+              "CONNECTED",
+              "VALIDATION_FAILED",
+              "AUTHENTICATION_FAILED",
+              "UNREACHABLE"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "engine",
+          "status",
+          "host",
+          "database",
+          "username",
+          "lastValidatedAt",
+          "objectCount",
+          "objects"
+        ],
+        "title": "AnalyzerSource",
         "type": "object"
       },
       "AnchorType": {
@@ -7509,6 +8406,73 @@
         "title": "GraphConstraintShapeView",
         "type": "object"
       },
+      "GraphEntity": {
+        "additionalProperties": false,
+        "properties": {
+          "change": {
+            "enum": [
+              "UNCHANGED",
+              "ADDED",
+              "CHANGED",
+              "REMOVED"
+            ],
+            "title": "Change",
+            "type": "string"
+          },
+          "constraints": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Constraints",
+            "type": "array"
+          },
+          "description": {
+            "maxLength": 1000,
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+            "title": "Name",
+            "type": "string"
+          },
+          "properties": {
+            "items": {
+              "$ref": "#/components/schemas/GraphProperty"
+            },
+            "title": "Properties",
+            "type": "array"
+          },
+          "x": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "x",
+          "y",
+          "properties",
+          "constraints",
+          "change"
+        ],
+        "title": "GraphEntity",
+        "type": "object"
+      },
       "GraphIndexShapeView": {
         "additionalProperties": false,
         "properties": {
@@ -7573,6 +8537,140 @@
         ],
         "title": "GraphObjectKind",
         "type": "string"
+      },
+      "GraphProperty": {
+        "additionalProperties": false,
+        "properties": {
+          "dataType": {
+            "title": "Datatype",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "identifier": {
+            "title": "Identifier",
+            "type": "boolean"
+          },
+          "indexed": {
+            "title": "Indexed",
+            "type": "boolean"
+          },
+          "name": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+            "title": "Name",
+            "type": "string"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          },
+          "sourceField": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcefield"
+          },
+          "sourceObjectId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceobjectid"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "dataType",
+          "required",
+          "identifier",
+          "indexed",
+          "sourceObjectId",
+          "sourceField"
+        ],
+        "title": "GraphProperty",
+        "type": "object"
+      },
+      "GraphRelationship": {
+        "additionalProperties": false,
+        "properties": {
+          "change": {
+            "enum": [
+              "UNCHANGED",
+              "ADDED",
+              "CHANGED",
+              "REMOVED"
+            ],
+            "title": "Change",
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "OUTBOUND",
+              "INBOUND"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "fromEntityId": {
+            "title": "Fromentityid",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+            "title": "Name",
+            "type": "string"
+          },
+          "properties": {
+            "items": {
+              "$ref": "#/components/schemas/GraphProperty"
+            },
+            "title": "Properties",
+            "type": "array"
+          },
+          "sourceObjectId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceobjectid"
+          },
+          "toEntityId": {
+            "title": "Toentityid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "fromEntityId",
+          "toEntityId",
+          "direction",
+          "properties",
+          "sourceObjectId",
+          "change"
+        ],
+        "title": "GraphRelationship",
+        "type": "object"
       },
       "GraphSyncRequest": {
         "additionalProperties": false,
@@ -9338,6 +10436,57 @@
         "title": "PolicyRule",
         "type": "string"
       },
+      "PreviewPage": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          }
+        },
+        "required": [
+          "columns",
+          "rows",
+          "page",
+          "pageSize"
+        ],
+        "title": "PreviewPage",
+        "type": "object"
+      },
       "PrincipalView": {
         "additionalProperties": false,
         "description": "Typed so it lands in the OpenAPI snapshot the frontend generates from.\n\n`roles` is reported alongside `capabilities` for display and support\n(\"signed in as X with role Y\"), not for the UI to branch on -- the\ncapability list is what decides whether an action is offered.",
@@ -10070,10 +11219,6 @@
       "RebindRequest": {
         "additionalProperties": false,
         "properties": {
-          "connectionRef": {
-            "title": "Connectionref",
-            "type": "string"
-          },
           "connectorType": {
             "title": "Connectortype",
             "type": "string"
@@ -10104,10 +11249,51 @@
         "required": [
           "sourceAssetId",
           "connectorType",
-          "connectionRef",
           "objectRef"
         ],
         "title": "RebindRequest",
+        "type": "object"
+      },
+      "RecommendationDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "APPLY",
+              "REJECT"
+            ],
+            "title": "Decision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "RecommendationDecision",
+        "type": "object"
+      },
+      "RecommendationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "proposedSchema": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalyzerGraphSchema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recommendation": {
+            "$ref": "#/components/schemas/AgentRecommendation"
+          }
+        },
+        "required": [
+          "recommendation",
+          "proposedSchema"
+        ],
+        "title": "RecommendationResult",
         "type": "object"
       },
       "RecoveryAction": {
@@ -12846,6 +14032,39 @@
         "title": "SchemaDiffEntry",
         "type": "object"
       },
+      "SchemaValidation": {
+        "additionalProperties": false,
+        "properties": {
+          "checkedAt": {
+            "format": "date-time",
+            "title": "Checkedat",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "VALID",
+              "WARNING",
+              "BLOCKING"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checkedAt",
+          "issues"
+        ],
+        "title": "SchemaValidation",
+        "type": "object"
+      },
       "SeedApplyRequest": {
         "additionalProperties": false,
         "properties": {
@@ -14467,10 +15686,6 @@
       "SourceBindingView": {
         "additionalProperties": false,
         "properties": {
-          "connectionRef": {
-            "title": "Connectionref",
-            "type": "string"
-          },
           "connectorType": {
             "title": "Connectortype",
             "type": "string"
@@ -14510,7 +15725,6 @@
           "dataset",
           "sourceAssetId",
           "connectorType",
-          "connectionRef",
           "objectRef",
           "overridden"
         ],
@@ -14612,6 +15826,108 @@
         "title": "SourceDetail",
         "type": "object"
       },
+      "SourceField": {
+        "additionalProperties": false,
+        "properties": {
+          "dataType": {
+            "title": "Datatype",
+            "type": "string"
+          },
+          "identifier": {
+            "title": "Identifier",
+            "type": "boolean"
+          },
+          "indexed": {
+            "title": "Indexed",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "nullable": {
+            "title": "Nullable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "dataType",
+          "nullable",
+          "identifier",
+          "indexed"
+        ],
+        "title": "SourceField",
+        "type": "object"
+      },
+      "SourceInput": {
+        "additionalProperties": false,
+        "properties": {
+          "database": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Database",
+            "type": "string"
+          },
+          "engine": {
+            "enum": [
+              "MONGODB",
+              "POSTGRESQL",
+              "SQLSERVER",
+              "NEO4J"
+            ],
+            "title": "Engine",
+            "type": "string"
+          },
+          "host": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Host",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "format": "password",
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "port": {
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Port",
+            "type": "integer"
+          },
+          "username": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "engine",
+          "host",
+          "port",
+          "database",
+          "username"
+        ],
+        "title": "SourceInput",
+        "type": "object"
+      },
       "SourceItem": {
         "additionalProperties": false,
         "properties": {
@@ -14667,6 +15983,84 @@
           "lastInventoryTime"
         ],
         "title": "SourceItem",
+        "type": "object"
+      },
+      "SourceObject": {
+        "additionalProperties": false,
+        "properties": {
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/SourceObject"
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "estimatedRows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedrows"
+          },
+          "fields": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SourceField"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fields"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "database",
+              "schema",
+              "table",
+              "collection",
+              "entity",
+              "relationship",
+              "field"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Path",
+            "type": "array"
+          },
+          "selectable": {
+            "title": "Selectable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "path",
+          "selectable"
+        ],
+        "title": "SourceObject",
         "type": "object"
       },
       "SourceWatermarkView": {
@@ -15570,6 +16964,167 @@
         "title": "SyncMode",
         "type": "string"
       },
+      "SyncRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": [
+              "FULL",
+              "PARTIAL"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "scope": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10000,
+            "title": "Scope",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "scope"
+        ],
+        "title": "SyncRequest",
+        "type": "object"
+      },
+      "SyncRun": {
+        "additionalProperties": false,
+        "properties": {
+          "completedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completedat"
+          },
+          "currentActivity": {
+            "title": "Currentactivity",
+            "type": "string"
+          },
+          "currentObject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentobject"
+          },
+          "currentSource": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentsource"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "failedItems": {
+            "minimum": 0.0,
+            "title": "Faileditems",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "itemsProcessed": {
+            "minimum": 0.0,
+            "title": "Itemsprocessed",
+            "type": "integer"
+          },
+          "itemsRead": {
+            "minimum": 0.0,
+            "title": "Itemsread",
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "FULL",
+              "PARTIAL"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "nodesWritten": {
+            "minimum": 0.0,
+            "title": "Nodeswritten",
+            "type": "integer"
+          },
+          "relationshipsWritten": {
+            "minimum": 0.0,
+            "title": "Relationshipswritten",
+            "type": "integer"
+          },
+          "scope": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scope",
+            "type": "array"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "title": "Startedat",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PREPARING",
+              "RUNNING",
+              "COMPLETED",
+              "PARTIALLY_COMPLETED",
+              "FAILED",
+              "CANCELLED"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "mode",
+          "status",
+          "scope",
+          "currentSource",
+          "currentObject",
+          "currentActivity",
+          "itemsRead",
+          "itemsProcessed",
+          "nodesWritten",
+          "relationshipsWritten",
+          "failedItems",
+          "startedAt",
+          "completedAt",
+          "error"
+        ],
+        "title": "SyncRun",
+        "type": "object"
+      },
       "SyncRunRequester": {
         "additionalProperties": false,
         "description": "The agent turn a targeted run was performed for. Absent on a scheduled run.\n\nAnchor *field ids*, not anchor values -- see `SyncOrigin` for why a run list\nis not somewhere to accumulate order numbers.",
@@ -15775,6 +17330,44 @@
           "message"
         ],
         "title": "ValidationFindingView",
+        "type": "object"
+      },
+      "ValidationIssue": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "objectId": {
+            "title": "Objectid",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "WARNING",
+              "BLOCKING"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "severity",
+          "code",
+          "message",
+          "objectId"
+        ],
+        "title": "ValidationIssue",
         "type": "object"
       },
       "ValidationResultView": {
@@ -17439,6 +19032,805 @@
         "summary": "Get Configured Source Asset",
         "tags": [
           "Configuration"
+        ]
+      }
+    },
+    "/api/graph-analyzer/v1/agent/messages": {
+      "post": {
+        "operationId": "ask_agent_api_graph_analyzer_v1_agent_messages_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AgentReply_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ask Agent",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-analyzer/v1/agent/recommendations/{recommendation_id}": {
+      "post": {
+        "operationId": "review_recommendation_api_graph_analyzer_v1_agent_recommendations__recommendation_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recommendation_id",
+            "required": true,
+            "schema": {
+              "title": "Recommendation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecommendationDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_RecommendationResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Recommendation",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-analyzer/v1/analyses": {
+      "post": {
+        "operationId": "start_analysis_api_graph_analyzer_v1_analyses_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AnalysisRun_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Analysis",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-analyzer/v1/analyses/{run_id}": {
+      "get": {
+        "operationId": "get_analysis_api_graph_analyzer_v1_analyses__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AnalysisRun_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Analysis",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-analyzer/v1/bootstrap": {
+      "get": {
+        "operationId": "bootstrap_api_graph_analyzer_v1_bootstrap_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AnalyzerBootstrap_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Bootstrap",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-analyzer/v1/schemas": {
+      "get": {
+        "operationId": "get_schemas_api_graph_analyzer_v1_schemas_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Union_AnalyzerGraphSchema__NoneType___"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Schemas",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-analyzer/v1/schemas/proposed/entities/{entity_id}": {
+      "put": {
+        "operationId": "update_entity_api_graph_analyzer_v1_schemas_proposed_entities__entity_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "title": "Entity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphEntity"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AnalyzerGraphSchema_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Entity",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-analyzer/v1/schemas/proposed/finalize": {
+      "post": {
+        "operationId": "finalize_schema_api_graph_analyzer_v1_schemas_proposed_finalize_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AnalyzerGraphSchema_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Finalize Schema",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-analyzer/v1/schemas/proposed/relationships/{relationship_id}": {
+      "put": {
+        "operationId": "update_relationship_api_graph_analyzer_v1_schemas_proposed_relationships__relationship_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "relationship_id",
+            "required": true,
+            "schema": {
+              "title": "Relationship Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphRelationship"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AnalyzerGraphSchema_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Relationship",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-analyzer/v1/schemas/proposed/validate": {
+      "post": {
+        "operationId": "validate_schema_api_graph_analyzer_v1_schemas_proposed_validate_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SchemaValidation_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Validate Schema",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-analyzer/v1/sources": {
+      "post": {
+        "operationId": "create_source_api_graph_analyzer_v1_sources_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AnalyzerSource_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Source",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-analyzer/v1/sources/test": {
+      "post": {
+        "operationId": "test_source_api_graph_analyzer_v1_sources_test_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sourceId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sourceid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__str__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Source",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-analyzer/v1/sources/{source_id}": {
+      "delete": {
+        "operationId": "delete_source_api_graph_analyzer_v1_sources__source_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_NoneType_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Source",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      },
+      "put": {
+        "operationId": "update_source_api_graph_analyzer_v1_sources__source_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AnalyzerSource_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Source",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-analyzer/v1/sources/{source_id}/metadata": {
+      "post": {
+        "operationId": "validate_source_api_graph_analyzer_v1_sources__source_id__metadata_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AnalyzerSource_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate Source",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-analyzer/v1/sources/{source_id}/preview": {
+      "get": {
+        "operationId": "preview_source_api_graph_analyzer_v1_sources__source_id__preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "objectId",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Objectid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 10000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_PreviewPage_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Source",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-analyzer/v1/sources/{source_id}/validate": {
+      "post": {
+        "operationId": "validate_source_api_graph_analyzer_v1_sources__source_id__validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AnalyzerSource_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate Source",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-analyzer/v1/sync/runs": {
+      "post": {
+        "operationId": "start_sync_api_graph_analyzer_v1_sync_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SyncRun_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Sync",
+        "tags": [
+          "Graph Schema Analyzer"
+        ]
+      }
+    },
+    "/api/graph-analyzer/v1/sync/runs/{run_id}": {
+      "get": {
+        "operationId": "get_sync_run_api_graph_analyzer_v1_sync_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SyncRun_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Sync Run",
+        "tags": [
+          "Graph Schema Analyzer"
         ]
       }
     },

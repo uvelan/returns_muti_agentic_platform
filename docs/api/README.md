@@ -232,7 +232,7 @@ pricing semantics are preserved deliberately.
 | **Concurrency** | Last write wins on a binding, within the release |
 | **Side effects** | Rebinding changes which source a dataset reads from |
 | **Release behaviour** | Bindings are configuration and are hot. **Endpoint changes are restart-required and fail closed** |
-| **Audit** | Administrative, at `/api/config/audit`. Activation records a receipt bound to connector type, endpoint, checksum and exact Vault secret version |
+| **Audit** | Administrative, at `/api/config/audit`. Activation records a receipt bound to connector type, endpoint, checksum and the secret's fingerprint |
 | **Errors** | `403`; `422` unknown dataset or source; `409` if the requested access mode exceeds the **code-owned connector capability** |
 
 Graph configuration may narrow access; it **cannot broaden** it. There is no

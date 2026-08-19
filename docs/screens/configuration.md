@@ -138,7 +138,7 @@ not an editable configuration authority, and this screen never writes to it.
 Packaged YAML under `backend/config/` is bootstrap/default input only and is
 **never rewritten at runtime**.
 
-Secrets stay in Vault. Graph configuration stores only validated secret references
+Secrets stay in the process environment. Graph configuration stores only validated credential identities
 and receipts. The frontend never receives a secret value.
 
 ## Audit effects

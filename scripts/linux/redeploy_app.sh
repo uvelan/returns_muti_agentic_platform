@@ -12,8 +12,8 @@ usage() {
 Usage: ./scripts/linux/redeploy_app.sh [options]
 
 Rebuild and restart the Linux host application after source changes.
-Infrastructure, Vault bootstrap, graph configuration, seed data, and AI
-validation are not rerun.
+Infrastructure, graph configuration, seed data, and AI validation are not
+rerun.
 
 Options:
   --install-dependencies  Synchronize locked backend and frontend dependencies.

@@ -91,7 +91,6 @@ function binding(overrides: Partial<SourceBinding> = {}): SourceBinding {
     dataset: "source_sales",
     sourceAssetId: "salesInv",
     connectorType: "MONGODB",
-    connectionRef: "vault://return-platform/sources#salesInv",
     objectRef: { database: "source_db", collection: "salesInv" },
     incrementalCursorField: "updated_at",
     overridden: false,
@@ -211,8 +210,8 @@ describe("DataSourcesPage", () => {
   it("repoints a dataset through the binding surface", async () => {
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Rebind" }));
-    fireEvent.change(screen.getByLabelText("Connection for source_sales"), {
-      target: { value: "vault://return-platform/sources#salesInv-restored" },
+    fireEvent.change(screen.getByLabelText("Source asset for source_sales"), {
+      target: { value: "salesInv-restored" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Rebind" }));
 
@@ -220,10 +219,9 @@ describe("DataSourcesPage", () => {
       expect(mocks.rebind).toHaveBeenCalledTimes(1);
     });
     expect(mocks.rebind).toHaveBeenCalledWith("source_sales", {
-      sourceAssetId: "salesInv",
+      sourceAssetId: "salesInv-restored",
       connectorType: "MONGODB",
       objectRef: { database: "source_db", collection: "salesInv" },
-      connectionRef: "vault://return-platform/sources#salesInv-restored",
       incrementalCursorField: "updated_at",
     });
   });
@@ -295,8 +293,8 @@ describe("DataSourcesPage", () => {
     mocks.rebind.mockRejectedValue(new Error("object_ref must contain non-empty keys and values"));
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Rebind" }));
-    fireEvent.change(screen.getByLabelText("Connection for source_sales"), {
-      target: { value: "vault://x" },
+    fireEvent.change(screen.getByLabelText("Source asset for source_sales"), {
+      target: { value: "elsewhere" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Rebind" }));
 
@@ -334,9 +332,9 @@ describe("DataSourcesPage", () => {
 
       expect(document.body.textContent).not.toContain(secret);
       expect(document.body.textContent).not.toContain("mongodb://admin:");
-      // The reference is not a secret and must survive: an operator has to be
-      // able to see *which* secret a binding points at.
-      expect(screen.getByText("vault://return-platform/sources#salesInv")).toBeTruthy();
+      // The asset id is not a secret and must survive: an operator has to be
+      // able to see *which* source a binding points at.
+      expect(screen.getAllByText("salesInv").length).toBeGreaterThan(0);
     });
 
     it("offers no field a credential could be typed into", async () => {
@@ -354,10 +352,10 @@ describe("DataSourcesPage", () => {
           /password|secret|token|credential|api[_-]?key|dsn|connection[_-]?string/,
         );
       }
-      // The one field there is takes a pointer, and the screen says so.
-      expect(screen.getByLabelText("Connection for source_sales")).toBeTruthy();
+      // The one field there is names an asset, and the screen says so.
+      expect(screen.getByLabelText("Source asset for source_sales")).toBeTruthy();
       expect(
-        screen.getByText(/no credential is ever entered here or returned to this browser/i),
+        screen.getByText(/none is ever entered here or returned to this browser/i),
       ).toBeTruthy();
     });
   });

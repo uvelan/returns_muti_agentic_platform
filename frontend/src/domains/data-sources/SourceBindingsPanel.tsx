@@ -19,11 +19,12 @@ import { useCapabilities } from "../../hooks/capabilityContext";
  * says plainly: a rebinding that silently re-pointed a running release would
  * make the approval on it meaningless.
  *
- * **`connectionRef` is a reference, never a credential.** It is a
- * `vault://return-platform/sources#...` pointer that the platform resolves
- * server-side. `RebindRequest` has no password, DSN or connection-string field
- * to send one through, and nothing that comes back carries a resolved value --
- * so this form asks for the pointer and offers nowhere to type a secret.
+ * **A rebinding names an asset, never a credential.** The field this form
+ * edits is `sourceAssetId` -- which registered source a dataset resolves to.
+ * `RebindRequest` has no password, DSN or connection-string field to send one
+ * through, and nothing that comes back carries a credential, so there is
+ * nowhere here to type a secret. Credentials belong to the process
+ * environment and never enter this surface in either direction.
  *
  * **The panel asks the capability question itself, rather than taking the
  * answer as a prop.** `PUT`/`DELETE /api/source-bindings/{dataset}` require
@@ -40,7 +41,7 @@ export function SourceBindingsPanel() {
   const canRebind = can("config.source.rebind");
   const client = useQueryClient();
   const [editing, setEditing] = useState<string | null>(null);
-  const [connectionRef, setConnectionRef] = useState("");
+  const [sourceAssetId, setSourceAssetId] = useState("");
 
   const bindings = useQuery({
     queryKey: ["source-bindings"],
@@ -50,13 +51,12 @@ export function SourceBindingsPanel() {
   const rebind = useMutation({
     mutationFn: ({ dataset, from }: { dataset: string; from: SourceBinding }) =>
       sourceBindingsApi.rebind(dataset, {
-        sourceAssetId: from.sourceAssetId,
+        sourceAssetId,
         connectorType: from.connectorType,
-        // Only the connection moves here. Changing the object reference is
+        // Only which asset answers moves here. Changing the object reference is
         // pointing at *different data*, not at the same data somewhere else,
         // and it belongs with a schema change rather than a one-field edit.
         objectRef: from.objectRef,
-        connectionRef,
         incrementalCursorField: from.incrementalCursorField,
       }),
     onSuccess: async () => {
@@ -122,8 +122,8 @@ export function SourceBindingsPanel() {
                 </span>
               ) : null}
             </div>
-            <p className="mt-1 break-all font-mono text-xs text-slate-600">
-              {binding.connectionRef}
+            <p className="mt-1 break-all text-xs text-slate-600">
+              asset <span className="font-mono">{binding.sourceAssetId}</span>
             </p>
 
             {editing === binding.dataset ? (
@@ -131,20 +131,20 @@ export function SourceBindingsPanel() {
                 className="mt-2 flex flex-wrap items-center gap-2"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  if (connectionRef.trim().length > 0) {
+                  if (sourceAssetId.trim().length > 0) {
                     rebind.mutate({ dataset: binding.dataset, from: binding });
                   }
                 }}
               >
                 <input
-                  aria-label={`Connection for ${binding.dataset}`}
-                  value={connectionRef}
-                  onChange={(event) => { setConnectionRef(event.target.value); }}
+                  aria-label={`Source asset for ${binding.dataset}`}
+                  value={sourceAssetId}
+                  onChange={(event) => { setSourceAssetId(event.target.value); }}
                   className="min-w-64 flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
                 />
                 <button
                   type="submit"
-                  disabled={connectionRef.trim().length === 0 || rebind.isPending}
+                  disabled={sourceAssetId.trim().length === 0 || rebind.isPending}
                   className="rounded-md bg-slate-900 px-3 py-1 text-sm font-medium text-white disabled:bg-slate-300"
                 >
                   Rebind
@@ -164,7 +164,7 @@ export function SourceBindingsPanel() {
                   disabled={!canRebind}
                   onClick={() => {
                     setEditing(binding.dataset);
-                    setConnectionRef(binding.connectionRef);
+                    setSourceAssetId(binding.sourceAssetId);
                   }}
                   className="text-sm text-slate-800 underline disabled:text-slate-400 disabled:no-underline"
                 >

@@ -131,7 +131,7 @@ from `provider.configured` — never from a code branch on environment.
 - **No provider or model literal outside this module.** Agents depend on an AI task id.
 - **Nothing sensitive is written durably unclassified** (design §13.6). Route provenance
   persists as `{task_id, route_id, provider_id, model_id, tier}`. Never endpoints, headers,
-  keys, or anything Vault resolved. Credentials appear in traces only as a
+  keys, or any resolved credential. Credentials appear in traces only as a
   `credential_fingerprint` — a truncated SHA-256, never the key.
 - **A human response is never attributed to a model provider** — not in storage, not in
   metrics, not in the UI.

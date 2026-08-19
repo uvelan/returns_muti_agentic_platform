@@ -93,7 +93,6 @@ def _rebind_payload() -> dict[str, object]:
     return {
         "sourceAssetId": "restored_orders",
         "connectorType": "MONGODB",
-        "connectionRef": "vault://data-sources/restored-mongodb",
         "objectRef": {"database": "restore_2026", "name": "salesInv"},
     }
 
@@ -117,7 +116,7 @@ def test_a_rebinding_is_marked_as_one(client: TestClient) -> None:
     rows = {row["dataset"]: row for row in client.get("/api/source-bindings").json()["data"]}
 
     assert rows[CONFIGURED_DATASET]["overridden"] is True
-    assert rows[CONFIGURED_DATASET]["connectionRef"] == "vault://data-sources/restored-mongodb"
+    assert rows[CONFIGURED_DATASET]["sourceAssetId"] == "restored_orders"
 
 
 def test_a_malformed_connection_is_refused_at_the_write(client: TestClient) -> None:
@@ -147,8 +146,8 @@ def test_clearing_returns_the_dataset_to_configuration(client: TestClient) -> No
     assert removed.json()["data"] == {"removed": True}
     rows = {row["dataset"]: row for row in client.get("/api/source-bindings").json()["data"]}
     assert rows[CONFIGURED_DATASET]["overridden"] is False
-    assert rows[CONFIGURED_DATASET]["connectionRef"] == (
-        BASELINE.sources[CONFIGURED_DATASET].connection_ref
+    assert rows[CONFIGURED_DATASET]["sourceAssetId"] == (
+        BASELINE.sources[CONFIGURED_DATASET].source_asset_id
     )
 
 

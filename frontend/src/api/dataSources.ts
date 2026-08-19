@@ -14,9 +14,9 @@ import { apiClient } from "./client";
  * `SourceDetail` declare `extra="forbid"` and carry no credential field at all
  * -- `connectionIdentity` is `engine/database`, never a host, user or password
  * -- and `/api/config` scrubs every response through `redact_secret_values`,
- * which masks any resolved secret and preserves only `vault://` references.
+ * which masks any credential before the response is built.
  * There is correspondingly nothing here that sends a credential: the platform
- * resolves secrets server-side from Vault, so a credential field in this
+ * holds its credentials in the process environment, so a credential field in this
  * console would be a field with nowhere to go.
  */
 

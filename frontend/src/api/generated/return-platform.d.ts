@@ -974,6 +974,313 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/graph-analyzer/v1/agent/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask Agent */
+        post: operations["ask_agent_api_graph_analyzer_v1_agent_messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-analyzer/v1/agent/recommendations/{recommendation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Recommendation */
+        post: operations["review_recommendation_api_graph_analyzer_v1_agent_recommendations__recommendation_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-analyzer/v1/analyses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Analysis */
+        post: operations["start_analysis_api_graph_analyzer_v1_analyses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-analyzer/v1/analyses/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Analysis */
+        get: operations["get_analysis_api_graph_analyzer_v1_analyses__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-analyzer/v1/bootstrap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bootstrap */
+        get: operations["bootstrap_api_graph_analyzer_v1_bootstrap_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-analyzer/v1/schemas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Schemas */
+        get: operations["get_schemas_api_graph_analyzer_v1_schemas_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-analyzer/v1/schemas/proposed/entities/{entity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Entity */
+        put: operations["update_entity_api_graph_analyzer_v1_schemas_proposed_entities__entity_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-analyzer/v1/schemas/proposed/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finalize Schema */
+        post: operations["finalize_schema_api_graph_analyzer_v1_schemas_proposed_finalize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-analyzer/v1/schemas/proposed/relationships/{relationship_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Relationship */
+        put: operations["update_relationship_api_graph_analyzer_v1_schemas_proposed_relationships__relationship_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-analyzer/v1/schemas/proposed/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate Schema */
+        post: operations["validate_schema_api_graph_analyzer_v1_schemas_proposed_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-analyzer/v1/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Source */
+        post: operations["create_source_api_graph_analyzer_v1_sources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-analyzer/v1/sources/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Source */
+        post: operations["test_source_api_graph_analyzer_v1_sources_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-analyzer/v1/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Source */
+        put: operations["update_source_api_graph_analyzer_v1_sources__source_id__put"];
+        post?: never;
+        /** Delete Source */
+        delete: operations["delete_source_api_graph_analyzer_v1_sources__source_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-analyzer/v1/sources/{source_id}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate Source */
+        post: operations["validate_source_api_graph_analyzer_v1_sources__source_id__metadata_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-analyzer/v1/sources/{source_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Source */
+        get: operations["preview_source_api_graph_analyzer_v1_sources__source_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-analyzer/v1/sources/{source_id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate Source */
+        post: operations["validate_source_api_graph_analyzer_v1_sources__source_id__validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-analyzer/v1/sync/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Sync */
+        post: operations["start_sync_api_graph_analyzer_v1_sync_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/graph-analyzer/v1/sync/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Sync Run */
+        get: operations["get_sync_run_api_graph_analyzer_v1_sync_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/graph-schema/analyses": {
         parameters: {
             query?: never;
@@ -3706,9 +4013,39 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[AgentReply] */
+        APIResponse_AgentReply_: {
+            data?: components["schemas"]["AgentReply"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[AgentTurnResult] */
         APIResponse_AgentTurnResult_: {
             data?: components["schemas"]["AgentTurnResult"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[AnalysisRun] */
+        APIResponse_AnalysisRun_: {
+            data?: components["schemas"]["AnalysisRun"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[AnalyzerBootstrap] */
+        APIResponse_AnalyzerBootstrap_: {
+            data?: components["schemas"]["AnalyzerBootstrap"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[AnalyzerGraphSchema] */
+        APIResponse_AnalyzerGraphSchema_: {
+            data?: components["schemas"]["AnalyzerGraphSchema"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[AnalyzerSource] */
+        APIResponse_AnalyzerSource_: {
+            data?: components["schemas"]["AnalyzerSource"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -3796,6 +4133,13 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[NoneType] */
+        APIResponse_NoneType_: {
+            /** Data */
+            data?: null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[OrderLines] */
         APIResponse_OrderLines_: {
             data?: components["schemas"]["OrderLines"] | null;
@@ -3808,6 +4152,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[PreviewPage] */
+        APIResponse_PreviewPage_: {
+            data?: components["schemas"]["PreviewPage"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[PrincipalView] */
         APIResponse_PrincipalView_: {
             data?: components["schemas"]["PrincipalView"] | null;
@@ -3817,6 +4167,12 @@ export interface components {
         /** APIResponse[ProposalDetailView] */
         APIResponse_ProposalDetailView_: {
             data?: components["schemas"]["ProposalDetailView"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[RecommendationResult] */
+        APIResponse_RecommendationResult_: {
+            data?: components["schemas"]["RecommendationResult"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -3880,6 +4236,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[SchemaValidation] */
+        APIResponse_SchemaValidation_: {
+            data?: components["schemas"]["SchemaValidation"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[SeedOperationView] */
         APIResponse_SeedOperationView_: {
             data?: components["schemas"]["SeedOperationView"] | null;
@@ -3940,6 +4302,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[SyncRun] */
+        APIResponse_SyncRun_: {
+            data?: components["schemas"]["SyncRun"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[Union[dict[str, Any], NoneType]] */
         APIResponse_Union_dict_str__Any___NoneType__: {
             /** Data */
@@ -3954,6 +4322,15 @@ export interface components {
             /** Data */
             data?: {
                 [key: string]: unknown;
+            } | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[dict[str, Union[AnalyzerGraphSchema, NoneType]]] */
+        APIResponse_dict_str__Union_AnalyzerGraphSchema__NoneType___: {
+            /** Data */
+            data?: {
+                [key: string]: components["schemas"]["AnalyzerGraphSchema"] | null;
             } | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
@@ -4325,6 +4702,24 @@ export interface components {
             /** Source */
             source: string;
         };
+        /** AgentContext */
+        AgentContext: {
+            /** Selectedgraphobjectid */
+            selectedGraphObjectId?: string | null;
+            /** Selectedobjectid */
+            selectedObjectId?: string | null;
+            /** Selectedscope */
+            selectedScope?: string[] | null;
+            /** Selectedsourceid */
+            selectedSourceId?: string | null;
+            /** Syncrunid */
+            syncRunId?: string | null;
+            /**
+             * Workspace
+             * @enum {string}
+             */
+            workspace: "ANALYZER" | "SCHEMA" | "SYNC";
+        };
         /** AgentDecisionView */
         AgentDecisionView: {
             /** Agent */
@@ -4360,6 +4755,58 @@ export interface components {
          * @enum {string}
          */
         AgentExecutionMode: "DETERMINISTIC" | "AI_ASSISTED";
+        /** AgentMessage */
+        AgentMessage: {
+            /** Content */
+            content: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Id */
+            id: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "USER" | "AGENT";
+        };
+        /** AgentRecommendation */
+        AgentRecommendation: {
+            /** Id */
+            id: string;
+            /** Operations */
+            operations: {
+                [key: string]: unknown;
+            }[];
+            /** Rationale */
+            rationale: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "PENDING" | "APPLIED" | "REJECTED";
+            /** Summary */
+            summary: string;
+            /**
+             * Target
+             * @default SYSTEM_GRAPH
+             * @constant
+             */
+            target: "SYSTEM_GRAPH";
+        };
+        /** AgentReply */
+        AgentReply: {
+            message: components["schemas"]["AgentMessage"];
+            recommendation: components["schemas"]["AgentRecommendation"] | null;
+        };
+        /** AgentRequest */
+        AgentRequest: {
+            context: components["schemas"]["AgentContext"];
+            /** Message */
+            message: string;
+        };
         /** AgentSummary */
         AgentSummary: {
             /** Configurationversion */
@@ -4427,6 +4874,42 @@ export interface components {
             /** Session Timezone */
             session_timezone?: string | null;
         };
+        /** AnalysisRequest */
+        AnalysisRequest: {
+            /**
+             * Context
+             * @default
+             */
+            context: string;
+            /** Selectedobjectids */
+            selectedObjectIds: string[];
+        };
+        /** AnalysisRun */
+        AnalysisRun: {
+            /** Completedat */
+            completedAt: string | null;
+            /** Id */
+            id: string;
+            /** Selectedobjectids */
+            selectedObjectIds: string[];
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "PREPARING" | "READING_METADATA" | "EVALUATING_IDENTIFIERS" | "DISCOVERING_ENTITIES" | "EVALUATING_RELATIONSHIPS" | "BUILDING_PROPOSAL" | "COMPARING_EXISTING" | "REVIEWING_INDEXES" | "VALIDATING" | "COMPLETE" | "FAILED";
+            /**
+             * Startedat
+             * Format: date-time
+             */
+            startedAt: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "RUNNING" | "COMPLETED" | "PARTIALLY_COMPLETED" | "FAILED";
+            /** Warningcount */
+            warningCount: number;
+        };
         /** AnalysisSessionView */
         AnalysisSessionView: {
             /** Analysis Id */
@@ -4454,6 +4937,68 @@ export interface components {
             updated_at: string;
             /** Version */
             version: number;
+        };
+        /** AnalyzerBootstrap */
+        AnalyzerBootstrap: {
+            activeAnalysis: components["schemas"]["AnalysisRun"] | null;
+            activeSync: components["schemas"]["SyncRun"] | null;
+            existingSchema: components["schemas"]["AnalyzerGraphSchema"] | null;
+            proposedSchema: components["schemas"]["AnalyzerGraphSchema"] | null;
+            /** Sources */
+            sources: components["schemas"]["AnalyzerSource"][];
+            /** Synchistory */
+            syncHistory: components["schemas"]["SyncRun"][];
+            validation: components["schemas"]["SchemaValidation"] | null;
+        };
+        /** AnalyzerGraphSchema */
+        AnalyzerGraphSchema: {
+            /** Entities */
+            entities: components["schemas"]["GraphEntity"][];
+            /** Id */
+            id: string;
+            /** Relationships */
+            relationships: components["schemas"]["GraphRelationship"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "DRAFT" | "VALIDATION_REQUIRED" | "READY" | "FINALIZED";
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+            /** Version */
+            version: number;
+        };
+        /** AnalyzerSource */
+        AnalyzerSource: {
+            /** Database */
+            database: string;
+            /**
+             * Engine
+             * @enum {string}
+             */
+            engine: "MONGODB" | "POSTGRESQL" | "SQLSERVER" | "NEO4J";
+            /** Host */
+            host: string;
+            /** Id */
+            id: string;
+            /** Lastvalidatedat */
+            lastValidatedAt: string | null;
+            /** Name */
+            name: string;
+            /** Objectcount */
+            objectCount: number;
+            /** Objects */
+            objects: components["schemas"]["SourceObject"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "NOT_VALIDATED" | "CONNECTED" | "VALIDATION_FAILED" | "AUTHENTICATION_FAILED" | "UNREACHABLE";
+            /** Username */
+            username: string | null;
         };
         /**
          * AnchorType
@@ -5661,6 +6206,28 @@ export interface components {
             /** Unique */
             unique: boolean;
         };
+        /** GraphEntity */
+        GraphEntity: {
+            /**
+             * Change
+             * @enum {string}
+             */
+            change: "UNCHANGED" | "ADDED" | "CHANGED" | "REMOVED";
+            /** Constraints */
+            constraints: string[];
+            /** Description */
+            description: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Properties */
+            properties: components["schemas"]["GraphProperty"][];
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+        };
         /** GraphIndexShapeView */
         GraphIndexShapeView: {
             /** Label */
@@ -5695,6 +6262,50 @@ export interface components {
          * @enum {string}
          */
         GraphObjectKind: "NODE_KEY_CONSTRAINT" | "RELATIONSHIP_MATCH_INDEX" | "DECLARED_CONSTRAINT" | "DECLARED_INDEX";
+        /** GraphProperty */
+        GraphProperty: {
+            /** Datatype */
+            dataType: string;
+            /** Id */
+            id: string;
+            /** Identifier */
+            identifier: boolean;
+            /** Indexed */
+            indexed: boolean;
+            /** Name */
+            name: string;
+            /** Required */
+            required: boolean;
+            /** Sourcefield */
+            sourceField: string | null;
+            /** Sourceobjectid */
+            sourceObjectId: string | null;
+        };
+        /** GraphRelationship */
+        GraphRelationship: {
+            /**
+             * Change
+             * @enum {string}
+             */
+            change: "UNCHANGED" | "ADDED" | "CHANGED" | "REMOVED";
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "OUTBOUND" | "INBOUND";
+            /** Fromentityid */
+            fromEntityId: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Properties */
+            properties: components["schemas"]["GraphProperty"][];
+            /** Sourceobjectid */
+            sourceObjectId: string | null;
+            /** Toentityid */
+            toEntityId: string;
+        };
         /** GraphSyncRequest */
         GraphSyncRequest: {
             /**
@@ -6333,6 +6944,21 @@ export interface components {
          * @enum {string}
          */
         PolicyRule: "POLICY_RELEASE_VALIDATED" | "CUSTOMER_CONTRACT_OVERRIDE" | "DELIVERY_CLAIM_ROUTING" | "WARRANTY_ROUTING" | "DAMAGE_CAUSE_ROUTING" | "SPECIAL_ORDER_MANUFACTURER_POLICY" | "STANDARD_STOCK_ITEM" | "NEW_RESALEABLE_CONDITION" | "WITHIN_30_DAYS" | "OUTSIDE_STANDARD_WINDOW" | "RESTOCKING_FEE_APPLIES" | "STOCK_CLASS_FROM_CONFIGURATION" | "CONDITION_FACTS_NOT_EVALUATED" | "FAIL_SAFE_REVIEW";
+        /** PreviewPage */
+        PreviewPage: {
+            /** Columns */
+            columns: string[];
+            /** Page */
+            page: number;
+            /** Pagesize */
+            pageSize: number;
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+            /** Total */
+            total?: number | null;
+        };
         /**
          * PrincipalView
          * @description Typed so it lands in the OpenAPI snapshot the frontend generates from.
@@ -6614,8 +7240,6 @@ export interface components {
         };
         /** RebindRequest */
         RebindRequest: {
-            /** Connectionref */
-            connectionRef: string;
             /** Connectortype */
             connectorType: string;
             /** Incrementalcursorfield */
@@ -6626,6 +7250,19 @@ export interface components {
             };
             /** Sourceassetid */
             sourceAssetId: string;
+        };
+        /** RecommendationDecision */
+        RecommendationDecision: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "APPLY" | "REJECT";
+        };
+        /** RecommendationResult */
+        RecommendationResult: {
+            proposedSchema: components["schemas"]["AnalyzerGraphSchema"] | null;
+            recommendation: components["schemas"]["AgentRecommendation"];
         };
         /**
          * RecoveryAction
@@ -7734,6 +8371,21 @@ export interface components {
             /** Element */
             element: string;
         };
+        /** SchemaValidation */
+        SchemaValidation: {
+            /**
+             * Checkedat
+             * Format: date-time
+             */
+            checkedAt: string;
+            /** Issues */
+            issues: components["schemas"]["ValidationIssue"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "VALID" | "WARNING" | "BLOCKING";
+        };
         /** SeedApplyRequest */
         SeedApplyRequest: {
             /** Recordlimit */
@@ -8420,8 +9072,6 @@ export interface components {
         };
         /** SourceBindingView */
         SourceBindingView: {
-            /** Connectionref */
-            connectionRef: string;
             /** Connectortype */
             connectorType: string;
             /** Dataset */
@@ -8465,6 +9115,39 @@ export interface components {
             /** Ownership */
             ownership: string;
         };
+        /** SourceField */
+        SourceField: {
+            /** Datatype */
+            dataType: string;
+            /** Identifier */
+            identifier: boolean;
+            /** Indexed */
+            indexed: boolean;
+            /** Name */
+            name: string;
+            /** Nullable */
+            nullable: boolean;
+        };
+        /** SourceInput */
+        SourceInput: {
+            /** Database */
+            database: string;
+            /**
+             * Engine
+             * @enum {string}
+             */
+            engine: "MONGODB" | "POSTGRESQL" | "SQLSERVER" | "NEO4J";
+            /** Host */
+            host: string;
+            /** Name */
+            name: string;
+            /** Password */
+            password?: string | null;
+            /** Port */
+            port: number;
+            /** Username */
+            username: string;
+        };
         /** SourceItem */
         SourceItem: {
             /** Capability */
@@ -8483,6 +9166,28 @@ export interface components {
             name: string;
             /** Ownership */
             ownership: string;
+        };
+        /** SourceObject */
+        SourceObject: {
+            /** Children */
+            children?: components["schemas"]["SourceObject"][];
+            /** Estimatedrows */
+            estimatedRows?: number | null;
+            /** Fields */
+            fields?: components["schemas"]["SourceField"][] | null;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "database" | "schema" | "table" | "collection" | "entity" | "relationship" | "field";
+            /** Name */
+            name: string;
+            /** Path */
+            path: string[];
+            /** Selectable */
+            selectable: boolean;
         };
         /**
          * SourceWatermarkView
@@ -8761,6 +9466,58 @@ export interface components {
          * @enum {string}
          */
         SyncMode: "FULL" | "INCREMENTAL" | "ON_DEMAND";
+        /** SyncRequest */
+        SyncRequest: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "FULL" | "PARTIAL";
+            /** Scope */
+            scope: string[];
+        };
+        /** SyncRun */
+        SyncRun: {
+            /** Completedat */
+            completedAt: string | null;
+            /** Currentactivity */
+            currentActivity: string;
+            /** Currentobject */
+            currentObject: string | null;
+            /** Currentsource */
+            currentSource: string | null;
+            /** Error */
+            error: string | null;
+            /** Faileditems */
+            failedItems: number;
+            /** Id */
+            id: string;
+            /** Itemsprocessed */
+            itemsProcessed: number;
+            /** Itemsread */
+            itemsRead: number;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "FULL" | "PARTIAL";
+            /** Nodeswritten */
+            nodesWritten: number;
+            /** Relationshipswritten */
+            relationshipsWritten: number;
+            /** Scope */
+            scope: string[];
+            /**
+             * Startedat
+             * Format: date-time
+             */
+            startedAt: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "PREPARING" | "RUNNING" | "COMPLETED" | "PARTIALLY_COMPLETED" | "FAILED" | "CANCELLED";
+        };
         /**
          * SyncRunRequester
          * @description The agent turn a targeted run was performed for. Absent on a scheduled run.
@@ -8845,6 +9602,22 @@ export interface components {
             /** Message */
             message: string;
             severity: components["schemas"]["Severity"];
+        };
+        /** ValidationIssue */
+        ValidationIssue: {
+            /** Code */
+            code: string;
+            /** Id */
+            id: string;
+            /** Message */
+            message: string;
+            /** Objectid */
+            objectId: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "WARNING" | "BLOCKING";
         };
         /** ValidationResultView */
         ValidationResultView: {
@@ -9919,6 +10692,583 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_InventoryDetail_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_agent_api_graph_analyzer_v1_agent_messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AgentReply_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_recommendation_api_graph_analyzer_v1_agent_recommendations__recommendation_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recommendation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecommendationDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_RecommendationResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_analysis_api_graph_analyzer_v1_analyses_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnalysisRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AnalysisRun_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_analysis_api_graph_analyzer_v1_analyses__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AnalysisRun_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bootstrap_api_graph_analyzer_v1_bootstrap_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AnalyzerBootstrap_"];
+                };
+            };
+        };
+    };
+    get_schemas_api_graph_analyzer_v1_schemas_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Union_AnalyzerGraphSchema__NoneType___"];
+                };
+            };
+        };
+    };
+    update_entity_api_graph_analyzer_v1_schemas_proposed_entities__entity_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GraphEntity"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AnalyzerGraphSchema_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finalize_schema_api_graph_analyzer_v1_schemas_proposed_finalize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AnalyzerGraphSchema_"];
+                };
+            };
+        };
+    };
+    update_relationship_api_graph_analyzer_v1_schemas_proposed_relationships__relationship_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                relationship_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GraphRelationship"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AnalyzerGraphSchema_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_schema_api_graph_analyzer_v1_schemas_proposed_validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_SchemaValidation_"];
+                };
+            };
+        };
+    };
+    create_source_api_graph_analyzer_v1_sources_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AnalyzerSource_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_source_api_graph_analyzer_v1_sources_test_post: {
+        parameters: {
+            query?: {
+                sourceId?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__str__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_source_api_graph_analyzer_v1_sources__source_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AnalyzerSource_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_source_api_graph_analyzer_v1_sources__source_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_NoneType_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_source_api_graph_analyzer_v1_sources__source_id__metadata_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AnalyzerSource_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_source_api_graph_analyzer_v1_sources__source_id__preview_get: {
+        parameters: {
+            query: {
+                objectId: string;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_PreviewPage_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_source_api_graph_analyzer_v1_sources__source_id__validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AnalyzerSource_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_sync_api_graph_analyzer_v1_sync_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_SyncRun_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_sync_run_api_graph_analyzer_v1_sync_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_SyncRun_"];
                 };
             };
             /** @description Validation Error */

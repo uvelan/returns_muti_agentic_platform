@@ -63,10 +63,4 @@ EOF
 
 python3.13 "$LINUX_SCRIPT_DIR/validate_env.py" "$REPO_ROOT/.env" --simulation
 
-# Advisory, not a gate: phase 06 starts Vault, and on a first run there is
-# nothing to report yet. But on a *re-run* against an already-running stack this
-# single line is the difference between "the platform is broken" and "the Vault
-# container restarted". Never fails the phase.
-printf 'vault: %s\n' "$(vault_seal_state)"
-
 printf 'Linux prerequisites, Docker daemon, and safe simulation configuration validated.\n'

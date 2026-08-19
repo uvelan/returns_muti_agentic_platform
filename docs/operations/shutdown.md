@@ -35,8 +35,7 @@ require a separate shutdown.
 ./scripts/infra.sh stop
 ```
 
-Stops the containers and **preserves the volumes**. Data survives. Vault stays
-initialized.
+Stops the containers and **preserves the volumes**. Data survives.
 
 For containerized mode:
 
@@ -111,8 +110,7 @@ and shutting down leaves that caller waiting until `interception_resume` restart
 ./scripts/run_all_host.sh
 ```
 
-Reuses the active graph release and its Vault references. Does not rerun live AI
-validation.
+Reuses the active graph release. Does not rerun live AI validation.
 
 `scripts/linux/15_restart_and_replay.sh` exercises restart and replay behaviour as
 a validation step.

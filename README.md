@@ -1,7 +1,7 @@
 # Return Multi-Agent Platform
 
 Production return orchestration: an associate-facing Order Discovery copilot,
-runtime-configured behaviour held in a graph, Vault-managed credentials, durable
+runtime-configured behaviour held in a graph, environment-held credentials, durable
 workflow execution, and operational evidence tooling.
 
 **Current as of 2026-08-16, commit `2878be0`, branch
@@ -27,7 +27,7 @@ Where the two disagree, check the date stamps rather than assuming: `docs/` was
 generally revised after this file, but the operational sections below —
 [Running it](#running-it) and [When something is wrong](#when-something-is-wrong) —
 are newer than `docs/operations/`, which is still stamped at commit `dcbb7dc` and
-does not yet carry the Vault-seal, container-recreate or graph-truncation notes.
+does not yet carry the container-recreate or graph-truncation notes.
 
 ## The canonical flow, in nine lines
 
@@ -61,8 +61,8 @@ nine domain screens + landing
         │
    ┌────┼──────────┬─────────────┬────────┬────────┐
    ▼    ▼          ▼             ▼        ▼        ▼
-Platform   Neo4j     Temporal    Valkey   Vault
-MongoDB    config +  workflows/  streams  credentials
+Platform   Neo4j     Temporal    Valkey
+MongoDB    config +  workflows/  streams
 cases/     knowledge timers
 audit/     graph
 outbox        ▲
@@ -87,7 +87,6 @@ platform-owned SQL return tables
 | Neo4j | Runtime configuration control plane, and the customer/order/product knowledge graph | Controlled read/write |
 | Temporal | Workflow execution, retries, timers | Execution only |
 | Valkey | Event streams and non-secret runtime coordination | Read/write |
-| Vault | Database credentials, AI keys, tokens, certificates, validation fingerprint material | Path-scoped read/write |
 
 > **"Read-only" applies to source-system objects only.** The platform owns and writes
 > its own return tables in the same SQL Server. The two must not be conflated: the
@@ -128,7 +127,7 @@ backend/src/return_platform/
   dependency_simulation/  dev/test simulators (forbidden in production)
   graph_schema_analyzer/  host-composable schema proposal and approval
   housekeeping/           scheduled maintenance work
-  secrets/                Vault resolution
+  secrets/                optional Vault resolution
   security/               capabilities, roles, FastAPI dependencies
   source_connectors/      one read path per source technology
   validation/             runtime validation
@@ -295,21 +294,22 @@ Per-family classification, editability and rollback implications:
 
 ### Secrets
 
-Vault KV v2 is the exclusive runtime source for credential values. Neo4j stores only
-versioned references:
+**Credentials come from the process environment.** Every DSN, password and API key is
+read from `.env` (or whatever the deployment injects) straight into `Settings`. There
+is no resolver between the two, no secret store to start, and nothing to unseal.
 
-```text
-vault://secret/production/data-sources/sqlserver#password?version=3
-vault://secret/production/ai/google/key-01#api_key?version=2
-```
+Graph configuration holds no credential values. A `credential` block on a data source
+names a `profile_key` — an identity AI route bindings address — and nothing else.
 
-Compare-and-swap writes; sibling fields preserved on merge; staged writes rolled back
-without exposing the secret if receipt persistence fails. Credentials are fetched when
-creating or refreshing clients, not per business query.
+Secrets are still never serialized by application APIs, never logged, and never
+returned to a browser: `SecretStr` at the boundary, redaction before every provider
+call, and no request or response model with a field a credential could travel in.
 
-The local Vault bootstrap stores separate MongoDB references for host and container
-execution — host processes resolve loopback DSNs, containers resolve service DNS
-names. Entries marked `bootstrap_managed` cannot override these.
+**Vault is optional and off.** To put it back in front of these values, set
+`PLATFORM_VAULT_ENABLED=true` and give each credential a `*_SECRET_REFERENCE`
+holding a `vault://secret/production/<path>#<key>` URI; `secrets/` resolves them into
+memory at startup, before any client is created. Setting a reference *without*
+enabling Vault does nothing — the plain value beside it stays in force.
 
 ## AI
 
@@ -336,9 +336,8 @@ reported as `MANUAL`, never as the replaced provider. Cost for an unpriced model
 `UNKNOWN`, never zero.
 
 A key/model/task route is usable only after live validation produced a receipt bound
-to provider, model, task, secret fingerprint, Vault version and configuration
-checksum. Publication is refused while an active route lacks one. Raw keys are
-accepted only by the backend validation control plane.
+to provider, model, task, secret fingerprint and configuration checksum. Publication
+is refused while an active route lacks one.
 
 Details: [`docs/architecture/ai-dispatch.md`](docs/architecture/ai-dispatch.md),
 [`docs/optimization/model-routing.md`](docs/optimization/model-routing.md).
@@ -414,7 +413,7 @@ Full detail in [`docs/operations/startup.md`](docs/operations/startup.md).
 
 ### From nothing to a working platform
 
-Two commands. The second is the whole kit — it resets infrastructure, seeds Vault,
+Two commands. The second is the whole kit — it resets infrastructure,
 loads the reference dataset, starts every host process, **builds the knowledge
 graph**, and then verifies the result rather than assuming it.
 
@@ -499,7 +498,6 @@ Host processes must dial the **published** port, not the container's.
 | Temporal | 7233 | 7233 |
 | Temporal UI | 8080 | 8080 (`--profile dev-tools`) |
 | Valkey | 6379 | 6379 |
-| Vault | 8200 | 8200 |
 
 Neo4j is the one that bites: its host port is overridable because WinNAT can reserve
 7687, so a host process left pointing at 7687 reaches no listener and Order Discovery
@@ -512,38 +510,16 @@ Individual workers, containerized mode, redeploy and the reference dataset:
 
 Requirements: Python 3.13, Node 24, npm 11, Docker with Compose, `flock`, one of
 `ss`/`fuser`/`lsof`, and enough RAM for SQL Server, Neo4j, MongoDB, Temporal,
-PostgreSQL, Valkey and Vault at once. `scripts/linux/00_validate_prerequisites.sh`
+PostgreSQL and Valkey at once. `scripts/linux/00_validate_prerequisites.sh`
 checks all of it.
 
-Never commit `.env`, `.vault-local/`, generated tokens, unseal material, or
-credentials.
+Never commit `.env`, generated tokens, or credentials. `.env` **is** the credential
+store now, so treat it as one: `chmod 600`, and never paste it anywhere.
 
 ## When something is wrong
 
 [`docs/operations/troubleshooting.md`](docs/operations/troubleshooting.md) is the
-long form. These five cost real hours and each looks like something else.
-
-### Vault comes back SEALED after any restart
-
-**Symptom:** six workers crash-looping, `backend` unhealthy, every log naming the
-host `vault-resolved.invalid`. It reads as six independent bugs.
-
-It is one. `vault-resolved.invalid` is the **sentinel** `.env` carries in place of
-the real DSN; Vault is supposed to replace it at startup. A sealed Vault replaces
-nothing, so the literal string becomes the hostname. Nothing auto-unseals, and
-Vault's healthcheck passes while sealed — deliberately, because a sealed Vault is a
-live server — so `docker compose ps` says everything is fine.
-
-```bash
-./scripts/infra.sh status     # prints the seal state on its own line
-./scripts/infra.sh unseal     # unseals from .vault-local/init.json, then reseeds
-```
-
-The unseal key is `keys_base64[0]` in `.vault-local/init.json`. Lose that file with
-Vault sealed and the data is unrecoverable.
-
-Anything that started while Vault was sealed must be restarted afterwards; it
-resolved its credentials once, at startup.
+long form. These three cost real hours and each looks like something else.
 
 ### `docker compose up -d` does not recreate on a new image
 
@@ -584,15 +560,6 @@ and MongoDB compares only *within* BSON type brackets — so a timestamp written
 `build_knowledge_graph.py` refuses to report success when a `COMPLETED` run wrote no
 nodes or relationships, which is the only thing standing between this and a
 convincingly empty platform.
-
-### Host processes hang in `Waiting for application startup`
-
-A `vault://` reference with no resolver behind it. Running a host process with
-`PLATFORM_VAULT_ENABLED=false` means **also clearing every `*_SECRET_REFERENCE`
-variable** and replacing the seven `vault-resolved` sentinels with real values.
-A reference left behind looks configured and resolves to nothing, and startup waits
-forever rather than failing. `compose.novault.yaml` does exactly this for the
-containerized profile.
 
 ## Quality gates
 
@@ -670,8 +637,6 @@ first one wrong silently tests the wrong tree — see
 | Model removed or inaccessible | Next validated model/provider route |
 | Neo4j discovery unavailable | Approved source fallback where policy and evidence permit |
 | Weak fuzzy result | Never triggers graph synchronization unless explicitly enabled |
-| Vault unavailable **with** initialized pools | Continue bounded use of established clients |
-| Vault unavailable **before** client creation | Fail that dependency initialization. **Never** fall back to `.env` |
 | Configuration checksum mismatch | Refuse startup or activation |
 | Stale configuration head revision | Configuration revision conflict |
 | Stale candidate card | Reject on candidate-set id, expiry, and conversation version |
@@ -692,7 +657,6 @@ first one wrong silently tests the wrong tree — see
   bypass confirmation.
 - Source MongoDB and source SQL Server objects remain read-only.
 - User-configured endpoints are allowlisted; metadata IPs are blocked.
-- Vault writes use compare-and-swap versioning.
 - Published graph releases are immutable and checksum-verified.
 - All administrative actions are audited.
 - The frontend never receives a secret value.

@@ -180,9 +180,9 @@ function bootstrap(): AnalyzerBootstrap {
 const ok = <T,>(data: T) => HttpResponse.json({ data, meta: { requestId: "mock-analyzer" } });
 
 export const analyzerHandlers = [
-  http.get("/graph-analyzer/v1/bootstrap", () => ok(bootstrap())),
-  http.get("/graph-analyzer/v1/schemas", () => ok({ existing: existingSchema, proposed: proposedSchema })),
-  http.get("/graph-analyzer/v1/sources/:sourceId/preview", () => ok({
+  http.get("/api/graph-analyzer/v1/bootstrap", () => ok(bootstrap())),
+  http.get("/api/graph-analyzer/v1/schemas", () => ok({ existing: existingSchema, proposed: proposedSchema })),
+  http.get("/api/graph-analyzer/v1/sources/:sourceId/preview", () => ok({
     columns: ["orderId", "customerId", "status", "total"],
     rows: [
       { orderId: "ORD-10482", customerId: "CUS-901", status: "SHIPPED", total: 184.6 },
@@ -192,8 +192,8 @@ export const analyzerHandlers = [
     pageSize: 25,
     total: 18420,
   })),
-  http.post("/graph-analyzer/v1/sources/test", () => ok({ status: "CONNECTED", message: "Read-only connection validated." })),
-  http.post("/graph-analyzer/v1/sources", async ({ request }) => {
+  http.post("/api/graph-analyzer/v1/sources/test", () => ok({ status: "CONNECTED", message: "Read-only connection validated." })),
+  http.post("/api/graph-analyzer/v1/sources", async ({ request }) => {
     const input = await request.json() as Record<string, unknown>;
     const created: AnalyzerSource = {
       id: `source-${String(sources.length + 1)}`,
@@ -210,45 +210,45 @@ export const analyzerHandlers = [
     sources = [...sources, created];
     return ok(created);
   }),
-  http.put("/graph-analyzer/v1/sources/:sourceId", async ({ params, request }) => {
+  http.put("/api/graph-analyzer/v1/sources/:sourceId", async ({ params, request }) => {
     const input = await request.json() as Record<string, unknown>;
     const current = sources.find((source) => source.id === params.sourceId) ?? sources[0];
     const updated = { ...current, name: String(input.name ?? current.name), host: String(input.host ?? current.host), database: String(input.database ?? current.database) };
     sources = sources.map((source) => source.id === updated.id ? updated : source);
     return ok(updated);
   }),
-  http.delete("/graph-analyzer/v1/sources/:sourceId", ({ params }) => {
+  http.delete("/api/graph-analyzer/v1/sources/:sourceId", ({ params }) => {
     sources = sources.filter((source) => source.id !== params.sourceId);
     return new HttpResponse(null, { status: 204 });
   }),
-  http.post("/graph-analyzer/v1/sources/:sourceId/validate", ({ params }) => {
+  http.post("/api/graph-analyzer/v1/sources/:sourceId/validate", ({ params }) => {
     const current = sources.find((source) => source.id === params.sourceId) ?? sources[0];
     const updated = { ...current, status: "CONNECTED" as const, lastValidatedAt: new Date().toISOString() };
     sources = sources.map((source) => source.id === updated.id ? updated : source);
     return ok(updated);
   }),
-  http.post("/graph-analyzer/v1/sources/:sourceId/metadata", ({ params }) => ok(sources.find((source) => source.id === params.sourceId) ?? sources[0])),
-  http.post("/graph-analyzer/v1/analyses", async ({ request }) => {
+  http.post("/api/graph-analyzer/v1/sources/:sourceId/metadata", ({ params }) => ok(sources.find((source) => source.id === params.sourceId) ?? sources[0])),
+  http.post("/api/graph-analyzer/v1/analyses", async ({ request }) => {
     const input = await request.json() as { selectedObjectIds?: string[] };
     return ok({ id: "analysis-32", status: "COMPLETED", stage: "COMPLETE", selectedObjectIds: input.selectedObjectIds ?? [], startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), warningCount: 0 });
   }),
-  http.get("/graph-analyzer/v1/analyses/:runId", ({ params }) => ok({ id: params.runId, status: "COMPLETED", stage: "COMPLETE", selectedObjectIds: [], startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), warningCount: 0 })),
-  http.put("/graph-analyzer/v1/schemas/proposed/entities/:entityId", async ({ request }) => {
+  http.get("/api/graph-analyzer/v1/analyses/:runId", ({ params }) => ok({ id: params.runId, status: "COMPLETED", stage: "COMPLETE", selectedObjectIds: [], startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), warningCount: 0 })),
+  http.put("/api/graph-analyzer/v1/schemas/proposed/entities/:entityId", async ({ request }) => {
     const updated = await request.json() as GraphSchema["entities"][number];
     proposedSchema = { ...proposedSchema, version: proposedSchema.version + 1, entities: proposedSchema.entities.map((item) => item.id === updated.id ? updated : item) };
     return ok(proposedSchema);
   }),
-  http.put("/graph-analyzer/v1/schemas/proposed/relationships/:relationshipId", async ({ request }) => {
+  http.put("/api/graph-analyzer/v1/schemas/proposed/relationships/:relationshipId", async ({ request }) => {
     const updated = await request.json() as GraphSchema["relationships"][number];
     proposedSchema = { ...proposedSchema, version: proposedSchema.version + 1, relationships: proposedSchema.relationships.map((item) => item.id === updated.id ? updated : item) };
     return ok(proposedSchema);
   }),
-  http.post("/graph-analyzer/v1/schemas/proposed/validate", () => ok({ status: "VALID", checkedAt: new Date().toISOString(), issues: [] })),
-  http.post("/graph-analyzer/v1/schemas/proposed/finalize", () => {
+  http.post("/api/graph-analyzer/v1/schemas/proposed/validate", () => ok({ status: "VALID", checkedAt: new Date().toISOString(), issues: [] })),
+  http.post("/api/graph-analyzer/v1/schemas/proposed/finalize", () => {
     proposedSchema = { ...proposedSchema, status: "FINALIZED", version: proposedSchema.version + 1 };
     return ok(proposedSchema);
   }),
-  http.post("/graph-analyzer/v1/agent/messages", async ({ request }) => {
+  http.post("/api/graph-analyzer/v1/agent/messages", async ({ request }) => {
     const input = await request.json() as { message?: string };
     const recommendation: AgentRecommendation | null = input.message?.toLowerCase().includes("index") ? {
       id: "recommendation-8",
@@ -260,16 +260,16 @@ export const analyzerHandlers = [
     } : null;
     return ok({ message: { id: crypto.randomUUID(), role: "AGENT", content: recommendation?.rationale ?? "The proposal is grounded in the selected read-only source metadata.", createdAt: new Date().toISOString() }, recommendation });
   }),
-  http.post("/graph-analyzer/v1/agent/recommendations/:recommendationId", async ({ request }) => {
+  http.post("/api/graph-analyzer/v1/agent/recommendations/:recommendationId", async ({ request }) => {
     const input = await request.json() as { decision?: "APPLY" | "REJECT" };
     const recommendation: AgentRecommendation = { id: "recommendation-8", summary: "Index Order.customerId in the system graph", rationale: "Reviewed by the operator.", target: "SYSTEM_GRAPH", status: input.decision === "APPLY" ? "APPLIED" : "REJECTED", operations: [] };
     return ok({ recommendation, proposedSchema });
   }),
-  http.post("/graph-analyzer/v1/sync/runs", async ({ request }) => {
+  http.post("/api/graph-analyzer/v1/sync/runs", async ({ request }) => {
     const input = await request.json() as { mode?: "FULL" | "PARTIAL"; scope?: string[] };
     const run: SyncRun = { id: `sync-${String(105 + syncHistory.length)}`, mode: input.mode ?? "FULL", status: "COMPLETED", scope: input.scope ?? [], currentSource: null, currentObject: null, currentActivity: "Completed", itemsRead: 920, itemsProcessed: 920, nodesWritten: 908, relationshipsWritten: 861, failedItems: 0, startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), error: null };
     syncHistory = [run, ...syncHistory];
     return ok(run);
   }),
-  http.get("/graph-analyzer/v1/sync/runs/:runId", ({ params }) => ok(syncHistory.find((run) => run.id === params.runId) ?? syncHistory[0])),
+  http.get("/api/graph-analyzer/v1/sync/runs/:runId", ({ params }) => ok(syncHistory.find((run) => run.id === params.runId) ?? syncHistory[0])),
 ];

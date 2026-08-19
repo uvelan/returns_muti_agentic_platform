@@ -227,7 +227,6 @@ def _source(
     return {
         "source_asset_id": source_asset_id,
         "connector_type": connector_type,
-        "connection_ref": f"vault://return-platform/sources#{source_asset_id}",
         "object_ref": object_ref,
         "incremental_cursor_field": incremental_cursor_field,
     }

@@ -44,7 +44,7 @@ class DirectMongoDbAdapter:
         return CompensationCapability.DELETE
 
     async def is_ready(self) -> bool:
-        if not os.environ.get("VAULT_DIRECT_OPERATIONAL_CREDENTIALS"):
+        if not os.environ.get("PLATFORM_DIRECT_OPERATIONAL_CREDENTIALS"):
             return False
         return True
 

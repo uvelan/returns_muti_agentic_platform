@@ -28,7 +28,6 @@ export type SourceBinding = {
   dataset: string;
   sourceAssetId: string;
   connectorType: string;
-  connectionRef: string;
   objectRef: Record<string, string>;
   incrementalCursorField: string | null;
   /** Deliberately changed, rather than what the configured schema says. */
@@ -38,7 +37,6 @@ export type SourceBinding = {
 export type RebindInput = {
   sourceAssetId: string;
   connectorType: string;
-  connectionRef: string;
   objectRef: Record<string, string>;
   incrementalCursorField?: string | null;
 };

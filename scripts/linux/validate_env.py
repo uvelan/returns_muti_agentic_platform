@@ -29,17 +29,32 @@ REQUIRED_SIMULATION_VALUES = {
     "PLATFORM_FREIGHT_DEPENDENCY_MODE": "SIMULATED",
     "PLATFORM_LSI_DEPENDENCY_MODE": "SIMULATED",
 }
-REQUIRED_VAULT_VALUES = {
-    "PLATFORM_VAULT_ENABLED": "true",
-}
-REQUIRED_VAULT_REFERENCES = (
-    "PLATFORM_MONGO_DSN_SECRET_REFERENCE",
-    "PLATFORM_SOURCE_MONGO_DSN_SECRET_REFERENCE",
-    "PLATFORM_NEO4J_PASSWORD_SECRET_REFERENCE",
-    "PLATFORM_VALKEY_PASSWORD_SECRET_REFERENCE",
-    "PLATFORM_SQLSERVER_PASSWORD_SECRET_REFERENCE",
-    "PLATFORM_VALIDATION_FINGERPRINT_KEY_SECRET_REFERENCE",
-    "PLATFORM_CONTACT_LOOKUP_HMAC_KEY_SECRET_REFERENCE",
+#: Credentials the platform authenticates with, read straight from `.env`.
+#:
+#: This list used to be the seven `*_SECRET_REFERENCE` variables, and the check
+#: was that each one held a `vault://` URI. That was the right check while a
+#: resolver replaced these values at startup. Nothing does now, so the useful
+#: check inverted: each of these must hold a *real* value, because whatever is
+#: written here IS the credential.
+REQUIRED_PLATFORM_CREDENTIALS = (
+    "PLATFORM_MONGO_DSN",
+    "PLATFORM_SOURCE_MONGO_DSN",
+    "PLATFORM_NEO4J_PASSWORD",
+    "PLATFORM_VALKEY_PASSWORD",
+    "PLATFORM_SQLSERVER_PASSWORD",
+    "PLATFORM_VALIDATION_FINGERPRINT_KEY",
+    "PLATFORM_CONTACT_LOOKUP_HMAC_KEY",
+)
+#: Values that mean "nobody replaced this". `vault-resolved` and
+#: `vault-resolved.invalid` are here because a `.env` written before Vault was
+#: removed still carries them, and they would otherwise be accepted silently as
+#: the literal password.
+CREDENTIAL_PLACEHOLDERS = (
+    "vault-resolved",
+    "placeholder",
+    "change-me",
+    "changeme",
+    "replace-me",
 )
 TEMPLATE_JSON_LISTS = (
     "PLATFORM_AI_ALLOWED_ENDPOINT_HOSTS",
@@ -210,16 +225,25 @@ def validate(path: Path, *, simulation: bool, template_mode: bool = False) -> in
             if observed is None or observed.value != expected:
                 raise ValueError(f"{name} must equal {expected}")
 
-    for name, expected in REQUIRED_VAULT_VALUES.items():
-        observed = values.get(name)
-        if observed is None or observed.value.lower() != expected:
-            raise ValueError(f"{name} must equal {expected}")
-    for name in REQUIRED_VAULT_REFERENCES:
+    for name in REQUIRED_PLATFORM_CREDENTIALS:
         observed = values.get(name)
         if observed is None:
             raise ValueError(f"{name} is missing")
-        if not observed.value.startswith("vault://"):
-            raise ValueError(f"{name} must be a Vault reference")
+        candidate = observed.value.strip().strip("'\"")
+        if not candidate:
+            raise ValueError(f"{name} is empty")
+        # `.env.example` is *supposed* to ship placeholders -- that is what makes
+        # it a template. Requiring the variable to be present still applies, so a
+        # credential dropped from the template is caught here rather than at the
+        # next contributor's first run.
+        if template_mode:
+            continue
+        lowered = candidate.lower()
+        if any(marker in lowered for marker in CREDENTIAL_PLACEHOLDERS):
+            raise ValueError(
+                f"{name} still holds a placeholder. Nothing resolves it at startup, "
+                "so this value is the credential itself."
+            )
 
     infrastructure_secrets = (
         "MSSQL_SA_PASSWORD",

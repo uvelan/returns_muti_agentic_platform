@@ -28,7 +28,7 @@ And its corollary:
 ### Immutable process snapshot
 
 At startup, each process loads the active `ConfigurationHead` release, verifies its
-checksum, validates the complete configuration model, resolves graph-declared Vault
+checksum, validates the complete configuration model, resolves graph-declared
 references, and builds an **immutable snapshot**.
 
 Business requests read the snapshot. They do not traverse the configuration graph.
@@ -136,7 +136,7 @@ having adopted a graph release.
 |---|---|
 | Process configuration snapshot | Head-revision change → validate → atomic epoch swap |
 | AI route pool | Rebuilt at the **same** activation boundary |
-| Resolved Vault references | On client creation or refresh, not per query |
+| Credentials read from the environment | On client creation or refresh, not per query |
 | Case/conversation pinned snapshot | Never — pinning is the point |
 | Adoption records | TTL-expiring, `expiresAt = reported_at + 3 × report interval` |
 
@@ -168,8 +168,7 @@ would leave half the process talking to each.
 | Graph unreachable at reconcile | Keep the current snapshot and retry |
 | Graph unreachable at startup | Fail startup — there is no last-good snapshot to keep |
 | No active release | `NO_ACTIVE_RELEASE`; run `scripts/prepare_runtime_configuration.sh` |
-| Vault unavailable before client creation | Fail that dependency. **Never** fall back to `.env` credentials |
-| Vault unavailable with pools initialized | Continue bounded use of established clients |
+| A required credential is missing or empty | Fail that dependency rather than connecting anonymously |
 | `AI_GATEWAY`/`DEPENDENCY_SIMULATION` missing (prod/staging) | Fail closed |
 
 Note the startup/runtime asymmetry: at runtime a last-good snapshot exists and is

@@ -29,7 +29,6 @@ def _elsewhere(source_asset_id: str = "restored_orders") -> SourceAssetDefinitio
     return SourceAssetDefinition(
         source_asset_id=source_asset_id,
         connector_type="MONGODB",
-        connection_ref="vault://data-sources/restored-mongodb",
         object_ref={"database": "restore_2026", "name": "salesInv"},
     )
 
@@ -78,7 +77,7 @@ def test_an_override_wins_over_configuration(baseline: ActiveSchema) -> None:
 
     assert resolved is not None
     assert resolved.source_asset_id == "restored_orders"
-    assert resolved.connection_ref == "vault://data-sources/restored-mongodb"
+    assert resolved.object_ref == {"database": "restore_2026", "name": "salesInv"}
 
 
 def test_a_binding_can_name_a_dataset_configuration_has_never_heard_of(

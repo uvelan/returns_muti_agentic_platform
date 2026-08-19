@@ -1,6 +1,5 @@
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-. (Join-Path $Root "scripts\vault\export_runtime_vault_env.ps1")
 Push-Location (Join-Path $Root "backend")
 try {
   $env:PYTHONPATH = (Join-Path $Root "backend\src")

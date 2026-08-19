@@ -396,7 +396,6 @@ describe("source bindings", () => {
     dataset: "source_sales",
     sourceAssetId: "source_sales",
     connectorType: "MONGODB",
-    connectionRef: "vault://data-sources/source-mongodb",
     objectRef: { database: "return_source", name: "salesInv" },
     incrementalCursorField: "source_updated_at",
     overridden: false,
@@ -418,7 +417,10 @@ describe("source bindings", () => {
   async function openSources() {
     await openAnalysis();
     fireEvent.click(screen.getByRole("tab", { name: "Sources" }));
-    await screen.findByText("source_sales");
+    // `findAllByText`: this dataset and the asset it resolves to share an id,
+    // which is ordinary -- the packaged schema names several that way -- so the
+    // row legitimately renders the same string twice.
+    await screen.findAllByText("source_sales");
   }
 
   it("says a change lands at the next publish, not now", async () => {
@@ -437,22 +439,21 @@ describe("source bindings", () => {
     expect(screen.queryByRole("button", { name: /Follow configuration/ })).toBeNull();
   });
 
-  it("moves only the connection, keeping what the dataset points at", async () => {
+  it("moves only which asset answers, keeping what the dataset points at", async () => {
     await openSources();
     fireEvent.click(screen.getByRole("button", { name: "Rebind" }));
-    fireEvent.change(screen.getByLabelText("Connection for source_sales"), {
-      target: { value: "vault://data-sources/restored" },
+    fireEvent.change(screen.getByLabelText("Source asset for source_sales"), {
+      target: { value: "restored_sales" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Rebind" }));
 
     await waitFor(() => { expect(mocks.rebind).toHaveBeenCalledTimes(1); });
     expect(mocks.rebind).toHaveBeenCalledWith("source_sales", {
-      sourceAssetId: "source_sales",
+      sourceAssetId: "restored_sales",
       connectorType: "MONGODB",
       // Unchanged: pointing at a different object is pointing at different
       // data, which belongs with a schema change.
       objectRef: { database: "return_source", name: "salesInv" },
-      connectionRef: "vault://data-sources/restored",
       incrementalCursorField: "source_updated_at",
     });
   });

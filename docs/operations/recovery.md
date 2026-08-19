@@ -141,7 +141,8 @@ property that makes the evidence safe to store, and it is also why rotation is
 expensive.
 
 Existing evidence **cannot be recomputed in place**. Rebuild the customer projection
-using the current Vault key, validate graph freshness, and only then re-enable
+using the current `PLATFORM_CONTACT_LOOKUP_HMAC_KEY`, validate graph freshness,
+and only then re-enable
 contact-based lookup.
 
 ### A partially populated candidate generation after an interrupted cutover

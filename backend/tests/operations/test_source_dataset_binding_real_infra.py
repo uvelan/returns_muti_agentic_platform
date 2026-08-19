@@ -302,7 +302,6 @@ async def test_a_stored_rebinding_moves_the_read_without_editing_the_schema(
             asset=SourceAssetDefinition(
                 source_asset_id=SOURCE_SALES_DATASET,
                 connector_type="MONGODB",
-                connection_ref="vault://data-sources/source-mongodb",
                 object_ref={"database": shipped.source_database, "name": restored},
                 incremental_cursor_field="source_updated_at",
             ),

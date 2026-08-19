@@ -49,7 +49,7 @@ class AesGcmEnvelopeEncryptor:
     keys per tenant/rotation, remote unwrap) is a separate, larger concern than a
     reasoning checkpointer needs to unblock. This is still genuine encryption (AEAD,
     unique nonce per message, authenticated) backed by a key resolved once at process
-    startup (see `secrets/runtime.py`'s Vault-backed settings resolution) and held only
+    startup (from the process environment, see `configuration/settings.py`) and held only
     in memory -- never persisted alongside the ciphertext it protects.
     """
 

@@ -6,7 +6,7 @@
  * risking a multi-megabyte string pinned in the DOM, and says when it has.
  *
  * It renders whatever the server sent and masks nothing: `redact_secret_values`
- * already scrubbed resolved secrets server-side, and `vault://` references are
+ * already scrubbed secrets server-side, and non-secret references are
  * intentionally left legible so an operator can see which secret a binding
  * points at. Re-masking here would hide that on purpose-built data and imply a
  * boundary the browser does not provide.

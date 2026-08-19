@@ -111,7 +111,6 @@ BAY_SOURCE = SourceAssetDefinition(
     # is constructed against in `build_targeted_graph_access`. `namespace` is
     # load-bearing rather than documentation: `_resolve` reads both halves and
     # refuses a SQL source that gives only one.
-    connection_ref="vault://data-sources/platform-sqlserver",
     object_ref={"namespace": "platform", "name": "bay_configuration"},
     incremental_cursor_field=CURSOR_COLUMN,
 )

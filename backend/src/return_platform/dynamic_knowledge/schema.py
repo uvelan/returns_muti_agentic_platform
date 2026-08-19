@@ -255,13 +255,29 @@ class ContactDigestKind(StrEnum):
     EMAIL = "EMAIL"
 
 
+#: A key reference names *where* a secret lives; it never holds one.
+#:
+#: `vault://` was the only accepted spelling while Vault was mandatory. It is not
+#: any more -- the platform reads its keys from the process environment -- so
+#: `env://` is accepted beside it. The invariant is unchanged and is the whole
+#: point of the check: configuration may name a key, never carry one.
+#:
+#: Neither scheme is dereferenced here. The caller resolves the reference once
+#: per sync run and hands the extractor a mapping keyed by this exact string.
+SECRET_REFERENCE_SCHEMES = ("vault://", "env://")
+
+
+def _is_secret_reference(value: str | None) -> bool:
+    return value is not None and value.startswith(SECRET_REFERENCE_SCHEMES)
+
+
 class FieldDerivation(BaseModel):
     """Compute a field's value from other already-extracted fields, never from a raw source path.
 
     CONTACT_LOOKUP_DIGEST never carries the HMAC secret itself -- only a
-    vault:// key_reference, resolved once per sync run by the caller and
-    supplied to the extractor as an already-resolved value, the same
-    never-log-the-secret posture as KeyResolution's DETERMINISTIC_HMAC.
+    key_reference (see `SECRET_REFERENCE_SCHEMES`), resolved once per sync run by
+    the caller and supplied to the extractor as an already-resolved value, the
+    same never-log-the-secret posture as KeyResolution's DETERMINISTIC_HMAC.
 
     SPLIT_PART and CONTACT_LOOKUP_DIGEST take one source_field; COALESCE takes
     an ordered list of candidate fields and resolves to the first non-null one
@@ -297,9 +313,10 @@ class FieldDerivation(BaseModel):
         else:
             if self.contact_kind is None:
                 raise ValueError("CONTACT_LOOKUP_DIGEST derive requires contact_kind")
-            if not self.key_reference or not self.key_reference.startswith("vault://"):
+            if not _is_secret_reference(self.key_reference):
                 raise ValueError(
-                    "CONTACT_LOOKUP_DIGEST derive requires a vault:// key_reference; "
+                    "CONTACT_LOOKUP_DIGEST derive requires a key_reference using one of "
+                    f"{', '.join(SECRET_REFERENCE_SCHEMES)}; "
                     "the HMAC secret itself must never appear in configuration"
                 )
             if self.key_version is None:
@@ -393,9 +410,10 @@ class KeyResolution(BaseModel):
         else:
             if not self.fields:
                 raise ValueError("DETERMINISTIC_HMAC key_resolution requires at least one field")
-            if not self.key_reference or not self.key_reference.startswith("vault://"):
+            if not _is_secret_reference(self.key_reference):
                 raise ValueError(
-                    "DETERMINISTIC_HMAC key_resolution requires a vault:// key_reference; "
+                    "DETERMINISTIC_HMAC key_resolution requires a key_reference using one "
+                    f"of {', '.join(SECRET_REFERENCE_SCHEMES)}; "
                     "the HMAC secret itself must never appear in configuration"
                 )
             if self.key_version is None:
@@ -571,7 +589,6 @@ class SourceAssetDefinition(BaseModel):
 
     source_asset_id: Identifier
     connector_type: ConnectorType
-    connection_ref: str
     object_ref: dict[str, str]
     incremental_cursor_field: Identifier | None = None
 

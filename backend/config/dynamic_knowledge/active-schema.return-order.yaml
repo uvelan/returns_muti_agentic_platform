@@ -11,7 +11,6 @@ sources:
   source_sales:
     source_asset_id: source_sales
     connector_type: MONGODB
-    connection_ref: vault://data-sources/source-mongodb
     object_ref:
       database: return_source
       name: salesInv
@@ -19,7 +18,6 @@ sources:
   source_customers:
     source_asset_id: source_customers
     connector_type: MONGODB
-    connection_ref: vault://data-sources/source-mongodb
     object_ref:
       database: return_source
       name: customerOutboundCDM
@@ -27,7 +25,6 @@ sources:
   source_products:
     source_asset_id: source_products
     connector_type: MONGODB
-    connection_ref: vault://data-sources/source-mongodb
     object_ref:
       database: return_source
       name: lkpSearchProduct
@@ -35,7 +32,6 @@ sources:
   source_shipments:
     source_asset_id: source_shipments
     connector_type: MONGODB
-    connection_ref: vault://data-sources/source-mongodb
     object_ref:
       database: return_source
       name: shipmentInfo
@@ -57,7 +53,6 @@ sources:
   source_return_cases:
     source_asset_id: source_return_cases
     connector_type: MONGODB
-    connection_ref: vault://data-sources/platform-mongodb
     object_ref:
       database: return_platform
       name: cases
@@ -65,7 +60,6 @@ sources:
   source_return_records:
     source_asset_id: source_return_records
     connector_type: MONGODB
-    connection_ref: vault://data-sources/platform-mongodb
     object_ref:
       database: return_platform
       name: return_records
@@ -73,7 +67,6 @@ sources:
   source_return_items:
     source_asset_id: source_return_items
     connector_type: MONGODB
-    connection_ref: vault://data-sources/platform-mongodb
     object_ref:
       database: return_platform
       name: operational_return_items
@@ -81,7 +74,6 @@ sources:
   source_handling_units:
     source_asset_id: source_handling_units
     connector_type: MONGODB
-    connection_ref: vault://data-sources/platform-mongodb
     object_ref:
       database: return_platform
       name: handling_units
@@ -89,7 +81,6 @@ sources:
   source_bays:
     source_asset_id: source_bays
     connector_type: MSSQL
-    connection_ref: vault://data-sources/platform-sqlserver
     object_ref:
       namespace: platform
       name: bay_configuration
@@ -5074,4 +5065,4 @@ agent_policies:
     max_clarifications: 3
     max_replans: 2
     max_targeted_syncs_per_turn: 3
-configuration_checksum: 5b69245c6c6ea9912cfe9131e8b0116244a26b55c1d040c1250f7bfb445dd94f
+configuration_checksum: 44421aae31c752b1d76ea7627088acad980a94766070fb0d350d0f648cbdd774
