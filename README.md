@@ -422,6 +422,16 @@ graph**, and then verifies the result rather than assuming it.
 ./scripts/linux/reset_all.sh         # everything else, in the one order that works
 ```
 
+On a host you do not administer, run the environment report first. Both commands
+above assume a toolchain they are allowed to install and directories they are
+allowed to write; where that does not hold they fail one restriction at a time,
+and each rerun only reveals the next one. The report is read-only, needs neither
+bash nor Python nor Docker to run itself, and prints every blocker at once:
+
+```bash
+sh scripts/linux/environment_report.sh
+```
+
 The graph build is the step that is easy to miss and impossible to notice missing.
 Loading the source collections leaves Neo4j empty, so the copilot searches a graph
 with no nodes and truthfully reports finding nothing — which reads as a broken agent
