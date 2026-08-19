@@ -32,7 +32,4 @@ export const DOMAIN_SCREENS: Partial<Record<string, ComponentType>> = {
   "/approvals": lazy(() =>
     import("./approvals/ApprovalsPage").then((m) => ({ default: m.ApprovalsPage })),
   ),
-  "/data-sources": lazy(() =>
-    import("./data-sources/DataSourcesPage").then((m) => ({ default: m.DataSourcesPage })),
-  ),
 };

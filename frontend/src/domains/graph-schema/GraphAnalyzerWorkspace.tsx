@@ -1,4 +1,5 @@
 import { GraphAnalyzerProvider } from "../../features/graph-analyzer/GraphAnalyzerContext";
+import { DataSourcesWorkspacePage } from "../../features/graph-analyzer/pages/DataSourcesWorkspacePage";
 import { GraphAnalyzerPage } from "../../features/graph-analyzer/pages/GraphAnalyzerPage";
 import { SchemaWorkspacePage } from "../../features/graph-analyzer/pages/SchemaWorkspacePage";
 import { SyncWorkspacePage } from "../../features/graph-analyzer/pages/SyncWorkspacePage";
@@ -20,6 +21,9 @@ type AnalyzerSection = (typeof GRAPH_SCHEMA_SECTIONS)[number];
 function WorkspacePage() {
   const section = useDomainSection(requireDomain("/graph-schema")) as AnalyzerSection;
 
+  if (section === "Data Sources") {
+    return <DataSourcesWorkspacePage />;
+  }
   if (section === "Sync") {
     return <SyncWorkspacePage />;
   }

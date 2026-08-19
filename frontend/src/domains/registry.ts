@@ -2,7 +2,6 @@ import {
   Activity,
   Bot,
   ClipboardCheck,
-  Database,
   Headset,
   Network,
   RefreshCw,
@@ -87,7 +86,8 @@ function sections(labels: readonly string[]): readonly DomainSection[] {
  * bound -- a nested selection inside Configuration. Sources are not a
  * configuration *field*; they are what the platform reads from, and the
  * question "can we still reach the warehouse database" is asked by people who
- * are not editing configuration at all. It is now the `/data-sources` domain.
+ * are not editing configuration at all. It is now the Graph Schema Analyzer's
+ * `Data Sources` section, at `/graph-schema/data-sources`.
  */
 /**
  * Returns Support is two jobs, not one.
@@ -108,7 +108,15 @@ export const SUPPORT_SECTIONS = ["Work Queue", "RMA Tickets"] as const;
  * nothing, and a second row of tabs below it. The registry entry below already
  * said this rail "goes here when they land"; the screens have landed.
  */
-export const GRAPH_SCHEMA_SECTIONS = ["Graph Analyzer", "Schema", "Sync"] as const;
+export const GRAPH_SCHEMA_SECTIONS = [
+  // Data Sources leads, and so is where a bare `/graph-schema` lands: a
+  // connection has to exist before there is anything to analyze, and the
+  // sections otherwise read in the order the work happens.
+  "Data Sources",
+  "Graph Analyzer",
+  "Schema",
+  "Sync",
+] as const;
 
 export const CONFIG_SECTIONS = [
   "Overview",
@@ -200,18 +208,6 @@ export const DOMAINS: readonly DomainDefinition[] = [
     screenPhase: 22,
     // One queue and the proposal it opens. The status filter narrows a list
     // rather than switching what the screen is.
-    sections: [],
-  },
-  {
-    path: "/data-sources",
-    name: "Data Sources",
-    description: "Configured sources, their health, what they expose, and where each dataset is bound.",
-    purpose: "Check the platform can still reach its data, and point a dataset somewhere else.",
-    icon: Database,
-    requires: "config.source.read",
-    screenPhase: 22,
-    // One workspace: the source list, the source it opens, and the dataset
-    // bindings underneath. Nothing here switches what the screen is.
     sections: [],
   },
   {

@@ -4,6 +4,7 @@ import { DOMAIN_SCREENS } from "./domainScreens";
 import {
   CONFIG_SECTIONS,
   DOMAINS,
+  GRAPH_SCHEMA_SECTIONS,
   DOMAIN_PATHS,
   domainForPath,
   isDomainPath,
@@ -20,7 +21,6 @@ describe("the domain registry", () => {
       "/ai",
       "/approvals",
       "/config",
-      "/data-sources",
       "/graph-schema",
       "/operations",
       "/returns",
@@ -29,12 +29,17 @@ describe("the domain registry", () => {
     ]);
   });
 
-  it("keeps Data Sources a domain rather than a configuration section", () => {
-    // It was a `/config` tab, which made the platform's whole source surface a
-    // nested selection inside a screen about releases. Asserted from both ends
-    // so restoring the tab -- and thereby giving the platform two source
-    // screens -- fails here rather than in review.
-    expect(DOMAIN_PATHS).toContain("/data-sources");
+  it("keeps Data Sources with the analyzer, and nowhere else", () => {
+    // Three arrangements, two of them wrong. It was a `/config` tab, which made
+    // the platform's whole source surface a nested selection inside a screen
+    // about releases. Then it was its own domain, one rail away from the only
+    // screen that reads sources -- and once Graph Analyzer grew its own
+    // connection management, the same capability existed twice.
+    //
+    // Asserted from all three ends, so any of them returning fails here rather
+    // than in review.
+    expect([...GRAPH_SCHEMA_SECTIONS]).toContain("Data Sources");
+    expect(DOMAIN_PATHS).not.toContain("/data-sources");
     expect([...CONFIG_SECTIONS]).not.toContain("Data Sources");
   });
 
@@ -114,7 +119,6 @@ describe("the domain registry", () => {
 
     expect(collisions).toEqual([
       "config.runtime.read: /config, /operations",
-      "config.source.read: /data-sources, /sync",
       "returns.session.read: /returns, /support",
     ]);
   });
