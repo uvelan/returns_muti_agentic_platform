@@ -256,7 +256,22 @@ export const DOMAINS: readonly DomainDefinition[] = [
 export const DOMAIN_PATHS: readonly string[] = DOMAINS.map((domain) => domain.path);
 
 /** The launcher. Not a domain, so it is not in `DOMAINS`. */
-export const LANDING_PATH = "/";
+export const LANDING_PATH = "/all";
+
+/**
+ * Where `/` sends someone.
+ *
+ * The root used to be the launcher. Returns is the work this platform exists
+ * for, so arriving at the root now opens it rather than a menu the operator has
+ * to cross first. The launcher keeps its own address at `LANDING_PATH` and is
+ * still one click away from the rail.
+ *
+ * A redirect rather than rendering Returns at `/`: the shell derives the active
+ * rail item and the section tabs from the pathname, so a second address for the
+ * same domain would leave both blank on one of them.
+ */
+export const ROOT_PATH = "/";
+export const ROOT_REDIRECT_PATH = "/returns";
 
 /**
  * The domain at `path`. Throws rather than returning null: a screen asking for
@@ -283,6 +298,10 @@ export function domainForPath(pathname: string): DomainDefinition | null {
 export function isDomainPath(pathname: string): boolean {
   return (
     pathname === LANDING_PATH ||
+    // The root is a shell path even though nothing renders there: the shell
+    // owns the redirect to Returns. Excluding it would make `App` bounce the
+    // root to the launcher and the redirect would never run.
+    pathname === ROOT_PATH ||
     DOMAINS.some((domain) => pathname === domain.path || pathname.startsWith(`${domain.path}/`))
   );
 }

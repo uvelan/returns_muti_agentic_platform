@@ -6,7 +6,7 @@ import { LoadingState } from "./components/LoadingState";
 import { RuntimeConfigProvider } from "./components/RuntimeConfigProvider";
 import { ToastProvider } from "./components/ToastProvider";
 import { DomainApp } from "./domains/DomainShell";
-import { isDomainPath } from "./domains/registry";
+import { isDomainPath, LANDING_PATH } from "./domains/registry";
 import { CapabilityProvider } from "./hooks/CapabilityProvider";
 import { normalizeBrowserPath } from "./versioning";
 
@@ -25,11 +25,16 @@ import { normalizeBrowserPath } from "./versioning";
  * now absent rather than superseded. That was the owner's decision, and F4's
  * stated end state ("exactly four user routes") is what it means.
  *
- * **Anything unrecognised goes to `/`**, not to a 404 and no longer to
- * `/returns`. Every legacy bookmark is an unrecognised path, and the honest
+ * **Anything unrecognised goes to the launcher**, not to a 404 and not to
+ * Returns. Every legacy bookmark is an unrecognised path, and the honest
  * landing for someone arriving from one is the launcher, which shows every
- * domain they can reach -- sending them to the copilot answered "where did the
- * screens go?" with one screen.
+ * domain they can reach -- sending them to the copilot would answer "where did
+ * the screens go?" with one screen.
+ *
+ * That is now `/all` rather than `/`, because `/` opens Returns: the root is
+ * where someone goes to do the work, and the launcher is where someone goes
+ * when they do not know where the work is. An unrecognised path is the second
+ * case, so it keeps pointing at the launcher and not at the new root.
  *
  * `DomainApp` is no longer lazy. It was split out when it was one of four
  * possible applications; it is now the only one, so the extra chunk bought a
@@ -50,7 +55,7 @@ export function App() {
               </CapabilityProvider>
             </Suspense>
           ) : (
-            <Redirect to="/" replace />
+            <Redirect to={LANDING_PATH} replace />
           )}
         </RuntimeConfigProvider>
       </ToastProvider>

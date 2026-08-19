@@ -9,6 +9,8 @@ import {
   isDomainPath,
   LANDING_PATH,
   requireDomain,
+  ROOT_PATH,
+  ROOT_REDIRECT_PATH,
   toSlug,
 } from "./registry";
 
@@ -41,6 +43,28 @@ describe("the domain registry", () => {
     // launcher were not a shell path it would redirect to itself forever.
     expect(isDomainPath(LANDING_PATH)).toBe(true);
     expect(DOMAIN_PATHS).not.toContain(LANDING_PATH);
+  });
+
+  it("puts the launcher at its own path, not at the root", () => {
+    // The root opens Returns now. Asserted as an equality rather than just
+    // "not /" so moving the launcher again has to be a deliberate edit here.
+    expect(LANDING_PATH).toBe("/all");
+    expect(LANDING_PATH).not.toBe(ROOT_PATH);
+  });
+
+  it("keeps the root in the shell so the redirect can run", () => {
+    // `App` bounces anything that is not a shell path to the launcher. If the
+    // root were not a shell path it would never reach the redirect below it,
+    // and arriving at `/` would land on the launcher rather than on Returns.
+    expect(isDomainPath(ROOT_PATH)).toBe(true);
+    expect(DOMAIN_PATHS).not.toContain(ROOT_PATH);
+  });
+
+  it("sends the root to a real domain", () => {
+    // A redirect target that is not a domain would loop through the shell's
+    // unknown-path fallback.
+    expect(DOMAIN_PATHS).toContain(ROOT_REDIRECT_PATH);
+    expect(ROOT_REDIRECT_PATH).toBe("/returns");
   });
 
   it("matches a domain root and its children", () => {

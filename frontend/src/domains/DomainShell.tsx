@@ -1,4 +1,4 @@
-import { Link, Route, Router, Switch, useLocation } from "wouter";
+import { Link, Redirect, Route, Router, Switch, useLocation } from "wouter";
 import { Suspense, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
@@ -11,7 +11,14 @@ import {
 
 import { useCapabilities } from "../hooks/capabilityContext";
 import { useRuntimeConfig } from "../hooks/useRuntimeConfig";
-import { DOMAINS, domainForPath, LANDING_PATH, type DomainDefinition } from "./registry";
+import {
+  DOMAINS,
+  domainForPath,
+  LANDING_PATH,
+  ROOT_PATH,
+  ROOT_REDIRECT_PATH,
+  type DomainDefinition,
+} from "./registry";
 import { DomainLanding } from "./DomainLanding";
 import { DOMAIN_SCREENS } from "./domainScreens";
 import { RailSlotProvider } from "./railSlot";
@@ -284,6 +291,12 @@ export function DomainApp() {
     <Router>
       <Frame>
         <Switch>
+          <Route path={ROOT_PATH}>
+            {/* The root opens Returns. Redirected rather than rendered so the
+                rail highlight and the section tabs, which both read the
+                pathname, agree with what is on screen. */}
+            <Redirect to={ROOT_REDIRECT_PATH} replace />
+          </Route>
           <Route path={LANDING_PATH}>
             <PlatformLanding />
           </Route>
