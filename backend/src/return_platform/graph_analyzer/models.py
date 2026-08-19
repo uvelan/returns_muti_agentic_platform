@@ -107,6 +107,7 @@ class AnalysisRun(AnalyzerModel):
         "REVIEWING_INDEXES",
         "VALIDATING",
         "COMPLETE",
+        "COMPLETE_WITHOUT_MODEL",
         "FAILED",
     ]
     selectedObjectIds: list[str]

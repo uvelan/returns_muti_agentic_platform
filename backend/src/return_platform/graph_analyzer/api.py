@@ -23,7 +23,7 @@ from return_platform.graph_analyzer.models import (
     SyncRequest,
     SyncRun,
 )
-from return_platform.graph_analyzer.service import GraphAnalyzerService
+from return_platform.graph_analyzer.service import AgentUnavailableError, GraphAnalyzerService
 from return_platform.resources import RuntimeResources
 from return_platform.security.authorization import require_capability
 from return_platform.security.capabilities import (
@@ -66,6 +66,12 @@ def _service(request: Request) -> GraphAnalyzerService:
         graph_driver=resources.neo4j,
         settings=resources.settings,
         registry=resources.schema_registry,
+        # The one AI execution path, shared with the rest of the platform:
+        # routing, failover, rate limits, interception and replay all stay
+        # where they already are. `None` when no provider credential is
+        # configured, which the analyzer degrades to rather than failing.
+        reasoning=getattr(request.app.state, "graph_schema_analyzer_reasoning", None),
+        agent=getattr(request.app.state, "graph_schema_analyzer_agent", None),
     )
 
 
@@ -306,9 +312,13 @@ async def finalize_schema(
 async def ask_agent(
     payload: AgentRequest, request: Request, _actor: str = Depends(require_analyzer_write)
 ) -> APIResponse[AgentReply]:
-    return APIResponse(
-        data=await (await _ready_service(request)).ask_agent(payload), meta=_meta(request)
-    )
+    try:
+        reply = await (await _ready_service(request)).ask_agent(payload)
+    except AgentUnavailableError as error:
+        # 503 rather than 500: the deployment is missing a provider credential,
+        # which is a configuration state an operator can act on, not a bug.
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    return APIResponse(data=reply, meta=_meta(request))
 
 
 @router.post(

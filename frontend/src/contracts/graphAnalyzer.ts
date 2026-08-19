@@ -104,6 +104,8 @@ export type AnalysisStage =
   | "REVIEWING_INDEXES"
   | "VALIDATING"
   | "COMPLETE"
+  /** The proposal was built from declared source metadata; no model was reachable. */
+  | "COMPLETE_WITHOUT_MODEL"
   | "FAILED";
 
 export type AnalysisRun = {

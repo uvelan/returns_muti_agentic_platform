@@ -4988,6 +4988,7 @@
               "REVIEWING_INDEXES",
               "VALIDATING",
               "COMPLETE",
+              "COMPLETE_WITHOUT_MODEL",
               "FAILED"
             ],
             "title": "Stage",
@@ -5296,6 +5297,12 @@
             "title": "Objects",
             "type": "array"
           },
+          "port": {
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Port",
+            "type": "integer"
+          },
           "status": {
             "enum": [
               "NOT_VALIDATED",
@@ -5325,6 +5332,7 @@
           "engine",
           "status",
           "host",
+          "port",
           "database",
           "username",
           "lastValidatedAt",
@@ -10436,6 +10444,94 @@
         "title": "PolicyRule",
         "type": "string"
       },
+      "PreviewGraph": {
+        "additionalProperties": false,
+        "properties": {
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewGraphEdge"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewGraphNode"
+            },
+            "title": "Nodes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "nodes",
+          "edges"
+        ],
+        "title": "PreviewGraph",
+        "type": "object"
+      },
+      "PreviewGraphEdge": {
+        "additionalProperties": false,
+        "properties": {
+          "fromId": {
+            "title": "Fromid",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "properties": {
+            "additionalProperties": true,
+            "title": "Properties",
+            "type": "object"
+          },
+          "toId": {
+            "title": "Toid",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "fromId",
+          "toId",
+          "properties"
+        ],
+        "title": "PreviewGraphEdge",
+        "type": "object"
+      },
+      "PreviewGraphNode": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "properties": {
+            "additionalProperties": true,
+            "title": "Properties",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "labels",
+          "properties"
+        ],
+        "title": "PreviewGraphNode",
+        "type": "object"
+      },
       "PreviewPage": {
         "additionalProperties": false,
         "properties": {
@@ -10445,6 +10541,16 @@
             },
             "title": "Columns",
             "type": "array"
+          },
+          "graph": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreviewGraph"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "page": {
             "minimum": 1.0,

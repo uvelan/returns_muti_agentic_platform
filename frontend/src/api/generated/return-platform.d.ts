@@ -4896,7 +4896,7 @@ export interface components {
              * Stage
              * @enum {string}
              */
-            stage: "PREPARING" | "READING_METADATA" | "EVALUATING_IDENTIFIERS" | "DISCOVERING_ENTITIES" | "EVALUATING_RELATIONSHIPS" | "BUILDING_PROPOSAL" | "COMPARING_EXISTING" | "REVIEWING_INDEXES" | "VALIDATING" | "COMPLETE" | "FAILED";
+            stage: "PREPARING" | "READING_METADATA" | "EVALUATING_IDENTIFIERS" | "DISCOVERING_ENTITIES" | "EVALUATING_RELATIONSHIPS" | "BUILDING_PROPOSAL" | "COMPARING_EXISTING" | "REVIEWING_INDEXES" | "VALIDATING" | "COMPLETE" | "COMPLETE_WITHOUT_MODEL" | "FAILED";
             /**
              * Startedat
              * Format: date-time
@@ -4992,6 +4992,8 @@ export interface components {
             objectCount: number;
             /** Objects */
             objects: components["schemas"]["SourceObject"][];
+            /** Port */
+            port: number;
             /**
              * Status
              * @enum {string}
@@ -6944,10 +6946,44 @@ export interface components {
          * @enum {string}
          */
         PolicyRule: "POLICY_RELEASE_VALIDATED" | "CUSTOMER_CONTRACT_OVERRIDE" | "DELIVERY_CLAIM_ROUTING" | "WARRANTY_ROUTING" | "DAMAGE_CAUSE_ROUTING" | "SPECIAL_ORDER_MANUFACTURER_POLICY" | "STANDARD_STOCK_ITEM" | "NEW_RESALEABLE_CONDITION" | "WITHIN_30_DAYS" | "OUTSIDE_STANDARD_WINDOW" | "RESTOCKING_FEE_APPLIES" | "STOCK_CLASS_FROM_CONFIGURATION" | "CONDITION_FACTS_NOT_EVALUATED" | "FAIL_SAFE_REVIEW";
+        /** PreviewGraph */
+        PreviewGraph: {
+            /** Edges */
+            edges: components["schemas"]["PreviewGraphEdge"][];
+            /** Nodes */
+            nodes: components["schemas"]["PreviewGraphNode"][];
+        };
+        /** PreviewGraphEdge */
+        PreviewGraphEdge: {
+            /** Fromid */
+            fromId: string;
+            /** Id */
+            id: string;
+            /** Properties */
+            properties: {
+                [key: string]: unknown;
+            };
+            /** Toid */
+            toId: string;
+            /** Type */
+            type: string;
+        };
+        /** PreviewGraphNode */
+        PreviewGraphNode: {
+            /** Id */
+            id: string;
+            /** Labels */
+            labels: string[];
+            /** Properties */
+            properties: {
+                [key: string]: unknown;
+            };
+        };
         /** PreviewPage */
         PreviewPage: {
             /** Columns */
             columns: string[];
+            graph?: components["schemas"]["PreviewGraph"] | null;
             /** Page */
             page: number;
             /** Pagesize */

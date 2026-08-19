@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import re
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -13,6 +15,22 @@ from pymongo import AsyncMongoClient, ReturnDocument
 
 from return_platform.configuration.settings import Settings
 from return_platform.data_platform.schema_registry import DataAssetSchema, SchemaRegistry
+from return_platform.graph_analyzer.agent_port import AgentReasoningPort
+from return_platform.graph_analyzer.analysis import (
+    MAX_OBJECTS_PER_ANALYSIS,
+    ObjectEvidence,
+    deterministic_proposal,
+    gather_evidence,
+    ground_proposal,
+    reasoned_proposal,
+)
+from return_platform.graph_analyzer.discovery import (
+    count_objects,
+    discover_objects,
+    graph_sample,
+    probe_source,
+    sample_object,
+)
 from return_platform.graph_analyzer.models import (
     AgentMessage,
     AgentRecommendation,
@@ -37,6 +55,29 @@ from return_platform.graph_analyzer.models import (
     ValidationIssue,
 )
 from return_platform.graph_analyzer.safety import assert_system_graph_target
+from return_platform.graph_schema_analyzer.application.prompt_context import (
+    build_prompt_blocks,
+    neutralize_delimiters,
+)
+from return_platform.graph_schema_analyzer.ports.ai_port import SchemaReasoningPort
+
+logger = logging.getLogger("return_platform.graph_analyzer")
+
+
+class AgentUnavailableError(RuntimeError):
+    """Raised when no AI route is configured for the Analyzer Agent."""
+
+
+_AGENT_TASK_DEFINITION = (
+    "Answer the operator's question about the source structure, the proposed system "
+    "graph, its validation, or its synchronization. You may propose at most one change, "
+    "and it may target only the system graph proposal. Never propose or describe a change "
+    "to a source system: sources are read-only evidence."
+)
+
+#: Hard ceiling on how deep preview paging may read into a source object.
+#: Preview is for understanding shape, not for exporting a table.
+MAX_PREVIEW_ROWS = 2_000
 
 _SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -100,8 +141,12 @@ class GraphAnalyzerService:
         graph_driver: AsyncDriver,
         settings: Settings,
         registry: SchemaRegistry,
+        reasoning: SchemaReasoningPort | None = None,
+        agent: AgentReasoningPort | None = None,
     ) -> None:
         self._settings = settings
+        self._reasoning = reasoning
+        self._agent = agent
         self._registry = registry
         self._source_client = source_client
         self._graph_driver = graph_driver
@@ -221,8 +266,12 @@ class GraphAnalyzerService:
             database=str(document["database"]),
             username=str(document["username"]) if document.get("username") else None,
             lastValidatedAt=document.get("lastValidatedAt"),
-            objectCount=0,
-            objects=[],
+            # Whatever the last successful discovery cached. Re-discovering on
+            # every list would turn opening the workspace into one metadata scan
+            # per configured source; `POST /sources/{id}/metadata` is the
+            # explicit refresh.
+            objectCount=int(document.get("objectCount", 0)),
+            objects=[SourceObject.model_validate(node) for node in document.get("objects", [])],
         )
 
     async def save_source(self, payload: SourceInput, source_id: str | None) -> AnalyzerSource:
@@ -253,13 +302,31 @@ class GraphAnalyzerService:
         return result.deleted_count == 1
 
     async def validate_source(self, source_id: str) -> AnalyzerSource:
+        """Probe the source and, when it answers, refresh its discovered structure.
+
+        Validation and discovery are one action because they are one question to
+        the operator: "is this connection usable". A source that reports
+        CONNECTED and then shows nothing to expand is not usable, and that was
+        the previous behaviour for every source added through the UI.
+        """
         document = await self._sources.find_one({"_id": source_id})
         if document is None:
             raise KeyError(source_id)
-        status = await self._probe(cast(dict[str, Any], document))
+        status, _message = await probe_source(cast(dict[str, Any], document))
+        update: dict[str, Any] = {"status": status, "lastValidatedAt": _now()}
+        if status == "CONNECTED":
+            try:
+                objects, truncated = await discover_objects(cast(dict[str, Any], document))
+            except Exception:  # noqa: BLE001 - discovery failure is a source state
+                logger.warning("graph_analyzer_discovery_failed source_id=%s", source_id)
+                update["status"] = "VALIDATION_FAILED"
+            else:
+                update["objects"] = [node.model_dump(mode="python") for node in objects]
+                update["objectCount"] = count_objects(objects)
+                update["objectsTruncated"] = truncated
         updated = await self._sources.find_one_and_update(
             {"_id": source_id},
-            {"$set": {"status": status, "lastValidatedAt": _now()}},
+            {"$set": update},
             return_document=ReturnDocument.AFTER,
         )
         if updated is None:
@@ -278,65 +345,8 @@ class GraphAnalyzerService:
             stored_password = existing.get("password")
             password = stored_password if isinstance(stored_password, str) else ""
         document["password"] = password
-        status = await self._probe(document)
-        message = (
-            "Connection succeeded with read-only validation."
-            if status == "CONNECTED"
-            else "Connection could not be validated."
-        )
-        return status, message
-
-    async def _probe(self, document: dict[str, Any]) -> str:
-        engine = document["engine"]
-        try:
-            if engine == "MONGODB":
-                from pymongo import AsyncMongoClient as Client
-
-                uri = str(document["host"])
-                if not uri.startswith(("mongodb://", "mongodb+srv://")):
-                    uri = f"mongodb://{document['username']}:{document['password']}@{uri}:{document['port']}/{document['database']}"
-                client: Client[dict[str, object]] = Client(uri, serverSelectionTimeoutMS=5_000)
-                try:
-                    await client[document["database"]].command("ping")
-                finally:
-                    await client.close()
-            elif engine == "SQLSERVER":
-
-                def sql_probe() -> None:
-                    with pymssql.connect(
-                        server=document["host"],
-                        port=str(document["port"]),
-                        user=document["username"],
-                        password=document["password"],
-                        database=document["database"],
-                        login_timeout=5,
-                        timeout=5,
-                    ) as connection:
-                        with connection.cursor() as cursor:
-                            cursor.execute("SELECT 1")
-                            cursor.fetchone()
-
-                await asyncio.to_thread(sql_probe)
-            elif engine == "NEO4J":
-                from neo4j import READ_ACCESS, AsyncGraphDatabase
-
-                driver = AsyncGraphDatabase.driver(
-                    str(document["host"]), auth=(document["username"], document["password"])
-                )
-                try:
-                    async with driver.session(
-                        database=document["database"], default_access_mode=READ_ACCESS
-                    ) as session:
-                        result = await session.run("RETURN 1 AS ok")
-                        await result.consume()
-                finally:
-                    await driver.close()
-            else:
-                return "UNREACHABLE"
-        except Exception as error:
-            name = type(error).__name__.casefold()
-            return "AUTHENTICATION_FAILED" if "auth" in name or "login" in name else "UNREACHABLE"
-        return "CONNECTED"
+        document.setdefault("_id", source_id or "unsaved")
+        return await probe_source(document)
 
     def existing_schema(self) -> AnalyzerGraphSchema:
         entities: list[GraphEntity] = []
@@ -399,83 +409,114 @@ class GraphAnalyzerService:
         document = await self._schemas.find_one({"kind": "proposed"}, sort=[("version", -1)])
         return AnalyzerGraphSchema.model_validate(document["schema"]) if document else None
 
+    async def _resolve_selection(
+        self, selected: Sequence[str]
+    ) -> tuple[dict[str, dict[str, Any]], list[tuple[str, str]], list[str]]:
+        """Split a selection into configured-source objects and unresolvable ids.
+
+        Container nodes -- a database or namespace row -- select their whole
+        subtree in the UI, so their own ids arrive here too and are not objects.
+        They resolve to nothing and are not reported as unavailable.
+        """
+        documents: dict[str, dict[str, Any]] = {}
+        pairs: list[tuple[str, str]] = []
+        unresolved: list[str] = []
+        for object_id in dict.fromkeys(selected):
+            source_id, _, object_name = object_id.partition(":")
+            if not object_name or object_name.startswith(("namespace:", "database:")):
+                continue
+            if source_id not in documents:
+                document = await self._sources.find_one({"_id": source_id})
+                if document is None:
+                    unresolved.append(object_id)
+                    continue
+                documents[source_id] = cast(dict[str, Any], document)
+            pairs.append((source_id, object_name))
+        return documents, pairs, unresolved
+
     async def start_analysis(self, request: AnalysisRequest) -> AnalysisRun:
-        known = {
-            asset.asset_id: asset
-            for asset in self._registry.assets
-            if asset.ownership == "SOURCE_SYSTEM"
-        }
-        assets = [
-            known[asset_id]
-            for asset_id in dict.fromkeys(request.selectedObjectIds)
-            if asset_id in known
-        ]
-        if not assets:
-            raise ValueError("No selected source object has usable metadata.")
+        """Analyze exactly the selected scope and store the resulting proposal.
+
+        Only what the operator selected is read. A selection that resolves to no
+        readable object is refused with a message rather than answered with a
+        proposal built from something else, which is what the previous
+        implementation did when it fell back to the platform's own registry.
+        """
         run_id = str(uuid.uuid4())
         started = _now()
-        entities: list[GraphEntity] = []
-        for index, asset in enumerate(assets):
-            entity_id = f"proposal:{asset.asset_id}"
-            entities.append(
-                GraphEntity(
-                    id=entity_id,
-                    name=_safe_name(asset.name),
-                    description=asset.description,
-                    x=_canvas_position(index, len(assets))[0],
-                    y=_canvas_position(index, len(assets))[1],
-                    properties=[
-                        GraphProperty(
-                            id=f"{entity_id}:{field.name}",
-                            name=field.name,
-                            dataType=field.type,
-                            required=field.required,
-                            identifier=field.key,
-                            indexed=field.key,
-                            sourceObjectId=asset.asset_id,
-                            sourceField=field.name,
-                        )
-                        for field in asset.fields
-                    ],
-                    constraints=[
-                        f"UNIQUE({next(field.name for field in asset.fields if field.key)})"
-                    ],
-                    change="ADDED",
+        documents, pairs, unresolved = await self._resolve_selection(request.selectedObjectIds)
+
+        registry_assets = [
+            asset
+            for asset in self._registry.assets
+            if asset.ownership == "SOURCE_SYSTEM"
+            and asset.asset_id in set(request.selectedObjectIds)
+        ]
+
+        if len(pairs) + len(registry_assets) > MAX_OBJECTS_PER_ANALYSIS:
+            raise ValueError(
+                f"Select at most {MAX_OBJECTS_PER_ANALYSIS} objects for one analysis; "
+                f"{len(pairs) + len(registry_assets)} are selected."
+            )
+        if not pairs and not registry_assets:
+            raise ValueError(
+                "No selected source object could be read. Refresh the source metadata "
+                "or revalidate the connection, then select objects to analyze."
+            )
+
+        evidence = await gather_evidence(documents, pairs)
+        evidence.extend(self._registry_evidence(registry_assets))
+        if not evidence:
+            raise ValueError(
+                "The selected objects could not be described. The source may have "
+                "become unreachable since it was last validated."
+            )
+
+        stage: str = "COMPLETE"
+        entities: list[GraphEntity]
+        relationships: list[GraphRelationship]
+        if self._reasoning is not None:
+            try:
+                proposal = await reasoned_proposal(
+                    self._reasoning,
+                    analysis_id=run_id,
+                    evidence=evidence,
+                    context=request.context,
+                )
+                entities, relationships = ground_proposal(proposal, evidence)
+            except Exception:  # noqa: BLE001 - a model outage must not lose the analysis
+                logger.warning("graph_analyzer_reasoning_failed run_id=%s", run_id, exc_info=True)
+                entities, relationships = deterministic_proposal(evidence)
+                stage = "COMPLETE_WITHOUT_MODEL"
+            else:
+                if not entities:
+                    entities, relationships = deterministic_proposal(evidence)
+                    stage = "COMPLETE_WITHOUT_MODEL"
+        else:
+            entities, relationships = deterministic_proposal(evidence)
+            stage = "COMPLETE_WITHOUT_MODEL"
+
+        # Positions are assigned once, here, so the canvas is laid out the same
+        # way whichever path produced the proposal.
+        placed = [
+            entity.model_copy(
+                update=dict(
+                    zip(
+                        ("x", "y"),
+                        _canvas_position(index, len(entities)),
+                        strict=True,
+                    )
                 )
             )
-        relationships: list[GraphRelationship] = []
-        for target in entities:
-            target_asset = known[target.properties[0].sourceObjectId or ""]
-            target_fields = {field.name for field in target_asset.fields}
-            for source in entities:
-                if source.id == target.id:
-                    continue
-                source_key = next(
-                    (item.sourceField for item in source.properties if item.identifier), None
-                )
-                target_key = next(
-                    (item.sourceField for item in target.properties if item.identifier), None
-                )
-                if source_key and target_key and source_key in target_fields:
-                    relationships.append(
-                        GraphRelationship(
-                            id=f"proposal:rel:{source.id}:{target.id}",
-                            name=f"HAS_{target.name.upper()}",
-                            fromEntityId=source.id,
-                            toEntityId=target.id,
-                            direction="OUTBOUND",
-                            properties=[],
-                            sourceObjectId=target_asset.asset_id,
-                            change="ADDED",
-                        )
-                    )
-                    break
+            for index, entity in enumerate(entities)
+        ]
+
         schema = AnalyzerGraphSchema(
             id=str(uuid.uuid4()),
             version=(await self._next_schema_version()),
             status="VALIDATION_REQUIRED",
             updatedAt=_now(),
-            entities=entities,
+            entities=placed,
             relationships=relationships,
         )
         await self._schemas.insert_one(
@@ -489,14 +530,40 @@ class GraphAnalyzerService:
         run = AnalysisRun(
             id=run_id,
             status="COMPLETED",
-            stage="COMPLETE",
+            stage=cast(Any, stage),
             selectedObjectIds=list(request.selectedObjectIds),
             startedAt=started,
             completedAt=_now(),
-            warningCount=len(request.selectedObjectIds) - len(assets),
+            warningCount=len(unresolved),
         )
         await self._analyses.insert_one(run.model_dump(mode="python") | {"_id": run.id})
         return run
+
+    def _registry_evidence(self, assets: Sequence[Any]) -> list[ObjectEvidence]:
+        """Evidence for the platform's own registry-declared sources.
+
+        They are configuration rather than a live connection, so their metadata
+        is read from the registry instead of a connector -- but they enter the
+        same proposal path as everything else.
+        """
+        return [
+            ObjectEvidence(
+                object_id=asset.asset_id,
+                source_id=f"configured:{asset.engine.lower()}:{asset.database}",
+                source_name=f"{asset.database} ({asset.engine})",
+                engine=asset.engine,
+                object_name=asset.name,
+                fields=tuple(
+                    {"name": item.name, "type": item.type, "nullable": not item.required}
+                    for item in asset.fields
+                ),
+                identifier_fields=tuple(item.name for item in asset.fields if item.key),
+                indexed_fields=tuple(item.name for item in asset.fields if item.key),
+                relationships=(),
+                approximate_rows=None,
+            )
+            for asset in assets
+        ]
 
     async def _next_schema_version(self) -> int:
         document = await self._schemas.find_one({}, sort=[("version", -1)])
@@ -625,42 +692,147 @@ class GraphAnalyzerService:
         return finalized
 
     async def ask_agent(self, request: AgentRequest) -> AgentReply:
-        selected = (
-            request.context.selectedGraphObjectId
-            or request.context.selectedObjectId
-            or "the active selection"
+        """Answer an operator's question about the active workspace.
+
+        This used to be a formatted string with a keyword match on "index": it
+        never called a model, so the same sentence came back for every question
+        and the only "recommendation" it could produce was one it had written
+        itself. It now runs on the shared route pool, through the same
+        interception and failover as every other AI call on the platform.
+
+        Everything that came out of a source -- object names, field names,
+        sampled values -- and the operator's own message reach the model inside
+        the six-block untrusted framing, so source content cannot address the
+        model as policy.
+        """
+        if self._agent is None:
+            raise AgentUnavailableError(
+                "The Analyzer Agent is unavailable because no AI provider "
+                "credential is configured for this deployment."
+            )
+
+        proposed = await self.proposed_schema()
+        context_blocks = await self._agent_context_blocks(request, proposed)
+        answer = await self._agent.answer(
+            conversation_id=str(uuid.uuid4()), prompt_blocks=context_blocks
         )
-        content = (
-            f"I reviewed {selected} in the {request.context.workspace.lower()} workspace. "
-            "Source evidence is read-only; any approved change will be applied only to the "
-            "proposed system graph."
-        )
+
         recommendation: AgentRecommendation | None = None
-        if "index" in request.message.casefold() and request.context.selectedGraphObjectId:
+        if answer.operations:
+            for operation in answer.operations:
+                # Belt and braces over a closed type: the port cannot express a
+                # source target, and this refuses one anyway before the
+                # recommendation is ever persisted.
+                assert_system_graph_target(operation.target)
             recommendation = AgentRecommendation(
                 id=str(uuid.uuid4()),
-                summary="Add a system graph index to the selected identifier",
-                rationale=(
-                    "This can improve system graph lookups without changing any source index."
-                ),
+                summary=answer.summary or "Proposed system graph change",
+                rationale=answer.rationale or answer.message,
                 status="PENDING",
-                operations=[
-                    {
-                        "type": "ADD_SYSTEM_GRAPH_INDEX",
-                        "objectId": request.context.selectedGraphObjectId,
-                        "target": "SYSTEM_GRAPH",
-                    }
-                ],
+                operations=[operation.model_dump(mode="python") for operation in answer.operations],
             )
             await self._recommendations.insert_one(
                 recommendation.model_dump(mode="python") | {"_id": recommendation.id}
             )
         return AgentReply(
             message=AgentMessage(
-                id=str(uuid.uuid4()), role="AGENT", content=content, createdAt=_now()
+                id=str(uuid.uuid4()), role="AGENT", content=answer.message, createdAt=_now()
             ),
             recommendation=recommendation,
         )
+
+    async def _agent_context_blocks(
+        self, request: AgentRequest, proposed: AnalyzerGraphSchema | None
+    ) -> list[dict[str, Any]]:
+        """Frame the active workspace for the model as untrusted evidence.
+
+        The operator should not have to restate what they already have selected,
+        so the current source, object, graph object and sync scope travel with
+        every turn.
+        """
+        selected_object = request.context.selectedObjectId
+        metadata: list[dict[str, Any]] = [
+            {
+                "workspace": request.context.workspace,
+                "selected_source": request.context.selectedSourceId,
+                "selected_object": selected_object,
+                "selected_graph_object": request.context.selectedGraphObjectId,
+                "selected_scope_size": len(request.context.selectedScope or []),
+                "sync_run": request.context.syncRunId,
+            }
+        ]
+        if proposed is not None:
+            metadata.append(
+                {
+                    "proposed_schema_version": proposed.version,
+                    "proposed_status": proposed.status,
+                    "entities": [
+                        {
+                            "id": entity.id,
+                            "name": neutralize_delimiters(entity.name),
+                            "identifiers": [
+                                neutralize_delimiters(prop.name)
+                                for prop in entity.properties
+                                if prop.identifier
+                            ],
+                            "indexed": [
+                                neutralize_delimiters(prop.name)
+                                for prop in entity.properties
+                                if prop.indexed
+                            ],
+                            "properties": [
+                                neutralize_delimiters(prop.name) for prop in entity.properties
+                            ],
+                            "source_object": (
+                                entity.properties[0].sourceObjectId if entity.properties else None
+                            ),
+                        }
+                        for entity in proposed.entities
+                    ],
+                    "relationships": [
+                        {
+                            "id": relationship.id,
+                            "type": neutralize_delimiters(relationship.name),
+                            "from": relationship.fromEntityId,
+                            "to": relationship.toEntityId,
+                            "direction": relationship.direction,
+                        }
+                        for relationship in proposed.relationships
+                    ],
+                }
+            )
+        if selected_object is not None:
+            resolved = await self._source_document_for(selected_object)
+            if resolved is not None:
+                document, object_name = resolved
+                evidence = await gather_evidence(
+                    {str(document["_id"]): document}, [(str(document["_id"]), object_name)]
+                )
+                metadata.extend(
+                    {
+                        "dataset": neutralize_delimiters(item.object_name),
+                        "source": neutralize_delimiters(item.source_name),
+                        "engine": item.engine,
+                        "approximate_rows": item.approximate_rows,
+                        "fields": [
+                            {
+                                "name": neutralize_delimiters(str(field_item["name"])),
+                                "type": neutralize_delimiters(str(field_item["type"])),
+                                "nullable": field_item["nullable"],
+                            }
+                            for field_item in item.fields
+                        ],
+                        "declared_relationships": item.relationships,
+                    }
+                    for item in evidence
+                )
+        blocks = build_prompt_blocks(
+            task_definition=_AGENT_TASK_DEFINITION,
+            source_metadata=metadata,
+            untrusted_samples=None,
+            user_requirements=request.message,
+        )
+        return [block.model_dump() for block in blocks]
 
     async def review_recommendation(
         self, recommendation_id: str, apply: bool
@@ -711,6 +883,63 @@ class GraphAnalyzerService:
         return RecommendationResult(recommendation=updated, proposedSchema=proposed)
 
     async def preview(self, object_id: str, page: int, page_size: int) -> PreviewPage:
+        """A bounded, read-only page from one source object.
+
+        Object ids from a configured source are `"{source_id}:{object_name}"`,
+        which is how one call routes to the connector that owns it. Registry
+        assets keep their bare id and their existing path, so the platform's own
+        sources still preview after this change.
+
+        The read goes through `SourceInspectionPort.sample`, which takes a limit
+        and no query string. Paging is applied over the bounded read rather than
+        by asking the source for an offset, because an offset scan deep into a
+        large table is the uncontrolled full scan the connector rules forbid.
+        """
+        document = await self._source_document_for(object_id)
+        if document is None:
+            return await self._preview_registry_asset(object_id, page, page_size)
+
+        source_document, object_name = document
+        offset = (page - 1) * page_size
+        # One bounded read that covers the requested page; `MAX_PREVIEW_ROWS`
+        # caps how deep paging can go rather than letting page number drive an
+        # unbounded scan.
+        limit = min(offset + page_size, MAX_PREVIEW_ROWS)
+        rows = await sample_object(source_document, object_name, limit)
+        window = [
+            cast(dict[str, Any], _json_value(row)) for row in rows[offset : offset + page_size]
+        ]
+        columns = sorted({key for row in window for key in row})
+        graph = (
+            graph_sample(window, object_name.rsplit(".", 1)[-1])
+            if source_document["engine"] == "NEO4J"
+            else None
+        )
+        return PreviewPage(
+            columns=columns,
+            rows=window,
+            page=page,
+            pageSize=page_size,
+            total=None,
+            graph=graph,
+        )
+
+    async def _source_document_for(self, object_id: str) -> tuple[dict[str, Any], str] | None:
+        """Resolve a configured-source object id to its source document."""
+        if ":" not in object_id:
+            return None
+        source_id, _, object_name = object_id.partition(":")
+        if not object_name or object_name.startswith(("namespace:", "database:")):
+            return None
+        document = await self._sources.find_one({"_id": source_id})
+        if document is None:
+            return None
+        return cast(dict[str, Any], document), object_name
+
+    async def _preview_registry_asset(
+        self, object_id: str, page: int, page_size: int
+    ) -> PreviewPage:
+        """The platform's own registry-declared sources, unchanged."""
         asset = self._registry.asset(object_id)
         offset = (page - 1) * page_size
         if asset.engine == "MONGODB":
@@ -755,7 +984,9 @@ class GraphAnalyzerService:
 
             rows = await asyncio.to_thread(read_sql)
         columns = sorted({key for row in rows for key in row})
-        return PreviewPage(columns=columns, rows=rows, page=page, pageSize=page_size, total=None)
+        return PreviewPage(
+            columns=columns, rows=rows, page=page, pageSize=page_size, total=None, graph=None
+        )
 
     async def _apply_system_graph_schema(self, schema: AnalyzerGraphSchema) -> None:
         async with self._graph_driver.session(
@@ -763,7 +994,14 @@ class GraphAnalyzerService:
             default_access_mode=WRITE_ACCESS,
         ) as session:
             for entity in schema.entities:
-                identifier = next(prop for prop in entity.properties if prop.identifier)
+                identifier = next((prop for prop in entity.properties if prop.identifier), None)
+                if identifier is None:
+                    # No identifier means no uniqueness constraint to create.
+                    # A bare `next()` raised StopIteration here, which aborted
+                    # the entire schema apply -- and therefore the sync -- on the
+                    # first such entity. Validation is where a missing identifier
+                    # is reported; it is not this function's job to crash over it.
+                    continue
                 constraint_name = f"gsa_uq_{entity.name.lower()}_{identifier.name.lower()}"
                 for value in (entity.name, identifier.name, constraint_name):
                     if not _SAFE_IDENTIFIER.fullmatch(value):
@@ -818,10 +1056,13 @@ class GraphAnalyzerService:
         await self._sync_runs.insert_one(run.model_dump(mode="python") | {"_id": run.id})
         try:
             await self._apply_system_graph_schema(schema)
-            read = processed = written = relationship_writes = 0
+            read = processed = written = relationship_writes = skipped = 0
             for entity in entities:
-                identifier = next(prop for prop in entity.properties if prop.identifier)
-                if identifier.sourceObjectId is None:
+                identifier = next((prop for prop in entity.properties if prop.identifier), None)
+                if identifier is None or identifier.sourceObjectId is None:
+                    # Nothing to key the graph node on, so this entity is skipped
+                    # and counted rather than taking the run down with it.
+                    skipped += 1
                     continue
                 preview = await self.preview(
                     identifier.sourceObjectId, 1, min(self._settings.graph_sync_max_records, 10_000)
@@ -853,9 +1094,20 @@ class GraphAnalyzerService:
                     continue
                 from_entity = entities_by_id[relationship.fromEntityId]
                 to_entity = entities_by_id[relationship.toEntityId]
-                from_identifier = next(prop for prop in from_entity.properties if prop.identifier)
-                to_identifier = next(prop for prop in to_entity.properties if prop.identifier)
+                # Same StopIteration hazard as the entity loop above: a
+                # relationship whose endpoint has no identifier is skipped, not
+                # allowed to abort a run that has already written nodes.
+                from_identifier = next(
+                    (prop for prop in from_entity.properties if prop.identifier), None
+                )
+                to_identifier = next(
+                    (prop for prop in to_entity.properties if prop.identifier), None
+                )
+                if from_identifier is None or to_identifier is None:
+                    skipped += 1
+                    continue
                 if from_identifier.sourceField is None or to_identifier.sourceField is None:
+                    skipped += 1
                     continue
                 preview = await self.preview(
                     relationship.sourceObjectId,
@@ -905,14 +1157,21 @@ class GraphAnalyzerService:
                     relationship_writes += int(record["writes"]) if record else 0
                 read += len(preview.rows)
                 processed += len(relationship_rows)
+            # A run that skipped part of its scope did not fully complete, and
+            # saying COMPLETED would hide that some entities were never written.
             completed = run.model_copy(
                 update={
-                    "status": "COMPLETED",
-                    "currentActivity": "Synchronization complete",
+                    "status": "PARTIALLY_COMPLETED" if skipped else "COMPLETED",
+                    "currentActivity": (
+                        f"Complete; {skipped} object(s) skipped for a missing identifier"
+                        if skipped
+                        else "Synchronization complete"
+                    ),
                     "itemsRead": read,
                     "itemsProcessed": processed,
                     "nodesWritten": written,
                     "relationshipsWritten": relationship_writes,
+                    "failedItems": skipped,
                     "completedAt": _now(),
                 }
             )

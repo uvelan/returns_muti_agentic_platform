@@ -59,6 +59,9 @@ from return_platform.api.seed import router as seed_router
 from return_platform.api.source_bindings import router as source_bindings_router
 from return_platform.api.support import router as support_router
 from return_platform.api.warehouse_placement import router as warehouse_placement_router
+from return_platform.bootstrap.adapters.analyzer_agent_adapter import (
+    build_analyzer_agent_adapter,
+)
 from return_platform.bootstrap.adapters.analyzer_ai_adapter import (
     build_analyzer_ai_adapter,
 )
@@ -888,6 +891,16 @@ async def lifespan(
                         # AI-01. Block 5 of this prompt is UNTRUSTED SOURCE
                         # SAMPLE -- rows out of a customer's database -- and it
                         # was the least gated path on the platform.
+                        interception_store=getattr(app.state, "ai_interception_store", None),
+                        gateway_settings=operational_repository,
+                    )
+                    # The Analyzer Agent runs on the same pool and the same
+                    # interception policy; a chat turn carries the same
+                    # untrusted source sample a proposal does.
+                    app.state.graph_schema_analyzer_agent = build_analyzer_agent_adapter(
+                        settings=settings,
+                        configuration=ai_gateway_configuration.configuration,
+                        route_pool=app.state.ai_gateway_route_pool,
                         interception_store=getattr(app.state, "ai_interception_store", None),
                         gateway_settings=operational_repository,
                     )
