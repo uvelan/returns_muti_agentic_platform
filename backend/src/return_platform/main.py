@@ -160,6 +160,7 @@ from return_platform.dynamic_knowledge.order_agent.conversation_repository impor
 )
 from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore
 from return_platform.dynamic_knowledge.source_binding_store import SourceBindingStore
+from return_platform.graph_analyzer.api import router as graph_analyzer_router
 from return_platform.graph_schema_analyzer.api import router as graph_schema_analyzer_router
 from return_platform.graph_schema_analyzer.persistence import build_system_store_persistence
 from return_platform.graph_schema_analyzer.ports.source_port import SourceInspectionPort
@@ -1330,6 +1331,7 @@ def create_app(
     fastapi_app.include_router(associate_returns_router)
     fastapi_app.include_router(dynamic_order_agent_router)
     fastapi_app.include_router(graph_schema_analyzer_router)
+    fastapi_app.include_router(graph_analyzer_router)
     # The one governance inbox (S9). Mounted beside the analyzer rather than
     # inside it: a graph schema draft is one of the three kinds of change it
     # carries, not the surface's owner.

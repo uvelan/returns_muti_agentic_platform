@@ -1,3 +1,4 @@
+import { analyzerHandlers } from "./handlers/analyzerHandlers";
 import { canonicalHandlers } from "./handlers/canonicalHandlers";
 
 /**
@@ -7,4 +8,4 @@ import { canonicalHandlers } from "./handlers/canonicalHandlers";
  * browser, graph, associate-returns and Data Console configuration handlers --
  * they mocked routes that no screen calls any more.
  */
-export const handlers = [...canonicalHandlers];
+export const handlers = [...canonicalHandlers, ...analyzerHandlers];

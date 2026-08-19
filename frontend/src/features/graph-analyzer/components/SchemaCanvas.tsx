@@ -1,0 +1,22 @@
+import { useMemo, useState } from "react";
+import { Focus, Minus, Plus, Search } from "lucide-react";
+import type { GraphEntity, GraphSchema } from "../../../contracts/graphAnalyzer";
+
+export function SchemaCanvas({ schema, selectedId, onSelect }: { readonly schema: GraphSchema; readonly selectedId: string | null; readonly onSelect: (id: string) => void }) {
+  const [scale, setScale] = useState(1);
+  const [query, setQuery] = useState("");
+  const matches = useMemo(() => new Set(schema.entities.filter((entity) => entity.name.toLowerCase().includes(query.trim().toLowerCase())).map((entity) => entity.id)), [schema.entities, query]);
+  const byId = useMemo(() => new Map(schema.entities.map((entity) => [entity.id, entity])), [schema.entities]);
+  return <div className="relative h-[560px] overflow-hidden rounded-xl border border-emerald-950 bg-[#050c0a]" style={{ backgroundImage: "radial-gradient(rgba(52,211,153,.1) 1px, transparent 1px)", backgroundSize: `${String(22 * scale)}px ${String(22 * scale)}px` }}>
+    <div className="absolute left-3 top-3 z-20 flex items-center gap-1 rounded-lg border border-emerald-950 bg-[#0a1714]/95 p-1.5 shadow-xl"><Search size={14} className="ml-1 text-slate-600" /><input value={query} onChange={(event) => { setQuery(event.target.value); }} placeholder="Find entity" className="w-32 bg-transparent px-1 text-xs text-white outline-none placeholder:text-slate-600" /><button type="button" onClick={() => { setScale((value) => Math.min(1.5, value + 0.1)); }} className="rounded p-1 text-slate-400 hover:bg-white/5" aria-label="Zoom in"><Plus size={14} /></button><button type="button" onClick={() => { setScale((value) => Math.max(0.65, value - 0.1)); }} className="rounded p-1 text-slate-400 hover:bg-white/5" aria-label="Zoom out"><Minus size={14} /></button><button type="button" onClick={() => { setScale(1); }} className="rounded p-1 text-slate-400 hover:bg-white/5" aria-label="Fit graph"><Focus size={14} /></button></div>
+    <div className="absolute inset-0 origin-top-left transition-transform" style={{ transform: `scale(${String(scale)})`, width: `${String(100 / scale)}%`, height: `${String(100 / scale)}%` }}>
+      <svg className="absolute inset-0 size-full" aria-hidden="true">{schema.relationships.map((relationship) => { const from = byId.get(relationship.fromEntityId); const to = byId.get(relationship.toEntityId); if (from === undefined || to === undefined) return null; return <g key={relationship.id} onClick={() => { onSelect(relationship.id); }} className="cursor-pointer"><line x1={`${String(from.x)}%`} y1={`${String(from.y)}%`} x2={`${String(to.x)}%`} y2={`${String(to.y)}%`} stroke={selectedId === relationship.id ? "#34d399" : "#245443"} strokeWidth={selectedId === relationship.id ? 3 : 1.5} /><text x={`${String((from.x + to.x) / 2)}%`} y={`${String((from.y + to.y) / 2)}%`} fill="#94a3b8" fontSize="10" textAnchor="middle">{relationship.name}</text></g>; })}</svg>
+      {schema.entities.map((entity) => <EntityNode key={entity.id} entity={entity} selected={selectedId === entity.id} dimmed={query.trim().length > 0 && !matches.has(entity.id)} onClick={() => { onSelect(entity.id); }} />)}
+    </div>
+  </div>;
+}
+
+function EntityNode({ entity, selected, dimmed, onClick }: { readonly entity: GraphEntity; readonly selected: boolean; readonly dimmed: boolean; readonly onClick: () => void }) {
+  const style = entity.change === "ADDED" ? "border-emerald-500" : entity.change === "REMOVED" ? "border-red-700" : entity.change === "CHANGED" ? "border-amber-600" : "border-emerald-950";
+  return <button type="button" onClick={onClick} className={`absolute w-44 -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl border bg-[#0b1b16] text-left shadow-xl transition ${style} ${selected ? "ring-2 ring-emerald-400 ring-offset-2 ring-offset-[#050c0a]" : "hover:border-emerald-700"} ${dimmed ? "opacity-25" : "opacity-100"}`} style={{ left: `${String(entity.x)}%`, top: `${String(entity.y)}%` }}><span className="block border-b border-emerald-950 bg-emerald-950/30 px-3 py-2"><span className="block truncate text-sm font-semibold text-emerald-100">{entity.name}</span><span className="text-[9px] uppercase tracking-wider text-slate-500">{entity.change}</span></span><span className="block px-3 py-2 text-[11px] text-slate-400">{entity.properties.length} properties · {entity.properties.filter((property) => property.identifier).length} identifier</span></button>;
+}

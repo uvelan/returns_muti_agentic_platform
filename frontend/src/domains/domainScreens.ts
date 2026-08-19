@@ -7,7 +7,9 @@ import { lazy, type ComponentType } from "react";
  */
 export const DOMAIN_SCREENS: Partial<Record<string, ComponentType>> = {
   "/graph-schema": lazy(() =>
-    import("./graph-schema/GraphSchemaPage").then((m) => ({ default: m.GraphSchemaPage })),
+    import("./graph-schema/GraphAnalyzerWorkspace").then((m) => ({
+      default: m.GraphAnalyzerWorkspace,
+    })),
   ),
   "/ai": lazy(() =>
     import("./ai/AiControlCenterPage").then((m) => ({ default: m.AiControlCenterPage })),
