@@ -4,13 +4,18 @@ import { askAnalyzer, reviewRecommendation } from "../../../api/graphAnalyzer";
 import type { AgentMessage, AgentRecommendation } from "../../../contracts/graphAnalyzer";
 import { useGraphAnalyzer } from "../GraphAnalyzerContext";
 import { useAnalyzerMutation } from "../analyzerQueries";
+import { useMutation } from "@tanstack/react-query";
 
 export function AgentDrawer() {
   const ui = useGraphAnalyzer();
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<readonly AgentMessage[]>([]);
   const [recommendation, setRecommendation] = useState<AgentRecommendation | null>(null);
-  const ask = useAnalyzerMutation(({ message }: { readonly message: string }) => askAnalyzer(message, ui.agentContext));
+  // Asking a question changes nothing server-side, so it does not invalidate the
+  // analyzer queries. `useAnalyzerMutation` refetches bootstrap, schemas and every
+  // active run on success, which meant each chat message reloaded the whole
+  // workspace. Reviewing a recommendation *does* change the proposal, so that one
+  // keeps the invalidating wrapper.
+  const ask = useMutation({ mutationFn: ({ message }: { readonly message: string }) => askAnalyzer(message, ui.agentContext) });
   const review = useAnalyzerMutation(({ id, decision }: { readonly id: string; readonly decision: "APPLY" | "REJECT" }) => reviewRecommendation(id, decision));
 
   if (!ui.chatOpen) return null;
@@ -19,9 +24,9 @@ export function AgentDrawer() {
     const content = input.trim();
     if (content.length === 0 || ask.isPending) return;
     const userMessage: AgentMessage = { id: crypto.randomUUID(), role: "USER", content, createdAt: new Date().toISOString() };
-    setMessages((current) => [...current, userMessage]);
+    ui.appendMessage(userMessage);
     setInput("");
-    ask.mutate({ message: content }, { onSuccess: (reply) => { setMessages((current) => [...current, reply.message]); setRecommendation(reply.recommendation); } });
+    ask.mutate({ message: content }, { onSuccess: (reply) => { ui.appendMessage(reply.message); setRecommendation(reply.recommendation); } });
   };
 
   return <div className="fixed inset-0 z-50 flex justify-end bg-black/55 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) ui.closeChat(); }}>
@@ -29,8 +34,8 @@ export function AgentDrawer() {
       <header className="flex items-center justify-between border-b border-emerald-950 px-5 py-4"><div className="flex items-center gap-3"><span className="grid size-9 place-items-center rounded-lg bg-emerald-400 text-emerald-950"><Bot size={18} /></span><div><h2 className="font-semibold text-white">Analyzer Agent</h2><p className="text-xs text-slate-500">System graph guidance only</p></div></div><button type="button" onClick={ui.closeChat} className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white" aria-label="Close Analyzer Agent"><X size={18} /></button></header>
       <div className="border-b border-emerald-950 bg-emerald-950/20 px-5 py-3 text-xs text-emerald-200"><ShieldCheck className="mr-2 inline" size={14} />Source systems are read-only. Suggested changes can target only the system graph.</div>
       <div className="flex-1 space-y-4 overflow-y-auto p-5">
-        {messages.length === 0 ? <div className="rounded-xl border border-dashed border-emerald-900 p-5 text-sm text-slate-400"><Sparkles className="mb-3 text-emerald-400" size={20} />Ask why an entity was proposed, review an identifier, explore a mapping, or request a system-graph change.</div> : null}
-        {messages.map((message) => <div key={message.id} className={`max-w-[88%] rounded-xl px-4 py-3 text-sm leading-6 ${message.role === "USER" ? "ml-auto bg-emerald-500 text-emerald-950" : "border border-emerald-950 bg-[#101f1b] text-slate-200"}`}>{message.content}</div>)}
+        {ui.messages.length === 0 ? <div className="rounded-xl border border-dashed border-emerald-900 p-5 text-sm text-slate-400"><Sparkles className="mb-3 text-emerald-400" size={20} />Ask why an entity was proposed, review an identifier, explore a mapping, or request a system-graph change.</div> : null}
+        {ui.messages.map((message) => <div key={message.id} className={`max-w-[88%] rounded-xl px-4 py-3 text-sm leading-6 ${message.role === "USER" ? "ml-auto bg-emerald-500 text-emerald-950" : "border border-emerald-950 bg-[#101f1b] text-slate-200"}`}>{message.content}</div>)}
         {ask.isPending ? <div className="text-sm text-slate-400">Reviewing the active workspace context…</div> : null}
         {ask.isError ? <div role="alert" className="rounded-lg border border-red-900 bg-red-950/40 p-3 text-sm text-red-200">Agent request failed: {ask.error.message}</div> : null}
         {recommendation?.status === "PENDING" ? <div className="rounded-xl border border-amber-700/60 bg-amber-950/25 p-4"><div className="mb-2 flex items-center justify-between"><span className="text-xs font-semibold uppercase tracking-wider text-amber-300">Change preview</span><span className="rounded-full bg-emerald-950 px-2 py-1 text-[10px] text-emerald-300">TARGET: SYSTEM GRAPH</span></div><p className="font-medium text-white">{recommendation.summary}</p><p className="mt-1 text-sm text-slate-400">{recommendation.rationale}</p><div className="mt-4 flex gap-2"><button type="button" disabled={review.isPending} onClick={() => { review.mutate({ id: recommendation.id, decision: "APPLY" }, { onSuccess: (result) => { setRecommendation(result.recommendation); } }); }} className="inline-flex items-center gap-2 rounded-lg bg-emerald-400 px-3 py-2 text-sm font-semibold text-emerald-950 disabled:opacity-50"><Check size={15} />Apply to proposal</button><button type="button" disabled={review.isPending} onClick={() => { review.mutate({ id: recommendation.id, decision: "REJECT" }, { onSuccess: (result) => { setRecommendation(result.recommendation); } }); }} className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 disabled:opacity-50">Reject</button></div></div> : null}

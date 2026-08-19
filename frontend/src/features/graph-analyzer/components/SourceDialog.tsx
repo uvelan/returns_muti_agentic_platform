@@ -7,7 +7,21 @@ const engineDefaults: Record<SourceEngine, number> = { MONGODB: 27017, POSTGRESQ
 
 export function SourceDialog({ source, open, saving, error, onClose, onSave }: { readonly source: AnalyzerSource | null; readonly open: boolean; readonly saving: boolean; readonly error: string | null; readonly onClose: () => void; readonly onSave: (input: SourceInput) => void }) {
   const [engine, setEngine] = useState<SourceEngine>(source?.engine ?? "POSTGRESQL");
-  const [form, setForm] = useState({ name: "", host: "", port: 5432, database: "", username: "", password: "" });
+  // Seeded from the source being edited. The initializer used to ignore `source`
+  // entirely, so "Edit connection" opened blank and saving it overwrote a working
+  // connection with empty strings. The caller remounts this component per source
+  // via `key`, which is what makes a lazy initializer the right place for it.
+  //
+  // `password` is deliberately absent: the API never returns a saved secret, and
+  // an empty value means "keep the stored one".
+  const [form, setForm] = useState({
+    name: source?.name ?? "",
+    host: source?.host ?? "",
+    port: source?.port ?? engineDefaults[source?.engine ?? "POSTGRESQL"],
+    database: source?.database ?? "",
+    username: source?.username ?? "",
+    password: "",
+  });
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
 

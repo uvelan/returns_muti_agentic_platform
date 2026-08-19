@@ -197,6 +197,7 @@ class GraphAnalyzerService:
                             if engine == "MONGODB"
                             else self._settings.sqlserver_host
                         ),
+                        port=(27017 if engine == "MONGODB" else self._settings.sqlserver_port),
                         database=database,
                         username=None,
                         lastValidatedAt=None,
@@ -216,6 +217,7 @@ class GraphAnalyzerService:
             engine=document["engine"],
             status=document.get("status", "NOT_VALIDATED"),
             host=str(document["host"]),
+            port=int(document["port"]),
             database=str(document["database"]),
             username=str(document["username"]) if document.get("username") else None,
             lastValidatedAt=document.get("lastValidatedAt"),

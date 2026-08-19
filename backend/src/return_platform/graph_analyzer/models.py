@@ -47,11 +47,33 @@ class AnalyzerSource(AnalyzerModel):
         "NOT_VALIDATED", "CONNECTED", "VALIDATION_FAILED", "AUTHENTICATION_FAILED", "UNREACHABLE"
     ]
     host: str
+    #: Echoed back so the edit form can restore the connection it is editing.
+    #: Never a secret; the password is the only field withheld.
+    port: int = Field(ge=1, le=65_535)
     database: str
     username: str | None
     lastValidatedAt: datetime | None
     objectCount: int = Field(ge=0)
     objects: list[SourceObject]
+
+
+class PreviewGraphNode(AnalyzerModel):
+    id: str
+    labels: list[str]
+    properties: dict[str, Any]
+
+
+class PreviewGraphEdge(AnalyzerModel):
+    id: str
+    type: str
+    fromId: str
+    toId: str
+    properties: dict[str, Any]
+
+
+class PreviewGraph(AnalyzerModel):
+    nodes: list[PreviewGraphNode]
+    edges: list[PreviewGraphEdge]
 
 
 class PreviewPage(AnalyzerModel):
@@ -60,6 +82,10 @@ class PreviewPage(AnalyzerModel):
     page: int = Field(ge=1)
     pageSize: int = Field(ge=1, le=100)
     total: int | None = Field(default=None, ge=0)
+    #: Populated only for external graph sources, from a bounded read-only read.
+    #: `None` elsewhere: the Graph tab renders an empty state rather than
+    #: fabricating nodes, which is what it used to do.
+    graph: PreviewGraph | None = None
 
 
 class AnalysisRequest(AnalyzerModel):

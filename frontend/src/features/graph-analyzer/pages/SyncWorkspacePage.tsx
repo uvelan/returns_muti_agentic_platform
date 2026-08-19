@@ -17,7 +17,17 @@ export function SyncWorkspacePage() {
   const active = useSyncRun(activeId);
   const finalized = bootstrap.data?.proposedSchema?.status === "FINALIZED";
   const run = active.data ?? bootstrap.data?.activeSync ?? null;
-  useEffect(() => { if (active.data !== undefined && !["PREPARING", "RUNNING"].includes(active.data.status)) void bootstrap.refetch(); }, [active.data, bootstrap]);
+  // Refresh the workspace header once a run reaches a terminal state.
+  //
+  // Depends on the *status string*, not on `active.data` and `bootstrap`:
+  // react-query hands back a new object identity on every render, so the
+  // previous dependency list re-ran this effect continuously and refetched the
+  // bootstrap query in a loop for as long as the page was open.
+  const runStatus = active.data?.status ?? null;
+  const refetchBootstrap = bootstrap.refetch;
+  useEffect(() => {
+    if (runStatus !== null && !["PREPARING", "RUNNING"].includes(runStatus)) void refetchBootstrap();
+  }, [runStatus, refetchBootstrap]);
 
   const begin = () => { start.mutate({ syncMode: mode, selected: mode === "FULL" ? [] : [...scope] }, { onSuccess: (next) => { setActiveId(next.id); } }); };
   return <AnalyzerLayout><div className="space-y-5"><div><p className="text-xs font-semibold uppercase tracking-[.2em] text-emerald-500">System graph synchronization</p><h2 className="mt-1 text-2xl font-semibold text-white">Read sources. Write the system graph.</h2><p className="mt-1 text-sm text-slate-400">Synchronization is one-way. Configured sources are never modified or used as rollback targets.</p></div>

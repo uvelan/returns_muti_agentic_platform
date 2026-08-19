@@ -6,7 +6,7 @@ import { AnalyzerLayout } from "../components/AnalyzerLayout";
 import { SchemaCanvas } from "../components/SchemaCanvas";
 import { schemaChanges } from "../schemaChanges";
 import { useGraphAnalyzer } from "../GraphAnalyzerContext";
-import { useAnalyzerMutation, useSchemas } from "../analyzerQueries";
+import { useAnalyzerBootstrap, useAnalyzerMutation, useSchemas } from "../analyzerQueries";
 
 type Mode = "PROPOSED" | "EXISTING" | "CHANGES" | "SIDE_BY_SIDE";
 
@@ -25,7 +25,13 @@ export function SchemaWorkspacePage() {
   const changes = proposed === null ? [] : schemaChanges(existing, proposed);
   const selectedEntity = proposed?.entities.find((entity) => entity.id === selectedId) ?? null;
   const selectedRelationship = proposed?.relationships.find((relationship) => relationship.id === selectedId) ?? null;
-  const currentValidation = validation.data;
+  // The last validation the *server* recorded, with this session's fresh result
+  // preferred when there is one. Reading only `validation.data` meant the panel
+  // went blank on navigation and the Finalize button re-locked itself, because
+  // mutation state does not survive a remount -- so a proposal validated a
+  // moment earlier looked unvalidated.
+  const bootstrap = useAnalyzerBootstrap();
+  const currentValidation = validation.data ?? bootstrap.data?.validation ?? undefined;
 
   return <AnalyzerLayout><div className="space-y-5"><div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[.2em] text-emerald-500">System graph workspace</p><h2 className="mt-1 text-2xl font-semibold text-white">Review and refine the graph model</h2><p className="mt-1 text-sm text-slate-400">Source mappings are references only. Every edit below changes the system graph proposal—never a source system.</p></div><div className="flex gap-2"><button type="button" disabled={validation.isPending || proposed === null} onClick={() => { validation.mutate(undefined); }} className="inline-flex items-center gap-2 rounded-lg border border-emerald-700 px-3 py-2 text-sm text-emerald-200 disabled:opacity-40"><ShieldCheck size={15} />{validation.isPending ? "Validating…" : "Validate proposal"}</button><button type="button" disabled={finalize.isPending || proposed === null || (currentValidation?.status ?? "BLOCKING") === "BLOCKING"} onClick={() => { finalize.mutate(undefined); }} className="rounded-lg bg-emerald-400 px-4 py-2 text-sm font-semibold text-emerald-950 disabled:opacity-40">{finalize.isPending ? "Finalizing…" : "Finalize schema"}</button></div></div>
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-950 bg-[#0a1714] p-2"><div className="flex gap-1">{(["PROPOSED", "EXISTING", "CHANGES", "SIDE_BY_SIDE"] as const).map((item) => <button type="button" key={item} onClick={() => { setMode(item); }} className={`rounded-lg px-3 py-2 text-xs font-medium ${mode === item ? "bg-emerald-950 text-emerald-200" : "text-slate-500 hover:text-white"}`}>{item.replaceAll("_", " ")}</button>)}</div><div className="flex items-center gap-3 px-2 text-xs"><Legend color="bg-emerald-400" label="Added" /><Legend color="bg-amber-400" label="Changed" /><Legend color="bg-red-400" label="Removed" /></div></div>

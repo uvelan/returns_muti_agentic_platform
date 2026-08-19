@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import type { AgentContext } from "../../contracts/graphAnalyzer";
+import type { AgentContext, AgentMessage } from "../../contracts/graphAnalyzer";
 
 type AnalyzerUiState = {
   readonly selectedSourceId: string | null;
@@ -9,6 +9,16 @@ type AnalyzerUiState = {
   readonly analysisContext: string;
   readonly chatOpen: boolean;
   readonly agentContext: AgentContext;
+  /**
+   * The one Analyzer conversation, held here rather than inside the drawer.
+   *
+   * The drawer unmounts whenever it closes and whenever the user moves between
+   * Graph Analyzer, Schema and Sync, so drawer-local state discarded the whole
+   * transcript each time -- which made "one reusable chat across the product"
+   * true only of the component, not of the conversation.
+   */
+  readonly messages: readonly AgentMessage[];
+  readonly appendMessage: (message: AgentMessage) => void;
   readonly setSelectedSourceId: (value: string | null) => void;
   readonly setSelectedObjectId: (value: string | null) => void;
   readonly setSelectedObjectIds: (value: ReadonlySet<string>) => void;
@@ -34,6 +44,7 @@ export function GraphAnalyzerProvider({ children }: { readonly children: ReactNo
   const [analysisContext, setContext] = useState(readStoredContext);
   const [chatOpen, setChatOpen] = useState(false);
   const [agentContext, setAgentContext] = useState<AgentContext>({ workspace: "ANALYZER" });
+  const [messages, setMessages] = useState<readonly AgentMessage[]>([]);
 
   const setAnalysisContext = useCallback((value: string) => {
     setContext(value);
@@ -51,6 +62,10 @@ export function GraphAnalyzerProvider({ children }: { readonly children: ReactNo
 
   const closeChat = useCallback(() => { setChatOpen(false); }, []);
 
+  const appendMessage = useCallback((message: AgentMessage) => {
+    setMessages((current) => [...current, message]);
+  }, []);
+
   const value = useMemo<AnalyzerUiState>(() => ({
     selectedSourceId,
     selectedObjectId,
@@ -58,13 +73,15 @@ export function GraphAnalyzerProvider({ children }: { readonly children: ReactNo
     analysisContext,
     chatOpen,
     agentContext,
+    messages,
+    appendMessage,
     setSelectedSourceId,
     setSelectedObjectId,
     setSelectedObjectIds,
     setAnalysisContext,
     openChat,
     closeChat,
-  }), [selectedSourceId, selectedObjectId, selectedObjectIds, analysisContext, chatOpen, agentContext, setAnalysisContext, openChat, closeChat]);
+  }), [selectedSourceId, selectedObjectId, selectedObjectIds, analysisContext, chatOpen, agentContext, messages, appendMessage, setAnalysisContext, openChat, closeChat]);
 
   return <AnalyzerContext.Provider value={value}>{children}</AnalyzerContext.Provider>;
 }

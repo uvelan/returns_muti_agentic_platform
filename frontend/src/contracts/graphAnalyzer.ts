@@ -41,6 +41,7 @@ export type AnalyzerSource = {
   readonly engine: SourceEngine;
   readonly status: SourceStatus;
   readonly host: string;
+  readonly port: number;
   readonly database: string;
   readonly username: string | null;
   readonly lastValidatedAt: string | null;
@@ -58,12 +59,38 @@ export type SourceInput = {
   readonly password?: string;
 };
 
+/** One node of a bounded, read-only sample read from an external graph source. */
+export type PreviewGraphNode = {
+  readonly id: string;
+  readonly labels: readonly string[];
+  readonly properties: Readonly<Record<string, unknown>>;
+};
+
+/** One relationship in that same sample. Both endpoints are always present in `nodes`. */
+export type PreviewGraphEdge = {
+  readonly id: string;
+  readonly type: string;
+  readonly fromId: string;
+  readonly toId: string;
+  readonly properties: Readonly<Record<string, unknown>>;
+};
+
+export type PreviewGraph = {
+  readonly nodes: readonly PreviewGraphNode[];
+  readonly edges: readonly PreviewGraphEdge[];
+};
+
 export type PreviewPage = {
   readonly columns: readonly string[];
   readonly rows: readonly Readonly<Record<string, unknown>>[];
   readonly page: number;
   readonly pageSize: number;
   readonly total: number | null;
+  /**
+   * Present only for external graph sources. `null` everywhere else, which is
+   * what the Graph tab renders its empty state from -- it never invents nodes.
+   */
+  readonly graph: PreviewGraph | null;
 };
 
 export type AnalysisStage =

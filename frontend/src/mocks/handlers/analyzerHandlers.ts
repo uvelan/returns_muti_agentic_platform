@@ -45,6 +45,7 @@ let sources: AnalyzerSource[] = [
     id: "source_sales",
     name: "Sales MongoDB",
     engine: "MONGODB",
+    port: 27017,
     status: "CONNECTED",
     host: "sales.internal",
     database: "sales",
@@ -57,6 +58,7 @@ let sources: AnalyzerSource[] = [
     id: "source_fulfillment",
     name: "Fulfillment PostgreSQL",
     engine: "POSTGRESQL",
+    port: 5432,
     status: "CONNECTED",
     host: "fulfillment.internal",
     database: "fulfillment",
@@ -177,7 +179,26 @@ function bootstrap(): AnalyzerBootstrap {
   };
 }
 
-const ok = <T,>(data: T) => HttpResponse.json({ data, meta: { requestId: "mock-analyzer" } });
+const ok = (data: unknown) => HttpResponse.json({ data, meta: { requestId: "mock-analyzer" } });
+
+/** Read a string field from an untyped request body, falling back when absent. */
+function text(body: Record<string, unknown>, key: string, fallback: string): string {
+  const value = body[key];
+  return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+/** Read a numeric field from an untyped request body. */
+function count(body: Record<string, unknown>, key: string, fallback: number): number {
+  const value = body[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function engineOf(body: Record<string, unknown>): AnalyzerSource["engine"] {
+  const value = body.engine;
+  return value === "MONGODB" || value === "POSTGRESQL" || value === "SQLSERVER" || value === "NEO4J"
+    ? value
+    : "MONGODB";
+}
 
 export const analyzerHandlers = [
   http.get("/api/graph-analyzer/v1/bootstrap", () => ok(bootstrap())),
@@ -191,17 +212,19 @@ export const analyzerHandlers = [
     page: 1,
     pageSize: 25,
     total: 18420,
+    graph: null,
   })),
   http.post("/api/graph-analyzer/v1/sources/test", () => ok({ status: "CONNECTED", message: "Read-only connection validated." })),
   http.post("/api/graph-analyzer/v1/sources", async ({ request }) => {
     const input = await request.json() as Record<string, unknown>;
     const created: AnalyzerSource = {
       id: `source-${String(sources.length + 1)}`,
-      name: String(input.name ?? "New source"),
-      engine: (input.engine ?? "MONGODB") as AnalyzerSource["engine"],
+      name: text(input, "name", "New source"),
+      engine: engineOf(input),
+      port: count(input, "port", 0),
       status: "NOT_VALIDATED",
-      host: String(input.host ?? ""),
-      database: String(input.database ?? ""),
+      host: text(input, "host", ""),
+      database: text(input, "database", ""),
       username: typeof input.username === "string" ? input.username : null,
       lastValidatedAt: null,
       objectCount: 0,
@@ -213,7 +236,7 @@ export const analyzerHandlers = [
   http.put("/api/graph-analyzer/v1/sources/:sourceId", async ({ params, request }) => {
     const input = await request.json() as Record<string, unknown>;
     const current = sources.find((source) => source.id === params.sourceId) ?? sources[0];
-    const updated = { ...current, name: String(input.name ?? current.name), host: String(input.host ?? current.host), database: String(input.database ?? current.database) };
+    const updated = { ...current, name: text(input, "name", current.name), host: text(input, "host", current.host), database: text(input, "database", current.database) };
     sources = sources.map((source) => source.id === updated.id ? updated : source);
     return ok(updated);
   }),

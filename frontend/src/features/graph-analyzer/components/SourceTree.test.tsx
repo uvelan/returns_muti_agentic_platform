@@ -9,6 +9,7 @@ const sources: readonly AnalyzerSource[] = [{
   name: "Orders source",
   engine: "POSTGRESQL",
   status: "CONNECTED",
+  port: 5432,
   host: "db.internal",
   database: "orders",
   username: null,
