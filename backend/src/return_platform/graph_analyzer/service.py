@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
 import re
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -128,6 +129,60 @@ def _json_value(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(key): _json_value(item) for key, item in value.items()}
     return str(value)
+
+
+def _graph_property_value(value: Any) -> Any:
+    """Coerce one source value into something a graph property can hold.
+
+    Neo4j properties are primitives, or homogeneous lists of primitives. A source
+    document with a nested object or a mixed list -- which is the ordinary shape
+    of the collections this analyzer reads -- made the write fail with
+    CypherTypeError after the run had already reported progress.
+
+    Nested structure is preserved as JSON text rather than dropped: the operator
+    mapped that field deliberately, and a null would silently lose it. A value
+    that cannot be serialized at all falls back to its string form, because
+    failing one whole sync over one unusual value is worse than storing its
+    representation.
+    """
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    if isinstance(value, list) and all(
+        item is None or isinstance(item, (str, bool, int, float)) for item in value
+    ):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):  # pragma: no cover - default=str covers almost all
+        return str(value)
+
+
+def _sync_summary(skipped_objects: int, skipped_rows: int) -> str:
+    """Say which kind of skip happened, because the fixes differ."""
+    if not skipped_objects and not skipped_rows:
+        return "Synchronization complete"
+    parts: list[str] = []
+    if skipped_objects:
+        parts.append(f"{skipped_objects} graph object(s) had no identifier to key on")
+    if skipped_rows:
+        parts.append(f"{skipped_rows} source row(s) had no value for their identifier")
+    return "Complete; " + ", ".join(parts)
+
+
+def _stored(document: Mapping[str, Any]) -> dict[str, Any]:
+    """Drop the keys that belong to storage rather than to the API model.
+
+    Every analyzer model sets `extra="forbid"`, and these documents are written
+    with Mongo's `_id` -- plus, for validations, the `schemaId` they are filed
+    under. Handing one straight to `model_validate` therefore raised, which is
+    why `bootstrap` answered 500 the moment any analysis, validation or sync run
+    existed: the workspace failed to load precisely once it had been used.
+
+    Stripping here rather than loosening the models keeps the API shape as the
+    contract, and doing it in one place is what stops the next reader
+    reintroducing it.
+    """
+    return {key: value for key, value in document.items() if key not in {"_id", "schemaId"}}
 
 
 class GraphAnalyzerService:
@@ -576,7 +631,7 @@ class GraphAnalyzerService:
 
     async def get_analysis(self, run_id: str) -> AnalysisRun | None:
         document = await self._analyses.find_one({"_id": run_id})
-        return AnalysisRun.model_validate(document) if document else None
+        return AnalysisRun.model_validate(_stored(document)) if document else None
 
     async def save_schema(self, schema: AnalyzerGraphSchema) -> AnalyzerGraphSchema:
         updated = schema.model_copy(
@@ -595,11 +650,42 @@ class GraphAnalyzerService:
         )
         return updated
 
+    async def _known_source_fields(self) -> dict[str, set[str]]:
+        """Every source object the analyzer can currently resolve, and its fields.
+
+        Built from both halves of the source list: the platform's own registry
+        assets, and the structure discovery cached for each configured source.
+        A mapping is stale only when neither knows the object.
+        """
+        known: dict[str, set[str]] = {
+            asset.asset_id: {field.name for field in asset.fields}
+            for asset in self._registry.assets
+        }
+        documents = await self._sources.find({}).to_list(length=500)
+        for document in documents:
+
+            def walk(nodes: list[dict[str, Any]]) -> None:
+                for node in nodes:
+                    fields = node.get("fields") or []
+                    if fields:
+                        known[str(node["id"])] = {str(field["name"]) for field in fields}
+                    walk(node.get("children") or [])
+
+            walk(cast(list[dict[str, Any]], document.get("objects", [])))
+        return known
+
     async def validate_schema(self) -> SchemaValidation:
         schema = await self.proposed_schema()
         if schema is None:
             raise ValueError("No proposed graph schema exists.")
-        known_assets = {asset.asset_id: asset for asset in self._registry.assets}
+        # Fields that actually exist, keyed by source object id.
+        #
+        # This used to consult only `self._registry.assets`, so every mapping
+        # onto a source the operator had configured was reported STALE -- which
+        # made validation BLOCKING and finalization impossible for exactly the
+        # sources this feature exists to analyze. Discovery's cached structure
+        # is the other half of the answer and is consulted first.
+        known_fields = await self._known_source_fields()
         issues: list[ValidationIssue] = []
         entity_ids = {entity.id for entity in schema.entities}
         for entity in schema.entities:
@@ -615,8 +701,8 @@ class GraphAnalyzerService:
                     )
                 )
             for prop in entity.properties:
-                asset = known_assets.get(prop.sourceObjectId or "")
-                if asset is None or prop.sourceField not in {field.name for field in asset.fields}:
+                available = known_fields.get(prop.sourceObjectId or "")
+                if available is None or (prop.sourceField or "") not in available:
                     issues.append(
                         ValidationIssue(
                             id=str(uuid.uuid4()),
@@ -667,8 +753,17 @@ class GraphAnalyzerService:
         return validation
 
     async def latest_validation(self) -> SchemaValidation | None:
+        """The most recent validation the server recorded.
+
+        The stored document carries two keys the model does not: Mongo's `_id`
+        and the `schemaId` the record is filed under. `SchemaValidation` forbids
+        extras, so validating the raw document raised -- and because `bootstrap`
+        calls this, the entire workspace answered 500 as soon as any validation
+        had ever been run. The storage keys are projected away here rather than
+        the model being loosened, because the model's shape is the API contract.
+        """
         document = await self._validations.find_one({}, sort=[("checkedAt", -1)])
-        return SchemaValidation.model_validate(document) if document else None
+        return SchemaValidation.model_validate(_stored(document)) if document else None
 
     async def finalize_schema(self) -> AnalyzerGraphSchema:
         validation = await self.validate_schema()
@@ -840,7 +935,7 @@ class GraphAnalyzerService:
         document = await self._recommendations.find_one({"_id": recommendation_id})
         if document is None:
             raise KeyError(recommendation_id)
-        recommendation = AgentRecommendation.model_validate(document)
+        recommendation = AgentRecommendation.model_validate(_stored(document))
         for operation in recommendation.operations:
             assert_system_graph_target(str(operation.get("target", "")))
         if recommendation.status != "PENDING":
@@ -1025,6 +1120,37 @@ class GraphAnalyzerService:
                     )
                     await result.consume()
 
+    async def _read_for_sync(self, object_id: str) -> list[dict[str, Any]]:
+        """Read one source object's records for synchronization.
+
+        Deliberately not `preview()`. `PreviewPage` is the *UI* page model and
+        caps `pageSize` at 100, so driving sync through it raised a validation
+        error the moment the sync limit exceeded a screenful -- which it always
+        does. The two have different bounds because they answer different
+        questions: a preview shows shape, a sync reads scope.
+
+        The bound here is `graph_sync_max_records`, the platform's own
+        configured ceiling, so the read stays finite and the run stays
+        inspectable.
+        """
+        limit = max(1, self._settings.graph_sync_max_records)
+        resolved = await self._source_document_for(object_id)
+        if resolved is not None:
+            document, object_name = resolved
+            rows = await sample_object(document, object_name, limit)
+            return [cast(dict[str, Any], _json_value(row)) for row in rows]
+        # A registry-declared source: page through the existing reader, whose
+        # per-page bound is the one it was written with.
+        collected: list[dict[str, Any]] = []
+        page = 1
+        while len(collected) < limit:
+            batch = await self._preview_registry_asset(object_id, page, 100)
+            if not batch.rows:
+                break
+            collected.extend(batch.rows)
+            page += 1
+        return collected[:limit]
+
     async def start_sync(self, request: SyncRequest) -> SyncRun:
         schema = await self.proposed_schema()
         if schema is None or schema.status != "FINALIZED":
@@ -1056,25 +1182,36 @@ class GraphAnalyzerService:
         await self._sync_runs.insert_one(run.model_dump(mode="python") | {"_id": run.id})
         try:
             await self._apply_system_graph_schema(schema)
-            read = processed = written = relationship_writes = skipped = 0
+            read = processed = written = relationship_writes = 0
+            # Two different skips, counted apart because they mean different
+            # things to an operator: an entity with no identifier is a schema
+            # problem to fix in the editor, while a row with a null identifier
+            # value is a data property of the source.
+            skipped_objects = skipped_rows = 0
             for entity in entities:
                 identifier = next((prop for prop in entity.properties if prop.identifier), None)
                 if identifier is None or identifier.sourceObjectId is None:
                     # Nothing to key the graph node on, so this entity is skipped
                     # and counted rather than taking the run down with it.
-                    skipped += 1
+                    skipped_objects += 1
                     continue
-                preview = await self.preview(
-                    identifier.sourceObjectId, 1, min(self._settings.graph_sync_max_records, 10_000)
-                )
-                read += len(preview.rows)
+                source_rows = await self._read_for_sync(identifier.sourceObjectId)
+                read += len(source_rows)
                 label = entity.name
                 if not _SAFE_IDENTIFIER.fullmatch(label):
                     raise ValueError("Unsafe system graph label.")
                 mapped = [
                     (prop.name, prop.sourceField) for prop in entity.properties if prop.sourceField
                 ]
-                rows = [{name: row.get(source) for name, source in mapped} for row in preview.rows]
+                # A node cannot be keyed on a value that is not there. Neo4j
+                # refuses to MERGE on a null key, and one such row failed the
+                # whole run; they are dropped and counted instead.
+                projected = [
+                    {name: _graph_property_value(row.get(source)) for name, source in mapped}
+                    for row in source_rows
+                ]
+                rows = [row for row in projected if row.get(identifier.name) is not None]
+                skipped_rows += len(projected) - len(rows)
                 query = (
                     f"UNWIND $rows AS row MERGE (n:{label} "
                     f"{{{identifier.name}: row.{identifier.name}}}) SET n += row"
@@ -1104,22 +1241,18 @@ class GraphAnalyzerService:
                     (prop for prop in to_entity.properties if prop.identifier), None
                 )
                 if from_identifier is None or to_identifier is None:
-                    skipped += 1
+                    skipped_objects += 1
                     continue
                 if from_identifier.sourceField is None or to_identifier.sourceField is None:
-                    skipped += 1
+                    skipped_objects += 1
                     continue
-                preview = await self.preview(
-                    relationship.sourceObjectId,
-                    1,
-                    min(self._settings.graph_sync_max_records, 10_000),
-                )
+                source_rows = await self._read_for_sync(relationship.sourceObjectId)
                 relationship_rows = [
                     {
                         "from_key": row.get(from_identifier.sourceField),
                         "to_key": row.get(to_identifier.sourceField),
                     }
-                    for row in preview.rows
+                    for row in source_rows
                     if row.get(from_identifier.sourceField) is not None
                     and row.get(to_identifier.sourceField) is not None
                 ]
@@ -1155,23 +1288,21 @@ class GraphAnalyzerService:
                     result = await session.run(query, rows=relationship_rows)
                     record = await result.single()
                     relationship_writes += int(record["writes"]) if record else 0
-                read += len(preview.rows)
+                read += len(source_rows)
                 processed += len(relationship_rows)
             # A run that skipped part of its scope did not fully complete, and
             # saying COMPLETED would hide that some entities were never written.
             completed = run.model_copy(
                 update={
-                    "status": "PARTIALLY_COMPLETED" if skipped else "COMPLETED",
-                    "currentActivity": (
-                        f"Complete; {skipped} object(s) skipped for a missing identifier"
-                        if skipped
-                        else "Synchronization complete"
+                    "status": (
+                        "PARTIALLY_COMPLETED" if skipped_objects or skipped_rows else "COMPLETED"
                     ),
+                    "currentActivity": _sync_summary(skipped_objects, skipped_rows),
                     "itemsRead": read,
                     "itemsProcessed": processed,
                     "nodesWritten": written,
                     "relationshipsWritten": relationship_writes,
-                    "failedItems": skipped,
+                    "failedItems": skipped_objects + skipped_rows,
                     "completedAt": _now(),
                 }
             )
@@ -1196,13 +1327,13 @@ class GraphAnalyzerService:
 
     async def get_sync(self, run_id: str) -> SyncRun | None:
         document = await self._sync_runs.find_one({"_id": run_id})
-        return SyncRun.model_validate(document) if document else None
+        return SyncRun.model_validate(_stored(document)) if document else None
 
     async def sync_history(self) -> list[SyncRun]:
         documents = (
             await self._sync_runs.find({}).sort("startedAt", -1).limit(100).to_list(length=100)
         )
-        return [SyncRun.model_validate(document) for document in documents]
+        return [SyncRun.model_validate(_stored(document)) for document in documents]
 
     async def bootstrap(self) -> AnalyzerBootstrap:
         history = await self.sync_history()
@@ -1212,7 +1343,7 @@ class GraphAnalyzerService:
             existingSchema=self.existing_schema(),
             proposedSchema=await self.proposed_schema(),
             validation=await self.latest_validation(),
-            activeAnalysis=AnalysisRun.model_validate(analysis_document)
+            activeAnalysis=AnalysisRun.model_validate(_stored(analysis_document))
             if analysis_document
             else None,
             activeSync=next(

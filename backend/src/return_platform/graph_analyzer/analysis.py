@@ -43,7 +43,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from return_platform.graph_analyzer.discovery import inspection_port
+from return_platform.graph_analyzer.discovery import (
+    inspection_port,
+    merge_declared_identifiers,
+    readable_identifiers,
+)
 from return_platform.graph_analyzer.models import (
     GraphEntity,
     GraphProperty,
@@ -65,6 +69,12 @@ logger = logging.getLogger("return_platform.graph_analyzer.analysis")
 #: evidence about shape, and every extra row is more untrusted text in a prompt.
 SAMPLE_ROWS_PER_OBJECT = 5
 
+#: Rows profiled to find an identifier candidate when none is declared.
+#: Larger than the prompt sample because no value leaves the connector --
+#: `profile` returns counts and flags only, so a wider read costs nothing in
+#: exposure and makes a uniqueness claim worth more.
+PROFILE_ROWS_PER_OBJECT = 200
+
 #: Objects one analysis may span. A selection larger than this is refused with a
 #: message rather than silently truncated, because a proposal built from part of
 #: the requested scope is not the proposal that was asked for.
@@ -77,32 +87,6 @@ _TASK_DEFINITION = (
     "sources are read-only evidence. Ground every entity and property in a source "
     "object and field that appears in the metadata block."
 )
-
-
-def merge_declared_identifiers(
-    fields: tuple[Mapping[str, Any], ...],
-    identifier_fields: tuple[str, ...],
-) -> tuple[Mapping[str, Any], ...]:
-    """Add index-declared fields that field inference did not report.
-
-    MongoDB is the case that forces this. Its primary index is on `_id`, which
-    every document carries, but the adapter infers fields from sampled documents
-    and does not report it -- so an entity built from the description alone had
-    no identifier at all. Validation then flagged every proposed entity, and
-    sync's `next(prop for prop in ... if prop.identifier)` raised StopIteration
-    on the first one.
-
-    An index names a field the source declares, so trusting it here is not an
-    inference. The field is appended rather than substituted, so a description
-    that *does* report it keeps its declared type.
-    """
-    known = {str(item["name"]) for item in fields}
-    extra = tuple(
-        {"name": name, "type": "string", "nullable": False}
-        for name in dict.fromkeys(identifier_fields)
-        if name not in known
-    )
-    return (*extra, *fields)
 
 
 @dataclass(frozen=True)
@@ -173,6 +157,35 @@ async def gather_evidence(
                 except Exception:  # noqa: BLE001 - metadata-only analysis is valid
                     rows = ()
 
+                declared_identifiers = readable_identifiers(
+                    tuple(
+                        name
+                        for index in indexes
+                        if index.primary or index.unique
+                        for name in index.fields
+                    )
+                )
+                if not declared_identifiers:
+                    # No declared key the connector can return -- the ordinary
+                    # case for a MongoDB collection, whose only unique index is
+                    # the `_id` the adapter deliberately never reads. The port
+                    # already answers this question: `profile` reports which
+                    # fields were non-null and unique across every row it saw.
+                    # A candidate, not a certainty, which is why it is only
+                    # consulted when nothing was declared.
+                    try:
+                        profile = await port.profile(
+                            source_id=source_id,
+                            object_name=object_name,
+                            sample_size=PROFILE_ROWS_PER_OBJECT,
+                        )
+                    except Exception:  # noqa: BLE001 - profiling is best effort
+                        profile = None
+                    if profile is not None:
+                        declared_identifiers = tuple(
+                            item.field_name for item in profile.fields if item.identifier_candidate
+                        )[:1]
+
                 evidence.append(
                     ObjectEvidence(
                         object_id=f"{source_id}:{object_name}",
@@ -196,12 +209,7 @@ async def gather_evidence(
                                 for name in index.fields
                             ),
                         ),
-                        identifier_fields=tuple(
-                            name
-                            for index in indexes
-                            if index.primary or index.unique
-                            for name in index.fields
-                        ),
+                        identifier_fields=declared_identifiers,
                         indexed_fields=tuple(name for index in indexes for name in index.fields),
                         relationships=tuple(
                             {

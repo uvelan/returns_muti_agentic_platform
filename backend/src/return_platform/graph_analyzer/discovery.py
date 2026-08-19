@@ -79,6 +79,48 @@ MAX_OBJECTS_PER_SOURCE = 500
 _DESCRIBE_CONCURRENCY = 8
 
 
+#: Fields an adapter declares an index on but will never return in a sample.
+#:
+#: The MongoDB adapter drops `_id` from every read on purpose -- it is storage
+#: bookkeeping rather than business shape, and it is not JSON-serialisable, so
+#: it would break the prompt framing. That makes it unusable as a *graph*
+#: identifier: a mapping onto it validates and then reads null, and Neo4j
+#: refuses to MERGE on a null key. Naming it here keeps that one adapter
+#: decision from having to be rediscovered at three call sites.
+UNREADABLE_IDENTIFIER_FIELDS = frozenset({"_id"})
+
+
+def readable_identifiers(identifier_fields: tuple[str, ...]) -> tuple[str, ...]:
+    """Declared identifiers a connector can actually return."""
+    return tuple(name for name in identifier_fields if name not in UNREADABLE_IDENTIFIER_FIELDS)
+
+
+def merge_declared_identifiers(
+    fields: tuple[Mapping[str, Any], ...],
+    identifier_fields: tuple[str, ...],
+) -> tuple[Mapping[str, Any], ...]:
+    """Add index-declared fields that field inference did not report.
+
+    MongoDB is the case that forces this. Its primary index is on `_id`, which
+    every document carries, but the adapter infers fields from sampled documents
+    and does not report it -- so an entity built from the description alone had
+    no identifier at all. Validation then flagged every proposed entity, and
+    sync's `next(prop for prop in ... if prop.identifier)` raised StopIteration
+    on the first one.
+
+    An index names a field the source declares, so trusting it here is not an
+    inference. The field is appended rather than substituted, so a description
+    that *does* report it keeps its declared type.
+    """
+    known = {str(item["name"]) for item in fields}
+    extra = tuple(
+        {"name": name, "type": "string", "nullable": False}
+        for name in dict.fromkeys(identifier_fields)
+        if name not in known
+    )
+    return (*extra, *fields)
+
+
 class SourceUnavailableError(RuntimeError):
     """Raised when a configured source cannot be reached or authenticated."""
 
@@ -273,13 +315,29 @@ async def discover_objects(document: Mapping[str, Any]) -> tuple[list[SourceObje
                     estimatedRows=description.approximate_row_count,
                     fields=[
                         SourceField(
-                            name=field.field_name,
-                            dataType=field.declared_type,
-                            nullable=field.nullable,
-                            identifier=field.field_name in identifier_fields,
-                            indexed=field.field_name in indexed_fields,
+                            name=str(item["name"]),
+                            dataType=str(item["type"]),
+                            nullable=bool(item["nullable"]),
+                            identifier=str(item["name"])
+                            in set(readable_identifiers(tuple(identifier_fields))),
+                            indexed=str(item["name"]) in indexed_fields,
                         )
-                        for field in description.fields
+                        # Merged, so an index-declared field the description
+                        # omits -- MongoDB's `_id` -- appears in the structure
+                        # view and in the field set schema validation checks
+                        # mappings against. Without this the analysis proposed a
+                        # mapping onto `_id` that validation then called stale.
+                        for item in merge_declared_identifiers(
+                            tuple(
+                                {
+                                    "name": field.field_name,
+                                    "type": field.declared_type,
+                                    "nullable": field.nullable,
+                                }
+                                for field in description.fields
+                            ),
+                            tuple(identifier_fields),
+                        )
                     ],
                 )
             )

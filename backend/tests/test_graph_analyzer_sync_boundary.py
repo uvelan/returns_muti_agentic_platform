@@ -10,7 +10,6 @@ from return_platform.graph_analyzer.models import (
     GraphEntity,
     GraphProperty,
     GraphRelationship,
-    PreviewPage,
     SyncRequest,
 )
 from return_platform.graph_analyzer.service import GraphAnalyzerService
@@ -143,19 +142,18 @@ class SyncHarness(GraphAnalyzerService):
         assert schema.status == "FINALIZED"
         self.applied_schema = True
 
-    async def preview(self, object_id: str, page: int, page_size: int) -> PreviewPage:
-        del page, page_size
+    async def _read_for_sync(self, object_id: str) -> list[dict[str, Any]]:
+        """The seam sync reads through.
+
+        It used to be `preview()`. That is the *UI* page model, whose `pageSize`
+        is capped at 100, so driving a sync through it raised a validation error
+        as soon as the sync limit exceeded a screenful. Sync now has its own
+        bounded reader and this harness follows it, because a stub on the old
+        seam would leave the real read path untested while still passing.
+        """
         if object_id == "source.customers":
-            rows = [{"customer_id": "c-1"}]
-        else:
-            rows = [{"order_id": "o-1", "customer_id": "c-1"}]
-        return PreviewPage(
-            columns=sorted(rows[0]),
-            rows=rows,
-            page=1,
-            pageSize=25,
-            total=None,
-        )
+            return [{"customer_id": "c-1"}]
+        return [{"order_id": "o-1", "customer_id": "c-1"}]
 
 
 @pytest.mark.asyncio

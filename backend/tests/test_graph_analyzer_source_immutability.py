@@ -312,7 +312,7 @@ def test_an_index_declared_field_missing_from_the_description_is_still_mapped() 
     built from the description alone had no identifier -- which failed validation
     and crashed sync's identifier lookup.
     """
-    merged = analysis.merge_declared_identifiers(
+    merged = discovery.merge_declared_identifiers(
         ({"name": "name", "type": "string", "nullable": True},), ("_id",)
     )
 
