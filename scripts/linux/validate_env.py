@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import stat
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -94,6 +96,39 @@ def _parse(path: Path) -> dict[str, ParsedValue]:
 
 
 def _validate_permissions(path: Path) -> None:
+    if os.name == "nt":
+        result = subprocess.run(
+            ["icacls.exe", str(path)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise ValueError(".env Windows ACL could not be inspected")
+        domain = os.environ.get("USERDOMAIN", "")
+        username = os.environ.get("USERNAME", "")
+        current_identity = f"{domain}\\{username}" if domain else username
+        allowed = {
+            current_identity.casefold(),
+            "builtin\\administrators",
+            "nt authority\\system",
+        }
+        principals: set[str] = set()
+        path_text = str(path).casefold()
+        for raw_line in result.stdout.splitlines():
+            line = raw_line.strip()
+            if line.casefold().startswith(path_text):
+                line = line[len(str(path)) :].strip()
+            if ":(" not in line:
+                continue
+            principals.add(line.split(":(", 1)[0].casefold())
+        if current_identity.casefold() not in principals or not principals.issubset(allowed):
+            raise ValueError(
+                ".env Windows ACL must grant access only to the current user, "
+                "SYSTEM, and Administrators"
+            )
+        return
+
     mode = stat.S_IMODE(path.stat().st_mode)
     if mode & 0o077:
         raise ValueError(".env must not be accessible by group/other; run chmod 600 .env")
