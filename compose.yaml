@@ -45,12 +45,20 @@ x-platform-environment: &platform-environment
   PLATFORM_PROBE_TIMEOUT_SECONDS: ${PLATFORM_PROBE_TIMEOUT_SECONDS:-5}
   PLATFORM_DEPENDENCY_CONNECT_TIMEOUT_SECONDS: ${PLATFORM_DEPENDENCY_CONNECT_TIMEOUT_SECONDS:-10}
   PLATFORM_OPERATION_TIMEOUT_SECONDS: ${PLATFORM_OPERATION_TIMEOUT_SECONDS:-15}
-  # Runtime credentials come from the process environment. These are the same
-  # values the datastore containers are configured with, read from the one
-  # `.env`, so they match by construction rather than by being copied.
-  PLATFORM_MONGO_DSN: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongodb:27017/${PLATFORM_MONGO_DATABASE:-return_platform}?authSource=admin&directConnection=true
+  # Runtime credentials come from the process environment, read from the one
+  # `.env` the datastore containers are configured with, so they match by
+  # construction rather than by being copied.
+  #
+  # The DSNs are taken whole rather than assembled from `${MONGO_ROOT_*}` here:
+  # a password containing `%`, `@` or `!` must be percent-encoded inside a
+  # mongodb:// URI and Compose interpolation cannot encode anything, so a DSN
+  # built in this file works only for passwords that happen not to need it.
+  # `scripts/linux/ensure_local_infrastructure_secrets.py` derives all four
+  # DSNs from the one root credential, correctly quoted. The CONTAINER_ pair
+  # differs from the host pair only in naming `mongodb` instead of localhost.
+  PLATFORM_MONGO_DSN: ${PLATFORM_CONTAINER_MONGO_DSN:?set it by running scripts/linux/ensure_local_infrastructure_secrets.py}
   PLATFORM_MONGO_DATABASE: ${PLATFORM_MONGO_DATABASE:-return_platform}
-  PLATFORM_SOURCE_MONGO_DSN: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongodb:27017/${PLATFORM_SOURCE_MONGO_DATABASE:-return_source}?authSource=admin&directConnection=true
+  PLATFORM_SOURCE_MONGO_DSN: ${PLATFORM_CONTAINER_SOURCE_MONGO_DSN:?set it by running scripts/linux/ensure_local_infrastructure_secrets.py}
   PLATFORM_SOURCE_MONGO_DATABASE: ${PLATFORM_SOURCE_MONGO_DATABASE:-return_source}
   PLATFORM_GRAPH_EVIDENCE_COLLECTION: ${PLATFORM_GRAPH_EVIDENCE_COLLECTION:-graph_evidence_runs}
   PLATFORM_GRAPH_EVIDENCE_QUERY_TIMEOUT_SECONDS: ${PLATFORM_GRAPH_EVIDENCE_QUERY_TIMEOUT_SECONDS:-5}

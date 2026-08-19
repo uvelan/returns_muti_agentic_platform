@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import re
 import uuid
 from datetime import UTC, datetime
@@ -48,6 +49,32 @@ def _safe_name(value: str, fallback: str = "Entity") -> str:
     words = re.findall(r"[A-Za-z0-9]+", value)
     candidate = "".join(word[:1].upper() + word[1:] for word in words) or fallback
     return candidate if candidate[0].isalpha() else f"{fallback}{candidate}"
+
+
+def _canvas_position(index: int, total: int) -> tuple[float, float]:
+    """Place entity `index` of `total` on the 0-100 canvas.
+
+    `GraphEntity.x` and `.y` are percentages of the canvas, bounded 0..100. The
+    layout used to be a fixed three-column grid with a constant row pitch --
+    `y = 25 + (index // 3) * 35` -- which leaves the canvas on the fourth row:
+    at index 9 that is 130, and the model rejects it, so `GET /bootstrap`
+    answered 500 on any graph with ten or more entities. It passed everywhere
+    the fixture graphs were small enough, which is every test.
+
+    The grid is therefore derived from the count instead of fixed: a roughly
+    square arrangement, spread evenly between margins, in bounds for any total.
+    """
+    total = max(total, 1)
+    columns = math.ceil(math.sqrt(total))
+    rows = math.ceil(total / columns)
+    margin = 10.0
+    span = 100.0 - 2 * margin
+    # One column (or row) sits centred rather than hard against the margin.
+    step_x = span / max(columns - 1, 1) if columns > 1 else 0.0
+    step_y = span / max(rows - 1, 1) if rows > 1 else 0.0
+    x = margin + (index % columns) * step_x if columns > 1 else 50.0
+    y = margin + (index // columns) * step_y if rows > 1 else 50.0
+    return round(x, 2), round(y, 2)
 
 
 def _json_value(value: Any) -> Any:
@@ -312,6 +339,7 @@ class GraphAnalyzerService:
     def existing_schema(self) -> AnalyzerGraphSchema:
         entities: list[GraphEntity] = []
         by_label: dict[str, str] = {}
+        node_total = len(self._registry.graph.nodes)
         for index, node in enumerate(self._registry.graph.nodes):
             entity_id = f"existing:{node.label}"
             by_label[node.label] = entity_id
@@ -321,8 +349,8 @@ class GraphAnalyzerService:
                     id=entity_id,
                     name=node.label,
                     description="Current system graph entity",
-                    x=20 + (index % 3) * 30,
-                    y=25 + (index // 3) * 35,
+                    x=_canvas_position(index, node_total)[0],
+                    y=_canvas_position(index, node_total)[1],
                     properties=[
                         GraphProperty(
                             id=f"{entity_id}:{name}",
@@ -392,8 +420,8 @@ class GraphAnalyzerService:
                     id=entity_id,
                     name=_safe_name(asset.name),
                     description=asset.description,
-                    x=18 + (index % 3) * 32,
-                    y=22 + (index // 3) * 34,
+                    x=_canvas_position(index, len(assets))[0],
+                    y=_canvas_position(index, len(assets))[1],
                     properties=[
                         GraphProperty(
                             id=f"{entity_id}:{field.name}",
