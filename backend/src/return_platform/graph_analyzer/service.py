@@ -64,6 +64,17 @@ from return_platform.graph_schema_analyzer.ports.ai_port import SchemaReasoningP
 
 logger = logging.getLogger("return_platform.graph_analyzer")
 
+#: Strong references to in-flight synchronization tasks.
+#:
+#: `asyncio` holds only a weak reference to a task, so one that nothing else
+#: holds can be collected while it is still running -- which shows up as a sync
+#: that stops partway with no error anywhere.
+_BACKGROUND_SYNCS: set[asyncio.Task[SyncRun]] = set()
+
+
+class SyncAlreadyRunningError(RuntimeError):
+    """Raised when a synchronization is requested while one is already running."""
+
 
 class AgentUnavailableError(RuntimeError):
     """Raised when no AI route is configured for the Analyzer Agent."""
@@ -1152,24 +1163,40 @@ class GraphAnalyzerService:
         return collected[:limit]
 
     async def start_sync(self, request: SyncRequest) -> SyncRun:
+        """Accept a synchronization and run it in the background.
+
+        This used to do the whole thing inline and return the finished run, so
+        the progress the UI polls for never existed: by the time the first
+        response arrived the work was over. Worse, a large scope held the
+        request open for its entire duration and any client timeout looked like
+        a failure while the graph writes carried on.
+
+        The run is created PREPARING and executed by a background task that
+        updates the same document as it goes. `get_sync` then reports real
+        progress, and the caller gets an id immediately.
+        """
         schema = await self.proposed_schema()
         if schema is None or schema.status != "FINALIZED":
             raise ValueError("A finalized graph schema is required before synchronization.")
-        scope = set(request.scope)
-        entities = [
-            entity
-            for entity in schema.entities
-            if request.mode == "FULL"
-            or any(prop.sourceObjectId in scope for prop in entity.properties)
-        ]
+
+        # One synchronization at a time. Two concurrent runs write the same
+        # nodes through the same MERGE keys, so the second adds contention and
+        # no information -- and a duplicate started by an impatient second click
+        # is the ordinary way that happens.
+        active = await self._sync_runs.find_one({"status": {"$in": ["PREPARING", "RUNNING"]}})
+        if active is not None:
+            raise SyncAlreadyRunningError(
+                "A synchronization is already running. Wait for it to finish before starting another."
+            )
+
         run = SyncRun(
             id=str(uuid.uuid4()),
             mode=request.mode,
-            status="RUNNING",
+            status="PREPARING",
             scope=request.scope,
             currentSource=None,
             currentObject=None,
-            currentActivity="Reading finalized source mappings",
+            currentActivity="Preparing synchronization",
             itemsRead=0,
             itemsProcessed=0,
             nodesWritten=0,
@@ -1180,6 +1207,31 @@ class GraphAnalyzerService:
             error=None,
         )
         await self._sync_runs.insert_one(run.model_dump(mode="python") | {"_id": run.id})
+
+        task = asyncio.create_task(self._execute_sync(run, schema, request))
+        # Held until completion: asyncio keeps only a weak reference to a task,
+        # so one that nothing holds can be garbage collected mid-run.
+        _BACKGROUND_SYNCS.add(task)
+        task.add_done_callback(_BACKGROUND_SYNCS.discard)
+        return run
+
+    async def _progress(self, run_id: str, **fields: Any) -> None:
+        """Publish progress for a running synchronization."""
+        await self._sync_runs.update_one({"_id": run_id}, {"$set": fields})
+
+    async def _execute_sync(
+        self, run: SyncRun, schema: AnalyzerGraphSchema, request: SyncRequest
+    ) -> SyncRun:
+        scope = set(request.scope)
+        entities = [
+            entity
+            for entity in schema.entities
+            if request.mode == "FULL"
+            or any(prop.sourceObjectId in scope for prop in entity.properties)
+        ]
+        await self._progress(
+            run.id, status="RUNNING", currentActivity="Reading finalized source mappings"
+        )
         try:
             await self._apply_system_graph_schema(schema)
             read = processed = written = relationship_writes = 0
@@ -1195,6 +1247,12 @@ class GraphAnalyzerService:
                     # and counted rather than taking the run down with it.
                     skipped_objects += 1
                     continue
+                await self._progress(
+                    run.id,
+                    currentObject=entity.name,
+                    currentSource=(identifier.sourceObjectId or "").split(":", 1)[0] or None,
+                    currentActivity=f"Reading {entity.name}",
+                )
                 source_rows = await self._read_for_sync(identifier.sourceObjectId)
                 read += len(source_rows)
                 label = entity.name
@@ -1223,6 +1281,14 @@ class GraphAnalyzerService:
                     await result.consume()
                 processed += len(rows)
                 written += len(rows)
+                await self._progress(
+                    run.id,
+                    itemsRead=read,
+                    itemsProcessed=processed,
+                    nodesWritten=written,
+                    failedItems=skipped_objects + skipped_rows,
+                    currentActivity=f"Wrote {entity.name}",
+                )
             entities_by_id = {entity.id: entity for entity in schema.entities}
             for relationship in schema.relationships:
                 if relationship.sourceObjectId is None:
@@ -1290,6 +1356,14 @@ class GraphAnalyzerService:
                     relationship_writes += int(record["writes"]) if record else 0
                 read += len(source_rows)
                 processed += len(relationship_rows)
+                await self._progress(
+                    run.id,
+                    itemsRead=read,
+                    itemsProcessed=processed,
+                    relationshipsWritten=relationship_writes,
+                    currentObject=relationship.name,
+                    currentActivity=f"Wrote {relationship.name}",
+                )
             # A run that skipped part of its scope did not fully complete, and
             # saying COMPLETED would hide that some entities were never written.
             completed = run.model_copy(

@@ -23,7 +23,11 @@ from return_platform.graph_analyzer.models import (
     SyncRequest,
     SyncRun,
 )
-from return_platform.graph_analyzer.service import AgentUnavailableError, GraphAnalyzerService
+from return_platform.graph_analyzer.service import (
+    AgentUnavailableError,
+    GraphAnalyzerService,
+    SyncAlreadyRunningError,
+)
 from return_platform.resources import RuntimeResources
 from return_platform.security.authorization import require_capability
 from return_platform.security.capabilities import (
@@ -349,6 +353,11 @@ async def start_sync(
 ) -> APIResponse[SyncRun]:
     try:
         result = await (await _ready_service(request)).start_sync(payload)
+    except SyncAlreadyRunningError as error:
+        # 409, and named separately from the ValueError below so the message the
+        # operator sees is "one is already running" rather than a generic
+        # conflict they cannot act on.
+        raise HTTPException(status_code=409, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     except Exception as error:

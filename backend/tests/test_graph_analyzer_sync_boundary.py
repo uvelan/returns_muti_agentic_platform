@@ -5,14 +5,19 @@ from typing import Any
 
 import pytest
 
+from return_platform.graph_analyzer import service as service_module
 from return_platform.graph_analyzer.models import (
     AnalyzerGraphSchema,
     GraphEntity,
     GraphProperty,
     GraphRelationship,
     SyncRequest,
+    SyncRun,
 )
-from return_platform.graph_analyzer.service import GraphAnalyzerService
+from return_platform.graph_analyzer.service import (
+    GraphAnalyzerService,
+    SyncAlreadyRunningError,
+)
 
 
 class FakeWriteResult:
@@ -60,6 +65,10 @@ class FakeSyncCollection:
 
     async def update_one(self, _selector: dict[str, Any], update: dict[str, Any]) -> None:
         self.updated.append(update)
+
+    async def find_one(self, _selector: dict[str, Any]) -> dict[str, Any] | None:
+        """No run is ever already in flight in these tests."""
+        return None
 
 
 def finalized_schema() -> AnalyzerGraphSchema:
@@ -156,6 +165,13 @@ class SyncHarness(GraphAnalyzerService):
         return [{"order_id": "o-1", "customer_id": "c-1"}]
 
 
+async def _drain_background_syncs() -> SyncRun:
+    """Await the one synchronization `start_sync` put in flight."""
+    pending = set(service_module._BACKGROUND_SYNCS)
+    assert len(pending) == 1, f"expected one background sync, found {len(pending)}"
+    return await next(iter(pending))
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("mode", "scope"),
@@ -169,7 +185,14 @@ async def test_sync_writes_only_through_system_graph_driver(
     scope: list[str],
 ) -> None:
     service = SyncHarness()
-    result = await service.start_sync(SyncRequest(mode=mode, scope=scope))
+    accepted = await service.start_sync(SyncRequest(mode=mode, scope=scope))
+
+    # `start_sync` now accepts and returns immediately; the work runs in a
+    # background task so the progress the UI polls for actually exists. The
+    # boundary under test is what that task writes, so it is awaited here
+    # rather than the assertions being moved onto the accept step.
+    assert accepted.status == "PREPARING"
+    result = await _drain_background_syncs()
 
     assert service.applied_schema is True
     assert result.status == "COMPLETED"
@@ -196,3 +219,36 @@ async def test_removing_source_configuration_only_deletes_internal_metadata() ->
 
     assert await service.delete_source("source-config-1") is True
     assert collection.deleted_id == "source-config-1"
+
+
+class BusySyncCollection(FakeSyncCollection):
+    """A store that already holds a run in flight."""
+
+    async def find_one(self, _selector: dict[str, Any]) -> dict[str, Any] | None:
+        return {"_id": "already-running", "status": "RUNNING"}
+
+
+class BusySyncHarness(SyncHarness):
+    """A harness whose run store already reports one in flight."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        # Replaced through the same attribute the base harness assigns, so this
+        # subclass adds no second typing shape of its own.
+        self.busy_runs = BusySyncCollection()
+        object.__setattr__(self, "_sync_runs", self.busy_runs)
+
+
+@pytest.mark.asyncio
+async def test_a_second_synchronization_is_refused_while_one_is_running() -> None:
+    """Two concurrent runs MERGE the same nodes on the same keys.
+
+    The second adds contention and no information, and the ordinary way it
+    happens is an impatient second click on Start.
+    """
+    service = BusySyncHarness()
+
+    with pytest.raises(SyncAlreadyRunningError):
+        await service.start_sync(SyncRequest(mode="FULL", scope=[]))
+
+    assert service.busy_runs.inserted == [], "a refused run must not be recorded"
