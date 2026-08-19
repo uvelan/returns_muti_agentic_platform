@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import math
@@ -24,6 +25,12 @@ from return_platform.graph_analyzer.analysis import (
     gather_evidence,
     ground_proposal,
     reasoned_proposal,
+)
+from return_platform.graph_analyzer.credentials import (
+    SEALED_FIELD,
+    has_credential,
+    open_credential,
+    seal_credential,
 )
 from return_platform.graph_analyzer.discovery import (
     count_objects,
@@ -213,6 +220,13 @@ class GraphAnalyzerService:
         self._settings = settings
         self._reasoning = reasoning
         self._agent = agent
+        # The same key the reasoning checkpointer seals with, resolved from
+        # the process environment and held only in memory. Source credentials
+        # get the same protection as reasoning state because they are the
+        # same class of secret: something a reader of the store must not get.
+        self._credential_key = base64.b64decode(
+            settings.reasoning_encryption_key.get_secret_value()
+        )
         self._registry = registry
         self._source_client = source_client
         self._graph_driver = graph_driver
@@ -351,14 +365,23 @@ class GraphAnalyzerService:
             "port": payload.port,
             "database": payload.database,
             "username": payload.username,
-            "password": payload.password.get_secret_value()
-            if payload.password is not None
-            else (existing or {}).get("password"),
             "status": "NOT_VALIDATED",
             "lastValidatedAt": None,
             "updatedAt": _now(),
         }
-        if not document["password"]:
+        if payload.password is not None:
+            document[SEALED_FIELD] = seal_credential(
+                payload.password.get_secret_value(), key=self._credential_key
+            )
+        elif existing is not None and has_credential(cast(dict[str, Any], existing)):
+            # An edit that leaves the password blank keeps the stored one, and
+            # re-seals it so a document written before sealing existed stops
+            # being plaintext the first time it is touched.
+            document[SEALED_FIELD] = seal_credential(
+                open_credential(cast(dict[str, Any], existing), key=self._credential_key),
+                key=self._credential_key,
+            )
+        if SEALED_FIELD not in document:
             raise ValueError("A password is required for a new source connection.")
         await self._sources.replace_one({"_id": identifier}, document, upsert=True)
         return self._source_view(document)
@@ -366,6 +389,18 @@ class GraphAnalyzerService:
     async def delete_source(self, source_id: str) -> bool:
         result = await self._sources.delete_one({"_id": source_id})
         return result.deleted_count == 1
+
+    def _connection_document(self, document: Mapping[str, Any]) -> dict[str, Any]:
+        """A stored source with its credential opened, for the connector layer.
+
+        `discovery` and `analysis` take a plain mapping with a `password` key and
+        know nothing about sealing -- which is what keeps them portable, and what
+        keeps the key from travelling any further than this class.
+        """
+        opened = dict(document)
+        opened["password"] = open_credential(dict(document), key=self._credential_key)
+        opened.pop(SEALED_FIELD, None)
+        return opened
 
     async def validate_source(self, source_id: str) -> AnalyzerSource:
         """Probe the source and, when it answers, refresh its discovered structure.
@@ -378,11 +413,12 @@ class GraphAnalyzerService:
         document = await self._sources.find_one({"_id": source_id})
         if document is None:
             raise KeyError(source_id)
-        status, _message = await probe_source(cast(dict[str, Any], document))
+        connection = self._connection_document(cast(dict[str, Any], document))
+        status, _message = await probe_source(connection)
         update: dict[str, Any] = {"status": status, "lastValidatedAt": _now()}
         if status == "CONNECTED":
             try:
-                objects, truncated = await discover_objects(cast(dict[str, Any], document))
+                objects, truncated = await discover_objects(connection)
             except Exception:  # noqa: BLE001 - discovery failure is a source state
                 logger.warning("graph_analyzer_discovery_failed source_id=%s", source_id)
                 update["status"] = "VALIDATION_FAILED"
@@ -408,8 +444,7 @@ class GraphAnalyzerService:
             existing = await self._sources.find_one({"_id": source_id})
             if existing is None:
                 raise KeyError(source_id)
-            stored_password = existing.get("password")
-            password = stored_password if isinstance(stored_password, str) else ""
+            password = open_credential(cast(dict[str, Any], existing), key=self._credential_key)
         document["password"] = password
         document.setdefault("_id", source_id or "unsaved")
         return await probe_source(document)
@@ -496,7 +531,7 @@ class GraphAnalyzerService:
                 if document is None:
                     unresolved.append(object_id)
                     continue
-                documents[source_id] = cast(dict[str, Any], document)
+                documents[source_id] = self._connection_document(cast(dict[str, Any], document))
             pairs.append((source_id, object_name))
         return documents, pairs, unresolved
 
@@ -912,7 +947,8 @@ class GraphAnalyzerService:
             if resolved is not None:
                 document, object_name = resolved
                 evidence = await gather_evidence(
-                    {str(document["_id"]): document}, [(str(document["_id"]), object_name)]
+                    {str(document["_id"]): self._connection_document(document)},
+                    [(str(document["_id"]), object_name)],
                 )
                 metadata.extend(
                     {
@@ -1011,7 +1047,7 @@ class GraphAnalyzerService:
         # caps how deep paging can go rather than letting page number drive an
         # unbounded scan.
         limit = min(offset + page_size, MAX_PREVIEW_ROWS)
-        rows = await sample_object(source_document, object_name, limit)
+        rows = await sample_object(self._connection_document(source_document), object_name, limit)
         window = [
             cast(dict[str, Any], _json_value(row)) for row in rows[offset : offset + page_size]
         ]
@@ -1148,7 +1184,7 @@ class GraphAnalyzerService:
         resolved = await self._source_document_for(object_id)
         if resolved is not None:
             document, object_name = resolved
-            rows = await sample_object(document, object_name, limit)
+            rows = await sample_object(self._connection_document(document), object_name, limit)
             return [cast(dict[str, Any], _json_value(row)) for row in rows]
         # A registry-declared source: page through the existing reader, whose
         # per-page bound is the one it was written with.
