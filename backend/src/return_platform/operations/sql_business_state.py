@@ -250,6 +250,51 @@ class CaseReturnRecordsWrite:
     case_status: str = "SUPPORT_COMPLETED"
 
 
+@dataclass(frozen=True, slots=True)
+class RmaTicketItemWrite:
+    """One `dbo.return_items` row."""
+
+    return_item_id: str
+    order_line_id: str
+    product_id: str
+    quantity: int
+    reason_code: str
+
+
+@dataclass(frozen=True, slots=True)
+class RmaTicketWrite:
+    """One support ticket and the return record it opens."""
+
+    ticket_id: str
+    session_id: str
+    request_digest: str
+    status: str
+    return_reference: str
+    return_status: str
+    eligibility_decision: str
+    order_reference: str | None
+    customer_reference: str | None
+    correlation_id: str | None
+    primary_reason_code: str | None
+    external_reference: str | None
+    clarification_request: str | None
+    items: tuple[RmaTicketItemWrite, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RmaTrackingWrite:
+    """One `dbo.return_tracking` row."""
+
+    tracking_id: str
+    return_reference: str
+    tracking_type: str
+    tracking_reference: str
+    carrier_code: str | None
+    tracking_status: str
+    event_at: Any
+    shipment_details: str | None
+
+
 class SQLBusinessStateRepository:
     """Bounded blocking SQL access isolated behind asynchronous methods.
 
@@ -1350,6 +1395,260 @@ class SQLBusinessStateRepository:
             }
 
         return await self._run(operation)
+
+    # ------------------------------------------------------------------
+    # RMA tickets (Returns Support workbench)
+    #
+    # Added here rather than in a parallel writer so these writes borrow the
+    # same bounded pool, the same transaction helper and the same deadlock
+    # retry as every other business write. A second writer would have needed
+    # its own copy of all three.
+    # ------------------------------------------------------------------
+
+    async def create_rma_ticket(self, write: RmaTicketWrite) -> str:
+        """Persist one RMA ticket, its return record and its items atomically.
+
+        Returns `"CREATED"` or `"DUPLICATE"`. Duplicate is decided by the
+        table's own UNIQUE(session_id) rather than by a read-then-write this
+        method could lose a race on: the INSERT is attempted and the row count
+        settles it, so two concurrent submits produce one ticket and two honest
+        answers.
+        """
+
+        def operation() -> str:
+            with self._transaction() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT ticket_id FROM integration.return_support_ticket "
+                        "WITH (UPDLOCK, HOLDLOCK) WHERE session_id=%s",
+                        (write.session_id,),
+                    )
+                    if cursor.fetchone() is not None:
+                        return "DUPLICATE"
+
+                    # The request row is the parent of both the ticket and the
+                    # items, so it has to exist before either.
+                    cursor.execute(
+                        """
+                        UPDATE dbo.return_requests WITH (UPDLOCK, SERIALIZABLE)
+                        SET correlation_id=%s, customer_reference=%s, order_reference=%s,
+                            reason_code=%s, return_reference=%s, return_status=%s,
+                            row_version=row_version+1, updated_at=SYSUTCDATETIME()
+                        WHERE session_id=%s;
+                        IF @@ROWCOUNT = 0
+                        INSERT INTO dbo.return_requests (
+                            session_id, correlation_id, customer_reference, order_reference,
+                            reason_code, eligibility_decision, return_reference, return_status
+                        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s);
+                        """,
+                        (
+                            write.correlation_id,
+                            write.customer_reference,
+                            write.order_reference,
+                            write.primary_reason_code,
+                            write.return_reference,
+                            write.return_status,
+                            write.session_id,
+                            write.session_id,
+                            write.correlation_id,
+                            write.customer_reference,
+                            write.order_reference,
+                            write.primary_reason_code,
+                            write.eligibility_decision,
+                            write.return_reference,
+                            write.return_status,
+                        ),
+                    )
+                    cursor.execute(
+                        """
+                        INSERT INTO integration.return_support_ticket (
+                            ticket_id, session_id, request_digest, status,
+                            external_reference, clarification_request, return_reference
+                        ) VALUES (%s,%s,%s,%s,%s,%s,%s);
+                        """,
+                        (
+                            write.ticket_id,
+                            write.session_id,
+                            write.request_digest,
+                            write.status,
+                            write.external_reference,
+                            write.clarification_request,
+                            write.return_reference,
+                        ),
+                    )
+                    for item in write.items:
+                        cursor.execute(
+                            """
+                            IF NOT EXISTS (
+                                SELECT 1 FROM dbo.return_items WHERE return_item_id=%s
+                            )
+                            INSERT INTO dbo.return_items (
+                                return_item_id, session_id, return_reference, order_line_id,
+                                product_id, quantity, reason_code, item_status
+                            ) VALUES (%s,%s,%s,%s,%s,%s,%s,'CREATED');
+                            """,
+                            (
+                                item.return_item_id,
+                                item.return_item_id,
+                                write.session_id,
+                                write.return_reference,
+                                item.order_line_id,
+                                item.product_id,
+                                item.quantity,
+                                item.reason_code,
+                            ),
+                        )
+                    return "CREATED"
+
+        return await self._run_retrying_deadlocks(operation, operation_name="create_rma_ticket")
+
+    async def upsert_return_tracking(self, write: RmaTrackingWrite) -> str:
+        """Insert or update one return tracking row. Returns INSERTED/UPDATED.
+
+        Keyed on `tracking_reference`, which the table already declares UNIQUE,
+        so re-sending the same carrier reference updates its status rather than
+        failing on the constraint or silently creating a second row.
+        """
+
+        def operation() -> str:
+            with self._transaction() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE dbo.return_tracking WITH (UPDLOCK, SERIALIZABLE)
+                        SET return_reference=%s, tracking_type=%s, carrier_code=%s,
+                            tracking_status=%s, event_at=%s, shipment_details=%s,
+                            row_version=row_version+1, updated_at=SYSUTCDATETIME()
+                        WHERE tracking_reference=%s;
+                        SELECT @@ROWCOUNT;
+                        """,
+                        (
+                            write.return_reference,
+                            write.tracking_type,
+                            write.carrier_code,
+                            write.tracking_status,
+                            write.event_at,
+                            write.shipment_details,
+                            write.tracking_reference,
+                        ),
+                    )
+                    row = cursor.fetchone()
+                    updated = int(row[0]) if row else 0
+                    if updated:
+                        return "UPDATED"
+                    cursor.execute(
+                        """
+                        INSERT INTO dbo.return_tracking (
+                            tracking_id, return_reference, tracking_type, tracking_reference,
+                            carrier_code, tracking_status, event_at, shipment_details
+                        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s);
+                        """,
+                        (
+                            write.tracking_id,
+                            write.return_reference,
+                            write.tracking_type,
+                            write.tracking_reference,
+                            write.carrier_code,
+                            write.tracking_status,
+                            write.event_at,
+                            write.shipment_details,
+                        ),
+                    )
+                    return "INSERTED"
+
+        return await self._run_retrying_deadlocks(
+            operation, operation_name="upsert_return_tracking"
+        )
+
+    async def read_rma_ticket(self, session_id: str) -> dict[str, Any] | None:
+        """One ticket with its items and tracking, or None."""
+
+        def operation() -> dict[str, Any] | None:
+            with self._read() as connection:
+                with connection.cursor(as_dict=True) as cursor:
+                    cursor.execute(
+                        """
+                        SELECT t.ticket_id, t.session_id, t.status, t.external_reference,
+                               t.clarification_request, t.return_reference, t.created_at,
+                               t.updated_at, r.order_reference, r.customer_reference
+                        FROM integration.return_support_ticket AS t
+                        LEFT JOIN dbo.return_requests AS r ON r.session_id = t.session_id
+                        WHERE t.session_id=%s
+                        """,
+                        (session_id,),
+                    )
+                    ticket = cursor.fetchone()
+                    if ticket is None:
+                        return None
+                    cursor.execute(
+                        """
+                        SELECT return_item_id, order_line_id, product_id, quantity,
+                               reason_code, item_status
+                        FROM dbo.return_items WHERE session_id=%s ORDER BY return_item_id
+                        """,
+                        (session_id,),
+                    )
+                    items = [dict(row) for row in cursor.fetchall()]
+                    reference = ticket.get("return_reference")
+                    tracking: list[dict[str, Any]] = []
+                    if reference:
+                        cursor.execute(
+                            """
+                            SELECT tracking_id, tracking_reference, tracking_type, carrier_code,
+                                   tracking_status, event_at, shipment_details
+                            FROM dbo.return_tracking WHERE return_reference=%s
+                            ORDER BY event_at DESC
+                            """,
+                            (reference,),
+                        )
+                        tracking = [dict(row) for row in cursor.fetchall()]
+                    return {"ticket": dict(ticket), "items": items, "tracking": tracking}
+
+        return await self._run(operation)
+
+    async def list_rma_tickets(self, limit: int) -> list[dict[str, Any]]:
+        """The support queue, newest first."""
+
+        def operation() -> list[dict[str, Any]]:
+            with self._read() as connection:
+                with connection.cursor(as_dict=True) as cursor:
+                    cursor.execute(
+                        """
+                        SELECT TOP (%s)
+                               t.ticket_id, t.session_id, t.status, t.external_reference,
+                               t.clarification_request, t.return_reference, t.created_at,
+                               t.updated_at, r.order_reference, r.customer_reference
+                        FROM integration.return_support_ticket AS t
+                        LEFT JOIN dbo.return_requests AS r ON r.session_id = t.session_id
+                        ORDER BY t.updated_at DESC
+                        """,
+                        (limit,),
+                    )
+                    return [dict(row) for row in cursor.fetchall()]
+
+        return await self._run(operation)
+
+    async def set_rma_ticket_status(
+        self, session_id: str, status: str, clarification: str | None
+    ) -> bool:
+        """Move a ticket's status. False when no such ticket exists."""
+
+        def operation() -> bool:
+            with self._transaction() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE integration.return_support_ticket WITH (UPDLOCK, SERIALIZABLE)
+                        SET status=%s, clarification_request=%s, updated_at=SYSUTCDATETIME()
+                        WHERE session_id=%s;
+                        SELECT @@ROWCOUNT;
+                        """,
+                        (status, clarification, session_id),
+                    )
+                    row = cursor.fetchone()
+                    return bool(row and int(row[0]))
+
+        return await self._run_retrying_deadlocks(operation, operation_name="set_rma_ticket_status")
 
     async def reserve_and_assign_handling_unit(
         self,

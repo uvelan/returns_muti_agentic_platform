@@ -150,7 +150,11 @@ def test_router_mounting_is_the_bulk_of_create_app_and_that_is_allowed() -> None
     # mounted beside the existing `graph_schema_analyzer` router rather than
     # inside it: the two are separate surfaces over the same domain until one
     # replaces the other.
-    assert len(mounts) == 32, (
-        f"{len(mounts)} routers are mounted, expected 32; if Wave F deleted one, "
+    # 32 -> 33 for `api/rma_tickets.py`, the Returns Support RMA surface. It is
+    # its own router rather than routes on `return_support` because the ticket
+    # is a different resource from the work item that asks for it, and the two
+    # are gated on different roles.
+    assert len(mounts) == 33, (
+        f"{len(mounts)} routers are mounted, expected 33; if Wave F deleted one, "
         "update this number in the same commit"
     )

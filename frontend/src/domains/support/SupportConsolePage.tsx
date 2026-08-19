@@ -1,5 +1,12 @@
 import { useMemo, useState } from "react";
 import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { requireDomain, type SUPPORT_SECTIONS } from "../registry";
+import { useDomainSection } from "../useDomainSection";
+import { RmaTicketsPage } from "./RmaTicketsPage";
+
+/** Derived from the registry, so a section renamed there is an error here. */
+type SupportSection = (typeof SUPPORT_SECTIONS)[number];
 import { Bot, Inbox, PackageCheck, Plus, Send, Trash2, Truck, UserRound } from "lucide-react";
 
 import {
@@ -65,6 +72,10 @@ const QUEUES = [
 
 export function SupportConsolePage() {
   const { can } = useCapabilities();
+  // The section comes from the URL and the sidebar sets it, so this screen
+  // holds no navigation state of its own -- the same arrangement Configuration
+  // uses.
+  const section = useDomainSection(requireDomain("/support")) as SupportSection;
   const client = useQueryClient();
   const [queue, setQueue] = useState<string>("");
   const [selected, setSelected] = useState<string | null>(null);
@@ -121,6 +132,13 @@ export function SupportConsolePage() {
 
   if (!can("returns.session.read")) {
     return <p className="text-sm text-on-surface-variant">You do not have access to support.</p>;
+  }
+
+  // A different job on the same domain, so it is a section rather than a
+  // branch inside the queue: folding RMA creation into the queue would have
+  // made the queue's own filters navigation for something else.
+  if (section === "RMA Tickets") {
+    return <RmaTicketsPage />;
   }
 
   return (

@@ -1884,6 +1884,39 @@
         "title": "APIResponse[ConversationTranscript]",
         "type": "object"
       },
+      "APIResponse_CreateRmaTicketResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CreateRmaTicketResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[CreateRmaTicketResult]",
+        "type": "object"
+      },
       "APIResponse_DependencySimulationSummary_": {
         "additionalProperties": false,
         "properties": {
@@ -2340,6 +2373,39 @@
         "title": "APIResponse[RecommendationResult]",
         "type": "object"
       },
+      "APIResponse_RecordTrackingResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordTrackingResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[RecordTrackingResult]",
+        "type": "object"
+      },
       "APIResponse_ReleaseListView_": {
         "additionalProperties": false,
         "properties": {
@@ -2635,6 +2701,39 @@
           "meta"
         ],
         "title": "APIResponse[ReturnWorkflowAssessment]",
+        "type": "object"
+      },
+      "APIResponse_RmaTicketView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RmaTicketView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[RmaTicketView]",
         "type": "object"
       },
       "APIResponse_RuntimeConfig_": {
@@ -3768,6 +3867,43 @@
           "meta"
         ],
         "title": "APIResponse[list[ReturnSessionView]]",
+        "type": "object"
+      },
+      "APIResponse_list_RmaTicketView__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RmaTicketView"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[list[RmaTicketView]]",
         "type": "object"
       },
       "APIResponse_list_SimulationAIUsageMetric__": {
@@ -7419,6 +7555,151 @@
           "release_id"
         ],
         "title": "CreateReleasePayload",
+        "type": "object"
+      },
+      "CreateRmaTicketRequest": {
+        "additionalProperties": false,
+        "description": "Everything the workflow agent posted, in one create.",
+        "properties": {
+          "associateId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Associateid",
+            "type": "string"
+          },
+          "branchId": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branchid"
+          },
+          "correlationId": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlationid"
+          },
+          "customerReference": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customerreference"
+          },
+          "idempotencyKey": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Idempotencykey",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RmaTicketItem"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "missingFields": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Missingfields",
+            "type": "array"
+          },
+          "orderReference": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Orderreference",
+            "type": "string"
+          },
+          "photoEvidenceRequired": {
+            "default": false,
+            "title": "Photoevidencerequired",
+            "type": "boolean"
+          },
+          "productPresence": {
+            "anyOf": [
+              {
+                "maxLength": 48,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productpresence"
+          },
+          "recommendedReturnMethod": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Recommendedreturnmethod",
+            "type": "string"
+          },
+          "sessionId": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "supportDraft": {
+            "maxLength": 16000,
+            "minLength": 1,
+            "title": "Supportdraft",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "orderReference",
+          "recommendedReturnMethod",
+          "associateId",
+          "supportDraft",
+          "items",
+          "idempotencyKey"
+        ],
+        "title": "CreateRmaTicketRequest",
+        "type": "object"
+      },
+      "CreateRmaTicketResult": {
+        "additionalProperties": false,
+        "properties": {
+          "outcome": {
+            "enum": [
+              "CREATED",
+              "DUPLICATE"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "ticket": {
+            "$ref": "#/components/schemas/RmaTicketView"
+          }
+        },
+        "required": [
+          "ticket",
+          "outcome"
+        ],
+        "title": "CreateRmaTicketResult",
         "type": "object"
       },
       "CreateSupportMessageRequest": {
@@ -11402,6 +11683,117 @@
         "title": "RecommendationResult",
         "type": "object"
       },
+      "RecordTrackingRequest": {
+        "additionalProperties": false,
+        "description": "A tracking insert or update for one RMA.",
+        "properties": {
+          "carrierCode": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carriercode"
+          },
+          "eventAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eventat"
+          },
+          "orderReference": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orderreference"
+          },
+          "shipmentDetails": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shipmentdetails"
+          },
+          "trackingReference": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Trackingreference",
+            "type": "string"
+          },
+          "trackingStatus": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Trackingstatus",
+            "type": "string"
+          },
+          "trackingType": {
+            "default": "CUSTOMER_SHIP",
+            "enum": [
+              "PPL",
+              "BOL",
+              "CUSTOMER_SHIP",
+              "NO_LABEL",
+              "DIRECT_VENDOR",
+              "FIELD_SCRAP"
+            ],
+            "title": "Trackingtype",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trackingReference",
+          "trackingStatus"
+        ],
+        "title": "RecordTrackingRequest",
+        "type": "object"
+      },
+      "RecordTrackingResult": {
+        "additionalProperties": false,
+        "properties": {
+          "outcome": {
+            "enum": [
+              "INSERTED",
+              "UPDATED"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "sourceShipment": {
+            "$ref": "#/components/schemas/SourceShipmentEcho"
+          },
+          "ticket": {
+            "$ref": "#/components/schemas/RmaTicketView"
+          }
+        },
+        "required": [
+          "ticket",
+          "outcome",
+          "sourceShipment"
+        ],
+        "title": "RecordTrackingResult",
+        "type": "object"
+      },
       "RecoveryAction": {
         "description": "What reconciliation actually did to one case. One member per outcome.\n\nAn enum rather than a boolean, because \"did not relaunch\" has four\ncompletely different meanings and an operator who cannot tell them apart\ncannot act on any of them.",
         "enum": [
@@ -13913,6 +14305,239 @@
         "title": "RevisionView",
         "type": "object"
       },
+      "RmaTicketItem": {
+        "additionalProperties": false,
+        "description": "One line the agent established, as `dbo.return_items` stores it.",
+        "properties": {
+          "condition": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "orderLineId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Orderlineid",
+            "type": "string"
+          },
+          "productId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Productid",
+            "type": "string"
+          },
+          "reasonCode": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Reasoncode",
+            "type": "string"
+          },
+          "requestedQuantity": {
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Requestedquantity",
+            "type": "integer"
+          },
+          "shippedQuantity": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shippedquantity"
+          }
+        },
+        "required": [
+          "orderLineId",
+          "productId",
+          "requestedQuantity",
+          "reasonCode"
+        ],
+        "title": "RmaTicketItem",
+        "type": "object"
+      },
+      "RmaTicketView": {
+        "additionalProperties": false,
+        "properties": {
+          "associateId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Associateid"
+          },
+          "createdAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdat"
+          },
+          "customerReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customerreference"
+          },
+          "externalReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Externalreference"
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TicketItemView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "missingFields": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Missingfields",
+            "type": "array"
+          },
+          "orderReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Orderreference"
+          },
+          "photoEvidenceRequired": {
+            "default": false,
+            "title": "Photoevidencerequired",
+            "type": "boolean"
+          },
+          "recommendedReturnMethod": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommendedreturnmethod"
+          },
+          "returnReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnreference"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "SUBMITTED",
+              "CLARIFICATION_REQUIRED",
+              "RETURN_CREATED",
+              "REJECTED",
+              "CANCELLED",
+              "FAILED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "supportDraft": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supportdraft"
+          },
+          "ticketId": {
+            "title": "Ticketid",
+            "type": "string"
+          },
+          "tracking": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TrackingView"
+            },
+            "title": "Tracking",
+            "type": "array"
+          },
+          "updatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updatedat"
+          }
+        },
+        "required": [
+          "ticketId",
+          "sessionId",
+          "status",
+          "returnReference",
+          "externalReference",
+          "orderReference",
+          "customerReference",
+          "associateId",
+          "recommendedReturnMethod",
+          "supportDraft"
+        ],
+        "title": "RmaTicketView",
+        "type": "object"
+      },
       "RuntimeConfig": {
         "properties": {
           "agents": {
@@ -16169,6 +16794,54 @@
         "title": "SourceObject",
         "type": "object"
       },
+      "SourceShipmentEcho": {
+        "additionalProperties": false,
+        "description": "What the `shipmentInfo` write did, reported back rather than assumed.\n\nPresent so an associate can see that the source document was touched, and\nwhich one. A silent source write is the thing this whole platform is careful\nabout; if it happens it is visible.",
+        "properties": {
+          "attempted": {
+            "title": "Attempted",
+            "type": "boolean"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "matchedDocument": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matcheddocument"
+          },
+          "outcome": {
+            "default": "SKIPPED",
+            "enum": [
+              "INSERTED",
+              "UPDATED",
+              "SKIPPED",
+              "FAILED"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempted"
+        ],
+        "title": "SourceShipmentEcho",
+        "type": "object"
+      },
       "SourceWatermarkView": {
         "additionalProperties": false,
         "description": "One source's high watermark, as the run fixed it before scanning.\n\nThe cursor is reported as the connector encoded it, not decoded: ordering\nand meaning belong to the connector that produced it (see\n`SourceScanConnector.compare_cursors`), and a view that reinterpreted the\nvalue would be a second opinion about what the cursor means.",
@@ -17274,6 +17947,45 @@
         "title": "SyncRunRequester",
         "type": "object"
       },
+      "TicketItemView": {
+        "additionalProperties": false,
+        "properties": {
+          "itemStatus": {
+            "title": "Itemstatus",
+            "type": "string"
+          },
+          "orderLineId": {
+            "title": "Orderlineid",
+            "type": "string"
+          },
+          "productId": {
+            "title": "Productid",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "reasonCode": {
+            "title": "Reasoncode",
+            "type": "string"
+          },
+          "returnItemId": {
+            "title": "Returnitemid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "returnItemId",
+          "orderLineId",
+          "productId",
+          "quantity",
+          "reasonCode",
+          "itemStatus"
+        ],
+        "title": "TicketItemView",
+        "type": "object"
+      },
       "TimelineEvent": {
         "additionalProperties": false,
         "properties": {
@@ -17336,6 +18048,72 @@
           "occurredAt"
         ],
         "title": "TimelineEvent",
+        "type": "object"
+      },
+      "TrackingView": {
+        "additionalProperties": false,
+        "properties": {
+          "carrierCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carriercode"
+          },
+          "eventAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eventat"
+          },
+          "shipmentDetails": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shipmentdetails"
+          },
+          "trackingId": {
+            "title": "Trackingid",
+            "type": "string"
+          },
+          "trackingReference": {
+            "title": "Trackingreference",
+            "type": "string"
+          },
+          "trackingStatus": {
+            "title": "Trackingstatus",
+            "type": "string"
+          },
+          "trackingType": {
+            "title": "Trackingtype",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trackingId",
+          "trackingReference",
+          "trackingType",
+          "carrierCode",
+          "trackingStatus",
+          "eventAt",
+          "shipmentDetails"
+        ],
+        "title": "TrackingView",
         "type": "object"
       },
       "TransformationKind": {
@@ -21854,6 +22632,244 @@
         "summary": "Get Timeline",
         "tags": [
           "Returns"
+        ]
+      }
+    },
+    "/api/rma-tickets": {
+      "get": {
+        "description": "The support queue, newest first.",
+        "operationId": "list_tickets_api_rma_tickets_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_RmaTicketView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Tickets",
+        "tags": [
+          "Returns Support"
+        ]
+      },
+      "post": {
+        "description": "Open an RMA ticket from the workflow agent's assessment.",
+        "operationId": "create_ticket_api_rma_tickets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRmaTicketRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_CreateRmaTicketResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Ticket",
+        "tags": [
+          "Returns Support"
+        ]
+      }
+    },
+    "/api/rma-tickets/{session_id}": {
+      "get": {
+        "operationId": "get_ticket_api_rma_tickets__session_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_RmaTicketView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Ticket",
+        "tags": [
+          "Returns Support"
+        ]
+      }
+    },
+    "/api/rma-tickets/{session_id}/status": {
+      "post": {
+        "description": "Move a ticket through the statuses its table already allows.",
+        "operationId": "set_status_api_rma_tickets__session_id__status_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "title": "Payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_RmaTicketView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Status",
+        "tags": [
+          "Returns Support"
+        ]
+      }
+    },
+    "/api/rma-tickets/{session_id}/tracking": {
+      "post": {
+        "description": "Insert or update this RMA's return tracking.\n\n`dbo.return_tracking` is written first and is authoritative. The source\nshipment annotation follows and reports its own outcome, so a source-side\nfailure is visible without discarding a platform record that already stands.",
+        "operationId": "record_tracking_api_rma_tickets__session_id__tracking_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordTrackingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_RecordTrackingResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Tracking",
+        "tags": [
+          "Returns Support"
         ]
       }
     },

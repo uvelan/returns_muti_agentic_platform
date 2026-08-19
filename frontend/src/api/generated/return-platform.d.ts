@@ -2116,6 +2116,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/rma-tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tickets
+         * @description The support queue, newest first.
+         */
+        get: operations["list_tickets_api_rma_tickets_get"];
+        put?: never;
+        /**
+         * Create Ticket
+         * @description Open an RMA ticket from the workflow agent's assessment.
+         */
+        post: operations["create_ticket_api_rma_tickets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/rma-tickets/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ticket */
+        get: operations["get_ticket_api_rma_tickets__session_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/rma-tickets/{session_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Status
+         * @description Move a ticket through the statuses its table already allows.
+         */
+        post: operations["set_status_api_rma_tickets__session_id__status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/rma-tickets/{session_id}/tracking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Tracking
+         * @description Insert or update this RMA's return tracking.
+         *
+         *     `dbo.return_tracking` is written first and is authoritative. The source
+         *     shipment annotation follows and reports its own outcome, so a source-side
+         *     failure is visible without discarding a platform record that already stands.
+         */
+        post: operations["record_tracking_api_rma_tickets__session_id__tracking_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runtime-config": {
         parameters: {
             query?: never;
@@ -4091,6 +4176,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[CreateRmaTicketResult] */
+        APIResponse_CreateRmaTicketResult_: {
+            data?: components["schemas"]["CreateRmaTicketResult"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[DependencySimulationSummary] */
         APIResponse_DependencySimulationSummary_: {
             data?: components["schemas"]["DependencySimulationSummary"] | null;
@@ -4176,6 +4267,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[RecordTrackingResult] */
+        APIResponse_RecordTrackingResult_: {
+            data?: components["schemas"]["RecordTrackingResult"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[ReleaseListView] */
         APIResponse_ReleaseListView_: {
             data?: components["schemas"]["ReleaseListView"] | null;
@@ -4227,6 +4324,12 @@ export interface components {
         /** APIResponse[ReturnWorkflowAssessment] */
         APIResponse_ReturnWorkflowAssessment_: {
             data?: components["schemas"]["ReturnWorkflowAssessment"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[RmaTicketView] */
+        APIResponse_RmaTicketView_: {
+            data?: components["schemas"]["RmaTicketView"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -4450,6 +4553,13 @@ export interface components {
         APIResponse_list_ReturnSessionView__: {
             /** Data */
             data?: components["schemas"]["ReturnSessionView"][] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[list[RmaTicketView]] */
+        APIResponse_list_RmaTicketView__: {
+            /** Data */
+            data?: components["schemas"]["RmaTicketView"][] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -5832,6 +5942,53 @@ export interface components {
             from_active: boolean;
             /** Release Id */
             release_id: string;
+        };
+        /**
+         * CreateRmaTicketRequest
+         * @description Everything the workflow agent posted, in one create.
+         */
+        CreateRmaTicketRequest: {
+            /** Associateid */
+            associateId: string;
+            /** Branchid */
+            branchId?: string | null;
+            /** Correlationid */
+            correlationId?: string | null;
+            /** Customerreference */
+            customerReference?: string | null;
+            /** Idempotencykey */
+            idempotencyKey: string;
+            /** Items */
+            items: components["schemas"]["RmaTicketItem"][];
+            /**
+             * Missingfields
+             * @default []
+             */
+            missingFields: string[];
+            /** Orderreference */
+            orderReference: string;
+            /**
+             * Photoevidencerequired
+             * @default false
+             */
+            photoEvidenceRequired: boolean;
+            /** Productpresence */
+            productPresence?: string | null;
+            /** Recommendedreturnmethod */
+            recommendedReturnMethod: string;
+            /** Sessionid */
+            sessionId: string;
+            /** Supportdraft */
+            supportDraft: string;
+        };
+        /** CreateRmaTicketResult */
+        CreateRmaTicketResult: {
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "CREATED" | "DUPLICATE";
+            ticket: components["schemas"]["RmaTicketView"];
         };
         /** CreateSupportMessageRequest */
         CreateSupportMessageRequest: {
@@ -7301,6 +7458,40 @@ export interface components {
             recommendation: components["schemas"]["AgentRecommendation"];
         };
         /**
+         * RecordTrackingRequest
+         * @description A tracking insert or update for one RMA.
+         */
+        RecordTrackingRequest: {
+            /** Carriercode */
+            carrierCode?: string | null;
+            /** Eventat */
+            eventAt?: string | null;
+            /** Orderreference */
+            orderReference?: string | null;
+            /** Shipmentdetails */
+            shipmentDetails?: string | null;
+            /** Trackingreference */
+            trackingReference: string;
+            /** Trackingstatus */
+            trackingStatus: string;
+            /**
+             * Trackingtype
+             * @default CUSTOMER_SHIP
+             * @enum {string}
+             */
+            trackingType: "PPL" | "BOL" | "CUSTOMER_SHIP" | "NO_LABEL" | "DIRECT_VENDOR" | "FIELD_SCRAP";
+        };
+        /** RecordTrackingResult */
+        RecordTrackingResult: {
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "INSERTED" | "UPDATED";
+            sourceShipment: components["schemas"]["SourceShipmentEcho"];
+            ticket: components["schemas"]["RmaTicketView"];
+        };
+        /**
          * RecoveryAction
          * @description What reconciliation actually did to one case. One member per outcome.
          *
@@ -8246,6 +8437,74 @@ export interface components {
             revision_id: string;
             /** Sequence */
             sequence: number;
+        };
+        /**
+         * RmaTicketItem
+         * @description One line the agent established, as `dbo.return_items` stores it.
+         */
+        RmaTicketItem: {
+            /** Condition */
+            condition?: string | null;
+            /** Orderlineid */
+            orderLineId: string;
+            /** Productid */
+            productId: string;
+            /** Reasoncode */
+            reasonCode: string;
+            /** Requestedquantity */
+            requestedQuantity: number;
+            /** Shippedquantity */
+            shippedQuantity?: number | null;
+        };
+        /** RmaTicketView */
+        RmaTicketView: {
+            /** Associateid */
+            associateId: string | null;
+            /** Createdat */
+            createdAt?: string | null;
+            /** Customerreference */
+            customerReference: string | null;
+            /** Externalreference */
+            externalReference: string | null;
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["TicketItemView"][];
+            /**
+             * Missingfields
+             * @default []
+             */
+            missingFields: string[];
+            /** Orderreference */
+            orderReference: string | null;
+            /**
+             * Photoevidencerequired
+             * @default false
+             */
+            photoEvidenceRequired: boolean;
+            /** Recommendedreturnmethod */
+            recommendedReturnMethod: string | null;
+            /** Returnreference */
+            returnReference: string | null;
+            /** Sessionid */
+            sessionId: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "DRAFT" | "SUBMITTED" | "CLARIFICATION_REQUIRED" | "RETURN_CREATED" | "REJECTED" | "CANCELLED" | "FAILED";
+            /** Supportdraft */
+            supportDraft: string | null;
+            /** Ticketid */
+            ticketId: string;
+            /**
+             * Tracking
+             * @default []
+             */
+            tracking: components["schemas"]["TrackingView"][];
+            /** Updatedat */
+            updatedAt?: string | null;
         };
         /** RuntimeConfig */
         RuntimeConfig: {
@@ -9226,6 +9485,28 @@ export interface components {
             selectable: boolean;
         };
         /**
+         * SourceShipmentEcho
+         * @description What the `shipmentInfo` write did, reported back rather than assumed.
+         *
+         *     Present so an associate can see that the source document was touched, and
+         *     which one. A silent source write is the thing this whole platform is careful
+         *     about; if it happens it is visible.
+         */
+        SourceShipmentEcho: {
+            /** Attempted */
+            attempted: boolean;
+            /** Detail */
+            detail?: string | null;
+            /** Matcheddocument */
+            matchedDocument?: string | null;
+            /**
+             * Outcome
+             * @default SKIPPED
+             * @enum {string}
+             */
+            outcome: "INSERTED" | "UPDATED" | "SKIPPED" | "FAILED";
+        };
+        /**
          * SourceWatermarkView
          * @description One source's high watermark, as the run fixed it before scanning.
          *
@@ -9575,6 +9856,21 @@ export interface components {
             /** Stronganchorid */
             strongAnchorId: string;
         };
+        /** TicketItemView */
+        TicketItemView: {
+            /** Itemstatus */
+            itemStatus: string;
+            /** Orderlineid */
+            orderLineId: string;
+            /** Productid */
+            productId: string;
+            /** Quantity */
+            quantity: number;
+            /** Reasoncode */
+            reasonCode: string;
+            /** Returnitemid */
+            returnItemId: string;
+        };
         /** TimelineEvent */
         TimelineEvent: {
             /** Actorid */
@@ -9600,6 +9896,23 @@ export interface components {
             sequence: number;
             /** Streamid */
             streamId: string;
+        };
+        /** TrackingView */
+        TrackingView: {
+            /** Carriercode */
+            carrierCode: string | null;
+            /** Eventat */
+            eventAt: string | null;
+            /** Shipmentdetails */
+            shipmentDetails: string | null;
+            /** Trackingid */
+            trackingId: string;
+            /** Trackingreference */
+            trackingReference: string;
+            /** Trackingstatus */
+            trackingStatus: string;
+            /** Trackingtype */
+            trackingType: string;
         };
         /**
          * TransformationKind
@@ -12536,6 +12849,173 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_list_TimelineEvent__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tickets_api_rma_tickets_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_RmaTicketView__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ticket_api_rma_tickets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRmaTicketRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_CreateRmaTicketResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ticket_api_rma_tickets__session_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_RmaTicketView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_status_api_rma_tickets__session_id__status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_RmaTicketView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_tracking_api_rma_tickets__session_id__tracking_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordTrackingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_RecordTrackingResult_"];
                 };
             };
             /** @description Validation Error */

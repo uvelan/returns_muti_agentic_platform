@@ -54,6 +54,7 @@ from return_platform.api.return_history import router as return_history_router
 from return_platform.api.return_shipments import router as return_shipments_router
 from return_platform.api.return_support import router as return_support_router
 from return_platform.api.returns import router as returns_router
+from return_platform.api.rma_tickets import router as rma_tickets_router
 from return_platform.api.schema_releases import router as schema_releases_router
 from return_platform.api.seed import router as seed_router
 from return_platform.api.source_bindings import router as source_bindings_router
@@ -1345,6 +1346,7 @@ def create_app(
     fastapi_app.include_router(dynamic_order_agent_router)
     fastapi_app.include_router(graph_schema_analyzer_router)
     fastapi_app.include_router(graph_analyzer_router)
+    fastapi_app.include_router(rma_tickets_router)
     # The one governance inbox (S9). Mounted beside the analyzer rather than
     # inside it: a graph schema draft is one of the three kinds of change it
     # carries, not the surface's owner.

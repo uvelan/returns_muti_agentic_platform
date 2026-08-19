@@ -89,6 +89,16 @@ function sections(labels: readonly string[]): readonly DomainSection[] {
  * question "can we still reach the warehouse database" is asked by people who
  * are not editing configuration at all. It is now the `/data-sources` domain.
  */
+/**
+ * Returns Support is two jobs, not one.
+ *
+ * The work queue answers the agent's requests; issuing the RMA is what an
+ * associate does once the answer is "yes, return it". Those were one screen
+ * while the second had no backend, and folding ticket creation into the queue
+ * would have made the queue's own filters navigation for something else.
+ */
+export const SUPPORT_SECTIONS = ["Work Queue", "RMA Tickets"] as const;
+
 export const CONFIG_SECTIONS = [
   "Overview",
   "Agents",
@@ -150,9 +160,10 @@ export const DOMAINS: readonly DomainDefinition[] = [
     // as a bug rather than as work in progress.
     requires: "returns.session.read",
     screenPhase: 18,
-    // One workspace: a queue and the conversation it opens. The queue picker
-    // filters a list rather than switching what the screen is.
-    sections: [],
+    // The queue and the conversation it opens, plus the RMA ticket the
+    // conversation ends in. The queue picker still filters a list rather
+    // than switching what the screen is; the RMA section is a different job.
+    sections: sections(SUPPORT_SECTIONS),
   },
   {
     path: "/config",
