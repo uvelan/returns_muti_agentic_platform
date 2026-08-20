@@ -16,16 +16,47 @@ cd "$ROOT"
 # the same SQL migrations, Neo4j migrations and graph-configuration bootstrap on
 # the host before the backend starts. `full-containerized` below still brings the
 # init container up, because there the host runs none of it.
-readonly -a infrastructure_services=(
+# Split by how you tell that each is finished, which is not a detail:
+# `--wait` waits for a service to be running or healthy, and reports a container
+# that EXITS as a failure -- even on exit code 0. Passing the one-shot
+# initializers to it therefore failed the moment they succeeded:
+#
+#     container return-multi-agent-platform-mongodb-rs-init-1 exited (0)
+#
+# and, under `set -e`, took the whole reset down with a line that reads like
+# progress. They are waited for by completion instead, below.
+readonly -a datastore_services=(
   mongodb
-  mongodb-rs-init
   neo4j
   valkey
   sqlserver
-  sqlserver-init
   temporal-postgresql
   temporal
 )
+readonly -a init_services=(
+  mongodb-rs-init
+  sqlserver-init
+)
+# Run the one-shot initializers and require each to succeed. `docker wait`
+# blocks until the container stops and prints its exit code, and returns
+# immediately for one that has already finished.
+run_init_services() {
+  docker compose up -d "$@"
+  local service container code
+  for service in "$@"; do
+    container="$(docker compose ps -aq "$service" | head -n 1)"
+    if [[ -z "$container" ]]; then
+      echo "Initialization service $service did not start." >&2
+      return 1
+    fi
+    code="$(docker wait "$container")"
+    if [[ "$code" != "0" ]]; then
+      echo "Initialization service $service failed with exit code $code:" >&2
+      docker compose logs --no-color --tail 40 "$service" >&2 || true
+      return 1
+    fi
+  done
+}
 
 source "$ROOT/scripts/linux/lib/common.sh"
 
@@ -44,10 +75,14 @@ esac
 
 case "$ACTION" in
   start)
-    docker compose up -d --wait "${infrastructure_services[@]}"
+    docker compose up -d --wait "${datastore_services[@]}"
+    run_init_services "${init_services[@]}"
     ;;
   full-containerized)
-    docker compose up -d --wait
+    docker compose up -d --wait "${datastore_services[@]}"
+    # `runtime-configuration-init` joins them here: migrations and the graph
+    # configuration release run in the container when the host runs none of it.
+    run_init_services "${init_services[@]}" runtime-configuration-init
     # `--force-recreate`, and it is not belt-and-braces. `docker compose up -d`
     # compares the *service definition*, not the image id, so when `--build`
     # produces a new image under the same `:local` tag the running container is
