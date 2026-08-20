@@ -531,8 +531,14 @@ tasks:
       and not again.
     fallbackStrategy: MANUAL_REVIEW
     fallbackTemplate: ORDER_AGENT_LLM_FAILED
-    maximumOutputTokens: 4096
-    maximumInputTokens: 32000
+    # 4096 covered the JSON and nothing else. Gemini 2.5 and later spend this
+    # same budget thinking before they answer, so the reply arrived cut off
+    # mid-string and every turn failed as RESPONSE_INVALID -- the model blamed
+    # for malformed output it had never finished writing. 8192 is the ceiling
+    # the configuration contract allows; if a model still truncates here, the
+    # answer is a smaller thinking budget, not a larger number.
+    maximumOutputTokens: 8192
+    maximumInputTokens: 200000
     allowTierEscalation: true
     allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA, MANUAL]
     allowedInputKeys: [mode, contextJson, invalidActionJson, invalidResponseJson, validationError]

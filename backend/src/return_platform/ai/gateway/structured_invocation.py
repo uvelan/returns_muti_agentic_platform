@@ -446,7 +446,7 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         if probe_bytes > self._settings.ai_max_payload_bytes:
             raise self._unavailable_error(
                 f"{self._subject} input is {probe_bytes} bytes, over the "
-                f"{self._settings.ai_max_payload_bytes}-byte limit set by "
+                f"{self._settings.ai_max_payload_bytes}-byte payload limit set by "
                 "PLATFORM_AI_MAX_PAYLOAD_BYTES"
             )
 

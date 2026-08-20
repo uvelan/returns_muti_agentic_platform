@@ -63,6 +63,32 @@ class GeminiProvider(HTTPProvider):
                 },
             },
         )
+        # Truncation is not a malformed answer, and reporting it as one sends
+        # the diagnosis somewhere useless. Gemini 2.5 and later think before
+        # they answer, and the thinking is drawn from THIS SAME
+        # `maxOutputTokens` budget -- so a task whose budget covers its JSON but
+        # not the reasoning in front of it gets a reply cut mid-string, and the
+        # JSON parser upstream blames the model for "Unterminated string" at
+        # character 267. `finishReason` says plainly which happened.
+        #
+        # CONTEXT_LIMIT_EXCEEDED rather than RESPONSE_INVALID because it is the
+        # code the router acts on correctly: it opens the MODEL circuit, so the
+        # pool stops paying 25 seconds a turn to have the same model truncate
+        # again, and moves to one whose budget fits.
+        candidate = (data.get("candidates") or [{}])[0]
+        if isinstance(candidate, dict) and candidate.get("finishReason") == "MAX_TOKENS":
+            usage = data.get("usageMetadata")
+            logger.warning(
+                "gemini_output_truncated",
+                extra={
+                    "model": self.model,
+                    "max_output_tokens": request.max_output_tokens,
+                    "thoughts_tokens": (
+                        usage.get("thoughtsTokenCount") if isinstance(usage, dict) else None
+                    ),
+                },
+            )
+            raise ProviderError("CONTEXT_LIMIT_EXCEEDED")
         try:
             text = data["candidates"][0]["content"]["parts"][0]["text"]
         except (KeyError, IndexError, TypeError) as error:

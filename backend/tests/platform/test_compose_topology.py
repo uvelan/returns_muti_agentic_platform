@@ -55,12 +55,29 @@ def _in_profile(name: str) -> set[str]:
     return {n for n, s in _SERVICES.items() if name in (s.get("profiles") or [])}
 
 
-def _infra_start_services() -> set[str]:
-    """The service list `infra.sh start` brings up, read out of the script."""
+def _bash_array(name: str) -> set[str]:
+    """The entries of one `name=(...)` array in infra.sh."""
     lines = _INFRA_SCRIPT.read_text(encoding="utf-8").splitlines()
-    start = next(i for i, line in enumerate(lines) if "infrastructure_services=(" in line)
+    start = next(
+        (i for i, line in enumerate(lines) if f"{name}=(" in line),
+        None,
+    )
+    assert start is not None, f"infra.sh no longer declares {name}=("
     end = next(i for i, line in enumerate(lines[start:], start) if line.strip() == ")")
     return {line.strip() for line in lines[start + 1 : end] if line.strip()}
+
+
+def _infra_start_services() -> set[str]:
+    """The service list `infra.sh start` brings up, read out of the script.
+
+    Two arrays, because the script waits for the two kinds differently:
+    datastores by health through `docker compose --wait`, one-shot initializers
+    by completion through `docker wait` -- `--wait` counts a container that
+    exits as a failure, including exit code 0, which is how a successful
+    `mongodb-rs-init` used to abort the whole reset. Both kinds are still
+    started by `start`, so both belong to what this test checks.
+    """
+    return _bash_array("datastore_services") | _bash_array("init_services")
 
 
 @pytest.mark.skipif(not _INFRA_SCRIPT.is_file(), reason="scripts/infra.sh is not in this container")
