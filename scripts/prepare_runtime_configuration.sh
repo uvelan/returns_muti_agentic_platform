@@ -97,7 +97,19 @@ fi
 "${PYTHON[@]}" "$ROOT/scripts/apply_sql_migrations.py"
 "${PYTHON[@]}" "$ROOT/scripts/apply_neo4j_migrations.py"
 
-bootstrap_args=(--if-missing)
+# NOT `--if-missing`. That flag returns as soon as any release is active,
+# BEFORE comparing what is on disk to what is published -- so an edited
+# ai_gateway.yaml, returns/production.yaml or dependency_simulation.yaml could
+# never reach a running platform. Every restart printed
+# `graph_configuration_status=EXISTING` and served the old release, which is
+# indistinguishable from a change that did not work: an operator edits a prompt,
+# restarts, sees the old behaviour, and concludes the edit was wrong.
+#
+# Without it the bootstrap compiles the configuration and compares it to the
+# active release: identical payloads print `UNCHANGED` and publish nothing, so
+# the common case costs one comparison and no release churn. A real change
+# publishes, which is the point of running this before the backend starts.
+bootstrap_args=()
 if [[ "$refresh_ai_routes" == "true" ]]; then
   bootstrap_args+=(--refresh-ai-routes)
 elif [[ "$force_ai_validation" == "true" ]]; then
@@ -108,4 +120,4 @@ fi
 
 "${PYTHON[@]}" \
   "$ROOT/scripts/bootstrap_graph_configuration.py" \
-  "${bootstrap_args[@]}"
+  ${bootstrap_args[@]+"${bootstrap_args[@]}"}
