@@ -57,6 +57,16 @@ export type ConversationPaneProps = {
    * unknown -- those are past *searches*, and most of them never raised a case.
    */
   onOpen: (conversationId: string, caseId?: string) => void;
+  /**
+   * Why the last attempt to resume a return did not open one.
+   *
+   * A row whose conversation the platform cannot serve -- deleted, or never
+   * persisted -- answers 404, and the mutation behind `onOpen` failed with
+   * nothing reading its error: the associate clicked a return in their own
+   * history and the screen did nothing at all. A dead row has to say so, and
+   * it must not take the rest of the list with it.
+   */
+  openError: Error | null;
   showHistory: boolean;
   onToggleHistory: () => void;
 };
@@ -73,6 +83,7 @@ export function ConversationPane({
   conversations,
   openCases,
   onOpen,
+  openError,
   showHistory,
   onToggleHistory,
 }: ConversationPaneProps) {
@@ -144,6 +155,15 @@ export function ConversationPane({
                 Back to chat
               </button>
             </div>
+
+            {openError === null ? null : (
+              <p
+                role="alert"
+                className="mb-3 rounded-xl border border-error/40 bg-error-container/40 p-3 text-xs text-on-error-container"
+              >
+                That return could not be opened: {openError.message} The other rows still work.
+              </p>
+            )}
 
             {openCases.length > 0 ? (
               <div className="mb-4">

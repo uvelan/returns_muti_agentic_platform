@@ -903,6 +903,7 @@ export function ReturnCopilotPage() {
             onOpen={(id, knownCaseId) => {
               open.mutate({ id, ...(knownCaseId === undefined ? {} : { caseId: knownCaseId }) });
             }}
+            openError={open.error}
             showHistory={showHistory}
             onToggleHistory={() => {
               setShowHistory((openState) => !openState);

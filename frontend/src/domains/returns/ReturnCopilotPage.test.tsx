@@ -465,6 +465,27 @@ describe("the discovery copilot", () => {
     expect(input.expectedConversationVersion).toBe(7);
   });
 
+  it("says why a return could not be reopened, and keeps the rest of the list", async () => {
+    // A conversation the platform cannot serve -- deleted, or never persisted --
+    // answers 404. Nothing read the failed mutation's error, so clicking a row
+    // in your own history did nothing at all: no transcript, no message, no
+    // sign the click landed. Observed live with two open cases pointing at
+    // conversations that were gone.
+    mocks.listConversations.mockResolvedValue([
+      { conversationId: "disc-gone", title: "vanished return", messageCount: 2, updatedAt: null },
+      { conversationId: "disc-fine", title: "working return", messageCount: 1, updatedAt: null },
+    ]);
+    mocks.readTranscript.mockRejectedValue(new Error("Conversation disc-gone does not exist."));
+    render(<ReturnCopilotPage />, { wrapper });
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous returns" }));
+    fireEvent.click(await screen.findByText("vanished return"));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not be opened/i);
+    // The one dead row must not take the panel with it.
+    expect(screen.getByText("working return")).toBeInTheDocument();
+  });
+
   it("says so plainly when there is no history yet", async () => {
     render(<ReturnCopilotPage />, { wrapper });
     fireEvent.click(screen.getByRole("button", { name: "Previous returns" }));
