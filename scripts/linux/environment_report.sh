@@ -496,7 +496,7 @@ if [ -n "$POETRY" ]; then
   create=$(cd "$REPO_ROOT/backend" 2>/dev/null && "$POETRY" config virtualenvs.create 2>/dev/null | first_line)
   note 'poetry virtualenvs.create' "${create:-unknown}"
   case "$in_project" in
-    true) ok 'poetry virtualenvs.in-project' 'true (environment lands at backend/.venv, where every fallback looks)' ;;
+    true) ok 'poetry virtualenvs.in-project' 'true -- but this governs CREATION only: an environment that already exists for this project keeps being used and is not moved into backend/.venv' ;;
     '')   warn 'poetry virtualenvs.in-project' 'could not be read' ;;
     *)    warn 'poetry virtualenvs.in-project' "$in_project -- the environment goes to a hashed cache directory that this repo's fallbacks cannot find; fix with: poetry config --local virtualenvs.in-project true" ;;
   esac
@@ -516,35 +516,41 @@ for var in POETRY_HOME POETRY_CACHE_DIR POETRY_VIRTUALENVS_PATH POETRY_VIRTUALEN
 done
 
 BACKEND_PY=''
-for candidate in \
-  "$REPO_ROOT/backend/.venv/bin/python" \
-  "$REPO_ROOT/backend/.venv/bin/python3" \
-  "$REPO_ROOT/backend/.venv/Scripts/python.exe"; do
+BACKEND_PY_SOURCE=''
+# Poetry's own environment counts, and on a host where one already existed it is
+# the only one there is: `virtualenvs.in-project` governs CREATION, so a project
+# with an environment already in the cache keeps using it and `backend/.venv` is
+# never written. That is not a broken host -- `run_backend_host.sh` runs
+# `poetry run uvicorn`, and `backend_python()` in lib/common.sh tries
+# `poetry run python` before it looks at `.venv` -- so the report has to ask
+# Poetry where the environment is rather than concluding there is none.
+for candidate in   "$REPO_ROOT/backend/.venv/bin/python"   "$REPO_ROOT/backend/.venv/bin/python3"   "$REPO_ROOT/backend/.venv/Scripts/python.exe"   "${env_path:-/nonexistent}/bin/python"   "${env_path:-/nonexistent}/Scripts/python.exe"; do
   # It must actually run: a .venv built on another host -- or a Windows one
   # seen through a bind mount -- is executable and still not an interpreter.
   if [ -x "$candidate" ] && "$candidate" -c "" >/dev/null 2>&1; then
     BACKEND_PY="$candidate"
+    case "$candidate" in
+      "$REPO_ROOT"/*) BACKEND_PY_SOURCE='in-project' ;;
+      *) BACKEND_PY_SOURCE='poetry-cache' ;;
+    esac
     break
   fi
 done
 
-if [ -n "$BACKEND_PY" ]; then
-  version=$("$BACKEND_PY" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null)
-  if [ -n "$version" ]; then
-    ok 'backend/.venv' "python $version"
-  else
-    fail 'backend/.venv' 'exists but its python will not run -- it was probably built for a different host or path; delete it and recreate'
-  fi
+if [ "$BACKEND_PY_SOURCE" = 'in-project' ]; then
+  ok 'backend/.venv' "python $("$BACKEND_PY" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null)"
+elif [ "$BACKEND_PY_SOURCE" = 'poetry-cache' ]; then
+  ok 'backend environment' "python $("$BACKEND_PY" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null) in Poetry's cache, not backend/.venv -- fine for anything run through poetry, which is every launcher here. Only a script invoked as backend/.venv/bin/python directly would miss it."
 elif [ -d "$REPO_ROOT/backend/.venv" ]; then
   fail 'backend/.venv' 'directory exists but holds no usable interpreter -- delete it and recreate with poetry sync'
 else
-  warn 'backend/.venv' 'absent -- create with: cd backend && poetry config --local virtualenvs.in-project true && poetry env use python3.13 && poetry sync'
+  warn 'backend environment' 'none found, in backend/.venv or in Poetry -- create with: cd backend && poetry config --local virtualenvs.in-project true && poetry env use python3.13 && poetry sync'
 fi
 
 # Whether the dependencies are actually importable is the only question that
-# decides if the backend starts. Ask the venv if there is one, and the system
-# interpreter otherwise -- `virtualenvs.create false` installs into user site,
-# and that is a legitimate answer on a host where venvs are unavailable.
+# decides if the backend starts. Ask whichever environment was found, and the
+# system interpreter otherwise -- `virtualenvs.create false` installs into user
+# site, and that is a legitimate answer on a host where venvs are unavailable.
 IMPORT_PY=${BACKEND_PY:-$PY_ANY}
 if [ -n "$IMPORT_PY" ]; then
   missing=''
@@ -841,16 +847,25 @@ cat <<'GUIDE'
          A 3.13 interpreter, and a working `python3 -m venv`.
          No venv module and no root? Ask for python3-venv, or set
            poetry config --local virtualenvs.create false
-         and install into user site instead -- the repo's fallbacks accept that,
-         they only look for backend/.venv first.
+         and install into user site instead. The repo's fallbacks accept that:
+         `backend_python()` in lib/common.sh tries `poetry run python` before
+         it looks at backend/.venv, and run_backend_host.sh execs
+         `poetry run uvicorn` whenever poetry is on PATH.
 
     3. Backend environment
          cd backend
          poetry config --local virtualenvs.in-project true
          poetry env use "$(command -v python3.13)"
          poetry sync
-         The in-project setting matters: without it Poetry writes to a hashed
-         cache path that nothing in scripts/linux/ knows how to find.
+
+         If Poetry answers "Using virtualenv: /somewhere/else", that setting
+         arrived too late: it governs creation, and an environment already
+         existed. That is not a problem to fix -- every launcher here runs
+         through `poetry run`, which finds it. Only move it if you need
+         backend/.venv to exist by name:
+           poetry env remove --all && poetry install
+         which reinstalls from scratch, so do not start it on a host with no
+         package index reachable.
 
     4. Frontend
          cd frontend && npm ci
