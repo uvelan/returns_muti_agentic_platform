@@ -158,7 +158,19 @@ docker volume ls
 if [[ "${PULL_IMAGES}" == true ]]; then
     if docker compose config >/dev/null 2>&1; then
         log "Pulling fresh Compose images."
-        docker compose pull
+        # Not a bare `pull`. `return-platform-backend:local` is built from this
+        # repository and published nowhere, so pulling it fails with "pull
+        # access denied ... repository does not exist or may require 'docker
+        # login'" -- which reads as an authentication problem and is really an
+        # image that was never meant to be fetched. Under `set -e` that aborted
+        # the whole reset before a single container started.
+        if docker compose pull --help 2>&1 | grep -q -- '--ignore-buildable'; then
+            docker compose pull --ignore-buildable
+        else
+            # Compose older than v2.22 has no such flag; tolerate the failure
+            # instead, which leaves the buildable image to `up` to build.
+            docker compose pull --ignore-pull-failures
+        fi
     fi
 fi
 
