@@ -48,6 +48,8 @@ type Tab = (typeof AI_SECTIONS)[number];
 
 /** Tabs with no backing route on `/api/ai`. Named, not silently dropped. */
 const UNBACKED: Partial<Record<Tab, string>> = {
+  Audit:
+    "Prompts and completions are not stored. A telemetry row holds a digest of the request and nothing else, so there is no payload here to show -- see Requests for what every call recorded, and Interceptions for the one place a full request and its answer exist, because a held request has to be readable by the human answering it.",
   Safety:
     "Per-request safety status appears under Requests. A dedicated safety surface (guard configuration, rejection history) has no endpoint on /api/ai.",
   Configuration:

@@ -440,8 +440,15 @@
             "type": "integer"
           },
           "maximumOutputTokens": {
-            "title": "Maximumoutputtokens",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximumoutputtokens"
           },
           "promptVersion": {
             "title": "Promptversion",

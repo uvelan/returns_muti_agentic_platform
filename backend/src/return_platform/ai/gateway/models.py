@@ -39,7 +39,7 @@ class AITaskView(Contract):
     promptVersion: str
     fallbackStrategy: FallbackStrategy
     fallbackTemplate: str
-    maximumOutputTokens: int
+    maximumOutputTokens: int | None
     maximumInputTokens: int
     allowTierEscalation: bool
     allowedProviders: tuple[str, ...]

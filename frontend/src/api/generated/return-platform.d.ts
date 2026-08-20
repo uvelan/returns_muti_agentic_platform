@@ -3815,7 +3815,7 @@ export interface components {
             /** Maximuminputtokens */
             maximumInputTokens: number;
             /** Maximumoutputtokens */
-            maximumOutputTokens: number;
+            maximumOutputTokens: number | null;
             /** Promptversion */
             promptVersion: string;
             /** Taskid */

@@ -158,7 +158,18 @@ class TaskConfiguration(StrictModel):
     systemPromptSections: tuple[PromptSection, ...] = ()
     fallbackStrategy: FallbackStrategy
     fallbackTemplate: str = Field(min_length=1, max_length=128)
-    maximumOutputTokens: int = Field(ge=32, le=8192)
+    #: Optional, and omitting it is the way to send no ceiling at all.
+    #:
+    #: A cap is an optimisation, and it was costing more than it saved: Gemini
+    #: 2.5 and later spend this same budget thinking before they answer, so a
+    #: number chosen to bound the JSON truncated the reply mid-string and every
+    #: turn failed as RESPONSE_INVALID. `ProviderRequest.max_output_tokens` has
+    #: always been `int | None` and the Google adapter omits the key when it is
+    #: None; only this field made it compulsory. A task that names no ceiling
+    #: now gets the provider's own default, which is the model's real limit
+    #: rather than a guess about it. Anthropic still requires one and supplies
+    #: its own fallback.
+    maximumOutputTokens: int | None = Field(default=None, ge=32, le=8192)
     maximumInputTokens: int = Field(ge=256, le=200_000)
     allowTierEscalation: bool = False
     allowedProviders: tuple[
