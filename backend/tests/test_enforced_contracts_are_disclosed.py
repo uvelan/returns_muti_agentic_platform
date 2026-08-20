@@ -29,18 +29,19 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml
 from pydantic import BaseModel, Field
 
 from return_platform.ai.providers.schema_cleaner import clean_gemini_schema
 from return_platform.ai.routing.routes import AIRoute
 from return_platform.ai.routing.selection import AIRoutePool
 from return_platform.ai.routing.tasks import (
+    PROMPT_SECTION_MAX_CHARS,
     AIGatewayConfiguration,
     ModelTier,
     TaskConfiguration,
     load_ai_gateway_configuration,
 )
+from return_platform.configuration.return_configuration import load_return_configuration
 from return_platform.dynamic_knowledge.config_loader import load_active_schema
 from return_platform.dynamic_knowledge.integration.neo4j_gateway import Neo4jKnowledgeGateway
 from return_platform.dynamic_knowledge.knowledge.guards import (
@@ -76,10 +77,21 @@ def production_schema() -> ActiveSchema:
 
 
 @pytest.fixture(scope="module")
-def order_agent_prompt() -> str:
-    document = yaml.safe_load(GATEWAY_CONFIG.read_text(encoding="utf-8"))
-    prompt: str = document["tasks"][REASONING_TASK]["systemPrompt"]
-    return prompt
+def reasoning_task() -> TaskConfiguration:
+    return load_ai_gateway_configuration(GATEWAY_CONFIG).configuration.tasks[REASONING_TASK]
+
+
+@pytest.fixture(scope="module")
+def order_agent_prompt(reasoning_task: TaskConfiguration) -> str:
+    """The prompt as assembled, not as spelled in the YAML.
+
+    The reasoning prompt is written as `systemPromptSections` -- twenty-one named
+    parts, each one concern, joined into `systemPrompt` by `TaskConfiguration`.
+    Every disclosure below is a statement the *model* has to read, so what is
+    asserted is the composed string that reaches a provider; reading the raw
+    YAML key would be asserting against how the prompt is stored.
+    """
+    return reasoning_task.systemPrompt
 
 
 @pytest.fixture(scope="module")
@@ -187,21 +199,132 @@ def test_the_prompt_states_the_payload_contract_and_expected_value(
     )
 
 
-def test_the_prompt_still_fits_its_budget(order_agent_prompt: str) -> None:
+def test_the_prompt_still_fits_its_budget(reasoning_task: TaskConfiguration) -> None:
     """Asserted here as well as by the model so a prompt edit that overflows
     names the reason directly.
 
-    The cap is read off `TaskConfiguration` rather than written again here. It
+    The bound is read off `TaskConfiguration` rather than written again here. It
     was duplicated as a literal, so raising it to admit v16's asking-is-not-
     finishing rule failed this test for a bound that had already moved -- which
-    reports a stale copy as though it were a prompt defect.
+    reports a stale copy as though it were a prompt defect. It is now
+    `prompt_budget` rather than the field's `max_length`: this task's prompt is
+    composed from sections and is measured against theirs.
     """
-    budget = next(
-        constraint.max_length
-        for constraint in TaskConfiguration.model_fields["systemPrompt"].metadata
-        if hasattr(constraint, "max_length")
+    assert len(reasoning_task.systemPrompt) <= reasoning_task.prompt_budget
+
+
+def test_no_single_prompt_section_has_become_the_monolith_again(
+    reasoning_task: TaskConfiguration,
+) -> None:
+    """The budget that actually governs an edit now.
+
+    v18 took a 14,699-character single string apart into named sections, one per
+    concern, because the whole-prompt cap had stopped being a tripwire and become
+    a squeeze: rules were being added by deleting or compressing older ones. The
+    guarantee that buys anything is per-section -- a concern that has drifted
+    toward `PROMPT_SECTION_MAX_CHARS` is a concern that wants splitting again,
+    and this fails while there is still room to do it deliberately.
+
+    Names are asserted too. A section name never reaches a model; it is what
+    makes a prompt change reviewable as a diff, and an unnamed or duplicated one
+    puts the decomposition straight back where it started.
+    """
+    sections = reasoning_task.systemPromptSections
+    assert len(sections) >= 8, (
+        "the reasoning prompt has been recombined into a handful of large blocks"
     )
-    assert len(order_agent_prompt) <= budget
+    assert len({section.name for section in sections}) == len(sections)
+    oversized = {
+        section.name: len(section.text)
+        for section in sections
+        if len(section.text) > PROMPT_SECTION_MAX_CHARS
+    }
+    assert oversized == {}, f"sections over the {PROMPT_SECTION_MAX_CHARS}-char budget: {oversized}"
+
+    # Liveness: the composed prompt really is these sections and nothing else,
+    # so a rule quietly added to a `systemPrompt` alongside them would fail here
+    # rather than travel unreviewed.
+    assert reasoning_task.systemPrompt == "\n\n".join(section.text for section in sections)
+
+
+# --- the fact vocabulary, and the two live defects that needed it ------------
+
+
+def test_every_fact_name_the_prompt_offers_is_one_the_catalogue_will_keep(
+    order_agent_prompt: str,
+) -> None:
+    """`FactCatalogue.capture` drops any name no configured field claims.
+
+    Not a rejection the model ever sees: an unrecognized name is logged as
+    `order_agent_unconfigured_observed_facts` and the fact is discarded, so the
+    turn succeeds and the associate is asked for the same thing again later. The
+    prompt used to say the name was "a short stable name" and leave the model to
+    invent one, which is the enforcement-without-disclosure this file exists to
+    catch.
+
+    Asserted in both directions. A name in the prompt that configuration does not
+    have is a fact the model will lose; a configured field the prompt does not
+    name is one the model has no way to guess, because nothing in `contextJson`
+    carries this catalogue -- `identification_fields` describes *search signals*
+    and `captured_facts` lists only what a capture already succeeded on.
+    """
+    policy = load_return_configuration(
+        BACKEND_ROOT / "config" / "returns" / "production.yaml"
+    ).configuration.clarification_policy
+    configured = {item.field for item in policy.fields}
+
+    # The prompt names them in one comma-separated run; scanning for each is
+    # what keeps this insensitive to the wording around them.
+    named = {name for name in configured if name in order_agent_prompt}
+    missing = sorted(configured - named)
+    assert missing == [], (
+        f"configured fact fields the prompt never names, so the model cannot "
+        f"emit them and the associate gets asked twice: {missing}"
+    )
+
+
+def test_the_prompt_requires_facts_on_every_action_not_only_at_confirmation(
+    order_agent_prompt: str,
+) -> None:
+    """Observed 2026-08-20: three turns, no `observed_facts`, nothing persisted.
+
+    `_capture_observed_facts` runs on every validated action and merges
+    `action.observed_facts`, which defaults to `()`. A model that reports none
+    leaves the conversation with no memory at all, so the next turn re-runs the
+    same search and re-asks the answered question -- and the console's extracted
+    -facts panel stays empty while the transcript fills up.
+
+    The wording that failed asked for what the associate says "about the return
+    itself", which reads as excluding who the customer is. The identifying
+    details have to be named as facts, not only as search signals.
+    """
+    assert "observed_facts, on every action without exception" in order_agent_prompt
+    for identifying in ("customer or company name", "order or PO number"):
+        assert identifying in order_agent_prompt, (
+            f"the prompt no longer names {identifying!r} among the details that "
+            "must be reported as facts"
+        )
+    assert "CONFIRM_ORDER" in order_agent_prompt
+
+
+def test_the_prompt_treats_an_explicit_confirmation_as_settling_what_it_names(
+    order_agent_prompt: str,
+) -> None:
+    """Observed 2026-08-20: "confirm the customer X on account Y", twice, and
+    both times the agent asked which branch and re-listed the same accounts.
+
+    The rule existed as a principle -- "never ask again for something the
+    associate has effectively given" -- inside the narrowing paragraph, and was
+    not followed. It is now its own section about the concrete case, and it does
+    not displace the identity-first ladder: that decides what to ask while
+    several candidates remain, this decides what has stopped being a question.
+    """
+    assert "settles everything it names" in order_agent_prompt
+    assert "contextJson.transcript" in order_agent_prompt
+    # The identity-first rule from 6a295b4 is still there underneath it.
+    assert "Identify the customer before narrowing to an order." in order_agent_prompt
+    for contact_field in ("phone_number", "email", "address_line1", "city", "postal_code"):
+        assert contact_field in order_agent_prompt, contact_field
 
 
 # --- the schema cleaner discards nothing a provider could use ----------------

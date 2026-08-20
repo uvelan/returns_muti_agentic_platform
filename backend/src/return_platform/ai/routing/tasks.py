@@ -6,7 +6,7 @@ import hashlib
 import json
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -65,6 +65,62 @@ class RateLimitConfiguration(StrictModel):
     standard: TierLimitConfiguration
 
 
+#: How long one named prompt section may be.
+#:
+#: The number that matters day to day. A section is *one concern* -- the payload
+#: contract, the identity-first narrowing rule, the voice -- and the whole point
+#: of naming it is that it stays small enough to read in one sitting and to
+#: review as a diff on its own. The twenty-one the Order Agent's prompt
+#: decomposes into run from 324 to 1,218 characters, so 2,000 is room to grow a
+#: concern rather than a wall to squeeze it against -- and a section that reaches
+#: the ceiling is a section that wants splitting again, which is cheap, and the
+#: reason this number is not larger.
+#:
+#: It is deliberately far below `SINGLE_PROMPT_MAX_CHARS`: no single section
+#: should ever be able to become the monolith this decomposition took apart.
+PROMPT_SECTION_MAX_CHARS = 2_000
+
+#: How long a prompt written as one string may be.
+#:
+#: Unchanged at the value v16 raised it to, and it still governs every task but
+#: the Order Agent's. The history is the argument for not raising it a third
+#: time: 12,000, then 14,000, then 15,000, each rise paid for by a prompt that
+#: had run out of room, and by the last one the largest prompt had 301
+#: characters left and its own comments recorded rules added, rewritten and then
+#: partly removed for space. Raising a single flat number is how a prompt grows
+#: without anyone deciding that it should. `TaskConfiguration.prompt_budget` is
+#: what a composed prompt is measured against instead.
+SINGLE_PROMPT_MAX_CHARS = 15_000
+
+
+class PromptSection(StrictModel):
+    """One named, independently-maintained piece of a task's system prompt.
+
+    The alternative this replaces is a single fourteen-thousand-character
+    string. That string instructed a model on eight unrelated concerns at once,
+    had no structure a reviewer could point at, and -- because the cap applies
+    to the whole -- had reached the point where adding a rule meant deleting
+    one. Its own YAML comments record rules added, rewritten, and then partly
+    removed for space.
+
+    A section is not a new runtime concept. `TaskConfiguration.systemPrompt` is
+    still the one string every provider sees and every caller reads; sections
+    are how that string is *written*, joined in declaration order by
+    `TaskConfiguration._compose_system_prompt`. Nothing downstream of
+    configuration loading knows they exist.
+
+    `name` is for humans and for diffs -- it never reaches a model. Sections are
+    an ordered tuple rather than a mapping because prompt order is meaning:
+    the role and the untrusted-input framing have to come first, and a mapping
+    would make that an accident of how someone typed the YAML.
+    """
+
+    #: Lowercase kebab-case, so a section name reads the same in YAML, in a diff
+    #: and in a test that asserts one is present.
+    name: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$")
+    text: str = Field(min_length=20, max_length=PROMPT_SECTION_MAX_CHARS)
+
+
 class TaskConfiguration(StrictModel):
     tier: ModelTier
     promptVersion: str = Field(min_length=1, max_length=128)
@@ -85,7 +141,21 @@ class TaskConfiguration(StrictModel):
     #: v16's rule that a turn asking a question may not declare itself complete
     #: -- the defect it closes had already reached a live case, and the tripwire
     #: did its job by making the growth a decision rather than a side effect.
-    systemPrompt: str = Field(min_length=20, max_length=15_000)
+    #:
+    #: The third rise is the one that did not happen. The bound now lives in
+    #: `prompt_budget`, which is `SINGLE_PROMPT_MAX_CHARS` for a task that writes
+    #: its prompt as one string -- the same 15,000, applied to every task but the
+    #: Order Agent's -- and, for a task that writes it as named sections, those
+    #: sections' own budgets. The `max_length` constraint is gone from the field
+    #: itself because it could only express one of the two.
+    systemPrompt: str = Field(min_length=20)
+    #: The prompt written as named parts, joined in order into `systemPrompt`.
+    #:
+    #: Empty for every task whose prompt is short enough to read as one string,
+    #: which is all of them but the Order Agent's. Declaring both a
+    #: `systemPrompt` and sections that compose to something else is a config
+    #: error rather than a precedence puzzle -- see `_compose_system_prompt`.
+    systemPromptSections: tuple[PromptSection, ...] = ()
     fallbackStrategy: FallbackStrategy
     fallbackTemplate: str = Field(min_length=1, max_length=128)
     maximumOutputTokens: int = Field(ge=32, le=8192)
@@ -96,12 +166,89 @@ class TaskConfiguration(StrictModel):
     ] = Field(min_length=1)
     allowedInputKeys: tuple[str, ...] = Field(min_length=1)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _compose_system_prompt(cls, data: Any) -> Any:
+        """Join `systemPromptSections` into `systemPrompt`, in declaration order.
+
+        Runs before field validation so that `systemPrompt` is present and
+        already correct by the time its own constraints are checked -- which is
+        what keeps the budget, the digest, the released payload and every reader
+        of `task.systemPrompt` working on a composed task without knowing one.
+
+        Sections are joined with a blank line rather than a space. The join is
+        the only model-visible difference between a composed prompt and the
+        single folded scalar it replaces, and a blank line between concerns is
+        the half of "break it down" the model gets to see.
+
+        A payload carrying *both* a `systemPrompt` and sections is normal: it is
+        what `model_dump` produces, and therefore what a published release
+        round-trips through. It is only rejected when the two disagree, because
+        then someone has edited the composed copy and their edit is about to be
+        silently discarded.
+        """
+        if not isinstance(data, dict):
+            return data
+        sections = data.get("systemPromptSections")
+        if not sections:
+            return data
+        texts: list[str] = []
+        for section in sections:
+            if isinstance(section, PromptSection):
+                texts.append(section.text)
+            elif isinstance(section, dict) and isinstance(section.get("text"), str):
+                texts.append(section["text"])
+            else:
+                # Malformed. Hand it back untouched so the field validator
+                # reports the real shape error rather than this one.
+                return data
+        composed = "\n\n".join(text.strip() for text in texts)
+        declared = data.get("systemPrompt")
+        if isinstance(declared, str) and declared.strip() and declared != composed:
+            raise ValueError(
+                "systemPrompt and systemPromptSections disagree; the sections are "
+                "the source of truth, so edit a section rather than the composed text"
+            )
+        return {**data, "systemPrompt": composed}
+
+    @property
+    def prompt_budget(self) -> int:
+        """How long this task's assembled system prompt may be.
+
+        Two shapes, two bounds, and the difference is the point.
+
+        A prompt written as one string gets `SINGLE_PROMPT_MAX_CHARS`: a flat
+        number, which is the right instrument for a prompt nobody has taken
+        apart, and which stays where v16 left it.
+
+        A prompt written as named sections is bounded by its sections' own
+        budgets instead. That is deliberately not one number: what it means is
+        that the prompt grows only by growing a named concern past
+        `PROMPT_SECTION_MAX_CHARS`-worth of room, or by adding a concern -- and
+        both of those are a line in a diff with a name on it. The flat cap could
+        not express that, and its history is why it needed to: raised to 14,000,
+        then 15,000, each time by a prompt that had run out of room, until the
+        largest one had 301 characters left and was paying for new rules by
+        deleting old ones.
+        """
+        if not self.systemPromptSections:
+            return SINGLE_PROMPT_MAX_CHARS
+        return len(self.systemPromptSections) * PROMPT_SECTION_MAX_CHARS
+
     @model_validator(mode="after")
     def validate_unique_values(self) -> TaskConfiguration:
         if len(set(self.allowedProviders)) != len(self.allowedProviders):
             raise ValueError("allowedProviders must be unique")
         if len(set(self.allowedInputKeys)) != len(self.allowedInputKeys):
             raise ValueError("allowedInputKeys must be unique")
+        section_names = [section.name for section in self.systemPromptSections]
+        if len(set(section_names)) != len(section_names):
+            raise ValueError("systemPromptSections must have unique names")
+        if len(self.systemPrompt) > self.prompt_budget:
+            raise ValueError(
+                f"systemPrompt is {len(self.systemPrompt)} characters, over this "
+                f"task's {self.prompt_budget}-character budget"
+            )
         return self
 
 

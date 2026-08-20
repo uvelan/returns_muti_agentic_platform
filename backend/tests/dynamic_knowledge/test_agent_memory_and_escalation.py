@@ -21,8 +21,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml
 
+from return_platform.ai.routing.tasks import load_ai_gateway_configuration
 from return_platform.dynamic_knowledge.config_loader import load_active_schema
 from return_platform.dynamic_knowledge.integration.neo4j_gateway import Neo4jKnowledgeGateway
 from return_platform.dynamic_knowledge.order_agent.contracts import AgentTurnContext
@@ -49,9 +49,16 @@ def production_schema() -> ActiveSchema:
 
 @pytest.fixture(scope="module")
 def order_agent_prompt() -> str:
-    document = yaml.safe_load((BACKEND_ROOT / "config/ai_gateway.yaml").read_text(encoding="utf-8"))
-    prompt: str = document["tasks"]["ORDER_AGENT_REASONING_V1"]["systemPrompt"]
-    return prompt
+    """The prompt as the runtime assembles it, not as the YAML spells it.
+
+    Read through the loader rather than off the raw document because the prompt
+    is now written as `systemPromptSections` -- twenty-one named parts joined into
+    `systemPrompt` by `TaskConfiguration`. A test that reached for the raw key
+    would either miss the composition or assert against a section boundary; this
+    asserts against the exact string that goes on the wire.
+    """
+    configuration = load_ai_gateway_configuration(BACKEND_ROOT / "config/ai_gateway.yaml")
+    return configuration.configuration.tasks["ORDER_AGENT_REASONING_V1"].systemPrompt
 
 
 # --- on-demand sync is reachable ---------------------------------------------
