@@ -351,7 +351,11 @@ if have df; then
     label=$(printf '%s' "$target" | sed "s|^$REPO_ROOT|<repo>|")
     if [ -n "$avail" ]; then
       if [ "$avail" -lt 10 ]; then
-        warn "free space: $label" "${avail}GB -- images, node_modules and .venv need well over 10GB together"
+        if [ "$target" = "${TMPDIR:-/tmp}" ]; then
+          warn "free space: $label" "${avail}GB -- pip, Poetry and npm all unpack here, and running out reports a broken package rather than a full disk; point TMPDIR somewhere larger: export TMPDIR=\"\$PWD/.tmp/build\" && mkdir -p \"\$TMPDIR\""
+        else
+          warn "free space: $label" "${avail}GB -- images, node_modules and .venv need well over 10GB together"
+        fi
       else
         note "free space: $label" "${avail}GB"
       fi
@@ -488,8 +492,8 @@ if [ -n "$POETRY" ]; then
   case "$POETRY" in
     "$REPO_ROOT"/*) note 'poetry on PATH' 'no -- it lives in the repo; scripts resolve it through lib/common.sh poetry_cmd()' ;;
   esac
-  in_project=$("$POETRY" config virtualenvs.in-project 2>/dev/null | first_line)
-  create=$("$POETRY" config virtualenvs.create 2>/dev/null | first_line)
+  in_project=$(cd "$REPO_ROOT/backend" 2>/dev/null && "$POETRY" config virtualenvs.in-project 2>/dev/null | first_line)
+  create=$(cd "$REPO_ROOT/backend" 2>/dev/null && "$POETRY" config virtualenvs.create 2>/dev/null | first_line)
   note 'poetry virtualenvs.create' "${create:-unknown}"
   case "$in_project" in
     true) ok 'poetry virtualenvs.in-project' 'true (environment lands at backend/.venv, where every fallback looks)' ;;
@@ -512,8 +516,16 @@ for var in POETRY_HOME POETRY_CACHE_DIR POETRY_VIRTUALENVS_PATH POETRY_VIRTUALEN
 done
 
 BACKEND_PY=''
-for candidate in "$REPO_ROOT/backend/.venv/bin/python" "$REPO_ROOT/backend/.venv/bin/python3"; do
-  if [ -x "$candidate" ]; then BACKEND_PY="$candidate"; break; fi
+for candidate in \
+  "$REPO_ROOT/backend/.venv/bin/python" \
+  "$REPO_ROOT/backend/.venv/bin/python3" \
+  "$REPO_ROOT/backend/.venv/Scripts/python.exe"; do
+  # It must actually run: a .venv built on another host -- or a Windows one
+  # seen through a bind mount -- is executable and still not an interpreter.
+  if [ -x "$candidate" ] && "$candidate" -c "" >/dev/null 2>&1; then
+    BACKEND_PY="$candidate"
+    break
+  fi
 done
 
 if [ -n "$BACKEND_PY" ]; then
@@ -524,7 +536,7 @@ if [ -n "$BACKEND_PY" ]; then
     fail 'backend/.venv' 'exists but its python will not run -- it was probably built for a different host or path; delete it and recreate'
   fi
 elif [ -d "$REPO_ROOT/backend/.venv" ]; then
-  fail 'backend/.venv' 'directory exists but has no bin/python (a Windows .venv has Scripts/, and does not work here)'
+  fail 'backend/.venv' 'directory exists but holds no usable interpreter -- delete it and recreate with poetry sync'
 else
   warn 'backend/.venv' 'absent -- create with: cd backend && poetry config --local virtualenvs.in-project true && poetry env use python3.13 && poetry sync'
 fi
@@ -536,11 +548,11 @@ fi
 IMPORT_PY=${BACKEND_PY:-$PY_ANY}
 if [ -n "$IMPORT_PY" ]; then
   missing=''
-  for module in fastapi uvicorn pydantic motor pymongo neo4j temporalio; do
+  for module in fastapi uvicorn pydantic pymongo neo4j temporalio psycopg; do
     "$IMPORT_PY" -c "import $module" >/dev/null 2>&1 || missing="$missing $module"
   done
   if [ -z "$missing" ]; then
-    ok 'backend imports' "fastapi, uvicorn, pydantic, motor, pymongo, neo4j, temporalio all import"
+    ok 'backend imports' 'fastapi, uvicorn, pydantic, pymongo, neo4j, temporalio, psycopg all import'
   else
     warn 'backend imports' "missing:$missing (run poetry sync in backend/)"
   fi
