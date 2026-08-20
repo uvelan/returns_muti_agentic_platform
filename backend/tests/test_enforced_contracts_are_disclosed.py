@@ -321,8 +321,10 @@ def test_the_prompt_treats_an_explicit_confirmation_as_settling_what_it_names(
     """
     assert "settles everything it names" in order_agent_prompt
     assert "contextJson.transcript" in order_agent_prompt
-    # The identity-first rule from 6a295b4 is still there underneath it.
-    assert "Identify the customer before narrowing to an order." in order_agent_prompt
+    # The identity-first rule from 6a295b4 is still there underneath it. Asserted
+    # without the sentence's punctuation: the rule is what must survive, and
+    # pinning the full stop made a reworded-but-intact rule look like a deletion.
+    assert "Identify the customer before narrowing to an order" in order_agent_prompt
     for contact_field in ("phone_number", "email", "address_line1", "city", "postal_code"):
         assert contact_field in order_agent_prompt, contact_field
 

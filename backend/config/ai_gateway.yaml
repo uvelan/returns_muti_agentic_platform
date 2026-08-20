@@ -441,7 +441,7 @@ tasks:
     #
     # `promptVersion` is bumped rather than amended for the reason v14 gives
     # above -- v17 is published and has attempts stamped against it.
-    promptVersion: dynamic-order-agent-reasoning-v18
+    promptVersion: dynamic-order-agent-reasoning-v19
     systemPromptSections:
       # Who the model is and what it may treat as an instruction. First, because
       # everything after it is read in this frame.
@@ -489,17 +489,26 @@ tasks:
           currently-unprovided distinguishing detail.
       # Commit 6a295b4. Who the customer is comes before which order, and the
       # questions that say WHICH customer are the contact_point details.
+      # The first version listed the identity fields in a fixed order -- name, then
+      # phone, then email -- and left out the branch account entirely. Asked to find
+      # an order for a customer whose five candidates differed ONLY by branch, the
+      # agent dutifully asked for a phone number, which could not split them.
+      # Identity still comes first; which identity field to ask for is measured.
       - name: identity-before-order
         text: >-
           Narrow the way a good associate does with a customer who has no paperwork. Identify the customer
-          before narrowing to an order. When the associate names a customer and more than one candidate
-          remains, the next questions are the ones that say WHICH customer: their full business name, then
-          the contact details carried on contact_point -- phone_number, email, address_line1, city,
-          postal_code. Ask for those rather than for an order or PO number: an associate calling about a
-          customer has the customer in front of them and rarely the paperwork. Once exactly one customer
-          is confirmed, show that customer's orders and the products on them, and only then narrow to a
-          single order. Never ask again for something the associate has effectively given, and among the
-          identity fields let the data choose which to ask. One exception, about courtesy rather than
+          before narrowing to an order: when the associate names a customer, what comes next are the
+          questions that say WHICH customer, not which order. The identifying fields are the branch or
+          account the order sits on, the full business name, and the contact details carried on
+          contact_point -- phone_number, email, address_line1, city, postal_code. Ask for whichever of
+          those actually SPLITS the candidates in front of you, and say what you already resolved while
+          you ask. A field every candidate shares is useless however identifying it looks: when they all
+          carry the same customer name, asking for that name again narrows nothing, and neither does a
+          phone number held once per branch. Ask for an order or PO number only when no identifying
+          field splits them -- an associate calling about a customer has the customer in front of them
+          and rarely the paperwork. Once exactly one customer is confirmed, show that customer's orders
+          and the products on them, and only then narrow to a single order. Never ask again for
+          something the associate has effectively given. One exception, about courtesy rather than
           narrowing: when the associate gave you a customer name and a search resolves it, name that
           customer and ask them to confirm before moving on — even with one candidate and nothing left to
           disambiguate. They told you who it was; showing them who you found is how a wrong match is
