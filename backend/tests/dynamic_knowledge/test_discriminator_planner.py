@@ -217,6 +217,62 @@ def test_the_same_field_is_worth_asking_for_when_the_candidates_differ(
     assert "splits the 4 candidates into 4" in by_key["cities"].reason
 
 
+def test_a_partial_answer_is_still_worth_asking_for_when_the_candidates_differ_on_it(
+    catalogue: IdentificationCatalogue,
+) -> None:
+    """A prefix is not an answer, and the candidates say which it was.
+
+    "find order for BOYLE" against six customers who share a surname and differ
+    by first name: the field was in `answered`, so it was excluded before the
+    candidates were ever consulted, and the ranking offered an email address
+    instead of the one question that finishes the name. An associate reading
+    that reasonably concludes the agent cannot tell a half name from a whole one.
+
+    Being asked is the whole assertion. The score matters less than the field
+    appearing at all -- exclusion happened before any measurement.
+    """
+    candidates = [
+        _candidate(customer_id=f"C{index}", customer_name=f"{first} BOYLE")
+        for index, first in enumerate(("RANDALL", "VIRGINIA", "DENNIS", "JESSICA"))
+    ]
+    ranked = rank_discriminators(
+        catalogue,
+        _parsed(catalogue, customerNames=["BOYLE"]),
+        candidates=candidates,
+        result_count=len(candidates),
+        limit=50,
+    )
+    by_key = {item.intent_key: item for item in ranked}
+
+    assert "customerNames" in by_key, "a half-given name is excluded as though it were answered"
+    assert by_key["customerNames"].splits_candidates == 4
+    assert "partial value rather than an answer" in by_key["customerNames"].reason
+
+
+def test_an_answered_field_every_candidate_agrees_on_stays_out_of_the_ranking(
+    catalogue: IdentificationCatalogue,
+) -> None:
+    """The other half, and the reason the rule is narrow.
+
+    Five accounts that all read the same customer name: the name IS settled, and
+    re-asking it narrows nothing. This is the case the exclusion was written for,
+    and it must survive the case above.
+    """
+    candidates = [
+        _candidate(customer_id=f"C{index}", customer_name="STONEBRIDGE PIPEWORKS")
+        for index in range(5)
+    ]
+    ranked = rank_discriminators(
+        catalogue,
+        _parsed(catalogue, customerNames=["STONEBRIDGE"]),
+        candidates=candidates,
+        result_count=len(candidates),
+        limit=50,
+    )
+
+    assert "customerNames" not in {item.intent_key for item in ranked}
+
+
 def test_a_field_no_candidate_carries_is_unknown_rather_than_useless(
     catalogue: IdentificationCatalogue,
 ) -> None:

@@ -221,7 +221,22 @@ def rank_discriminators(
             # associate is told it could not be used; they are not asked for it.
             continue
         if field.intent_key in answered and field.intent_key not in invalid:
-            continue
+            # Answered, normally. But "answered" here means the associate said
+            # SOMETHING for this field, not that what they said settles it -- and
+            # a field the remaining candidates still DISAGREE on has not been
+            # settled by it. "find order for BOYLE" against six customers who
+            # share a surname and differ by first name was excluded as answered,
+            # so the ranking could never propose asking for a fuller name and
+            # offered an email address instead. The associate gave a prefix; the
+            # question that finishes it is the best one available.
+            #
+            # Only while narrowing, and only on real disagreement: with one
+            # candidate, or with every candidate carrying the same value, the
+            # field genuinely is answered and re-asking is the re-asking this
+            # catalogue exists to prevent.
+            settled = _distinct_values_among(field, candidates)
+            if not narrowing or settled is None or settled <= 1:
+                continue
 
         measured, basis = _selectivity_of(field)
         configured = _configured_score(field, highest_priority)
@@ -256,6 +271,11 @@ def rank_discriminators(
 
         if field.intent_key in invalid:
             reason_parts.append("the value given could not be validated")
+        elif field.intent_key in answered:
+            reason_parts.append(
+                "the associate already gave part of this, and the candidates still differ on it, "
+                "so what they gave was a partial value rather than an answer"
+            )
 
         ranked.append(
             Discriminator(
