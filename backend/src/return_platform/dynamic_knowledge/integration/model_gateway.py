@@ -4,8 +4,23 @@ Everything provider-facing -- route selection, failover, rate limiting, tier
 escalation, safety inspection, attempt logging -- lives in
 `ai_gateway/structured.py` and is shared with every other structured-output
 caller. What remains here is only what is genuinely Order-Agent-shaped: the
-three call modes, how a turn context becomes a payload, and mapping the parsed
-`AgentAction` onto `ModelInvocationResult`.
+three call modes, how a turn context becomes a payload, which stage prompt the
+turn gets, and mapping the parsed `AgentAction` onto `ModelInvocationResult`.
+
+**One gateway, several prompts.** The reasoning prompt reached 17,109 characters
+and adherence at that size is visibly poor -- see `order_agent/reasoning_stage.py`
+for the measurement and the reasoning. A turn now runs against the prompt for
+the stage its own state says it is in, which for most turns is a good deal
+smaller. That is a routing decision and it lives here, at the seam between the
+turn and the gateway, because it is the only place that holds both the
+`AgentTurnContext` and the invokers.
+
+**The base task is never optional.** `ORDER_AGENT_REASONING_V1` carries every
+rule and is what a turn falls back to whenever its stage's task cannot be
+served -- absent from the active release, or bound away from every route. A
+deployment that has never published the stage tasks therefore behaves exactly as
+it did before they existed, which is the property that lets this ship while
+`runtime-configuration-init` still publishes with `--if-missing`.
 """
 
 from __future__ import annotations
@@ -14,6 +29,7 @@ import json
 import logging
 from typing import Any
 
+from return_platform.ai.gateway.final_dispatch import FinalDispatcher
 from return_platform.ai.gateway.interception_policy import (
     AIGatewaySettingsSource,
     build_interception_policy,
@@ -32,6 +48,12 @@ from return_platform.dynamic_knowledge.order_agent.contracts import (
     AgentAction,
     AgentTurnContext,
     ModelInvocationResult,
+)
+from return_platform.dynamic_knowledge.order_agent.reasoning_stage import (
+    STAGE_TASK_IDS,
+    ReasoningStage,
+    reasoning_stage,
+    stage_task_id,
 )
 from return_platform.dynamic_knowledge.order_agent.temporal_grounding import (
     temporal_grounding_prompt,
@@ -66,26 +88,111 @@ class RoutePoolReasoningModelGateway:
         interception_store: InterceptionStore | None = None,
         gateway_settings: AIGatewaySettingsSource | None = None,
     ) -> None:
-        self._invoker: StructuredOutputInvoker[AgentAction] = StructuredOutputInvoker(
+        interception = build_interception_policy(
+            store=interception_store,
+            settings_source=gateway_settings,
+            # One subject for every stage. Interception is a rule about *this
+            # traffic* -- the reasoning calls that carry the most customer data
+            # -- and a per-stage subject would let an operator gate the opening
+            # turn and silently miss the four stages that follow it.
+            subject="order_agent_reasoning",
             settings=settings,
-            configuration=configuration,
-            route_pool=route_pool,
-            task_id=task_id,
-            response_model=AgentAction,
-            logger=logger,
-            event_prefix="order_agent",
-            subject="Order Agent",
-            unavailable_error=StandardReasoningUnavailable,
-            recorder=recorder,
-            interception=build_interception_policy(
-                store=interception_store,
-                settings_source=gateway_settings,
-                subject="order_agent_reasoning",
-                settings=settings,
-            ),
         )
+
+        def build(
+            for_task: str, dispatcher: FinalDispatcher | None
+        ) -> StructuredOutputInvoker[AgentAction]:
+            return StructuredOutputInvoker(
+                settings=settings,
+                configuration=configuration,
+                route_pool=route_pool,
+                task_id=for_task,
+                response_model=AgentAction,
+                logger=logger,
+                event_prefix="order_agent",
+                subject="Order Agent",
+                unavailable_error=StandardReasoningUnavailable,
+                recorder=recorder,
+                interception=interception,
+                dispatcher=dispatcher,
+            )
+
+        self._invoker: StructuredOutputInvoker[AgentAction] = build(task_id, None)
         self._settings = settings
         self._task_id = task_id
+        self._route_pool = route_pool
+        # Built only for stage tasks the *startup* configuration actually has.
+        # A task added by a release activated later falls back until a restart,
+        # which is safe by construction: the fallback is the complete prompt.
+        #
+        # Every stage shares the base invoker's dispatcher, so one process keeps
+        # one boundary: circuit state, rate limiting and the active-release view
+        # belong to the route pool and must not fork per stage. A stage is a
+        # different prompt, not a different provider world.
+        self._stage_invokers: dict[str, StructuredOutputInvoker[AgentAction]] = {
+            stage_task: build(stage_task, self._invoker.dispatcher)
+            for stage_task in STAGE_TASK_IDS.values()
+            if stage_task != task_id and stage_task in configuration.tasks
+        }
+        logger.info(
+            "order_agent_stage_prompts_bound",
+            extra={
+                "base_task_id": task_id,
+                "stage_task_ids": sorted(self._stage_invokers),
+                "missing_stage_task_ids": sorted(
+                    set(STAGE_TASK_IDS.values()) - set(self._stage_invokers) - {task_id}
+                ),
+            },
+        )
+
+    def _servable(self, stage_task: str) -> bool:
+        """Whether this release and these routes can actually serve `stage_task`.
+
+        Two structural reasons a stage task cannot be served, both checked here
+        rather than discovered as a failed turn:
+
+        The task may be absent from the active release. `runtime-configuration-
+        init` in compose.yaml still publishes with `--if-missing`, so a container
+        deployment can be running a release cut before these task ids existed.
+        The task is re-resolved per call for the same reason `StructuredOutput-
+        Invoker.task` is a property: a release activated mid-process must not
+        leave a stale answer behind.
+
+        And no route may be allowed to serve it. `AIRoute.allowed_task_keys` is
+        built from the operator's live-validation receipts
+        (`runtime_integrations.ai_providers[].validated_routes[].task_key`), and
+        a deployment that has validated its routes against
+        `ORDER_AGENT_REASONING_V1` alone binds them to that id -- so a new task
+        id would find no candidates and every turn would fail. An empty
+        `allowed_task_keys` means the route is unrestricted, which is the
+        packaged configuration's state and why this is invisible in tests that
+        do not set it.
+
+        Read without the pool's lock on purpose: `routes` is a tuple replaced
+        atomically by `replace_routes`, so this sees one consistent generation
+        and costs nothing per turn.
+        """
+        task = self._invoker.dispatcher.task(stage_task)
+        if task is None:
+            return False
+        return any(
+            not route.allowed_task_keys or stage_task in route.allowed_task_keys
+            for route in self._route_pool.routes
+            if route.tier is task.tier and route.provider_name in task.allowedProviders
+        )
+
+    def _select(
+        self, context: AgentTurnContext
+    ) -> tuple[str, ReasoningStage | None, StructuredOutputInvoker[AgentAction]]:
+        """The prompt this turn gets: its stage's, or the complete one."""
+        stage = reasoning_stage(
+            case_id=context.case_id, conversation_state=dict(context.conversation_state)
+        )
+        candidate = stage_task_id(stage)
+        invoker = self._stage_invokers.get(candidate)
+        if invoker is not None and self._servable(candidate):
+            return candidate, stage, invoker
+        return self._task_id, stage, self._invoker
 
     async def decide(self, context: AgentTurnContext) -> ModelInvocationResult:
         return await self._invoke(mode="DECIDE", context=context)
@@ -156,13 +263,21 @@ class RoutePoolReasoningModelGateway:
             ),
             "validationError": (validation_error or "")[:2_000],
         }
-        invocation = await self._invoker.invoke(
+        # Chosen per invocation, not per turn, and the correction modes take the
+        # same stage prompt the decision did. A correction has to repair an
+        # action produced under a particular set of rules, so handing it a
+        # different set is asking it to fix an answer against a standard the
+        # answer was never held to.
+        task_id, stage, invoker = self._select(context)
+        invocation = await invoker.invoke(
             payload=payload,
             size_probe=context_json,
             log_context={
                 "conversation_id": context.conversation_id,
                 "client_turn_id": context.client_turn_id,
                 "mode": mode,
+                "reasoning_stage": stage.value if stage is not None else "UNCLASSIFIED",
+                "stage_task_id": task_id,
             },
             # The turn's as-of has to be *stated*, not merely present somewhere
             # inside `contextJson`. A model that has to find the date in a

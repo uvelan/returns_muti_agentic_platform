@@ -383,6 +383,13 @@ services:
   # Bootstrap, not an application service: it seeds the graph configuration the
   # backend and every worker read at startup, so it belongs in the default
   # profile alongside the datastores rather than behind the app profile.
+  # Not `--if-missing`, for the reason scripts/prepare_runtime_configuration.sh
+  # gives at length: that flag returns as soon as any release is active, BEFORE
+  # comparing what is on disk to what is published, so an edited configuration
+  # could never reach a container that had published once. Without it an
+  # unchanged configuration prints UNCHANGED and publishes nothing, and a
+  # changed one publishes -- which is also what lets the per-stage Order Agent
+  # task ids reach a container at all.
   runtime-configuration-init:
     <<: *backend-base
     command:
@@ -392,9 +399,9 @@ services:
         python /app/scripts/apply_neo4j_migrations.py &&
         python /app/scripts/apply_sql_migrations.py &&
         if [ "$${PLATFORM_VALIDATE_AI_ON_STARTUP}" = "true" ]; then
-          python /app/scripts/bootstrap_graph_configuration.py --if-missing --validate-ai;
+          python /app/scripts/bootstrap_graph_configuration.py --validate-ai;
         else
-          python /app/scripts/bootstrap_graph_configuration.py --if-missing;
+          python /app/scripts/bootstrap_graph_configuration.py;
         fi
     depends_on:
       neo4j:

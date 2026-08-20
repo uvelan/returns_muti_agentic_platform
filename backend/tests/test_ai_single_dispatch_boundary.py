@@ -1136,9 +1136,21 @@ async def test_the_cacheable_prefix_is_byte_identical_across_turns_and_modes() -
     )
 
     from return_platform.dynamic_knowledge.order_agent.contracts import AgentAction
+    from return_platform.dynamic_knowledge.order_agent.reasoning_stage import (
+        reasoning_stage,
+        stage_task_id,
+    )
 
     shared = _shared_prefix_length(prompts)
-    task = load_ai_gateway_configuration(CONFIG).configuration.tasks["ORDER_AGENT_REASONING_V1"]
+    # Which prompt *should* be on the wire is asked of the classifier rather
+    # than hardcoded. Every call in the probe carries an empty
+    # `conversation_state` and no `case_id`, so all four are the same stage --
+    # which is exactly why a shared-prefix measurement over them still means
+    # something. Caching is now a within-stage guarantee: turns that stay in one
+    # stage share the whole head, and a turn that changes stage is a turn whose
+    # situation changed, which is the trade the split was made for.
+    expected_task_id = stage_task_id(reasoning_stage(case_id=None, conversation_state={}))
+    task = load_ai_gateway_configuration(CONFIG).configuration.tasks[expected_task_id]
     schema_block = len(
         "\n\nREQUIRED RESPONSE SCHEMA (Output exactly this JSON structure):\n```json\n"
         + json.dumps(clean_gemini_schema(AgentAction.model_json_schema()))
@@ -1146,7 +1158,8 @@ async def test_the_cacheable_prefix_is_byte_identical_across_turns_and_modes() -
     )
 
     assert prompts[0].startswith(task.systemPrompt), (
-        "the configured prompt is no longer the first thing on the wire"
+        f"the configured prompt for this turn's stage ({expected_task_id}) is no "
+        "longer the first thing on the wire"
     )
     # Compared against the *computed* stable head rather than a magic number, so
     # the assertion follows an ordinary prompt or schema edit and still fails on
