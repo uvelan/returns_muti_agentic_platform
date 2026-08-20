@@ -88,6 +88,11 @@ if [[ -x "backend/.venv/bin/python" ]]; then
 elif [[ -x "backend/.venv/Scripts/python.exe" ]]; then
     PYTHON=("${REPO_ROOT}/backend/.venv/Scripts/python.exe")
 elif command -v poetry >/dev/null 2>&1; then
+    # The script paths below are absolute BECAUSE of this: `poetry --directory`
+    # resolves command-line arguments relative to the directory it is given, so
+    # a relative `backend/scripts/x.py` becomes `backend/backend/scripts/x.py`.
+    # Both scripts locate their own data from `__file__`, so the working
+    # directory is otherwise irrelevant to them.
     PYTHON=(poetry --directory "${REPO_ROOT}/backend" run python)
 else
     fail "No backend Python environment (no backend/.venv and no poetry). Run scripts/bootstrap_host.sh first."
@@ -105,7 +110,7 @@ scripts/linux/reset_docker_environment.sh "${reset_args[@]}"
 log "3/5  Loading the reference dataset (drops every database first)"
 dataset_args=()
 [[ -n "${DATASET}" ]] && dataset_args+=("${DATASET}")
-"${PYTHON[@]}" backend/scripts/load_reference_dataset.py "${dataset_args[@]}"
+"${PYTHON[@]}" "${REPO_ROOT}/backend/scripts/load_reference_dataset.py" "${dataset_args[@]}"
 
 if [[ "${START_HOST}" == true ]]; then
     log "4/5  Starting backend, workers and frontend"
@@ -131,7 +136,7 @@ log "5/5  Building the knowledge graph (cap ${GRAPH_RECORDS} records per asset)"
 # past `PLATFORM_GRAPH_SYNC_MAX_RECORDS`, so passing 30000 without this would
 # still clamp to 10,000.
 PLATFORM_GRAPH_SYNC_MAX_RECORDS="${PLATFORM_GRAPH_SYNC_MAX_RECORDS:-${GRAPH_RECORDS}}" \
-    "${PYTHON[@]}" backend/scripts/build_knowledge_graph.py "${GRAPH_RECORDS}"
+    "${PYTHON[@]}" "${REPO_ROOT}/backend/scripts/build_knowledge_graph.py" "${GRAPH_RECORDS}"
 
 if [[ "${START_HOST}" == true ]]; then
     # Verify rather than assume. Running processes are not a working platform:
