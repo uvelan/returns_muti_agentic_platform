@@ -436,9 +436,18 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         """
         correlation = correlation or InvocationCorrelation()
         trace_id = str(uuid4())
-        if len(size_probe.encode("utf-8")) > self._settings.ai_max_payload_bytes:
+        # Both numbers, and the setting's name. "Exceeds the configured payload
+        # limit" told an operator that something was too big and nothing else --
+        # not how big, not what the limit was, not which variable moves it -- so
+        # the only way to act on it was to raise the limit blindly and see. It
+        # is also the one AI failure that never reaches a provider, so no route
+        # records it and the gateway metrics stay clean while every turn fails.
+        probe_bytes = len(size_probe.encode("utf-8"))
+        if probe_bytes > self._settings.ai_max_payload_bytes:
             raise self._unavailable_error(
-                f"{self._subject} input exceeds the configured payload limit"
+                f"{self._subject} input is {probe_bytes} bytes, over the "
+                f"{self._settings.ai_max_payload_bytes}-byte limit set by "
+                "PLATFORM_AI_MAX_PAYLOAD_BYTES"
             )
 
         # The prompt is assembled before the safety gate rather than after,
