@@ -71,15 +71,26 @@ done
 cd "${REPO_ROOT}"
 [[ -f .env ]] || fail "Root .env is missing. Run scripts/bootstrap_host.sh first."
 
-# `python` is not a command on a stock Linux host, and the backend venv is what
-# carries the platform's own dependencies. Prefer it, and say so plainly rather
-# than failing later inside a script with a confusing import error.
+# `python` is not a command on a stock Linux host, and the backend environment
+# is what carries the platform's own dependencies. Prefer it, and say so plainly
+# rather than failing later inside a script with a confusing import error.
+#
+# Poetry counts, and on some hosts it is the only answer there is:
+# `virtualenvs.in-project` governs creation, so a project whose environment
+# already existed keeps using the one in Poetry's cache and `backend/.venv` is
+# never written. This script used to fail outright there -- "backend/.venv is
+# missing, run bootstrap_host.sh" -- on a host with a complete environment that
+# every other script here finds, because `backend_python()` in lib/common.sh and
+# `run_backend_host.sh` both try `poetry run` first. This now agrees with them.
+PYTHON=()
 if [[ -x "backend/.venv/bin/python" ]]; then
-    PYTHON="${REPO_ROOT}/backend/.venv/bin/python"
+    PYTHON=("${REPO_ROOT}/backend/.venv/bin/python")
 elif [[ -x "backend/.venv/Scripts/python.exe" ]]; then
-    PYTHON="${REPO_ROOT}/backend/.venv/Scripts/python.exe"
+    PYTHON=("${REPO_ROOT}/backend/.venv/Scripts/python.exe")
+elif command -v poetry >/dev/null 2>&1; then
+    PYTHON=(poetry --directory "${REPO_ROOT}/backend" run python)
 else
-    fail "backend/.venv is missing. Run scripts/bootstrap_host.sh first."
+    fail "No backend Python environment (no backend/.venv and no poetry). Run scripts/bootstrap_host.sh first."
 fi
 
 log "1/5  Stopping host processes"
@@ -94,7 +105,7 @@ scripts/linux/reset_docker_environment.sh "${reset_args[@]}"
 log "3/5  Loading the reference dataset (drops every database first)"
 dataset_args=()
 [[ -n "${DATASET}" ]] && dataset_args+=("${DATASET}")
-"${PYTHON}" backend/scripts/load_reference_dataset.py "${dataset_args[@]}"
+"${PYTHON[@]}" backend/scripts/load_reference_dataset.py "${dataset_args[@]}"
 
 if [[ "${START_HOST}" == true ]]; then
     log "4/5  Starting backend, workers and frontend"
@@ -120,7 +131,7 @@ log "5/5  Building the knowledge graph (cap ${GRAPH_RECORDS} records per asset)"
 # past `PLATFORM_GRAPH_SYNC_MAX_RECORDS`, so passing 30000 without this would
 # still clamp to 10,000.
 PLATFORM_GRAPH_SYNC_MAX_RECORDS="${PLATFORM_GRAPH_SYNC_MAX_RECORDS:-${GRAPH_RECORDS}}" \
-    "${PYTHON}" backend/scripts/build_knowledge_graph.py "${GRAPH_RECORDS}"
+    "${PYTHON[@]}" backend/scripts/build_knowledge_graph.py "${GRAPH_RECORDS}"
 
 if [[ "${START_HOST}" == true ]]; then
     # Verify rather than assume. Running processes are not a working platform:
