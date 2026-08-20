@@ -790,8 +790,19 @@ tasks:
         text: *statement-and-identifier-rules
       - name: when-to-search-instead-of-asking
         text: *when-to-search-instead-of-asking
+      # The opening turn SEARCHES and then asks the first narrowing question,
+      # both inside one turn -- the stage is classified from state as the turn
+      # begins, when there is no cache yet, so it is OPENING throughout. Without
+      # these two it reached five candidates with no rule for what to ask and fell
+      # back to "do you have an order number?", the one question the ladder exists
+      # to avoid. Observed live against six customers sharing a surname, where the
+      # first name was the field that split them.
+      - name: identity-before-order
+        text: *identity-before-order
       - name: honouring-a-confirmation
         text: *honouring-a-confirmation
+      - name: choosing-the-next-question
+        text: *choosing-the-next-question
       - name: evidence-and-scope
         text: *evidence-and-scope
       - name: voice

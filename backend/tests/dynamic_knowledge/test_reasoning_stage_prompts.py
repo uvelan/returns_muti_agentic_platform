@@ -196,9 +196,15 @@ def test_the_identity_ladder_survives_in_the_stages_that_narrow(
     """6a295b4's rule and dd2a5fc's correction, both, and only where they apply.
 
     Identity-first is a narrowing rule: it decides which question says WHICH
-    customer while several candidates remain. It belongs to the two narrowing
-    stages and to nothing else -- there is nobody to tell apart at OPENING, and
-    at COMPLETING the question has already been answered.
+    customer while several candidates remain. OPENING needs it too, which cost a
+    live run to learn: the stage is classified from state as the turn begins, so
+    the turn that runs the FIRST search is OPENING from start to finish -- and it
+    is the same turn that asks the first narrowing question. Without the ladder it
+    reached five candidates with no rule for what to ask and fell back to "do you
+    have an order number?", the one question the ladder exists to avoid.
+
+    It stays out of UNRESOLVED and COMPLETING, where there is genuinely nobody to
+    tell apart: zero candidates, or a question already answered.
 
     dd2a5fc is the half that is easy to lose in a split: the branch or account is
     one of the identifying fields, and which field to ask for is measured against
@@ -207,6 +213,7 @@ def test_the_identity_ladder_survives_in_the_stages_that_narrow(
     number that could not narrow anything.
     """
     narrowing = {
+        STAGE_TASK_IDS[ReasoningStage.OPENING],
         STAGE_TASK_IDS[ReasoningStage.NARROWING],
         STAGE_TASK_IDS[ReasoningStage.NARROWING_TRUNCATED],
     }
