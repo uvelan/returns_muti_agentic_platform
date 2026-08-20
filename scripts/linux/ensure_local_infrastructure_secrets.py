@@ -12,10 +12,24 @@ import re
 import secrets
 import stat
 import string
+import sys
 from pathlib import Path
 from urllib.parse import quote
 
-MARKERS = ("placeholder", "replace-me", "change-me", "changeme")
+# One list, not two. This script decides what to REPLACE and validate_env.py
+# decides what to REJECT, and when they disagreed the pair deadlocked: a value
+# the validator called a placeholder was not one here, so this script reported
+# `generated=0` and the validator then refused to let anything start, with no
+# command in between that would fix it. `vault-resolved` was the case that bit
+# -- left behind in .env files written while Vault was still in use, rejected
+# there, invisible here.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from validate_env import (  # noqa: E402 - path must be set before this import
+    CREDENTIAL_PLACEHOLDERS,
+    PLACEHOLDER_MARKERS,
+)
+
+MARKERS = tuple(sorted(set(CREDENTIAL_PLACEHOLDERS) | set(PLACEHOLDER_MARKERS)))
 SECRET_KEYS = (
     "MSSQL_SA_PASSWORD",
     "GRAPH_PASSWORD",
@@ -50,7 +64,6 @@ def _password() -> str:
     characters = required + remaining
     secrets.SystemRandom().shuffle(characters)
     return "".join(characters)
-
 
 
 #: MongoDB DSNs, assembled here rather than in `compose.yaml`.
