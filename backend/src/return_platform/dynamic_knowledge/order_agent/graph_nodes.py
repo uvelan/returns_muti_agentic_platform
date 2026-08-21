@@ -365,15 +365,38 @@ def _next_discriminators(
     parsed = deps.identification.parse(
         {key: value for key, value in intent_values.items() if key not in _SEARCH_METADATA_KEYS}
     )
-    reference = order_search_cache.get("evidenceRef")
+    # One search writes two evidence records -- the full result set, which the
+    # candidate set binds to, and the page the associate is shown, which is the
+    # one appended to `evidence_refs` and therefore the only one this turn
+    # rehydrates. Looking up `evidenceRef` here searched the turn's evidence for
+    # the record it never carries: the loop matched nothing, `candidates` stayed
+    # empty, `narrowing` was false, and *every* field came back "not profiled;
+    # ranked by the configured question order" -- whose top entry is the order
+    # number, the one thing an associate with the customer in front of them does
+    # not have. `rank_discriminators` was never the problem; it was never given
+    # anything to rank.
+    #
+    # `evidenceRef` remains the fallback so a conversation cached before
+    # `pageEvidenceRef` existed still resolves rather than silently ranking flat.
+    references = [
+        reference
+        for reference in (
+            order_search_cache.get("pageEvidenceRef"),
+            order_search_cache.get("evidenceRef"),
+        )
+        if reference
+    ]
     candidates: list[dict[str, Any]] = []
-    for item in evidence:
-        if item.query_execution_id != reference:
-            continue
-        found = item.result.get("candidates") if isinstance(item.result, dict) else None
-        if isinstance(found, list):
-            candidates = [entry for entry in found if isinstance(entry, dict)]
-        break
+    for reference in references:
+        for item in evidence:
+            if item.query_execution_id != reference:
+                continue
+            found = item.result.get("candidates") if isinstance(item.result, dict) else None
+            if isinstance(found, list):
+                candidates = [entry for entry in found if isinstance(entry, dict)]
+            break
+        if candidates:
+            break
     ranked = rank_discriminators(
         deps.identification,
         parsed,
@@ -902,6 +925,14 @@ def make_order_search_node(deps: GraphDependencies) -> Any:
             "signature": search_intent_signature(intent, deps.identification),
             "intent": ranked["intent"],
             "evidenceRef": full_evidence.query_execution_id,
+            # The *other* half of the pair, and the one the turn actually
+            # rehydrates: `evidence_refs` below carries the page record, so
+            # anything reading this turn's evidence -- `_next_discriminators`
+            # above all -- can only ever find that one. Without this pointer it
+            # searched the turn's evidence for the full record's id, matched
+            # nothing, and ranked every question by the configured order while
+            # reporting "not profiled".
+            "pageEvidenceRef": page_evidence.query_execution_id,
             "shown": len(page_candidates),
             "totalFound": ranked["total_found"],
             "candidateSet": candidate_set.model_dump(mode="json"),

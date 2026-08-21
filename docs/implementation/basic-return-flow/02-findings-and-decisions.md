@@ -589,3 +589,176 @@ A gate reporting exactly these is a pass. Anything more is a regression.
 - **validated:** live -- the panel now reads Order number, Customer name, Return
   reason, Branch associate, Branch associate email, Branch associate phone,
   Product condition, Quantity.
+
+---
+
+## F-21 · Reopening a conversation that ended on a question shows no question
+
+- **timestamp:** 2026-08-21
+- **found by:** the operator's own run in the browser, conversation
+  `disc-514a5ef4-062f-42b7-bacc-8c41827d88ec`
+- **evidence:** the turn completed -- Temporal reports
+  `WorkflowExecutionUpdateCompleted` -- and the live pane rendered the agent's
+  three statements. `GET /api/v2/order-agent/conversations/{id}/transcript` then
+  returned **one** message, the associate's. Reloading the page lost the agent's
+  entire reply, including the pending question. Measured across three
+  conversations:
+
+  | Conversation | Last action | Agent message in transcript |
+  |---|---|---|
+  | `6d6822ef` turn 1 | `RESPOND` | yes |
+  | `6d6822ef` turn 2 | `CLARIFY` | **no** |
+  | `b9f9c66d` turn 2 | `CLARIFY` | **no** |
+  | `disc-514a5ef4` turn 1 | `CLARIFY` | **no** |
+
+- **finding:** two individually-reasonable decisions that are wrong together.
+
+  `coordinator._extended_transcript` is called with `response=None` on the paused
+  branch, and says why: *"A turn that produced no response (a pause awaiting a
+  clarification answer) still records what the associate said: the question the
+  agent asked is already carried in `clarification_exchanges`."* True, and right
+  for the **agent**, which reads that field.
+
+  `api/order_agent.read_conversation_transcript` then serves that same store to a
+  **human**: *"What was said, so reopening a conversation shows it rather than a
+  blank pane. Same bounded transcript the agent itself reasons over."*
+
+  So the store deliberately omits the question, and the endpoint deliberately
+  serves the store -- and the endpoint's own first sentence describes the failure
+  this produces. One store, two consumers, and only one of them was considered.
+
+- **why it matters:** a narrowing conversation ends on a question nearly every
+  turn. An associate who refreshes, or comes back after helping someone else,
+  sees their own words and nothing else -- and the question they were being asked
+  is invisible while the workflow is still waiting for its answer.
+- **decision:** deferred to the operator, mid-test. The fix belongs in the
+  **endpoint**, not the store: merge `clarification_exchanges` into what is
+  served to a human, leaving what the agent reasons over exactly as it is. The
+  alternative -- appending the question to the stored transcript -- would put it
+  in front of the model twice, and the packaged prompt already warns the
+  transcript is not a fact log.
+- **affected files (proposed):** `dynamic_knowledge/api/order_agent.py`, and
+  whatever `read_transcript` resolves to on the conversation repository.
+
+---
+
+## F-22 · The discriminator ranker had no measurement, so it recommended the worst question
+
+- **timestamp:** 2026-08-21
+- **found by:** the same run -- *"find order for dane and the product he received
+  is damaged"*
+- **evidence:** the search resolved **seven** customers, five returned, each a
+  distinct `customer_id` on a different branch account (NASH, GARDEN x2, DALLAS,
+  LAKEWOOD). Every entry in `contextJson.suggested_discriminators` came back
+  `"basis": "CONFIGURED_PRIORITY"`, `"reason": "not profiled; ranked by the
+  configured question order"`, with no `distinctValuesAmongCandidates` on any of
+  them. The top recommendation was **order number** at 0.95, then order id, then
+  email, then phone.
+- **finding:** measured against the rows, `account_id` splits the five candidates
+  four ways and is the only field that splits them at all -- `ship_to_city`,
+  `ship_to_postal_code`, `order_status` and `shipping_method` are all null at the
+  customer-resolution stage, and `customer_name` arrives `[REDACTED]`. The ranker
+  offered none of that and fell back to the operator's question order, whose top
+  entry is the one thing an associate with the customer in front of them does not
+  have. This is the complaint recorded against the earlier half-name work,
+  reproduced on a different name.
+- **not fixed during the run:** the packaged prompt is explicit that the ranking
+  is *evidence, not an instruction* -- *"prefer what the data says, and use the
+  configured order only to break a tie the data cannot"* -- so a model that reads
+  its own instructions recovers, as this turn did by asking for the branch. The
+  defect is that recovery is left to the model rather than to the ranker.
+- **decision:** deferred. Changing ranking behaviour underneath a live
+  conversation would make the operator's next turn behave differently from their
+  last one for no reason they could see.
+
+---
+
+## F-22a · Superseding F-22: the ranker was never given anything, and then scored it backwards
+
+F-22 recorded the symptom -- every field `CONFIGURED_PRIORITY / not profiled`,
+order number on top. Fixing it turned up **two** causes, and the second is worse
+than the first.
+
+### Cause 1 · The candidates never reached the ranker
+
+`order_search` writes **two** evidence records from one search:
+
+| record | contents | where its id goes |
+|---|---|---|
+| `full_evidence` | every candidate | `orderSearchCache.evidenceRef`, and the `CandidateSet` |
+| `page_evidence` | the page shown | **`state["evidence_refs"]`** -- the only one the turn rehydrates |
+
+`_next_discriminators` scanned the turn's evidence for `evidenceRef` -- the id of
+the record the turn never carries. Measured on the operator's own conversation:
+`evidenceRef = 0740e3bc-…`, turn evidence `b537115a-…`. The loop matched nothing,
+`candidates` stayed empty, `narrowing` was false, and no ranking ever considered
+the candidates. **For every conversation, always** -- which is why the earlier
+half-name work on `rank_discriminators` did not change what the associate saw.
+
+`rank_discriminators` has eleven tests, several asserting that a field the
+candidates disagree on outranks one they share. Every one passes candidates in
+directly. `_next_discriminators`, which finds them, had **no test at all**.
+
+**Fixed:** the cache carries `pageEvidenceRef` and the lookup prefers it,
+falling back to `evidenceRef` for a cache written before the field existed.
+
+### Cause 2 · Splitting the candidates *lowered* a field's score
+
+With the candidates finally arriving, the ranking still did not change -- because
+the narrowing arithmetic was inverted:
+
+```
+score = min(1.0, score * (distinct / len(candidates)) + score * 0.25)
+```
+
+That multiplier is **below 1 for anything short of a perfect split**, while a
+field no candidate carries kept its configured score untouched. Measured against
+four candidates sharing a state and differing in city:
+
+| field | score | what it knows |
+|---|---|---|
+| `orderNumbers` | **0.950** | nothing about these candidates |
+| `orderIds` | 0.934 | nothing |
+| ...nine more... | | nothing |
+| `cities` | **0.338** | **splits them 2 ways -- the only field that splits them at all** |
+| `states` | 0.000 | every candidate agrees |
+
+The one useful question ranked **twelfth**, behind eleven fields carrying no
+information whatsoever.
+
+**Fixed:** `_narrowing_score` places a measured splitter above `_UNKNOWN_CEILING`
+(0.5), ordered within that band mostly by how finely it cuts and partly by the
+configured priority; a field the candidates are silent about is capped at the
+ceiling. Same case now ranks `cities` first at 0.690, unknowns tied at 0.500 in
+configured order, `states` at 0.
+
+All sixteen existing planner tests still pass -- the relationships they encode
+were right, and nothing had ever tested the two this missed.
+
+### Still open · the branch is not a searchable signal
+
+The packaged prompt tells the model that *"the identifying fields are the branch
+or account the order sits on, the full business name, and the contact details"*.
+`discovery.identification_fields` publishes seventeen signals and **none of them
+is a branch or account**. At the customer-resolution stage the candidate rows
+carry only `customer_id` and `account_id`, and no catalogue field searches
+either -- so on that stage's results the ranker still has nothing measurable,
+and now says so honestly (`no candidate carries this field`) rather than
+recommending the order number with false confidence.
+
+Closing that needs a new configured identification field bound to the account,
+which is an operator decision about what the agent may search, not a code fix.
+Recorded rather than done.
+
+---
+
+## F-21a · The paused-turn transcript, fixed
+
+The paused branch called `_extended_transcript(..., response=None)`. It now
+passes the question, which the branch already holds as `question` and already
+passes to the turn result. One argument.
+
+The rejected alternative was merging `clarification_exchanges` into the endpoint:
+that field is written from the value `interrupt()` *returns*, so while the
+question is pending it is empty -- it could never have recovered a question that
+had not been answered yet.

@@ -144,6 +144,34 @@ def _configured_score(field: IdentificationField, highest_priority: int) -> floa
     return max(0.0, min(_CONFIGURED_SCORE_CEILING, ratio * _CONFIGURED_SCORE_CEILING))
 
 
+#: The most a field the candidates say nothing about may score while narrowing.
+#:
+#: It exists because the previous arithmetic had the ranking upside down. A
+#: narrowing field was scaled by `score * (distinct / len) + score * 0.25`, which
+#: is **below 1 for anything short of a perfect split**, while a field no
+#: candidate carried kept its configured score untouched. Measured live: against
+#: four candidates sharing a state and differing in city, `cities` -- the only
+#: field that split them at all -- scored 0.338 and ranked twelfth, behind eleven
+#: fields carrying no information about those candidates whatsoever, led by the
+#: order number at 0.95. The associate was asked for paperwork they did not have
+#: while the question that would have resolved it sat at the bottom.
+_UNKNOWN_CEILING = 0.5
+
+
+def _narrowing_score(configured: float, *, distinct: int, candidates: int) -> float:
+    """Where a field that demonstrably splits the candidates ranks.
+
+    Always above `_UNKNOWN_CEILING`, so a measured splitter beats every field the
+    candidates are silent about. Within that band, ordered mostly by how finely
+    it cuts -- a field that separates every candidate is the ideal question -- and
+    partly by the operator's configured priority, which breaks ties between cuts
+    of equal sharpness and keeps the release's opinion meaningful.
+    """
+    share = (distinct - 1) / max(1, candidates - 1)
+    headroom = 1.0 - _UNKNOWN_CEILING
+    return min(1.0, _UNKNOWN_CEILING + headroom * (0.6 * min(1.0, share) + 0.4 * configured))
+
+
 def _distinct_values_among(
     field: IdentificationField, candidates: Sequence[dict[str, Any]]
 ) -> int | None:
@@ -254,17 +282,18 @@ def rank_discriminators(
         distinct = _distinct_values_among(field, candidates)
         if narrowing:
             if distinct is None:
-                # The candidates say nothing about this field. It may still
-                # narrow, so it is neither promoted nor written off.
+                # The candidates say nothing about this field. Unknown rather
+                # than useless -- so it keeps its configured standing but is held
+                # below anything measured, because "might narrow" must never
+                # outrank "demonstrably does".
+                score = min(score, _UNKNOWN_CEILING)
                 reason_parts.append("no candidate carries this field")
             elif distinct <= 1:
                 # Every remaining candidate agrees. Asking removes nothing.
                 score = 0.0
                 reason_parts.append("every remaining candidate has the same value")
             else:
-                # Scaled by how finely it cuts the set actually in front of the
-                # associate, which is what "discriminating *now*" means.
-                score = min(1.0, score * (distinct / max(1, len(candidates))) + score * 0.25)
+                score = _narrowing_score(score, distinct=distinct, candidates=len(candidates))
                 reason_parts.append(f"splits the {len(candidates)} candidates into {distinct}")
         elif result_count == 0:
             reason_parts.append("nothing matched so far, so an independent anchor is worth more")

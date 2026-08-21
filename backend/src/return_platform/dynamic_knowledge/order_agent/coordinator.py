@@ -171,9 +171,19 @@ def _extended_transcript(
     carried -- never evidence rows, which are rehydrated from the evidence store
     and must not be duplicated into conversation history.
 
-    A turn that produced no response (a pause awaiting a clarification answer)
-    still records what the associate said: the question the agent asked is
-    already carried in `clarification_exchanges`.
+    **A turn that pauses on a question records the question.** It used not to,
+    on the reasoning that `clarification_exchanges` already carried it -- which
+    is false at exactly the moment it matters: that field is written when the
+    associate *answers*, from the value `interrupt()` returns, so while the
+    question is pending it holds nothing. The transcript is what
+    `read_conversation_transcript` serves to a human, so reopening a conversation
+    that had stopped on a question showed the associate their own message and no
+    question at all, while the workflow was still waiting for its answer.
+
+    The record was also simply untrue: the associate's message was appended and
+    the agent's was not, so the agent appeared never to have replied. Once the
+    answer arrives the resumed turn appends the answer and the final response,
+    and the question the two sit between was missing from the middle.
     """
     transcript: list[dict[str, str]] = list(_stored_transcript(conversation_state))
     transcript.append({"role": "associate", "text": user_message})
@@ -667,8 +677,11 @@ class DynamicOrderAgentCoordinator:
                     **conversation_state,
                     "orderSearchCache": final_state.get("order_search_cache"),
                     "observedFacts": list(final_state.get("observed_facts", ())),
+                    # The question, not `None`. It is what a human reopening this
+                    # conversation has to see, and it is what the agent is told
+                    # to read before asking anything.
                     "transcript": _extended_transcript(
-                        conversation_state, user_message=request.message, response=None
+                        conversation_state, user_message=request.message, response=question
                     ),
                 },
                 scope=scope,

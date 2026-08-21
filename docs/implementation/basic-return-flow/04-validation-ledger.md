@@ -303,3 +303,23 @@ covered by the composer's unit tests and applies to the next case.
 | `ruff check src scripts tests` | 1 error -- the known `I001` (D-3) |
 | `npx vitest run --maxWorkers=3` | **30 files, 477 passed** (was 471; six added) |
 | `npm run lint` | 5 errors -- all pre-existing (D-3) |
+
+## V-20 · Both fixes from the operator's run
+
+| Check | Before | After |
+|---|---|---|
+| Paused turn records the agent's question | associate message only | both roles, question preserved |
+| `_next_discriminators` finds the candidates | never -- id mismatch | found via `pageEvidenceRef` |
+| A field splitting 4 candidates 2 ways | 0.338, ranked 12th | **0.690, ranked 1st** |
+| Fields carrying no candidate information | up to 0.950 | capped at 0.500 |
+| A field every candidate shares | 0.0 | 0.0, unchanged |
+
+| Command | Result |
+|---|---|
+| `pytest tests -q` | **4046 passed, 3 skipped** (was 4040; six added) |
+| `pytest tests/dynamic_knowledge/test_discriminator_planner.py` | 16 passed, unchanged |
+| `ruff check src tests` | 1 error -- the known `I001` (D-3) |
+
+New coverage in `tests/dynamic_knowledge/test_a_paused_turn_is_still_a_conversation.py`:
+the evidence lookup that had none, the measured-beats-unknown ordering through
+that lookup, the pre-`pageEvidenceRef` fallback, and the paused transcript.
