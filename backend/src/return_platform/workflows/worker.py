@@ -50,6 +50,10 @@ def create_return_workflow_worker(
             *registered,
             case_activities.record_case_status,
             case_activities.resolve_business_deadline,
+            # Names the customer on the case from the confirmed order. Without
+            # it the only writer of `customer_name` is a reasoning model that is
+            # not allowed to see one, so every case projects `customer: null`.
+            case_activities.record_case_customer_identity,
             case_activities.request_bay_assignment,
             # The policy gate (3A.7). This list having exactly eight entries,
             # none of which evaluated a rule set, was the audit's proof that no

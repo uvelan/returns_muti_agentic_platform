@@ -26,6 +26,7 @@ from return_platform.operations.order_lines.availability import (
     compute_line_availability,
     compute_order_line_availability,
 )
+from return_platform.operations.order_lines.product_attributes import resolve_product_colours
 from return_platform.operations.order_lines.reservations import (
     ORDER_LINE_RESERVATIONS_COLLECTION,
     RESERVATION_LEDGER_COLLECTION,
@@ -83,4 +84,5 @@ __all__ = [
     "project_source_order_lines",
     "read_reservation",
     "reservation_transition_is_legal",
+    "resolve_product_colours",
 ]

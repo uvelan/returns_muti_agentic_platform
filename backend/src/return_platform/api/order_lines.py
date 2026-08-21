@@ -74,9 +74,13 @@ from return_platform.operations.order_lines import (
     SelectionOutcome,
     SourceOrderLine,
     load_source_order_lines,
+    resolve_product_colours,
 )
 from return_platform.operations.repository import resolve_operational_repository
-from return_platform.operations.seed_manifest import SOURCE_SALES_DATASET
+from return_platform.operations.seed_manifest import (
+    SOURCE_PRODUCTS_DATASET,
+    SOURCE_SALES_DATASET,
+)
 from return_platform.resources import RuntimeResources
 from return_platform.security.authorization import require_associate_roles, require_read_roles
 from return_platform.security.principal import Principal
@@ -112,6 +116,11 @@ class OrderLineView(BaseModel):
     lineReference: str
     sku: str | None = None
     description: str | None = None
+    #: The product's colour, from the catalogue rather than from the line, and
+    #: `None` when the deployment binds no colour path or the catalogue does not
+    #: describe one for this product. A caller renders that absence explicitly;
+    #: it is never inferred from `description`.
+    colour: str | None = None
     orderedQuantity: int | None = None
     unitPrice: str | None = None
     productReference: str | None = None
@@ -423,11 +432,16 @@ def _price(value: Decimal | None) -> str | None:
     return None if value is None else format(value, "f")
 
 
-def _line_view(line: SourceOrderLine, availability: LineAvailability) -> OrderLineView:
+def _line_view(
+    line: SourceOrderLine,
+    availability: LineAvailability,
+    colours: Mapping[str, str],
+) -> OrderLineView:
     return OrderLineView(
         lineReference=line.line_reference,
         sku=line.sku,
         description=line.description,
+        colour=colours.get(line.product_reference or ""),
         orderedQuantity=line.ordered_quantity,
         unitPrice=_price(line.unit_price),
         productReference=line.product_reference,
@@ -455,7 +469,43 @@ async def _line_views(
         viewing_case_id=case_id,
         ordered_by_line={line.line_reference: line.ordered_quantity for line in lines},
     )
-    return tuple(_line_view(line, availability[line.line_reference]) for line in lines)
+    colours = await _line_colours(request, lines)
+    return tuple(
+        _line_view(line, availability[line.line_reference], colours) for line in lines
+    )
+
+
+async def _line_colours(
+    request: Request, lines: tuple[SourceOrderLine, ...]
+) -> Mapping[str, str]:
+    """Colour per master product id, or nothing at all.
+
+    Best-effort by construction, and deliberately so: colour is a decoration on
+    an availability read that an associate needs in order to act. A catalogue
+    that is unreadable, or a release that binds no colour path, leaves every line
+    reporting no colour -- which the client renders as an explicit unavailable
+    state. Failing the whole order-lines read over it would take away the
+    quantities as well, which is the wrong trade.
+    """
+    loaded = getattr(request.app.state, "return_configuration", None)
+    paths = (
+        loaded.configuration.source_resolution.product_colour_paths
+        if isinstance(loaded, LoadedReturnConfiguration)
+        else ()
+    )
+    if not paths:
+        return {}
+    repository = resolve_operational_repository(request)
+    try:
+        catalogue = await repository.source_dataset(SOURCE_PRODUCTS_DATASET)
+        return await resolve_product_colours(
+            catalogue,
+            product_references=[line.product_reference or "" for line in lines],
+            colour_paths=paths,
+        )
+    except Exception:  # noqa: BLE001 - see the docstring
+        logger.warning("order_line_colour_unavailable", exc_info=True)
+        return {}
 
 
 @router.get("/{case_id}/order-lines", response_model=APIResponse[OrderLines])

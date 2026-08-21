@@ -60,6 +60,9 @@ from return_platform.operations.repository import OperationalRepository
 from return_platform.policy.evaluator import PolicyClock, evaluate_return_eligibility
 from return_platform.policy.outcome import PolicyOutcome
 from return_platform.policy.vocabulary import PolicyRoute
+from return_platform.workflows.case_customer_identity import (
+    resolve_confirmed_order_customer,
+)
 from return_platform.workflows.case_order_date import resolve_confirmed_order_purchase_date
 from return_platform.workflows.case_policy_facts import (
     AssembledPolicyFacts,
@@ -72,6 +75,7 @@ from return_platform.workflows.return_case_workflow import (
     EvaluateCaseEligibilityInput,
     OpenSupportWorkItemInput,
     PolicyGateState,
+    RecordCaseCustomerInput,
     RecordCaseStatusInput,
     RecordSupportOutcomeInput,
     RequestBayAssignmentInput,
@@ -422,6 +426,68 @@ class ReturnCaseActivities:
                 acquisition_method=FactAcquisition.DERIVED,
                 source_path="RETURN_CASE_WORKFLOW",
             )
+
+    @activity.defn(name="record_case_customer_identity")
+    async def record_case_customer_identity(self, request: RecordCaseCustomerInput) -> bool:
+        """Name the customer on the case, from the order that states who it is.
+
+        The gap this closes is narrow and total: `project_customer` reads
+        `customer_name` and `customer_id` case facts, and their only writer was
+        the reasoning model's `observed_facts` -- while `redact_payload` masks
+        both before any candidate row reaches a prompt. The model is not allowed
+        to see the customer, so it could never report one, so every confirmed
+        case projected `customer: null` and every Support handoff was about a
+        customer it could not name.
+
+        Written as `SYSTEM` / `OBSERVED`, which is what actually happened: a
+        source system reported it. Not `CHANNEL_A` and not `STATED` -- those
+        would claim an associate vouched for it, and the difference matters on
+        the day a read and a person disagree.
+
+        Returns whether anything was recorded. Best-effort by construction: a
+        case whose order is not in the extract keeps `customer: null` and the
+        handoff says the customer is unavailable, which is the honest answer and
+        not a reason to stop a real return.
+        """
+        configuration = self._configuration() if self._configuration is not None else None
+        if configuration is None:
+            logger.warning(
+                "case_customer_configuration_unavailable", extra={"case_id": request.case_id}
+            )
+            return False
+
+        resolution = configuration.source_resolution
+        identity = await resolve_confirmed_order_customer(
+            self._repository,
+            case_id=request.case_id,
+            customer_name_paths=resolution.customer_name_paths,
+            customer_id_paths=resolution.customer_id_paths,
+        )
+        if identity.empty:
+            return False
+
+        recorded = False
+        for suffix, fact_name, value in (
+            ("name", "customer_name", identity.customer_name),
+            ("id", "customer_id", identity.customer_id),
+        ):
+            if value is None:
+                continue
+            recorded |= await self._append_fact_once(
+                # Derived from the workflow's seed, so a retry re-writes the
+                # same log entry rather than a second opinion about the same
+                # customer.
+                fact_id=f"{request.fact_id_seed}:customer:{suffix}",
+                case_id=request.case_id,
+                fact_name=fact_name,
+                value=value,
+                agent_id="return-workflow-agent",
+                channel=FactChannel.SYSTEM,
+                acquisition_method=FactAcquisition.OBSERVED,
+                source_system="SALES_ORDER_SOURCE",
+                source_path="CONFIRMED_ORDER_CUSTOMER",
+            )
+        return recorded
 
     @activity.defn(name="request_bay_assignment")
     async def request_bay_assignment(self, request: RequestBayAssignmentInput) -> BayResultNotice:

@@ -597,6 +597,20 @@ source_resolution:
   customer_name_paths:
     - salesHdr.salesHdrData.custName
     - salesHdrEventData.customerName
+  # WHERE A PRODUCT'S COLOUR COMES FROM.
+  #
+  # On `lkpSearchProduct`, keyed by master product id -- not on the order line,
+  # which carries a description and no colour. Verified against the loaded
+  # catalogue: `eco.colorFinish` is present on 253 of 1000 products and is an
+  # array ("Sandtone", "Polished Chrome", "Matte Black"), so the first entry is
+  # taken and the rest are left alone.
+  #
+  # A product the catalogue does not describe a colour for reports no colour.
+  # Nothing here reads it off the description: "16X20 STL W/ FLTR FRAME RTN AIR
+  # GRL WHIT" is a description that happens to end in a colour word, and
+  # treating that as a statement of colour would be a guess dressed as a fact.
+  product_colour_paths:
+    - eco.colorFinish
   customer_city_paths:
     - salesHdr.salesHdrData.billToCity
     - salesHdrEventData.billingCity

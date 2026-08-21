@@ -569,6 +569,20 @@ class RecordCaseStatusInput:
 
 
 @dataclass(frozen=True, slots=True)
+class RecordCaseCustomerInput:
+    """Name the case's customer from its confirmed order.
+
+    `fact_id_seed` is a `workflow.uuid4()` for the same reason
+    `EvaluateCaseEligibilityInput` carries one: the facts written are provenance,
+    and a retry must re-write the same log entry rather than append a second
+    statement about the same customer.
+    """
+
+    case_id: str
+    fact_id_seed: str
+
+
+@dataclass(frozen=True, slots=True)
 class RequestBayAssignmentInput:
     case_id: str
     tenant_id: str
@@ -1025,6 +1039,12 @@ class ReturnCaseWorkflow:
 
         if self._state.work_item_id is None:
             if workflow_input.resumed_policy_state is None:
+                # Before anything that reads the case: the bay recommendation,
+                # the policy gate and the Support handoff all describe a return
+                # belonging to somebody, and until this runs the case cannot say
+                # who. Best-effort -- an order the extract does not hold leaves
+                # the customer unnamed rather than stopping the return.
+                await self._name_customer()
                 await self._gather_bay(timings)
                 if self._cancelled():
                     return await self._finish_cancelled()
@@ -1049,6 +1069,33 @@ class ReturnCaseWorkflow:
         return await self._serve_case(timings)
 
     # --- phases -------------------------------------------------------------
+
+    async def _name_customer(self) -> None:
+        """Record who the confirmed order belongs to. Never fails the case.
+
+        `_BEST_EFFORT_RETRY` and a swallowed `ActivityError`, exactly like the
+        bay request and for the same reason: nothing downstream *blocks* on the
+        customer's name, and a return that stopped because a sales document was
+        briefly unreadable would be a worse outcome than a handoff that says the
+        customer could not be named.
+        """
+        workflow_input = self._require_input()
+        try:
+            await workflow.execute_activity(
+                "record_case_customer_identity",
+                RecordCaseCustomerInput(
+                    case_id=workflow_input.case_id,
+                    fact_id_seed=str(workflow.uuid4()),
+                ),
+                result_type=bool,
+                start_to_close_timeout=_PERSIST_TIMEOUT,
+                retry_policy=_BEST_EFFORT_RETRY,
+            )
+        except ActivityError:
+            workflow.logger.warning(
+                "could not name the customer for case %s; continuing",
+                workflow_input.case_id,
+            )
 
     async def _gather_bay(self, timings: ReturnCaseTimings) -> None:
         """Ask for a bay, wait a bounded time, proceed either way.

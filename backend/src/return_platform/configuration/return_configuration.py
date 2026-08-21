@@ -347,6 +347,17 @@ class SourceResolutionConfiguration(StrictConfigModel):
     trilogie_order_paths: tuple[NonBlank, ...] = Field(min_length=1)
     customer_id_paths: tuple[NonBlank, ...] = Field(min_length=1)
     customer_name_paths: tuple[NonBlank, ...] = Field(min_length=1)
+    #: Where a product states its colour on the product catalogue, in preference
+    #: order. There is no colour on the `product` entity in the active schema --
+    #: it declares fourteen fields and none of them is one -- so this is the only
+    #: binding for it, and `operations/order_lines/product_attributes.py` is its
+    #: only reader.
+    #:
+    #: Defaulted empty so a release cut before this field still parses. Empty
+    #: means the deployment has bound no colour, and every line reports its
+    #: colour as unavailable -- which is the honest reading, and is never a
+    #: colour inferred from a product description.
+    product_colour_paths: tuple[NonBlank, ...] = ()
     customer_city_paths: tuple[NonBlank, ...] = ()
     customer_postal_code_paths: tuple[NonBlank, ...] = ()
     customer_account_type_paths: tuple[NonBlank, ...] = ()
