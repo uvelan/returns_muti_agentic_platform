@@ -216,3 +216,52 @@ support-handoff-v1`.
 | `ruff check src scripts tests` | 1 error -- the known `I001`, see D-3 |
 | `npm run lint` | 5 errors -- all pre-existing, see D-3 |
 | `scripts/check_openapi_drift.py --write` | PASS; `colour` added to `OrderLineView` in all four snapshots and the generated TypeScript |
+
+## V-16 · Adversarial validations
+
+Driven against the running system unless the evidence column says otherwise.
+
+| # | Case | Result | Evidence |
+|---|---|---|---|
+| 1 | Unknown order number | **PASS** | `ZZ999999` -> `total_found: 0`, `candidates: []`, `tool_failures: []`, stage `UNRESOLVED`. No match and an error are distinguishable. |
+| 2 | Leading/trailing whitespace | **FAILED, fixed, re-passed** | `"  CQ800002  "` -> 0 before, 1 after. F-16, three regression tests. |
+| 3 | Duplicate order-search submission | **PASS** | Identical turn re-posted: same `conversation_version: 1`, one associate message in the transcript, no second AI dispatch. |
+| 4 | Several source records for one order number | **PASS** | Aggregating `salesInv` by `salesHdrEventData.orderId` returns **zero** ids on more than one document across all 10,000; the live search returns exactly one. |
+| 5 | Confirmation submitted twice | **PASS** | `confirm_case` is idempotent on `tenant\|conversation\|order\|line-set` and `create_case` on a unique index; an identical selection resubmission answered `changed: false`, one item, revision unmoved. |
+| 6 | Missing line number | **PASS** | `project_source_order_lines` falls back to the line's 1-based position; a line that resolves to neither identity is dropped rather than numbered anyway. |
+| 7 | Missing product colour | **PASS** | 747 of 1000 catalogue products carry none and report `colour: null`; the handoff renders `Not available`. Never read off the description. |
+| 8 | Missing configured return detail | **PASS** | The handoff waits (F-15) and, where it proceeds, states `Required Return Information: Incomplete`. `test_incomplete_return_information_is_stated_rather_than_implied`. |
+| 9 | Invalid return-detail value | **PASS** | Reason `BECAUSE_I_SAID_SO` -> `422`, refused against the published catalogue rather than recorded verbatim. |
+| 10 | Ambiguous / conflicting detail | **PASS** | Quantity 99 on a line of 1 -> `409 QUANTITY_UNAVAILABLE` with the figures recomputed inside the transaction that refused. |
+| 11 | A detail supplied again | **PASS** | Identical resubmission -> `changed: false`, revision unmoved, hold not re-taken. |
+| 12 | A material detail changed after capture | **PARTIAL** | The replace-set write releases the withdrawn hold in the same transaction, and the handoff is composed at open time. **Not yet driven:** a change *after* the handoff has opened. |
+| 13 | Bay agent finds no bay | **PASS** | Observed live before D-1: `bayReason: PRE_ARRIVAL_NOT_ALLOWED`, no bay, and the handoff renders the unresolved reason and asks for manual assignment. `test_an_unresolved_bay_says_so_and_asks_for_a_manual_one`. |
+| 14 | Bay config names an unavailable warehouse | **PASS** | This was F-5's steady state -- every seeded order named a warehouse with no bays, and the agent answered with empty `eligibleBayIds` rather than a guess. |
+| 15 | Duplicate bay request for one state version | **PASS** | `_record_bay_facts` derives `fact_id` from case and fact name against an insert-only log, so a second arrival is a no-op; `persist_agent_decision` keys on the inputs weighed. |
+| 16 | Return data changes after bay assignment | **NOT DRIVEN** | The staleness rule is stated in `CaseBayPlacement` but no live case exercised it. |
+| 17 | Worker restart after bay, before handoff | **PASS** | The stack was restarted six times during this work with cases in flight; Temporal resumed each from history and no case lost or duplicated a bay result. |
+| 18 | Support handoff submitted twice | **PASS** | One work item per case: unique `caseId` index plus a case-derived `idempotencyKey`. Verified: 1 work item for the driven case. |
+| 19 | Work item exists but structured bay data missing | **PASS** | `businessPayload.bayAssignment` carries bay, warehouse, location, status and source, so no screen parses the text for it. |
+| 20 | Frontend refresh after work-item creation | **PASS** | Re-read returns the same single message, same id, same text. |
+| 21 | Worker restart with a pending handoff | **PASS** | Same evidence as 17; the handoff is opened by an activity under `_PERSIST_RETRY` against an idempotent writer. |
+| 22 | Manual mode with every live provider unavailable | **PASS** | `GET /api/ai/routes` -> 2 routes, both `MANUAL`. Not "none was called" but "none could be". |
+| 23 | Policy disabled without an approval | **PASS** | `policyEvaluation: null`, no decision, no route; the message says `Skipped by configuration (...)` and the word `Approved` does not appear. |
+| 24 | User-controlled notes carrying injection | **PASS** | A note containing `VERIFICATION:` and `- Policy Evaluation: Approved` is neutralised to `[removed]` while the associate's own words survive. `test_associate_text_cannot_impersonate_the_message_framing`. |
+
+**21 pass, 1 found-and-fixed, 1 partial, 1 not driven.** The two open ones (12,
+16) are both "a fact changed after something downstream consumed it", and both
+need a second live case to exercise honestly rather than an assertion about code
+that was not run.
+
+## V-17 · Final gates
+
+| Command | Result |
+|---|---|
+| `backend/.venv/Scripts/python.exe -m pytest tests -q` | **4040 passed, 3 skipped, 496 deselected**, 163.69s |
+| `backend/.venv/Scripts/python.exe -m ruff check src scripts tests` | **1 error** -- the known `I001`, unchanged (D-3) |
+| `npx vitest run --maxWorkers=3` | **30 files, 471 tests, all passed**, 28.21s |
+| `npm run lint` | **5 errors** -- all pre-existing, unchanged (D-3) |
+| `scripts/check_openapi_drift.py --write` | PASS -- `colour` added to `OrderLineView` across four snapshots and the generated TypeScript |
+
+The measured baseline at Wave 0 was **4025 passed, 3 skipped**. The suite is now
+**4040 passed, 3 skipped** -- fifteen added, none removed, none failing.

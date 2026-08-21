@@ -401,3 +401,47 @@ def test_a_zip_code_goes_through_the_same_generic_catalogue(
         program=program,
     )
     assert "postal_code_exact" in result["candidates"][0]["matches"]
+
+
+# --- what an associate actually types -----------------------------------------
+
+
+def test_a_pasted_identifier_keeps_its_meaning_when_it_keeps_its_whitespace(
+    shipped_discovery: DiscoveryConfiguration, production_schema: ActiveSchema
+) -> None:
+    """Surrounding whitespace is typing, not content.
+
+    Measured against the live system before the fix: `"  CQ800002  "` was
+    searched verbatim and found **zero** orders, while `"CQ800002"` found exactly
+    one. An associate pasting an order number out of an email was told there was
+    no such order.
+    """
+    catalogue = _catalogue(shipped_discovery, production_schema)
+    parsed = catalogue.parse({"orderNumbers": ["  CQ800002  "]})
+
+    assert [value for signal in parsed.signals for value in signal.values] == ["CQ800002"]
+
+
+def test_an_identifier_that_is_only_whitespace_is_not_a_signal(
+    shipped_discovery: DiscoveryConfiguration, production_schema: ActiveSchema
+) -> None:
+    """The rule the empty string already had. A search on `""` matches nothing
+    and spends a query against the turn's budget to find that out."""
+    catalogue = _catalogue(shipped_discovery, production_schema)
+    parsed = catalogue.parse({"orderNumbers": ["   "]})
+
+    assert [value for signal in parsed.signals for value in signal.values] == []
+
+
+def test_trimming_reaches_only_text(
+    shipped_discovery: DiscoveryConfiguration, production_schema: ActiveSchema
+) -> None:
+    """Coercing a non-string to text in order to strip it would change what the
+    model supplied. A date bound and a quantity pass through untouched."""
+    catalogue = _catalogue(shipped_discovery, production_schema)
+    parsed = catalogue.parse({"orderNumbers": ["CQ800002", 4000096]})
+
+    assert [value for signal in parsed.signals for value in signal.values] == [
+        "CQ800002",
+        4000096,
+    ]

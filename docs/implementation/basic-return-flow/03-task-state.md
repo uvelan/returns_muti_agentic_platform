@@ -20,6 +20,6 @@
 | T-18 | Phase 6 config switch `policy_evaluation.enabled` (model + gate + activity) | 6 | COMPLETED |
 | T-11 | Create one support work item with structured return and bay data | 8 | COMPLETED |
 | T-12 | Render the complete template in Support Chat UI | 9 | COMPLETED |
-| T-13 | Adversarial validations (24 listed) | -- | IN_PROGRESS |
-| T-14 | Regression tests for every fixed defect | -- | IN_PROGRESS |
-| T-15 | Final gates and `06-final-result.md` | -- | PENDING |
+| T-13 | Adversarial validations (24 listed) | -- | COMPLETED (21 pass, 1 fixed, 2 open -- see V-16) |
+| T-14 | Regression tests for every fixed defect | -- | COMPLETED |
+| T-15 | Final gates and `06-final-result.md` | -- | COMPLETED |

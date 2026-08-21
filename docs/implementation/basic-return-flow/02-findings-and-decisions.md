@@ -454,3 +454,54 @@ attributable to it:
 | 5 ESLint errors -- `canonicalHandlers.contract.test.ts:64`, `schemaConformance.ts:71,77,254` | Identical output with the working tree stashed. |
 
 A gate reporting exactly these is a pass. Anything more is a regression.
+
+---
+
+## F-16 · A pasted order number found nothing
+
+- **timestamp:** 2026-08-21
+- **baseline commit:** `47f5abd`
+- **evidence:** adversarial case 2, driven through the live agent.
+  `"  CQ800002  "` searched verbatim and returned `total_found: 0`; the reasoning
+  loop routed to `ORDER_AGENT_REASONING_UNRESOLVED_V1`. The same number without
+  padding returned exactly one order.
+- **finding:** `IdentificationField.values_from` never trimmed. `OrderSearchIntent`'s
+  own docstring says values "are read through `IdentificationCatalogue.parse`,
+  which applies the configured multiplicity, **normalization** and validation" --
+  normalisation was claimed and not performed. An associate pasting an order
+  number out of an email is told there is no such order.
+- **decision:** strip surrounding whitespace before validation and before the
+  search, on strings only. Not a normalisation policy: the repository already
+  holds the principle in `ReturnContactRequest._trimmed` -- *"surrounding
+  whitespace is typing, not content"*. A value that is only whitespace is dropped
+  like `""` already was; a non-string is untouched, because coercing one to text
+  in order to strip it would change what was supplied.
+- **affected files:** `dynamic_knowledge/order_agent/identification.py`
+- **validated:** re-driven live -- `total_found: 1`, candidate `CQ800002`, stage
+  `COMPLETING`. Three regression tests in
+  `tests/dynamic_knowledge/test_identification_catalogue_extensibility.py`.
+
+---
+
+## F-17 · Eight tests pinned the message this work replaced
+
+- **timestamp:** 2026-08-21
+- **baseline commit:** `47f5abd`
+- **evidence:** `tests/test_support_draft_carries_the_branch_associate.py`
+  asserted the old prose verbatim, including
+  `assert drafted == "Hello -- we have a return to raise against CQ363350. ..."`.
+- **finding:** the tests' *intent* was entirely sound and still is -- the branch
+  contact must reach Support, nothing may be filled in to round a sentence off,
+  a retracted contact reads as absent. Only the **form** was obsolete.
+- **decision:** rewritten onto the composed request with every assertion of
+  intent kept, plus two new ones the old shape could not express: an absent
+  contact is now *stated* rather than omitted, and a drafter that fails changes
+  nothing. Nothing was deleted to make a test pass.
+- **behaviour deliberately changed, and recorded here rather than buried:** a
+  configured `drafter` used to **replace** the whole message. It now writes a
+  labelled note *under* the structured request. A generated draft cannot be held
+  to "do not invent unavailable values", and a reader has to be able to tell the
+  composed facts from a written note. The activity's docstring initially claimed
+  this before the code did; both now agree.
+- **affected files:** `tests/test_support_draft_carries_the_branch_associate.py`,
+  `workflows/return_case_activities.py`

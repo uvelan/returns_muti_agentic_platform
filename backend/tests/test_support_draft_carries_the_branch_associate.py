@@ -2,22 +2,31 @@
 
 Fergusonhome's list of what it needs to set a return up ends with the branch
 associate's name, email and phone -- "needed for UPS label or Freight LTL". The
-console now collects them and `POST /selected-items` records them on the case
-fact log. That is only half the requirement: a contact that reaches a database
-and not a person has not been collected at all.
+console collects them and `POST /selected-items` records them on the case fact
+log. That is only half the requirement: a contact that reaches a database and
+not a person has not been collected at all.
 
-**The message text is the whole of what Support receives.** `SupportWorkItemView`
-carries a subject, a queue, a status and a stack of reference fields, and no
-case detail; the opening message's `businessPayload` is `{"caseId": ...}`. A
-human on the Returns Support desk reads the thread. So the deterministic
-template in `draft_support_request` is the only path by which these three values
-become visible to the person who has to address a label -- and that template is
-what runs in production today, because `run_return_workflow_worker.py` wires
-`ReturnCaseActivities` with no `drafter`.
+**The message is the whole of what Support receives.** `SupportWorkItemView`
+carries a subject, a queue, a status and a stack of reference fields, and no case
+detail; a human on the Returns Support desk reads the thread. So
+`draft_support_request` is the only path by which these three values become
+visible to the person who has to address a label.
 
-The model drafter, when one is configured, already receives every fact through
-`facts=plain` and can phrase them itself. It is the fallback that had to be
-told, and these tests pin it.
+**What changed, and what did not.** The draft used to be one prose sentence --
+*"we have a return to raise against CQ363350, could you create the RMA"* -- with
+the contact appended to it. It is now a composed, sectioned request built from
+the case's own state, and these tests were rewritten onto that shape. Every
+assertion of *intent* is kept, because none of it stopped being true:
+
+* the contact reaches Support;
+* **nothing is filled in** to round a sentence off -- an absent field says so;
+* a retracted contact (the append-only log's empty value) reads as absent;
+* a configured drafter still sees every fact and its words still reach Support.
+
+The one behaviour that deliberately changed is that a drafter no longer
+*replaces* the request. It writes under it. A generated draft cannot be held to
+"do not invent unavailable values", and in a handoff a human acts on, a plausible
+customer name is worse than a blank.
 """
 
 from __future__ import annotations
@@ -26,6 +35,7 @@ from typing import Any
 
 import pytest
 
+from return_platform.operations.support_handoff import UNAVAILABLE
 from return_platform.workflows.return_case_activities import ReturnCaseActivities
 from return_platform.workflows.return_case_workflow import DraftSupportRequestInput
 
@@ -35,24 +45,34 @@ CASE = "case-1"
 
 
 class _Repository:
-    """One method: the latest-per-name fact projection the drafter reads."""
+    """The three reads the drafter makes, and nothing more."""
 
     def __init__(self, facts: dict[str, Any]) -> None:
         self._facts = facts
+
+    async def get_case(self, case_id: str) -> dict[str, Any]:
+        assert case_id == CASE
+        return {"caseId": CASE, "status": "AWAITING_SUPPORT"}
 
     async def latest_case_facts(self, case_id: str) -> dict[str, dict[str, Any]]:
         assert case_id == CASE
         return {name: {"value": value} for name, value in self._facts.items()}
 
+    async def list_case_return_items(self, case_id: str) -> list[dict[str, Any]]:
+        assert case_id == CASE
+        return []
 
-async def _draft(**facts: Any) -> str:
+
+async def _draft(drafter: Any = None, **facts: Any) -> str:
     activities = ReturnCaseActivities(
         repository=_Repository({"confirmed_order_reference": "CQ363350", **facts}),  # type: ignore[arg-type]
         support_service=object(),
+        drafter=drafter,
     )
-    return await activities.draft_support_request(
+    result = await activities.draft_support_request(
         DraftSupportRequestInput(case_id=CASE, configuration_release_id="release-1")
     )
+    return result.text
 
 
 async def test_the_branch_associate_is_named_in_the_message_support_reads() -> None:
@@ -65,63 +85,75 @@ async def test_the_branch_associate_is_named_in_the_message_support_reads() -> N
     assert "D. Reyes" in drafted
     assert "d.reyes@branch.example" in drafted
     assert "704-555-0134" in drafted
-    # Still the request it always was. The contact is added to the ask, not
-    # substituted for it.
+    # Still the request it always was. The contact is part of the ask, not a
+    # substitute for it.
     assert "CQ363350" in drafted
-    assert "return label or pickup" in drafted
+    assert "Create or decline the RMA through the authoritative Support workflow." in drafted
 
 
-async def test_a_case_with_no_associate_reads_exactly_as_it_did() -> None:
-    """Optional, so the ordinary return is unchanged -- and says nothing extra."""
+async def test_a_case_with_no_associate_says_so_rather_than_saying_nothing() -> None:
+    """Optional, so the ordinary return is not blocked -- and the absence is stated.
+
+    The prose version omitted the sentence entirely, which left a reader unable
+    to tell "nobody was recorded" from "the message forgot to mention them". A
+    labelled `Not available` answers that.
+    """
     drafted = await _draft()
 
-    assert "branch associate" not in drafted.lower()
-    assert drafted == (
-        "Hello -- we have a return to raise against CQ363350. "
-        "Could you create the RMA and send the return label or pickup "
-        "instructions when you have a moment? Happy to supply anything else "
-        "you need. Thank you."
-    )
+    assert f"- Branch Associate: {UNAVAILABLE}" in drafted
+    assert f"- Branch Associate Email: {UNAVAILABLE}" in drafted
+    assert f"- Branch Associate Phone: {UNAVAILABLE}" in drafted
 
 
 @pytest.mark.parametrize(
-    ("facts", "expected"),
+    ("facts", "present", "absent"),
     [
         (
             {"branch_associate_name": "D. Reyes"},
-            "The branch associate for this return is D. Reyes. ",
+            ("- Branch Associate: D. Reyes",),
+            ("- Branch Associate Email: ", "- Branch Associate Phone: "),
         ),
         (
             {"branch_associate_email": "d.reyes@branch.example"},
-            "The branch associate for this return can be reached at d.reyes@branch.example. ",
+            ("- Branch Associate Email: d.reyes@branch.example",),
+            ("- Branch Associate: ", "- Branch Associate Phone: "),
         ),
         (
             {"branch_associate_phone": "704-555-0134"},
-            "The branch associate for this return can be reached at 704-555-0134. ",
+            ("- Branch Associate Phone: 704-555-0134",),
+            ("- Branch Associate: ", "- Branch Associate Email: "),
         ),
         (
             {"branch_associate_name": "D. Reyes", "branch_associate_phone": "704-555-0134"},
-            "The branch associate for this return is D. Reyes (704-555-0134). ",
+            ("- Branch Associate: D. Reyes", "- Branch Associate Phone: 704-555-0134"),
+            ("- Branch Associate Email: ",),
         ),
     ],
 )
-async def test_only_what_was_stated_is_said(facts: dict[str, str], expected: str) -> None:
-    """Nothing is filled in to complete the sentence.
+async def test_only_what_was_stated_is_said(
+    facts: dict[str, str], present: tuple[str, ...], absent: tuple[str, ...]
+) -> None:
+    """Nothing is filled in.
 
-    A return that named a person and no phone number says the person and stops.
-    An address manufactured to round the sentence off is exactly the failure the
-    optionality of these three fields exists to prevent, and it would be a
-    fabrication addressed to a carrier.
+    A return that named a person and no phone number says the person and reports
+    the phone as unavailable. A value manufactured to complete the record is
+    exactly the failure the optionality of these three fields exists to prevent,
+    and it would be a fabrication addressed to a carrier.
     """
-    assert expected in await _draft(**facts)
+    drafted = await _draft(**facts)
+
+    for line in present:
+        assert line in drafted
+    for label in absent:
+        assert f"{label}{UNAVAILABLE}" in drafted
 
 
 async def test_a_retracted_contact_reads_as_absent() -> None:
     """The fact log is append-only, so a correction is an empty value.
 
     `api/order_lines.py` records a cleared box that way because there is nothing
-    to delete. Support must then see the same thing the console does -- nobody
-    recorded -- rather than an empty pair of brackets after a name.
+    to delete. Support must then see what the console does -- nobody recorded --
+    rather than an empty value beside a label.
     """
     drafted = await _draft(
         branch_associate_name="D. Reyes",
@@ -129,36 +161,58 @@ async def test_a_retracted_contact_reads_as_absent() -> None:
         branch_associate_phone="   ",
     )
 
-    assert "The branch associate for this return is D. Reyes. " in drafted
-    assert "(" not in drafted
+    assert "- Branch Associate: D. Reyes" in drafted
+    assert f"- Branch Associate Email: {UNAVAILABLE}" in drafted
+    assert f"- Branch Associate Phone: {UNAVAILABLE}" in drafted
 
 
-async def test_a_configured_drafter_still_wins_and_still_sees_the_contact() -> None:
-    """The template is the fallback, not a wrapper around the model's answer."""
-    seen: dict[str, Any] = {}
+class _Drafter:
+    """A configured model drafter, recording what it was shown."""
 
-    class _Drafter:
-        async def draft(self, *, case_id: str, facts: dict[str, Any]) -> str:
-            seen.update(facts)
-            return "A drafted request."
+    def __init__(self) -> None:
+        self.seen: dict[str, Any] = {}
 
-    activities = ReturnCaseActivities(
-        repository=_Repository(  # type: ignore[arg-type]
-            {
-                "confirmed_order_reference": "CQ363350",
-                "branch_associate_email": "d.reyes@branch.example",
-            }
-        ),
-        support_service=object(),
-        drafter=_Drafter(),
+    async def draft(self, *, case_id: str, facts: dict[str, Any]) -> str:
+        del case_id
+        self.seen = facts
+        return "Customer is collecting on Friday."
+
+
+async def test_a_configured_drafter_still_sees_the_contact_and_still_reaches_support() -> None:
+    """It sees every fact, and its words are delivered -- **under** the request.
+
+    Replacing the structured message with generated prose is the one thing it may
+    not do: the composed half is the half that cannot invent a value, and a
+    reader has to be able to tell which is which.
+    """
+    drafter = _Drafter()
+    drafted = await _draft(
+        drafter=drafter,
+        branch_associate_name="D. Reyes",
+        branch_associate_phone="704-555-0134",
     )
 
-    drafted = await activities.draft_support_request(
-        DraftSupportRequestInput(case_id=CASE, configuration_release_id="release-1")
-    )
+    assert drafter.seen["branch_associate_name"] == "D. Reyes"
+    assert drafter.seen["branch_associate_phone"] == "704-555-0134"
 
-    assert drafted == "A drafted request."
-    # It was handed the contact and chose its own words. Nothing is appended to
-    # a model's draft: a template sentence bolted onto it would be two voices in
-    # one message, and the model was given the fact to use.
-    assert seen["branch_associate_email"] == "d.reyes@branch.example"
+    assert "Customer is collecting on Friday." in drafted
+    assert "Additional note from the return assistant:" in drafted
+    # The structured request is still the message, and still first.
+    assert drafted.startswith("RETURN SUPPORT REQUEST")
+    assert "- Branch Associate: D. Reyes" in drafted
+    assert drafted.index("RETURN SUPPORT REQUEST") < drafted.index("Customer is collecting")
+
+
+class _FailingDrafter:
+    async def draft(self, *, case_id: str, facts: dict[str, Any]) -> str:
+        del case_id, facts
+        raise RuntimeError("the model is unavailable")
+
+
+async def test_a_drafter_that_fails_changes_nothing() -> None:
+    """A note is never worth failing a handoff for."""
+    with_failure = await _draft(drafter=_FailingDrafter(), branch_associate_name="D. Reyes")
+    without = await _draft(branch_associate_name="D. Reyes")
+
+    assert with_failure == without
+    assert "- Branch Associate: D. Reyes" in with_failure

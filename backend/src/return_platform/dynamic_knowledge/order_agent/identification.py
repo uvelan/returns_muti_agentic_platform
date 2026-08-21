@@ -174,17 +174,27 @@ class IdentificationField:
     def values_from(self, raw: Any) -> tuple[list[Any], list[Any]]:
         """Split what the model supplied into usable values and rejected ones.
 
-        Rejection is by the configured `validation_pattern` only. A field with
-        no pattern rejects nothing, which is the right default: a validation
-        rule nobody wrote must not become a filter nobody can see.
+        **Surrounding whitespace is typing, not content**, and is removed before
+        anything else looks at the value -- the same rule `ReturnContactRequest`
+        already applies to a branch contact. It is not a normalisation *policy*:
+        an order number is the same order number whether or not the associate
+        pasted a trailing space, and carrying the space into the query made
+        `"  CQ800002  "` match nothing while `"CQ800002"` matched exactly one
+        order. An identifier that is only whitespace is dropped, like `""`.
+
+        Rejection is by the configured `validation_pattern` only, and it is
+        applied to the trimmed value. A field with no pattern rejects nothing,
+        which is the right default: a validation rule nobody wrote must not
+        become a filter nobody can see.
         """
         if raw is None:
             return [], []
         candidates: list[Any] = []
         if isinstance(raw, (list, tuple)):
-            candidates = [item for item in raw if item is not None and item != ""]
-        elif raw != "":
-            candidates = [raw]
+            candidates = [_trimmed(item) for item in raw]
+        else:
+            candidates = [_trimmed(raw)]
+        candidates = [item for item in candidates if item is not None and item != ""]
         if not self.multiple:
             candidates = candidates[:1]
         accepted: list[Any] = []
@@ -332,6 +342,16 @@ class IdentificationCatalogue:
                 key=lambda entry: (-entry.clarification_priority, entry.intent_key),
             )
         ]
+
+
+def _trimmed(value: Any) -> Any:
+    """A supplied value with its surrounding whitespace removed.
+
+    Strings only. A number, a date or a structured value is returned untouched --
+    stripping is about how a person typed an identifier, and coercing anything
+    else to text to strip it would change what was supplied.
+    """
+    return value.strip() if isinstance(value, str) else value
 
 
 def _compiled(pattern: str | None) -> re.Pattern[str] | None:

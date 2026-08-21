@@ -1085,13 +1085,14 @@ class ReturnCaseActivities:
         naming one order reference and asking for an RMA: true, and short of
         every fact the person receiving it needed.
 
-        **No model drafts it, and that is deliberate rather than incidental.**
-        A generated draft cannot be held to "do not invent unavailable values",
-        which is the rule that matters most in a handoff a human then acts on --
-        a plausible customer name or a plausible quantity is worse than a blank.
-        `self._drafter` is still consulted where a deployment wires one, but only
-        as an *addition*: its text is carried under the structured request rather
-        than in place of it, so the facts are never at the mercy of the wording.
+        **No model may replace it, and that is deliberate rather than
+        incidental.** A generated draft cannot be held to "do not invent
+        unavailable values", which is the rule that matters most in a handoff a
+        human then acts on -- a plausible customer name or a plausible quantity
+        is worse than a blank. A configured `drafter` previously *replaced* the
+        whole message; it now writes **under** the structured request, labelled,
+        so its words still reach Support and the facts are never at the mercy of
+        the wording. A drafter that fails changes nothing.
 
         **The payload is the contract, not the prose.** `SupportRequestDraft`
         carries both halves so `open_support_work_item` can persist the
@@ -1160,7 +1161,29 @@ class ReturnCaseActivities:
             order_confirmed=order_reference is not None,
             required_details_complete=bool(selected),
         )
-        return SupportRequestDraft(text=handoff.text, payload=handoff.payload)
+        return SupportRequestDraft(
+            text=handoff.text + await self._drafted_note(request.case_id, facts),
+            payload=handoff.payload,
+        )
+
+    async def _drafted_note(self, case_id: str, facts: Mapping[str, Any]) -> str:
+        """A configured drafter's words, under the structured request.
+
+        Labelled, so a reader can tell the composed facts from a written note and
+        knows not to act on the second where the two disagree. Empty when no
+        drafter is configured -- which is every deployment this repository ships,
+        since `run_return_workflow_worker.py` wires none.
+        """
+        if self._drafter is None:
+            return ""
+        try:
+            drafted = await self._drafter.draft(case_id=case_id, facts=dict(facts))
+        except Exception:  # noqa: BLE001 - a note is never worth failing a handoff for
+            logger.warning("support_draft_note_unavailable", extra={"case_id": case_id}, exc_info=True)
+            return ""
+        if not drafted.strip():
+            return ""
+        return f"\nAdditional note from the return assistant:\n{drafted.strip()}\n"
 
     async def _selected_items(self, case_id: str) -> list[Mapping[str, Any]]:
         """The lines the associate named that no RMA covers yet.
