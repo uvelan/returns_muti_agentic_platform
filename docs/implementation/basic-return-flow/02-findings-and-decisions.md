@@ -762,3 +762,60 @@ The rejected alternative was merging `clarification_exchanges` into the endpoint
 that field is written from the value `interrupt()` *returns*, so while the
 question is pending it is empty -- it could never have recovered a question that
 had not been answered yet.
+
+---
+
+## F-23 · Reopening any earlier conversation showed only the associate's own words
+
+F-21a fixed the *writer*: a turn that pauses on a question now records the
+question. That does nothing for the conversations already in the store, and the
+history list is exactly what the operator was reaching for -- so the report was
+still "history not loaded".
+
+The list itself was never broken: `/api/v2/order-agent/conversations` returned
+thirty rows, and the panel opened them. What came back was one message.
+
+Measured on the operator's own conversation, in Mongo:
+
+```
+=== disc-9a4d25f9-... "find order for BOYLE" ===
+  state.transcript: 1 entries
+    [associate] find order for BOYLE
+  turns: 1
+    ui-disc-9a4d25f9-...  pending=True statements=1
+      -> Which order are you looking for? If you have the order number, ...
+```
+
+**Nothing was lost -- it was mis-read.** A conversation document keeps two
+records of the same turn:
+
+| record | written by | contains |
+|---|---|---|
+| `state.transcript` | the graph, per turn | what the endpoint serves; missed the question on a paused turn |
+| `turns[key].result` | `commit_turn`, per turn | the whole `AgentTurnResult` -- and on a paused turn the `response` **is** the question |
+
+`_transcript_of` read only the first. It now rebuilds: the associate's side from
+the stored transcript, each reply from `turns`, ordered by the
+`conversation_version` each result carries rather than by insertion order --
+`turns` is keyed by idempotency key, which carries no ordering.
+
+Zipping by position is safe because a conversation strictly alternates, one
+associate message to one reply. **When the counts disagree the stored transcript
+is served unchanged**: a transcript truncated to its limit while `turns` kept
+every turn cannot be aligned, and a plausible-looking wrong order is worse than
+a short one.
+
+### Why not `clarification_exchanges`
+
+It is written from the value `interrupt()` *returns*. While a question is
+pending it holds nothing, so it could never recover an unanswered question --
+which is the only case that was broken.
+
+### Verified live
+
+Resuming `disc-514a5ef4-...` in the Copilot after the fix renders both roles:
+the associate's `find order for dane and the product he received is damaged`,
+then the agent's `Seven customers match Dane ... Which branch is this Dane on
+-- NASH, GARDEN, DALLAS or LAKEWOOD?`. Before the fix the same row rendered the
+associate's line alone, with progress reset to `Ready`, while the workflow was
+still waiting for the answer.

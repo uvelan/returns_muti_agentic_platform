@@ -210,13 +210,80 @@ class AtomicConversationRepository:
         return result.model_copy(update={"conversation_version": expected_version + 1})
 
 
+def _agent_text(result: dict[str, Any]) -> str:
+    """One turn's reply as one line, joined the way the stored transcript joins it."""
+    response = result.get("response")
+    if not isinstance(response, dict):
+        return ""
+    statements = response.get("statements")
+    if not isinstance(statements, list):
+        return ""
+    return " ".join(
+        str(statement.get("text", ""))
+        for statement in statements
+        if isinstance(statement, dict)
+    ).strip()
+
+
+def _replies_in_order(document: dict[str, Any]) -> list[str]:
+    """Each turn's reply, oldest first, from the per-turn record.
+
+    `turns` is keyed by idempotency key, so the ordering comes from the
+    `conversation_version` each result carries rather than from insertion order.
+    """
+    turns = document.get("turns")
+    if not isinstance(turns, dict):
+        return []
+    results = [
+        turn["result"]
+        for turn in turns.values()
+        if isinstance(turn, dict) and isinstance(turn.get("result"), dict)
+    ]
+    results.sort(key=lambda result: int(result.get("conversation_version") or 0))
+    return [_agent_text(result) for result in results]
+
+
 def _transcript_of(document: dict[str, Any]) -> tuple[dict[str, str], ...]:
+    """What was said, rebuilt from the turns where the stored transcript is short.
+
+    **A turn that paused on a question recorded the associate's message and not
+    the agent's**, so reopening a conversation that had stopped on a question
+    showed the associate their own words and no question at all -- while the
+    workflow was still waiting for its answer. Fixed at the writer, but that only
+    helps conversations from here on: every conversation already in the store is
+    missing its questions, and the operator's history is exactly the thing this
+    endpoint exists to serve.
+
+    Nothing was lost, only mis-read. `turns` carries the whole `AgentTurnResult`
+    per turn, and on a paused turn the `response` **is** the question. So the
+    reply comes from there and the associate's side from the stored transcript,
+    which has always recorded it.
+
+    The two are zipped by position, which is safe because a conversation strictly
+    alternates: one associate message, one reply. When the counts disagree --
+    a transcript truncated to `TRANSCRIPT_LIMIT` while `turns` kept every turn,
+    or a document written by a version that did neither -- the stored transcript
+    is served unchanged rather than interleaved into a plausible-looking wrong
+    order.
+    """
     state = document.get("state")
     stored = state.get("transcript") if isinstance(state, dict) else None
     if not isinstance(stored, list):
         return ()
-    return tuple(
+    entries = [
         {"role": str(entry["role"]), "text": str(entry["text"])}
         for entry in stored
         if isinstance(entry, dict) and "role" in entry and "text" in entry
-    )
+    ]
+
+    prompts = [entry for entry in entries if entry["role"] == "associate"]
+    replies = _replies_in_order(document)
+    if len(prompts) != len(replies):
+        return tuple(entries)
+
+    rebuilt: list[dict[str, str]] = []
+    for prompt, reply in zip(prompts, replies, strict=True):
+        rebuilt.append(prompt)
+        if reply:
+            rebuilt.append({"role": "agent", "text": reply})
+    return tuple(rebuilt)

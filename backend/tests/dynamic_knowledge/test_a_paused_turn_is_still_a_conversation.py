@@ -30,6 +30,7 @@ from return_platform.dynamic_knowledge.knowledge.evidence import (
     StatementType,
     StructuredAgentResponse,
 )
+from return_platform.dynamic_knowledge.order_agent.conversation_repository import _transcript_of
 from return_platform.dynamic_knowledge.order_agent.coordinator import _extended_transcript
 from return_platform.dynamic_knowledge.order_agent.graph_nodes import _next_discriminators
 from return_platform.dynamic_knowledge.order_agent.identification import (
@@ -233,3 +234,91 @@ def test_a_turn_with_nothing_to_say_adds_no_agent_line() -> None:
     transcript = _extended_transcript({}, user_message="hello", response=None)
 
     assert [entry["role"] for entry in transcript] == ["associate"]
+
+
+# --- reading a conversation that was written before any of this ---------------
+
+
+def _turn(version: int, *texts: str) -> dict[str, Any]:
+    return {
+        "result": {
+            "conversation_version": version,
+            "response": {"statements": [{"text": text} for text in texts]},
+        }
+    }
+
+
+def test_a_question_stored_before_the_fix_is_still_recoverable() -> None:
+    """Fixing the writer does nothing for the conversations already in the store.
+
+    Nothing was lost, though -- only mis-read. `turns` carries the whole result
+    per turn, and on a paused turn the response *is* the question. This is the
+    shape of a real conversation from before the fix: one associate message, one
+    paused turn, and a stored transcript that never recorded the reply.
+    """
+    document = {
+        "state": {"transcript": [{"role": "associate", "text": "find order for BOYLE"}]},
+        "turns": {"k1": _turn(1, "Which order are you looking for?")},
+    }
+
+    assert _transcript_of(document) == (
+        {"role": "associate", "text": "find order for BOYLE"},
+        {"role": "agent", "text": "Which order are you looking for?"},
+    )
+
+
+def test_a_reply_already_recorded_is_not_repeated() -> None:
+    """A completed turn's reply is in both records and must appear once."""
+    document = {
+        "state": {
+            "transcript": [
+                {"role": "associate", "text": "CQ800002"},
+                {"role": "agent", "text": "One match on the GARDEN account."},
+                {"role": "associate", "text": "Yes, that is the order."},
+            ]
+        },
+        "turns": {
+            "k1": _turn(1, "One match on the GARDEN account."),
+            "k2": _turn(2, "What is coming back, and why?"),
+        },
+    }
+
+    assert _transcript_of(document) == (
+        {"role": "associate", "text": "CQ800002"},
+        {"role": "agent", "text": "One match on the GARDEN account."},
+        {"role": "associate", "text": "Yes, that is the order."},
+        {"role": "agent", "text": "What is coming back, and why?"},
+    )
+
+
+def test_turns_are_read_in_conversation_order_not_insertion_order() -> None:
+    """`turns` is keyed by idempotency key, so the ordering has to come from the
+    version each result carries."""
+    document = {
+        "state": {
+            "transcript": [
+                {"role": "associate", "text": "first"},
+                {"role": "associate", "text": "second"},
+            ]
+        },
+        "turns": {"zzz": _turn(2, "reply two"), "aaa": _turn(1, "reply one")},
+    }
+
+    assert [entry["text"] for entry in _transcript_of(document)] == [
+        "first",
+        "reply one",
+        "second",
+        "reply two",
+    ]
+
+
+def test_a_transcript_and_a_turn_log_that_disagree_are_served_as_stored() -> None:
+    """A transcript truncated to its limit while `turns` kept every turn cannot be
+    zipped by position. Serving it unchanged is worse than a repair and much
+    better than a plausible-looking wrong order."""
+    document = {
+        "state": {"transcript": [{"role": "associate", "text": "only one left"}]},
+        "turns": {"k1": _turn(1, "a"), "k2": _turn(2, "b"), "k3": _turn(3, "c")},
+    }
+
+    assert _transcript_of(document) == ({"role": "associate", "text": "only one left"},)

@@ -323,3 +323,26 @@ covered by the composer's unit tests and applies to the next case.
 New coverage in `tests/dynamic_knowledge/test_a_paused_turn_is_still_a_conversation.py`:
 the evidence lookup that had none, the measured-beats-unknown ordering through
 that lookup, the pre-`pageEvidenceRef` fallback, and the paused transcript.
+
+
+## V-21 · History written before the fix reads correctly
+
+| Check | Before | After |
+|---|---|---|
+| `GET .../conversations/{BOYLE}/transcript` | 1 message, associate only | 2 messages, question recovered |
+| `GET .../conversations/{dane}/transcript` | 1 message | 2 messages, both roles |
+| Resuming either row in the Copilot UI | associate's line alone | both roles rendered |
+| Transcript shorter than the turn log | -- | served unchanged, not interleaved |
+| Turn order when `turns` iterates out of order | -- | ordered by `conversation_version` |
+
+| Command | Result |
+|---|---|
+| `pytest tests -q` | **4050 passed, 3 skipped** (was 4046; four added) |
+| `pytest tests/dynamic_knowledge -q` | 646 passed |
+| `ruff check src tests` | 1 error -- the known `I001` (D-3) |
+
+Four cases added to
+`tests/dynamic_knowledge/test_a_paused_turn_is_still_a_conversation.py`: the
+recovery of a question stored before the fix, a completed reply not repeated,
+ordering taken from `conversation_version` rather than insertion order, and the
+count-mismatch fallback.
