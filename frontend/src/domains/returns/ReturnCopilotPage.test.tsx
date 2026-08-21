@@ -865,6 +865,127 @@ describe("resuming a return", () => {
     // the conversation id is minted afresh.
     await waitFor(() => { expect(screen.queryByText("RMA-RESUMED")).toBeNull(); });
   });
+
+  /**
+   * The page of matches the agent had on screen when the conversation was
+   * closed.
+   *
+   * A past search that never raised a case came back with an empty results pane
+   * -- so the associate had to run the search again to see rows the agent had
+   * already found, and had quoted in the message above them.
+   */
+  const SERVED_TURN = turn({
+    response: {
+      status: "AWAITING_INPUT",
+      business_capability: "order-discovery",
+      statements: [
+        {
+          statement_id: "s1",
+          statement_type: "GRAPH_FACT",
+          text: "Seven customers match.",
+          evidence_refs: [
+            { query_execution_id: "qe-page", result_path: ["candidates", "0"] },
+          ],
+        },
+      ],
+    },
+    query_evidence: [
+      {
+        query_execution_id: "qe-page",
+        schema_version: "v2",
+        graph_generation_id: "gen-abc12345",
+        logical_plan_checksum: "plan-x",
+        compiled_query_checksum: "compiled-x",
+        result_checksum: "x",
+        result: {
+          total_found: 7,
+          candidates: [
+            { data: { customer_id: "600654", account_id: "NASH" } },
+            { data: { customer_id: "600318", account_id: "GARDEN" } },
+          ],
+        },
+      },
+    ],
+  });
+
+  it("puts the matches back when a past search is reopened", async () => {
+    withHistory();
+    mocks.listCases.mockResolvedValue([]);
+    mocks.readTranscript.mockResolvedValue({
+      conversationId: "disc-old",
+      conversationVersion: 7,
+      messages: [{ role: "associate", text: "earlier" }],
+      lastResultTurn: SERVED_TURN,
+    });
+    render(<ReturnCopilotPage />, { wrapper });
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous returns" }));
+    fireEvent.click(await screen.findByText("earlier"));
+
+    expect(await screen.findByText("NASH")).toBeInTheDocument();
+    expect(screen.getByText("GARDEN")).toBeInTheDocument();
+    // The total the search reported, not the number of rows it handed over.
+    expect(screen.getByText(/of 7 matched/)).toBeInTheDocument();
+  });
+
+  it("clears the matches for a conversation that carries none", async () => {
+    // Not a regression of the above. Whatever is on screen belongs to whatever
+    // was open before, and a resumed conversation showing another one's matches
+    // is the defect the outright clear was written to prevent.
+    withHistory();
+    mocks.listCases.mockResolvedValue([]);
+    mocks.readTranscript
+      .mockResolvedValueOnce({
+        conversationId: "disc-old",
+        conversationVersion: 7,
+        messages: [{ role: "associate", text: "earlier" }],
+        lastResultTurn: SERVED_TURN,
+      })
+      .mockResolvedValueOnce({
+        conversationId: "disc-old",
+        conversationVersion: 7,
+        messages: [{ role: "associate", text: "earlier" }],
+      });
+    render(<ReturnCopilotPage />, { wrapper });
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous returns" }));
+    fireEvent.click(await screen.findByText("earlier"));
+    expect(await screen.findByText("NASH")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous returns" }));
+    fireEvent.click(await screen.findByText("earlier"));
+
+    await waitFor(() => { expect(screen.queryByText("NASH")).toBeNull(); });
+  });
+
+  it("still shows the confirmed order rather than a restored search", async () => {
+    // A resumed *return* is unaffected: its order comes off the case, which
+    // takes precedence over any candidate list.
+    withHistory();
+    mocks.listCases.mockResolvedValue([OPEN_CASE]);
+    mocks.readTranscript.mockResolvedValue({
+      conversationId: "disc-old",
+      conversationVersion: 7,
+      messages: [{ role: "associate", text: "earlier" }],
+      lastResultTurn: SERVED_TURN,
+    });
+    mocks.readCase.mockResolvedValue(
+      caseProjection({
+        caseId: "case-9",
+        status: "AWAITING_SUPPORT",
+        stage: "AWAITING_SUPPORT",
+        conversationId: "disc-old",
+        confirmedOrder: confirmedOrder(),
+      }),
+    );
+    render(<ReturnCopilotPage />, { wrapper });
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous returns" }));
+    fireEvent.click(await screen.findByText("earlier"));
+
+    await waitFor(() => { expect(mocks.readCase).toHaveBeenCalledWith("case-9"); });
+    await waitFor(() => { expect(screen.queryByText("NASH")).toBeNull(); });
+  });
 });
 
 describe("the return history panel", () => {

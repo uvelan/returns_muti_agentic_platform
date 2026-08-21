@@ -524,6 +524,27 @@ export function ReturnCopilotPage() {
   const [candidates, setCandidates] = useState<readonly Record<string, unknown>[]>([]);
   /** What the search matched, as opposed to what it handed over. `null` if unreported. */
   const [candidateTotal, setCandidateTotal] = useState<number | null>(null);
+
+  /**
+   * Put this conversation's own results back on screen.
+   *
+   * The transcript carries the last turn that produced any, so the table is
+   * rebuilt by `turnCandidates` -- the same function a live turn goes through,
+   * citations and all. Extracting them a second way here is how a resumed
+   * screen comes to disagree with the one the associate closed.
+   *
+   * Always assigns, never merges: whatever was on screen belonged to whatever
+   * was open before, and a resumed conversation showing another one's matches
+   * is the failure the outright clear was written to prevent. A transcript with
+   * no such turn therefore clears -- which is right, because it means this
+   * conversation has no results, not that the last one's still stand.
+   */
+  function restoreCandidates(transcript: ConversationTranscript) {
+    const found =
+      transcript.lastResultTurn == null ? null : turnCandidates(transcript.lastResultTurn);
+    setCandidates(found?.rows ?? []);
+    setCandidateTotal(found?.totalFound ?? null);
+  }
   const versionRef = useRef<number>(0);
   /**
    * The conversation whose transcript this mount has already dealt with.
@@ -746,13 +767,15 @@ export function ReturnCopilotPage() {
       setShowHistory(false);
       setHistory(restoredHistory(transcript));
       setTurn(null);
-      // `setCandidates([])` used to live here, and the search results of the
-      // previous conversation used to survive here. Neither is right: the
-      // resumed return's order comes off the case, through `confirmedOrderRow`
-      // below, so the stale list is dropped and the authoritative one takes
-      // its place.
-      setCandidates([]);
-      setCandidateTotal(null);
+      // The *previous* conversation's results used to survive here, which was
+      // wrong, and clearing outright was wrong in the other direction: a past
+      // search that never raised a case came back with an empty results pane
+      // and the associate had to run it again to see rows the agent had already
+      // found and quoted in the message above. This conversation's own page is
+      // restored instead. A resumed *return* is unaffected either way -- its
+      // order comes off the case, through `confirmedOrderRow` below, which
+      // takes precedence over any candidate list.
+      restoreCandidates(transcript);
       rememberIdentity({
         conversationId: transcript.conversationId,
         caseId: raisedCase === null ? null : raisedCase.caseId,
@@ -775,6 +798,7 @@ export function ReturnCopilotPage() {
     mutationFn: (id: string) => orderAgentApi.readTranscript(id),
     onSuccess: (transcript) => {
       setHistory(restoredHistory(transcript));
+      restoreCandidates(transcript);
       versionRef.current = transcript.conversationVersion;
     },
   });

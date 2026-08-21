@@ -918,3 +918,60 @@ activity module. Adding `subject` to one side failed thirty tests with
 `unexpected keyword argument 'subject'`, which is the good outcome; the bad one
 is a field accepted on both sides that carries nothing across the boundary.
 Nothing was checking the pair. A test now asserts the two shapes match.
+
+---
+
+## F-24a · Superseding F-24: the results were in the conversation document all along
+
+F-24 recorded the gap and the shape of a fix -- carry
+`conversation_state.orderSearchCache` on the transcript and read the page out of
+the evidence store. Building it turned up something better, and the first
+attempt was wrong in two ways worth writing down.
+
+### What the cache-and-evidence-store route got wrong
+
+**It restores the wrong table.** `orderSearchCache` is written by `order_search`
+and by nothing else. A conversation that resolved a customer and then read their
+lines with a `GRAPH_QUERY` has a cache pointing at the *customer* search -- so
+reopening it put the five customers back on screen where the associate had last
+been looking at twenty-five order lines. That is exactly the "scaffolding search
+on screen" failure `citedExecutions` exists to prevent, reintroduced through the
+back door.
+
+**It restores more than was shown.** A cache written before `pageEvidenceRef`
+existed names only the full result set, so a search that served five of seven
+came back as seven of seven.
+
+### What is actually stored
+
+`turns[key].result` is the whole `AgentTurnResult`, and `query_evidence` is a
+field of it -- results included. The rows were already in the document
+`read_transcript` reads. No evidence store, no decryption, no retention
+concern, no wiring.
+
+So the transcript carries `lastResultTurn`: **the most recent turn that carried
+any evidence**, whole.
+
+* *Most recent turn carrying evidence*, not simply the most recent turn -- a
+  clarifying question leaves the table where it is, which is what the live
+  screen does (`if (found !== null)`), so the last turn to produce results is
+  the one still up.
+* *Whole*, because which of a turn's several searches it was speaking about is
+  decided by the citations its own statements carry. Sending rows instead would
+  mean writing that rule a second time, in the other language. Sending the turn
+  lets the client rebuild the table with `turnCandidates` -- the same function,
+  citations and all -- which is what makes a resumed screen the same screen.
+
+Measured on three real conversations after the fix:
+
+| Conversation | Restored |
+|---|---|
+| `disc-514a5ef4` "find order for dane" | turn v1, the page: 5 rows, `total_found` 7 -> *Showing 5 of 7 matched* |
+| `disc-6840af11` (resolved a customer, then read lines) | turn v2, 2 evidence records, 1 cited -> the 25 line rows, customer scaffolding filtered out |
+| `disc-9a4d25f9` "find order for BOYLE" | turn v1, cites nothing -> falls back to all evidence, 5 rows |
+
+The clearing behaviour that was right stays right: the restore always assigns
+and never merges, so a conversation with no such turn clears the table rather
+than leaving the previous conversation's on screen. A resumed *return* is
+unaffected in either direction -- its order comes off the case, which takes
+precedence over any candidate list.

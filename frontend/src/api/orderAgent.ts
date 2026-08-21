@@ -161,6 +161,17 @@ export type ConversationTranscript = {
   conversationId: string;
   conversationVersion: number;
   messages: { role: "associate" | "agent"; text: string }[];
+  /**
+   * The most recent turn in this conversation that produced results.
+   *
+   * A whole turn rather than the rows, because which of a turn's several
+   * searches it was speaking about is decided by the citations its own
+   * statements carry -- so a resumed screen rebuilds the table with
+   * `turnCandidates`, exactly as a live turn does.
+   *
+   * Absent or null when the conversation never searched.
+   */
+  lastResultTurn?: AgentTurnResult | null;
 };
 
 export type SendTurnInput = {

@@ -7477,6 +7477,7 @@
       },
       "ConversationTranscript": {
         "additionalProperties": false,
+        "description": "What was said, and what the agent had on screen while saying it.\n\n`lastResultTurn` is the most recent turn that put results in front of the\nassociate. **A whole turn travels, rather than the rows,** because which of\na turn's several searches it was speaking about is decided by the citations\nits own statements carry -- a rule the client already applies to a live\nturn, and one that would have to be written a second time here to send rows\ninstead. Sending the turn is what makes a resumed screen the same screen.\n\n`None` is an ordinary answer: a conversation that never searched has no such\nturn.",
         "properties": {
           "conversationId": {
             "title": "Conversationid",
@@ -7485,6 +7486,16 @@
           "conversationVersion": {
             "title": "Conversationversion",
             "type": "integer"
+          },
+          "lastResultTurn": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentTurnResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "messages": {
             "items": {

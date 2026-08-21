@@ -5907,12 +5907,26 @@ export interface components {
             /** Updatedat */
             updatedAt: string | null;
         };
-        /** ConversationTranscript */
+        /**
+         * ConversationTranscript
+         * @description What was said, and what the agent had on screen while saying it.
+         *
+         *     `lastResultTurn` is the most recent turn that put results in front of the
+         *     associate. **A whole turn travels, rather than the rows,** because which of
+         *     a turn's several searches it was speaking about is decided by the citations
+         *     its own statements carry -- a rule the client already applies to a live
+         *     turn, and one that would have to be written a second time here to send rows
+         *     instead. Sending the turn is what makes a resumed screen the same screen.
+         *
+         *     `None` is an ordinary answer: a conversation that never searched has no such
+         *     turn.
+         */
         ConversationTranscript: {
             /** Conversationid */
             conversationId: string;
             /** Conversationversion */
             conversationVersion: number;
+            lastResultTurn?: components["schemas"]["AgentTurnResult"] | null;
             /** Messages */
             messages: {
                 [key: string]: string;

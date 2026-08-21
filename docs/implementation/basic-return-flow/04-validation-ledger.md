@@ -379,3 +379,25 @@ completes, it is still not an approval, every other gate state is still awaited,
 a verification route is unaffected, and the projection/workflow constants match),
 six on the composed subject, three on the service writing it, two on the rail's
 customer chip, and two pinning the duplicated `SupportRequestDraft` shapes.
+
+
+## V-23 · Reopening a conversation restores what was on screen
+
+| Check | Before | After |
+|---|---|---|
+| Reopen a past search | messages only, empty results pane | table restored, Select per row |
+| Page vs full result set | -- | the page: *Showing 5 of 7 matched* |
+| A turn that ran two searches and spoke about one | -- | only the cited one, 25 line rows |
+| A turn that cites nothing | -- | falls back to all its evidence, 5 rows |
+| A clarifying question after a search | -- | the search's table, not an empty one |
+| A conversation that never searched | -- | clears, rather than showing the last one's |
+| A resumed return | confirmed order | confirmed order, unchanged |
+
+| Command | Result |
+|---|---|
+| `pytest tests -q` | **4073 passed, 3 skipped** (was 4067; six added) |
+| `vitest run` | 482 passed (was 479; three added) |
+| `tsc -b` | clean |
+| `npm run contracts:generate` | regenerated; `ConversationTranscript` gains `lastResultTurn` |
+| `ruff check src tests` | 1 error -- the known `I001` (D-3) |
+| `eslint src` | 5 errors -- all pre-existing |

@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from return_platform.dynamic_knowledge.fingerprint import sha256_digest
 from return_platform.dynamic_knowledge.order_agent.contracts import (
     AgentTurnRequest,
     AgentTurnResult,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ConversationSummary(BaseModel):
@@ -31,11 +34,25 @@ class ConversationSummary(BaseModel):
 
 
 class ConversationTranscript(BaseModel):
+    """What was said, and what the agent had on screen while saying it.
+
+    `lastResultTurn` is the most recent turn that put results in front of the
+    associate. **A whole turn travels, rather than the rows,** because which of
+    a turn's several searches it was speaking about is decided by the citations
+    its own statements carry -- a rule the client already applies to a live
+    turn, and one that would have to be written a second time here to send rows
+    instead. Sending the turn is what makes a resumed screen the same screen.
+
+    `None` is an ordinary answer: a conversation that never searched has no such
+    turn.
+    """
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     conversationId: str
     conversationVersion: int
     messages: tuple[dict[str, str], ...]
+    lastResultTurn: AgentTurnResult | None = None
 
 
 class ConversationScope(BaseModel):
@@ -152,6 +169,7 @@ class AtomicConversationRepository:
             conversationId=conversation_id,
             conversationVersion=int(document.get("version", 0)),
             messages=_transcript_of(document),
+            lastResultTurn=_last_result_turn(document),
         )
 
     async def commit_turn(
@@ -241,6 +259,54 @@ def _replies_in_order(document: dict[str, Any]) -> list[str]:
     ]
     results.sort(key=lambda result: int(result.get("conversation_version") or 0))
     return [_agent_text(result) for result in results]
+
+
+def _last_result_turn(document: dict[str, Any]) -> AgentTurnResult | None:
+    """The most recent turn that put results in front of the associate.
+
+    **Reopening a conversation used to lose the matches.** The transcript
+    carried what was said and nothing that was shown, so a past search -- one
+    that never reached a case, which is most of them -- came back with an empty
+    results pane, and the associate had to run the search again to see rows the
+    agent had already found and quoted in the message above them.
+
+    Nothing was lost. Every turn's whole result is in `turns`, evidence and all,
+    which is also where `_transcript_of` recovers the agent's replies from.
+
+    **The most recent turn that carried evidence, not simply the most recent
+    turn.** A turn that produces no results leaves the table where it is -- ask
+    a clarifying question and the matches you are asking about stay on screen --
+    so the last turn to carry any is the one whose results are still up.
+
+    Turns are keyed by idempotency key, so the ordering comes from the
+    `conversation_version` each result carries. A result that will not validate
+    is skipped rather than raised on: a legacy turn is a reason to show an older
+    table, never a reason to fail the read that serves the conversation itself.
+    """
+    turns = document.get("turns")
+    if not isinstance(turns, dict):
+        return None
+    results = [
+        turn["result"]
+        for turn in turns.values()
+        if isinstance(turn, dict) and isinstance(turn.get("result"), dict)
+    ]
+    results.sort(key=lambda result: int(result.get("conversation_version") or 0), reverse=True)
+    for result in results:
+        if not result.get("query_evidence"):
+            continue
+        try:
+            return AgentTurnResult.model_validate(result)
+        except ValidationError:
+            logger.warning(
+                "conversation_turn_unreadable",
+                extra={
+                    "conversationId": document.get("_id"),
+                    "conversationVersion": result.get("conversation_version"),
+                },
+                exc_info=True,
+            )
+    return None
 
 
 def _transcript_of(document: dict[str, Any]) -> tuple[dict[str, str], ...]:
