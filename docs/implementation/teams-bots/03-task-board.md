@@ -37,6 +37,11 @@ boundaries checked, integrate in order A → B → C, run only impacted tests, p
 
 ## Wave 2 · Three agents in parallel — business wiring and Windows operations
 
+**Prerequisite (human, not an agent):** `devtunnel` installed, two bot
+registrations, two Teams packages installed in the target group chat, HMAC secret
+generated. Procedure and checklist: `07-credentials-procedure.md`. Wave 1 does not
+need any of it.
+
 | ID | Task | Owner | Depends on | Status |
 |---|---|---|---|---|
 | W2-A | Internal HMAC endpoints, proactive delivery, cards, graceful shutdown, two manifests, Windows scripts | A | W1-A | NOT_STARTED |

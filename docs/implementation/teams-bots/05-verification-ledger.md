@@ -71,3 +71,19 @@ the Windows final gate.
 
 Two conflicts and two ownership collisions were found and resolved **before** any
 agent started, which is what this gate is for. Wave 1 may begin.
+
+---
+
+## Toolchain check — Wave 0, this machine
+
+| Tool | Result |
+|---|---|
+| `node` | **v24.14.0** — satisfies the pinned major 24 |
+| `npm` | **11.1.0** |
+| `devtunnel` | **MISSING** — `winget install Microsoft.devtunnel` |
+| `az` | **MISSING** — optional, endpoint verification only |
+
+`devtunnel` is a **Wave 2 blocker**, not a Wave 1 one: W1-A, W1-B and W1-C all run
+against stubs with no live Teams dependency. Credential creation is documented in
+`07-credentials-procedure.md` and is a human task that can run in parallel with
+Wave 1.
